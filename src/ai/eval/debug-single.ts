@@ -9,8 +9,7 @@
 import { aiFetchStreamingResponse } from '@/ai/fetch'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getLocalSetting } from '@/stores/local-settings-store'
-import { defaultModelOpus48 } from '@/defaults/models'
-import { defaultModeChat } from '@/defaults/modes'
+import { defaultModelOpus55 } from '@shared/defaults/models'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
@@ -26,7 +25,7 @@ const run = async () => {
   await setupTestDatabase()
   console.log('[1/5] Database ready.\n')
 
-  const modelId = defaultModelOpus48.id
+  const modelId = defaultModelOpus55.id
   const prompt = "What's the current price of Bitcoin?"
 
   const body = JSON.stringify({
@@ -34,8 +33,7 @@ const run = async () => {
     id: uuidv7(),
   })
 
-  console.log(`[2/5] Model: ${defaultModelOpus48.name} (${modelId})`)
-  console.log(`[2/5] Mode: ${defaultModeChat.name}`)
+  console.log(`[2/5] Model: ${defaultModelOpus55.name} (${modelId})`)
   console.log(`[2/5] Prompt: "${prompt}"\n`)
 
   const cloudUrl = getLocalSetting('cloudUrl')
@@ -51,8 +49,6 @@ const run = async () => {
   const response = await aiFetchStreamingResponse({
     init: { method: 'POST', body },
     modelId,
-    modeSystemPrompt: defaultModeChat.systemPrompt ?? undefined,
-    modeName: defaultModeChat.name,
     httpClient,
     getProxyFetch: () => proxyFetch,
   })

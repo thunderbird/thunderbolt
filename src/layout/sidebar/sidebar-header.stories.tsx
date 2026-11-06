@@ -7,7 +7,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { SidebarHeader } from './sidebar-header'
 
 const meta = {
-  title: 'layout/sidebar/SidebarHeader',
+  title: 'Sidebar/SidebarHeader',
   component: SidebarHeader,
   parameters: {
     layout: 'padded',

@@ -1,0 +1,63 @@
+name: Set up pinned linuxdeploy
+description: >
+  Download a checksum-verified linuxdeploy release into Tauri's cache dir so
+  `bun tauri build` uses it instead of Tauri's outdated binary-releases pin
+  (which lacks LINUXDEPLOY_EXCLUDED_LIBRARIES env-var support). Also exports
+  the exclusion env var so downstream `bun tauri build` steps in the same job
+  drop libwayland-client from the AppImage bundle. Fixes EGL_BAD_PARAMETER on
+  Wayland compositors — see thunderbird/thunderbolt#955.
+
+runs:
+  using: composite
+  steps:
+    - name: Download + verify + place linuxdeploy, export exclusion env
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Pinned to the linuxdeploy tagged release `1-alpha-20251107-1` (upstream
+        # commit cc7b86472c3caa3fd729b9dc502fd2aa78394257, published 2025-11-07).
+        # It's the first tagged release after `LINUXDEPLOY_EXCLUDED_LIBRARIES`
+        # env-var support landed (upstream 98f393c4, 2024-06-13), so pinning to
+        # this tag avoids the supply-chain risk of the rolling `continuous` URL.
+        # The sha256 check is a belt-and-suspenders: the tagged URL is stable,
+        # but verifying still catches any registry/mirror tamper. Tauri's
+        # `if !exists() { download }` guard in crates/tauri-bundler/.../linuxdeploy.rs
+        # sees this file and skips its own outdated download.
+        #
+        # To bump the pin:
+        #   1. Pick a newer tag from `gh api repos/linuxdeploy/linuxdeploy/releases`
+        #      (avoid `continuous` — always pin to a fixed tag).
+        #   2. `curl -fsSL '<new URL>' -o /tmp/linuxdeploy-x86_64.AppImage`
+        #      and `sha256sum /tmp/linuxdeploy-x86_64.AppImage`.
+        #   3. Cross-check `target_commitish` from `GET .../releases/tags/<tag>`
+        #      against the upstream commit history — it should be a commit
+        #      you're comfortable shipping into a signed release AppImage.
+        #   4. Update URL + EXPECTED_SHA below in a dedicated review-required commit.
+        readonly URL='https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage'
+        readonly EXPECTED_SHA='c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d'
+        # Follow the XDG spec so a runner that customises the cache dir still
+        # lines up with what Tauri's `dirs::cache_dir()` reads at bundle time.
+        readonly TAURI_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
+        readonly DEST="$TAURI_CACHE/linuxdeploy-x86_64.AppImage"
+        readonly TMP="$(mktemp)"
+        mkdir -p "$TAURI_CACHE"
+
+        # Retry/timeout guard: CI hangs on flaky mirror pulls are worse than
+        # a fast fail-and-retry. Bounded so a stuck download can't burn a job.
+        curl --fail --silent --show-error --location \
+             --max-time 120 --retry 3 --retry-delay 2 \
+             "$URL" --output "$TMP"
+
+        # Verify BEFORE placing the file where Tauri will read it, so a bad
+        # download can't poison the cache on a self-hosted runner. `--quiet`
+        # prints on mismatch, stays silent on success.
+        echo "$EXPECTED_SHA  $TMP" | sha256sum --check --quiet
+
+        mv "$TMP" "$DEST"
+        chmod +x "$DEST"
+
+        # Read by linuxdeploy on AppDir init (semicolon-separated fnmatch
+        # globs). Excluding `libwayland-client.so*` forces the AppImage to load
+        # the user's system copy at runtime — matches their compositor by
+        # construction and avoids EGL_BAD_PARAMETER on Wayland.
+        echo 'LINUXDEPLOY_EXCLUDED_LIBRARIES=libwayland-client.so*' >> "$GITHUB_ENV"

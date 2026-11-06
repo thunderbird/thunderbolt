@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
@@ -41,15 +42,20 @@ export const ConnectProviderButton = ({
   setPreferredName = false,
   returnContext = 'integrations',
   className,
-  variant,
+  // Secondary, not the gradient primary: connecting a provider is a setup
+  // step, not the screen's main call to action.
+  variant = 'secondary',
   size,
   connectLabel,
-  connectingLabel = 'Connecting...',
-  connectedLabel = 'Connected!',
+  connectingLabel: connectingLabelProp,
+  connectedLabel: connectedLabelProp,
   allowDisconnect = false,
   useOAuthConnectHook,
 }: ConnectProviderButtonProps) => {
+  const { t } = useLingui()
   const [isHovered, setIsHovered] = useState(false)
+  const connectingLabel = connectingLabelProp ?? t`Connecting…`
+  const connectedLabel = connectedLabelProp ?? t`Connected!`
 
   // Use injected hook for testing, or real implementation in production
   const oauthHook = useOAuthConnectHook ?? useOAuthConnect
@@ -94,11 +100,11 @@ export const ConnectProviderButton = ({
         showDisconnect ? (
           <>
             <X className="w-4 h-4 mr-2" />
-            Disconnect
+            <Trans>Disconnect</Trans>
           </>
         ) : (
           <>
-            <Check className="w-4 h-4 mr-2 text-green-600" />
+            <Check className="w-4 h-4 mr-2 text-success" />
             {connectedLabel}
           </>
         )

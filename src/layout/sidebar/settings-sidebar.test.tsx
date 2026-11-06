@@ -9,8 +9,8 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { SettingsSidebarContent } from './settings-sidebar'
@@ -23,7 +23,7 @@ const authedSession = {
   user: { id: 'user-1', email: 'a@b.com', name: 'Alice', isAnonymous: false },
 }
 
-const renderSidebar = (authClient: AuthClient, isStandalone: () => boolean) => {
+const renderSidebar = (authClient: AuthClient, onSearchClick = () => {}) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <TestProvider>
@@ -35,14 +35,21 @@ const renderSidebar = (authClient: AuthClient, isStandalone: () => boolean) => {
     </TestProvider>
   )
   return render(
-    <SettingsSidebarContent onBackClick={() => {}} onSettingsNavigate={() => {}} isStandalone={isStandalone} />,
-    { wrapper: Wrapper },
+    <SettingsSidebarContent
+      isCollapsed={false}
+      onSectionChange={() => {}}
+      onSettingsNavigate={() => {}}
+      onSearchClick={onSearchClick}
+    />,
+    {
+      wrapper: Wrapper,
+    },
   )
 }
 
-const onTauri = () => true
-const offTauri = () => false
-
+// The Agents entry is unconditional: the built-in agent is local-first and
+// custom ACP agents (including proxy-free iroh targets) work without a real
+// account, so no session or proxy state hides it.
 describe('SettingsSidebarContent — Agents entry visibility', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -62,40 +69,25 @@ describe('SettingsSidebarContent — Agents entry visibility', () => {
     localStorage.clear()
   })
 
-  it('hides the Agents entry for anonymous users when the proxy is effectively on (web)', () => {
+  it('shows the Agents entry for anonymous users', () => {
     const authClient = createMockAuthClient({ session: anonSession })
-    renderSidebar(authClient, offTauri)
+    renderSidebar(authClient)
 
-    expect(screen.queryByText('Agents')).not.toBeInTheDocument()
+    expect(screen.getByText('All agents')).toBeInTheDocument()
   })
 
-  it('hides the Agents entry for anonymous users on Tauri Connected (proxy_enabled=true)', () => {
-    localStorage.setItem('proxy_enabled', 'true')
-    const authClient = createMockAuthClient({ session: anonSession })
-    renderSidebar(authClient, onTauri)
-
-    expect(screen.queryByText('Agents')).not.toBeInTheDocument()
-  })
-
-  it('shows the Agents entry for anonymous users on Tauri Standalone (proxy off)', () => {
-    // localStorage has no `proxy_enabled` — defaults to false on Tauri.
-    const authClient = createMockAuthClient({ session: anonSession })
-    renderSidebar(authClient, onTauri)
-
-    expect(screen.getByText('Agents')).toBeInTheDocument()
-  })
-
-  it('shows the Agents entry for authenticated users behind the proxy (web)', () => {
+  it('shows the Agents entry for authenticated users', () => {
     const authClient = createMockAuthClient({ session: authedSession })
-    renderSidebar(authClient, offTauri)
+    renderSidebar(authClient)
 
-    expect(screen.getByText('Agents')).toBeInTheDocument()
+    expect(screen.getByText('All agents')).toBeInTheDocument()
   })
 
-  it('shows the Agents entry for authenticated users on Tauri Standalone (proxy off)', () => {
-    const authClient = createMockAuthClient({ session: authedSession })
-    renderSidebar(authClient, onTauri)
-
-    expect(screen.getByText('Agents')).toBeInTheDocument()
+  it('keeps global search available alongside the Settings tab', () => {
+    const onSearchClick = mock()
+    renderSidebar(createMockAuthClient({ session: anonSession }), onSearchClick)
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    expect(onSearchClick).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
   })
 })

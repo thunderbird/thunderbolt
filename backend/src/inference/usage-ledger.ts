@@ -1,0 +1,227 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import type { Settings } from '@/config/settings'
+import type { db } from '@/db/client'
+import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
+import { and, eq, gte, sql } from 'drizzle-orm'
+
+export type ManagedInferenceIdentity = Readonly<{ provider: 'anthropic' | 'fireworks' | 'tinfoil'; model: string }>
+export type InferenceTokenCounts = Readonly<{
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cacheCreationTokens?: number
+  cacheCreation1hTokens?: number
+  cacheReadTokens?: number
+}>
+export type InferencePrice = ManagedInferenceIdentity &
+  Readonly<{
+    inputNanoUsdPerToken: bigint
+    outputNanoUsdPerToken: bigint
+    /** The provider's cached-input rate; absent means cache reads bill at the input rate (Anthropic: a tenth of it). */
+    cacheReadNanoUsdPerToken?: bigint
+  }>
+export type InferenceQuotaLimits = Readonly<{ fiveHourCents: number; sevenDayCents: number }>
+export type InferenceQuotaDecision =
+  | Readonly<{
+      allowed: true
+      exceededWindow: null
+      fiveHourSpentNanoUsd: bigint
+      sevenDaySpentNanoUsd: bigint
+      limits: InferenceQuotaLimits
+    }>
+  | Readonly<{
+      allowed: false
+      exceededWindow: '5h' | '7d'
+      fiveHourSpentNanoUsd: bigint
+      sevenDaySpentNanoUsd: bigint
+      limits: InferenceQuotaLimits
+    }>
+export type ManagedInferenceAdmission =
+  | Readonly<{ outcome: 'allowed'; price: InferencePrice }>
+  | Readonly<{ outcome: 'price-unavailable' }>
+  | Readonly<{ outcome: 'quota-exceeded'; decision: Extract<InferenceQuotaDecision, { allowed: false }> }>
+export type InferenceDatabase = Pick<typeof db, 'insert' | 'select'>
+export type RecordInferenceUsageInput = Readonly<{
+  id: string
+  userId: string
+  counts: InferenceTokenCounts
+  price: InferencePrice
+}>
+
+const postgresBigintMax = 9_223_372_036_854_775_807n
+const nanoUsdPerCent = 10_000_000n
+
+export const maxPostgresInteger = 2_147_483_647
+
+export class InferenceTokenCountOutOfRangeError extends Error {}
+export class InferenceCostOverflowError extends Error {}
+
+/** Load the exact current price for a canonical provider and model. */
+export const loadInferencePrice = async (
+  database: InferenceDatabase,
+  identity: ManagedInferenceIdentity,
+): Promise<InferencePrice | null> => {
+  const [price] = await database
+    .select({
+      inputNanoUsdPerToken: inferencePrices.inputNanoUsdPerToken,
+      outputNanoUsdPerToken: inferencePrices.outputNanoUsdPerToken,
+      cacheReadNanoUsdPerToken: inferencePrices.cacheReadNanoUsdPerToken,
+    })
+    .from(inferencePrices)
+    .where(and(eq(inferencePrices.provider, identity.provider), eq(inferencePrices.model, identity.model)))
+    .limit(1)
+  if (!price) {
+    return null
+  }
+
+  const { cacheReadNanoUsdPerToken, ...rates } = price
+  return cacheReadNanoUsdPerToken === null
+    ? { ...identity, ...rates }
+    : { ...identity, ...rates, cacheReadNanoUsdPerToken }
+}
+
+/**
+ * Cost of the cache-read tokens: the row's cached-input rate when it has one, otherwise Anthropic's tenth of
+ * the input rate. Any other provider without a rate bills them as ordinary input, as before the column existed.
+ */
+const cacheReadCost = (cacheReadTokens: number, price: InferencePrice): bigint => {
+  if (price.cacheReadNanoUsdPerToken !== undefined) {
+    return BigInt(cacheReadTokens) * price.cacheReadNanoUsdPerToken
+  }
+  if (price.provider === 'anthropic') {
+    return (BigInt(cacheReadTokens) * price.inputNanoUsdPerToken) / 10n
+  }
+  return BigInt(cacheReadTokens) * price.inputNanoUsdPerToken
+}
+
+/** Calculate usage cost, applying Anthropic's cache write multipliers and each row's cache-read rate. */
+export const calculateInferenceCost = (counts: InferenceTokenCounts, price: InferencePrice): bigint => {
+  const cacheCreationTokens = price.provider === 'anthropic' ? (counts.cacheCreationTokens ?? 0) : 0
+  const cacheCreation1hTokens = price.provider === 'anthropic' ? (counts.cacheCreation1hTokens ?? 0) : 0
+  const cacheReadTokens = counts.cacheReadTokens ?? 0
+  const uncachedPromptTokens = counts.promptTokens - cacheCreationTokens - cacheReadTokens
+  const cacheCreation5mTokens = cacheCreationTokens - cacheCreation1hTokens
+  if (uncachedPromptTokens < 0 || cacheCreation5mTokens < 0) {
+    throw new InferenceTokenCountOutOfRangeError()
+  }
+  const cost =
+    BigInt(uncachedPromptTokens) * price.inputNanoUsdPerToken +
+    (BigInt(cacheCreation5mTokens) * price.inputNanoUsdPerToken * 5n) / 4n +
+    BigInt(cacheCreation1hTokens) * price.inputNanoUsdPerToken * 2n +
+    cacheReadCost(cacheReadTokens, price) +
+    BigInt(counts.completionTokens) * price.outputNanoUsdPerToken
+  if (cost > postgresBigintMax) {
+    throw new InferenceCostOverflowError()
+  }
+  return cost
+}
+
+/** Insert one completed usage event, treating an existing event ID as a replay. */
+export const recordInferenceUsage = async (
+  database: InferenceDatabase,
+  input: RecordInferenceUsageInput,
+): Promise<'inserted' | 'duplicate'> => {
+  if (Object.values(input.counts).some((count) => count > maxPostgresInteger)) {
+    throw new InferenceTokenCountOutOfRangeError()
+  }
+
+  const rows = await database
+    .insert(inferenceUsage)
+    .values({
+      id: input.id,
+      userId: input.userId,
+      provider: input.price.provider,
+      model: input.price.model,
+      promptTokens: input.counts.promptTokens,
+      completionTokens: input.counts.completionTokens,
+      totalTokens: input.counts.totalTokens,
+      costNanoUsd: calculateInferenceCost(input.counts, input.price),
+    })
+    .onConflictDoNothing({ target: inferenceUsage.id })
+    .returning()
+
+  return rows.length === 1 ? 'inserted' : 'duplicate'
+}
+
+/** Read both rolling spend windows with one database-clock aggregate query. */
+export const checkInferenceQuota = async (
+  database: InferenceDatabase,
+  userId: string,
+  limits: InferenceQuotaLimits,
+): Promise<InferenceQuotaDecision> => {
+  const [aggregate] = await database
+    .select({
+      fiveHourSpentNanoUsd:
+        sql`coalesce(sum(${inferenceUsage.costNanoUsd}) filter (where ${inferenceUsage.createdAt} >= now() - interval '5 hours'), 0)::bigint`.mapWith(
+          inferenceUsage.costNanoUsd,
+        ),
+      sevenDaySpentNanoUsd:
+        sql`coalesce(sum(${inferenceUsage.costNanoUsd}) filter (where ${inferenceUsage.createdAt} >= now() - interval '7 days'), 0)::bigint`.mapWith(
+          inferenceUsage.costNanoUsd,
+        ),
+    })
+    .from(inferenceUsage)
+    .where(and(eq(inferenceUsage.userId, userId), gte(inferenceUsage.createdAt, sql`now() - interval '7 days'`)))
+  const { fiveHourSpentNanoUsd, sevenDaySpentNanoUsd } = aggregate
+  const fiveHourExceeded = fiveHourSpentNanoUsd >= BigInt(limits.fiveHourCents) * nanoUsdPerCent
+  const sevenDayExceeded = sevenDaySpentNanoUsd >= BigInt(limits.sevenDayCents) * nanoUsdPerCent
+  const exceededWindow = fiveHourExceeded ? '5h' : sevenDayExceeded ? '7d' : null
+  const spend = { fiveHourSpentNanoUsd, sevenDaySpentNanoUsd, limits }
+
+  return exceededWindow
+    ? { allowed: false, exceededWindow, ...spend }
+    : { allowed: true, exceededWindow: null, ...spend }
+}
+
+/** Load the current price and rolling spend concurrently, with price errors taking precedence. */
+export const checkManagedInferenceAdmission = async (
+  database: InferenceDatabase,
+  identity: ManagedInferenceIdentity,
+  userId: string,
+  limits: InferenceQuotaLimits,
+): Promise<ManagedInferenceAdmission> => {
+  const [priceResult, quotaResult] = await Promise.allSettled([
+    loadInferencePrice(database, identity),
+    checkInferenceQuota(database, userId, limits),
+  ])
+
+  if (priceResult.status === 'rejected') {
+    throw priceResult.reason
+  }
+  if (priceResult.value === null) {
+    return { outcome: 'price-unavailable' }
+  }
+  if (quotaResult.status === 'rejected') {
+    throw quotaResult.reason
+  }
+  if (!quotaResult.value.allowed) {
+    return { outcome: 'quota-exceeded', decision: quotaResult.value }
+  }
+  return { outcome: 'allowed', price: priceResult.value }
+}
+
+/** Select quota limits for an anonymous or registered user. */
+export const getInferenceQuotaLimits = (
+  settings: Pick<
+    Settings,
+    | 'inferenceQuotaAnonymousFiveHourCents'
+    | 'inferenceQuotaAnonymousSevenDayCents'
+    | 'inferenceQuotaRegisteredFiveHourCents'
+    | 'inferenceQuotaRegisteredSevenDayCents'
+  >,
+  isAnonymous: boolean,
+): InferenceQuotaLimits => {
+  if (isAnonymous) {
+    return {
+      fiveHourCents: settings.inferenceQuotaAnonymousFiveHourCents,
+      sevenDayCents: settings.inferenceQuotaAnonymousSevenDayCents,
+    }
+  }
+  return {
+    fiveHourCents: settings.inferenceQuotaRegisteredFiveHourCents,
+    sevenDayCents: settings.inferenceQuotaRegisteredSevenDayCents,
+  }
+}

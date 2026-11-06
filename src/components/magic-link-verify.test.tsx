@@ -3,6 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { settingsTable } from '@/db/tables'
+import { reconcileDefaults } from '@/lib/reconcile-defaults'
+import { eq } from 'drizzle-orm'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -50,13 +54,16 @@ describe('MagicLinkVerify', () => {
     cleanup()
   })
 
-  const renderComponent = (email?: string, otp?: string) => {
+  const renderComponent = (email?: string, otp?: string, challengeToken?: string) => {
     const params = new URLSearchParams()
     if (email) {
       params.set('email', email)
     }
     if (otp) {
       params.set('otp', otp)
+    }
+    if (challengeToken) {
+      params.set('challengeToken', challengeToken)
     }
     const url = `/verify${params.toString() ? `?${params.toString()}` : ''}`
 
@@ -141,7 +148,7 @@ describe('MagicLinkVerify', () => {
 
       renderComponent('user@example.com', '123456')
 
-      expect(screen.getByText('Signing you in...')).toBeInTheDocument()
+      expect(screen.getByText('Signing you in…')).toBeInTheDocument()
     })
   })
 
@@ -161,6 +168,20 @@ describe('MagicLinkVerify', () => {
         email: 'user@example.com',
         otp: '123456',
       })
+    })
+
+    it('keeps the client-level headers when sending a challenge token', async () => {
+      // Better Auth REPLACES the client-level headers with a per-call `headers`
+      // object, so this call has to re-include them — without X-App-Version the
+      // fail-closed version gate answers 426 on a perfectly current build.
+      renderComponent('user@example.com', '123456', 'challenge-abc')
+      await waitForStateChange()
+
+      const call = mockSignInEmailOtp.mock.calls[0][0] as {
+        fetchOptions: { headers: Record<string, string> }
+      }
+      expect(call.fetchOptions.headers['x-challenge-token']).toBe('challenge-abc')
+      expect(call.fetchOptions.headers).toHaveProperty('X-Client-Platform')
     })
 
     it('navigates to home on continue click', async () => {
@@ -289,6 +310,56 @@ describe('MagicLinkVerify', () => {
       await waitForStateChange()
 
       expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * GH #1299. The magic link was the one sign-in path that never marked a
+   * returning account as onboarded, so opening it on a second device redid
+   * onboarding there and then uploaded that `false` over the real value on
+   * every other device. Asserting the stored setting rather than the call keeps
+   * the test on the behaviour that broke.
+   */
+  describe('returning-user onboarding', () => {
+    const readOnboarding = async (): Promise<string | null> => {
+      const rows = await getDb()
+        .select()
+        .from(settingsTable)
+        .where(eq(settingsTable.key, 'user_has_completed_onboarding'))
+      return (rows[0] as { value: string | null } | undefined)?.value ?? null
+    }
+
+    beforeEach(async () => {
+      // Seeds `user_has_completed_onboarding = 'false'`, exactly as a fresh
+      // device does at boot before it has ever seen the account.
+      await reconcileDefaults(getDb())
+    })
+
+    it('marks onboarding complete when the link signs in to an account that already existed', async () => {
+      mockSignInEmailOtp = mock(() => Promise.resolve({ error: null, data: { user: { id: 'u1', isNew: false } } }))
+
+      renderComponent('test@example.com', '12345678')
+      await waitForStateChange()
+
+      expect(await readOnboarding()).toBe('true')
+    })
+
+    it('leaves onboarding pending when the link creates the account', async () => {
+      mockSignInEmailOtp = mock(() => Promise.resolve({ error: null, data: { user: { id: 'u1', isNew: true } } }))
+
+      renderComponent('new@example.com', '12345678')
+      await waitForStateChange()
+
+      expect(await readOnboarding()).toBe('false')
+    })
+
+    it('does not mark onboarding when verification fails', async () => {
+      mockSignInEmailOtp = mock(() => Promise.resolve({ error: { code: 'INVALID_OTP', message: 'bad code' } }))
+
+      renderComponent('test@example.com', '12345678')
+      await waitForStateChange()
+
+      expect(await readOnboarding()).toBe('false')
     })
   })
 })

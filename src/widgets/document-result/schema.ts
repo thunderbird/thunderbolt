@@ -8,6 +8,11 @@ import { z } from 'zod'
 /**
  * Schema for the document-result widget, used by the Haystack pipeline to
  * surface a single source document inline with a chat response.
+ *
+ * Tag contract: `<widget:document-result name="..." fileId="..."
+ * snippet="..." score="..." />`. It is reserved for a future Document
+ * Search/Haystack mode, whose mode prompt must carry model-facing guidance
+ * when it ships.
  */
 export const schema = z.object({
   widget: z.literal('document-result'),

@@ -6,7 +6,7 @@ import { OnboardingLocationStepWrapper } from './wrappers/OnboardingLocationStep
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 const meta = {
-  title: 'components/onboarding/onboarding-location-step',
+  title: 'Onboarding/OnboardingLocationStep',
   component: OnboardingLocationStepWrapper,
   parameters: {
     layout: 'centered',

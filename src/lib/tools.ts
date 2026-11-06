@@ -12,6 +12,7 @@ import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsof
 import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
 import { toolCallKey } from '@/lib/stable-stringify'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { tool, type Tool } from 'ai'
@@ -75,6 +76,9 @@ export const tools = [...Object.values(tasksTools)]
  */
 export type ToolCallCache = Map<string, Promise<unknown>>
 
+/** Built-in web tools governed by the production per-turn web budget. */
+export const webToolNames: ReadonlySet<string> = new Set(['search', 'fetch_content'])
+
 /**
  * Wrap a `cacheable` tool's executor so identical calls within one streaming
  * response reuse the first (in-flight or settled) result instead of
@@ -101,21 +105,46 @@ const dedupedExecute =
     return result
   }
 
+const budgetedWebExecute =
+  (config: ToolConfig, webToolBudget: WebToolBudget, execute: (input: unknown) => Promise<unknown>) =>
+  (input: unknown): Promise<unknown> =>
+    webToolBudget.execute(config.name, input, () => execute(input))
+
 /**
  * Build an AI SDK tool from a {@link ToolConfig}. When a {@link ToolCallCache}
  * is supplied and the tool opts in via `cacheable` (deterministic, read-only),
  * its executor is wrapped to dedupe identical calls within the request. Tools
  * without `cacheable` (notably side-effecting/write tools) always execute.
  */
-export const createTool = (config: ToolConfig, cache?: ToolCallCache) =>
-  tool({
+export const createTool = (config: ToolConfig, cache?: ToolCallCache, webToolBudget?: WebToolBudget) => {
+  const execute = cache && config.cacheable ? dedupedExecute(config, cache) : config.execute
+  return tool({
     description: config.description,
     inputSchema: config.parameters,
-    execute: cache && config.cacheable ? dedupedExecute(config, cache) : config.execute,
+    toModelOutput:
+      webToolBudget && webToolNames.has(config.name)
+        ? ({ output }) => ({
+            type: 'content',
+            value: [
+              { type: 'text', text: JSON.stringify(output) },
+              {
+                type: 'text',
+                text: `Web calls remaining this turn: ${Math.max(0, webToolBudget.cap - webToolBudget.consumed)}.${webToolBudget.probe.isExhausted ? ' Synthesize now from the available evidence; do not call web tools again.' : ''}`,
+              },
+            ],
+          })
+        : undefined,
+    execute:
+      webToolBudget && webToolNames.has(config.name) ? budgetedWebExecute(config, webToolBudget, execute) : execute,
   })
+}
 
-export const createToolset = (tools: ToolConfig[], cache?: ToolCallCache): Record<string, Tool> =>
+export const createToolset = (
+  tools: ToolConfig[],
+  cache?: ToolCallCache,
+  webToolBudget?: WebToolBudget,
+): Record<string, Tool> =>
   tools.reduce<Record<string, Tool>>((acc, tool) => {
-    acc[tool.name] = createTool(tool, cache)
+    acc[tool.name] = createTool(tool, cache, webToolBudget)
     return acc
   }, {})

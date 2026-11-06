@@ -5,54 +5,56 @@
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import type { UseMutationResult } from '@tanstack/react-query'
-import type { MouseEvent, RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 
+/** Top-level sidebar sections switchable via the nav toggle. */
+export type SidebarSection = 'chats' | 'settings'
+
+/** The sidebar's own narrowed view of a chat row — only what the list renders. */
 export type ChatThread = {
   id: string
   title: string | null
   isEncrypted: number
+  /** Owning project, or null. Needed so a drag knows whether "Remove from
+   *  project" applies to this chat. */
+  projectId: string | null
+  /** Mini App the chat came from, or null. Drives the row's app icon. */
+  miniAppId: string | null
 }
 
-export type DeleteChatMutationType = UseMutationResult<void, Error, { id: string }, unknown>
+export type DeleteChatMutationType = Pick<
+  UseMutationResult<void, Error, { id: string }, unknown>,
+  'mutate' | 'isPending'
+>
 
-export type DeleteAllChatsMutationType = UseMutationResult<void, Error, void, unknown>
-
-export type ChatActionsProps = {
-  isCollapsed: boolean
-  debouncedSearchQuery: string
-  deleteAllChatsMutation: DeleteAllChatsMutationType
-  deleteAllChatsDialogRef: RefObject<DeleteAllChatsDialogRef | null>
-  onSearchClick: (e?: MouseEvent) => void
-}
+export type DeleteAllChatsMutationType = Pick<UseMutationResult<void, Error, void, unknown>, 'mutate' | 'isPending'>
 
 export type ChatListProps = {
   chatThreads: ChatThread[]
   currentChatThreadId?: string
   isCollapsed: boolean
   isMobile: boolean
-  debouncedSearchQuery: string
   deleteAllChatsMutation: DeleteAllChatsMutationType
   deleteChatMutation: DeleteChatMutationType
   deleteAllChatsDialogRef: RefObject<DeleteAllChatsDialogRef | null>
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   threadIdRef: RefObject<string | null>
-  searchQuery: string
-  showSearch: boolean
-  searchInputRef: RefObject<HTMLInputElement | null>
-  onChatClick: (threadId: string) => void
+  mobileNavToggle: ReactNode
+  mobileSecondaryNavigation: ReactNode
+  onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
-  onSearchClick: (e?: MouseEvent) => void
-  onSearchQueryChange: (value: string) => void
+  /** Open the project picker for a chat. The sidebar owns the dialog. */
+  onMoveToProject: (threadId: string, currentProjectId: string | null) => void
 }
 
 export type ChatListItemProps = {
   thread: ChatThread
   isActive: boolean
-  isCollapsed: boolean
   isMobile: boolean
   deleteChatMutation: DeleteChatMutationType
   threadIdRef: RefObject<string | null>
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
-  onChatClick: (threadId: string) => void
+  onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
+  onMoveToProject: (threadId: string, currentProjectId: string | null) => void
 }

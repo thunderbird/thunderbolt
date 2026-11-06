@@ -3,14 +3,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AuthClient } from '@/contexts'
-import { challengeTokenHeader, otpLength } from '@/lib/constants'
+import { signInWithOtp } from '@/lib/sign-in-with-otp'
+import { i18n } from '@/i18n'
+import { msg } from '@lingui/core/macro'
+import { otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
-import { updateSettings } from '@/dal'
-import { getDb, getDatabaseInstance } from '@/db/database'
+import { isPasskeyCancellation, signInWithPasskey } from '@/lib/passkey'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
+
+const sendFailed = msg`Failed to send verification code. Please check your connection.`
+const resendFailed = msg`Failed to resend verification code. Please check your connection.`
+const verifyFailed = msg`Verification failed. Please try again.`
+const passkeyFailed = msg`Couldn't sign in with your passkey. Please try again or use your email.`
 
 /** Extract a user-facing error message from an HttpError response body, or return the fallback. */
 const getServerErrorMessage = async (error: unknown, fallback: string): Promise<string> => {
@@ -36,6 +43,9 @@ type State = {
   challengeToken: string
   status: FormStatus
   errorMessage: string
+  /** Passkey ceremony in progress. Kept separate from `status` so the email step
+   *  stays rendered (a `verifying` status would route to the OTP UI). */
+  passkeyPending: boolean
 }
 
 type Action =
@@ -50,6 +60,9 @@ type Action =
   | { type: 'RESET' }
   | { type: 'GO_BACK' }
   | { type: 'SET_ERROR'; payload: string }
+  | { type: 'PASSKEY_START' }
+  | { type: 'PASSKEY_ERROR'; payload: string }
+  | { type: 'PASSKEY_CANCEL' }
 
 const initialState: State = {
   email: '',
@@ -57,6 +70,7 @@ const initialState: State = {
   challengeToken: '',
   status: 'idle',
   errorMessage: '',
+  passkeyPending: false,
 }
 
 const reducer = (state: State, action: Action): State => {
@@ -83,6 +97,12 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, status: 'idle', otp: '', errorMessage: '' }
     case 'SET_ERROR':
       return { ...state, errorMessage: action.payload }
+    case 'PASSKEY_START':
+      return { ...state, status: 'idle', passkeyPending: true, errorMessage: '' }
+    case 'PASSKEY_ERROR':
+      return { ...state, status: 'error', passkeyPending: false, errorMessage: action.payload }
+    case 'PASSKEY_CANCEL':
+      return { ...state, status: 'idle', passkeyPending: false, errorMessage: '' }
     default:
       return state
   }
@@ -99,54 +119,6 @@ type UseSignInFormStateOptions = {
   skipToOtp?: boolean
   /** Challenge token to use when skipToOtp is true (required for OTP verification) */
   initialChallengeToken?: string
-}
-
-/** Better Auth includes `isNew` on the user object at runtime but not in its types. */
-export const isNewAuthUser = (user: unknown): boolean =>
-  typeof user === 'object' && user !== null && 'isNew' in user && (user as { isNew: unknown }).isNew === true
-
-type OnSignInSuccessDeps = {
-  getDatabase?: typeof getDatabaseInstance
-  getDrizzle?: typeof getDb
-}
-
-/**
- * Sync is disabled by default after sign-in/sign-up; user can enable it in Preferences.
- * For returning non-anonymous users only: reset pending CRUD operations so that when they
- * later enable sync, local ops do not conflict with cloud data.
- *
- * `wasAnonymous` short-circuits this for the anonymous → real-account promotion case —
- * the queued PUTs in `ps_crud` are exactly the anon-session writes we WANT to upload
- * under the new identity. Wiping them here would silently destroy the user's anon-session
- * work.
- */
-export const onSignInSuccess = async (
-  isNewUser: boolean,
-  wasAnonymous: boolean,
-  deps: OnSignInSuccessDeps = {},
-): Promise<void> => {
-  if (isNewUser || wasAnonymous) {
-    return
-  }
-
-  const { getDatabase = getDatabaseInstance, getDrizzle = getDb } = deps
-
-  // Error containment: failures in post-auth housekeeping must NOT propagate to the caller's
-  // sign-in handler, which translates any throw into a "verification failed" UI even though
-  // the OTP was already consumed and the user is authenticated. Log and swallow here.
-  try {
-    const database = getDatabase()
-    if ('clearPendingCrudOperations' in database) {
-      // on sign in (existing user), set user_has_completed_onboarding to true
-      // we consider that an existing user has completed onboarding since they have signed in previously
-      // this is necessary because sync is disabled by default - so we don't have a way to know if they have actually completed onboarding
-      const db = getDrizzle()
-      await updateSettings(db, { user_has_completed_onboarding: true })
-      await (database as { clearPendingCrudOperations: () => Promise<void> }).clearPendingCrudOperations()
-    }
-  } catch (error) {
-    console.error('Failed to clear pending CRUD after sign-in:', error)
-  }
 }
 
 /**
@@ -173,7 +145,6 @@ export const useSignInFormState = ({
   })
 
   const analytics = useAnonymousPromotionAnalytics()
-  const { data: session } = authClient.useSession()
   const isValidEmail = isValidEmailFormat(state.email.trim())
 
   const handleSubmit = async (e: FormEvent) => {
@@ -194,10 +165,7 @@ export const useSignInFormState = ({
       dispatch({ type: 'SEND_SUCCESS', payload: challengeToken ?? '' })
     } catch (error) {
       console.error('Failed to send verification OTP:', error)
-      const message = await getServerErrorMessage(
-        error,
-        'Failed to send verification code. Please check your connection.',
-      )
+      const message = await getServerErrorMessage(error, i18n._(sendFailed))
       dispatch({ type: 'SEND_ERROR', payload: message })
       return
     }
@@ -212,28 +180,22 @@ export const useSignInFormState = ({
 
     await analytics.captureAnonId(authClient)
 
-    // Snapshot BEFORE the sign-in mutation — after it resolves, the session has flipped
-    // to the new identity and `isAnonymous` no longer reflects the pre-promotion state.
-    const wasAnonymous = session?.user?.isAnonymous === true
-
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      const result = await authClient.signIn.emailOtp({
+      // `state.challengeToken` is always a string, so the header is always sent
+      // — including empty, as before.
+      const result = await signInWithOtp(authClient, {
         email: state.email.trim(),
         otp: value,
-        fetchOptions: {
-          headers: { [challengeTokenHeader]: state.challengeToken },
-        },
+        challengeToken: state.challengeToken,
       })
 
       if (result.error) {
-        dispatch({ type: 'VERIFY_ERROR', payload: getOtpErrorMessage(result.error, 'code') })
+        dispatch({ type: 'VERIFY_ERROR', payload: i18n._(getOtpErrorMessage(result.error, 'code')) })
         return
       }
 
-      const isNewUser = isNewAuthUser(result.data?.user)
-      await onSignInSuccess(isNewUser, wasAnonymous)
       if (result.data?.user?.id) {
         analytics.onPromotionSuccess(result.data.user.id)
       }
@@ -242,7 +204,28 @@ export const useSignInFormState = ({
       dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (error) {
       console.error('OTP verification error:', error)
-      dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
+      dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
+    }
+  }
+
+  const handlePasskeySignIn = async () => {
+    // Disable the button before any await, so a double tap can't start a second ceremony.
+    dispatch({ type: 'PASSKEY_START' })
+    await analytics.captureAnonId(authClient)
+
+    try {
+      const { userId } = await signInWithPasskey(authClient)
+
+      analytics.onPromotionSuccess(userId)
+
+      dispatch({ type: 'VERIFY_SUCCESS' })
+    } catch (error) {
+      if (isPasskeyCancellation(error)) {
+        dispatch({ type: 'PASSKEY_CANCEL' })
+        return
+      }
+      console.error('Passkey sign-in error:', error)
+      dispatch({ type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
     }
   }
 
@@ -271,10 +254,7 @@ export const useSignInFormState = ({
       return true
     } catch (error) {
       console.error('Failed to resend verification OTP:', error)
-      const message = await getServerErrorMessage(
-        error,
-        'Failed to resend verification code. Please check your connection.',
-      )
+      const message = await getServerErrorMessage(error, i18n._(resendFailed))
       dispatch({ type: 'SET_ERROR', payload: message })
       return false
     }
@@ -286,6 +266,7 @@ export const useSignInFormState = ({
     actions: {
       handleSubmit,
       handleOtpComplete,
+      handlePasskeySignIn,
       handleCancel,
       handleResend,
       goBack,

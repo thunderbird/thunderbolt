@@ -12,7 +12,7 @@ import { SkillTokenPopover } from './skill-token-popover'
 // inside Radix and JSDOM-incompatible pointer events. We assert the
 // trigger surface that the chat composer relies on, not the full
 // open/close cycle — that lives in manual / e2e testing.
-const renderPopover = (state: { editSkill: string } | { createSkill: string }) =>
+const renderPopover = (state: { editSkill: string }) =>
   render(
     <MemoryRouter>
       <SkillTokenPopover
@@ -38,5 +38,20 @@ describe('SkillTokenPopover', () => {
     const { container } = renderPopover({ editSkill: 'id-1' })
     const trigger = container.querySelector('[tabindex="0"]')
     expect(trigger?.textContent).toBe('/some-token')
+  })
+
+  it('renders the onAction variant (create-it) with the same interactive trigger surface', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <SkillTokenPopover
+          trigger={<span className="text-red-500">/unknown-token</span>}
+          message="No skill named /unknown-token."
+          actionLabel="Create it"
+          onAction={() => {}}
+        />
+      </MemoryRouter>,
+    )
+    const trigger = container.querySelector('.pointer-events-auto')
+    expect(trigger?.textContent).toBe('/unknown-token')
   })
 })

@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
+import { defaultModels } from '@shared/defaults/models'
 import { defaultModelProfiles, hashModelProfile } from './model-profiles'
 
 const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile => ({
@@ -77,13 +78,18 @@ describe('hashModelProfile', () => {
 })
 
 describe('defaultModelProfiles', () => {
-  test('contains four profiles', () => {
-    expect(defaultModelProfiles).toHaveLength(4)
-  })
-
   test('each profile has a non-null modelId', () => {
     for (const profile of defaultModelProfiles) {
       expect(profile.modelId).toBeTruthy()
     }
+  })
+
+  test('profile set pairs 1:1 with the default model set', () => {
+    // Catches wiring bugs — a profile pointing at a removed/renamed model, or a
+    // model shipped without its profile — without needing a manual count bump
+    // every time the lineup changes.
+    const modelIds = new Set(defaultModels.map((m) => m.id))
+    const profileModelIds = new Set(defaultModelProfiles.map((p) => p.modelId))
+    expect(profileModelIds).toEqual(modelIds)
   })
 })

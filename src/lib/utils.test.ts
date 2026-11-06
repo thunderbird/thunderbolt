@@ -6,42 +6,9 @@ import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { clearNullableColumns, convertUIMessageToDbChatMessage, formatNumber, hashValues, splitPartType } from './utils'
+import { clearNullableColumns, convertUIMessageToDbChatMessage, hashValues, splitPartType, uuidv7ToDate } from './utils'
 
 describe('utils', () => {
-  describe('formatNumber', () => {
-    it('should format numbers below 1000 as-is', () => {
-      expect(formatNumber(0)).toBe('0')
-      expect(formatNumber(42)).toBe('42')
-      expect(formatNumber(999)).toBe('999')
-    })
-
-    it('should format thousands with K suffix', () => {
-      expect(formatNumber(1000)).toBe('1K')
-      expect(formatNumber(1500)).toBe('1.5K')
-      expect(formatNumber(256000)).toBe('256K')
-      expect(formatNumber(999999)).toBe('1M')
-    })
-
-    it('should format millions with M suffix', () => {
-      expect(formatNumber(1000000)).toBe('1M')
-      expect(formatNumber(1500000)).toBe('1.5M')
-      expect(formatNumber(2560000)).toBe('2.6M')
-    })
-
-    it('should format billions with B suffix', () => {
-      expect(formatNumber(1000000000)).toBe('1B')
-      expect(formatNumber(1500000000)).toBe('1.5B')
-      expect(formatNumber(2560000000)).toBe('2.6B')
-    })
-
-    it('should handle exact values without decimals', () => {
-      expect(formatNumber(2000)).toBe('2K')
-      expect(formatNumber(5000000)).toBe('5M')
-      expect(formatNumber(3000000000)).toBe('3B')
-    })
-  })
-
   describe('convertUIMessageToDbChatMessage', () => {
     it('should convert UI message to DB message without parent', () => {
       const threadId = uuidv7()
@@ -345,5 +312,30 @@ describe('utils', () => {
       expect(result).toEqual({})
       expect(result).not.toHaveProperty('parentId')
     })
+  })
+})
+
+describe('uuidv7ToDate', () => {
+  it('recovers the millisecond timestamp a v7 id was minted with', () => {
+    // Pinned rather than compared against `Date.now()`: v7 keeps a monotonic
+    // counter, so ids minted in bulk (which other suites in this process do) can
+    // carry a timestamp that runs *ahead* of the wall clock. A tolerance window
+    // around "now" therefore fails intermittently under `--randomize`, which is
+    // exactly what it did.
+    const msecs = 1_786_000_000_000
+    expect(uuidv7ToDate(uuidv7({ msecs })).getTime()).toBe(msecs)
+  })
+
+  it('reads all 48 timestamp bits, not just the first 32', () => {
+    // Regression: reading `slice(0, 8)` as seconds put every id in 1970.
+    expect(uuidv7ToDate(uuidv7({ msecs: 1_786_000_000_000 })).getUTCFullYear()).toBeGreaterThan(2020)
+  })
+
+  it('decodes a known timestamp exactly', () => {
+    // 0x0192... prefix encodes 1731000000000 ms.
+    const ms = 1_731_000_000_000
+    const hex = ms.toString(16).padStart(12, '0')
+    const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-7000-8000-000000000000`
+    expect(uuidv7ToDate(id).getTime()).toBe(ms)
   })
 })

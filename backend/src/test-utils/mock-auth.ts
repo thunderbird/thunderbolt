@@ -4,6 +4,20 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 
+type MockAuthSession = {
+  user: { id: string; isAnonymous?: boolean }
+  session: Record<string, never>
+}
+
+/** Creates an auth test double with the supplied session lookup. */
+const createAuth = (getSession: (options: { headers: Headers }) => Promise<MockAuthSession | null>): Auth => {
+  const api: typeof mockAuth.api = Object.create(mockAuth.api)
+  Object.defineProperty(api, 'getSession', { value: getSession })
+  const auth: Auth = Object.create(mockAuth)
+  Object.defineProperty(auth, 'api', { value: api })
+  return auth
+}
+
 /** Resolves to a valid session with a test user */
 export const mockAuth = {
   api: {
@@ -17,3 +31,27 @@ export const mockAuthUnauthenticated = {
     getSession: () => Promise.resolve(null),
   },
 } as unknown as Auth
+
+/** Creates an authenticated session for the supplied test user. */
+export const createMockAuth = (id: string, isAnonymous?: boolean): Auth => {
+  const testUser = isAnonymous === undefined ? { id } : { id, isAnonymous }
+  return createAuth(() => Promise.resolve({ user: testUser, session: {} }))
+}
+
+/**
+ * Creates a bearer-only session lookup that waits for `gate`, so a test can hold a WebSocket's
+ * bearer check pending. Rejecting `gate` makes the lookup throw. A lookup without an
+ * `Authorization` header (a route's cookie `derive`) resolves to no session at once instead of
+ * blocking the upgrade.
+ */
+export const createGatedAuth = (id: string, gate: Promise<unknown>): Auth =>
+  createAuth(async ({ headers }) => {
+    if (!headers.has('authorization')) {
+      return null
+    }
+    await gate
+    return { user: { id }, session: {} }
+  })
+
+/** Creates an auth test double whose session lookup rejects. */
+export const createThrowingAuth = (error: Error): Auth => createAuth(() => Promise.reject(error))

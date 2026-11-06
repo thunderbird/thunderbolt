@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { invoke } from '@tauri-apps/api/core'
-import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
-import { isTauri } from './platform'
+import { useSyncExternalStore, createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
+import { selectBranding } from './branding-selectors'
+import { syncDocumentBackground } from './document-background'
+import { isMacDesktop, isTauri } from './platform'
 import { setAndroidBarColor } from './set-android-bar-color'
 
 /** Sync native UI (keyboard, system controls) with the resolved theme on iOS. */
@@ -14,6 +17,64 @@ const syncNativeInterfaceStyle = (resolvedTheme: 'dark' | 'light') => {
     return
   }
   invoke('set_interface_style', { style: resolvedTheme }).catch(console.error)
+}
+
+/**
+ * Match the native macOS window appearance to the app theme. The sidebar's
+ * glass effect is an NSVisualEffectView behind the webview (src-tauri/src/lib.rs)
+ * whose material follows the WINDOW appearance, not the app's CSS theme — without
+ * this sync, app-light + system-dark renders the light sidebar over a dark blur.
+ *
+ * Takes the raw (unresolved) theme: 'system' must map to `null` (follow the OS)
+ * rather than a forced value, because forcing the window theme also flips the
+ * webview's `prefers-color-scheme` — pinning it would make 'system' resolve to
+ * whatever was last forced instead of the real OS appearance.
+ */
+const syncMacWindowTheme = async (theme: Theme) => {
+  if (!isMacDesktop()) {
+    return
+  }
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    await getCurrentWindow().setTheme(theme === 'system' ? null : theme)
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+/**
+ * Pick the macOS vibrancy material per resolved theme. Dark uses HudWindow — a
+ * neutral blur that passes the backdrop through distinctly. Light can't: a
+ * neutral blur inherits the backdrop's luminance, so dark windows behind the
+ * app turned the light sidebar murky no matter the CSS tint. Sheet is one of
+ * the luminance-normalizing materials (like Finder's sidebar) — it pulls the
+ * blur toward light so the glass stays bright over any backdrop.
+ */
+const syncMacWindowEffects = async (resolvedTheme: 'dark' | 'light') => {
+  if (!isMacDesktop()) {
+    return
+  }
+  try {
+    const { getCurrentWindow, Effect, EffectState } = await import('@tauri-apps/api/window')
+    await getCurrentWindow().setEffects({
+      effects: [resolvedTheme === 'dark' ? Effect.HudWindow : Effect.Sheet],
+      state: EffectState.FollowsWindowActiveState,
+    })
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+/** Apply a resolved theme to the document: root class, background, meta tag, and native chrome. */
+const applyResolvedTheme = (resolvedTheme: 'dark' | 'light') => {
+  const root = window.document.documentElement
+  root.classList.remove('light', 'dark')
+  root.classList.add(resolvedTheme)
+  syncDocumentBackground()
+
+  void setAndroidBarColor(resolvedTheme === 'dark' ? 'light' : 'dark')
+  syncNativeInterfaceStyle(resolvedTheme)
+  void syncMacWindowEffects(resolvedTheme)
 }
 
 /**
@@ -32,7 +93,7 @@ const persistThemeToNativeStore = async (theme: string) => {
   await store.set('theme', theme)
 }
 
-type Theme = 'dark' | 'light' | 'system'
+export type Theme = 'dark' | 'light' | 'system'
 
 type ThemeProviderState = {
   theme: Theme
@@ -47,7 +108,10 @@ const initialState: ThemeProviderState = {
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const theme = useLocalSettingsStore((s) => s.theme)
+  // A user who never picked a theme follows the operator's default, then the OS.
+  const chosenTheme = useLocalSettingsStore((s) => s.theme)
+  const defaultTheme = useConfigStore((s) => selectBranding(s.config)?.defaultThemeMode)
+  const theme = chosenTheme ?? defaultTheme ?? 'system'
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   const setTheme = useCallback((newTheme: Theme) => setLocalSetting('theme', newTheme), [setLocalSetting])
@@ -57,34 +121,13 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }, [theme])
 
   useEffect(() => {
-    const root = window.document.documentElement
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]')
-
-    root.classList.remove('light', 'dark')
-
+    void syncMacWindowTheme(theme)
     if (theme === 'system') {
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-
-      root.classList.add(systemTheme)
-
-      const bgColor = systemTheme === 'dark' ? '#0a0a0a' : '#fff'
-      root.style.backgroundColor = bgColor
-      metaThemeColor?.setAttribute('content', bgColor)
-
-      void setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark')
-      syncNativeInterfaceStyle(systemTheme)
-
+      applyResolvedTheme(systemTheme)
       return
     }
-
-    root.classList.add(theme)
-
-    const bgColor = theme === 'dark' ? '#0a0a0a' : '#fff'
-    root.style.backgroundColor = bgColor
-    metaThemeColor?.setAttribute('content', bgColor)
-
-    void setAndroidBarColor(theme === 'dark' ? 'light' : 'dark')
-    syncNativeInterfaceStyle(theme)
+    applyResolvedTheme(theme)
   }, [theme])
 
   useEffect(() => {
@@ -92,19 +135,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
     const handleChange = () => {
       if (theme === 'system') {
-        const root = window.document.documentElement
-        const metaThemeColor = document.querySelector('meta[name="theme-color"]')
-        root.classList.remove('light', 'dark')
-
-        const systemTheme = mediaQuery.matches ? 'dark' : 'light'
-        root.classList.add(systemTheme)
-
-        const bgColor = systemTheme === 'dark' ? '#0a0a0a' : '#fff'
-        root.style.backgroundColor = bgColor
-        metaThemeColor?.setAttribute('content', bgColor)
-
-        void setAndroidBarColor(systemTheme === 'dark' ? 'light' : 'dark')
-        syncNativeInterfaceStyle(systemTheme)
+        applyResolvedTheme(mediaQuery.matches ? 'dark' : 'light')
       }
     }
 
@@ -118,6 +149,38 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }
 
   return <ThemeProviderContext.Provider value={value}>{children}</ThemeProviderContext.Provider>
+}
+
+const darkQuery = () => window.matchMedia('(prefers-color-scheme: dark)')
+
+const subscribeToSystemTheme = (onChange: () => void) => {
+  const query = darkQuery()
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+/**
+ * The appearance actually on screen — `'light'` or `'dark'`, never `'system'`.
+ *
+ * `useTheme().theme` is the *setting*, so on `'system'` it never changes when
+ * the OS flips and anything deriving from it silently misses the switch. That
+ * bit the Mini App bridge, which pushed the resolved theme to the guest in an
+ * effect keyed on the setting: a user on `'system'` toggling dark mode watched
+ * Thunderbolt repaint while the embedded app stayed light for the session.
+ */
+export const useResolvedTheme = (): 'light' | 'dark' => {
+  const { theme } = useTheme()
+  const systemIsDark = useSyncExternalStore(
+    subscribeToSystemTheme,
+    () => darkQuery().matches,
+    // Server/prerender has no media query; light is the safer guess.
+    () => false,
+  )
+
+  if (theme === 'light' || theme === 'dark') {
+    return theme
+  }
+  return systemIsDark ? 'dark' : 'light'
 }
 
 export const useTheme = () => {

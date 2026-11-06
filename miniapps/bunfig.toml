@@ -1,0 +1,6 @@
+# Mini App packages install and run on their own (see the `workspaces` field in
+# package.json), so they need their own test setup rather than the root one:
+# `happydom.ts` at the repo root also preloads `src/testing-library.ts`, which
+# is the host app's React harness and has no business here.
+[test]
+preload = ["./happydom.ts"]

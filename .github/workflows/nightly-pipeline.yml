@@ -1,0 +1,82 @@
+name: Nightly Pipeline
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-pipeline
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        shell: bash
+        run: |
+          release_tags=$(git tag --points-at HEAD --list 'v*' | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/')
+          if [ -z "$release_tags" ]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  e2e:
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/nightly.yml
+    secrets: inherit
+
+  release:
+    needs: [e2e, changes]
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.changed == 'true'
+    permissions:
+      actions: read
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      platform: all
+    secrets: inherit
+
+  # E2E and release raise separate incidents. A night that skips the release
+  # proves E2E recovered, but says nothing about an earlier failed release.
+  notify-e2e:
+    needs: [e2e]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (needs.e2e.result == 'success' || needs.e2e.result == 'failure') }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ needs.e2e.result }}
+      incident: Nightly Pipeline E2E
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+
+  notify-release:
+    needs: [changes, release]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (needs.changes.result == 'failure' || needs.release.result == 'failure' || needs.release.result == 'success') }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ needs.release.result == 'success' && 'success' || 'failure' }}
+      incident: Nightly Pipeline Release
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

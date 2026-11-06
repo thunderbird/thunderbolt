@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { loginViaOidc, collectPageErrors } from './helpers'
 
 test.describe('OIDC login flow', () => {
@@ -20,8 +20,8 @@ test.describe('OIDC login flow', () => {
     await loginViaOidc(page)
 
     // Navigate to settings
-    await page.goto('/settings')
-    await expect(page.getByText('Settings').first()).toBeVisible({ timeout: 10_000 })
+    await page.goto('/settings/preferences')
+    await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible({ timeout: 10_000 })
 
     // Navigate back to chat
     await page.goto('/chats/new')
@@ -37,8 +37,8 @@ test.describe('OIDC login flow', () => {
     await loginViaOidc(page)
 
     // Navigate around to exercise the app
-    await page.goto('/settings')
-    await expect(page.getByText('Settings').first()).toBeVisible({ timeout: 10_000 })
+    await page.goto('/settings/preferences')
+    await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible({ timeout: 10_000 })
     await page.goto('/chats/new')
     await expect(page.locator('textarea')).toBeVisible({ timeout: 10_000 })
 

@@ -6,8 +6,11 @@ import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { clearSettingsCache } from '@/config/settings'
 import { createApp } from '@/index'
-import { createTestDb } from '@/test-utils/db'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { rateLimits } from '@/db/rate-limit-schema'
+import { createTestDb, getSharedIsolatedTestDb } from '@/test-utils/db'
+import { createAuth } from '@/auth/auth'
+import type { AppLocale } from '@shared/i18n/locales'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 describe('Waitlist API', () => {
@@ -391,5 +394,137 @@ describe('Waitlist API', () => {
 
       expect(response.status).toBe(500)
     })
+  })
+
+  describe('Email language (X-App-Language)', () => {
+    const join = async (
+      appUnderTest: Awaited<ReturnType<typeof createApp>>,
+      email: string,
+      language?: string,
+    ): Promise<Response> =>
+      appUnderTest.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(language ? { 'X-App-Language': language } : {}),
+          },
+          body: JSON.stringify({ email }),
+        }),
+      )
+
+    const capturingApp = async () => {
+      const sendJoinedEmail = mock((_params: { email: string; locale: AppLocale }) => Promise.resolve())
+      const sendReminderEmail = mock((_params: { email: string; locale: AppLocale }) => Promise.resolve())
+      const app = await createApp({
+        database: db,
+        otpCooldownMs: 0,
+        waitlistEmailService: { sendJoinedEmail, sendReminderEmail },
+      })
+      return { app, sendJoinedEmail, sendReminderEmail }
+    }
+
+    it("sends the joined email in the requester's language", async () => {
+      const { app: capturing, sendJoinedEmail } = await capturingApp()
+
+      await join(capturing, 'joined-de@example.com', 'de')
+
+      expect(sendJoinedEmail).toHaveBeenCalledWith({ email: 'joined-de@example.com', locale: 'de' })
+    })
+
+    it('sends the reminder email in the requested language', async () => {
+      await db.insert(waitlist).values({
+        id: crypto.randomUUID(),
+        email: 'reminder-ja@example.com',
+        status: 'pending',
+      })
+      const { app: capturing, sendReminderEmail } = await capturingApp()
+
+      await join(capturing, 'reminder-ja@example.com', 'ja')
+
+      expect(sendReminderEmail).toHaveBeenCalledWith({ email: 'reminder-ja@example.com', locale: 'ja' })
+    })
+
+    it('falls back to English when no language header is sent', async () => {
+      const { app: capturing, sendJoinedEmail } = await capturingApp()
+
+      await join(capturing, 'joined-default@example.com')
+
+      expect(sendJoinedEmail).toHaveBeenCalledWith({ email: 'joined-default@example.com', locale: 'en' })
+    })
+
+    it('forwards the language to the approved-user magic link', async () => {
+      // Regression guard for the server-side hop: `auth.api.sendVerificationOTP`
+      // builds its own endpoint context, so unless the route forwards the
+      // incoming headers the OTP email silently reverts to English.
+      const sendSignInEmail = mock((_params: { email: string; otp: string; verifyUrl: string; locale: AppLocale }) =>
+        Promise.resolve(),
+      )
+      const auth = createAuth(db, { sendSignInEmail })
+      const appWithAuth = await createApp({ database: db, otpCooldownMs: 0, auth })
+
+      await join(appWithAuth, 'approved-fr@mozilla.org', 'fr')
+
+      expect(sendSignInEmail).toHaveBeenCalledWith(expect.objectContaining({ locale: 'fr' }))
+    })
+  })
+})
+
+// RateLimiterDrizzle commits its own transactions, which would end the shared createTestDb
+// BEGIN and leak rows across files and --rerun-each passes (see test-setup.ts), so this suite
+// runs on the shared isolated DB and clears what it writes.
+describe('Waitlist API: IP rate limit', () => {
+  const rateLimitEnvKeys = [
+    'RATE_LIMIT_ENABLED',
+    'TRUSTED_PROXY',
+    'AUTH_ALLOW_ANONYMOUS',
+    'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
+  ] as const
+  let savedEnv: Partial<Record<string, string>>
+  let db: Awaited<ReturnType<typeof getSharedIsolatedTestDb>>['db']
+
+  beforeAll(async () => {
+    db = (await getSharedIsolatedTestDb()).db
+  })
+
+  beforeEach(async () => {
+    savedEnv = Object.fromEntries(rateLimitEnvKeys.map((key) => [key, process.env[key]]))
+    await db.delete(rateLimits)
+    await db.delete(waitlist)
+  })
+
+  afterEach(() => {
+    for (const key of rateLimitEnvKeys) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = savedEnv[key]
+      }
+    }
+    clearSettingsCache()
+  })
+
+  it('keeps waitlist join at 10 per IP per minute when the anonymous sign-in limit is raised', async () => {
+    process.env.RATE_LIMIT_ENABLED = 'true'
+    process.env.TRUSTED_PROXY = 'cloudflare'
+    process.env.AUTH_ALLOW_ANONYMOUS = 'false'
+    process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '40'
+    clearSettingsCache()
+    const limitedApp = await createApp({ database: db, otpCooldownMs: 0 })
+
+    const statuses: number[] = []
+    for (let i = 0; i < 11; i++) {
+      const response = await limitedApp.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.40' },
+          body: JSON.stringify({ email: `flood-${i}@example.com` }),
+        }),
+      )
+      statuses.push(response.status)
+    }
+
+    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200))
+    expect(statuses[10]).toBe(429)
   })
 })

@@ -4,7 +4,6 @@
 
 import { useDatabase } from '@/contexts'
 import { getDevice, getPendingDevices, type Device } from '@/dal'
-import { isEncryptionEnabled } from '@/db/encryption'
 import { isSyncEnabled } from '@/db/powersync/sync-state'
 import { getDeviceId } from '@/lib/auth-token'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -26,7 +25,7 @@ export const usePendingDeviceNotification = () => {
 
   const currentDevice = currentDeviceRows[0] ?? null
   const isCurrentDeviceTrusted = currentDevice?.trusted === 1
-  const shouldNotify = isEncryptionEnabled() && isSyncEnabled() && isCurrentDeviceTrusted
+  const shouldNotify = isSyncEnabled() && isCurrentDeviceTrusted
 
   const pendingDeviceToNotify: Device | null = shouldNotify ? (pendingDevices[0] ?? null) : null
 

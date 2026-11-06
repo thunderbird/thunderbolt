@@ -2,17 +2,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Button } from '@/components/ui/button'
-import { SearchableMenu, type SearchableMenuGroup, type SearchableMenuItem } from '@/components/ui/searchable-menu'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
+import type { I18n } from '@lingui/core'
+import {
+  SearchableMenu,
+  searchableMenuRowClass,
+  type SearchableMenuGroup,
+  type SearchableMenuItem,
+} from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { GradientLock } from '@/components/ui/gradient-lock'
+import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
+import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, ChevronDown, Lock, Plus } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { AlertTriangle, Check, ChevronDown, Lock, Plus } from 'lucide-react'
+import { useCallback } from 'react'
+import { flushSync } from 'react-dom'
 
 export type ModelSelectorProps = {
+  /** Show the model list directly inside a combined picker. */
+  embedded?: boolean
+  onClose?: () => void
   models: Model[]
   selectedModel: Model | null
   chatThread: ChatThread | null
@@ -21,30 +35,14 @@ export type ModelSelectorProps = {
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
   /** Trigger appearance. `pill` (default) is the rounded standalone style used
-   *  in modals; `bordered` matches the chat composer's ModeSelector (squared,
-   *  bordered, taller) so the two composer controls read as a pair. */
-  variant?: 'pill' | 'bordered'
+   *  in modals; `composer` matches the chat composer's ModeSelector (squared,
+   *  borderless, hover-accent) so the two composer controls read as a pair. */
+  variant?: 'pill' | 'composer'
 }
 
 type ModelItemData = {
   model: Model
   disabledByEncryption: boolean
-}
-
-/**
- * Models that require an API key but don't have one yet need configuration.
- * Thunderbolt is server-authenticated; custom (OpenAI-compatible) endpoints treat
- * the key as optional; system Tinfoil rows are also server-authenticated (the key
- * is injected by the backend proxy) — none of those flag as missing.
- */
-export const needsApiKey = (model: Model) => {
-  if (model.provider === 'thunderbolt' || model.provider === 'custom') {
-    return false
-  }
-  if (model.provider === 'tinfoil' && model.isSystem === 1) {
-    return false
-  }
-  return !model.apiKey
 }
 
 const toMenuItem = (
@@ -56,22 +54,27 @@ const toMenuItem = (
   label: model.name,
   description: model.description || model.model,
   searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
-  icon: model.isConfidential === 1 ? <Lock className="size-3.5 text-green-600 dark:text-green-500" /> : undefined,
+  icon: model.isConfidential === 1 ? <PrivateBadge /> : undefined,
   disabled: isDisabled,
   data: { model, disabledByEncryption },
 })
 
+const disabledStandardLabel = msg`Not available in private chats.`
+const disabledConfidentialLabel = msg`Only available in private chats.`
+
 export const categorizeModels = (
   models: Model[],
   chatThread: ModelSelectorProps['chatThread'],
+  i18n: I18n,
 ): SearchableMenuGroup<ModelItemData>[] => {
-  const provided: SearchableMenuItem<ModelItemData>[] = []
-  const custom: SearchableMenuItem<ModelItemData>[] = []
+  // Custom and built-in models share one group — the selector only splits by
+  // confidentiality (available vs the greyed-out opposite-mode section below).
+  const available: SearchableMenuItem<ModelItemData>[] = []
   const disabledConfidential: SearchableMenuItem<ModelItemData>[] = []
   const disabledStandard: SearchableMenuItem<ModelItemData>[] = []
 
   for (const model of models) {
-    const isDisabledByEncryption = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
+    const isDisabledByEncryption = !matchesThreadConfidentiality(model, chatThread)
     const isDisabled = isDisabledByEncryption || needsApiKey(model)
     const item = toMenuItem(model, isDisabled, isDisabledByEncryption)
 
@@ -81,20 +84,15 @@ export const categorizeModels = (
       } else {
         disabledStandard.push(item)
       }
-    } else if (model.isSystem) {
-      provided.push(item)
     } else {
-      custom.push(item)
+      available.push(item)
     }
   }
 
   const groups: SearchableMenuGroup<ModelItemData>[] = []
 
-  if (provided.length > 0) {
-    groups.push({ id: 'provided', items: provided })
-  }
-  if (custom.length > 0) {
-    groups.push({ id: 'custom', label: 'Custom Models', items: custom })
+  if (available.length > 0) {
+    groups.push({ id: 'available', items: available })
   }
   // A chat is locked to its confidentiality mode, so the opposite-mode models
   // are shown greyed out with a header explaining why. Only one of these
@@ -102,16 +100,14 @@ export const categorizeModels = (
   if (disabledStandard.length > 0) {
     groups.push({
       id: 'standard-disabled',
-      label: 'Standard Models',
-      subtitle: 'Not available in confidential chats.',
+      label: i18n._(disabledStandardLabel),
       items: disabledStandard,
     })
   }
   if (disabledConfidential.length > 0) {
     groups.push({
       id: 'confidential-disabled',
-      label: 'Confidential Models',
-      subtitle: 'Available only in confidential chats.',
+      label: i18n._(disabledConfidentialLabel),
       items: disabledConfidential,
     })
   }
@@ -120,6 +116,8 @@ export const categorizeModels = (
 }
 
 export const ModelSelector = ({
+  embedded = false,
+  onClose,
   models,
   selectedModel,
   chatThread,
@@ -129,15 +127,22 @@ export const ModelSelector = ({
   align,
   variant = 'pill',
 }: ModelSelectorProps) => {
-  const groupedItems = useMemo(() => categorizeModels(models, chatThread), [models, chatThread])
+  const { t, i18n } = useLingui()
+  // Computed during render rather than memoized: `useLingui` returns the same
+  // `i18n` singleton across a language switch, so an `i18n` dependency never
+  // invalidates and the disabled-group labels would stay in the outgoing
+  // locale until `models`/`chatThread` happened to change. Partitioning the
+  // model list is cheap; see the Localization section in AGENTS.md.
+  const groupedItems = categorizeModels(models, chatThread, i18n)
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
+      data-testid="model-selector-trigger"
       className={cn(
-        'flex items-center cursor-pointer transition-colors',
-        variant === 'bordered'
+        'flex min-w-0 items-center cursor-pointer transition-colors',
+        variant === 'composer'
           ? cn(
-              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-lg border border-border text-[length:var(--font-size-sm)]',
+              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)]',
               isOpen ? 'bg-accent' : 'hover:bg-accent/50',
             )
           : cn(
@@ -147,14 +152,16 @@ export const ModelSelector = ({
       )}
     >
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
-        <AlertTriangle className="size-3.5 text-amber-500" />
+        <AlertTriangle className="size-3.5 shrink-0 text-warning" />
       ) : selected?.data?.model.isConfidential === 1 ? (
-        <Lock className="size-3.5 text-muted-foreground" />
+        <GradientLock className="size-3.5 shrink-0" />
       ) : null}
-      <span className={cn('font-medium', variant === 'bordered' && 'text-muted-foreground')}>
-        {selected?.label ?? 'Select Model'}
-      </span>
-      <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
+      {/* Muted in both variants — trigger labels are chrome, not content.
+          Truncates instead of wrapping when the composer gets narrow. */}
+      <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? t`Select model`}</span>
+      <ChevronDown
+        className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')}
+      />
     </div>
   )
 
@@ -167,19 +174,24 @@ export const ModelSelector = ({
     const content = (
       <div
         className={cn(
-          'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
+          searchableMenuRowClass,
           'hover:bg-accent/50',
+          embedded && 'text-foreground/80',
           isSelected && 'bg-accent',
           item.disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium truncate">{item.label}</span>
-            {showMissingKeyHint ? <AlertTriangle className="size-3.5 text-amber-500 flex-shrink-0" /> : item.icon}
-          </div>
-          <span className="text-sm text-muted-foreground truncate">{item.description}</span>
-        </div>
+        <span className="truncate font-normal">{item.label}</span>
+        {embedded && isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0 text-brand" />}
+        {/* ml-auto pushes the trailing indicator (missing-key warning or the
+            confidential "Private" badge) to the row's right edge. */}
+        {showMissingKeyHint ? (
+          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-warning" />
+        ) : item.icon ? (
+          <span className="ml-auto flex-shrink-0">
+            {embedded ? <Lock aria-label={t`Private`} className="size-3.5 text-muted-foreground" /> : item.icon}
+          </span>
+        ) : null}
       </div>
     )
 
@@ -188,7 +200,7 @@ export const ModelSelector = ({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>{content}</TooltipTrigger>
-            <TooltipContent side="right">API key not configured</TooltipContent>
+            <TooltipContent side="right">{t`API key not configured`}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )
@@ -197,12 +209,7 @@ export const ModelSelector = ({
     return content
   }
 
-  const footer = onAddModels ? (
-    <Button variant="ghost" onClick={onAddModels} className="w-full justify-start gap-2 text-muted-foreground">
-      <Plus className="size-4" />
-      Add Models
-    </Button>
-  ) : undefined
+  const footerAction = onAddModels ? { label: t`Add Model`, onAction: onAddModels } : undefined
 
   const { triggerSelection } = useHaptics()
   const handleModelChange = useCallback(
@@ -214,21 +221,52 @@ export const ModelSelector = ({
   )
 
   return (
-    <SearchableMenu
-      items={groupedItems}
-      value={selectedModel?.id}
-      onValueChange={handleModelChange}
-      searchable={models.length > 10}
-      searchPlaceholder="Search Models"
-      emptyMessage="No models found"
-      blurBackdrop
-      trigger={renderTrigger}
-      renderItem={renderItem}
-      footer={footer}
-      width={320}
-      maxHeight={340}
-      side={side}
-      align={align}
-    />
+    <>
+      {embedded && (
+        <div className="flex shrink-0 items-center justify-between pl-3 pr-4 pt-2 pb-1">
+          <span className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">{t`Model`}</span>
+          {onAddModels && (
+            <span className="flex w-3.5 shrink-0 items-center justify-center">
+              <button
+                type="button"
+                aria-label={t`Add Model`}
+                title={t`Add Model`}
+                className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full max-md:size-10 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                onClick={() => {
+                  flushSync(() => onClose?.())
+                  onAddModels()
+                }}
+              >
+                <Plus aria-hidden="true" className="size-4" />
+              </button>
+            </span>
+          )}
+        </div>
+      )}
+      <SearchableMenu
+        embedded={embedded}
+        onOpenChange={(open) => {
+          if (!open) {
+            onClose?.()
+          }
+        }}
+        items={groupedItems}
+        value={selectedModel?.id}
+        onValueChange={handleModelChange}
+        searchable={models.length > 10}
+        searchPlaceholder={t`Search Models`}
+        emptyMessage={t`No models found`}
+        mobileTitle={t`Choose model`}
+        mobileSide="bottom"
+        trigger={renderTrigger}
+        renderItem={renderItem}
+        footerAction={embedded ? undefined : footerAction}
+        contentClassName="max-md:bg-sidebar"
+        width={240}
+        maxHeight={embedded ? 220 : 340}
+        side={side}
+        align={align}
+      />
+    </>
   )
 }

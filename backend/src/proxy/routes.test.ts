@@ -4,13 +4,14 @@
 
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { createRejectingRateLimit } from '@/test-utils/rate-limit'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createUniversalProxyRoutes } from './routes'
 
 // Deterministic DNS resolver injected as a `createUniversalProxyRoutes` dep —
 // no `mock.module('node:dns')`, which would leak across files (see
-// docs/development/testing.md). 1.1.1.1 is a public IP (passes SSRF) and
+// docs/internals/development/testing.md). 1.1.1.1 is a public IP (passes SSRF) and
 // stable for `pinnedUrl` assertions below.
 const mockDnsLookup = mock(() => Promise.resolve([{ address: '1.1.1.1', family: 4 }]))
 
@@ -313,6 +314,39 @@ describe('createUniversalProxyRoutes', () => {
     expect(calledUrl).toBe(pinnedUrl('https://example.com/resource'))
   })
 
+  it('keeps only the exact test fixture on HTTP and blocks it in production', async () => {
+    const previousEnv = process.env.NODE_ENV
+    const previousHosts = process.env.TEST_PROXY_ALLOWED_HOSTS
+    try {
+      process.env.NODE_ENV = 'test'
+      process.env.TEST_PROXY_ALLOWED_HOSTS = '127.0.0.1:9879'
+      const target = 'http://127.0.0.1:9879/mcp'
+      const allowed = await drain(await app.handle(proxyRequest(target, { method: 'POST' })))
+      expect(allowed.status).toBe(200)
+      expect((mockFetch.mock.calls[0] as [string, RequestInit])[0]).toBe(target)
+
+      const otherPort = await drain(await app.handle(proxyRequest('http://127.0.0.1:9880/mcp')))
+      expect(otherPort.status).toBe(400)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+
+      process.env.NODE_ENV = 'production'
+      const production = await drain(await app.handle(proxyRequest(target)))
+      expect(production.status).toBe(400)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    } finally {
+      if (previousEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = previousEnv
+      }
+      if (previousHosts === undefined) {
+        delete process.env.TEST_PROXY_ALLOWED_HOSTS
+      } else {
+        process.env.TEST_PROXY_ALLOWED_HOSTS = previousHosts
+      }
+    }
+  })
+
   it('returns 400 for missing X-Proxy-Target-Url header', async () => {
     const res = await drain(await app.handle(new Request('http://localhost/proxy', { method: 'GET' })))
     expect(res.status).toBe(400)
@@ -584,18 +618,12 @@ describe('createUniversalProxyRoutes', () => {
   // ---------------------------------------------------------------------------
 
   it('returns 429 when rate limit is exceeded', async () => {
-    const rateLimitPlugin = new Elysia()
-      .onBeforeHandle(({ set }) => {
-        set.status = 429
-        set.headers['Retry-After'] = '60'
-        return { error: 'Too many requests' }
-      })
-      .as('scoped')
+    const { rateLimit } = createRejectingRateLimit()
     const rateLimitedApp = new Elysia().use(
       createUniversalProxyRoutes({
         auth: fakeAuth,
         fetchFn: mockFetch as unknown as typeof fetch,
-        rateLimit: rateLimitPlugin,
+        rateLimit,
         dnsLookup: mockDnsLookup,
       }),
     )
@@ -695,6 +723,19 @@ describe('createUniversalProxyRoutes', () => {
     await drain(await app.handle(proxyRequest(target, { method: 'GET' })))
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit & { decompress?: boolean }]
     expect(init.decompress).toBe(false)
+  })
+
+  it('names the original hostname of each hop as TLS SNI, since the pinned URL carries an IP', async () => {
+    mockFetch
+      .mockImplementationOnce(() =>
+        Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://other.example/next' } })),
+      )
+      .mockImplementationOnce(() => Promise.resolve(makeOkResponse()))
+    await drain(await app.handle(proxyRequest('https://example.com/resource', { method: 'GET' })))
+    const serverNames = (mockFetch.mock.calls as Array<[string, BunFetchRequestInit]>).map(
+      ([, init]) => init.tls?.serverName,
+    )
+    expect(serverNames).toEqual(['example.com', 'other.example'])
   })
 
   it('forwards upstream `content-encoding` response header to the caller (no longer dropped)', async () => {

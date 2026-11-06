@@ -2,35 +2,36 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { useState } from 'react'
+import type { Device } from '@/dal'
 import { Smartphone } from 'lucide-react'
 
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
 import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { Button } from '@/components/ui/button'
-import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal'
+import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { useApproveDevice } from '@/hooks/use-approve-device'
 import { useDenyDevice } from '@/hooks/use-deny-device'
 import { usePendingDeviceNotification } from '@/hooks/use-pending-device-notification'
 
 export const PendingDeviceModal = () => {
-  const { pendingDeviceToNotify, pendingDevices } = usePendingDeviceNotification()
-  const [confirmApproveOpen, setConfirmApproveOpen] = useState(false)
+  const { pendingDeviceToNotify } = usePendingDeviceNotification()
+  const [approvalTarget, setApprovalTarget] = useState<Device | null>(null)
   const [confirmDenyOpen, setConfirmDenyOpen] = useState(false)
 
-  const approveMutation = useApproveDevice(pendingDevices)
+  const approveMutation = useApproveDevice()
   const denyMutation = useDenyDevice()
 
   const isOpen = pendingDeviceToNotify !== null
 
-  const confirmApprove = () => {
-    if (!pendingDeviceToNotify) {
+  const confirmApprove = async (fingerprint: string) => {
+    if (!approvalTarget) {
       return
     }
-    approveMutation.mutate(pendingDeviceToNotify.id, {
-      onSuccess: () => setConfirmApproveOpen(false),
-    })
+    await approveMutation.mutateAsync({ device: approvalTarget, fingerprint })
+    setApprovalTarget(null)
   }
 
   const confirmDeny = () => {
@@ -58,35 +59,55 @@ export const PendingDeviceModal = () => {
               <IconCircle>
                 <Smartphone className="w-8 h-8 text-primary" />
               </IconCircle>
-              <h2 className="text-2xl font-bold">New device waiting</h2>
-              <p className="text-muted-foreground">A new device is requesting access to your encrypted data.</p>
+              <ResponsiveModalTitle className="text-2xl font-bold leading-normal">
+                <Trans>New device waiting</Trans>
+              </ResponsiveModalTitle>
+              <p className="text-muted-foreground">
+                <Trans>A new device is requesting access to your encrypted data.</Trans>
+              </p>
 
               {pendingDeviceToNotify && (
                 <div className="flex items-center gap-3 rounded-lg border bg-secondary/50 p-4 text-left">
                   <Smartphone className="size-5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <span className="font-medium truncate">{pendingDeviceToNotify.name}</span>
-                    <p className="text-sm text-muted-foreground">Waiting for approval</p>
+                    <p className="text-sm text-muted-foreground">
+                      <Trans>Waiting for approval</Trans>
+                    </p>
                   </div>
                 </div>
               )}
             </div>
 
             <div className="pt-5 flex flex-col gap-2">
-              <Button className="w-full" onClick={() => setConfirmApproveOpen(true)}>
-                Approve
+              <Button
+                className="w-full"
+                onClick={() => pendingDeviceToNotify && setApprovalTarget({ ...pendingDeviceToNotify })}
+              >
+                <Trans>Approve</Trans>
               </Button>
               <Button className="w-full" variant="ghost" onClick={() => setConfirmDenyOpen(true)}>
-                <span className="text-destructive">Deny</span>
+                <span className="text-destructive">
+                  <Trans>Deny</Trans>
+                </span>
               </Button>
             </div>
           </div>
         </ResponsiveModalContent>
       </ResponsiveModal>
 
+      {/*
+        Both dialogs render their own failure (THU-887). This surface needs it
+        more than the settings page does: the modal behind them cannot be
+        dismissed at all — no close button, escape and outside-click both
+        prevented — so a silent no-op here leaves the user with nothing to do
+        and nothing to read. `useApproveDevice` throws a real error on a device
+        with missing public keys.
+      */}
       <ApproveDeviceDialog
-        open={confirmApproveOpen}
-        onOpenChange={(open) => !open && setConfirmApproveOpen(false)}
+        device={approvalTarget}
+        open={approvalTarget !== null}
+        onOpenChange={(open) => !open && setApprovalTarget(null)}
         onConfirm={confirmApprove}
         isPending={approveMutation.isPending}
       />
@@ -97,6 +118,7 @@ export const PendingDeviceModal = () => {
         onConfirm={confirmDeny}
         isPending={denyMutation.isPending}
         variant="pending"
+        error={denyMutation.error?.message}
       />
     </>
   )

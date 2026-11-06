@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { type ChatThread } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
-import { ArrowUp, Square } from 'lucide-react'
+import { useLingui } from '@lingui/react/macro'
+import { ArrowUp, Loader2, Square } from 'lucide-react'
 import {
   type ChangeEvent,
   type ClipboardEvent,
@@ -36,9 +37,22 @@ type PromptInputProps = {
   className?: string
   submitOnEnter?: boolean
   noForm?: boolean
+  /** Makes the whole composer non-interactive (blocks focus/Tab/Enter) — e.g.
+   *  while voice mode covers it with an overlay. */
+  inert?: boolean
   isStreaming?: boolean
+  /** Stop was pressed and the turn is still unwinding. Swaps the stop icon for a
+   *  spinner. The button stays pressable — stop is idempotent, and disabling it
+   *  would remove the only escape hatch if the teardown stalls. */
+  isStopping?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
+  /** Rendered in the footer's right cluster, just before the submit button. */
+  footerEndElements?: ReactNode
+  /** Rendered in place of the (disabled) submit button when the composer is
+   *  empty and idle (nothing to send, not streaming) — e.g. the voice-mode
+   *  button that occupies the send slot until the user types or attaches. */
+  emptyStateAction?: ReactNode
   // Model selection props - optional, only used in automation modal
   chatThread?: ChatThread | null
   models?: Model[]
@@ -78,7 +92,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     {
       value = '',
       onChange,
-      placeholder = 'Say something...',
+      placeholder,
       showSubmitButton = true,
       onSubmit,
       canSubmit,
@@ -87,9 +101,13 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       className = 'flex flex-col w-full gap-0 p-2',
       submitOnEnter = false,
       noForm = false,
+      inert = false,
       isStreaming = false,
+      isStopping = false,
       onStop,
       footerStartElements,
+      footerEndElements,
+      emptyStateAction,
       chatThread = null,
       models,
       selectedModel,
@@ -104,6 +122,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     },
     ref,
   ) => {
+    const { t } = useLingui()
     const overlayRef = useRef<HTMLDivElement>(null)
 
     const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -148,16 +167,24 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <Button
           type="button"
           variant="default"
-          className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
+          aria-label={isStopping ? t`Stopping` : t`Stop generating`}
+          className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
           onClick={onStop}
         >
-          <Square className="size-[var(--icon-size-default)]" />
+          {isStopping ? (
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
+          ) : (
+            <Square className="size-[var(--icon-size-default)]" />
+          )}
         </Button>
+      ) : !submittable && emptyStateAction ? (
+        emptyStateAction
       ) : (
         <Button
           type="submit"
           variant="default"
-          className="size-[var(--touch-height-control)] rounded-lg flex items-center justify-center flex-shrink-0"
+          aria-label={t`Send message`}
+          className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
           disabled={isLoading || !submittable}
         >
           <ArrowUp className="size-[var(--icon-size-default)]" />
@@ -185,7 +212,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
             onSelect={onTextareaSelect}
             onScroll={hasTextareaHooks ? handleScroll : undefined}
             onPaste={onTextareaPaste}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t`Say something…`}
             minHeight={42}
             maxHeight={240}
             autoFocus={autoFocus}
@@ -199,7 +226,10 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <div className="flex justify-between items-end w-full">
           <div className="flex items-center gap-2">{footerStartElements}</div>
 
-          <div className="flex gap-2 items-center">
+          {/* min-w-0 lets the model selector's label truncate when the composer
+              is narrow, instead of the cluster wrapping or overflowing. */}
+          <div className="flex min-w-0 gap-2 items-center">
+            {footerEndElements}
             {showModelSelect && (
               <ModelSelector
                 chatThread={chatThread}
@@ -218,9 +248,11 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     )
 
     const formElement = noForm ? (
-      <div className={className}>{content}</div>
+      <div className={className} inert={inert}>
+        {content}
+      </div>
     ) : (
-      <form ref={ref} onSubmit={handleSubmit} className={className}>
+      <form ref={ref} onSubmit={handleSubmit} className={className} inert={inert}>
         {content}
       </form>
     )

@@ -27,15 +27,15 @@ jobs:
       matrix:
         shard: [1/2, 2/2]
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.bun/install/cache
@@ -51,12 +51,18 @@ jobs:
         run: cd backend && bun install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        # Skip --with-deps: the runner image already ships Chromium's system libraries,
+        # and its apt step stalled on a slow mirror long enough to time the job out.
+        timeout-minutes: 3
+        run: bun run browsers:install
 
       - name: Runner CPU/memory diagnostics (pre-test)
         run: |
           echo "== nproc =="; nproc
           echo "== vmstat 1 3 (watch the 'st' steal column under ----cpu----) =="; vmstat 1 3
+
+      - name: Fail on spec files no project collects
+        run: bun run e2e:check-collected
 
       - name: Run e2e tests (shard ${{ matrix.shard }})
         run: bunx playwright test --shard=${{ matrix.shard }}
@@ -77,18 +83,95 @@ jobs:
           path: test-results/
           retention-days: 7
 
-  e2e-report:
-    if: always() && needs.e2e.result != 'skipped'
-    needs: e2e
+  # E2EE suite needs a real Postgres + PowerSync service (docker-compose), so it
+  # runs in its own job rather than the pglite-backed matrix above. Boots the
+  # harness on dedicated ports (5434/8081), then runs playwright.e2ee.config.ts.
+  powersync-e2ee:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Each shard boots its own harness (~4 min fixed) + its slice of the suite.
+    # Sharding cuts wall-clock ~linearly; per-shard build/boot is parallelized
+    # across runners, so build-once would only save billing minutes, not latency.
+    # 15 min leaves headroom over a healthy ~9 min shard while failing a stuck one fast.
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/4, 2/4, 3/4, 4/4]
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install backend dependencies
+        run: cd backend && bun install --frozen-lockfile
+
+      - name: Install Playwright browser
+        # Skip --with-deps: the runner image already ships Chromium's system libraries,
+        # and its apt step stalled on a slow mirror long enough to time the job out.
+        timeout-minutes: 3
+        run: bun run browsers:install
+
+      - name: Run PowerSync E2EE suite (shard ${{ matrix.shard }})
+        # Playwright names every blob `report-<shard>.zip`, so this job's shard
+        # 1/4 and the `e2e` job's shard 1/2 both produce `report-1.zip` — and
+        # the report job's `merge-multiple: true` flattens one onto the other.
+        # Nothing reports the loser as missing: the merge proceeds with whatever
+        # survived, so half the run disappears from the HTML report, and an
+        # interleaved overwrite corrupts the zip outright. Name this suite's
+        # blobs apart; job-index keeps them unique across its own shards.
+        env:
+          PLAYWRIGHT_BLOB_OUTPUT_NAME: e2ee-report-${{ strategy.job-index }}.zip
+        run: bash scripts/run-e2ee-powersync.sh --shard=${{ matrix.shard }}
+
+      - name: Upload PowerSync E2EE blob report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # Must start with `blob-report-` so the merge job's download pattern
+          # picks it up; it used to be `powersync-e2ee-blob-report-*`, which
+          # matched nothing and left this suite's results unmerged.
+          name: blob-report-powersync-${{ strategy.job-index }}
+          path: blob-report/
+          retention-days: 7
+
+      - name: Upload test screenshots
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-screenshots-powersync-${{ strategy.job-index }}
+          path: test-results/
+          retention-days: 7
+
+  e2e-report:
+    # Both suites, or a red E2EE run produces no human-readable output at all:
+    # its blobs were uploaded but never merged here.
+    if: always() && (needs.e2e.result != 'skipped' || needs['powersync-e2ee'].result != 'skipped')
+    needs: [e2e, powersync-e2ee]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -109,3 +192,16 @@ jobs:
           name: e2e-report
           path: playwright-report/
           retention-days: 14
+
+  notify:
+    needs: [e2e, e2e-report]
+    if: ${{ always() && !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || (needs.e2e.result == 'success' && needs.e2e-report.result == 'success')) }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

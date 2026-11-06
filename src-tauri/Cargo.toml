@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.105"
+version = "0.1.156"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -15,12 +15,8 @@ default-run = "thunderbolt"
 name = "thunderbolt_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-[features]
-default = []
-native_fetch = []
-
 [workspace]
-members = []
+members = ["plugins/tauri-plugin-passkey"]
 default-members = ["."]
 
 [[bin]]
@@ -28,13 +24,14 @@ name = "thunderbolt"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2.6.0", features = [] }
+tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
-tauri = { version = "2.11.2", features = [
+tauri = { version = "2.12.5", features = [
     "tray-icon",
     "devtools",
-    "unstable",  # Required for webview
+    "unstable",            # Required for webview
+    "macos-private-api",   # Required for the transparent window + sidebar vibrancy
 ] }
 tauri-plugin-opener = "2.5.4"
 tauri-plugin-os = "2.3.2"
@@ -42,14 +39,25 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.150"
 anyhow = "1.0.99"
 tokio = "1.52.3"
+
+# CLI installer: download the prebuilt `thunderbolt` binary + SHA256SUMS and
+# verify the checksum before install. rustls (no OpenSSL) matches the rest of the
+# app's TLS stack; all three are already transitive deps so no new versions land.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+sha2 = "0.10"
+hex = "0.4"
 tauri-plugin-devtools = "2.0.1"
-tauri-plugin-http = "2.5.9"
+# unsafe-headers lets native-fetch.ts send an empty Origin, which the plugin then strips; without it the
+# plugin always sends the webview Origin, and MCP servers that guard against DNS rebinding answer 403.
+tauri-plugin-http = { version = "2.5.9", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "http2", "charset", "macos-system-configuration", "unsafe-headers"] }
 tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
 tauri-plugin-deep-link = "2.4"
 tauri-plugin-haptics = "2.3"
-tauri-plugin-updater = "2.3"
+tauri-plugin-updater = "2.14.1"
 tauri-plugin-store = "2.4.3"
+# Native WebAuthn passkey ceremonies (iOS, macOS, Android, Windows); no-op stub on Linux.
+tauri-plugin-passkey = { path = "plugins/tauri-plugin-passkey" }
 
 # Used only in debug builds to install a rustls crypto provider before
 # tauri-plugin-devtools' reqwest stack initializes (otherwise iOS dev panics
@@ -60,7 +68,7 @@ rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] 
 tauri-plugin-single-instance = "2"
 
 [target.'cfg(target_os = "ios")'.dependencies]
-objc2-ui-kit = { version = "0.3.2", features = ["UIApplication", "UIWindow", "UIInterface", "UIScene", "UIWindowScene"] }
+objc2-ui-kit = { version = "0.3.2", features = ["UIApplication", "UIWindow", "UIView", "UIInterface", "UIScene", "UIWindowScene"] }
 objc2-foundation = "0.3.2"
 
 [profile.dev]

@@ -4,13 +4,14 @@
 
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
 import { Button } from '@/components/ui/button'
+import { openFailedMessage } from '@/hooks/use-external-link-dialog'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { fn } from 'storybook/test'
 
 // More on how to set up stories at: https://storybook.js.org/docs/writing-stories#default-export
 const meta = {
-  title: 'components/external-link-dialog',
+  title: 'Chat/ExternalLinkDialog',
   component: ExternalLinkDialog,
   parameters: {
     layout: 'centered',
@@ -140,7 +141,7 @@ export const WithError: Story = {
     open: true,
     onOpenChange: fn(),
     url: 'https://example.com',
-    openError: 'Could not open link. Please try again or copy the URL.',
+    openError: openFailedMessage,
   },
 }
 

@@ -4,26 +4,47 @@
 
 // Devices
 export {
+  bridgeDeviceId,
+  cliDeviceIdPrefix,
+  maxActiveDevicesPerUser,
+  withUserDeviceRegistrationLock,
+  isCliDeviceId,
+  isTrustedAppDevice,
   getDeviceById,
-  upsertDevice,
+  touchDevice,
+  upsertCliDevice,
   revokeDevice,
+  requireMigrationSiblingApproval,
   denyDevice,
   markDeviceTrusted,
   registerDevice,
+  registerBridgeDevice,
+  deleteRevokedBridgeDevice,
+  setDeviceNodeId,
+  getTrustedNodeIds,
+  listEnvelopeCapableDeviceIds,
+  listEnvelopeCapableDevices,
+  listDevicesAwaitingLockout,
   countActiveDevices,
 } from './devices'
 
 // Users
-export { getUserById, getUserByEmail, deleteUser, markUserNotNew } from './users'
+export { getUserById, getUserByEmail, deleteUser, deleteIdleAnonymousUsers, markUserNotNew } from './users'
 
 // Sessions
-export { getActiveSessionByToken, linkSessionToDevice, revokeDeviceSessions } from './sessions'
+export { getActivePersistedSession, linkSessionToDevice, revokeDeviceSessions } from './sessions'
 
 // Waitlist
 export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from './waitlist'
 
 // PowerSync
 export { applyOperation } from './powersync'
+
+export {
+  createDebugTranscript,
+  findDebugTranscriptClientByKeyHash,
+  upsertSelfDebugTranscriptClient,
+} from './debug-transcripts'
 
 // OTP Challenge (session binding)
 export {
@@ -33,12 +54,32 @@ export {
   deletePersistedSignInOtp,
 } from './otp-challenge'
 
+// Captcha replay protection
+export { redeemCaptchaChallenge, deleteExpiredCaptchaChallenges } from './captcha'
+
 // Encryption
 export {
   getEnvelopeByDeviceId,
   hasEnvelopesForUser,
   upsertEnvelope,
   deleteEnvelope,
+  getOrgEnvelope,
+  upsertOrgEnvelope,
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
+  replaceEncryptionMetadata,
+  flipSchemeToV2,
+  bumpKeyVersion,
+  setPrimaryKeyId,
+  getWrappedKey,
+  listWrappedKeys,
+  insertWrappedKey,
+  updateWrappedKey,
+  issueChallengeNonce,
+  consumeChallengeNonce,
+  deleteExpiredOrConsumedNonces,
 } from './encryption'
+export type { PasskeySlot } from './encryption'
+
+// Passkeys
+export { userHasPasskey, passkeyHoldsSyncSlot, isUserPasskeyCredential } from './passkeys'

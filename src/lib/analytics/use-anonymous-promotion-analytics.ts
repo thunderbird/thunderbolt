@@ -3,13 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useRef } from 'react'
-import posthog from 'posthog-js'
-import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
+import { getPosthogClient, trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { AuthClient } from '@/contexts'
 
+type SessionSnapshot = { user: { id: string; isAnonymous?: boolean | null } } | null
+
 export type AnonymousPromotionAnalytics = {
-  /** Read the current session via `authClient.getSession()`; capture the user.id if isAnonymous === true. Idempotent. */
-  captureAnonId: (authClient: AuthClient) => Promise<void>
+  /** Capture an anonymous user from a resolved snapshot, or fetch the session when none is supplied. */
+  captureAnonId: (authClient: AuthClient, session?: SessionSnapshot) => Promise<void>
   /** Persist captured anon id to sessionStorage for cross-redirect retrieval (used by SSO flow). Call BEFORE any redirect. */
   persistForSso: () => void
   /** Fire posthog.alias(newUserId, capturedAnonId). Also fires the 'anonymous_user_promoted' event. Safe to call when no anon id was captured (no-op). */
@@ -20,10 +21,11 @@ export type AnonymousPromotionAnalytics = {
 export const pendingAnonIdKey = 'thunderbolt_pending_anon_id'
 
 // Default posthog alias helper — the ONLY production site allowed to call alias.
-// If the client was never initialized (self-hosted, no key), alias() is a silent
-// no-op because posthog-js handles uninitialized state.
+// If the client was never initialized (self-hosted with no key, or before
+// initPosthog resolves), getPosthogClient() returns null and the optional chain
+// makes alias() a silent no-op.
 const defaultAlias = (newUserId: string, anonId: string) => {
-  posthog.alias(newUserId, anonId)
+  getPosthogClient()?.alias(newUserId, anonId)
 }
 
 /**
@@ -38,8 +40,8 @@ export const createAnonymousPromotionAnalytics = (
   trackEvent: typeof defaultTrackEvent = defaultTrackEvent,
   alias: (newUserId: string, anonId: string) => void = defaultAlias,
 ): AnonymousPromotionAnalytics => ({
-  captureAnonId: async (authClient: AuthClient) => {
-    const { data } = await authClient.getSession()
+  captureAnonId: async (authClient, session) => {
+    const data = session === undefined ? (await authClient.getSession()).data : session
     if (data?.user?.isAnonymous === true) {
       capturedIdRef.current = data.user.id
     }

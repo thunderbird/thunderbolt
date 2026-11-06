@@ -2,22 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
-import { deleteAllChatThreads, deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
-import { useDebounce } from '@/hooks/use-debounce'
+import { deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
+import { useCreateNewChat } from '@/hooks/use-create-new-chat'
+import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
+import { miniAppPath, useChatDestination } from '@/mini-apps/use-chat-destination'
+import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router'
+import { useCallback, useMemo, useRef } from 'react'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
+import { useSidebarSection } from './use-sidebar-section'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 
 /**
@@ -27,55 +32,38 @@ export default function Sidebar() {
   const db = useDatabase()
   const navigate = useNavigate()
   const location = useLocation()
-  const { setOpenMobile, state, toggleSidebar } = useSidebar()
+  const { closeMobileSidebar, state } = useSidebar()
   const { isMobile } = useIsMobile()
+  const { open: openSearchPalette } = useSearchPalette()
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
-  const lastChatPathRef = useRef<string | null>(null)
 
-  const { chatThreadId: currentChatThreadId } = useParams()
-
-  // Simple route check: any /settings/* path triggers the settings sidebar variant on mobile
-  const isSettingsRoute = location.pathname.startsWith('/settings')
+  const { chatThreadId } = useParams()
+  const [searchParams] = useSearchParams()
+  const currentChatThreadId = chatThreadId ?? searchParams.get('chat') ?? undefined
 
   // Only use collapsed icon view on desktop, not mobile
   const isCollapsed = !isMobile && state === 'collapsed'
 
-  const [searchQuery, setSearchQuery] = useState('')
-  const debouncedSearchQuery = useDebounce(searchQuery, 300)
-  const [showSearch, setShowSearch] = useState(false)
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  const { activeSection: routeSection, setActiveSection } = useSidebarSection(location.pathname)
+  // Subscribed here rather than in `ChatSidebarContent`, which is unmounted
+  // while the Settings section is open: a minimal-mode `/config` answer that
+  // lands then must still pull the sidebar back to chats.
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const activeSection = minimalMode ? 'chats' : routeSection
 
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
   })
 
-  if (location.pathname.startsWith('/chats/')) {
-    lastChatPathRef.current = location.pathname
-  }
-
-  useEffect(() => {
-    if (showSearch && searchInputRef.current && !isCollapsed) {
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus()
-      })
-    }
-  }, [showSearch, isCollapsed])
-
-  const { data, isPending } = useQuery({
+  const { data } = useQuery({
     queryKey: ['chatThreads'],
     query: toCompilableQuery(getAllChatThreads(db)),
     placeholderData: (previousData) => previousData,
   })
 
-  const chatThreads = useMemo(() => {
-    if (!data) {
-      return []
-    }
-
-    return data.filter((thread) => thread.title?.toLowerCase().includes(debouncedSearchQuery?.toLowerCase()))
-  }, [data, debouncedSearchQuery])
+  const chatThreads = useMemo(() => data ?? [], [data])
 
   const deleteChatMutation = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
@@ -107,108 +95,89 @@ export default function Sidebar() {
     [renameMutate],
   )
 
+  const deleteAllChats = useDeleteNonProjectChats()
   const deleteAllChatsMutation = useMutation({
-    mutationFn: async () => {
-      await deleteAllChatThreads(db)
-    },
-    onSuccess: async () => {
-      trackEvent('chat_clear_all')
+    mutationFn: deleteAllChats,
+    onSuccess: () => {
       deleteAllChatsDialogRef.current?.close()
-      navigate('/chats/new')
     },
   })
 
-  const createNewChat = async (closeAfter: boolean = true) => {
-    trackEvent('chat_new_clicked')
-    navigate(`/chats/new`)
-    if (closeAfter && isMobile) {
-      setOpenMobile(false)
-    }
-  }
-
-  const handleChatClick = useCallback(
-    (threadId: string) => {
-      navigate(`/chats/${threadId}`)
-      trackEvent('chat_select', { chat_id: threadId })
+  // Keep the current chat mounted until the mobile sidebar has fully covered
+  // it. Hydrating and mounting a long destination chat during the 300ms close
+  // animation competes for the main thread and makes the gesture visibly jank.
+  // Desktop navigation remains synchronous.
+  const navigateAndCloseSidebar = useCallback(
+    async (path: string) => {
       if (isMobile) {
-        setOpenMobile(false)
+        await closeMobileSidebar()
       }
+      navigate(path)
     },
-    [navigate, isMobile, setOpenMobile],
+    [closeMobileSidebar, isMobile, navigate],
   )
 
-  const handleSettingsNavigation = (path: string) => {
-    navigate(path)
+  const startNewChat = useCreateNewChat()
+  const createNewChat = async () => {
     if (isMobile) {
-      setOpenMobile(false)
+      await closeMobileSidebar()
     }
+    startNewChat()
   }
 
-  const showSettingsMenu = () => {
-    if (!isSettingsRoute) {
-      navigate('/settings/preferences')
-    }
-  }
+  const chatDestination = useChatDestination()
 
-  const goToMainMenu = async () => {
-    // Only wait if query is pending and we have no fallback
-    if (isPending && !lastChatPathRef.current) {
-      return
-    }
+  const handleChatClick = useCallback(
+    // `miniAppId` comes from the row rather than being looked up here: the row
+    // already has it, and depending on `chatThreads` churned this callback's
+    // identity on every live-query result — which re-rendered every memoized
+    // row in the list.
+    (threadId: string, miniAppId: string | null) => {
+      trackEvent('chat_select', { chat_id: threadId })
+      // A chat that came from an app opens inside it, not at `/chats/:id` —
+      // see `useChatDestination` for when that isn't possible.
+      void navigateAndCloseSidebar(chatDestination(threadId, miniAppId))
+    },
+    [chatDestination, navigateAndCloseSidebar],
+  )
 
-    if (lastChatPathRef.current) {
-      navigate(lastChatPathRef.current)
-    } else if (data && data.length > 0) {
-      navigate(`/chats/${data[0].id}`)
-    } else {
-      await createNewChat(false)
-    }
-  }
-
-  const handleSearchClick = (e?: MouseEvent) => {
-    e?.preventDefault()
-    e?.stopPropagation()
-
-    if (isCollapsed) {
-      toggleSidebar()
-      setShowSearch(true)
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus()
-      })
-    } else if (!showSearch) {
-      setShowSearch(true)
-    } else {
-      setShowSearch(false)
-    }
+  const handleNavigate = (path: string) => {
+    void navigateAndCloseSidebar(path)
   }
 
   return (
     <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'}>
       <TooltipProvider>
-        {isSettingsRoute ? (
-          <SettingsSidebarContent onBackClick={goToMainMenu} onSettingsNavigate={handleSettingsNavigation} />
+        {activeSection === 'settings' ? (
+          <SettingsSidebarContent
+            isCollapsed={isCollapsed}
+            onSectionChange={setActiveSection}
+            onSettingsNavigate={handleNavigate}
+            onSearchClick={openSearchPalette}
+          />
         ) : (
           <ChatSidebarContent
             isMobile={isMobile}
             isCollapsed={isCollapsed}
             chatThreads={chatThreads}
             currentChatThreadId={currentChatThreadId}
-            searchQuery={searchQuery}
-            debouncedSearchQuery={debouncedSearchQuery}
-            showSearch={showSearch}
-            searchInputRef={searchInputRef}
             deleteAllChatsMutation={deleteAllChatsMutation}
             deleteChatMutation={deleteChatMutation}
             deleteAllChatsDialogRef={deleteAllChatsDialogRef}
             deleteChatDialogRef={deleteChatDialogRef}
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
-            onCreateNewChat={() => createNewChat()}
+            // Web and desktop only, gated on viewport to match `MiniAppPage`
+            // (which explains itself if a deep link lands here anyway).
+            showMiniApps={!isMobile}
+            activeSection={activeSection}
+            onSectionChange={setActiveSection}
+            onCreateNewChat={createNewChat}
+            onTasksClick={() => handleNavigate('/tasks')}
+            onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
             onRename={handleRename}
             onChatClick={handleChatClick}
-            onSearchClick={handleSearchClick}
-            onSearchQueryChange={setSearchQuery}
-            onSettingsClick={showSettingsMenu}
+            onSearchClick={openSearchPalette}
           />
         )}
       </TooltipProvider>

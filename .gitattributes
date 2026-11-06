@@ -1,0 +1,27 @@
+# Normalize line endings across platforms. Shell scripts and Makefiles must use LF
+# so bash/WSL/macOS/Linux can run them without CRLF errors.
+* text=auto
+
+*.sh text eol=lf
+Makefile text eol=lf
+
+# Windows-native scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.wasm binary

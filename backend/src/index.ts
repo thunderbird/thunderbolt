@@ -3,18 +3,32 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createMainRoutes } from '@/api/routes'
+import { createHealthRoutes } from '@/api/health'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
+import { createCaptchaRoutes } from '@/auth/captcha-routes'
+import { createCaptchaProvider } from '@/auth/captcha'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createOidcConfigRoutes } from '@/auth/oidc'
 import { createSsoDesktopCallbackRoutes } from '@/auth/sso-desktop-callback'
-import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
+import { createStandaloneLogger } from '@/config/logger'
+import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
+import { createAppVersionMiddleware } from '@/middleware/app-version'
+import { deleteExpiredCaptchaChallenges, deleteExpiredOrConsumedNonces } from '@/dal'
+import { sweepIdleAnonymousUsers } from '@/auth/idle-anonymous-users'
+import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createAuthIpRateLimit, createInferenceRateLimit, createProRateLimit } from '@/middleware/rate-limit'
+import {
+  createAuthIpRateLimit,
+  createAuthPluginIpRateLimit,
+  createIpTierRateLimit,
+  createUserTierRateLimit,
+  createRateLimitConsumer,
+} from '@/middleware/rate-limit'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
 import { createObservabilityRecorder } from '@/proxy/observability'
@@ -22,16 +36,22 @@ import { createSearchRoutes } from '@/api/search'
 import { createPreviewRoutes } from '@/api/preview'
 import { createPostHogRoutes } from '@/posthog/routes'
 import { createProToolsRoutes } from '@/pro/routes'
+import { createTinfoilKeepWarm } from '@/tinfoil/keep-warm'
 import { createTinfoilRoutes } from '@/tinfoil/routes'
 import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
 import { createAgentsRoutes } from '@/agents'
 import { createHaystackRoutes } from '@/haystack'
+import { createHostedAgentRoutes } from '@/hosted-agent/routes'
 import { createConfigRoutes } from '@/api/config'
+import { createBrandingAssets, noBrandingAssets } from '@/branding/assets'
+import { createSafeFetch } from '@/utils/url-validation'
 import { createEncryptionRoutes } from '@/api/encryption'
+import { createMiniAppRoutes } from '@/api/mini-apps'
 import { createPowerSyncRoutes } from '@/api/powersync'
+import { createDebugTranscriptsIntakeRoutes, ensureSelfDebugTranscriptClient } from '@/api/debug-transcripts-intake'
+import { createDebugTranscriptsRoutes } from '@/api/debug-transcripts'
 import type { AppDeps } from '@/types'
-import { cors } from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
 /**
@@ -48,6 +68,8 @@ export const createApp = async (deps?: AppDeps) => {
     const { db } = await import('@/db/client')
     database = db
   }
+
+  await ensureSelfDebugTranscriptClient(database, settings)
 
   const app = new Elysia({
     prefix: '/v1',
@@ -74,14 +96,23 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
-  const proRateLimit = createProRateLimit(database, rateLimitSettings)
+  const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
+  const inferenceRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'inference')
+  // Sizes both the anonymous sign-in bucket and the captcha challenge bucket: every anonymous
+  // sign-in needs one challenge, so the two must stay alike.
+  const anonymousSignInLimit = {
+    max: settings.anonymousSignInRateLimitMax,
+    durationSecs: settings.anonymousSignInRateLimitWindowSecs,
+  }
 
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
     database,
-    createAuthIpRateLimit(database, ipRateLimitSettings),
+    createAuthPluginIpRateLimit(database, { ...ipRateLimitSettings, anonymousSignIn: anonymousSignInLimit }),
   )
   const auth = deps?.auth ?? createdAuth
+
+  const appLogger = createStandaloneLogger(settings)
 
   // Build the production observability recorder unless tests injected their own.
   // Proxy events go to Pino + OTel only — not PostHog (proxy traffic is infra
@@ -89,36 +120,32 @@ export const createApp = async (deps?: AppDeps) => {
   const proxyObservability =
     deps?.proxyObservability ??
     createObservabilityRecorder({
-      logger: createStandaloneLogger(settings),
+      logger: appLogger,
     })
 
   return (
     configuredApp
-      .use(
-        cors({
-          origin: getCorsOriginsList(settings),
-          credentials: settings.corsAllowCredentials,
-          methods: settings.corsAllowMethods,
-          // Echo back the client's Access-Control-Request-Headers. The universal
-          // proxy at /v1/proxy forwards arbitrary upstream headers as
-          // X-Proxy-Passthrough-* (provider SDKs add x-api-key, x-stainless-*,
-          // openai-organization, anthropic-beta, …). A static allowlist can't
-          // enumerate every upstream's header set without breaking preflight.
-          allowedHeaders: true,
-          exposeHeaders: settings.corsExposeHeaders,
-        }),
-      )
-      .use(createLoggerMiddleware(settings))
-      .use(createHttpLoggingMiddleware(settings.trustedProxy))
+      .use(createCorsMiddleware(settings))
+      .use(createHttpLoggingMiddleware(appLogger, settings.trustedProxy))
+      .use(createAppVersionMiddleware(settings))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
       .use(betterAuthPlugin)
+      .use(
+        createCaptchaRoutes({
+          provider: createCaptchaProvider(settings, database),
+          authAllowAnonymous: settings.authAllowAnonymous,
+          createIpRateLimit: () =>
+            createIpTierRateLimit(database, ipRateLimitSettings, 'captcha-challenge', anonymousSignInLimit),
+        }),
+      )
       // Mount route groups
       .use(createMainRoutes(auth, fetchFn))
+      .use(createHealthRoutes({ settings, database, fetchFn, logger: appLogger }))
       .use(createGoogleAuthRoutes(auth, fetchFn))
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createOidcConfigRoutes())
-      .use(createSsoDesktopCallbackRoutes(settings))
+      .use(createSsoDesktopCallbackRoutes(settings, fetchFn))
       .use(createProToolsRoutes(auth, proRateLimit))
       .use(
         createUniversalProxyRoutes({
@@ -129,7 +156,25 @@ export const createApp = async (deps?: AppDeps) => {
           dnsLookup: deps?.dnsLookup,
         }),
       )
-      .use(createTinfoilRoutes({ auth, fetchFn, rateLimit: proRateLimit }))
+      .use(
+        createTinfoilRoutes({
+          auth,
+          database,
+          fetchFn,
+          logger: appLogger,
+          usageLogger: appLogger,
+          rateLimit: proRateLimit,
+        }),
+      )
+      .use(
+        createInferenceUsageReceiptRoutes({
+          auth,
+          database,
+          secret: settings.betterAuthSecret,
+          logger: appLogger,
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'receipt'),
+        }),
+      )
       .use(
         createUniversalProxyWsRoutes({
           auth,
@@ -140,8 +185,42 @@ export const createApp = async (deps?: AppDeps) => {
       )
       .use(createSearchRoutes(auth, proRateLimit, { exaClient: deps?.searchExaClient }))
       .use(createPreviewRoutes({ auth, fetchFn, rateLimit: proRateLimit, dnsLookup: deps?.dnsLookup }))
-      .use(createInferenceRoutes(auth, createInferenceRateLimit(database, rateLimitSettings)))
-      .use(createConfigRoutes(settings))
+      .use(
+        createInferenceRoutes({
+          auth,
+          database,
+          fetchFn: deps?.fetchFn,
+          logger: appLogger,
+          rateLimit: inferenceRateLimit,
+        }),
+      )
+      .use(
+        createHostedAgentRoutes({
+          auth,
+          database,
+          settings,
+          fetchFn: deps?.fetchFn,
+          logger: appLogger,
+          rateLimit: inferenceRateLimit,
+        }),
+      )
+      .use(createConfigRoutes(settings, deps?.brandingAssets ?? noBrandingAssets))
+      .use(
+        createDebugTranscriptsRoutes({
+          auth,
+          fetchFn,
+          settings,
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'debug-transcript'),
+        }),
+      )
+      .use(
+        createDebugTranscriptsIntakeRoutes({
+          database,
+          settings,
+          rateLimit: createRateLimitConsumer(database, rateLimitSettings, 'debug-transcript-intake'),
+          ipRateLimit: createIpTierRateLimit(database, ipRateLimitSettings, 'debug-transcript-intake'),
+        }),
+      )
       .use(createPostHogRoutes(fetchFn))
       .use(
         createWaitlistRoutes({
@@ -153,12 +232,16 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createPowerSyncRoutes(auth, settings, database))
-      .use(createEncryptionRoutes(auth, database))
-      .use(createAccountRoutes(auth, database))
+      .use(createMiniAppRoutes(auth, settings))
+      .use(createEncryptionRoutes(auth, database, settings))
+      .use(createAccountRoutes(auth, settings, database))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))
   )
 }
+
+// How long boot waits for the branding downloads; per-request timeouts bound each one.
+const brandingStartupWaitMs = 15_000
 
 /**
  * Start the server
@@ -166,6 +249,7 @@ export const createApp = async (deps?: AppDeps) => {
 const startServer = async () => {
   const settings = getSettings()
   const log = createStandaloneLogger(settings)
+  const tinfoilKeepWarm = createTinfoilKeepWarm(settings, { logger: log })
 
   // Set up logging
   log.info('Starting Thunderbolt Server...')
@@ -183,7 +267,46 @@ const startServer = async () => {
     // Run PGLite migrations before creating the app (no-op for Postgres)
     await runMigrations()
 
-    const app = await createApp()
+    // Downloads the operator's fonts and logos before the server takes traffic, so
+    // a pod that joins a rolling deploy serves them from its first /config: a
+    // client fetches /config once per launch and caches it. The wait is capped,
+    // and a download still running (or failed, and retrying) lands later.
+    // Started here rather than in createApp, so apps built by tests never fetch.
+    const brandingAssets = createBrandingAssets(settings.branding, {
+      fetchFn: createSafeFetch(globalThis.fetch, undefined, { httpsOnly: true }),
+      logger: log,
+    })
+    if (!(await brandingAssets.loadWithin(brandingStartupWaitMs))) {
+      log.warn(
+        { waitedMs: brandingStartupWaitMs },
+        'Branding downloads still running; starting without them, they appear in /config once they land',
+      )
+    }
+
+    const app = await createApp({ brandingAssets })
+
+    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7), expired
+    // solved captcha challenges and idle anonymous users. There is no cron infra, so a startup
+    // sweep plus an hourly interval keeps these tables bounded (nonces have a ~5-minute TTL,
+    // captcha challenges ALTCHA_TTL_SECS, anonymous users ANONYMOUS_USER_IDLE_DAYS). The db is
+    // lazily imported to preserve the "no db init at module load" invariant that keeps tests/CI
+    // clean.
+    const { db: sweepDb } = await import('@/db/client')
+    const sweepExpiredRows = async () => {
+      try {
+        await deleteExpiredOrConsumedNonces(sweepDb)
+      } catch (err) {
+        log.error({ err }, 'Failed to sweep expired challenge nonces')
+      }
+      try {
+        await deleteExpiredCaptchaChallenges(sweepDb)
+      } catch (err) {
+        log.error({ err }, 'Failed to sweep expired captcha challenges')
+      }
+      await sweepIdleAnonymousUsers(sweepDb, settings, log)
+    }
+    void sweepExpiredRows()
+    const sweepTimer = setInterval(() => void sweepExpiredRows(), 60 * 60 * 1000)
 
     const hostname = process.env.HOST
       ? process.env.HOST
@@ -196,6 +319,9 @@ const startServer = async () => {
         hostname,
         port: settings.port,
         reusePort: process.env.NODE_ENV === 'production',
+        // Must stay strictly above the ALB idle timeout (60s) — see deploy/pulumi; Bun cap is 255.
+        // If the server closes first, the ALB reuses a dead connection and returns 502.
+        idleTimeout: 120,
       },
       () => {
         log.info(
@@ -206,6 +332,7 @@ const startServer = async () => {
           },
           '🦊 Elysia server started',
         )
+        tinfoilKeepWarm.start()
 
         if (settings.swaggerEnabled) {
           log.info(
@@ -220,11 +347,15 @@ const startServer = async () => {
 
     // Graceful shutdown
     process.on('SIGINT', async () => {
+      tinfoilKeepWarm.stop()
+      clearInterval(sweepTimer)
       log.info('Received SIGINT, shutting down gracefully...')
       process.exit(0)
     })
 
     process.on('SIGTERM', async () => {
+      tinfoilKeepWarm.stop()
+      clearInterval(sweepTimer)
       log.info('Received SIGTERM, shutting down gracefully...')
       process.exit(0)
     })

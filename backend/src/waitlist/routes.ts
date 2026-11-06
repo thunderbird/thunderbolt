@@ -13,6 +13,8 @@ import {
 } from '@/dal'
 import type { db } from '@/db/client'
 import { normalizeEmail } from '@/lib/email'
+import { resolveEmailLocale } from '@/emails/i18n'
+import type { AppLocale } from '@shared/i18n/locales'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, type AnyElysia, t } from 'elysia'
 import {
@@ -26,8 +28,8 @@ import {
  * Allows tests to provide fake implementations without module mocking.
  */
 export type WaitlistEmailService = {
-  sendJoinedEmail: (params: { email: string }) => Promise<void>
-  sendReminderEmail: (params: { email: string }) => Promise<void>
+  sendJoinedEmail: (params: { email: string; locale: AppLocale }) => Promise<void>
+  sendReminderEmail: (params: { email: string; locale: AppLocale }) => Promise<void>
 }
 
 const defaultEmailService: WaitlistEmailService = {
@@ -35,9 +37,22 @@ const defaultEmailService: WaitlistEmailService = {
   sendReminderEmail: defaultSendReminderEmail,
 }
 
-/** Trigger Better Auth's OTP flow for approved users. */
-const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<void> => {
-  await auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } })
+/**
+ * Trigger Better Auth's OTP flow for approved users.
+ *
+ * Forwards the already-resolved locale as a synthetic header so
+ * `sendVerificationOTP` renders in the recipient's language; without it the
+ * endpoint context has no headers and the magic-link email falls back to
+ * English. Only this one header is passed on: handing an internal `auth.api`
+ * call the caller's whole inbound header bag would carry cookies and
+ * `authorization` across the boundary, and a stray `x-api-key` alone is enough
+ * to trip the api-key plugin's before-hook and fail the send.
+ */
+const sendApprovedMagicLinkEmail = async (auth: Auth, email: string, locale: AppLocale): Promise<void> => {
+  await auth.api.sendVerificationOTP({
+    body: { email, type: 'sign-in' },
+    headers: new Headers({ 'X-App-Language': locale }),
+  })
 }
 
 /**
@@ -48,6 +63,7 @@ const sendApprovedMagicLinkEmail = async (auth: Auth, email: string): Promise<vo
 const resolveApproval = async (
   database: typeof db,
   email: string,
+  locale: AppLocale,
   emailService: WaitlistEmailService,
 ): Promise<boolean> => {
   const existingUser = await getUserByEmail(database, email)
@@ -67,7 +83,7 @@ const resolveApproval = async (
       return true
     }
 
-    await emailService.sendReminderEmail({ email })
+    await emailService.sendReminderEmail({ email, locale })
     return false
   }
 
@@ -82,7 +98,7 @@ const resolveApproval = async (
     return true
   }
 
-  await emailService.sendJoinedEmail({ email })
+  await emailService.sendJoinedEmail({ email, locale })
   return false
 }
 
@@ -116,8 +132,9 @@ export const createWaitlistRoutes = ({
 
   return app.post(
     '/join',
-    async ({ body, set }) => {
+    async ({ body, set, request }) => {
       const email = normalizeEmail(body.email)
+      const locale = resolveEmailLocale(request.headers.get('X-App-Language'))
 
       if (cooldownMs > 0) {
         const now = Date.now()
@@ -145,7 +162,7 @@ export const createWaitlistRoutes = ({
         emailCooldowns.set(email, Date.now())
       }
 
-      const approved = await resolveApproval(database, email, emailService)
+      const approved = await resolveApproval(database, email, locale, emailService)
 
       if (!approved) {
         return { success: true }
@@ -157,7 +174,7 @@ export const createWaitlistRoutes = ({
         challengeToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + otpExpiryMs),
       })
-      await sendApprovedMagicLinkEmail(auth, email)
+      await sendApprovedMagicLinkEmail(auth, email, locale)
       return { success: true, challengeToken }
     },
     {

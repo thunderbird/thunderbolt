@@ -100,4 +100,79 @@ describe('parseStream', () => {
     expect(parsed.toolCalls).toHaveLength(1)
     expect(parsed.assistantParts).toEqual([{ type: 'text', text: 'done' }])
   })
+
+  test('captures Pi coding-tool calls while ignoring protocol-only start events', async () => {
+    const toolNames = ['bash', 'read', 'write', 'edit']
+    const response = sseResponse([
+      ...toolNames.flatMap((toolName, index) => [
+        { type: 'tool-input-start', toolCallId: String(index), toolName },
+        { type: 'tool-input-available', toolCallId: String(index), toolName, input: { path: `/file-${index}` } },
+        { type: 'tool-output-available', toolCallId: String(index), output: { ok: true } },
+      ]),
+      { type: 'text-delta', delta: 'Coding work complete.' },
+      { type: 'finish-step' },
+      { type: 'finish' },
+    ])
+
+    const parsed = await parseStream(response)
+
+    expect(parsed.toolCalls.map(({ toolName }) => toolName)).toEqual(toolNames)
+    expect(parsed.assistantParts.filter((part) => part.type === 'dynamic-tool')).toHaveLength(4)
+    expect(parsed.text).toBe('Coding work complete.')
+  })
+
+  test('captures web calls whose emitted result is budget exhausted', async () => {
+    const response = sseResponse([
+      { type: 'tool-input-available', toolCallId: 'a', toolName: 'search', input: { query: 'one' } },
+      {
+        type: 'tool-output-available',
+        toolCallId: 'a',
+        output: { status: 'budget_exhausted', message: 'budget reached' },
+      },
+      { type: 'text-delta', delta: 'Using the results already gathered.' },
+      { type: 'finish' },
+    ])
+
+    const parsed = await parseStream(response)
+
+    expect(parsed.toolCalls).toEqual([{ toolCallId: 'a', toolName: 'search', input: { query: 'one' } }])
+    expect(parsed.assistantParts[0]).toMatchObject({
+      type: 'dynamic-tool',
+      output: { status: 'budget_exhausted' },
+    })
+  })
+})
+
+test('retains SSE and recovered tool errors alongside the partial answer', async () => {
+  const events = [
+    { type: 'text-delta', delta: 'partial' },
+    {
+      type: 'tool-input-available',
+      toolCallId: 'failed',
+      toolName: 'fetch_content',
+      input: { url: 'https://example.test' },
+    },
+    { type: 'tool-output-error', toolCallId: 'failed', errorText: 'HTTP 503' },
+    { type: 'error', errorText: 'provider disconnected' },
+  ]
+  const parsed = await parseStream(new Response(events.map((event) => `data: ${JSON.stringify(event)}\n`).join('')))
+  expect(parsed.text).toBe('partial')
+  expect(parsed.error).toBe('provider disconnected')
+  expect(parsed.assistantParts[0]).toMatchObject({ state: 'output-error', errorText: 'HTTP 503' })
+  expect(parsed.events).toEqual(events)
+  expect(parsed.toolCalls).toHaveLength(1)
+})
+
+test('preserves rate-limit status and Retry-After carried inside an SSE error', async () => {
+  const parsed = await parseStream(
+    sseResponse([
+      {
+        type: 'error',
+        status: 429,
+        responseHeaders: { 'Retry-After': '9' },
+        errorText: 'admission denied',
+      },
+    ]),
+  )
+  expect(parsed).toMatchObject({ error: 'admission denied', httpStatus: 429, retryAfter: '9' })
 })

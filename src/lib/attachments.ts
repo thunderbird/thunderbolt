@@ -21,6 +21,12 @@ export type AttachmentPart = {
   data: AttachmentData
 }
 
+/** Model-facing note standing in for attachments an agent couldn't be sent
+ *  (missing on this device, or with no form that agent accepts), one line per
+ *  file. English like every other model-facing text. */
+export const undeliverableAttachmentsNote = (filenames: string[]): string =>
+  filenames.map((name) => `[Attachment "${name}" could not be delivered to this agent]`).join('\n')
+
 /** Build the reference-only attachment part to include in an outgoing message. */
 export const buildAttachmentPart = (data: AttachmentData): AttachmentPart => ({
   type: attachmentPartType,
@@ -160,13 +166,25 @@ export const hydrateAttachmentsAsFileParts = async (
           if (!isAttachmentPart(part)) {
             return [part]
           }
-          const file = await deps.getAttachment(part.data.localFileId)
-          if (!file) {
+          // An unreadable attachment is treated exactly like a missing one: leave
+          // the part alone and send the turn without those bytes. Both the lookup
+          // and the read can fail for a file stored before `putAttachment` copied
+          // bytes (it held a reference to a path on disk, so editing the source
+          // invalidated it) — and because every send re-reads the whole history,
+          // letting that throw failed the turn, burned all three auto-retries, and
+          // broke even a plain-text follow-up. The conversation stays usable.
+          try {
+            const file = await deps.getAttachment(part.data.localFileId)
+            if (!file) {
+              return [part]
+            }
+            return isCurrentTurn
+              ? await hydrateCurrentAttachment(part.data, file, deps)
+              : await hydrateHistoricalAttachment(part.data, file, deps)
+          } catch (error) {
+            console.warn('Skipping an unreadable attachment', { filename: part.data.filename, error })
             return [part]
           }
-          return isCurrentTurn
-            ? hydrateCurrentAttachment(part.data, file, deps)
-            : hydrateHistoricalAttachment(part.data, file, deps)
         }),
       )
       return { ...message, parts: nested.flat() }

@@ -2,11 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
 
+import { HapticMountBoundary } from '@/hooks/use-haptics'
+import { withCollapsedAutoFocusSelection } from '@/lib/focus'
 import { cn } from '@/lib/utils'
+import {
+  centeredModalSurfaceClass,
+  modalAnimationClass,
+  modalCloseClass,
+  modalFieldSurfaceClass,
+  modalOverlayClass,
+} from './modal-styles'
 
 const Dialog = ({ ...props }: ComponentProps<typeof DialogPrimitive.Root>) => {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -16,8 +26,13 @@ const DialogTrigger = ({ ...props }: ComponentProps<typeof DialogPrimitive.Trigg
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
 }
 
-const DialogPortal = ({ ...props }: ComponentProps<typeof DialogPrimitive.Portal>) => {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+const DialogPortal = ({ children, ...props }: ComponentProps<typeof DialogPrimitive.Portal>) => {
+  return (
+    <DialogPrimitive.Portal data-slot="dialog-portal" {...props}>
+      <HapticMountBoundary />
+      {children}
+    </DialogPrimitive.Portal>
+  )
 }
 
 const DialogClose = ({ ...props }: ComponentProps<typeof DialogPrimitive.Close>) => {
@@ -33,8 +48,7 @@ const DialogOverlay = ({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50',
-        useTransparentOverlay ? 'bg-black/50 backdrop-blur-md' : 'bg-background',
+        useTransparentOverlay ? modalOverlayClass : `${modalAnimationClass} fixed inset-0 z-50 bg-background`,
         className,
       )}
       {...props}
@@ -48,6 +62,7 @@ const DialogContent = ({
   showCloseButton = true,
   useTransparentOverlay = true,
   fullScreen = false,
+  onOpenAutoFocus,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -60,23 +75,27 @@ const DialogContent = ({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          ' bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 grid gap-4 p-6 duration-200',
+          'grid gap-4 p-6',
+          modalFieldSurfaceClass,
           fullScreen
-            ? 'w-full top-0 left-0 border-0 rounded-none translate-x-0 translate-y-0 shadow-none'
-            : 'top-[50%] left-[50%] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-2xl border sm:max-w-lg shadow-lg',
+            ? `${modalAnimationClass} fixed top-0 left-0 z-50 w-full rounded-none border-0 bg-background shadow-none duration-200`
+            : `${centeredModalSurfaceClass} sm:max-w-lg`,
           className,
         )}
+        onOpenAutoFocus={withCollapsedAutoFocusSelection(onOpenAutoFocus)}
         {...props}
       >
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="ring-offset-background focus:ring-ring absolute right-4 flex size-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-            style={{ top: fullScreen ? 'calc(var(--safe-area-top-padding, 0px) + 16px)' : '16px' }}
+            className={`${modalCloseClass} right-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`}
+            style={{ top: fullScreen ? 'var(--header-control-top)' : '16px' }}
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">
+              <Trans>Close</Trans>
+            </span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>
@@ -118,7 +137,7 @@ const DialogDescription = ({ className, ...props }: ComponentProps<typeof Dialog
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn('text-muted-foreground text-sm', className)}
+      className={cn('text-muted-foreground text-[length:var(--font-size-sm)]', className)}
       {...props}
     />
   )

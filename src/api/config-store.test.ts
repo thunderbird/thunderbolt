@@ -3,12 +3,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { selectAllowCustomAgents, selectBuiltInAgentEnabled, useConfigStore } from './config-store'
+import {
+  selectAllowCustomAgents,
+  selectBrandLogo,
+  selectBuiltInAgentEnabled,
+  selectConfigSettled,
+  selectDebugTranscriptsEnabled,
+  useConfigStore,
+} from './config-store'
 
 const storageKey = 'thunderbolt-config'
 
 const resetStore = () => {
-  useConfigStore.setState({ config: {} })
+  useConfigStore.setState({
+    config: {},
+    configLoaded: false,
+    forceUpgrade: undefined,
+    forceUpgradeMinVersion: undefined,
+  })
   localStorage.removeItem(storageKey)
 }
 
@@ -22,14 +34,14 @@ describe('config store', () => {
   })
 
   it('updates config via updateConfig', () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: true })
 
-    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
+    expect(useConfigStore.getState().config).toEqual({ builtInAgentEnabled: true })
   })
 
   it('preserves cached config when fetch fails (null scenario)', () => {
     // Simulate a successful fetch that populates the store
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: true })
 
     // Simulate a failed fetch — caller would NOT call updateConfig
     const fetchResult = null
@@ -38,14 +50,31 @@ describe('config store', () => {
     }
 
     // Store retains the cached value
-    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
+    expect(useConfigStore.getState().config).toEqual({ builtInAgentEnabled: true })
   })
 
   it('replaces entire config on update', () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
-    useConfigStore.getState().updateConfig({ e2eeEnabled: false })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: true })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: false })
 
-    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: false })
+    expect(useConfigStore.getState().config).toEqual({ builtInAgentEnabled: false })
+  })
+
+  it('setForceUpgrade flips the transient flag and records the min version', () => {
+    useConfigStore.getState().setForceUpgrade('5.0.0')
+
+    expect(useConfigStore.getState().forceUpgrade).toBe(true)
+    expect(useConfigStore.getState().forceUpgradeMinVersion).toBe('5.0.0')
+  })
+
+  it('does not persist the transient upgrade flag (only config is persisted)', () => {
+    useConfigStore.getState().updateConfig({ minAppVersion: '2.0.0' })
+    useConfigStore.getState().setForceUpgrade('2.0.0')
+
+    const persisted = JSON.parse(localStorage.getItem(storageKey) ?? '{}')
+    expect(persisted.state.config).toEqual({ minAppVersion: '2.0.0' })
+    expect(persisted.state.forceUpgrade).toBeUndefined()
+    expect(persisted.state.forceUpgradeMinVersion).toBeUndefined()
   })
 })
 
@@ -70,5 +99,49 @@ describe('selectAllowCustomAgents', () => {
 
   it('is forbidden only when explicitly false', () => {
     expect(selectAllowCustomAgents({ allowCustomAgents: false })).toBe(false)
+  })
+})
+
+describe('selectBrandLogo', () => {
+  it('is null when the light URL is unset', () => {
+    expect(selectBrandLogo({})).toBeNull()
+    expect(selectBrandLogo({ brandLogoDarkUrl: 'https://example.com/dark.svg' })).toBeNull()
+  })
+
+  it('falls back to the light URL for dark, and carries the alt text', () => {
+    const light = 'https://example.com/logo.svg'
+    expect(selectBrandLogo({ brandLogoUrl: light })).toEqual({ light, dark: light, alt: '' })
+    expect(
+      selectBrandLogo({ brandLogoUrl: light, brandLogoDarkUrl: 'data:image/png;base64,AA==', brandLogoAlt: 'Example' }),
+    ).toEqual({
+      light,
+      dark: 'data:image/png;base64,AA==',
+      alt: 'Example',
+    })
+  })
+})
+
+describe('selectDebugTranscriptsEnabled', () => {
+  it('defaults to disabled when the server flag is absent', () => {
+    expect(selectDebugTranscriptsEnabled({})).toBe(false)
+  })
+
+  it('is enabled only when the server explicitly accepts uploads', () => {
+    expect(selectDebugTranscriptsEnabled({ debugTranscriptsEnabled: true })).toBe(true)
+    expect(selectDebugTranscriptsEnabled({ debugTranscriptsEnabled: false })).toBe(false)
+  })
+})
+
+describe('selectConfigSettled', () => {
+  it('is false for an empty config that has not loaded', () => {
+    expect(selectConfigSettled({ config: {}, configLoaded: false })).toBe(false)
+  })
+
+  it('is true for a persisted config before the fetch answers', () => {
+    expect(selectConfigSettled({ config: { minimalMode: false }, configLoaded: false })).toBe(true)
+  })
+
+  it('is true once the fetch has answered, even with an empty config', () => {
+    expect(selectConfigSettled({ config: {}, configLoaded: true })).toBe(true)
   })
 })

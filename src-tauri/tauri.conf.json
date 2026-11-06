@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Thunderbolt",
-  "version": "0.1.105",
+  "version": "0.1.156",
   "identifier": "net.thunderbird.thunderbolt",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -16,18 +16,20 @@
         "width": 1400,
         "height": 1000,
         "minHeight": 600,
-        "minWidth": 600,
+        "minWidth": 500,
         "visible": false
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": {
         "default-src": "'self' tauri: asset:",
-        "connect-src": "'self' ipc: http://ipc.localhost https: wss: ws://localhost:8000 http://localhost:8000 http://localhost:11434",
-        "img-src": "'self' asset: data: https://api.thunderbolt.io",
+        "frame-src": "'self' https:",
+        "connect-src": "'self' ipc: http://ipc.localhost https: wss: ws://localhost:8000 http://localhost:8000 ws://localhost:8080 http://localhost:8080 ws://127.0.0.1:8839 ws://127.0.0.1:8840 http://localhost:11434",
+        "img-src": "'self' asset: data: blob: https://api.thunderbolt.io",
         "font-src": "'self' data:",
         "style-src": "'self' 'unsafe-inline'",
-        "script-src": "'self'"
+        "script-src": "'self' 'wasm-unsafe-eval'"
       }
     },
     "withGlobalTauri": true
@@ -36,10 +38,24 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "iOS": {
-      "frameworks": ["MetalPerformanceShaders.framework", "MetalKit.framework", "Metal.framework"],
-      "developmentTeam": "BUMSKVQ3D9"
+      "frameworks": [
+        "MetalPerformanceShaders.framework",
+        "MetalKit.framework",
+        "Metal.framework"
+      ],
+      "developmentTeam": "BUMSKVQ3D9",
+      "minimumSystemVersion": "15.0"
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
     },
     "android": {
       "versionCode": 1018
@@ -49,9 +65,14 @@
     "deep-link": {
       "mobile": [
         {
-          "scheme": ["https"],
+          "scheme": [
+            "https"
+          ],
           "host": "app.thunderbolt.io",
-          "pathPrefix": ["/oauth/callback", "/auth/verify"],
+          "pathPrefix": [
+            "/oauth/callback",
+            "/auth/verify"
+          ],
           "appLink": true
         }
       ]

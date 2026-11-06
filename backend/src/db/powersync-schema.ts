@@ -52,12 +52,45 @@ export const chatThreadsTable = powersyncSchema.table(
     modeId: text('mode_id'),
     acpSessionId: text('acp_session_id'),
     agentId: text('agent_id'),
+    // Owning project, or null for a loose chat. Intentionally NOT a FK: a
+    // project is soft-deleted and its chats are orphaned (project_id set to
+    // null) rather than cascaded, so the rows must survive independently.
+    projectId: text('project_id'),
+    // Mini App this chat was started from, or null for an ordinary chat. Not a
+    // FK for the same reason project_id isn't, and more so: the Mini App
+    // registry is deployment config, so an app can disappear between releases.
+    // The chat outlives it and degrades to showing the app is unavailable.
+    miniAppId: text('mini_app_id'),
     deletedAt: timestamp('deleted_at'),
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
   },
   (table) => [index('idx_chat_threads_user_id').on(table.userId)],
+)
+
+/**
+ * A Projects workspace: durable instructions shared by every chat in the project,
+ * plus membership via `chat_threads.project_id`.
+ */
+export const projectsTable = powersyncSchema.table(
+  'projects',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    /** Always-on instructions prepended to every chat in this project. */
+    instructions: text('instructions'),
+    icon: text('icon'),
+    pinnedOrder: integer('pinned_order'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+    deletedAt: timestamp('deleted_at'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  (table) => [index('idx_projects_user_id').on(table.userId)],
 )
 
 export const chatMessagesTable = powersyncSchema.table(
@@ -145,6 +178,7 @@ export const skillsTable = powersyncSchema.table(
   {
     id: text('id').notNull(),
     name: text('name'),
+    label: text('label'),
     description: text('description'),
     instruction: text('instruction'),
     enabled: integer('enabled').default(1),
@@ -174,6 +208,12 @@ export const triggersTable = powersyncSchema.table(
   (table) => [index('idx_triggers_user_id').on(table.userId)],
 )
 
+/**
+ * LEGACY — the chat-modes feature was removed. No longer synced (dropped from
+ * the sync rules and PowerSync table maps). The def stays so the postgres table
+ * persists until the DROP migration lands, after the powersync service has been
+ * rolled off the modes sync rule. See THU-739.
+ */
 export const modesTable = powersyncSchema.table(
   'modes',
   {
@@ -242,6 +282,15 @@ export const devicesTable = powersyncSchema.table(
     createdAt: timestamp('created_at').defaultNow(),
     revokedAt: timestamp('revoked_at'),
     appVersion: text('app_version'),
+    // Discriminates normal app, iroh bridge (ACP/MCP), and account-only CLI devices while keeping
+    // one shared lifecycle for revocation, device caps, and listing.
+    deviceType: text('device_type', { enum: ['normal', 'bridge', 'cli'] })
+      .notNull()
+      .default('normal'),
+    // iroh P2P endpoint identity for this device. Nullable: only set once a trusted device
+    // attests it via the canary-gated POST /devices/:id/node-id route (proof-of-CK-possession).
+    nodeId: text('node_id'),
+    nodeIdAttestedAt: timestamp('node_id_attested_at'),
   },
   (table) => [index('idx_devices_user_id').on(table.userId)],
 )
@@ -256,7 +305,7 @@ export const agentsTable = powersyncSchema.table(
       .references(() => user.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     type: text('type', { enum: ['remote-acp', 'managed-acp'] }).notNull(),
-    transport: text('transport', { enum: ['websocket'] }).notNull(),
+    transport: text('transport', { enum: ['websocket', 'iroh'] }).notNull(),
     url: text('url').notNull(),
     description: text('description'),
     icon: text('icon'),
@@ -279,10 +328,10 @@ export const powersyncTablesByName = {
   prompts: promptsTable,
   skills: skillsTable,
   triggers: triggersTable,
-  modes: modesTable,
   model_profiles: modelProfilesTable,
   devices: devicesTable,
   agents: agentsTable,
+  projects: projectsTable,
 } satisfies Record<PowerSyncTableName, AnyPgTable>
 
 /**
@@ -308,15 +357,15 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   prompts: promptsTable.id,
   skills: skillsTable.id,
   triggers: triggersTable.id,
-  modes: modesTable.id,
   model_profiles: modelProfilesTable.id,
   devices: devicesTable.id,
   agents: agentsTable.id,
+  projects: projectsTable.id,
 }
 
 /**
  * Conflict target for each PowerSync table (for INSERT ON CONFLICT).
- * Tables with default data (settings, models, modes, tasks, prompts) use composite primary keys (id/key + user_id)
+ * Tables with default data (settings, models, tasks, prompts) use composite primary keys (id/key + user_id)
  * so each user can have their own row with the same default ID. See docs/composite-primary-keys-and-default-data.md.
  */
 export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> = {
@@ -328,8 +377,11 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   prompts: [promptsTable.id, promptsTable.userId],
   skills: [skillsTable.id, skillsTable.userId],
   triggers: [triggersTable.id],
-  modes: [modesTable.id, modesTable.userId],
   model_profiles: [modelProfilesTable.id, modelProfilesTable.userId],
   devices: [devicesTable.id],
   agents: [agentsTable.id, agentsTable.userId],
+  // Plain `id` primary keys: projects are user-created, so they carry no default
+  // rows needing the composite (id, user_id) treatment (see
+  // docs/composite-primary-keys-and-default-data.md).
+  projects: [projectsTable.id],
 }

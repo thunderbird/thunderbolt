@@ -1,0 +1,164 @@
+name: CLI Release
+run-name: CLI release for v${{ inputs.version }}
+
+# Builds the standalone `thunderbolt` CLI binaries and attaches them, plus a
+# SHA256SUMS manifest, to the shared `v{version}` GitHub Release. The desktop
+# app derives download URLs from its own version:
+#
+#   https://github.com/thunderbird/thunderbolt/releases/download/v{APP_VERSION}/thunderbolt-cli-{target}
+#   https://github.com/thunderbird/thunderbolt/releases/download/v{APP_VERSION}/SHA256SUMS
+#
+# where {target} is one of: darwin-arm64 | linux-x64 | linux-arm64.
+#
+# Native-runner matrix (no cross-compile): the CLI depends on @number0/iroh, a
+# NAPI addon that ships a per-platform prebuilt `.node`. `bun build --compile`
+# embeds only the `.node` that is installed on the build machine, so each target
+# MUST build on a runner of its own architecture — `bun install` there pulls the
+# matching optional iroh dependency automatically.
+#
+# darwin-x64 is intentionally absent: iroh 1.0.0 publishes no x86_64-apple-darwin
+# addon (`@number0/iroh-darwin-x64` does not exist on npm), so an Intel-macOS CLI
+# binary cannot load iroh and is not shipped. Intel-Mac desktop users therefore
+# have no one-click CLI install until iroh gains that target upstream.
+#
+# Publishing (flipping the draft release to public) is owned by the desktop
+# release workflow, which shares the `v{version}` tag. This workflow only uploads
+# assets via `gh release upload`, which never mutates the release's draft state —
+# so it cannot race the desktop publish flip back into draft.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3 without v prefix)'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3 without v prefix)'
+        required: true
+        type: string
+
+concurrency:
+  group: cli-release-${{ inputs.version }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: darwin-arm64
+          - os: ubuntu-24.04
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Cache Bun dependencies (cli)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+            cli/node_modules
+          key: cli-bun-${{ matrix.os }}-${{ hashFiles('bun.lock', 'cli/bun.lock') }}
+          restore-keys: |
+            cli-bun-${{ matrix.os }}-
+
+      # Shared CLI imports need root packages, not root lifecycle scripts.
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install CLI dependencies
+        run: cd cli && bun install --frozen-lockfile
+
+      # Shared agent core resolves these from root while CLI code resolves them from cli/.
+      - name: Check shared CLI dependency versions
+        run: bun -e 'for (const name of ["@earendil-works/pi-ai", "openai"]) { const root = (await Bun.file(`node_modules/${name}/package.json`).json()).version; const cli = (await Bun.file(`cli/node_modules/${name}/package.json`).json()).version; if (root !== cli) throw new Error(`${name} root ${root} != CLI ${cli}`) }'
+
+      - name: Type check CLI
+        run: cd cli && bun run typecheck
+
+      - name: Run CLI tests (including real Tinfoil fixture)
+        run: cd cli && bun run test
+
+      - name: Build CLI binary
+        env:
+          THUNDERBOLT_BUILD_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          THUNDERBOLT_BUILD_APP_URL: ${{ vars.THUNDERBOLT_APP_URL }}
+        run: |
+          if [ -z "$THUNDERBOLT_BUILD_CLOUD_URL" ]; then
+            echo "::error::Repository variable VITE_THUNDERBOLT_CLOUD_URL is required"
+            exit 1
+          fi
+          if [ -z "$THUNDERBOLT_BUILD_APP_URL" ]; then
+            echo "::error::Repository variable THUNDERBOLT_APP_URL is required"
+            exit 1
+          fi
+          cd cli
+          bun build --compile --minify \
+            --target="bun-${{ matrix.target }}" \
+            --define "process.env.THUNDERBOLT_BUILD_CLOUD_URL=\"$THUNDERBOLT_BUILD_CLOUD_URL\"" \
+            --define "process.env.THUNDERBOLT_BUILD_APP_URL=\"$THUNDERBOLT_BUILD_APP_URL\"" \
+            src/index.ts \
+            --outfile "dist/thunderbolt-cli-${{ matrix.target }}"
+
+      - name: Smoke CLI binary
+        run: |
+          cd cli
+          ./dist/thunderbolt-cli-${{ matrix.target }} --version
+          ./dist/thunderbolt-cli-${{ matrix.target }} --help >/dev/null
+
+      # Upload as a workflow artifact rather than straight to the Release, so a
+      # failed leg can never leave a partial set of binaries on the release with
+      # no SHA256SUMS. The publish job below attaches everything atomically once
+      # ALL legs have succeeded.
+      - name: Upload CLI binary artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: thunderbolt-cli-${{ matrix.target }}
+          path: cli/dist/thunderbolt-cli-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish CLI assets
+    # `needs: build` (default success()) gates this on EVERY leg succeeding, so
+    # publishing is atomic: either all binaries + SHA256SUMS land, or nothing does.
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all CLI binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          pattern: thunderbolt-cli-*
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS and upload all assets to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          cd dist
+          sha256sum thunderbolt-cli-* > SHA256SUMS
+          gh release upload "v${VERSION}" thunderbolt-cli-* SHA256SUMS --clobber --repo "$REPO"

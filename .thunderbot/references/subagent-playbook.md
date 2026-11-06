@@ -157,8 +157,8 @@ Use the templates from `references/review.md`:
 Run the test suite and report results.
 
 Commands to run:
-1. cd [PROJECT_ROOT] && bun test
-2. cd [PROJECT_ROOT]/backend && bun test
+1. cd [PROJECT_ROOT] && bun run test
+2. cd [PROJECT_ROOT] && bun run test:backend
 
 Report:
 - Total tests: pass/fail/skip counts
@@ -197,8 +197,8 @@ Run quality checks on the codebase.
 
 Commands:
 1. make check (type checking, linting, formatting)
-2. bun test (root)
-3. cd backend && bun test (backend)
+2. bun run test (frontend + shared)
+3. bun run test:backend (backend)
 
 For each failure, report:
 - Command that failed
@@ -260,7 +260,7 @@ For tasks that take >30 seconds and do not block the next action:
 [Task: Test Runner]
 model: "sonnet"
 run_in_background: true
-prompt: "Run `bun test` and report results. Do not modify any files."
+prompt: "Run `bun run test` and report results. Do not modify any files."
 ```
 
 ```

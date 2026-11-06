@@ -16,3 +16,33 @@ export const isSafeUrl = (url: string): boolean => {
     return false
   }
 }
+
+/**
+ * True only for parseable `mailto:` and `tel:` URLs. Kept apart from `isSafeUrl`, which
+ * guards navigation targets (webview, SSO redirect, previews) and must stay http/https only.
+ */
+export const isContactUrl = (url: string): boolean => {
+  try {
+    const { protocol } = new URL(url)
+    return protocol === 'mailto:' || protocol === 'tel:'
+  } catch {
+    return false
+  }
+}
+
+/** Remove only trailing slashes from a backend URL. */
+export const normalizeBackendUrl = (url: string): string => url.replace(/\/+$/, '')
+
+/**
+ * Resolve a configured backend URL to an absolute one.
+ *
+ * `VITE_THUNDERBOLT_CLOUD_URL` is a relative path on same-origin deployments
+ * (`/v1`, the frontend image's build-arg default) so one image can serve any
+ * hostname. It is also editable at runtime from the dev settings page.
+ * `fetch` and the OpenAI-compatible clients resolve that against the page
+ * themselves, but callers that hand the value to an SDK need an absolute one.
+ * An already-absolute value passes through, because `new URL` ignores the base
+ * when the first argument is absolute.
+ */
+export const resolveAbsoluteBackendUrl = (url: string, origin: string = window.location.origin): string =>
+  normalizeBackendUrl(new URL(url, origin).toString())

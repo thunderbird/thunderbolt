@@ -5,23 +5,24 @@
 import { ConnectProviderButton } from '@/components/connect-provider-button'
 import { GoogleLogo } from '@/components/ui/google-logo'
 import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
-import { useDatabase } from '@/contexts'
-import { deleteIntegrationCredentials } from '@/dal'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import type { UseOAuthConnectResult } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
-import { useQueryClient } from '@tanstack/react-query'
+import { Trans } from '@lingui/react/macro'
 import { Calendar, File, Mail } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { IconCircle } from './icon-circle'
 import { OnboardingFeatureCard } from './onboarding-feature-card'
+import { OnboardingStepHeader } from './onboarding-step-header'
 
 type OnboardingAuthStepProps = {
   providers?: OAuthProvider[]
   isProcessing?: boolean
   isConnected?: boolean
   onConnectionChange: (connected: boolean) => void
+  /** Revoke the provider's stored credentials. Owned by the connected parent
+   *  (OnboardingDialog) so this step stays free of database access. */
+  onDisconnect?: (provider: OAuthProvider) => Promise<void>
   // Optional dependency injection for testing
   useOAuthConnectHook?: () => UseOAuthConnectResult
 }
@@ -31,12 +32,11 @@ export const OnboardingAuthStep = ({
   isProcessing = false,
   isConnected = false,
   onConnectionChange,
+  onDisconnect,
   useOAuthConnectHook,
 }: OnboardingAuthStepProps) => {
-  const db = useDatabase()
   const location = useLocation()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
 
   // Determine which provider to use for this step (first in list)
   const provider = providers[0]
@@ -85,8 +85,7 @@ export const OnboardingAuthStep = ({
 
   const handleDisconnect = async () => {
     try {
-      await deleteIntegrationCredentials(db, provider)
-      await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
+      await onDisconnect?.(provider)
       onConnectionChange(false)
     } catch (error) {
       console.error('Failed to disconnect:', error)
@@ -94,47 +93,51 @@ export const OnboardingAuthStep = ({
   }
 
   return (
-    <div className="w-full flex flex-col">
-      <div className="text-center space-y-4">
-        <IconCircle>
-          <TopIcon className="w-8 h-8" />
-        </IconCircle>
-        <h2 className="text-2xl font-bold">Connect {providerName}</h2>
-        <p className="text-muted-foreground">
-          {isMicrosoft
-            ? 'Your assistant can help you manage your email, calendar, and documents.'
-            : 'Your assistant can help you manage your email and calendar.'}
-        </p>
-      </div>
+    <div className="flex w-full flex-1 flex-col justify-center">
+      <OnboardingStepHeader
+        icon={<TopIcon className="size-10" />}
+        title={<Trans>Connect {providerName}</Trans>}
+        description={
+          isMicrosoft ? (
+            <Trans>Your assistant can help you manage your email, calendar, and documents.</Trans>
+          ) : (
+            <Trans>Your assistant can help you manage your email and calendar.</Trans>
+          )
+        }
+      />
 
-      <div className="pt-5">
+      <div className="mt-10 rounded-xl bg-muted">
         <OnboardingFeatureCard
-          className="mb-4"
           icon={Calendar}
-          title="Calendar"
+          title={<Trans>Calendar</Trans>}
           description={
-            isMicrosoft
-              ? 'View and manage your schedule; create + reschedule events.'
-              : 'View your schedule and upcoming events.'
+            isMicrosoft ? (
+              <Trans>View and manage your schedule; create + reschedule events.</Trans>
+            ) : (
+              <Trans>View your schedule and upcoming events.</Trans>
+            )
           }
         />
         <OnboardingFeatureCard
-          className="mb-4"
           icon={Mail}
-          title="Email"
+          title={<Trans>Email</Trans>}
           description={
-            isMicrosoft ? 'Read, compose, and organize your emails.' : 'Read your emails and compose drafts.'
+            isMicrosoft ? (
+              <Trans>Read, compose, and organize your emails.</Trans>
+            ) : (
+              <Trans>Read your emails and compose drafts.</Trans>
+            )
           }
         />
         {isMicrosoft && (
           <OnboardingFeatureCard
             icon={File}
-            title="OneDrive Access"
-            description="Search and work with your OneDrive files and documents."
+            title={<Trans>OneDrive Access</Trans>}
+            description={<Trans>Search and work with your OneDrive files and documents.</Trans>}
           />
         )}
 
-        <div className="flex items-start rounded-lg pt-5">
+        <div className="px-4 pb-4 pt-2">
           <ConnectProviderButton
             provider={provider}
             isConnected={isConnected}
@@ -146,6 +149,7 @@ export const OnboardingAuthStep = ({
             setPreferredName={true}
             returnContext="onboarding"
             allowDisconnect={true}
+            variant="default"
             className="w-full"
             useOAuthConnectHook={useOAuthConnectHook}
           />

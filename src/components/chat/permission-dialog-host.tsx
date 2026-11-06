@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
+import { deriveToolKey, findAllowOption, useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { PermissionDialog } from './permission-dialog'
 
 /**
@@ -12,16 +12,33 @@ import { PermissionDialog } from './permission-dialog'
  */
 export const PermissionDialogHost = () => {
   const { id, pendingPermission } = useCurrentChatSession()
+  const allowAlwaysForAgent = useChatStore((state) => state.allowAlwaysForAgent)
+  const allowAlwaysForTool = useChatStore((state) => state.allowAlwaysForTool)
   const resolvePendingPermission = useChatStore((state) => state.resolvePendingPermission)
 
   if (!pendingPermission) {
     return null
   }
 
+  const allowOption = findAllowOption(pendingPermission.request.options)!
+  const resolveAlwaysAllow = () => {
+    resolvePendingPermission(id, { outcome: { outcome: 'selected', optionId: allowOption.optionId } })
+  }
+  const handleAlwaysAllowTool = () => {
+    allowAlwaysForTool(pendingPermission.agentId, deriveToolKey(pendingPermission.request))
+    resolveAlwaysAllow()
+  }
+  const handleAlwaysAllowAgent = () => {
+    allowAlwaysForAgent(pendingPermission.agentId)
+    resolveAlwaysAllow()
+  }
+
   return (
     <PermissionDialog
       request={pendingPermission.request}
       onRespond={(response) => resolvePendingPermission(id, response)}
+      onAlwaysAllowTool={handleAlwaysAllowTool}
+      onAlwaysAllowAgent={handleAlwaysAllowAgent}
     />
   )
 }

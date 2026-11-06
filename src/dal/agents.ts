@@ -7,12 +7,15 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
+import { useAppName } from '@/lib/branding-selectors'
 import { disposeAdapter } from '@/acp/adapter-cache'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsSecretsTable, agentsSystemTable, agentsTable } from '../db/tables'
 import { builtInAgent } from '../defaults/agents'
 import { nowIso } from '../lib/utils'
 import type { Agent } from '@/types/acp'
+import { customAgentTypes, type CustomAgentType } from '@shared/acp-types'
+import { clearAcpSessionIdsForAgent } from './chat-threads'
 
 /** Shape persisted in the local-only `agents_secrets` table. */
 export type AgentSecrets = {
@@ -26,11 +29,16 @@ export type AgentSecrets = {
 type AgentCustomRow = typeof agentsTable.$inferSelect
 type AgentSystemRow = typeof agentsSystemTable.$inferSelect
 
-/** Lift a synced custom row into the unified `Agent` shape used by UI/chat. */
-const customRowToAgent = (row: AgentCustomRow): Agent => ({
+/**
+ * Lift a synced custom row into the unified `Agent` shape used by UI/chat.
+ * `type` syncs in plaintext, so a server could rewrite it to a kind that routes
+ * the chat somewhere else (a `managed-http` agent posts its history to the
+ * backend). Anything outside `customAgentTypes` is clamped to `remote-acp`.
+ */
+export const customRowToAgent = (row: AgentCustomRow): Agent => ({
   id: row.id,
   name: row.name,
-  type: row.type,
+  type: (customAgentTypes as readonly string[]).includes(row.type) ? row.type : 'remote-acp',
   transport: row.transport,
   url: row.url,
   description: row.description,
@@ -42,7 +50,7 @@ const customRowToAgent = (row: AgentCustomRow): Agent => ({
 })
 
 /** Lift a local-only system row into the unified `Agent` shape. */
-const systemRowToAgent = (row: AgentSystemRow): Agent => ({
+export const systemRowToAgent = (row: AgentSystemRow): Agent => ({
   id: row.id,
   name: row.name,
   type: row.type,
@@ -98,19 +106,39 @@ export const composeAllAgents = (
   options: { includeBuiltIn?: boolean } = {},
 ): Agent[] => [...(options.includeBuiltIn === false ? [] : [builtInAgent]), ...systemAgents, ...customAgents]
 
+/** Load the combined agent list once, in the same order as {@link useAllAgents},
+ *  for code that cannot use the live hook, such as the discovery bootstrap effect
+ *  re-resolving unstarted chats when the discovered default goes away. */
+export const loadAllAgents = async (
+  db: AnyDrizzleDatabase,
+  options: { includeBuiltIn?: boolean } = {},
+): Promise<Agent[]> => {
+  const [systemRows, customRows] = await Promise.all([getAllSystemAgents(db), getAllAgents(db)])
+  return composeAllAgents(systemRows.map(systemRowToAgent), customRows.map(customRowToAgent), options)
+}
+
 /** Combined list hook: built-in first (unless disabled by deployment), then
  *  system (alpha), then customs (alpha). Matches the Settings/Agents visual order. */
 export const useAllAgents = (): Agent[] => {
   const includeBuiltIn = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+  // `builtInAgent.name` reads the app name live, so the same object stays current
+  // wherever it is held (the chat store keeps the selected agent by reference;
+  // a copy with the name baked in would go stale there). The value is unused:
+  // subscribing re-renders every agent list when `/config` renames the app.
+  useAppName()
   return composeAllAgents(useSystemAgents(), useAgents(), { includeBuiltIn })
 }
+
+/** Wire transports a user-creatable custom agent can use: a `ws(s)://` endpoint,
+ *  or an iroh P2P bridge dialed by the NodeId/ticket held in `url`. */
+export type CustomAgentTransport = 'websocket' | 'iroh'
 
 /** Fields accepted by `createAgent`. `id` is caller-generated (uuid). */
 export type CreateAgentInput = {
   id: string
   name: string
-  type: 'remote-acp' | 'managed-acp'
-  transport: 'websocket'
+  type: CustomAgentType
+  transport: CustomAgentTransport
   url: string
   description?: string | null
   icon?: string | null
@@ -143,29 +171,62 @@ export type UpdateAgentPatch = Partial<
 /** Patch fields whose change invalidates a warm ACP connection — the wire
  *  identity (endpoint + transport + agent type). Editing any of these means the
  *  next chat must reconnect, so the cached adapter is disposed. */
-const connectionInvalidatingFields: ReadonlyArray<keyof UpdateAgentPatch> = ['url', 'transport', 'type']
+const connectionInvalidatingFields = ['url', 'transport', 'type'] as const satisfies ReadonlyArray<
+  keyof UpdateAgentPatch
+>
 
 /** Patch an existing custom agent. Built-in and system agents are not editable
  *  through the DAL — built-in lives in code, system rows live in the local-only
  *  `agents_system` table which `updateAgent` never touches.
  *
  *  Editing the wire identity (url/transport/type) disposes the agent's warm ACP
- *  connection so the next chat reconnects against the new endpoint. */
-export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: UpdateAgentPatch): Promise<void> => {
+ *  connection so the next chat reconnects against the new endpoint.
+ *
+ *  Returns whether the persisted wire identity changed so callers can refresh
+ *  any active in-memory chat sessions for the agent. */
+export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: UpdateAgentPatch): Promise<boolean> => {
   if (id === builtInAgent.id) {
     throw new Error(`updateAgent: refusing to edit built-in agent "${id}"`)
   }
   if (Object.keys(patch).length === 0) {
-    return
+    return false
   }
-  await db
-    .update(agentsTable)
-    .set(patch)
-    .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+  const patchTouchesWire = connectionInvalidatingFields.some((field) => patch[field] !== undefined)
+  if (!patchTouchesWire) {
+    await db
+      .update(agentsTable)
+      .set(patch)
+      .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+    return false
+  }
 
-  if (connectionInvalidatingFields.some((field) => field in patch)) {
+  const invalidatesConnection = await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ type: agentsTable.type, transport: agentsTable.transport, url: agentsTable.url })
+      .from(agentsTable)
+      .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+      .get()
+    const wireIdentityChanged =
+      existing !== undefined &&
+      connectionInvalidatingFields.some((field) => patch[field] !== undefined && patch[field] !== existing[field])
+
+    await tx
+      .update(agentsTable)
+      .set(patch)
+      .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+
+    if (wireIdentityChanged) {
+      await clearAcpSessionIdsForAgent(tx, id)
+    }
+
+    return wireIdentityChanged
+  })
+
+  if (invalidatesConnection) {
     await disposeAdapter(id)
   }
+
+  return invalidatesConnection
 }
 
 /** Soft delete a custom agent. Never hard-delete — sets `deletedAt` and lets

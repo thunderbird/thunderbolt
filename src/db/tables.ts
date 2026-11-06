@@ -5,6 +5,7 @@
 import type { WidgetCacheData } from '@/widgets'
 import type { UIMessage } from 'ai'
 import type { UIMessageMetadata } from '@/types'
+import { customAgentTypes, systemAgentTypes } from '@shared/acp-types'
 import { sql } from 'drizzle-orm'
 import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
@@ -26,14 +27,52 @@ export const chatThreadsTable = sqliteTable(
     triggeredBy: text('triggered_by'),
     wasTriggeredByAutomation: integer('was_triggered_by_automation').default(0),
     contextSize: integer('context_size'),
-    modeId: text('mode_id'),
     acpSessionId: text('acp_session_id'),
     agentId: text('agent_id'),
+    /** Owning project, or null for a loose chat. Deleting a project orphans its
+     *  chats (sets this back to null) rather than deleting them. */
+    projectId: text('project_id'),
+    /** Mini App this chat was started from, or null. Deregistering an app leaves
+     *  its chats intact — the registry is deployment config, so an app can
+     *  disappear between releases and the chat has to outlive it. */
+    miniAppId: text('mini_app_id'),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
   },
   (table) => [
     index('idx_chat_threads_active')
+      .on(table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_chat_threads_project')
+      .on(table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_chat_threads_mini_app')
+      .on(table.miniAppId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+)
+
+/**
+ * A Projects workspace: durable instructions applied to every chat in the
+ * project, with membership carried by `chat_threads.project_id`.
+ */
+export const projectsTable = sqliteTable(
+  'projects',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    description: text('description'),
+    /** Always-on instructions injected into every chat in this project. */
+    instructions: text('instructions'),
+    icon: text('icon'),
+    pinnedOrder: integer('pinned_order'),
+    createdAt: text('created_at').default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').default(sql`(datetime('now'))`),
+    deletedAt: text('deleted_at'),
+    userId: text('user_id'),
+  },
+  (table) => [
+    index('idx_projects_active')
       .on(table.id)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
@@ -133,7 +172,7 @@ export const mcpServersTable = sqliteTable(
   {
     id: text('id').primaryKey(),
     name: text('name'),
-    type: text('type', { enum: ['http', 'sse', 'stdio'] }).default('http'),
+    type: text('type', { enum: ['http', 'sse', 'stdio', 'iroh'] }).default('http'),
     url: text('url'),
     command: text('command'),
     args: text('args'),
@@ -172,7 +211,10 @@ export const skillsTable = sqliteTable(
   'skills',
   {
     id: text('id').primaryKey(),
+    /** Slash-token slug (`/code-review`) — lowercase, hyphenated, unique per user. */
     name: text('name'),
+    /** Human display name ("Code Review"). Older rows may be null — display falls back to `name`. */
+    label: text('label'),
     description: text('description'),
     instruction: text('instruction'),
     enabled: integer('enabled').default(1),
@@ -242,27 +284,6 @@ export const modelProfilesTable = sqliteTable(
   ],
 )
 
-export const modesTable = sqliteTable(
-  'modes',
-  {
-    id: text('id').primaryKey(),
-    name: text('name'),
-    label: text('label'),
-    icon: text('icon'),
-    systemPrompt: text('system_prompt'),
-    isDefault: integer('is_default').default(0),
-    order: integer('order').default(0),
-    defaultHash: text('default_hash'),
-    deletedAt: text('deleted_at'),
-    userId: text('user_id'),
-  },
-  (table) => [
-    index('idx_modes_active')
-      .on(table.id)
-      .where(sql`${table.deletedAt} IS NULL`),
-  ],
-)
-
 /** Synced via PowerSync. No token. Used for device list and revoke access. */
 export const devicesTable = sqliteTable('devices', {
   id: text('id').primaryKey(),
@@ -275,6 +296,21 @@ export const devicesTable = sqliteTable('devices', {
   lastSeen: text('last_seen'),
   createdAt: text('created_at'),
   revokedAt: text('revoked_at'),
+  // Discriminates normal devices, iroh bridge devices (ACP/MCP), and CLI account clients. Mirrors the backend
+  // `device_type` enum ('normal' | 'bridge' | 'cli', default 'normal'). Nullable here: this is the
+  // frontend half of the two-PR synced-column deploy — the `SELECT *` devices sync rule only
+  // replicates it once the backend migration that adds this column deploys and the PowerSync
+  // Cloud rules refresh. Until then it stays null cross-device and reads as a normal device,
+  // never errors.
+  deviceType: text('device_type', { enum: ['normal', 'bridge', 'cli'] }),
+  // iroh P2P endpoint identity. Set via the backend node-id routes (self-enroll or the
+  // canary-gated attestation), then synced down.
+  // Deploy ordering: this is the frontend half of the two-PR synced-column deploy — the
+  // `SELECT *` devices sync rule only replicates these once the backend migration that adds
+  // them deploys and the PowerSync Cloud rules are refreshed. Until then nodeId stays null
+  // cross-device — pairing is inert, never errors.
+  nodeId: text('node_id'),
+  nodeIdAttestedAt: text('node_id_attested_at'),
 })
 
 /** Synced via PowerSync. User-created ACP agents only. `isSystem` is always 0; built-ins and system agents are not rows. */
@@ -283,8 +319,12 @@ export const agentsTable = sqliteTable(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    type: text('type', { enum: ['remote-acp', 'managed-acp'] }).notNull(),
-    transport: text('transport', { enum: ['websocket'] }).notNull(),
+    type: text('type', { enum: customAgentTypes }).notNull(),
+    // `iroh` dials a peer bridge by NodeId/ticket (carried in `url`); `websocket`
+    // is a `ws(s)://` endpoint. Enum is TypeScript-only on a TEXT column — no SQL
+    // CHECK — so adding a value needs no migration, and the `SELECT *` sync rule
+    // already replicates it.
+    transport: text('transport', { enum: ['websocket', 'iroh'] }).notNull(),
     url: text('url').notNull(),
     description: text('description'),
     icon: text('icon'),
@@ -303,12 +343,15 @@ export const agentsTable = sqliteTable(
 export const agentsSystemTable = sqliteTable('agents_system', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  type: text('type', { enum: ['managed-acp'] }).notNull(),
-  transport: text('transport', { enum: ['websocket'] }).notNull(),
+  type: text('type', { enum: systemAgentTypes }).notNull(),
+  transport: text('transport', { enum: ['websocket', 'iroh', 'http'] }).notNull(),
   url: text('url').notNull(),
   description: text('description'),
   icon: text('icon'),
   fetchedAt: text('fetched_at').notNull(),
+  /** 1 on the agent the discovery response names as `defaultAgentId`. Null on
+   *  rows written before the column existed, which reads as "not the default". */
+  isDefault: integer('is_default'),
 })
 
 /** Local-only table for ACP agent credentials (synced or system). Never leaves the device. */

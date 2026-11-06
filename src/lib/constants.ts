@@ -6,11 +6,14 @@
  * App-wide constants
  */
 
-/** URL to Mozilla/Thunderbird privacy policy */
+/** URL to Mozilla/Thunderbird privacy policy; operator branding can replace it (see `useBrandingLinks`) */
 export const privacyPolicyUrl = 'https://www.thunderbird.net/en-US/privacy/'
 
-/** URL to Mozilla terms of service */
+/** URL to Mozilla terms of service; operator branding can replace it */
 export const termsOfServiceUrl = 'https://www.mozilla.org/en-US/about/legal/terms/mozilla/'
+
+/** Where users reach support; operator branding can replace it */
+export const supportUrl = 'mailto:support@thunderbird.net'
 
 /** Default title shown for new/untitled chat threads */
 export const defaultChatTitle = 'New Chat'
@@ -21,11 +24,41 @@ export const edgeSpacing = {
   desktop: 16,
 } as const
 
-/** Mobile sidebar width as a fraction of viewport width (0–1) */
-export const mobileSidebarWidthRatio = 0.8
+/**
+ * CSS `bottom`/inset expression for controls floating at the bottom edge of
+ * the mobile viewport (sidebar footer, floating create pill). Native mobile
+ * pins to the home-indicator safe area with an `edgeSpacing.mobile` (12px)
+ * floor; web mobile adds 8px of breathing room above the safe area.
+ */
+export const getMobileBottomInset = (isNativeMobile: boolean): string =>
+  isNativeMobile
+    ? `max(var(--safe-area-bottom-padding), ${edgeSpacing.mobile}px)`
+    : 'calc(var(--safe-area-bottom-padding, 0px) + 0.5rem)'
 
-/** OTP code length — must match backend emailOTP config (otpLength). */
+/** Mobile sidebar width as a fraction of viewport width (0–1) */
+const mobileSidebarWidthRatio = 0.8
+
+/** Maximum mobile sidebar width in pixels. Matches the 360px desktop content
+ *  floor in main-layout.tsx so the sidebar never outgrows a usable pane. */
+const mobileSidebarMaxWidth = 360
+
+/** Mobile sidebar width shared by CSS sizing and overlays rendered in portals. */
+export const mobileSidebarWidthCss = `min(${mobileSidebarWidthRatio * 100}vw, ${mobileSidebarMaxWidth}px)`
+
+/** Calculates the mobile sidebar width for gestures and hit testing. */
+export const getMobileSidebarWidth = (viewportWidth: number) =>
+  Math.min(viewportWidth * mobileSidebarWidthRatio, mobileSidebarMaxWidth)
+
+/** Sign-in/waitlist OTP code length — must match backend emailOTP config (otpLength). */
 export const otpLength = 8
+
+/**
+ * Recovery-phrase step-up code length — must match `stepUpOtpLength` in
+ * `backend/src/lib/step-up-otp.ts`. Deliberately separate from `otpLength`
+ * despite both being 8: that one tracks better-auth's emailOTP config, this one
+ * tracks a generator the app owns outright, and either can move alone.
+ */
+export const stepUpOtpLength = 8
 
 /** HTTP header name for challenge token session binding. */
 export const challengeTokenHeader = 'x-challenge-token'

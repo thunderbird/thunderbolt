@@ -10,18 +10,34 @@
  * the adapter contract consumed by `src/chats/chat-instance.ts` `customFetch`.
  */
 
+import type { ReasoningEffort } from '@shared/reasoning-effort'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SessionSideEffectSink } from '@/acp/translators/acp-to-ai-sdk'
-import type { ChatThread, Mode, Model, SaveMessagesFunction } from '@/types'
+import type { TurnBudgetConsumer } from '@/ai/retry-budget'
+import type { TurnTelemetry } from '@/ai/turn-telemetry'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
+import type { ChatThread, Model, SaveMessagesFunction } from '@/types'
+import type { AgentTransport, AgentType } from '@shared/acp-types'
+import type { CompactionCheckpoint, CompactionStatus } from '@shared/agent-core'
+import type { AcpCompaction, AcpSessionEvent } from '@/acp/compaction'
 
 /** Capabilities advertised by an ACP agent on `initialize`. Stored on the
  *  adapter so the connect logic can branch on `loadSession` and future
  *  prompt-capability flags surface to the composer. */
 export type AgentCapabilities = {
   loadSession: boolean
+  /** Agent accepts enabled skill definitions through Thunderbolt's namespaced
+   *  ACP session metadata extension. */
+  skills: boolean
+  /** Agent advertises `sessionCapabilities.resume` (`session/resume`): it can
+   *  restore a prior session's private execution state from its own store
+   *  WITHOUT replaying the transcript (unlike `loadSession`). Lets the app hand
+   *  back a stored `acpSessionId` and continue a thread without re-seeding
+   *  context. Experimental in `@agentclientprotocol/sdk` — version-pinned. */
+  resume: boolean
   promptCapabilities: {
     image: boolean
     audio: boolean
@@ -35,8 +51,12 @@ export type AgentCapabilities = {
 export type Agent = {
   id: string
   name: string
-  type: 'built-in' | 'remote-acp' | 'managed-acp'
-  transport: 'in-process' | 'websocket'
+  type: AgentType
+  /** The wire transports plus `iroh`, which only a user-added remote-acp agent
+   *  uses: it is dialed peer-to-peer over an n0 relay, and its `url` carries the
+   *  bridge's NodeId/ticket instead of a `ws(s)://` URL. `http` is a managed-http
+   *  agent whose `url` is a server-relative path. */
+  transport: AgentTransport | 'iroh'
   url: string | null
   description: string | null
   icon: string | null
@@ -55,20 +75,44 @@ export type AgentAdapterContext = {
   chatThread: ChatThread | null
   acpSessionId: string | null
   saveMessages: SaveMessagesFunction
-  selectedMode: Mode
   selectedModel: Model
+  reasoningEffort?: ReasoningEffort
   mcpClients: NamedMCPClient[]
   /** Reconnect a dropped MCP client at the `tools()` boundary; returns a fresh
    *  client or null. Supplied by the MCP provider via the chat store. */
   reconnectClient: (client: MCPClient) => Promise<MCPClient | null>
   httpClient: HttpClient
   getProxyFetch: () => FetchFn
+  turnBudget?: TurnBudgetConsumer
+  telemetry?: TurnTelemetry
+  /** Session-scoped full-transcript trace. Built-in turns reuse telemetry's id;
+   *  ACP turns receive an equivalent id without emitting turn telemetry. */
+  debugTranscriptTraceId?: string
+  webToolBudget?: WebToolBudget
+  /** Increments only when the current assistant response is regenerated. Built-in
+   *  persistent harnesses use it to rebuild from the edited transcript without
+   *  rebuilding during ordinary transcript growth. */
+  regenerationRevision?: number
+  onCompactionStatus?: (status: CompactionStatus) => void
+  /** Restore presentation-only compaction entities before the agent replays patches. */
+  getAcpCompactions?: () => AcpCompaction[]
+  /** True when handled outside the current stream; false lets the translator emit it. */
+  onAcpSessionEvent?: (event: AcpSessionEvent, inPrompt: boolean, replaying?: boolean) => boolean
   /** Resolved instruction bodies for any user skills (`/slug`) referenced in
    *  the prompt. The built-in pipeline injects these as system messages
    *  (`ai/fetch.ts`); ACP agents only receive prompt text, so the adapter folds
    *  them into the prompt instead — keeping skills behaving the same across
-   *  agents. Empty/omitted when no skill token resolved. */
+   *  agents. The hosted agent gets them in the request's `instructions`
+   *  field. Empty/omitted when no skill token resolved. */
   skillInstructions?: string[]
+  /** The chat's project context (its instructions), rendered as prompt text.
+   *  Built-in gets this through `ai/fetch.ts`; ACP agents have no system
+   *  channel, so the adapter folds it into the prompt — otherwise a chat in a
+   *  project behaves as though it had none once you switch agents. The hosted
+   *  agent gets it in the request's `instructions` field, ahead of any skills.
+   *  The project *tool* (cross-chat search) stays built-in-only: it is an
+   *  AI-SDK tool, and an ACP agent runs its own toolset. */
+  projectSection?: string
   /** Called when an ACP adapter created a fresh `sessionId` via `session/new`.
    *  The chat layer persists it on `chatThreads.acpSessionId` so future loads
    *  can call `session/load` when the agent supports it. */
@@ -87,7 +131,10 @@ export type AgentAdapterContext = {
  *  session without sending a prompt. Used by `ensureSession` to warm the
  *  connection — creating `session/new` early so the agent emits its
  *  `available_commands_update` before the user's first message. */
-export type EnsureSessionContext = Pick<AgentAdapterContext, 'threadId' | 'acpSessionId' | 'onAcpSessionId'>
+export type EnsureSessionContext = Pick<
+  AgentAdapterContext,
+  'threadId' | 'acpSessionId' | 'onAcpSessionId' | 'getAcpCompactions' | 'onAcpSessionEvent'
+>
 
 /** Runtime adapter wrapping either the built-in pipeline or an ACP transport.
  *  `customFetch` in `chat-instance.ts` delegates to `adapter.fetch` and returns
@@ -96,7 +143,11 @@ export type AgentAdapter = {
   agent: Agent
   /** `null` for the built-in adapter (no ACP handshake). */
   capabilities: AgentCapabilities | null
+  /** Settles when this remote adapter generation terminates. Absent for the
+   *  built-in adapter, which has no transport lifecycle. */
+  closed?: Promise<void>
   fetch: (init: RequestInit, context: AgentAdapterContext) => Promise<Response>
+  compact?: (init: RequestInit, context: AgentAdapterContext, instructions?: string) => Promise<CompactionCheckpoint>
   /** Eagerly resolve the thread's ACP session (no prompt), so the agent emits
    *  its advertised commands before the first send. No-op for the built-in
    *  adapter. Idempotent per thread — reuses the cached session. */

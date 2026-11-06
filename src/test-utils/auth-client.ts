@@ -25,6 +25,11 @@ type MockAuthClientOptions = {
   sendVerificationOtp?: (options: { email: string; type: string }) => Promise<{ error: { message: string } | null }>
   signOut?: () => Promise<void>
   getSession?: () => Promise<{ data: unknown; error: { message: string } | null }>
+  /**
+   * Stand-in for the Better Auth client's `$fetch`. Lets tests drive raw endpoint
+   * calls (e.g. the device-authorization `/device*` routes) without a real network.
+   */
+  fetch?: (path: string, options?: unknown) => Promise<{ data: unknown; error: unknown }>
 }
 
 /**
@@ -40,6 +45,7 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
     sendVerificationOtp = async () => ({ error: null }),
     signOut = async () => {},
     getSession = async () => ({ data: session, error: null }),
+    fetch = async () => ({ data: null, error: null }),
   } = options
 
   // Use unknown first to bypass strict type checking for test mocks
@@ -60,6 +66,7 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
       sendVerificationOtp,
     },
     signOut,
+    $fetch: fetch,
     $Infer: {} as AuthClient['$Infer'],
   } as unknown as AuthClient
 }

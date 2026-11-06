@@ -25,19 +25,30 @@ import '@/testing-library'
 import { act } from '@testing-library/react'
 import type {
   Agent as AcpSdkAgent,
+  CancelNotification,
   Client,
   InitializeRequest,
   LoadSessionRequest,
   NewSessionRequest,
   PromptRequest,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+  ResumeSessionRequest,
   SessionNotification,
+  SessionConfigOption,
+  SetSessionConfigOptionRequest,
 } from '@agentclientprotocol/sdk'
 import { describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
+import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '@shared/agent-core/skills'
 import type { AcpTransport } from './types'
 import { connectAcpAdapter, type AcpAdapterContext } from './acp-adapter'
+import { sessionConfigKey, useSessionConfigStore } from './session-config-store'
+import { TransportTerminationError } from './termination'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
+import type { AcpCompaction, AcpSessionEvent } from './compaction'
+import { useAcpSessionStore } from './session-state-store'
 
 const remoteAgent: Agent = {
   id: 'remote-foo',
@@ -97,12 +108,32 @@ const buildFakeTransport = (): {
  *  or hang). `newSession` hands out distinct ids per call. The `toClient`
  *  factory is captured so a test can push `session/update` notifications through
  *  the real routing path the adapter wires up. */
-const buildFakeConnection = (opts: { hangInitialize?: boolean; loadSession?: boolean } = {}) => {
+const buildFakeConnection = (
+  opts: {
+    configOptions?: SessionConfigOption[]
+    beforeConfigResponse?: () => Promise<void>
+    beforeSessionResponse?: (client: Client, sessionId: string) => Promise<void>
+    hangInitialize?: boolean
+    loadSession?: boolean
+    resume?: boolean
+    skills?: boolean
+    /** Reject the resume/load call so a test exercises the tier fallthrough. */
+    rejectResume?: boolean
+    rejectLoad?: boolean
+    /** Reject the fire-and-forget cancel so a test exercises the abort `.catch`. */
+    rejectCancel?: boolean
+    /** Reject prompt after its gate opens so transport-death mapping is observable. */
+    rejectPrompt?: boolean
+  } = {},
+) => {
   const calls = {
     initialize: [] as InitializeRequest[],
+    config: [] as SetSessionConfigOptionRequest[],
     newSession: [] as NewSessionRequest[],
     loadSession: [] as LoadSessionRequest[],
+    resumeSession: [] as ResumeSessionRequest[],
     prompt: [] as PromptRequest[],
+    cancel: [] as CancelNotification[],
   }
   let client: Client | null = null
   let newSessionCount = 0
@@ -121,21 +152,46 @@ const buildFakeConnection = (opts: { hangInitialize?: boolean; loadSession?: boo
       if (opts.hangInitialize) {
         return new Promise<never>(() => {})
       }
-      return Promise.resolve({ protocolVersion: 1, agentCapabilities: { loadSession: opts.loadSession ?? false } })
+      return Promise.resolve({
+        protocolVersion: 1,
+        agentCapabilities: {
+          loadSession: opts.loadSession ?? false,
+          sessionCapabilities: opts.resume ? { resume: {} } : {},
+          _meta: opts.skills ? skillsCapabilityMeta : undefined,
+        },
+      })
     }
-    newSession = (req: NewSessionRequest) => {
+    newSession = async (req: NewSessionRequest) => {
       calls.newSession.push(req)
       newSessionCount++
-      return Promise.resolve({ sessionId: `sess-${newSessionCount}` })
+      await opts.beforeSessionResponse?.(client!, `sess-${newSessionCount}`)
+      return Promise.resolve({ sessionId: `sess-${newSessionCount}`, configOptions: opts.configOptions })
     }
-    loadSession = (req: LoadSessionRequest) => {
+    loadSession = async (req: LoadSessionRequest) => {
       calls.loadSession.push(req)
-      return Promise.resolve({})
+      await opts.beforeSessionResponse?.(client!, req.sessionId)
+      return opts.rejectLoad ? Promise.reject(new Error('session unloadable')) : Promise.resolve({})
+    }
+    resumeSession = (req: ResumeSessionRequest) => {
+      calls.resumeSession.push(req)
+      return opts.rejectResume ? Promise.reject(new Error('session evicted')) : Promise.resolve({})
     }
     prompt = async (req: PromptRequest) => {
       calls.prompt.push(req)
       await promptGatePromise
+      if (opts.rejectPrompt) {
+        throw new Error('SDK connection aborted')
+      }
       return { stopReason: 'end_turn' as const }
+    }
+    setSessionConfigOption = async (req: SetSessionConfigOptionRequest) => {
+      calls.config.push(req)
+      await opts.beforeConfigResponse?.()
+      return { configOptions: (opts.configOptions ?? []).map((option) => ({ ...option, currentValue: req.value })) }
+    }
+    cancel = (req: CancelNotification) => {
+      calls.cancel.push(req)
+      return opts.rejectCancel ? Promise.reject(new Error('transport closing')) : Promise.resolve()
     }
   }
 
@@ -143,6 +199,11 @@ const buildFakeConnection = (opts: { hangInitialize?: boolean; loadSession?: boo
     FakeConnection,
     calls,
     pushUpdate: (n: SessionNotification) => client?.sessionUpdate(n),
+    // Route a permission request through the same client the adapter registers,
+    // so a test can observe whether a thread's handler is still wired (its own
+    // outcome) or has been torn down (the adapter's `cancelled` fallback).
+    pushPermission: (req: RequestPermissionRequest): Promise<RequestPermissionResponse> | undefined =>
+      client ? Promise.resolve(client.requestPermission(req)) : undefined,
     releasePrompts: () => promptGate.release(),
   }
 }
@@ -172,10 +233,38 @@ const readSse = async (response: Response, max = 50): Promise<string[]> => {
   return chunks
 }
 
-const promptInit = (text: string): RequestInit => ({
+const promptInit = (text: string, signal?: AbortSignal): RequestInit => ({
   method: 'POST',
   body: JSON.stringify({ id: 't', messages: [{ role: 'user', parts: [{ type: 'text', text }] }] }),
+  signal,
 })
+
+/** Build a request body from an explicit turn list so a test can supply prior
+ *  history (everything before the trailing user turn) for the fallback replay. */
+const conversationInit = (turns: { role: 'user' | 'assistant'; text: string }[]): RequestInit => ({
+  method: 'POST',
+  body: JSON.stringify({
+    id: 't',
+    messages: turns.map((t) => ({ role: t.role, parts: [{ type: 'text', text: t.text }] })),
+  }),
+})
+
+/** Read the text of the single text block the adapter posted on `session/prompt`. */
+const sentPromptText = (calls: { prompt: PromptRequest[] }, index = 0): string =>
+  (calls.prompt[index]?.prompt?.[0] as { type: string; text: string }).text
+
+const enabledSkills: SkillDefinition[] = [
+  {
+    name: 'daily-brief',
+    description: 'Build a concise daily rundown.',
+    instruction: 'Gather current weather and calendar details.',
+  },
+  {
+    name: 'meeting-notes',
+    description: 'Summarize a meeting.',
+    instruction: 'Extract decisions and action items.',
+  },
+]
 
 describe('connectAcpAdapter — handshake failure modes', () => {
   it('rejects after handshakeTimeoutMs when initialize never resolves and tears down the transport', async () => {
@@ -241,6 +330,7 @@ describe('connectAcpAdapter — handshake failure modes', () => {
     const response = await adapter.fetch(promptInit('hi'), threadCtx('t1'))
     expect(response.headers.get('content-type')).toBe('text/event-stream')
     expect(calls.newSession).toHaveLength(1)
+    expect(calls.newSession[0]?.cwd).toBe('.')
 
     let sse: string[] = []
     await act(async () => {
@@ -255,6 +345,39 @@ describe('connectAcpAdapter — handshake failure modes', () => {
     expect(joined).toContain('[DONE]')
     // The body must close so the AI SDK leaves the streaming state.
     expect(sse).toContain('[CLOSED]')
+  })
+
+  it('rejects fetch and ensureSession immediately after the adapter generation dies', async () => {
+    const { transport, rejectClosed } = buildFakeTransport()
+    const { FakeConnection } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    rejectClosed(new TransportTerminationError('remote-close', 'relay dropped'))
+    await adapter.closed?.catch(() => {})
+
+    await expect(adapter.fetch(promptInit('too late'), threadCtx('dead-fetch'))).rejects.toThrow('connection-lost')
+    await expect(adapter.ensureSession(threadCtx('dead-session'))).rejects.toThrow('connection-lost')
+  })
+
+  it('serializes connection-lost when an in-flight prompt rejects after termination', async () => {
+    const { transport, rejectClosed } = buildFakeTransport()
+    const { FakeConnection, releasePrompts } = buildFakeConnection({ rejectPrompt: true })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    const response = await adapter.fetch(promptInit('in flight'), threadCtx('dead-prompt'))
+
+    rejectClosed(new TransportTerminationError('stream-error', 'relay dropped'))
+    await adapter.closed?.catch(() => {})
+    releasePrompts()
+    const chunks = await readSse(response)
+
+    expect(chunks.join('')).toContain('connection-lost')
+    expect(chunks).toContain('[CLOSED]')
   })
 
   it('folds resolved skill instructions into the prompt ahead of the user text', async () => {
@@ -301,10 +424,113 @@ describe('connectAcpAdapter — handshake failure modes', () => {
   })
 })
 
+describe('connectAcpAdapter — skills capability', () => {
+  it('detects capability metadata from initialize and sends full skills on session/new', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls } = buildFakeConnection({ skills: true })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+
+    expect(adapter.capabilities?.skills).toBe(true)
+    await adapter.ensureSession(threadCtx('thread-new'))
+
+    expect(calls.newSession[0]?._meta).toEqual(buildWireSkillsMeta(enabledSkills))
+  })
+
+  it('sends full skills on supported session/resume and session/load requests', async () => {
+    const resumeTransport = buildFakeTransport().transport
+    const resumeConnection = buildFakeConnection({ skills: true, resume: true })
+    const resumeAdapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => resumeTransport,
+      ClientSideConnection: resumeConnection.FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+    await resumeAdapter.ensureSession(threadCtx('thread-resume', { acpSessionId: 'existing-resume' }))
+
+    expect(resumeConnection.calls.resumeSession[0]?._meta).toEqual(buildWireSkillsMeta(enabledSkills))
+
+    const loadTransport = buildFakeTransport().transport
+    const loadConnection = buildFakeConnection({ skills: true, loadSession: true })
+    const loadAdapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => loadTransport,
+      ClientSideConnection: loadConnection.FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+    await loadAdapter.ensureSession(threadCtx('thread-load', { acpSessionId: 'existing-load' }))
+
+    expect(loadConnection.calls.loadSession[0]?._meta).toEqual(buildWireSkillsMeta(enabledSkills))
+  })
+
+  it('keeps catalog bodies out of capability prompts while preserving forced invocation', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ skills: true })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+
+    const response = await adapter.fetch(
+      promptInit('/daily-brief'),
+      threadCtx('thread-capability', { skillInstructions: [enabledSkills[0].instruction] }),
+    )
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(response)
+    })
+
+    expect(sentPromptText(calls)).toBe('Gather current weather and calendar details.\n\n/daily-brief')
+    expect(sentPromptText(calls)).not.toContain('Extract decisions and action items.')
+  })
+
+  it('discloses each forced skill once on the first prompt and preserves forced invocation later', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+      getEnabledSkills: async () => enabledSkills,
+    })
+
+    const firstResponse = await adapter.fetch(
+      promptInit('/daily-brief'),
+      threadCtx('thread-fallback', { skillInstructions: [enabledSkills[0].instruction] }),
+    )
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(firstResponse)
+    })
+
+    const firstPrompt = sentPromptText(calls)
+    expect(firstPrompt).toContain('- daily-brief: Build a concise daily rundown.')
+    expect(firstPrompt.split(enabledSkills[0].instruction)).toHaveLength(2)
+    expect(firstPrompt).toContain('Extract decisions and action items.')
+    expect(firstPrompt.endsWith('/daily-brief')).toBe(true)
+
+    const secondResponse = await adapter.fetch(
+      promptInit('/daily-brief'),
+      threadCtx('thread-fallback', { skillInstructions: [enabledSkills[0].instruction] }),
+    )
+    await act(async () => {
+      await getClock().runAllAsync()
+      await readSse(secondResponse)
+    })
+
+    const secondPrompt = sentPromptText(calls, 1)
+    expect(secondPrompt).toContain(enabledSkills[0].instruction)
+    expect(secondPrompt.endsWith('/daily-brief')).toBe(true)
+  })
+})
+
 describe('connectAcpAdapter — per-thread session multiplexing over one connection', () => {
   it('resolves a separate ACP session per thread and persists each independently', async () => {
     const { transport } = buildFakeTransport()
-    const { FakeConnection, calls } = buildFakeConnection()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
 
     const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
       openTransport: async () => transport,
@@ -314,11 +540,11 @@ describe('connectAcpAdapter — per-thread session multiplexing over one connect
     const persistedA: string[] = []
     const persistedB: string[] = []
 
-    await adapter.fetch(
+    const first = await adapter.fetch(
       promptInit('a'),
       threadCtx('thread-A', { onAcpSessionId: async (s) => void persistedA.push(s) }),
     )
-    await adapter.fetch(
+    const second = await adapter.fetch(
       promptInit('b'),
       threadCtx('thread-B', { onAcpSessionId: async (s) => void persistedB.push(s) }),
     )
@@ -329,8 +555,12 @@ describe('connectAcpAdapter — per-thread session multiplexing over one connect
     expect(persistedA).toEqual(['sess-1'])
     expect(persistedB).toEqual(['sess-2'])
 
+    await expect(adapter.fetch(promptInit('overlap'), threadCtx('thread-A'))).rejects.toThrow('already active')
+    releasePrompts()
+    await Promise.all([first.text(), second.text()])
     // A second send on thread-A reuses its cached session — no extra newSession.
-    await adapter.fetch(promptInit('a2'), threadCtx('thread-A'))
+    const next = await adapter.fetch(promptInit('a2'), threadCtx('thread-A'))
+    await next.text()
     expect(calls.newSession).toHaveLength(2)
   })
 
@@ -351,6 +581,7 @@ describe('connectAcpAdapter — per-thread session multiplexing over one connect
 
     expect(calls.loadSession).toHaveLength(1)
     expect(calls.loadSession[0]?.sessionId).toBe('prior-sess')
+    expect(calls.loadSession[0]?.cwd).toBe('.')
     expect(calls.newSession).toHaveLength(0)
     // loadSession reuses the existing id — nothing fresh to persist.
     expect(persisted).toEqual([])
@@ -454,5 +685,1223 @@ describe('connectAcpAdapter — agent-level command capture', () => {
     await adapter.ensureSession(threadCtx('thread-1'))
     await adapter.ensureSession(threadCtx('thread-1'))
     expect(calls.newSession).toHaveLength(1)
+  })
+})
+
+describe('connectAcpAdapter — capability-aware continuity (resume / load / new+replay)', () => {
+  const drive = async (
+    adapter: Awaited<ReturnType<typeof connectAcpAdapter>>,
+    init: RequestInit,
+    ctx: AgentAdapterContext,
+    releasePrompts: () => void,
+  ) => {
+    const response = await adapter.fetch(init, ctx)
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      await readSse(response)
+    })
+  }
+
+  it('starts a new session without trying resume or load when no stored session id exists', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true, loadSession: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    await drive(adapter, promptInit('hi'), threadCtx('t-new'), releasePrompts)
+
+    expect(calls.resumeSession).toHaveLength(0)
+    expect(calls.loadSession).toHaveLength(0)
+    expect(calls.newSession).toHaveLength(1)
+  })
+
+  it('tier 1: resume-capable agent with a stored id resumes it — no newSession, no re-persist, no replay', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    expect(adapter.capabilities).toMatchObject({ resume: true })
+
+    const persisted: string[] = []
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'earlier q' },
+        { role: 'assistant', text: 'earlier a' },
+        { role: 'user', text: 'now' },
+      ]),
+      threadCtx('t-resume', { acpSessionId: 'stored-1', onAcpSessionId: async (s) => void persisted.push(s) }),
+      releasePrompts,
+    )
+
+    expect(calls.resumeSession).toHaveLength(1)
+    expect(calls.resumeSession[0]?.sessionId).toBe('stored-1')
+    expect(calls.resumeSession[0]?.cwd).toBe('.')
+    expect(calls.newSession).toHaveLength(0)
+    expect(persisted).toEqual([]) // reused id, nothing fresh to persist
+    // No app-side replay: the live prompt carries only the current user text.
+    expect(sentPromptText(calls)).toBe('now')
+  })
+
+  it('tier 1→3: resume rejects (session evicted) → newSession + persist + transcript replay', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true, rejectResume: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const persisted: string[] = []
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'earlier q' },
+        { role: 'assistant', text: 'earlier a' },
+        { role: 'user', text: 'now' },
+      ]),
+      threadCtx('t-evicted', { acpSessionId: 'gone-1', onAcpSessionId: async (s) => void persisted.push(s) }),
+      releasePrompts,
+    )
+
+    expect(calls.resumeSession).toHaveLength(1)
+    expect(calls.newSession).toHaveLength(1)
+    expect(persisted).toEqual(['sess-1'])
+    const text = sentPromptText(calls)
+    expect(text).toContain('Conversation so far:')
+    expect(text).toContain('user: earlier q')
+    expect(text).toContain('assistant: earlier a')
+    expect(text.endsWith('now')).toBe(true)
+  })
+
+  it('degrade order: agent advertising BOTH resume and loadSession tries resume first (never loadSession)', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ resume: true, loadSession: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    await drive(adapter, promptInit('hi'), threadCtx('t-both', { acpSessionId: 'stored-9' }), releasePrompts)
+
+    expect(calls.resumeSession).toHaveLength(1)
+    expect(calls.loadSession).toHaveLength(0)
+    expect(calls.newSession).toHaveLength(0)
+  })
+
+  it('tier 1→2: resume rejects but loadSession succeeds → loadSession, no newSession, no replay', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({
+      resume: true,
+      rejectResume: true,
+      loadSession: true,
+    })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'earlier' },
+        { role: 'assistant', text: 'reply' },
+        { role: 'user', text: 'now' },
+      ]),
+      threadCtx('t-load', { acpSessionId: 'stored-2' }),
+      releasePrompts,
+    )
+
+    expect(calls.resumeSession).toHaveLength(1)
+    expect(calls.loadSession).toHaveLength(1)
+    expect(calls.newSession).toHaveLength(0)
+    expect(sentPromptText(calls)).toBe('now') // agent replays its own history
+  })
+
+  it('tier 2→3: loadSession rejects → newSession + transcript replay', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection({ loadSession: true, rejectLoad: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'earlier' },
+        { role: 'assistant', text: 'reply' },
+        { role: 'user', text: 'now' },
+      ]),
+      threadCtx('t-loadfail', { acpSessionId: 'stored-3' }),
+      releasePrompts,
+    )
+
+    expect(calls.loadSession).toHaveLength(1)
+    expect(calls.newSession).toHaveLength(1)
+    expect(sentPromptText(calls)).toContain('Conversation so far:')
+  })
+
+  it('tier 3 consume-once: existing thread seeds the transcript on the first prompt but NOT the second', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection() // no resume/load
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const persisted: string[] = []
+    const ctx = () => threadCtx('t-3', { acpSessionId: 'stale-x', onAcpSessionId: async (s) => void persisted.push(s) })
+
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'q1' },
+        { role: 'assistant', text: 'a1' },
+        { role: 'user', text: 'q2' },
+      ]),
+      ctx(),
+      releasePrompts,
+    )
+    // Second send: the live session now already contains q1/a1/q2, so re-seeding
+    // would double-inject. Guard is keyed on the fresh session's first send only.
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'q1' },
+        { role: 'assistant', text: 'a1' },
+        { role: 'user', text: 'q2' },
+        { role: 'assistant', text: 'a2' },
+        { role: 'user', text: 'q3' },
+      ]),
+      ctx(),
+      releasePrompts,
+    )
+
+    expect(calls.newSession).toHaveLength(1) // one fresh session, cached
+    expect(persisted).toEqual(['sess-1']) // persisted exactly once
+    expect(sentPromptText(calls, 0)).toContain('Conversation so far:')
+    expect(sentPromptText(calls, 1)).toBe('q3') // no re-seed on the second send
+  })
+
+  it('brand-new thread (no prior turns) never seeds a transcript on either send', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    // First ever prompt on a brand-new thread — no stored id, no prior turns.
+    await drive(adapter, conversationInit([{ role: 'user', text: 'hello' }]), threadCtx('t-new'), releasePrompts)
+    // Second prompt now carries [hello, hi-back] as "prior", but the live session
+    // already has them, so nothing must be seeded.
+    await drive(
+      adapter,
+      conversationInit([
+        { role: 'user', text: 'hello' },
+        { role: 'assistant', text: 'hi back' },
+        { role: 'user', text: 'again' },
+      ]),
+      threadCtx('t-new'),
+      releasePrompts,
+    )
+
+    expect(sentPromptText(calls, 0)).toBe('hello')
+    expect(sentPromptText(calls, 1)).toBe('again')
+  })
+
+  it('defers persistence: ensureSession warms a fresh session but does NOT persist until the first real send', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const persisted: string[] = []
+    const onAcpSessionId = async (s: string) => void persisted.push(s)
+
+    await adapter.ensureSession(threadCtx('t-warm', { onAcpSessionId }))
+    expect(calls.newSession).toHaveLength(1)
+    expect(persisted).toEqual([]) // warming must not persist an empty session id
+
+    await drive(adapter, promptInit('first'), threadCtx('t-warm', { onAcpSessionId }), releasePrompts)
+    expect(calls.newSession).toHaveLength(1) // reused the warmed session
+    expect(persisted).toEqual(['sess-1']) // persisted only on the real send
+  })
+
+  it('retries fresh-session persistence and transcript seeding after persistence fails', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    const init = conversationInit([
+      { role: 'user', text: 'earlier' },
+      { role: 'assistant', text: 'reply' },
+      { role: 'user', text: 'now' },
+    ])
+    const persistenceAttempts: string[] = []
+    const onAcpSessionId = async (sessionId: string): Promise<void> => {
+      persistenceAttempts.push(sessionId)
+      if (persistenceAttempts.length === 1) {
+        throw new Error('persistence failed')
+      }
+    }
+    const context = threadCtx('t-persist-retry', { onAcpSessionId })
+
+    await expect(adapter.fetch(init, context)).rejects.toThrow('persistence failed')
+    await drive(adapter, init, context, releasePrompts)
+
+    expect(calls.newSession).toHaveLength(1)
+    expect(persistenceAttempts).toEqual(['sess-1', 'sess-1'])
+    expect(calls.prompt).toHaveLength(1)
+    expect(sentPromptText(calls)).toContain('Conversation so far:')
+  })
+})
+
+describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
+  /** A minimal permission request for the given session. The adapter only keys
+   *  off `sessionId` when routing, so the rest is filler. */
+  const permissionReq = (sessionId: string): RequestPermissionRequest =>
+    ({
+      sessionId,
+      toolCall: { toolCallId: 'tc-1' },
+      options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+    }) as RequestPermissionRequest
+
+  it('aborting mid-stream sends session/cancel once and tears down the thread handlers', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, pushPermission, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const controller = new AbortController()
+    // A thread-owned permission handler that would auto-allow while connected.
+    const requestPermission = async (): Promise<RequestPermissionResponse> => ({
+      outcome: { outcome: 'selected', optionId: 'allow' },
+    })
+    const response = await adapter.fetch(
+      promptInit('do something long', controller.signal),
+      threadCtx('thread-A', { requestPermission }),
+    )
+
+    // The prompt is in flight (gated open); nothing cancelled yet.
+    expect(calls.prompt).toHaveLength(1)
+    expect(calls.cancel).toHaveLength(0)
+
+    let sse: string[] = []
+    await act(async () => {
+      controller.abort()
+      // Even though the agent later finishes the (now-cancelled) turn, cancel
+      // must have fired exactly once — driven by the abort, not the resolution.
+      releasePrompts()
+      await getClock().runAllAsync()
+      sse = await readSse(response)
+    })
+
+    expect(calls.cancel).toHaveLength(1)
+    expect(calls.cancel[0]?.sessionId).toBe('sess-1')
+
+    // Teardown ran: the body closed with a terminal finish + [DONE]...
+    const joined = sse.join('')
+    expect(joined).toContain('"type":"finish"')
+    expect(joined).toContain('[DONE]')
+    expect(sse).toContain('[CLOSED]')
+
+    // ...and the thread's permission handler was unregistered, so a late
+    // permission prompt for that session now hits the `cancelled` fallback.
+    const outcome = await pushPermission(permissionReq('sess-1'))
+    expect(outcome?.outcome.outcome).toBe('cancelled')
+  })
+
+  it.each([false, true])(
+    'keeps a cancelled session owned until its remote prompt settles (rejects: %s)',
+    async (rejectPrompt) => {
+      const fake = buildFakeConnection({
+        rejectPrompt,
+        configOptions: [
+          {
+            id: 'effort',
+            name: 'Effort',
+            type: 'select',
+            currentValue: 'low',
+            options: [
+              { value: 'low', name: 'Low' },
+              { value: 'high', name: 'High' },
+            ],
+          },
+        ],
+      })
+      const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+        openTransport: async () => buildFakeTransport().transport,
+        ClientSideConnection: fake.FakeConnection as never,
+        textDeltaThrottleMs: 0,
+      })
+      try {
+        const context = threadCtx('cancel-ownership')
+        const controller = new AbortController()
+        const first = await adapter.fetch(promptInit('first', controller.signal), context)
+        const config = useSessionConfigStore
+          .getState()
+          .sessions.get(sessionConfigKey(remoteAgent.id, context.threadId))!
+        controller.abort()
+        // Stop closes the local response without waiting for the remote result.
+        const stoppedText = await first.text()
+        await expect(adapter.fetch(promptInit('too early'), context)).rejects.toThrow('already active')
+        await expect(config.setOption('effort', 'high')).rejects.toThrow('current operation')
+        expect(fake.calls.prompt).toHaveLength(1)
+        expect(fake.calls.config).toHaveLength(0)
+        await fake.pushUpdate({
+          sessionId: 'sess-1',
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'stale canceled reply' },
+          },
+        })
+        expect(stoppedText).not.toContain('stale canceled reply')
+        expect((await fake.pushPermission(permissionReq('sess-1')))?.outcome.outcome).toBe('cancelled')
+        // The cancellation only owns its session, not other threads on the connection.
+        const other = await adapter.fetch(promptInit('other thread'), threadCtx('other-thread'))
+        expect(fake.calls.prompt).toHaveLength(2)
+        fake.releasePrompts()
+        await other.text()
+        await config.setOption('effort', 'high')
+        const next = await adapter.fetch(promptInit('after settlement'), context)
+        expect(await next.text()).not.toContain('stale canceled reply')
+        expect(fake.calls.prompt).toHaveLength(3)
+      } finally {
+        fake.releasePrompts()
+        adapter.disconnect()
+      }
+    },
+  )
+
+  it('a rejecting cancel is swallowed — abort still tears the thread down cleanly', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, pushPermission, releasePrompts } = buildFakeConnection({ rejectCancel: true })
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const controller = new AbortController()
+    const response = await adapter.fetch(promptInit('do something long', controller.signal), threadCtx('thread-A'))
+
+    let sse: string[] = []
+    await act(async () => {
+      controller.abort()
+      releasePrompts()
+      await getClock().runAllAsync()
+      sse = await readSse(response)
+    })
+
+    // Cancel fired and its rejection was swallowed (no unhandled rejection), so
+    // teardown still completed: the stream closed and the handler unregistered.
+    expect(calls.cancel).toHaveLength(1)
+    expect(sse.join('')).toContain('[DONE]')
+    const outcome = await pushPermission(permissionReq('sess-1'))
+    expect(outcome?.outcome.outcome).toBe('cancelled')
+  })
+
+  it('does not start a session or remote turn for an already aborted request', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    try {
+      await expect(adapter.fetch(promptInit('hi', AbortSignal.abort()), threadCtx('thread-A'))).rejects.toThrow()
+      expect(calls.newSession).toHaveLength(0)
+      expect(calls.prompt).toHaveLength(0)
+      expect(calls.cancel).toHaveLength(0)
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
+  it.each(['abort', 'disconnect'] as const)(
+    'does not dispatch after %s during asynchronous prompt preparation',
+    async (operation) => {
+      const fake = buildFakeConnection()
+      const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+        openTransport: async () => buildFakeTransport().transport,
+        ClientSideConnection: fake.FakeConnection as never,
+        getEnabledSkills: async () => [],
+      })
+      const started = Promise.withResolvers<void>()
+      const persisted = Promise.withResolvers<void>()
+      const controller = new AbortController()
+      try {
+        const pending = adapter.fetch(
+          promptInit('do not execute', controller.signal),
+          threadCtx('preparing', {
+            onAcpSessionId: async () => {
+              started.resolve()
+              await persisted.promise
+            },
+          }),
+        )
+        const settled = Promise.allSettled([pending])
+        await started.promise
+        if (operation === 'abort') {
+          controller.abort()
+        } else {
+          adapter.disconnect()
+        }
+        persisted.resolve()
+        expect((await settled)[0].status).toBe('rejected')
+        expect(fake.calls.prompt).toHaveLength(0)
+        expect(fake.calls.cancel).toHaveLength(0)
+      } finally {
+        persisted.resolve()
+        adapter.disconnect()
+      }
+    },
+  )
+
+  it('retains first-send transcript replay when cancellation happens before dispatch', async () => {
+    const fake = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+      getEnabledSkills: async () => [],
+    })
+    const started = Promise.withResolvers<void>()
+    const persisted = Promise.withResolvers<void>()
+    const controller = new AbortController()
+    const init = conversationInit([
+      { role: 'user', text: 'Earlier requirements' },
+      { role: 'assistant', text: 'Earlier response' },
+      { role: 'user', text: 'Continue' },
+    ])
+    const context = threadCtx('cancelled-first-send', {
+      onAcpSessionId: async () => {
+        started.resolve()
+        await persisted.promise
+      },
+    })
+    try {
+      const pending = adapter.fetch({ ...init, signal: controller.signal }, context)
+      const settled = Promise.allSettled([pending])
+      await started.promise
+      await expect(adapter.fetch(init, context)).rejects.toThrow('already active')
+      controller.abort()
+      persisted.resolve()
+      expect((await settled)[0].status).toBe('rejected')
+      const retry = await adapter.fetch(init, context)
+      fake.releasePrompts()
+      await retry.text()
+      expect(sentPromptText(fake.calls)).toContain('Earlier requirements')
+      expect(sentPromptText(fake.calls)).toContain('Earlier response')
+      expect(fake.calls.prompt).toHaveLength(1)
+    } finally {
+      persisted.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
+  it('removes cancellation listeners when prompt dispatch throws synchronously', async () => {
+    const fake = buildFakeConnection()
+    class ThrowingConnection extends fake.FakeConnection {
+      prompt = (_request: PromptRequest): never => {
+        throw new Error('Synchronous SDK failure')
+      }
+    }
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: ThrowingConnection as never,
+    })
+    try {
+      const controller = new AbortController()
+      const response = await adapter.fetch(promptInit('dispatch', controller.signal), threadCtx('sync-failure'))
+      expect(await response.text()).toContain('Synchronous SDK failure')
+      controller.abort()
+      expect(fake.calls.cancel).toHaveLength(0)
+      const retry = await adapter.fetch(promptInit('retry'), threadCtx('sync-failure'))
+      expect(await retry.text()).toContain('Synchronous SDK failure')
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
+  it('a normal completion never sends session/cancel', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    const controller = new AbortController()
+    const response = await adapter.fetch(promptInit('hi', controller.signal), threadCtx('thread-A'))
+
+    let sse: string[] = []
+    await act(async () => {
+      releasePrompts()
+      await getClock().runAllAsync()
+      sse = await readSse(response)
+    })
+
+    expect(sse.join('')).toContain('"type":"finish"')
+    expect(calls.cancel).toHaveLength(0)
+  })
+})
+
+describe('ACP reasoning configuration', () => {
+  it('does not dispatch a stopped prompt after a pending effort change completes', async () => {
+    const gate = Promise.withResolvers<void>()
+    const fake = buildFakeConnection({
+      beforeConfigResponse: () => gate.promise,
+      configOptions: [
+        {
+          id: 'budget',
+          name: 'Effort',
+          type: 'select',
+          currentValue: 'low',
+          options: [
+            { value: 'low', name: 'Low' },
+            { value: 'high', name: 'High' },
+          ],
+        },
+      ],
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => buildFakeTransport().transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      const context = threadCtx('stopped-config')
+      await adapter.ensureSession(context)
+      const config = useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, context.threadId))!
+      const change = config.setOption('budget', 'high')
+      const controller = new AbortController()
+      const pending = adapter.fetch(promptInit('do not execute', controller.signal), context)
+      const settled = Promise.allSettled([pending])
+      await getClock().tickAsync(0)
+      controller.abort()
+      expect((await settled)[0].status).toBe('rejected')
+      // Stop settles while the remote configuration call is still pending.
+      expect(fake.calls.prompt).toHaveLength(0)
+      gate.resolve()
+      await change
+      expect(fake.calls.prompt).toHaveLength(0)
+      expect(fake.calls.cancel).toHaveLength(0)
+      // Cancellation releases preparation ownership for a later effort change and retry.
+      await config.setOption('budget', 'low')
+      const retry = await adapter.fetch(promptInit('retry'), context)
+      expect(fake.calls.prompt).toHaveLength(1)
+      fake.releasePrompts()
+      await retry.text()
+    } finally {
+      gate.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
+  it('does not send a waiting prompt with the previous effort after a config change fails', async () => {
+    const gate = Promise.withResolvers<void>()
+    const fake = buildFakeConnection({
+      beforeConfigResponse: () => gate.promise,
+      configOptions: [
+        {
+          id: 'budget',
+          name: 'Effort',
+          type: 'select',
+          currentValue: 'low',
+          options: [
+            { value: 'low', name: 'Low' },
+            { value: 'high', name: 'High' },
+          ],
+        },
+      ],
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => buildFakeTransport().transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      const context = threadCtx('failed-config')
+      await adapter.ensureSession(context)
+      const config = useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, context.threadId))!
+      const change = config.setOption('budget', 'high')
+      const prompt = adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }) },
+        context,
+      )
+      const settled = Promise.allSettled([change, prompt])
+      await getClock().tickAsync(0)
+      gate.reject(new Error('Effort change rejected'))
+      const results = await settled
+      expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected'])
+      expect(fake.calls.prompt).toHaveLength(0)
+      expect(config.options[0].currentValue).toBe('low')
+      // A failed preparation releases the session; an explicit retry can send.
+      const retry = await adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'retry' }] }] }) },
+        context,
+      )
+      expect(fake.calls.prompt).toHaveLength(1)
+      fake.releasePrompts()
+      await retry.text()
+    } finally {
+      gate.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
+  it('waits for a pending config write before prompting and rejects concurrent changes', async () => {
+    const gate = Promise.withResolvers<void>()
+    const fake = buildFakeConnection({
+      beforeConfigResponse: () => gate.promise,
+      configOptions: [
+        {
+          id: 'budget',
+          name: 'Effort',
+          type: 'select',
+          currentValue: 'low',
+          options: [
+            { value: 'low', name: 'Low' },
+            { value: 'high', name: 'High' },
+          ],
+        },
+      ],
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => buildFakeTransport().transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      await adapter.ensureSession(threadCtx('pending-config'))
+      const config = useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, 'pending-config'))!
+      const change = config.setOption('budget', 'high')
+      await expect(config.setOption('budget', 'low')).rejects.toThrow('current operation')
+      const pending = adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }) },
+        threadCtx('pending-config'),
+      )
+      expect(fake.calls.prompt).toHaveLength(0)
+      gate.resolve()
+      await change
+      const response = await pending
+      expect(fake.calls.prompt).toHaveLength(1)
+      await expect(config.setOption('budget', 'low')).rejects.toThrow('current operation')
+      fake.releasePrompts()
+      await response.text()
+      await config.setOption('budget', 'low')
+    } finally {
+      gate.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
+  it('ignores queued notifications from a disconnected generation', async () => {
+    const old = buildFakeConnection()
+    const next = buildFakeConnection()
+    const connect = (fake: ReturnType<typeof buildFakeConnection>) =>
+      connectAcpAdapter(remoteAgent, baseCtx(), {
+        ClientSideConnection: fake.FakeConnection as never,
+        openTransport: async () => buildFakeTransport().transport,
+        getEnabledSkills: async () => [],
+      })
+    const first = await connect(old)
+    await first.ensureSession(threadCtx('generation'))
+    first.disconnect()
+    const second = await connect(next)
+    try {
+      await second.ensureSession(threadCtx('generation'))
+      const key = sessionConfigKey(remoteAgent.id, 'generation')
+      const current = useSessionConfigStore.getState().sessions.get(key)
+      await old.pushUpdate({
+        sessionId: 'sess-1',
+        update: { sessionUpdate: 'config_option_update', configOptions: [] },
+      })
+      expect(useSessionConfigStore.getState().sessions.get(key)).toBe(current)
+      first.disconnect()
+      expect(useSessionConfigStore.getState().sessions.get(key)).toBe(current)
+    } finally {
+      second.disconnect()
+    }
+  })
+
+  it('retains initial options, forwards opaque values, isolates threads and receives idle updates', async () => {
+    const options: SessionConfigOption[] = [
+      {
+        id: 'budget',
+        category: 'thought_level',
+        name: 'Thinking',
+        type: 'select',
+        currentValue: 'fast-id',
+        options: [
+          { value: 'fast-id', name: 'Fast' },
+          { value: 'deep-id', name: 'Deep' },
+        ],
+      },
+    ]
+    const fake = buildFakeConnection({ configOptions: options })
+    const transport = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => transport.transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      await adapter.ensureSession(threadCtx('one'))
+      await adapter.ensureSession(threadCtx('two'))
+      const get = (id: string) => useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, id))!
+      expect(get('one').options).toEqual(options)
+      await expect(get('one').setOption('budget', 'high')).rejects.toThrow('Unsupported')
+      await get('one').setOption('budget', 'deep-id')
+      expect(fake.calls.config).toEqual([{ sessionId: 'sess-1', configId: 'budget', value: 'deep-id' }])
+      expect(get('one').options[0].currentValue).toBe('deep-id')
+      expect(get('two').options[0].currentValue).toBe('fast-id')
+      await fake.pushUpdate({
+        sessionId: 'sess-1',
+        update: { sessionUpdate: 'config_option_update', configOptions: [] },
+      })
+      expect(get('one').options).toEqual([])
+    } finally {
+      adapter.disconnect()
+    }
+    expect(useSessionConfigStore.getState().sessions.has(sessionConfigKey(remoteAgent.id, 'one'))).toBe(false)
+  })
+})
+
+describe('ACP session compaction and usage', () => {
+  const snapshot: AcpCompaction = {
+    agentId: remoteAgent.id,
+    sessionId: 'stored',
+    compactionId: 'c',
+    status: 'in_progress',
+    summary: [{ type: 'text', text: 'Saved' }],
+    _meta: { retained: true },
+  }
+  const commandUpdate: SessionNotification['update'] = {
+    sessionUpdate: 'available_commands_update',
+    availableCommands: [{ name: 'compact', description: 'Compact', input: { hint: '' } }],
+  }
+
+  it('advertises native compaction and retains early new-session entities, commands and usage', async () => {
+    const events: AcpSessionEvent[] = []
+    const fake = buildFakeConnection({
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({ sessionId, update: commandUpdate })
+        await client.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: 'compaction_summary_chunk',
+            compactionId: 'early',
+            content: { type: 'text', text: 'Early' },
+          },
+        })
+        await client.sessionUpdate({ sessionId, update: { sessionUpdate: 'usage_update', used: 10, size: 100 } })
+      },
+    })
+    const { transport } = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const key = sessionConfigKey(remoteAgent.id, 'early')
+    await adapter.ensureSession(
+      threadCtx('early', {
+        onAcpSessionEvent: (event, inPrompt, replaying) => {
+          expect(inPrompt).toBe(false)
+          expect(replaying).toBe(true)
+          events.push(event)
+          return true
+        },
+      }),
+    )
+    expect(fake.calls.initialize[0].clientCapabilities?.session?.compaction).toEqual({})
+    expect(events.map((event) => event.type)).toEqual(['compaction', 'usage'])
+    expect(events[0]).toMatchObject({
+      compaction: { compactionId: 'early', status: 'in_progress', summary: [{ type: 'text', text: 'Early' }] },
+    })
+    expect(useAcpSessionStore.getState().sessions.get(key)).toEqual({
+      sessionId: 'sess-1',
+      commands: [{ name: 'compact', description: 'Compact', inputHint: '' }],
+      usage: { agentId: remoteAgent.id, sessionId: 'sess-1', used: 10, size: 100 },
+    })
+    adapter.disconnect()
+    expect(useAcpSessionStore.getState().sessions.has(key)).toBe(false)
+  })
+
+  it('seeds stored entities before load replay, preserves omitted fields, and refreshes idle callbacks', async () => {
+    const replay: AcpSessionEvent[] = []
+    const idle: AcpSessionEvent[] = []
+    const fake = buildFakeConnection({
+      loadSession: true,
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({
+          sessionId,
+          update: { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'completed' },
+        })
+      },
+    })
+    const { transport } = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    await adapter.ensureSession(
+      threadCtx('replay', {
+        acpSessionId: 'stored',
+        getAcpCompactions: () => [snapshot, { ...snapshot, agentId: 'other', summary: [] }],
+        onAcpSessionEvent: (event, inPrompt, replaying) => {
+          expect(inPrompt).toBe(false)
+          expect(replaying).toBe(true)
+          replay.push(event)
+          return true
+        },
+      }),
+    )
+    expect(replay).toEqual([{ type: 'compaction', compaction: { ...snapshot, status: 'completed' } }])
+    await adapter.ensureSession(
+      threadCtx('replay', {
+        onAcpSessionEvent: (event, inPrompt, replaying) => {
+          expect(inPrompt).toBe(false)
+          expect(replaying).toBe(false)
+          idle.push(event)
+          return true
+        },
+      }),
+    )
+    await fake.pushUpdate({
+      sessionId: 'stored',
+      update: {
+        sessionUpdate: 'compaction_summary_chunk',
+        compactionId: 'c',
+        content: { type: 'text', text: 'Appended' },
+        _meta: { chunkOnly: true },
+      },
+    })
+    expect(replay).toHaveLength(1)
+    expect(idle).toEqual([
+      {
+        type: 'compaction',
+        compaction: {
+          ...snapshot,
+          status: 'completed',
+          summary: [...snapshot.summary!, { type: 'text', text: 'Appended' }],
+        },
+      },
+    ])
+    adapter.disconnect()
+  })
+
+  it('applies explicit replay replacements and clears without implicitly resetting saved summaries', async () => {
+    const saved: AcpCompaction = { ...snapshot, summary: [{ type: 'text', text: 'Hello' }] }
+    const replay: AcpCompaction[] = []
+    const replayUpdates: SessionNotification['update'][] = [
+      { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'completed' },
+      { sessionUpdate: 'compaction_summary_chunk', compactionId: 'c', content: { type: 'text', text: 'Hello' } },
+      {
+        sessionUpdate: 'compaction_update',
+        compactionId: 'c',
+        status: 'completed',
+        summary: [{ type: 'text', text: 'Replacement' }],
+      },
+      {
+        sessionUpdate: 'compaction_summary_chunk',
+        compactionId: 'c',
+        content: { type: 'text', text: 'After replacement' },
+      },
+      { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'completed', summary: null },
+      { sessionUpdate: 'compaction_summary_chunk', compactionId: 'c', content: { type: 'text', text: 'After clear' } },
+      { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'completed', summary: [] },
+    ]
+    const fake = buildFakeConnection({
+      loadSession: true,
+      beforeSessionResponse: async (client, sessionId) => {
+        for (const update of replayUpdates) {
+          await client.sessionUpdate({ sessionId, update })
+        }
+      },
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    try {
+      await adapter.ensureSession(
+        threadCtx('explicit-replay-patches', {
+          acpSessionId: 'stored',
+          getAcpCompactions: () => [saved],
+          onAcpSessionEvent: (event, inPrompt, replaying) => {
+            expect(inPrompt).toBe(false)
+            expect(replaying).toBe(true)
+            if (event.type === 'compaction') {
+              replay.push(event.compaction)
+            }
+            return true
+          },
+        }),
+      )
+      expect(fake.calls.loadSession).toHaveLength(1)
+      expect(replay.map((compaction) => compaction.summary)).toEqual([
+        [{ type: 'text', text: 'Hello' }],
+        [
+          { type: 'text', text: 'Hello' },
+          { type: 'text', text: 'Hello' },
+        ],
+        [{ type: 'text', text: 'Replacement' }],
+        [
+          { type: 'text', text: 'Replacement' },
+          { type: 'text', text: 'After replacement' },
+        ],
+        null,
+        [{ type: 'text', text: 'After clear' }],
+        [],
+      ])
+      expect(replay.every((compaction) => compaction._meta === saved._meta)).toBe(true)
+      expect(saved.summary).toEqual([{ type: 'text', text: 'Hello' }])
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
+  it('streams new IDs, patches older transcript IDs outside the stream, and keeps sessions isolated', async () => {
+    const seen: { event: AcpSessionEvent; inPrompt: boolean }[] = []
+    const fake = buildFakeConnection()
+    const { transport } = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const context = threadCtx('active', {
+      onAcpSessionEvent: (event, inPrompt) => {
+        seen.push({ event, inPrompt })
+        return event.type === 'compaction' && event.compaction.compactionId === 'old'
+      },
+    })
+    const response = await adapter.fetch(promptInit('hello'), context)
+    await adapter.ensureSession(threadCtx('other'))
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'old', status: 'completed' },
+    })
+    await fake.pushUpdate({
+      sessionId: 'sess-2',
+      update: {
+        sessionUpdate: 'compaction_update',
+        compactionId: 'new',
+        status: 'completed',
+        summary: [{ type: 'text', text: 'OTHER_SESSION_SUMMARY' }],
+      },
+    })
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'new', status: 'in_progress' },
+    })
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'new', status: 'completed' },
+    })
+    await fake.pushUpdate({ sessionId: 'sess-1', update: { sessionUpdate: 'usage_update', used: 30, size: 100 } })
+    fake.releasePrompts()
+    const output = (await readSse(response)).join('')
+    expect(output).not.toContain('"compactionId":"old"')
+    expect(output).not.toContain('OTHER_SESSION_SUMMARY')
+    expect(output.match(/data-acp-compaction/g)).toHaveLength(2)
+    expect(output).toContain('"acpContextUsage":{"agentId":"remote-foo","sessionId":"sess-1","used":30,"size":100}')
+    expect(seen.every((item) => item.inPrompt)).toBe(true)
+    adapter.disconnect()
+  })
+
+  it('retains a terminal compaction patch after Stop without reopening the cancelled stream', async () => {
+    const events: { event: AcpSessionEvent; inPrompt: boolean }[] = []
+    const fake = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const controller = new AbortController()
+    const response = await adapter.fetch(
+      promptInit('hello', controller.signal),
+      threadCtx('stop-compaction', {
+        onAcpSessionEvent: (event, inPrompt) => {
+          events.push({ event, inPrompt })
+          return !inPrompt
+        },
+      }),
+    )
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'in_progress' },
+    })
+    controller.abort()
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'cancelled', error: 'Stopped' },
+    })
+    const output = (await readSse(response)).join('')
+    expect(output).toContain('"status":"in_progress"')
+    expect(output).not.toContain('"status":"cancelled"')
+    expect(events.map((event) => event.inPrompt)).toEqual([true, false])
+    expect(events[1].event).toMatchObject({ compaction: { status: 'cancelled', error: 'Stopped' } })
+    fake.releasePrompts()
+    adapter.disconnect()
+  })
+
+  it('keeps successor store state when an older connection disconnects', async () => {
+    const first = buildFakeConnection()
+    const second = buildFakeConnection()
+    const a = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: first.FakeConnection as never,
+    })
+    const b = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: second.FakeConnection as never,
+    })
+    await a.ensureSession(threadCtx('shared-generation'))
+    await b.ensureSession(threadCtx('shared-generation'))
+    await second.pushUpdate({ sessionId: 'sess-1', update: commandUpdate })
+    a.disconnect()
+    expect(
+      useAcpSessionStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, 'shared-generation'))?.commands,
+    ).toHaveLength(1)
+    await first.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'available_commands_update', availableCommands: [] },
+    })
+    expect(
+      useAcpSessionStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, 'shared-generation'))?.commands,
+    ).toHaveLength(1)
+    b.disconnect()
+  })
+
+  const compactInit = (text = '/compact focus'): RequestInit => ({
+    body: JSON.stringify({
+      messages: [
+        { role: 'user', parts: [{ type: 'text', text: 'Earlier' }] },
+        { role: 'assistant', parts: [{ type: 'text', text: 'Prior answer' }] },
+        { role: 'user', parts: [{ type: 'text', text }], metadata: { acpCommand: 'compact' } },
+      ],
+    }),
+  })
+
+  it('sends native compact text verbatim without consuming fresh transcript replay or persisting the empty session', async () => {
+    const fake = buildFakeConnection({
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({ sessionId, update: commandUpdate })
+      },
+    })
+    const { transport } = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const persisted: string[] = []
+    const context = threadCtx('compact-fresh', {
+      acpSessionId: 'old-session',
+      onAcpSessionId: async (id) => {
+        persisted.push(id)
+      },
+      skillInstructions: ['SKILL'],
+      projectSection: 'PROJECT',
+    })
+    const compactResponse = await adapter.fetch(compactInit(), context)
+    expect(fake.calls.prompt[0].prompt).toEqual([{ type: 'text', text: '/compact focus' }])
+    expect(persisted).toEqual([])
+    fake.releasePrompts()
+    await readSse(compactResponse)
+    const normal = await adapter.fetch(
+      conversationInit([
+        { role: 'user', text: 'Earlier' },
+        { role: 'assistant', text: 'Prior answer' },
+        { role: 'user', text: 'Continue' },
+      ]),
+      context,
+    )
+    await readSse(normal)
+    expect(persisted).toEqual(['sess-1'])
+    expect(fake.calls.prompt[1].prompt).toEqual([
+      {
+        type: 'text',
+        text: 'PROJECT\n\nSKILL\n\nConversation so far:\n\nuser: Earlier\n\nassistant: Prior answer\n\nContinue',
+      },
+    ])
+    adapter.disconnect()
+  })
+
+  it('accepts an advertised compact command with no arguments', async () => {
+    const fake = buildFakeConnection({
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: 'available_commands_update',
+            availableCommands: [{ name: 'compact', description: 'Compact' }],
+          },
+        })
+      },
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const response = await adapter.fetch(compactInit('/compact'), threadCtx('compact-no-args'))
+    expect(fake.calls.prompt[0].prompt).toEqual([{ type: 'text', text: '/compact' }])
+    fake.releasePrompts()
+    await readSse(response)
+    adapter.disconnect()
+  })
+
+  it.each([
+    { advertised: false, hint: false, text: '/compact' },
+    { advertised: true, hint: false, text: '/compact focus' },
+    { advertised: true, hint: true, text: '/compact-other' },
+  ])('rejects unsupported or mismatched native commands: %p', async ({ advertised, hint, text }) => {
+    const fake = buildFakeConnection({
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: 'available_commands_update',
+            availableCommands: advertised
+              ? [{ name: 'compact', description: 'Compact', ...(hint ? { input: { hint: 'focus' } } : {}) }]
+              : [],
+          },
+        })
+      },
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    expect((await observeConnect(adapter.fetch(compactInit(text), threadCtx('invalid-command')))).rejected).toBe(true)
+    expect(fake.calls.prompt).toHaveLength(0)
+    adapter.disconnect()
   })
 })

@@ -60,20 +60,3 @@ export const estimateTokensForMessages = (messages: ThunderboltUIMessage[]): num
 
   return totalTokens
 }
-
-/**
- * Format token counts for display
- * @param used Used tokens
- * @param max Max tokens
- * @returns Formatted string like "20K / 256K"
- */
-export const formatTokenCount = (used: number, max?: number): string => {
-  const formatter = new Intl.NumberFormat('en', {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  })
-
-  const formattedUsed = formatter.format(used)
-  const formattedMax = max !== undefined ? formatter.format(max) : 'unknown'
-  return `${formattedUsed} / ${formattedMax}`
-}

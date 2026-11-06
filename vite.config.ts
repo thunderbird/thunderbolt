@@ -3,15 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /// <reference types="vitest/config" />
+import { lingui, linguiTransformerBabelPreset } from '@lingui/vite-plugin'
+import babelPlugin from '@rolldown/plugin-babel'
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'path'
-import { defineConfig } from 'vite'
+import { type Connect, defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import pkg from './package.json' with { type: 'json' }
+import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
@@ -28,6 +30,23 @@ const shouldAnalyze = process.env.ANALYZE?.toLowerCase() === 'true' || process.a
 // Enable with ENABLE_SOURCEMAP=true (e.g. in CI) to upload maps to PostHog for error tracking.
 const sourcemap = process.env.ENABLE_SOURCEMAP?.toLowerCase() === 'true' ? 'hidden' : false
 
+/** Response headers for the dev and preview servers, matching deploy/config/security-headers.conf. */
+const setResponseHeaders: Connect.NextHandleFunction = (req, res, next) => {
+  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless')
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+
+  // Set correct Content-Type for .well-known files (required for Universal Links / App Links)
+  // Parse pathname to ignore query parameters
+  const pathname = req.url?.split('?')[0]
+  if (pathname === '/.well-known/apple-app-site-association') {
+    res.setHeader('Content-Type', 'application/json')
+  } else if (pathname === '/.well-known/assetlinks.json') {
+    res.setHeader('Content-Type', 'application/json')
+  }
+
+  next()
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   define: {
@@ -41,13 +60,15 @@ export default defineConfig({
       external: ['bun:sqlite'],
       treeshake: {
         moduleSideEffects: [
-          // @powersync/common doesn't declare "sideEffects" in its package.json, so every
-          // module re-exported by its lib/index.js barrel is treated as potentially
-          // side-effectful and eagerly retained in the entry chunk via @powersync/react's
-          // static import. The modules are pure declarations (classes/consts only), so
-          // mark them side-effect-free to let the unused sync-client machinery tree-shake
-          // out of the entry and live only in the lazy PowerSync chunk.
+          // @powersync/common and @powersync/shared-internals don't declare "sideEffects" in
+          // their package.json, so every module re-exported by their lib/index.js barrels is
+          // treated as potentially side-effectful and eagerly retained in the entry chunk via the
+          // static imports in @powersync/react (common) and @powersync/tanstack-react-query
+          // (shared-internals). The modules are pure declarations (classes/consts
+          // only), so mark them side-effect-free to let the unused sync-client machinery
+          // tree-shake out of the entry and live only in the lazy PowerSync chunk.
           { test: /@powersync[\\/]common[\\/]lib/, sideEffects: false },
+          { test: /@powersync[\\/]shared-internals[\\/]lib/, sideEffects: false },
         ],
       },
       output: {
@@ -60,12 +81,35 @@ export default defineConfig({
   plugins: [
     {
       name: 'copy-powersync-assets',
-      buildStart() {
-        execSync('powersync-web copy-assets --output public', { stdio: 'inherit' })
+      // `vite preview` serves the built dist/, so it has no reason to touch public/.
+      apply: (_config, { isPreview }) => !isPreview,
+      // Vite lists public/ once, right after this hook; a copy in buildStart lands after that list.
+      configResolved({ publicDir, cacheDir }) {
+        copyPowerSyncAssets(
+          path.resolve(__dirname, 'node_modules/@powersync/web/dist/worker'),
+          path.join(publicDir, '@powersync'),
+          cacheDir,
+        )
       },
     },
     tailwindcss(),
     react(),
+    // The Lingui macro is a build-time Babel transform: <Trans> from
+    // @lingui/react/macro compiles into runtime <Trans id=... message=...>
+    // calls here. @vitejs/plugin-react v6 is oxc-based and DROPPED its
+    // `babel` option (passing one is silently ignored — the exact
+    // bail-out symptom: literal <Trans> at runtime with a green build), so
+    // the macro runs through @rolldown/plugin-babel instead. The Lingui
+    // preset carries a code filter, so Babel only processes files that
+    // actually import a macro package. CI's `localization` job greps the
+    // bundle for the untransformed-macro runtime stub as a tripwire.
+    babelPlugin({ presets: [linguiTransformerBabelPreset()] }),
+    // Compiles src/locales/*/messages.po into JS message catalogs on import
+    // (the en-XA pseudo-locale is generated from the English source here).
+    // `failOnCompileError` is not the default: without it the plugin only warns
+    // on a malformed catalog, so the build stays green and ships the broken
+    // locale — which is what CI's `localization` job claims to prevent.
+    lingui({ failOnCompileError: true }),
     // Include the bundle analyzer plugin only when explicitly requested.
     ...(shouldAnalyze
       ? [
@@ -78,41 +122,86 @@ export default defineConfig({
     {
       name: 'configure-response-headers',
       configureServer: (server) => {
-        server.middlewares.use((req, res, next) => {
-          res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless')
-          res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+        server.middlewares.use(setResponseHeaders)
+      },
+      // `vite preview` serves the production build, so it needs the same cross-origin isolation as production.
+      configurePreviewServer: (server) => {
+        server.middlewares.use(setResponseHeaders)
+      },
+    },
+    {
+      // `server.host` sets both the bind and the printed URL. Keep the bind on
+      // 127.0.0.1 (see server.host below) but advertise localhost:1420 — the
+      // canonical dev origin, and the only one Tauri's devUrl, the Playwright
+      // baseURLs and the backend's CORS/APP_URL defaults know about.
+      name: 'advertise-canonical-dev-origin',
+      configureServer: (server) => {
+        if (host) return
 
-          // Set correct Content-Type for .well-known files (required for Universal Links / App Links)
-          // Parse pathname to ignore query parameters
-          const pathname = req.url?.split('?')[0]
-          if (pathname === '/.well-known/apple-app-site-association') {
-            res.setHeader('Content-Type', 'application/json')
-          } else if (pathname === '/.well-known/assetlinks.json') {
-            res.setHeader('Content-Type', 'application/json')
+        const printUrls = server.printUrls.bind(server)
+        server.printUrls = () => {
+          if (server.resolvedUrls) {
+            server.resolvedUrls.local = server.resolvedUrls.local.map((url) => url.replace('127.0.0.1', 'localhost'))
           }
-
-          next()
-        })
+          printUrls()
+        }
       },
     },
   ],
   resolve: {
-    dedupe: ['@powersync/common', '@powersync/react', 'react'],
+    // react-dismissable-layer must be a single module instance: it tracks
+    // open layers in module-scope state to know when to restore the body's
+    // pointer-events. Bun nests a second copy under @radix-ui/react-menu;
+    // with two instances, closing a dialog opened from a dropdown menu item
+    // restores `pointer-events: none` and the whole app stops being
+    // clickable. The package.json direct dependency on
+    // @radix-ui/react-dismissable-layer exists solely to hoist one copy for
+    // this dedupe — it is load-bearing even though nothing imports it.
+    // react-dialog is deduped for the same reason: bun nests a stale copy
+    // under `cmdk`, and two dialog module instances would split the same
+    // module-scope layer bookkeeping.
+    dedupe: [
+      '@powersync/common',
+      '@powersync/shared-internals',
+      '@powersync/react',
+      'react',
+      '@radix-ui/react-dismissable-layer',
+      '@radix-ui/react-dialog',
+    ],
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, './shared'),
-      // Exposes PowerSync internal lib path so our custom SharedWorker can extend
-      // SharedSyncImplementation (not in public exports map).
-      'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib/src'),
-      // Resolve @powersync/common to its unbundled per-module build instead of the
-      // single-file dist/bundle.mjs. A single ES module can only live in one chunk,
-      // so the bundled build forces ALL of common retained anywhere in the app into
-      // the entry chunk (entry code imports parseQuery/WatchedQueryListenerEvent via
-      // @powersync/react + @powersync/tanstack-react-query). The per-module build
-      // lets rolldown keep only those helpers in the entry and move the sync client
-      // machinery into the lazy PowerSync chunk. Like powersync-web-internal above,
-      // lib/ is an internal path — verify it still exists when upgrading the package.
-      '@powersync/common': path.resolve(__dirname, 'node_modules/@powersync/common/lib/index.js'),
+      // Exposes PowerSync's internal lib/ so our sync worker can extend SharedSyncImplementation and
+      // import WorkerClient and SharedWorkerConnectionRequest (none is in the public exports map).
+      'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib'),
+      // ---- In-browser Pi harness (lazy `@shared/agent-core` chunk) Node shims ----
+      // The harness runs `@earendil-works/pi-agent-core` + `pi-ai` + `just-bash` +
+      // ZenFS in the browser. The four coding tools are now plain `AgentTool`s over
+      // BrowserExecutionEnv (see `shared/agent-core/coding-tools`), so the
+      // `@earendil-works/pi-coding-agent` CLI — and its cross-spawn / which / undici /
+      // graceful-fs / pi-tui cascade — is no longer imported. Only a small residual of
+      // Node-builtin shims remains, for code still on the app path:
+      //
+      // `just-bash`'s browser bundle evaluates `createRequire(import.meta.url)` at
+      // module scope, so `module` must resolve to a shim that exposes `createRequire`.
+      module: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-module.ts'),
+      'node:module': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-module.ts'),
+      // `path` runs at browser runtime; use the battle-tested polyfill.
+      path: 'path-browserify',
+      'node:path': 'path-browserify',
+      // `crypto` delegates to the browser's native Web Crypto (real `randomUUID` /
+      // `randomBytes`); `fs`/`fs/promises` present an empty filesystem (the harness's
+      // real I/O goes through ZenFS). All are reached only lazily — via the
+      // `createRequire` shim above, pi-ai's `process.versions.bun`-guarded
+      // `require("node:fs")` fallback, or optional SDK code paths — never at module
+      // scope. NOTE: `fs/promises` MUST precede `fs` — a string alias also matches the
+      // `fs/promises` subpath, so `fs` would otherwise swallow it.
+      'fs/promises': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs-promises.ts'),
+      'node:fs/promises': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs-promises.ts'),
+      fs: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs.cjs'),
+      'node:fs': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-fs.cjs'),
+      crypto: path.resolve(__dirname, './shared/agent-core/browser-stubs/node-crypto.ts'),
+      'node:crypto': path.resolve(__dirname, './shared/agent-core/browser-stubs/node-crypto.ts'),
     },
     conditions: ['browser'],
   },
@@ -124,7 +213,17 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // The public CI diagnostic uploads only fixed labels from its Playwright case.
+    forwardConsole: process.env.VITE_DB_DIAGNOSTIC !== 'true',
+    // Bind an explicit loopback address rather than `false`. Vite maps `false`
+    // to the hostname string "localhost", which Node resolves to a SINGLE,
+    // nondeterministic address family (127.0.0.1 or ::1) per listen() call. A
+    // `.env` change restarts the dev server, which re-resolves "localhost" and
+    // can FLIP families — leaving nothing bound on the address the browser (or
+    // an OrbStack/VM port-forward) is actually connecting to, so localhost:1420
+    // goes dead until the process is killed. Pinning 127.0.0.1 keeps the bind
+    // deterministic and loopback-only across restarts.
+    host: host || '127.0.0.1',
     hmr: host
       ? {
           protocol: 'ws',
@@ -133,8 +232,8 @@ export default defineConfig({
         }
       : undefined,
     watch: {
-      // 3. tell vite to ignore watching `src-tauri`
-      ignored: ['**/src-tauri/**'],
+      // 3. tell vite to ignore watching `src-tauri`, and the QA agent's output (Playwright traces would reload the page)
+      ignored: ['**/src-tauri/**', '**/qa-out*/**'],
     },
     fs: {
       strict: true,

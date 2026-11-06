@@ -7,7 +7,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 
 const meta = {
-  title: 'skills/delete-skill-dialog',
+  title: 'Skills/DeleteSkillDialog',
   component: DeleteSkillDialog,
   parameters: {
     layout: 'centered',

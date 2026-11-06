@@ -2,15 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useIsMobile } from '@/hooks/use-mobile'
+import { msg } from '@lingui/core/macro'
+import { i18n } from '@lingui/core'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
-import { trackEvent } from '@/lib/posthog'
+import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { formatToolOutput } from '@/lib/utils'
 import type { UIMessageMetadata } from '@/types'
 import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
+import type { CompactionSummary } from '@/components/context-usage'
 
 /** A tool call (built-in or MCP dynamic-tool) or a reasoning part shown in the object view. */
 export type ObjectViewContent = ToolUIPart | DynamicToolUIPart | ReasoningUIPart
@@ -31,6 +33,17 @@ export type ArtifactViewData = {
   title: string
   /** The render_html tool-call id; also the key for the render-target toggle. */
   artifactId: string
+  /**
+   * The conversation that produced it, so a highlighted passage has somewhere
+   * to go.
+   *
+   * Carried with the view rather than read from the route. `/apps/:appId` has
+   * no `chatThreadId` param — its conversation is held by the Mini App panel —
+   * so deriving it from `useParams` dropped every passage picked out of an
+   * artifact opened beside an app, and warned about a missing composer while a
+   * real one was open.
+   */
+  chatThreadId: string | null
 }
 
 type ContentViewState =
@@ -39,6 +52,7 @@ type ContentViewState =
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: SideviewData }
   | { type: 'artifact'; data: ArtifactViewData }
+  | { type: 'compaction-summary'; data: CompactionSummary }
 
 type ContentViewContextType = {
   state: ContentViewState
@@ -48,6 +62,8 @@ type ContentViewContextType = {
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
   /** Open a verified HTML artifact in the side panel. */
   showArtifact: (data: ArtifactViewData) => void
+  /** Inspect a local or agent-provided summary without changing the conversation. */
+  showCompactionSummary: (checkpoint: CompactionSummary) => void
   close: () => void
   isOpen: boolean
   previewHidden: boolean
@@ -55,6 +71,9 @@ type ContentViewContextType = {
 }
 
 const ContentViewContext = createContext<ContentViewContextType | undefined>(undefined)
+const ShowCompactionSummaryContext = createContext<ContentViewContextType['showCompactionSummary'] | undefined>(
+  undefined,
+)
 
 /**
  * Unified provider for managing the content view
@@ -64,72 +83,94 @@ const ContentViewContext = createContext<ContentViewContextType | undefined>(und
  * - Webview previews (link previews)
  * - Sideviews (document viewer, etc.)
  */
-export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
+const reasoningViewTitle = msg`Reasoning`
+
+export const ContentViewProvider = ({
+  children,
+  trackEvent = defaultTrackEvent,
+}: {
+  children: ReactNode
+  trackEvent?: typeof defaultTrackEvent
+}) => {
   const [state, setState] = useState<ContentViewState>({ type: null, data: null })
   const [previewHidden, setPreviewHidden] = useState(false)
-  const { isMobile } = useIsMobile()
-  const prevIsMobile = useRef(isMobile)
 
-  const showObjectView = useCallback((content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
-    if (content.type === 'reasoning') {
-      trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
-      setState({ type: 'object-view', data: { title: 'Reasoning', output: content.text } })
-      return
-    }
+  const showObjectView = useCallback(
+    (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
+      if (content.type === 'reasoning') {
+        trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
+        // Resolved eagerly in the click handler: the title is a snapshot stored
+        // in state, so it uses the `i18n` singleton rather than `useLingui`.
+        setState({ type: 'object-view', data: { title: i18n._(reasoningViewTitle), output: content.text } })
+        return
+      }
 
-    const toolName = getToolName(content)
-    // MCP dynamic-tool parts resolve their title from the tool map; built-ins use curated metadata.
-    const title =
-      content.type === 'dynamic-tool'
-        ? getMcpToolDisplay(toolName, mcpTools, content.title).displayName
-        : getToolMetadataSync(toolName, content.input).displayName
-    // Surface the error text when a tool failed; otherwise show its output.
-    const output = content.state === 'output-error' ? content.errorText : formatToolOutput(content.output)
-    trackEvent('content_view_open', { view_type: 'object-view', tool_name: toolName })
-    setState({ type: 'object-view', data: { title, output } })
-  }, [])
+      const toolName = getToolName(content)
+      // MCP dynamic-tool parts resolve their title from the tool map; built-ins use curated metadata.
+      const title =
+        content.type === 'dynamic-tool'
+          ? getMcpToolDisplay(toolName, mcpTools, content.title).displayName
+          : getToolMetadataSync(toolName, content.input).displayName
+      // Surface the error text when a tool failed; otherwise show its output.
+      const output = content.state === 'output-error' ? content.errorText : formatToolOutput(content.output)
+      trackEvent('content_view_open', {
+        view_type: 'object-view',
+        tool_name: content.type === 'dynamic-tool' ? 'mcp' : toolName,
+      })
+      setState({ type: 'object-view', data: { title, output } })
+    },
+    [trackEvent],
+  )
 
-  const showPreview = useCallback((url: string) => {
-    trackEvent('content_view_open', { view_type: 'preview' })
-    trackEvent('preview_open')
-    setState({
-      type: 'preview',
-      data: {
-        url,
-        onClose: () => setState({ type: null, data: null }),
-      },
-    })
-  }, [])
+  const showPreview = useCallback(
+    (url: string) => {
+      trackEvent('content_view_open', { view_type: 'preview' })
+      trackEvent('preview_open')
+      setState({
+        type: 'preview',
+        data: {
+          url,
+          onClose: () => setState({ type: null, data: null }),
+        },
+      })
+    },
+    [trackEvent],
+  )
 
-  const showSideview = useCallback((sideviewType: string | null, sideviewId: string | null) => {
-    if (sideviewType === null || sideviewId === null) {
-      setState({ type: null, data: null })
-      return
-    }
-    trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
-    setState({ type: 'sideview', data: { sideviewType, sideviewId } })
-  }, [])
+  const showSideview = useCallback(
+    (sideviewType: string | null, sideviewId: string | null) => {
+      if (sideviewType === null || sideviewId === null) {
+        setState({ type: null, data: null })
+        return
+      }
+      trackEvent('content_view_open', { view_type: 'sideview', sideview_type: sideviewType })
+      setState({ type: 'sideview', data: { sideviewType, sideviewId } })
+    },
+    [trackEvent],
+  )
 
-  const showArtifact = useCallback((data: ArtifactViewData) => {
-    trackEvent('content_view_open', { view_type: 'artifact' })
-    setState({ type: 'artifact', data })
-  }, [])
+  const showArtifact = useCallback(
+    (data: ArtifactViewData) => {
+      trackEvent('content_view_open', { view_type: 'artifact' })
+      setState({ type: 'artifact', data })
+    },
+    [trackEvent],
+  )
 
   const close = useCallback(() => {
     if (state.type !== null) {
       trackEvent('content_view_close', { view_type: state.type })
     }
     setState({ type: null, data: null })
-  }, [state.type])
+  }, [state.type, trackEvent])
 
-  // Close content view when crossing into mobile mode (only on transition, not continuously)
-  useEffect(() => {
-    const crossedIntoMobileWithContentViewOpen = !prevIsMobile.current && isMobile && state.type !== null
-    if (crossedIntoMobileWithContentViewOpen) {
-      close()
-    }
-    prevIsMobile.current = isMobile
-  }, [isMobile, state.type, close])
+  const showCompactionSummary = useCallback(
+    (checkpoint: CompactionSummary) => {
+      trackEvent('content_view_open', { view_type: 'compaction-summary' })
+      setState({ type: 'compaction-summary', data: checkpoint })
+    },
+    [trackEvent],
+  )
 
   return (
     <ContentViewContext.Provider
@@ -139,13 +180,16 @@ export const ContentViewProvider = ({ children }: { children: ReactNode }) => {
         showPreview,
         showSideview,
         showArtifact,
+        showCompactionSummary,
         close,
         isOpen: state.type !== null,
         previewHidden,
         setPreviewHidden,
       }}
     >
-      {children}
+      <ShowCompactionSummaryContext.Provider value={showCompactionSummary}>
+        {children}
+      </ShowCompactionSummaryContext.Provider>
     </ContentViewContext.Provider>
   )
 }
@@ -205,4 +249,13 @@ export const useSideview = () => {
     showSideview,
     closeSideview: close,
   }
+}
+
+/** Open summaries without subscribing the message list to side-panel state. */
+export const useShowCompactionSummary = () => {
+  const show = useContext(ShowCompactionSummaryContext)
+  if (!show) {
+    throw new Error('useShowCompactionSummary must be used within a ContentViewProvider')
+  }
+  return show
 }

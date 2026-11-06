@@ -4,10 +4,7 @@
 
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { createTestProvider } from '@/test-utils/test-provider'
 import { SuggestionChip } from './suggestion-chip'
-
-const TestProvider = createTestProvider()
 
 const meta = {
   title: 'Skills/SuggestionChip',
@@ -17,17 +14,15 @@ const meta = {
     docs: {
       description: {
         component:
-          'Pinned-skill chip rendered above the chat input. Click inserts the `/slug` token; right-click / long-press opens the action menu (Run · Add · Add instructions · Reorder · Unpin). Run uses router-state navigation — no `?run=` URL surface (Skills v1 §5).',
+          'Pinned-skill chip rendered above the chat input. Click inserts the `/slug` token; right-click / long-press opens the action menu (Add to chat · Add instructions to chat · Edit skill · Reorder · Unpin).',
       },
     },
   },
   decorators: [
     (Story) => (
-      <TestProvider>
-        <div className="bg-background p-8">
-          <Story />
-        </div>
-      </TestProvider>
+      <div className="bg-background p-8">
+        <Story />
+      </div>
     ),
   ],
 } satisfies Meta<typeof SuggestionChip>
@@ -39,19 +34,15 @@ const noop = () => {}
 
 export const Default: Story = {
   args: {
-    label: 'daily-brief',
-    dimmed: false,
+    label: 'Daily Brief',
     onClick: noop,
     onAddInstruction: noop,
+    onEdit: noop,
     onReorder: noop,
     onUnpin: noop,
   },
 }
 
-export const Dimmed: Story = {
-  args: { ...Default.args, dimmed: true },
-}
-
 export const LongName: Story = {
-  args: { ...Default.args, label: 'long-skill-name-that-truncates' },
+  args: { ...Default.args, label: 'Long Skill Name That Truncates' },
 }

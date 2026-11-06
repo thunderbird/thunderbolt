@@ -14,7 +14,7 @@
 
 import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { withTimeout } from '@/lib/timeout'
-import type { PowerSyncDatabase } from '@powersync/web'
+import type { PowerSyncDatabase, SyncStatus } from '@powersync/web'
 import { getDatabaseInstance } from '../database'
 
 /** Custom event name for sync enabled changes */
@@ -57,6 +57,33 @@ export const reconnectSync = async (): Promise<void> => {
  * Check if sync is enabled by user preference
  */
 export const isSyncEnabled = (): boolean => getLocalSetting('syncEnabled')
+
+/** The part of PowerSync that {@link waitForSyncCatchUp} reads. */
+type SyncStatusSource = {
+  currentStatus: Pick<SyncStatus, 'connected' | 'dataFlowStatus'>
+  waitForStatus: (predicate: (status: Pick<SyncStatus, 'lastSyncedAt'>) => boolean) => Promise<void>
+}
+
+/**
+ * Resolves once a full sync lands, when this device may still be behind the server
+ * (offline, connecting, or mid-download). Null when it is current or sync is off.
+ *
+ * App start waits only for priority 1, so `chat_threads` can be on screen before
+ * their `chat_messages` arrive.
+ */
+export const waitForSyncCatchUp = (
+  powerSync: SyncStatusSource | null = getPowerSyncInstance(),
+): Promise<void> | null => {
+  if (!powerSync || !isSyncEnabled()) {
+    return null
+  }
+  const { connected, dataFlowStatus } = powerSync.currentStatus
+  if (connected && !dataFlowStatus.downloading) {
+    return null
+  }
+  const since = Date.now()
+  return powerSync.waitForStatus((status) => (status.lastSyncedAt?.getTime() ?? 0) >= since)
+}
 
 /**
  * Set sync enabled preference, connect/disconnect from PowerSync, and dispatch change event

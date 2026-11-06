@@ -2,49 +2,97 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
+import { agentAcceptsAttachments, isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
+import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
+import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
+import { mergeIntoDraft, useConsumePendingPrompt } from '@/chats/pending-prompt-store'
+import { useCreateItem } from '@/components/create-item/context'
 import { estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
 import { useIsMobile as useIsMobile_default } from '@/hooks/use-mobile'
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
+import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
+import {
+  chipMarker,
+  deleteSkillTokenAt,
+  foldPendingSigils,
+  normalizeSkillTokensToSlugs,
+} from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import { useAgentCommands } from '@/acp/agent-commands-store'
-import { useWarmAcpCommands } from '@/chats/use-warm-acp-commands'
+import { useAcpSessionStore } from '@/acp/session-state-store'
+import { sessionConfigKey } from '@/acp/session-config-store'
+import { useWarmAcpCommands as useWarmAcpCommands_default } from '@/chats/use-warm-acp-commands'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
 } from '@/skills/use-skills'
-import { type AttachmentData, type Model } from '@/types'
+import { type AttachmentData, type Model, type Skill } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
+import { getTurnActivity } from '@/chats/turn-activity'
+import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, Paperclip, X } from 'lucide-react'
-import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
+import { AlertCircle, Loader2 } from 'lucide-react'
+import {
+  type ClipboardEvent,
+  type KeyboardEvent,
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
+import { ChatAddMenu } from './chat-add-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
-import { ContextUsageIndicator } from '../context-usage-indicator'
+import { ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
+import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
-import { ChatModePicker } from './chat-mode-picker'
+import { EffortSelector } from './effort-selector'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
+import { collapseTextSelectionToEnd } from '@/lib/focus'
+import { hasAssistantContent } from '@/lib/message-utils'
+import { buildQuotePart } from '@/lib/quotes'
+import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
+import { resolveTextMimeType } from '@/files/transformers'
+import { maybeCompressAttachment } from '@/files/compress/compress-attachment'
+import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
+import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
+import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
+import { preloadChatMessageList } from './chat-messages-loader'
+import { isBuiltInAgent } from '@/defaults/agents'
+import { useAppName } from '@/lib/branding-selectors'
+import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { ComposerAlert } from './composer-alert'
+import { ImageSupportNotice } from './image-support-notice'
+import { useImageSupportCheck as useImageSupportCheck_default } from './use-image-support-check'
 
 /** Max size for a chat attachment stored locally and sent to the agent. */
 const maxAttachmentBytes = 25 * 1024 * 1024
 const maxAttachmentCount = 10
 
 /** Mime types accepted as attachments. PDFs and images deliver natively to
- *  capable models; plain-text types (txt / md / csv / json) deliver as text;
- *  docx (and a native file a model rejects) auto-remediate to text/images. */
+ *  capable models; plain-text types (txt / md / csv / json) and xlsx deliver as
+ *  text; docx (and a native file a model rejects) auto-remediate to text/images. */
 const acceptedAttachmentMimeTypes = new Set([
   'application/pdf',
   'image/png',
@@ -52,6 +100,7 @@ const acceptedAttachmentMimeTypes = new Set([
   'image/webp',
   'image/gif',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/markdown',
   'text/plain',
   'text/csv',
@@ -68,6 +117,7 @@ const acceptedAttachmentExtensions = [
   '.webp',
   '.gif',
   '.docx',
+  '.xlsx',
   '.md',
   '.markdown',
   '.txt',
@@ -78,9 +128,41 @@ const acceptedAttachmentExtensions = [
 /** `accept` attribute string for the file picker. */
 const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachmentExtensions].join(',')
 
+/** True for ArrowRight at the end of the text or ArrowLeft at the start, where the caret cannot move. */
+const isArrowAtBoundary = (key: string, ta: HTMLTextAreaElement): boolean => {
+  if (ta.selectionStart !== ta.selectionEnd) {
+    return false
+  }
+  if (key === 'ArrowRight') {
+    return ta.selectionStart === ta.value.length
+  }
+  return key === 'ArrowLeft' && ta.selectionStart === 0
+}
+
+/** Caret target when an unmodified arrow would step onto a chip marker (zero-width, so the step is invisible). */
+const caretPastChipMarker = (e: KeyboardEvent<HTMLTextAreaElement>, ta: HTMLTextAreaElement): number | null => {
+  if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || ta.selectionStart !== ta.selectionEnd) {
+    return null
+  }
+  const caret = ta.selectionStart
+  if (e.key === 'ArrowRight' && ta.value[caret] === chipMarker) {
+    return Math.min(ta.value.length, caret + 2)
+  }
+  return e.key === 'ArrowLeft' && ta.value[caret - 1] === chipMarker ? Math.max(0, caret - 2) : null
+}
+
 const isAcceptedAttachment = (file: File): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
   acceptedAttachmentExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
+
+/**
+ * Normalize a file's MIME before it is stored.
+ *
+ * Load-bearing, not cosmetic: a `.md` commonly arrives with an **empty** `type`,
+ * and `defaultDeliveryMode('')` routes an attachment as *native bytes* — which a
+ * model can't read. Resolving to `text/plain` here makes it deliver as text.
+ */
+const attachmentMimeType = (file: File): string => resolveTextMimeType(file.name, file.type)
 
 /** Clipboard files (e.g. a pasted screenshot) often arrive with an empty name.
  *  Give them a stable, extension-bearing filename so the chip renders and the
@@ -93,27 +175,33 @@ const withClipboardFilename = (file: File, index: number): File => {
   return new File([file], `pasted-image-${Date.now()}-${index}.${ext}`, { type: file.type })
 }
 
+const connectionFailed = msg`Connection failed`
+
+/** Wraps a server-supplied string as a descriptor with no catalog entry, so the
+ *  caller has one type to resolve: `i18n._` returns it verbatim on a miss. */
+const asDescriptor = (message: string): MessageDescriptor => ({ id: message, message })
+
 /**
  * Extract a human-readable display string from a connection error.
  * Handles JSON-RPC error messages (which have nested data.message),
  * plain strings, and generic Error objects.
  */
-const extractErrorDisplay = (error: Error | null | undefined): string => {
+const extractErrorDisplay = (error: Error | null | undefined): MessageDescriptor => {
   if (!error?.message) {
-    return 'Connection failed'
+    return connectionFailed
   }
 
   try {
     const parsed = JSON.parse(error.message)
     const message = parsed?.data?.message ?? parsed?.data?.details ?? parsed?.message
     if (typeof message === 'string') {
-      return message
+      return asDescriptor(message)
     }
   } catch {
     // Not JSON — use the raw message
   }
 
-  return error.message
+  return asDescriptor(error.message)
 }
 
 export type ChatPromptInputRef = {
@@ -132,6 +220,9 @@ type ChatPromptInputProps = {
   useEnabledSkills?: typeof useEnabledSkills_default
   /** Inject for tests that need to drive the unavailable-agent fallback. */
   isAgentAvailable?: typeof isAgentAvailable_default
+  useImageSupportCheck?: typeof useImageSupportCheck_default
+  /** Inject for tests that select a non-built-in agent, so the warm-up never dials it. */
+  useWarmAcpCommands?: typeof useWarmAcpCommands_default
 }
 
 export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
@@ -146,11 +237,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       useLibrarySkills = useLibrarySkills_default,
       useEnabledSkills = useEnabledSkills_default,
       isAgentAvailable = isAgentAvailable_default,
+      useImageSupportCheck = useImageSupportCheck_default,
+      useWarmAcpCommands = useWarmAcpCommands_default,
     },
     ref,
   ) => {
+    const { i18n, t } = useLingui()
     const navigate = useNavigate()
     const location = useLocation()
+    const { openCreateItem } = useCreateItem()
+    /** Opens route-preserving skill creation pre-filled with an unknown token's slug. */
+    const openCreateSkill = (initialName: string) => openCreateItem({ kind: 'skill', initialName })
 
     const { isMobile } = useIsMobile()
 
@@ -160,16 +257,42 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       connectionStatus,
       connectionError,
       id: chatThreadId,
+      retryCount,
+      retriesExhausted,
+      stopping,
+      compactionStatus,
       selectedAgent,
       selectedModel,
     } = useCurrentChatSession()
+    // Bound to a local so the catalog placeholder is named `{agentName}` — a
+    // member expression inside a macro extracts as positional `{0}`.
+    const agentName = selectedAgent.name
 
-    const { messages, status, stop, sendMessage } = useChat({ chat: chatInstance })
+    const {
+      messages,
+      status,
+      stop,
+      sendMessage,
+      error: chatError,
+    } = useChat({
+      chat: chatInstance,
+      experimental_throttle: messageBookkeepingThrottleMs,
+    })
+    const summaryView = useCompactionSummaryState(messages)
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
     const trackSkillEvent = useSkillTelemetry()
+    // Minimal mode treats `/` as ordinary text: no popup, token resolution,
+    // highlighting or token-aware editing (resolution is gated in
+    // `resolveSkillTokenInstructions`).
+    const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+    const configSettled = useConfigStore(selectConfigSettled)
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
+    // Display-title → slug, for the whole library (disabled skills still
+    // highlight as amber chips). The composer shows `/Daily Brief`; the model
+    // and stored message get `/daily-brief` via send-time normalization.
+    const displayNameToSlug = useMemo(() => buildDisplayNameToSlug(library), [library])
     const enabledSlugs = useMemo(
       () => new Set(library.filter((s) => isEnabled(s.id)).map((s) => s.name)),
       [library, isEnabled],
@@ -201,7 +324,25 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [skillBySlug, isEnabled, agentCommandNames],
     )
 
-    const isStreaming = status === 'streaming'
+    // Show the Stop button whenever the thread is busy — the same signal
+    // `ChatMessages` uses for its loading spinner, so the two stay in sync.
+    const { isActive, isStopping } = getTurnActivity({
+      status,
+      lastMessage: messages[messages.length - 1],
+      hasChatError: chatError != null,
+      retriesExhausted,
+      retryCount,
+      stopRequested: stopping,
+    })
+    const compacting = compactionStatus === 'compacting'
+    const isBusy = isActive || compacting
+    const builtIn = isBuiltInAgent(selectedAgent)
+    const acpSession = useAcpSessionStore((state) =>
+      state.sessions.get(sessionConfigKey(selectedAgent.id, chatThreadId)),
+    )
+    const compactCommand = acpSession?.commands.find((command) => command.name === 'compact')
+    const canCompact =
+      !!chatInstance.compactContext && (builtIn ? supportsPiCompaction(selectedModel) : !!compactCommand)
     const isConnecting = connectionStatus === 'connecting'
     const isConnectionError = connectionStatus === 'error' && connectionError != null
 
@@ -217,14 +358,65 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const [attachments, setAttachments] = useState<AttachmentData[]>([])
     const [attachError, setAttachError] = useState<string | null>(null)
+    // Quote-reply passages pulled in from the "Reply" button on a response. Held
+    // in a per-thread store (not local state) so that button — which lives deep
+    // in the message list — can add to the composer without prop-drilling.
+    const quotes = usePendingQuotes(chatThreadId)
+    const removeQuote = usePendingQuotesStore((s) => s.removeQuote)
+    const setQuotes = usePendingQuotesStore((s) => s.setQuotes)
+    const clearQuotes = usePendingQuotesStore((s) => s.clearQuotes)
+    const modelName = selectedModel.name
+    const imageSupport = useImageSupportCheck({
+      model: selectedModel,
+      attachments,
+      messages,
+      hasDraft: input.trim().length > 0 || attachments.length > 0 || quotes.length > 0,
+      enabled: isBuiltInAgent(selectedAgent),
+    })
+    // Hold the send while the model's image support is being checked or rules out the attached image.
+    const imageSupportBlocksSend = imageSupport.notice !== undefined
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const acceptsAttachments = agentAcceptsAttachments(selectedAgent)
+    // Files queued before the chat landed on an agent that takes none (discovery moved
+    // it, or the user switched) stay visible so they can be removed, but hold the send.
+    const queuedAttachmentsBlockSend = !acceptsAttachments && attachments.length > 0
+    // Only when no model fits the thread's confidentiality lock: otherwise
+    // `resolveSessionModel` already swapped one in for the built-in.
+    const noModelForThread = isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)
+    // `useChatAutomation` holds back the unanswered last turn of a private chat
+    // on a non-built-in agent. Say so, and hold a typed send too: it would carry
+    // the private history to that agent unencrypted.
+    const privateAutoRunBlocked = isPrivateAutoRunBlocked({
+      chatThread,
+      agent: selectedAgent,
+      status,
+      stopping,
+      lastRole: messages.at(-1)?.role,
+    })
+    const builtInAgentName = useAppName()
+    const builtInAgentEnabled = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+    const sendBlocked =
+      imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread || privateAutoRunBlocked
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
     // racing with the microtask could silently discard the user's text.
     const inputRef = useRef(input)
     inputRef.current = input
+    /*
+     * Composer text proposed from outside this subtree (a Mini App's
+     * `ui/open-chat`). Delivered once and dropped.
+     *
+     * Merged into the draft rather than replacing it, and read through
+     * `inputRef` so the merge sees what is in the composer at delivery time
+     * rather than at the render that scheduled it. Replacing was the original
+     * behaviour and it silently ate whatever the user had typed when an app
+     * decided to propose something.
+     */
+    useConsumePendingPrompt(chatThreadId, (prompt) =>
+      setInput(mergeIntoDraft(foldPendingSigils(inputRef.current), prompt)),
+    )
     const formRef = useRef<HTMLFormElement>(null)
     // Discovered lazily — the form ref is set after the first render, and we
     // need a stable ref to pass to `useSlashCommand` so it can focus / set
@@ -232,6 +424,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // one for the form and one for the textarea) avoids two cached pointers
     // to the same node drifting out of sync.
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+    const hasPreloadedSendDependencies = useRef(false)
+
+    const preloadSendDependencies = useCallback(() => {
+      if (hasPreloadedSendDependencies.current) {
+        return
+      }
+      hasPreloadedSendDependencies.current = true
+      preloadAgentConnection()
+      preloadChatMessageList()
+    }, [])
 
     const getTextarea = (): HTMLTextAreaElement | null => {
       textareaRef.current = formRef.current?.querySelector('textarea') ?? null
@@ -252,6 +454,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setHighlightedIdx,
       selectItem: selectItemFromPopup,
       handleKeyDown: handleSlashKeyDown,
+      handleChange: handleSlashChange,
+      handleSelect: handleSlashSelect,
     } = useSlashCommand({
       value: input,
       setValue: setInput,
@@ -259,13 +463,23 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       library,
       isEnabled: isValidSkillSlug,
       agentCommands,
+      enabled: !minimalMode,
     })
 
     const addSkillChip = useCallback(
-      (slug: string) => {
+      (skillOrSlug: Skill | string) => {
         // Read the latest input from a ref so deferred callers (e.g. the
         // `runSkill` microtask) don't operate on a stale closure value.
-        const next = appendSlashToken(inputRef.current, slug)
+        // Insert the display title, not the slug — the user only ever sees
+        // titles in chat; send-time normalization restores the slug.
+        // `tokenForSkill` falls back to the slug for ambiguous display names
+        // so the token stays resolvable at send time.
+        const skill = typeof skillOrSlug === 'string' ? skillBySlug.get(skillOrSlug) : skillOrSlug
+        const fallbackSlug = typeof skillOrSlug === 'string' ? skillOrSlug : skillOrSlug.name
+        const next = appendSlashToken(
+          foldPendingSigils(inputRef.current),
+          skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug,
+        )
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -278,17 +492,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           ta?.setSelectionRange(next.length, next.length)
         })
       },
-      [setInput, setCursorPos],
+      [setInput, setCursorPos, skillBySlug, displayNameToSlug],
     )
 
     const insertInstructionText = useCallback(
       (text: string) => {
         const ta = getTextarea()
-        const start = ta?.selectionStart ?? input.length
-        const end = ta?.selectionEnd ?? input.length
-        const needsSpace = start > 0 && input[start - 1] !== ' '
+        const current = foldPendingSigils(input)
+        const start = ta?.selectionStart ?? current.length
+        const end = ta?.selectionEnd ?? current.length
+        const needsSpace = start > 0 && current[start - 1] !== ' '
         const insert = needsSpace ? ` ${text}` : text
-        const next = input.slice(0, start) + insert + input.slice(end)
+        const next = current.slice(0, start) + insert + current.slice(end)
         const pos = start + insert.length
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
@@ -306,14 +521,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [input, setInput, setCursorPos],
     )
 
-    // Run-in-chat router-state nav (Skills v1 §5). Read once during render
-    // and clear the state via `navigate(replace)` so back/forward doesn't
-    // re-trigger. Tracked via `consumedRunSkillRef` so React's StrictMode
-    // double-render doesn't insert the token twice. Once the state is
-    // cleared we reset the ref so the user can click "Run skill" on the
-    // same skill again.
+    // Run-in-chat router-state nav (Skills v1 §5). Same consume-once shape as
+    // `useConsumeNavState` (which skills-view uses) — kept inline here only
+    // because this component's router hooks are injectable for tests. Read
+    // once during render and clear the state via `navigate(replace)` so
+    // back/forward doesn't re-trigger; the ref guard keeps StrictMode's
+    // double-render from inserting the token twice.
     const consumedRunSkillRef = useRef<string | null>(null)
-    const runSkill = (location.state as { runSkill?: string } | null)?.runSkill
+    const runSkill = minimalMode ? undefined : (location.state as { runSkill?: string } | null)?.runSkill
     if (!runSkill) {
       consumedRunSkillRef.current = null
     } else if (consumedRunSkillRef.current !== runSkill) {
@@ -329,6 +544,34 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       })
     }
 
+    // Composer-focus request from the "New chat" entry points
+    // (`useCreateNewChat`), in the same consume-once router-state shape as
+    // `runSkill` above. It exists because mount-time `autoFocus` can't serve
+    // that tap: starting a chat from `/chats/new` reuses this composer, so
+    // there is no mount to focus on, and starting one from the mobile drawer
+    // focuses while the drawer still owns focus. Deferring a frame lets this
+    // focus win over the drawer's own focus management — the same reason
+    // `useAutofocusOnMount` defers — and programmatic focus raises the
+    // keyboard in the native apps (the WKContentView swizzle in main.mm).
+    const focusRequested = (location.state as { focusComposer?: boolean } | null)?.focusComposer === true
+    useEffect(() => {
+      if (!focusRequested) {
+        return
+      }
+      const frame = requestAnimationFrame(() => {
+        // Queried from the form rather than read off `textareaRef`: that ref
+        // is filled during render, and the mount render runs before the form
+        // ref itself is set.
+        const textarea = formRef.current?.querySelector('textarea') ?? null
+        textarea?.focus()
+        collapseTextSelectionToEnd(textarea)
+        // Consume the request so a back/forward navigation can't re-raise the
+        // keyboard over a chat the user came to read.
+        navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+      })
+      return () => cancelAnimationFrame(frame)
+    }, [focusRequested, navigate, location.pathname, location.search])
+
     // Map of enabled-skill slug → instruction. Shared by the overflow
     // estimate below and the send-time resolver in `ai/fetch.ts` (via
     // `resolveSkillTokenInstructions`), so a future change to resolution
@@ -343,25 +586,55 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       return map
     }, [library, isEnabled])
 
-    // Estimate the token cost of resolved skill instructions so the
-    // overflow modal fires correctly when /name tokens push the send past
-    // the model's context window — Skills v1 Open Q #5.
+    // Estimate the token cost of resolved skill instructions and pending
+    // quote passages so the overflow modal fires correctly when /name tokens
+    // or large quoted selections push the send past the model's context window
+    // — Skills v1 Open Q #5. Quotes are injected into the send (as `> …`
+    // blockquotes) but aren't part of `currentInput`, so they'd otherwise be
+    // invisible to the estimate.
+    // Display tokens (`/Daily Brief`) become slugs (`/daily-brief`) here — the
+    // model, the stored message, and the token estimate only ever see slugs.
+    // One memo feeds both the estimate and the send so they agree by
+    // construction.
+    const normalizedInput = useMemo(
+      () => (minimalMode ? foldPendingSigils(input) : normalizeSkillTokensToSlugs(input, displayNameToSlug)),
+      [minimalMode, input, displayNameToSlug],
+    )
+
     const additionalInputTokens = useMemo(() => {
-      const instructions = resolveSkillTokenInstructions(input, enabledInstructionBySlug)
+      // The resolver (shared with the send path in ai/fetch.ts) only speaks slugs.
+      const instructions = resolveSkillTokenInstructions(normalizedInput, enabledInstructionBySlug)
       let total = 0
       for (const instruction of instructions) {
         total += estimateTokensForText(instruction)
       }
+      for (const quote of quotes) {
+        total += estimateTokensForText(quote.data.text)
+      }
       return total
-    }, [input, enabledInstructionBySlug])
+    }, [normalizedInput, enabledInstructionBySlug, quotes])
 
-    const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
+    const builtInContext = useContextTracking({
       model: selectedModel,
       chatThreadId,
-      currentInput: input,
+      currentInput: normalizedInput,
       additionalInputTokens,
-      onOverflow: () => handleShowOverflowModal(selectedModel, input.trim().length, messages.length + 1),
+      onOverflow: () => handleShowOverflowModal(selectedModel, normalizedInput.trim().length, messages.length + 1),
     })
+
+    const acpSessionId =
+      acpSession?.sessionId ?? (chatThread?.agentId === selectedAgent.id ? chatThread.acpSessionId : undefined)
+    const savedAcpUsage = acpSessionId
+      ? messages.findLast(
+          (message) =>
+            message.metadata?.acpContextUsage?.sessionId === acpSessionId &&
+            message.metadata.acpContextUsage.agentId === selectedAgent.id,
+        )?.metadata?.acpContextUsage
+      : undefined
+    const acpUsage = acpSession?.usage ?? savedAcpUsage
+    const usedTokens = builtIn ? builtInContext.usedTokens : (acpUsage?.used ?? null)
+    const maxTokens = builtIn ? builtInContext.maxTokens : (acpUsage?.size ?? null)
+    const isContextKnown = builtIn ? builtInContext.isContextKnown : acpUsage !== undefined
 
     // Store dropped/picked PDFs locally (IndexedDB) and add reference-only
     // attachments. Bytes never enter a message part — only the localFileId ref.
@@ -373,26 +646,33 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         let count = attachments.length
         for (const file of files) {
           if (count >= maxAttachmentCount) {
-            setAttachError(`You can attach up to ${maxAttachmentCount} files.`)
+            setAttachError(t`You can attach up to ${maxAttachmentCount} files.`)
             break
           }
           if (!isAcceptedAttachment(file)) {
-            setAttachError(`"${file.name}" isn't a supported file type.`)
+            const filename = file.name
+            setAttachError(t`"${filename}" isn't a supported file type.`)
             continue
           }
-          if (file.size > maxAttachmentBytes) {
-            setAttachError(`"${file.name}" is too large (max ${maxAttachmentBytes / 1024 / 1024}MB).`)
+          // Shrink large images/PDFs before the cap check, so a compressible
+          // photo over the limit can slip under it instead of being rejected
+          // (THU-671). Falls back to the original when it can't help.
+          const prepared = await maybeCompressAttachment(file)
+          if (prepared.size > maxAttachmentBytes) {
+            const maxMegabytes = maxAttachmentBytes / 1024 / 1024
+            const filename = prepared.name
+            setAttachError(t`"${filename}" is too large (max ${maxMegabytes}MB).`)
             continue
           }
           const localFileId = crypto.randomUUID()
           try {
             await putAttachment({
               id: localFileId,
-              filename: file.name,
-              mimeType: file.type,
-              size: file.size,
+              filename: prepared.name,
+              mimeType: attachmentMimeType(prepared),
+              size: prepared.size,
               createdAt: Date.now(),
-              blob: file,
+              blob: prepared,
             })
           } catch (error) {
             // IndexedDB can reject when its storage quota is exceeded or it's
@@ -400,14 +680,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // promise reject silently — otherwise no chip appears and no banner
             // shows. Stop here: subsequent writes would hit the same failure.
             console.error('Failed to store attachment locally:', error)
-            setAttachError(`Couldn't attach "${file.name}" — your browser's storage is full or unavailable.`)
+            const filename = prepared.name
+            setAttachError(t`Couldn't attach "${filename}" — your browser's storage is full or unavailable.`)
             break
           }
-          setAttachments((prev) => [...prev, { localFileId, filename: file.name, mimeType: file.type }])
+          setAttachments((prev) => [
+            ...prev,
+            { localFileId, filename: prepared.name, mimeType: attachmentMimeType(prepared) },
+          ])
           count++
         }
       },
-      [attachments.length],
+      [attachments.length, t],
     )
 
     // Intercept clipboard paste (Cmd/Ctrl+V) so copied files and pasted images
@@ -420,13 +704,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           .filter((item) => item.kind === 'file')
           .map((item) => item.getAsFile())
           .filter((file): file is File => file != null)
-        if (files.length === 0) {
+        // An agent that takes no attachments lets the paste fall through untouched.
+        if (!acceptsAttachments || files.length === 0) {
           return
         }
         e.preventDefault()
         void addFiles(files.map(withClipboardFilename))
       },
-      [addFiles],
+      [acceptsAttachments, addFiles],
     )
 
     const removeAttachment = useCallback((localFileId: string) => {
@@ -436,13 +721,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const handleSubmit = async () => {
       try {
-        // Prevent submitting while streaming, or with neither text nor attachments
-        const textToSend = input.trim()
-        if (isStreaming || (!textToSend && attachments.length === 0)) {
+        // Prevent submitting while a turn is in flight, or with no text, attachments, or quotes.
+        const textToSend = normalizedInput.trim()
+        if (isBusy || sendBlocked || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
           return
         }
 
-        if (isOverflowing) {
+        if (builtIn && builtInContext.isOverflowing && !canCompact) {
           handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)
           return
         }
@@ -450,20 +735,31 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // Reference-only attachment parts — bytes stay in IndexedDB and are
         // hydrated per-agent at send time (see the file transports).
         const attachmentParts = attachments.map(buildAttachmentPart)
+        // Quote parts render as blockquotes and hydrate to `> …` text for the model.
+        const quoteParts = quotes.map((quote) => buildQuotePart(quote.data))
 
-        // Clear input, draft, and pending attachments immediately for responsive UX
+        // Clear input, draft, pending attachments, and quotes immediately for responsive UX
         clearDraft()
         setAttachments([])
+        clearQuotes(chatThreadId)
         setAttachError(null)
 
         await sendMessage({
-          parts: [...(textToSend ? [{ type: 'text' as const, text: textToSend }] : []), ...attachmentParts],
+          parts: [
+            ...quoteParts,
+            ...(textToSend ? [{ type: 'text' as const, text: textToSend }] : []),
+            ...attachmentParts,
+          ],
         })
       } catch (error) {
         console.error('Error submitting message:', error)
         // Send failed — the chips were cleared optimistically but the blobs are
         // still in IndexedDB, so restore them rather than orphaning the bytes.
         setAttachments(attachments)
+        setQuotes(
+          chatThreadId,
+          quotes.map((quote) => quote.data),
+        )
       }
     }
 
@@ -475,7 +771,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (model: Model, length: number, prompt_number: number) => {
         setShowOverflowModal(true)
         trackEvent('chat_send_prompt_overflow', {
-          model,
+          model_id: model.id,
+          model_name: model.model,
+          provider: model.provider,
           length,
           prompt_number,
         })
@@ -494,17 +792,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setInput,
     }))
 
+    const voice = useVoiceSession()
+
     const footerStartElements = (
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          aria-label="Attach a file"
-          title="Attach a file"
-          className="flex size-[var(--touch-height-sm)] shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <Paperclip className="size-[var(--icon-size-default)]" />
-        </button>
+        <ChatAddMenu
+          onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
+          onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
+        />
         {isConnecting ? (
           <div
             role="status"
@@ -512,7 +807,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
           >
             <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin" />
-            <span>Connecting to {selectedAgent.name}...</span>
+            <span>
+              <Trans>Connecting to {agentName}…</Trans>
+            </span>
           </div>
         ) : isConnectionError ? (
           <div
@@ -520,31 +817,83 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
           >
             <AlertCircle className="size-[var(--icon-size-default)] shrink-0" />
-            <span className="truncate" title={extractErrorDisplay(connectionError)}>
-              Failed to connect to {selectedAgent.name}
+            <span className="truncate" title={i18n._(extractErrorDisplay(connectionError))}>
+              <Trans>Failed to connect to {agentName}</Trans>
             </span>
           </div>
-        ) : (
-          <>
-            <ChatModePicker iconOnly={isMobile} />
-            <ChatModelPicker />
-          </>
-        )}
-        {isContextKnown && !isMobile && (
-          <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
+        ) : null}
+        {(isContextKnown || (canCompact && (!builtIn || messages.length > 0)) || !!summaryView.onViewSummary) && (
+          <ContextUsageIndicator
+            key={`${chatThreadId}:${selectedAgent.id}`}
+            usedTokens={usedTokens}
+            maxTokens={maxTokens}
+            onCompact={canCompact ? chatInstance.compactContext : undefined}
+            supportsInstructions={builtIn || compactCommand?.inputHint !== undefined}
+            busy={isActive}
+            compacting={compacting}
+            hasHistory={!builtIn || messages.some(hasAssistantContent)}
+            onViewSummary={summaryView.onViewSummary}
+          />
         )}
       </div>
     )
 
+    // The model picker sits in the footer's right cluster, next to the send
+    // button; the connecting / connection-error status replaces it on the
+    // left, so the right side only renders it in the healthy state.
+    const footerEndElements =
+      !isConnecting && !isConnectionError ? (
+        <EffortSelector
+          key={`${chatThreadId}:${selectedAgent.id}`}
+          modelPicker={
+            selectedAgent.type === 'built-in' ? (onClose) => <ChatModelPicker embedded onClose={onClose} /> : undefined
+          }
+        />
+      ) : undefined
+
     const handleAddChipFromBar = useCallback(
-      (slug: string) => {
-        addSkillChip(slug)
-        const resolved = skillBySlug.get(slug)
-        if (resolved) {
-          trackSkillEvent('skill_used', resolved.id, { via: 'chip' })
-        }
+      (skill: Skill) => {
+        addSkillChip(skill)
+        trackSkillEvent('skill_used', skill.id, { via: 'chip' })
       },
-      [addSkillChip, skillBySlug, trackSkillEvent],
+      [addSkillChip, trackSkillEvent],
+    )
+
+    // Backspace treats a display-title chip (`/Daily Brief`) as atomic: one
+    // press removes the whole token instead of eating it a letter at a time.
+    const handleTextareaKeyDown = useCallback(
+      (e: Parameters<typeof handleSlashKeyDown>[0]) => {
+        const ta = e.currentTarget
+        const caretCollapsed = ta.selectionStart === ta.selectionEnd
+        const skipTo = caretPastChipMarker(e, ta)
+        if (skipTo !== null) {
+          e.preventDefault()
+          ta.setSelectionRange(skipTo, skipTo)
+          setCursorPos(skipTo)
+          return
+        }
+        if (isArrowAtBoundary(e.key, ta)) {
+          // WKWebView inserts the arrow's private-use codepoint as text when the caret can't move.
+          e.preventDefault()
+          return
+        }
+        if (!minimalMode && e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
+          const deletion = deleteSkillTokenAt(inputRef.current, ta.selectionStart, displayNameToSlug)
+          if (deletion) {
+            e.preventDefault()
+            setInput(deletion.text)
+            setCursorPos(deletion.caret)
+            requestAnimationFrame(() => {
+              const el = getTextarea()
+              el?.focus()
+              el?.setSelectionRange(deletion.caret, deletion.caret)
+            })
+            return
+          }
+        }
+        handleSlashKeyDown(e)
+      },
+      [minimalMode, displayNameToSlug, setInput, setCursorPos, handleSlashKeyDown],
     )
 
     const handleSelectFromSlashPopup = useCallback(
@@ -564,7 +913,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           role="status"
           className="flex items-center justify-center px-4 py-3 text-muted-foreground text-[length:var(--font-size-sm)]"
         >
-          <span>This chat uses {selectedAgent.name}, which is not available on this platform.</span>
+          <span>
+            <Trans>This chat uses {agentName}, which is not available on this platform.</Trans>
+          </span>
         </div>
       )
     }
@@ -572,22 +923,27 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     return (
       <>
         <div
-          className="relative flex w-full flex-col rounded-2xl"
+          className="relative flex w-full flex-col rounded-3xl"
+          // Default is still prevented for an agent that takes no attachments,
+          // so a dropped file is ignored rather than opened by the browser in
+          // place of the app.
           onDragOver={(e) => {
             e.preventDefault()
-            setIsDragging(true)
+            setIsDragging(acceptsAttachments)
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
             e.preventDefault()
             setIsDragging(false)
-            void addFiles(Array.from(e.dataTransfer.files))
+            if (acceptsAttachments) {
+              void addFiles(Array.from(e.dataTransfer.files))
+            }
           }}
         >
           {isDragging && (
-            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-ring bg-muted/80 backdrop-blur-sm">
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-ring bg-muted/80 backdrop-blur-sm">
               <span className="text-[length:var(--font-size-sm)] font-medium text-muted-foreground">
-                Drop file to attach
+                <Trans>Drop file to attach</Trans>
               </span>
             </div>
           )}
@@ -623,66 +979,120 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </div>
             <AnimatePresence initial={false}>
               {attachError && (
-                <m.div
-                  key="attach-error"
-                  // marginBottom pulls the banner's bottom -12px below the composer's
-                  // top edge so it's hidden behind the composer's opaque z-10 body
-                  // (the "emerges from behind" look). Animated in lockstep with height
-                  // so dismiss collapses cleanly without over-pulling the chips.
-                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  animate={{ height: 'auto', opacity: 1, marginBottom: -12 }}
-                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  transition={{ type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }}
-                  className="pointer-events-auto overflow-hidden"
-                >
-                  <div className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive">
-                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">{attachError}</span>
-                    <button
-                      type="button"
-                      onClick={() => setAttachError(null)}
-                      aria-label="Dismiss"
-                      className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                </m.div>
+                <ComposerAlert key="attach-error" onDismiss={() => setAttachError(null)}>
+                  {attachError}
+                </ComposerAlert>
+              )}
+              {queuedAttachmentsBlockSend && (
+                <ComposerAlert key="attachments-unsupported">
+                  <Trans>{agentName} can&apos;t take attachments. Remove the attached files to send.</Trans>
+                </ComposerAlert>
+              )}
+              {noModelForThread && (
+                <ComposerAlert key="no-model-for-thread">
+                  <Trans>None of your models can be used in this chat. Choose another agent to send.</Trans>
+                </ComposerAlert>
+              )}
+              {privateAutoRunBlocked && (
+                <ComposerAlert key="private-auto-run-blocked">
+                  {builtInAgentEnabled ? (
+                    <Trans>
+                      This private chat won&apos;t run on {agentName}. Switch to {builtInAgentName} to run it.
+                    </Trans>
+                  ) : (
+                    <Trans>This private chat won&apos;t run on {agentName}.</Trans>
+                  )}
+                </ComposerAlert>
+              )}
+              {imageSupport.notice && (
+                <ImageSupportNotice
+                  key="image-support"
+                  status={imageSupport.notice}
+                  modelName={modelName}
+                  onTryAnyway={imageSupport.tryAnyway}
+                />
               )}
             </AnimatePresence>
           </div>
           <PromptInput
             ref={formRef}
             headerSlot={
-              attachments.length > 0 ? (
-                <div className="flex flex-wrap items-start gap-2 pb-2">
-                  {attachments.map((attachment) => (
-                    <FileCard
-                      key={attachment.localFileId}
-                      localFileId={attachment.localFileId}
-                      filename={attachment.filename}
-                      mimeType={attachment.mimeType}
-                      onRemove={() => removeAttachment(attachment.localFileId)}
-                    />
-                  ))}
+              attachments.length > 0 || quotes.length > 0 ? (
+                <div className="flex flex-col gap-2 pb-2">
+                  {quotes.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      {quotes.map((quote) => (
+                        <QuoteChip
+                          key={quote.id}
+                          text={quote.data.text}
+                          onRemove={() => removeQuote(chatThreadId, quote.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {attachments.length > 0 && (
+                    <div className="flex flex-wrap items-start gap-2">
+                      {attachments.map((attachment) => (
+                        <FileCard
+                          key={attachment.localFileId}
+                          localFileId={attachment.localFileId}
+                          filename={attachment.filename}
+                          mimeType={attachment.mimeType}
+                          onRemove={() => removeAttachment(attachment.localFileId)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : undefined
             }
             value={input}
-            onChange={(value: string) => setInput(value)}
-            placeholder="Ask me anything..."
+            onChange={(value: string) => {
+              if (value.length > 0) {
+                preloadSendDependencies()
+              }
+              handleSlashChange(value, getTextarea()?.selectionStart ?? value.length)
+            }}
+            placeholder={t`Ask me anything…`}
             showSubmitButton
             onSubmit={handleSubmit}
             // Allow sending an attachment even with no typed text (matches the Enter behavior).
-            canSubmit={input.trim().length > 0 || attachments.length > 0}
-            isLoading={isStreaming || isConnecting}
-            isStreaming={isStreaming}
+            canSubmit={!sendBlocked && (input.trim().length > 0 || attachments.length > 0 || quotes.length > 0)}
+            isLoading={isBusy || isConnecting}
+            isStreaming={isBusy}
+            isStopping={isStopping}
             onStop={stop}
-            autoFocus={!isMobile}
-            submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
-            className="relative z-10 flex flex-col w-full gap-0 rounded-2xl border bg-card p-2 dark:border-input dark:bg-[oklch(0.182_0_0)]"
+            // Desktop always autofocuses. The native mobile app autofocuses on a
+            // fresh chat (opening the app should land ready to type, keyboard up —
+            // programmatic focus raises the iOS keyboard via the main.mm swizzle)
+            // but not on existing chats, where popping the keyboard over the
+            // history the user came to read would be hostile. Mobile web keeps no
+            // autofocus: browsers won't show the keyboard for it anyway.
+            autoFocus={!isMobile || (isPlatformMobile() && isNewChat)}
+            submitOnEnter={!isBusy && !shouldInsertNewlineOnEnter}
+            // Voice mode covers the composer with an overlay; make the underlying
+            // input non-interactive so Tab/Enter can't reach the hidden textarea.
+            inert={voice.active}
+            className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
-            renderOverlay={(value) => renderHighlightedSkillTokens(value, classifySkill)}
+            footerEndElements={footerEndElements}
+            // Empty + idle composer shows the voice-mode trigger in the send slot (swaps back to Send
+            // once there's input); withheld in minimal mode and until config settles.
+            emptyStateAction={
+              minimalMode || !configSettled ? undefined : (
+                <VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />
+              )
+            }
+            // No overlay at all in minimal mode: its presence makes the textarea text transparent.
+            renderOverlay={
+              minimalMode
+                ? undefined
+                : (value) =>
+                    renderHighlightedSkillTokens(value, classifySkill, {
+                      displayNameToSlug,
+                      onCreateSkill: openCreateSkill,
+                    })
+            }
             popoverSlot={
               popupOpen ? (
                 <SlashPopup
@@ -694,10 +1104,23 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                 />
               ) : null
             }
-            onTextareaKeyDown={handleSlashKeyDown}
-            onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
+            onTextareaKeyDown={handleTextareaKeyDown}
+            onTextareaSelect={(e) => handleSlashSelect(e.currentTarget.selectionStart, e.currentTarget.selectionEnd)}
             onTextareaPaste={handlePaste}
           />
+          {/* Voice mode morphs the composer in-place: the overlay covers the
+              PromptInput box while a session is active. */}
+          <AnimatePresence>
+            {voice.active && (
+              <VoiceModeComposer
+                state={voice.state}
+                error={voice.error}
+                levelRef={voice.levelRef}
+                outputLevelRef={voice.outputLevelRef}
+                onClose={voice.stop}
+              />
+            )}
+          </AnimatePresence>
         </div>
         <ContextOverflowModal
           isOpen={showOverflowModal}

@@ -15,6 +15,8 @@ import { closeSharedIsolatedTestDb, testDbManager } from './db'
 // pglite to postgres; preload the test driver explicitly so db/client.ts doesn't
 // throw at module load when DATABASE_URL is not set (e.g. swagger.test.ts and
 // other tests that transitively import createApp from @/index).
+// db/client.ts itself now guards against `DATABASE_URL=postgresql://...` when
+// DRIVER=pglite (falls back to in-memory), so no need to `delete` it here.
 process.env.DATABASE_DRIVER = 'pglite'
 
 // Disable rate limiting in tests: RateLimiterDrizzle uses its own internal
@@ -24,6 +26,9 @@ process.env.RATE_LIMIT_ENABLED = 'false'
 // Force deterministic Better Auth secret for tests — must override any .env value
 // so that test signToken() helpers produce matching signatures
 process.env.BETTER_AUTH_SECRET = 'better-auth-secret-12345678901234567890'
+
+// A developer's .env often carries a test theme; suites that want branding set it themselves.
+delete process.env.BRANDING
 
 // Initialize the database before any tests run
 console.log('🔧 Initializing test database...')
@@ -53,7 +58,7 @@ globalThis.fetch = Object.assign(
 afterAll(async () => {
   await Promise.all([
     testDbManager.close(),
-    // Release the shared isolated instance used by the real-`.listen()` WS tests.
+    // Release the shared isolated instance used by suites that need their own connection.
     closeSharedIsolatedTestDb(),
     // Also close the db/client singleton if it was lazily loaded (e.g. swagger.test.ts)
     import('@/db/client').then(({ closeDb }) => closeDb()),

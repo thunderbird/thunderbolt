@@ -6,11 +6,9 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { act, render, type RenderOptions, type RenderResult } from '@testing-library/react'
 import type { ReactElement, ReactNode } from 'react'
 import { getClock } from '@/testing-library'
-import type { FetchFn } from '@/lib/proxy-fetch'
 import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
 import { PowerSyncReactivityTestProvider } from './powersync-mock'
-
-const mockProxyFetch = (async () => new Response()) as unknown as FetchFn
+import { mockProxyFetch } from './proxy-fetch'
 
 /**
  * Poll for element with fake timers. Avoids waitFor's jest.advanceTimersByTime issues in Bun.

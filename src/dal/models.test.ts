@@ -15,7 +15,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { defaultModelOpus48, hashModel } from '@/defaults/models'
+import { defaultModelDeepSeekV41Flash, defaultModelOpus55, defaultModels, hashModel } from '@shared/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import {
@@ -185,6 +185,23 @@ describe('Models DAL', () => {
   })
 
   describe('getSelectedModelQuery', () => {
+    it('prefers Flash when all defaults exist and no model is selected', async () => {
+      await getDb()
+        .insert(modelsTable)
+        .values([...defaultModels])
+
+      expect((await getSelectedModelQuery(getDb()).get())?.id).toBe(defaultModelDeepSeekV41Flash.id)
+    })
+
+    it('keeps an explicit selection ahead of the default Flash model', async () => {
+      await getDb()
+        .insert(modelsTable)
+        .values([...defaultModels])
+      await updateSettings(getDb(), { selected_model: defaultModelOpus55.id })
+
+      expect((await getSelectedModelQuery(getDb()).get())?.id).toBe(defaultModelOpus55.id)
+    })
+
     it('should return same result as getSelectedModel', async () => {
       const db = getDb()
 
@@ -933,7 +950,7 @@ describe('Models DAL', () => {
   describe('resetModelToDefault', () => {
     it('restores default fields and refreshes defaultHash', async () => {
       const db = getDb()
-      const defaultModel = defaultModelOpus48
+      const defaultModel = defaultModelOpus55
 
       await db.insert(modelsTable).values({
         ...defaultModel,
@@ -956,7 +973,7 @@ describe('Models DAL', () => {
 
     it('clears the local-only api key on reset', async () => {
       const db = getDb()
-      const defaultModel = defaultModelOpus48
+      const defaultModel = defaultModelOpus55
 
       await db.insert(modelsTable).values({ ...defaultModel })
       await db.insert(modelsSecretsTable).values({ modelId: defaultModel.id, apiKey: 'sk-user-supplied' })
@@ -973,7 +990,7 @@ describe('Models DAL', () => {
 
     it('preserves the row userId (does not overwrite with null from the default template)', async () => {
       const db = getDb()
-      const defaultModel = defaultModelOpus48
+      const defaultModel = defaultModelOpus55
 
       // The default template carries `userId: null`. A row that has already
       // been synced has a real user_id — reset must not overwrite it, otherwise
@@ -1046,22 +1063,22 @@ describe('Models DAL', () => {
     it('should auto-create a default profile for a known seeded model', async () => {
       const db = getDb()
 
-      // Create a model with the same ID as a seeded default (Opus 4.8)
+      // Create a model with the same ID as a seeded default (Opus)
       await createModel(getDb(), {
-        id: defaultModelOpus48.id,
+        id: defaultModelOpus55.id,
         provider: 'thunderbolt',
-        name: 'Opus 4.8',
-        model: 'opus-4.8',
+        name: defaultModelOpus55.name,
+        model: defaultModelOpus55.model,
       })
 
       // Verify a profile was auto-created
       const profile = await db
         .select()
         .from(modelProfilesTable)
-        .where(eq(modelProfilesTable.modelId, defaultModelOpus48.id))
+        .where(eq(modelProfilesTable.modelId, defaultModelOpus55.id))
         .get()
       expect(profile).not.toBeUndefined()
-      expect(profile?.temperature).toBe(0.2)
+      expect(profile?.temperature).toBeNull()
     })
 
     it('should not create a profile for an unknown model ID', async () => {
@@ -1187,6 +1204,25 @@ describe('Models DAL', () => {
       await updateModel(db, modelId, { apiKey: 'sk-second' })
       model = await getModel(db, modelId)
       expect(model?.apiKey).toBe('sk-second')
+    })
+
+    it('should delete an existing secret when apiKey is explicitly cleared', async () => {
+      const db = getDb()
+      const modelId = uuidv7()
+      await createModel(db, {
+        id: modelId,
+        provider: 'openai',
+        name: 'Model with key',
+        model: 'gpt-4',
+        apiKey: 'sk-secret',
+      })
+
+      await updateModel(db, modelId, { apiKey: null })
+
+      expect(
+        await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get(),
+      ).toBeUndefined()
+      expect((await getModel(db, modelId))?.apiKey).toBeNull()
     })
 
     it('should hard-delete secret when model is deleted', async () => {

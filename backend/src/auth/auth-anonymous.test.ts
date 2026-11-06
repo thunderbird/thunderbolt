@@ -11,16 +11,25 @@
  */
 
 import { user as userTable } from '@/db/auth-schema'
-import { waitlist } from '@/db/schema'
+import { devicesTable, waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth, type AuthEmailDeps } from '@/auth/auth'
 import { clearSettingsCache } from '@/config/settings'
-import { createTestDb } from '@/test-utils/db'
+import { createApp } from '@/index'
+import { rateLimits } from '@/db/rate-limit-schema'
+import { createTestDb, getSharedIsolatedTestDb } from '@/test-utils/db'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
+import { createSessionCookie } from '@/test-utils/session-cookie'
 import { eq } from 'drizzle-orm'
+import { createHmac } from 'node:crypto'
 import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 const mockSendSignInEmail = mock(() => Promise.resolve())
+const betterAuthSecret = 'better-auth-secret-12345678901234567890'
+
+/** Sign a raw anonymous session token exactly as the bearer plugin expects. */
+const signBearerToken = (token: string): string =>
+  `${token}.${createHmac('sha256', betterAuthSecret).update(token).digest('base64')}`
 
 /**
  * Build the email-dep overrides for `createAuth` so tests don't actually hit
@@ -37,9 +46,12 @@ const buildEmailDeps = (): AuthEmailDeps => ({
 // All suites here exercise the anonymous() plugin, which is operator-gated by
 // AUTH_ALLOW_ANONYMOUS. Enable it for the file and restore on teardown.
 let savedAllowAnonymous: string | undefined
+let savedCliDeviceRegistrationEnabled: string | undefined
 beforeAll(() => {
   savedAllowAnonymous = process.env.AUTH_ALLOW_ANONYMOUS
+  savedCliDeviceRegistrationEnabled = process.env.CLI_DEVICE_REGISTRATION_ENABLED
   process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+  process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'true'
   clearSettingsCache()
 })
 afterAll(() => {
@@ -47,6 +59,11 @@ afterAll(() => {
     delete process.env.AUTH_ALLOW_ANONYMOUS
   } else {
     process.env.AUTH_ALLOW_ANONYMOUS = savedAllowAnonymous
+  }
+  if (savedCliDeviceRegistrationEnabled === undefined) {
+    delete process.env.CLI_DEVICE_REGISTRATION_ENABLED
+  } else {
+    process.env.CLI_DEVICE_REGISTRATION_ENABLED = savedCliDeviceRegistrationEnabled
   }
   clearSettingsCache()
 })
@@ -143,35 +160,74 @@ describe('anonymous plugin — session-fixation guard', () => {
     expect(body.token).toBeDefined()
   })
 
+  // The before-hook (captcha + fixation guard) and the IP limiter both match the path exactly.
+  // That is only safe while Better Auth refuses to route a trailing slash, so pin it here.
+  it('does not route /sign-in/anonymous/ (trailing slash) to the anonymous endpoint', async () => {
+    const usersBefore = (await db.select().from(userTable)).length
+    const response = await auth.handler(
+      new Request('http://localhost:8000/v1/api/auth/sign-in/anonymous/', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    )
+    expect(response.status).toBe(404)
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect((await db.select().from(userTable)).length).toBe(usersBefore)
+  })
+
+  it('allows an anonymous session to access protected routes', async () => {
+    const app = await createApp({ database: db, auth })
+    const signInResponse = (await auth.api.signInAnonymous({ asResponse: true })) as Response
+    const sessionCookie = signInResponse.headers.get('set-cookie')
+    expect(sessionCookie).toBeTruthy()
+
+    const response = await app.handle(
+      new Request('http://localhost/v1/devices/allowlist', { headers: { Cookie: sessionCookie! } }),
+    )
+
+    expect(response.status).toBe(200)
+  })
+
+  it('rejects anonymous CLI registration without creating a trusted CLI row', async () => {
+    const app = await createApp({ database: db, auth })
+    const signInResponse = (await auth.api.signInAnonymous({ asResponse: true })) as Response
+    const body = (await signInResponse.json()) as { token: string }
+    const deviceId = `cli-${crypto.randomUUID()}`
+    const bearer = signBearerToken(body.token)
+
+    const protectedResponse = await app.handle(
+      new Request('http://localhost/v1/devices/allowlist', {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    )
+    expect(protectedResponse.status).toBe(200)
+
+    const response = await app.handle(
+      new Request('http://localhost/v1/account/devices/cli', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          'X-Device-ID': deviceId,
+          'X-Device-Name': 'Anonymous CLI',
+          'X-App-Version': '1.0.0-test',
+        },
+      }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+  })
+
   it('rejects /sign-in/anonymous with 400 when caller is already authenticated (non-anonymous)', async () => {
-    const realEmail = `fixation-guard@example.com`
-    await db.insert(waitlist).values({ id: crypto.randomUUID(), email: realEmail, status: 'approved' })
-
-    await auth.api.sendVerificationOTP({ body: { email: realEmail, type: 'sign-in' } })
-    const otp = (mockSendSignInEmail.mock.calls as unknown as Array<[{ otp: string }]>)[0]?.[0]?.otp
-    expect(otp).toBeDefined()
-
-    const challengeToken = await createTestChallenge(db, realEmail)
-
-    // Sign in via asResponse to capture the session cookie
-    const signInResponse = (await auth.api.signInEmailOTP({
-      body: { email: realEmail, otp: otp! },
-      headers: new Headers({ [challengeTokenHeader]: challengeToken }),
-      asResponse: true,
-    })) as Response
-
-    expect(signInResponse.status).toBe(200)
-
-    // Extract session cookie from the response
-    const setCookieHeader = signInResponse.headers.get('set-cookie')
-    expect(setCookieHeader).toBeTruthy()
+    const sessionCookie = await createSessionCookie(auth, db)
 
     // Attempt to acquire an anonymous session while holding a real session (via cookie).
     // Better Auth throws APIError directly when called via auth.api (not HTTP); catch it.
     let thrownError: unknown
     try {
       await auth.api.signInAnonymous({
-        headers: new Headers({ Cookie: setCookieHeader! }),
+        headers: new Headers({ Cookie: sessionCookie }),
       })
     } catch (err) {
       thrownError = err
@@ -243,5 +299,158 @@ describe('anonymous plugin — gated by AUTH_ALLOW_ANONYMOUS', () => {
       }
       clearSettingsCache()
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Suite: our DB-backed limiter is the only rate limit on anonymous sign-in
+// ---------------------------------------------------------------------------
+
+describe('anonymous sign-in: rate limit', () => {
+  const rateLimitEnvKeys = [
+    'RATE_LIMIT_ENABLED',
+    'TRUSTED_PROXY',
+    'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
+    'ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS',
+    'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX',
+    'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS',
+  ] as const
+  let savedEnv: Partial<Record<string, string>>
+  let db: Awaited<ReturnType<typeof getSharedIsolatedTestDb>>['db']
+
+  // RateLimiterDrizzle commits its own transactions, which would end the shared createTestDb
+  // BEGIN and leak rows across files and --rerun-each passes (see test-setup.ts).
+  beforeAll(async () => {
+    db = (await getSharedIsolatedTestDb()).db
+  })
+
+  beforeEach(async () => {
+    savedEnv = Object.fromEntries(rateLimitEnvKeys.map((key) => [key, process.env[key]]))
+    process.env.RATE_LIMIT_ENABLED = 'true'
+    process.env.TRUSTED_PROXY = 'cloudflare'
+    delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX
+    delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS
+    delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX
+    delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS
+    clearSettingsCache()
+    await db.delete(rateLimits)
+  })
+
+  afterEach(() => {
+    for (const key of rateLimitEnvKeys) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = savedEnv[key]
+      }
+    }
+    clearSettingsCache()
+  })
+
+  const signInRequest = (url: string, ip: string) =>
+    new Request(url, {
+      method: 'POST',
+      headers: { 'cf-connecting-ip': ip, 'content-type': 'application/json' },
+      body: '{}',
+    })
+
+  /** Sign in anonymously `count` times through the full app from one IP; returns each response. */
+  const signInThroughApp = async (count: number, ip: string) => {
+    const app = await createApp({ database: db })
+    const responses: Response[] = []
+    for (let i = 0; i < count; i++) {
+      responses.push(await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', ip)))
+    }
+    return responses
+  }
+
+  it('is not rate limited by Better Auth on its own', async () => {
+    const auth = createAuth(db, buildEmailDeps())
+    for (let i = 0; i < 15; i++) {
+      const response = await auth.handler(
+        signInRequest('http://localhost:8000/v1/api/auth/sign-in/anonymous', '198.51.100.1'),
+      )
+      expect(response.status).toBe(200)
+    }
+  })
+
+  it('allows 10 per IP per minute by default', async () => {
+    const responses = await signInThroughApp(11, '198.51.100.2')
+    expect(responses.slice(0, 10).map((response) => response.status)).toEqual(Array(10).fill(200))
+    expect(responses[10]!.status).toBe(429)
+    expect(responses[10]!.headers.get('ratelimit-limit')).toBe('10')
+  })
+
+  // Raising the limit with anonymous auth on requires a captcha (enforced in settings), so
+  // lowering it is how this suite proves the limiter reads ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX.
+  it('follows ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', async () => {
+    process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '5'
+    const responses = await signInThroughApp(6, '198.51.100.3')
+    expect(responses.slice(0, 5).map((response) => response.status)).toEqual(Array(5).fill(200))
+    expect(responses[5]!.status).toBe(429)
+  })
+
+  it('follows ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', async () => {
+    process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS = '120'
+    const responses = await signInThroughApp(11, '198.51.100.4')
+    expect(responses[10]!.status).toBe(429)
+    expect(Number(responses[10]!.headers.get('retry-after'))).toBeGreaterThan(60)
+  })
+
+  // 2000 real sign-ins would outrun the test timeout, so the bucket starts at 1999 used points,
+  // in the row shape rate-limiter-flexible writes.
+  it('rejects the 2001st anonymous sign-in in an hour by default, whatever the IP', async () => {
+    await db.insert(rateLimits).values({
+      key: 'anonymous-sign-in-global:all',
+      points: 1999,
+      expire: new Date(Date.now() + 3600_000),
+    })
+    const app = await createApp({ database: db })
+
+    const twoThousandth = await app.handle(
+      signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', '198.51.100.6'),
+    )
+    expect(twoThousandth.status).toBe(200)
+    const next = await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', '198.51.100.7'))
+    expect(next.status).toBe(429)
+    expect(next.headers.get('ratelimit-limit')).toBe('2000')
+  })
+
+  it('charges the deployment-wide budget on every sign-in when the captcha provider is none', async () => {
+    const app = await createApp({ database: db })
+    for (const ip of ['198.51.100.11', '198.51.100.12', '198.51.100.13']) {
+      expect((await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', ip))).status).toBe(200)
+    }
+    const [row] = await db.select().from(rateLimits).where(eq(rateLimits.key, 'anonymous-sign-in-global:all'))
+    expect(row?.points).toBe(3)
+  })
+
+  it('follows the ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_* pair', async () => {
+    process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX = '2'
+    process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS = '120'
+    clearSettingsCache()
+    const app = await createApp({ database: db })
+    const statuses: number[] = []
+    for (const ip of ['198.51.100.8', '198.51.100.9', '198.51.100.10']) {
+      statuses.push((await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', ip))).status)
+    }
+    expect(statuses).toEqual([200, 200, 429])
+  })
+
+  it('does not route a lookalike path to Better Auth, and still counts the real path', async () => {
+    process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '5'
+    const app = await createApp({ database: db })
+    const usersBefore = (await db.select().from(userTable)).length
+
+    const lookalike = await app.handle(
+      signInRequest('http://localhost/v1/x/v1/api/auth/sign-in/anonymous', '198.51.100.5'),
+    )
+    expect(lookalike.status).toBe(404)
+    expect((await db.select().from(userTable)).length).toBe(usersBefore)
+
+    const real = await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', '198.51.100.5'))
+    expect(real.status).toBe(200)
+    expect(real.headers.get('ratelimit-limit')).toBe('5')
+    expect(real.headers.get('ratelimit-remaining')).toBe('4')
   })
 })

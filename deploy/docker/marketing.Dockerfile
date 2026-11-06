@@ -2,7 +2,13 @@
 #
 # The docs content is loaded from the repo's root-level `docs/` directory via
 # `web/src/loaders/repo-docs-loader.ts` — needs to be available at build time.
-FROM oven/bun:latest AS build
+#
+# --platform=$BUILDPLATFORM: the build output is platform-independent static
+# assets (Astro also invokes `sharp` here for image optimization, whose
+# native binary only needs to match the build host, not the target image), so
+# this stage runs natively instead of under QEMU emulation for the target
+# platform. Only the final nginx stage below is built per target platform.
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS build
 
 WORKDIR /app
 
@@ -18,11 +24,18 @@ WORKDIR /app/web
 RUN bun run build
 
 # Stage 2: Serve with nginx
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
+
+# The base image can lag Alpine's security fixes; take them at build time (nightly-images.yml rebuilds daily).
+USER root
+RUN apk upgrade --no-cache
 
 COPY deploy/config/marketing-nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/web/dist /usr/share/nginx/html
 
-EXPOSE 80
+# Keep the final-stage user explicit for Semgrep's container check.
+USER nginx
+
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

@@ -2,45 +2,45 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import '@/lib/dayjs'
+import { I18nProvider } from '@lingui/react'
+import { useLingui } from '@lingui/react/macro'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
+
+import { i18n } from '@/i18n'
 
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
+import { DeviceRevoked } from '@/components/device-revoked'
 import { SignedOut } from '@/components/signed-out'
 import { StorageUnavailableScreen } from '@/components/storage-unavailable-screen'
 import NotFound from '@/components/not-found'
-import { RevokedDeviceModal } from '@/components/revoked-device-modal'
+import { WindowControls } from '@/components/window-controls'
 import ChatLayout from '@/layout/main-layout'
 import SettingsLayout from '@/settings/layout'
 import WaitlistLayout from '@/waitlist/layout'
 import WaitlistPage from '@/waitlist/waitlist-page'
-import { SidebarProvider } from '@/components/ui/sidebar'
 import { HapticsProvider } from '@/hooks/use-haptics'
-import {
-  AuthProvider,
-  DatabaseProvider,
-  HttpClientProvider,
-  SignInModalProvider,
-  useAuth,
-  useDatabase,
-  useHttpClient,
-} from '@/contexts'
+import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
+import { useAnalyticsConsent } from '@/hooks/use-analytics-consent'
+import { useAppLanguage } from '@/hooks/use-app-language'
+import { useUnitDefaults } from '@/hooks/use-unit-defaults'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
+import { useDeviceSessionBinding } from '@/hooks/use-device-session-binding'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
+import { useBootstrapSystemAgents } from '@/hooks/use-bootstrap-system-agents'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
 import { UpgradeRequired } from './components/upgrade-required'
 import { useConfigStore } from '@/api/config-store'
-import { compareSemver } from '@/lib/compare-semver'
+import { isVersionBelowMinimum } from '@/lib/app-version'
 import { AuthGate } from './components/auth-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -49,9 +49,13 @@ import { UpdateNotification } from './components/update-notification'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
-import { useCredentialEvents } from './hooks/use-credential-events'
+import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupported-listener'
+import { useMigrationRecoveryKey } from './hooks/use-migration-recovery-key'
+import { RecoveryKeyDialog } from './components/recovery-key-dialog'
+import { UnsavedRecoveryPhrasePrompt } from './components/unsaved-recovery-phrase-prompt'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
+import { loadSearchPalette } from '@/search/palette/search-palette-loader'
 import { MCPProvider } from './lib/mcp-provider'
 import { ProxyFetchProvider } from './lib/proxy-fetch-context'
 import { TrayProvider } from './lib/tray'
@@ -61,11 +65,12 @@ import { useSettings } from './hooks/use-settings'
 import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
 import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync/sync-state'
-import { refreshSystemAgents } from '@/db/seeding/seed-agents'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
 import { markAppMounted } from '@/lib/init-timing'
+import { preloadInBackground } from '@/lib/after-paint'
+import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { LazyMotion } from 'framer-motion'
+import { ProjectRedirect } from '@/projects/project-redirect'
 
 // Loaded after first paint so framer-motion feature code lives in an
 // async chunk instead of the entry bundle.
@@ -74,60 +79,83 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // Pages below ship in their own async chunk; the layouts that host them are
 // static so route navigation only swaps the inner content. ChatLayout and
 // ChatDetailPage stay in the entry bundle so the landing page is instant.
-const TasksPage = lazy(() => import('@/tasks'))
-const Settings = lazy(() => import('@/settings/index'))
-const PreferencesSettingsPage = lazy(() => import('@/settings/preferences'))
-const ModelsPage = lazy(() => import('@/settings/models'))
-const DevicesSettingsPage = lazy(() => import('@/settings/devices'))
-const McpServersPage = lazy(() => import('@/settings/mcp-servers'))
-const SkillsPage = lazy(() => import('@/settings/skills'))
-const AgentsSettingsPage = lazy(() => import('@/routes/settings/agents'))
-const IntegrationsPage = lazy(() => import('@/settings/integrations'))
+//
+// Every loader in this map is both the `lazy()` source for its route and part
+// of `preloadAllRouteChunks`, so a new lazy route added here is warmed on the
+// Tauri apps automatically. Deployment-specific chunks (SSO, dev-only routes)
+// live outside the map.
+const routeChunkLoaders = {
+  tasks: () => import('@/tasks'),
+  miniApp: () => import('@/mini-apps/mini-app-page'),
+  settings: () => import('@/settings/index'),
+  preferences: () => import('@/settings/preferences'),
+  models: () => import('@/settings/models'),
+  devices: () => import('@/settings/devices'),
+  connections: () => import('@/settings/connections'),
+  skills: () => import('@/settings/skills'),
+  agents: () => import('@/routes/settings/agents'),
+  // The CLI device-authorization approval page is off the chat/landing
+  // critical path (only reached via a QR/link).
+  deviceApproval: () => import('@/components/device-approval'),
+}
 
-// Lazily import SSO components so non-enterprise deployments don't pay
-// for the extra bundle size and attack surface.
-const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
+const TasksPage = lazy(routeChunkLoaders.tasks)
+const MiniAppPage = lazy(routeChunkLoaders.miniApp)
+const Settings = lazy(routeChunkLoaders.settings)
+const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
+const ModelsPage = lazy(routeChunkLoaders.models)
+const DevicesSettingsPage = lazy(routeChunkLoaders.devices)
+const ConnectionsPage = lazy(routeChunkLoaders.connections)
+const SkillsPage = lazy(routeChunkLoaders.skills)
+const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
+const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
+
+// Voice settings is feature-flagged and hidden by default, so it's a
+// deliberately-cold chunk (outside routeChunkLoaders) — lazy but not warmed.
+const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
+
+// Keep SSO out of consumer builds' startup requests. SSO deployments warm the
+// redirect during initialization so routing doesn't add a chunk-fetch waterfall.
+const loadSsoRedirect = () => import('@/components/sso-redirect')
+const SsoRedirect = lazy(loadSsoRedirect)
+// Reached only after a failed SSO login: deliberately cold, not in routeChunkLoaders.
+const SsoError = lazy(() => import('@/components/sso-error'))
 
 // Dev-only routes: guarded by import.meta.env.DEV so Vite eliminates
 // both the lazy() call and the dynamic import() from production builds.
 const DevSettingsPage = import.meta.env.DEV ? lazy(() => import('@/settings/dev-settings')) : () => null
 const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools/message-simulator')) : () => null
 
-const queryClient = new QueryClient()
-
 /**
- * Hydrate the local-only `agents_system` table from the backend's `/agents`
- * discovery endpoint when the user has a real (non-anonymous) session.
- *
- * Legitimate `useEffect` per CLAUDE.md guidance: synchronizing app state with
- * an external system (the backend) on auth/cloud-URL transitions. There is no
- * render-time computation that could replace this — the fetch must run as a
- * side effect when the gating conditions flip, and PowerSync's reactive query
- * picks up the resulting rows automatically.
+ * Prefetch lazily routed chunks after core initialization, yielding between
+ * imports. Tauri serves these from local disk; the web build keeps true lazy
+ * loading to protect its first load. Dynamic imports are memoized, so the `lazy()`
+ * components resolve from the same in-flight module records.
  */
-const useBootstrapSystemAgents = () => {
-  const db = useDatabase()
-  const httpClient = useHttpClient()
-  const authClient = useAuth()
-  const { data: session } = authClient.useSession()
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
-
-  const isRealUser = !!session?.user && session.user.isAnonymous !== true
-
-  useEffect(() => {
-    if (!isRealUser || !cloudUrl) {
-      return
-    }
-    void refreshSystemAgents(db, cloudUrl, httpClient)
-  }, [isRealUser, cloudUrl, db, httpClient])
+const preloadAllRouteChunks = () => {
+  return preloadInBackground(Object.values(routeChunkLoaders))
 }
 
+const queryClient = new QueryClient()
+
 const AppContent = ({ initData }: { initData: InitData }) => {
+  useDeviceSessionBinding()
   useMcpSync()
   useBootstrapSystemAgents()
+  useAppLanguage()
+  useAnalyticsConsent()
+  useUnitDefaults()
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()
+
+  // Start only after core initialization has mounted the app, regardless of its
+  // entry route. Serial warming yields between chunks but can overlap hydration.
+  useEffect(() => {
+    if (isTauri()) {
+      return preloadAllRouteChunks()
+    }
+  }, [])
 
   return (
     <BrowserRouter>
@@ -138,12 +166,33 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   )
 }
 
+/**
+ * Home shell for the authenticated `/` tree. When the user lands here right after
+ * completing login for a CLI device-approval request, replay the stashed `/device`
+ * URL (see `device-approval-return.ts`) so the approval page reopens pre-filled.
+ * Read once on mount via a lazy initializer, so normal landings are a no-op.
+ */
+const HomeShell = ({ sidebarOpen }: { sidebarOpen: boolean }) => {
+  const [deviceReturn] = useState(takeDeviceApprovalReturn)
+  if (deviceReturn) {
+    return <Navigate to={deviceReturn} replace />
+  }
+  return (
+    <>
+      <Layout initialSidebarOpen={sidebarOpen} />
+      <OnboardingDialog />
+      <WelcomeDialog />
+    </>
+  )
+}
+
 const AppRoutes = ({ initData }: { initData: InitData }) => {
   usePageTracking()
   useDeepLinkListener()
 
-  const { experimentalFeatureTasks } = useSettings({
+  const { experimentalFeatureTasks, experimentalFeatureVoice } = useSettings({
     experimental_feature_tasks: initData.experimentalFeatureTasks,
+    experimental_feature_voice: initData.experimentalFeatureVoice,
   })
 
   const ssoMode = isSsoMode()
@@ -155,9 +204,11 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Auth flow routes - NO guards (must work during auth) */}
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />
+        <Route path="/device" element={<DeviceApproval />} />
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}
+        {ssoMode && <Route path="/sso-error" element={<SsoError />} />}
 
         {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
         {!ssoMode && !shouldBypassWaitlist && (
@@ -171,21 +222,16 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Main app routes - authenticated only. The gate decides redirect
             targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
         <Route element={<AuthGate require="authenticated" />}>
-          <Route
-            path="/"
-            element={
-              <>
-                <Layout />
-                <OnboardingDialog />
-                <WelcomeDialog />
-              </>
-            }
-          >
+          <Route path="/" element={<HomeShell sidebarOpen={initData.sidebarOpen} />}>
             {/* Home routes with HomeLayout */}
             <Route element={<ChatLayout />}>
               <Route index element={<Navigate to="/chats/new" replace />} />
               <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
               {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
+              {/* Preserve existing project links after moving projects into the sidebar. */}
+              <Route path="projects" element={<ProjectRedirect />} />
+              <Route path="projects/:projectId" element={<ProjectRedirect />} />
+              <Route path="apps/:appId" element={<MiniAppPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
 
@@ -194,11 +240,14 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route index element={<Settings />} />
               <Route path="preferences" element={<PreferencesSettingsPage />} />
               <Route path="models" element={<ModelsPage />} />
+              {experimentalFeatureVoice.value && <Route path="voice" element={<VoiceSettingsPage />} />}
               <Route path="devices" element={<DevicesSettingsPage />} />
-              <Route path="mcp-servers" element={<McpServersPage />} />
+              <Route path="connections" element={<ConnectionsPage />} />
+              {/* Legacy routes — MCP servers and integrations merged into Connections. */}
+              <Route path="mcp-servers" element={<Navigate to="/settings/connections" replace />} />
+              <Route path="integrations" element={<Navigate to="/settings/connections" replace />} />
               <Route path="skills" element={<SkillsPage />} />
               <Route path="agents" element={<AgentsSettingsPage />} />
-              <Route path="integrations" element={<IntegrationsPage />} />
               {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
             </Route>
           </Route>
@@ -207,6 +256,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Fallback routes - no guards */}
         <Route path="/signed-out" element={<SignedOut />} />
         <Route path="/account-deleted" element={<AccountDeleted />} />
+        <Route path="/device-revoked" element={<DeviceRevoked />} />
         <Route path="/not-found" element={<NotFound />} />
         <Route path="*" element={<Navigate to="/not-found" replace />} />
       </Routes>
@@ -214,12 +264,55 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   )
 }
 
+/**
+ * The seamless v1→v2 migration's one-time phrase dialog.
+ *
+ * Its own component purely so the copy can go through `useLingui`: `App`
+ * renders the `I18nProvider`, so a hook call there would read the context from
+ * ABOVE it and never follow a language change.
+ */
+const MigrationRecoveryKeyDialog = ({
+  open,
+  recoveryKey,
+  onDone,
+}: {
+  open: boolean
+  recoveryKey: string
+  onDone: () => void
+}) => {
+  const { t } = useLingui()
+  return (
+    <RecoveryKeyDialog
+      open={open}
+      recoveryKey={recoveryKey}
+      title={t`Save your new recovery phrase`}
+      description={t`Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again.`}
+      onDone={onDone}
+    />
+  )
+}
+
 export const App = () => {
   // Lazy initializer = runs exactly once on first render; records the
   // "React mounted" mark for startup telemetry.
   useState(markAppMounted)
-  const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
-  const { revokedDeviceOpen } = useCredentialEvents()
+  const { initData, initError, clearDatabase } = useAppInitialization()
+  const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()
+  useAppVersionUnsupportedListener()
+
+  // Start the palette's chunk during boot so it is in memory by the time
+  // `SearchPaletteProvider` mounts and asks for it — that provider sits behind
+  // core initialization in `Layout`, so fetching only from there leaves a
+  // window where Cmd+K has nothing to show. ~10KB, for the one surface
+  // reachable by keyboard from anywhere. Unlike `preloadAllRouteChunks` this
+  // runs on web too; that policy is about not warming *every* route.
+  useEffect(() => {
+    void loadSearchPalette()
+    if (isSsoMode()) {
+      // Speculative loading must not interrupt startup; the route owns failures.
+      void loadSsoRedirect().catch(() => {})
+    }
+  }, [])
 
   // Show the Tauri window after React mounts and CSS is applied.
   // The window starts hidden (tauri.conf.json visible: false) to prevent
@@ -233,18 +326,29 @@ export const App = () => {
   // Reactive gate: re-evaluates whenever the config store updates, so the
   // upgrade screen tracks the current server-enforced minimum.
   const minAppVersion = useConfigStore((s) => s.config.minAppVersion)
+  const forceUpgrade = useConfigStore((s) => s.forceUpgrade)
+  const forceUpgradeMinVersion = useConfigStore((s) => s.forceUpgradeMinVersion)
   const appVersion = import.meta.env.VITE_APP_VERSION
-  const upgradeRequired = !!minAppVersion && !!appVersion && compareSemver(appVersion, minAppVersion) < 0
+  // A response-triggered 426 (`forceUpgrade`) blocks immediately for the session;
+  // the config-driven semver gate blocks on every load below the enforced minimum.
+  // Same rule the sync layer enforces via `isAppVersionUnsupported` — shared so the
+  // blocker and the sync teardown can never disagree about what "too old" means.
+  const upgradeRequired = forceUpgrade || isVersionBelowMinimum(appVersion, minAppVersion)
 
   const renderAppContent = () => {
     if (upgradeRequired) {
-      return <UpgradeRequired currentVersion={appVersion ?? 'unknown'} minVersion={minAppVersion ?? 'unknown'} />
+      return (
+        <UpgradeRequired
+          currentVersion={appVersion ?? 'unknown'}
+          minVersion={forceUpgradeMinVersion ?? minAppVersion ?? 'unknown'}
+        />
+      )
     }
     if (initError) {
       if (initError.code === 'STORAGE_UNAVAILABLE') {
         return <StorageUnavailableScreen />
       }
-      return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />
+      return <AppErrorScreen error={initError} onClearDatabase={clearDatabase} />
     }
 
     // TODO: PowerSync is our only database provider, so we can safely assert it's not null.
@@ -269,13 +373,31 @@ export const App = () => {
                       <ProxyFetchProvider>
                         <MCPProvider>
                           <HapticsProvider>
-                            <SidebarProvider>
-                              <ContentViewProvider>
-                                <ExternalLinkDialogProvider>
-                                  <AppContent initData={initData} />
-                                </ExternalLinkDialogProvider>
-                              </ContentViewProvider>
-                            </SidebarProvider>
+                            <ContentViewProvider>
+                              <ExternalLinkDialogProvider>
+                                <AppContent initData={initData} />
+                                {/* Catches every phrase that was minted but never
+                                    confirmed — reload, crash, or a dialog that
+                                    never got the chance to render. Must live
+                                    INSIDE HttpClientProvider: it rotates the key
+                                    through the http client, and `useHttpClient`
+                                    throws outside its provider.
+
+                                    NOT rendered while the migration dialog is
+                                    showing a phrase. Both read the same pending
+                                    flag, and the migration marks it the moment
+                                    it mints — but this subtree only mounts once
+                                    `initData` resolves, which races the
+                                    fire-and-forget `runEncryptionInit`. Lose
+                                    that race and the prompt mounts with the
+                                    flag already set and tells the user the
+                                    phrase "was never saved" on top of the
+                                    dialog displaying it. The prompt's own
+                                    mount-time snapshot cannot see this — only
+                                    the parent holding both can. */}
+                                {migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
+                              </ExternalLinkDialogProvider>
+                            </ContentViewProvider>
                           </HapticsProvider>
                         </MCPProvider>
                       </ProxyFetchProvider>
@@ -291,11 +413,24 @@ export const App = () => {
   }
 
   return (
-    <ThemeProvider>
-      <LazyMotion features={loadMotionFeatures} strict>
-        {renderAppContent()}
-        <RevokedDeviceModal open={revokedDeviceOpen} />
-      </LazyMotion>
-    </ThemeProvider>
+    // The source locale is activated synchronously in src/i18n, so the
+    // provider never blocks first paint waiting for a catalog chunk.
+    <I18nProvider i18n={i18n}>
+      <ThemeProvider>
+        <LazyMotion features={loadMotionFeatures} strict>
+          {renderAppContent()}
+          <WindowControls />
+          {/* Seamless v1→v2 migration completed at init — show the new recovery
+              phrase once. Blocked while the upgrade screen owns the viewport; the
+              phrase is not lost in that case, because the mint marked it pending
+              and `UnsavedRecoveryPhrasePrompt` picks it up once the app is usable. */}
+          <MigrationRecoveryKeyDialog
+            open={migrationRecoveryKey != null && !upgradeRequired}
+            recoveryKey={migrationRecoveryKey ?? ''}
+            onDone={clearMigrationRecoveryKey}
+          />
+        </LazyMotion>
+      </ThemeProvider>
+    </I18nProvider>
   )
 }

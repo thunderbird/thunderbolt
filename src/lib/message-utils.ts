@@ -6,6 +6,19 @@ import type { UIMessage } from 'ai'
 
 type TextPart = Extract<UIMessage['parts'][number], { type: 'text' }>
 
+/** Distinguish assistant content from an empty stream placeholder left by Stop or an error. */
+export const hasAssistantContent = (message: Pick<UIMessage, 'role' | 'parts'>): boolean =>
+  message.role === 'assistant' &&
+  message.parts.some((part) => {
+    if (part.type === 'step-start') {
+      return false
+    }
+    if (part.type === 'text' || part.type === 'reasoning') {
+      return part.text.trim().length > 0
+    }
+    return true
+  })
+
 /**
  * Extracts and joins all text content from a message's parts.
  * Filters to text parts only, excluding reasoning, tool calls, etc.

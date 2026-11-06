@@ -2,23 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { GradientLock } from '@/components/ui/gradient-lock'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { Lock, Star, Zap } from 'lucide-react'
+import { Star, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { SearchableMenu } from './searchable-menu'
 import type { SearchableMenuGroup, SearchableMenuItem } from './types'
 
 const meta = {
-  title: 'components/ui/SearchableMenu',
+  title: 'UI/SearchableMenu',
   component: SearchableMenu,
   parameters: {
     layout: 'centered',
     docs: {
       description: {
         component:
-          'A searchable dropdown menu component that supports flat and grouped items, custom rendering, and mobile-optimized behavior with blur backdrop.',
+          'A searchable dropdown menu component that supports flat and grouped items, custom rendering, and mobile-optimized behavior via the MobileCardMenu drawer.',
       },
     },
   },
@@ -47,7 +48,7 @@ const itemsWithIcons: SearchableMenuItem[] = [
     id: 'secure',
     label: 'Secure Model',
     description: 'End-to-end encrypted',
-    icon: <Lock className="size-4 text-green-500" />,
+    icon: <GradientLock className="size-4" />,
   },
   {
     id: 'premium',
@@ -142,11 +143,7 @@ export const WithFooter: Story = {
     items: flatItems,
     value: '1',
     onValueChange: (id) => console.log('Selected:', id),
-    footer: (
-      <button type="button" className="w-full text-sm text-primary hover:underline">
-        + Add new item
-      </button>
-    ),
+    footerAction: { label: 'Add new item', onAction: () => console.log('Add new item') },
   },
   parameters: {
     docs: {
@@ -223,11 +220,7 @@ const InteractiveGroupedTemplate = () => {
       value={value}
       onValueChange={(id) => setValue(id)}
       searchPlaceholder="Search models..."
-      footer={
-        <button type="button" className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
-          Manage models →
-        </button>
-      }
+      footerAction={{ label: 'Manage models', onAction: () => {} }}
     />
   )
 }
@@ -262,7 +255,7 @@ const itemsWithDisabledReasons: SearchableMenuItem<DisabledItemData>[] = [
     id: 'encrypted',
     label: 'Encrypted Model',
     description: 'End-to-end encrypted',
-    icon: <Lock className="size-4 text-green-500" />,
+    icon: <GradientLock className="size-4" />,
     disabled: true,
     data: { disabledReason: 'This model is only available in encrypted chats' },
   },

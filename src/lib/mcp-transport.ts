@@ -8,11 +8,15 @@
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { HttpClient } from './http'
 import { getAuthToken } from './auth-token'
-import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
+import { createMcpIrohTransport } from './mcp-iroh-transport'
+import { createProxyFetch } from './proxy-fetch'
 
-/** Remote transport kind. stdio (local) servers are connected by THU-575, not here. */
-export type MCPTransportType = 'http' | 'sse'
+/** Remote transport kind. `iroh` dials a peer-to-peer CLI bridge by NodeId/ticket;
+ *  http/sse use `createProxyFetch`: direct on Tauri with Use Cloud Proxy off or for loopback
+ *  targets, proxied otherwise. stdio (local) servers are connected by THU-575, not here. */
+export type MCPTransportType = 'http' | 'sse' | 'iroh'
 
 /**
  * Reconciles a version mismatch between `@ai-sdk/mcp` and `@modelcontextprotocol/sdk` at our
@@ -48,7 +52,7 @@ const installProtocolVersionSetter = (transport: Transport): Transport => {
 /**
  * Builds the request headers for an MCP connection. Adds a **plain**
  * `Authorization: Bearer <token>` when a credential is present — `createProxyFetch`
- * promotes it to the passthrough header on web and sends it direct on Tauri.
+ * promotes it to the passthrough header on proxied requests and sends it unchanged on direct requests.
  * Never set the passthrough header here (it would double-prefix). See proxy-fetch.ts.
  */
 export const buildMcpHeaders = (token?: string): Record<string, string> => {
@@ -61,8 +65,8 @@ export const buildMcpHeaders = (token?: string): Record<string, string> => {
 
 /**
  * Builds an MCP client transport that routes through the universal proxy fetch.
- * Hosted mode (web) goes through `${cloudUrl}/v1/proxy` with header rewriting;
- * Standalone mode (Tauri) hits the upstream directly. Picks SSE for `sse`,
+ * Web goes through `${cloudUrl}/v1/proxy` with header rewriting; Tauri uses native HTTP
+ * with Use Cloud Proxy off or for loopback targets. Picks SSE for `sse`,
  * otherwise Streamable HTTP — both accept the identical `{ fetch, requestInit }`
  * shape. Keeps the provider and the settings test-connection on one code path.
  */
@@ -71,17 +75,23 @@ export const createMcpTransport = (
   type: MCPTransportType,
   cloudUrl: string,
   headers: Record<string, string>,
+  httpClient?: HttpClient,
 ) => {
+  // iroh dials a peer bridge by NodeId/ticket over an encrypted relay — no URL,
+  // proxy, or bearer applies (the link is e2e-encrypted and allowlist-gated), so
+  // `cloudUrl`/`headers` are unused. `url` carries the NodeId/ticket.
+  if (type === 'iroh') {
+    return createMcpIrohTransport({ target: url, httpClient })
+  }
   const urlObj = new URL(url)
   // Authenticate the proxy hop with the Thunderbolt session bearer (the same getter the
   // app-wide ProxyFetchProvider uses) — without it `/v1/proxy` returns 401. The upstream
   // MCP credential rides separately as `X-Proxy-Passthrough-Authorization` (createProxyFetch
-  // promotes the plain `Authorization` we set in buildMcpHeaders). `getProxyEnabled` honours
-  // the Tauri standalone toggle; web always proxies (CORS forces it).
+  // promotes the plain `Authorization` we set in buildMcpHeaders). The default policy honours
+  // the toggle and keeps loopback direct on Tauri; web always proxies (CORS forces it).
   const proxyFetch = createProxyFetch({
     cloudUrl,
     getProxyAuthToken: getAuthToken,
-    getProxyEnabled: () => computeEffectiveProxyEnabled(),
   })
   const options = {
     fetch: (input: string | URL, init?: RequestInit) => proxyFetch(input, init),

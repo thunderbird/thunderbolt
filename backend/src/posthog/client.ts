@@ -3,9 +3,41 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getSettings } from '@/config/settings'
+import type { InferenceErrorKind } from '@/inference/error-kind'
 import { PostHog } from 'posthog-node'
 
 let phClient: PostHog | null = null
+
+const aiErrorKeys = ['name', 'status', 'statusCode', 'httpStatus', 'code', 'type', 'param', 'requestID'] as const
+
+const parseAiError = (value: string): unknown => {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Removes provider error content while preserving machine-readable identifiers.
+ */
+export const redactAiError = (value: unknown): string | undefined => {
+  const error = typeof value === 'string' ? parseAiError(value) : value
+  if (error === null || typeof error !== 'object') {
+    return undefined
+  }
+
+  const errorRecord = error as Record<string, unknown>
+  const redactedEntries = aiErrorKeys
+    .filter((key) => Object.hasOwn(errorRecord, key) && errorRecord[key] !== undefined)
+    .map((key) => [key, errorRecord[key]] as const)
+
+  if (redactedEntries.length === 0) {
+    return undefined
+  }
+
+  return JSON.stringify(Object.fromEntries(redactedEntries))
+}
 
 /**
  * Initialize and get the PostHog analytics client
@@ -35,6 +67,26 @@ export const getPostHogClient = (fetchFn?: typeof fetch): PostHog => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(client as any).privacy_mode = true
 
+  // THU-771: @posthog/ai bypasses privacyMode for raw provider $ai_error; redact it at our single egress seam.
+  const originalCapture: PostHog['capture'] = client.capture.bind(client)
+  client.capture = (message: Parameters<PostHog['capture']>[0]): void => {
+    const { event, properties } = message
+    if (event !== '$ai_generation' || !properties || !Object.hasOwn(properties, '$ai_error')) {
+      originalCapture(message)
+      return
+    }
+
+    const redactedProperties = { ...properties }
+    const redactedError = redactAiError(properties.$ai_error)
+    if (redactedError === undefined) {
+      delete redactedProperties.$ai_error
+    } else {
+      redactedProperties.$ai_error = redactedError
+    }
+
+    originalCapture({ ...message, properties: redactedProperties })
+  }
+
   // Only cache if no custom fetchFn was provided
   if (!fetchFn) {
     phClient = client
@@ -59,6 +111,56 @@ export const shutdownPostHog = async (timeoutMs = 3000): Promise<void> => {
 export const isPostHogConfigured = (): boolean => {
   const settings = getSettings()
   return !!settings.posthogApiKey
+}
+
+export type InferenceErrorEvent = {
+  provider: string
+  status: number
+  distinctId: string
+  errorKind: InferenceErrorKind
+  model?: string
+  errorType?: string
+  errorCode?: string
+  requestId?: string
+  subpath?: string
+  phase?: 'stream'
+}
+
+/**
+ * Records an upstream inference failure without shipping request or response
+ * content. Every property is a constant, identifier, or provider-issued ID;
+ * free text is forbidden. No-op when PostHog is unconfigured.
+ */
+export const captureInferenceError = ({
+  provider,
+  status,
+  distinctId,
+  errorKind,
+  model,
+  errorType,
+  errorCode,
+  requestId,
+  subpath,
+  phase,
+}: InferenceErrorEvent): void => {
+  if (!isPostHogConfigured()) {
+    return
+  }
+  getPostHogClient().capture({
+    distinctId,
+    event: 'inference_upstream_error',
+    properties: {
+      provider,
+      status,
+      errorKind,
+      ...(model !== undefined && { model }),
+      ...(errorType !== undefined && { errorType }),
+      ...(errorCode !== undefined && { errorCode }),
+      ...(requestId !== undefined && { requestId }),
+      ...(subpath !== undefined && { subpath }),
+      ...(phase !== undefined && { phase }),
+    },
+  })
 }
 
 /**

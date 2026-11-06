@@ -138,4 +138,74 @@ describe('useSettings reactivity', () => {
 
     expect(screen.getByTestId('setting-value').textContent).toBe('updated')
   })
+
+  // No triggerChange below: the change notification's refetch can be cancelled by a later write.
+  it('reflects its own write once setValue resolves', async () => {
+    const db = getDb()
+    await updateSettings(db, { distance_unit: 'imperial' })
+    const hook = { current: null as StringSettingHook | null }
+    const Probe = () => {
+      hook.current = useSettings({ distance_unit: String }).distanceUnit
+      return <span data-testid="setting-value">{hook.current.value ?? 'null'}</span>
+    }
+    renderWithReactivity(<Probe />, { tables: ['settings'] })
+    await waitForElement(() =>
+      screen.queryByTestId('setting-value')?.textContent === 'imperial' ? screen.getByTestId('setting-value') : null,
+    )
+
+    await act(async () => {
+      await hook.current!.setValue('metric')
+      await getClock().runAllAsync()
+    })
+
+    expect(hook.current!.isSaving).toBe(false)
+    expect(screen.getByTestId('setting-value').textContent).toBe('metric')
+  })
+
+  it('reflects its own reset once reset resolves', async () => {
+    const db = getDb()
+    await updateSettings(db, { distance_unit: 'imperial' })
+    const hook = { current: null as StringSettingHook | null }
+    const Probe = () => {
+      hook.current = useSettings({ distance_unit: String }).distanceUnit
+      return <span data-testid="setting-value">{hook.current.value ?? 'null'}</span>
+    }
+    renderWithReactivity(<Probe />, { tables: ['settings'] })
+    await waitForElement(() =>
+      screen.queryByTestId('setting-value')?.textContent === 'imperial' ? screen.getByTestId('setting-value') : null,
+    )
+
+    await act(async () => {
+      await hook.current!.reset()
+      await getClock().runAllAsync()
+    })
+
+    expect(hook.current!.isSaving).toBe(false)
+    expect(screen.getByTestId('setting-value').textContent).toBe('null')
+  })
+
+  it('keeps another key in the same query fresh when its own write lands', async () => {
+    const db = getDb()
+    await updateSettings(db, { distance_unit: 'imperial', temperature_unit: 'f' })
+    const hook = { current: null as { distanceUnit: StringSettingHook; temperatureUnit: StringSettingHook } | null }
+    const Probe = () => {
+      hook.current = useSettings({ distance_unit: String, temperature_unit: String })
+      return (
+        <span data-testid="setting-value">{`${hook.current.distanceUnit.value}/${hook.current.temperatureUnit.value}`}</span>
+      )
+    }
+    renderWithReactivity(<Probe />, { tables: ['settings'] })
+    await waitForElement(() =>
+      screen.queryByTestId('setting-value')?.textContent === 'imperial/f' ? screen.getByTestId('setting-value') : null,
+    )
+
+    // A direct write whose refetch the next mutation would cancel.
+    await updateSettings(db, { temperature_unit: 'c' })
+    await act(async () => {
+      await hook.current!.distanceUnit.setValue('metric')
+      await getClock().runAllAsync()
+    })
+
+    expect(screen.getByTestId('setting-value').textContent).toBe('metric/c')
+  })
 })

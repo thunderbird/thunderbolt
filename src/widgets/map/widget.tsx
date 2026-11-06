@@ -3,8 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Skeleton } from '@/components/ui/skeleton'
+import type { I18n, MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import type { Map as MaplibreMap, MapLayerMouseEvent, Popup as MaplibrePopup, StyleSpecification } from 'maplibre-gl'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { featureBounds, featureLabel, parseFeatureCollection } from './geojson'
 
 type MapWidgetProps = {
@@ -76,22 +79,33 @@ export const MapWidgetSkeleton = () => (
 )
 
 /** Friendly message shown when the browser can't give MapLibre a WebGL context. */
-const webglUnavailableMessage = 'Maps can’t be displayed here — WebGL is disabled or unavailable in this browser.'
+const webglUnavailableMessage = msg`Maps can’t be displayed here — WebGL is disabled or unavailable in this browser.`
 
 /** Generic message for any other map load failure (style/tiles/network). */
-const mapLoadFailedMessage = 'The map couldn’t be loaded.'
+const mapLoadFailedMessage = msg`The map couldn’t be loaded.`
 
 /**
- * Cheap synchronous probe: can this browser create a WebGL context at all?
- * MapLibre requires one, and when WebGL is off (Firefox with hardware accel /
- * `resistFingerprinting` disabled, a blocklisted GPU, headless, etc.) it throws
- * a verbose `webglcontextcreationerror`. We detect up front and show a clean
- * message instead of dumping MapLibre's raw error JSON at the user.
+ * MapLibre labels its own zoom buttons in English unless told otherwise, and it
+ * reads the table once at construction.
+ */
+const mapControlLabels = (i18n: I18n): Record<string, string> => ({
+  'NavigationControl.ZoomIn': i18n._(msg`Zoom in`),
+  'NavigationControl.ZoomOut': i18n._(msg`Zoom out`),
+})
+
+/**
+ * Cheap synchronous probe: can this browser create a WebGL2 context at all?
+ * MapLibre 6 dropped WebGL1, so WebGL2 is the whole requirement — accepting a
+ * v1 context here would pass the probe and then fail inside MapLibre, trading
+ * the precise message below for the generic "couldn't be loaded" one. When
+ * WebGL is off (Firefox with hardware accel / `resistFingerprinting` disabled,
+ * a blocklisted GPU, headless, etc.) MapLibre throws a verbose
+ * `webglcontextcreationerror`; we detect up front and show a clean message
+ * instead of dumping MapLibre's raw error JSON at the user.
  */
 const isWebglAvailable = (): boolean => {
   try {
-    const canvas = document.createElement('canvas')
-    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'))
+    return Boolean(document.createElement('canvas').getContext('webgl2'))
   } catch {
     return false
   }
@@ -108,9 +122,19 @@ const isWebglAvailable = (): boolean => {
  */
 export const MapWidget = ({ data, title }: MapWidgetProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { i18n } = useLingui()
+  const [error, setError] = useState<MessageDescriptor | null>(null)
   const [ready, setReady] = useState(false)
   const collection = useMemo(() => parseFeatureCollection(data), [data])
+
+  /**
+   * Read through an effect event so the locale is never an effect dependency:
+   * MapLibre only accepts these at construction, so depending on it would tear
+   * the map down and lose the user's pan and zoom on every language switch. The
+   * buttons keep the previous language until the widget remounts; the visible
+   * copy below re-renders properly because it resolves during render.
+   */
+  const readControlLabels = useEffectEvent(() => mapControlLabels(i18n))
 
   useEffect(() => {
     const container = containerRef.current
@@ -128,6 +152,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
       setError(webglUnavailableMessage)
       return
     }
+    const controlLabels = readControlLabels()
     let map: MaplibreMap | null = null
     let cancelled = false
     // Whether the map reached `load`, so the `error` handler can tell a fatal
@@ -142,12 +167,23 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
     resizeObserver.observe(container)
 
     const init = async () => {
-      const { Map: MapLib, Popup, NavigationControl } = await import('maplibre-gl')
-      await import('maplibre-gl/dist/maplibre-gl.css')
+      // MapLibre 6 derives its worker URL from `import.meta.url`, which points
+      // at our bundled chunk rather than the dist layout the worker lives in —
+      // so under any bundler the default resolution 404s and no tile ever
+      // renders. Vite's `?worker&url` emits a self-contained worker chunk and
+      // hands back its URL; plain `?url` would copy the file without the
+      // sibling `maplibre-gl-shared.mjs` it imports. Loaded here rather than at
+      // module scope so nothing map-related reaches the entry bundle.
+      const [{ Map: MapLib, Popup, NavigationControl, setWorkerUrl }, { default: workerUrl }] = await Promise.all([
+        import('maplibre-gl'),
+        import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'),
+        import('maplibre-gl/dist/maplibre-gl.css'),
+      ])
       if (cancelled) {
         return
       }
-      map = new MapLib({ container, style: basemap })
+      setWorkerUrl(workerUrl)
+      map = new MapLib({ container, style: basemap, locale: controlLabels })
       map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
 
       // If the basemap style/tiles fail (network, 404, CORS), `load` may never
@@ -319,7 +355,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
         {!ready && !error && <MapSkeleton />}
         {error && (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
-            <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{error}</p>
+            <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{i18n._(error)}</p>
           </div>
         )}
       </div>

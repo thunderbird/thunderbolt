@@ -43,6 +43,6 @@ For CI/orchestrator gating:
 ```
 
 ## Hard constraints
-- Read-only. No Write/Edit, no PR posting, no deploy.
+- Follow Operating rule 1 in ../SKILL.md for file writes, PR posting and deployment.
 - Only changed lines. Pre-existing issues are context, never new blockers.
 - Every finding cites a real `file:line` and (for convention/architecture) a real `R-*`/`INV-*` id, or it is dropped.

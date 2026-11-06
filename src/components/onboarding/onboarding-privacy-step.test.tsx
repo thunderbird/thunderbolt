@@ -55,7 +55,7 @@ describe('OnboardingPrivacyStep', () => {
 
       expect(screen.getByText(/Welcome to/)).toBeInTheDocument()
       expect(screen.getByText(/Thunderbolt/)).toBeInTheDocument()
-      expect(screen.getByText(/Your privacy-first AI assistant/)).toBeInTheDocument()
+      expect(screen.getByText(/Your private AI assistant/)).toBeInTheDocument()
     })
 
     it('should render privacy features', () => {

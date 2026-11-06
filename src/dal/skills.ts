@@ -6,6 +6,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { skillsTable } from '../db/tables'
+import { isWidgetSkillId } from '../defaults/skills'
 import type { DrizzleQueryWithPromise, Skill } from '../types'
 import { nowIso } from '../lib/utils'
 
@@ -39,33 +40,49 @@ export class PinLimitExceededError extends Error {
 const maxSkillNameLength = 64
 
 /**
- * Validate a skill name against the [AgentSkills spec](https://agentskills.io/specification#name-field):
+ * Validate a skill slug against the [AgentSkills spec](https://agentskills.io/specification#name-field):
  * 1–64 chars; lowercase a–z, 0–9, hyphens only; no leading/trailing hyphen;
  * no consecutive hyphens.
  *
- * Names are stored as bare slugs (no leading `/`). The slash is a chat
- * trigger added at display + parse time only, not part of the data.
+ * Slugs are stored in the `name` column as bare slugs (no leading `/`). The
+ * slash is a chat trigger added at display + parse time only, not part of the
+ * data.
  *
  * @returns A human-readable error string when invalid, or `null` when valid.
  */
 export const validateSkillName = (slug: string): string | null => {
   if (slug.length === 0) {
-    return 'Name is required.'
+    return 'Slug is required.'
   }
   if (slug.length > maxSkillNameLength) {
-    return `Name must be ${maxSkillNameLength} characters or fewer.`
+    return `Slug must be ${maxSkillNameLength} characters or fewer.`
   }
   if (!/^[a-z0-9-]+$/.test(slug)) {
-    return 'Name may only contain lowercase letters, numbers, and hyphens.'
+    return 'Slug may only contain lowercase letters, numbers, and hyphens.'
   }
   if (slug.startsWith('-') || slug.endsWith('-')) {
-    return 'Name cannot start or end with a hyphen.'
+    return 'Slug cannot start or end with a hyphen.'
   }
   if (slug.includes('--')) {
-    return 'Name cannot contain consecutive hyphens.'
+    return 'Slug cannot contain consecutive hyphens.'
   }
   return null
 }
+
+/**
+ * Derive a spec-valid slug from a free-text display name: lowercase, spaces
+ * and invalid characters become hyphens, consecutive hyphens collapse, edge
+ * hyphens are trimmed, and the result caps at 64 characters. Returns '' when
+ * the name contains no usable characters — callers treat that as "nothing to
+ * suggest yet".
+ */
+export const slugifySkillName = (displayName: string): string =>
+  displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, maxSkillNameLength)
+    .replace(/-+$/, '')
 
 /**
  * Drizzle query for all non-deleted skills, ordered by name.
@@ -134,7 +151,10 @@ const countPinned = async (db: AnyDrizzleDatabase, excludeId?: string): Promise<
 }
 
 export type CreateSkillInput = {
+  /** Slug — stored in the `name` column, used as the `/token`. */
   name: string
+  /** Human display name shown across the UI. */
+  label: string
   description: string
   instruction: string
 }
@@ -145,14 +165,15 @@ export type CreateSkillInput = {
  * skill.
  */
 export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInput): Promise<Skill> => {
-  const nameError = validateSkillName(input.name)
-  if (nameError) {
-    throw new SkillNameInvalidError(nameError)
+  const slugError = validateSkillName(input.name)
+  if (slugError) {
+    throw new SkillNameInvalidError(slugError)
   }
   await assertNameAvailable(db, input.name)
   const row: Skill = {
     id: uuidv7(),
     name: input.name,
+    label: input.label,
     description: input.description,
     instruction: input.instruction,
     enabled: 1,
@@ -165,18 +186,25 @@ export const createSkill = async (db: AnyDrizzleDatabase, input: CreateSkillInpu
   return row
 }
 
-export type UpdateSkillInput = Partial<Pick<Skill, 'name' | 'description' | 'instruction'>>
+export type UpdateSkillInput = Partial<
+  Pick<Skill, 'name' | 'label' | 'description' | 'instruction' | 'enabled' | 'pinnedOrder'>
+>
 
 /**
  * Patch an existing skill. Throws {@link SkillNameInvalidError} if `name` fails
- * the AgentSkills spec, or {@link SkillNameTakenError} if it collides with
- * another skill.
+ * the AgentSkills spec, {@link SkillNameTakenError} if it collides with another
+ * skill, or `Error` if a widget rendering contract receives any patch other
+ * than `enabled`.
  */
 export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: UpdateSkillInput): Promise<void> => {
+  const changesLockedWidgetField = Object.keys(patch).some((field) => field !== 'enabled')
+  if (isWidgetSkillId(id) && changesLockedWidgetField) {
+    throw new Error(`updateSkill: widget skill "${id}" only supports enabled updates`)
+  }
   if (patch.name !== undefined) {
-    const nameError = validateSkillName(patch.name)
-    if (nameError) {
-      throw new SkillNameInvalidError(nameError)
+    const slugError = validateSkillName(patch.name)
+    if (slugError) {
+      throw new SkillNameInvalidError(slugError)
     }
     await assertNameAvailable(db, patch.name, id)
   }
@@ -184,14 +212,20 @@ export const updateSkill = async (db: AnyDrizzleDatabase, id: string, patch: Upd
 }
 
 /**
- * Soft-delete a skill: set `deleted_at` and wipe user content (`name`, `description`, `instruction`).
- * The tombstone (`id`, `user_id`, `deleted_at`) remains so PowerSync propagates the delete to other devices.
+ * Soft-delete a skill: set `deleted_at` and wipe user content (`name`, `label`,
+ * `description`, `instruction`). The tombstone (`id`, `user_id`, `deleted_at`)
+ * remains so PowerSync propagates the delete to other devices. Widget
+ * rendering contracts cannot be deleted.
  */
 export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+  if (isWidgetSkillId(id)) {
+    throw new Error(`softDeleteSkill: refusing to delete widget skill "${id}"`)
+  }
   await db
     .update(skillsTable)
     .set({
       name: null,
+      label: null,
       description: null,
       instruction: null,
       pinnedOrder: null,
@@ -202,9 +236,13 @@ export const softDeleteSkill = async (db: AnyDrizzleDatabase, id: string): Promi
 
 /**
  * Pin or unpin a skill. Pass `null` to unpin. Pass a number to set the pin position.
- * Throws {@link PinLimitExceededError} if pinning would exceed {@link maxPinnedSkills}.
+ * Throws `Error` when pinning a widget contract or {@link PinLimitExceededError}
+ * if pinning would exceed {@link maxPinnedSkills}. Widget contracts may be unpinned.
  */
 export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {
+  if (order !== null && isWidgetSkillId(id)) {
+    throw new Error(`setPinned: refusing to pin widget skill "${id}"`)
+  }
   if (order !== null) {
     const pinned = await countPinned(db, id)
     if (pinned >= maxPinnedSkills) {
@@ -214,7 +252,7 @@ export const setPinned = async (db: AnyDrizzleDatabase, id: string, order: numbe
   await db.update(skillsTable).set({ pinnedOrder: order }).where(eq(skillsTable.id, id))
 }
 
-/** Toggle the `enabled` flag. SkillsView auto-unpins on disable as a side-effect at the call site. */
+/** Toggle `enabled`. SkillsView auto-unpins pinned skills on disable at the call site. */
 export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boolean): Promise<void> => {
   await db
     .update(skillsTable)
@@ -224,7 +262,8 @@ export const setEnabled = async (db: AnyDrizzleDatabase, id: string, next: boole
 
 /**
  * Rewrite the `pinned_order` of the supplied ids in a single transaction (index = position).
- * Ids not in the list keep their existing order. Bounded by the 10-pin cap.
+ * Ids not in the list keep their existing order. Widget ids must keep their
+ * positions relative to the other pinned skills. Bounded by the 10-pin cap.
  */
 export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promise<void> => {
   if (ids.length === 0) {
@@ -234,6 +273,30 @@ export const reorderPins = async (db: AnyDrizzleDatabase, ids: string[]): Promis
     throw new PinLimitExceededError()
   }
   await db.transaction(async (tx) => {
+    const storedPinned = await tx
+      .select({ id: skillsTable.id, pinnedOrder: skillsTable.pinnedOrder })
+      .from(skillsTable)
+      .where(and(isNull(skillsTable.deletedAt), isNotNull(skillsTable.pinnedOrder)))
+      .orderBy(asc(skillsTable.pinnedOrder))
+    const storedPinnedIds = new Set(storedPinned.map(({ id }) => id))
+    const submittedIndexById = new Map(ids.map((id, index) => [id, index]))
+    const pinsWidgetSkill = ids.some((id) => isWidgetSkillId(id) && !storedPinnedIds.has(id))
+    const movesWidgetSkill = storedPinned.some((widget, widgetStoredIndex) => {
+      if (!isWidgetSkillId(widget.id)) {
+        return false
+      }
+      const widgetFinalOrder = submittedIndexById.get(widget.id) ?? widget.pinnedOrder!
+      return storedPinned.some((skill, skillStoredIndex) => {
+        if (skill.id === widget.id) {
+          return false
+        }
+        const skillFinalOrder = submittedIndexById.get(skill.id) ?? skill.pinnedOrder!
+        return Math.sign(skillStoredIndex - widgetStoredIndex) !== Math.sign(skillFinalOrder - widgetFinalOrder)
+      })
+    })
+    if (pinsWidgetSkill || movesWidgetSkill) {
+      throw new Error('reorderPins: refusing to move widget skills')
+    }
     // Two-phase update to avoid hitting the (id, pinned_order) collision space
     // mid-rewrite: stage everything to negative ordinals first, then settle.
     for (let i = 0; i < ids.length; i++) {

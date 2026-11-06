@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { Model } from '@/types'
+import type { SharedModel } from '@shared/defaults/models'
 import { describe, expect, test } from 'bun:test'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
-import { defaultModels, hashModel } from '../defaults/models'
+import { defaultModels, hashModel } from '@shared/defaults/models'
 import { defaultSettings, hashSetting } from '../defaults/settings'
 
 describe('defaults', () => {
@@ -18,7 +18,6 @@ describe('defaults', () => {
       expect(model.model).toBeDefined()
       expect(model.deletedAt).toBeNull()
       expect(model.defaultHash).toBeNull()
-      expect(model.apiKey).toBeNull()
       expect(model.url).toBeNull()
     }
   })
@@ -71,14 +70,13 @@ describe('defaults-hash', () => {
   test('hashModel ignores order of object creation', () => {
     const model = defaultModels[0]
     // Create model with same values but different property order
-    const reorderedModel: Model = {
+    const reorderedModel: SharedModel = {
       contextWindow: model.contextWindow,
       name: model.name,
       enabled: model.enabled,
       provider: model.provider,
       model: model.model,
       url: model.url,
-      apiKey: model.apiKey,
       isSystem: model.isSystem,
       toolUsage: model.toolUsage,
       isConfidential: model.isConfidential,

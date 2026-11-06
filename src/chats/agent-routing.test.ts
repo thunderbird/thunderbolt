@@ -20,9 +20,14 @@ import { resetStore } from '@/test-utils/chat-store-mocks'
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import type { Agent, AgentAdapter } from '@/types/acp'
-import type { ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
+import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
+import type { ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import type { Chat } from '@ai-sdk/react'
+import {
+  clearDebugTranscriptRecorder,
+  getDebugTranscriptNotes,
+  setDebugTranscriptCaptureEnabled,
+} from '@/debug-transcript/recorder'
 import { createAgentRoutingFetch } from './chat-instance'
 
 const remoteAgent: Agent = {
@@ -44,16 +49,6 @@ const otherRemoteAgent: Agent = {
   id: 'remote-bar',
   name: 'Remote Bar',
 }
-
-const mockMode: Mode = {
-  id: 'mode-chat',
-  name: 'chat',
-  label: 'Chat',
-  icon: 'message-square',
-  systemPrompt: null,
-  isDefault: 1,
-  order: 0,
-} as Mode
 
 const mockModel: Model = {
   id: 'model-1',
@@ -88,7 +83,12 @@ const buildFakeAdapter = (agent: Agent) => {
   return { adapter, fetch, disconnect }
 }
 
-const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | null = null) => {
+const hydrateSessionWith = (
+  id: string,
+  agent: Agent,
+  chatThread: ChatThread | null = null,
+  projectId: string | null = null,
+) => {
   const session: ChatSession = {
     chatInstance: mockChatInstance,
     chatThread,
@@ -96,23 +96,149 @@ const hydrateSessionWith = (id: string, agent: Agent, chatThread: ChatThread | n
     connectionError: null,
     id,
     pendingPermission: null,
+    miniAppApprovalQueue: [],
     retryCount: 0,
     retriesExhausted: false,
+    stopping: false,
     selectedAgent: agent,
-    selectedMode: mockMode,
+    agentChosenByUser: false,
     selectedModel: mockModel,
+    projectId,
+    miniAppId: null,
     triggerData: null,
   }
   useChatStore.setState({
     currentSessionId: id,
     getMcpClients: () => [],
-    modes: [mockMode],
     models: [mockModel],
     sessions: new Map([[id, session]]),
   })
 }
 
 describe('createAgentRoutingFetch', () => {
+  it.each([
+    ['managed-http', 'hosted'],
+    ['remote-acp', 'acp'],
+  ] as const)('records a %s turn in the debug transcript as engine %p', async (type, engine) => {
+    resetStore()
+    clearDebugTranscriptRecorder()
+    setDebugTranscriptCaptureEnabled(true)
+    const agent: Agent = { ...remoteAgent, type, isSystem: type === 'managed-http' ? 1 : 0 }
+    const { adapter } = buildFakeAdapter(agent)
+    hydrateSessionWith('t-engine', agent)
+    const customFetch = createAgentRoutingFetch(
+      't-engine',
+      saveMessages,
+      httpClient,
+      getProxyFetch,
+      { getChatReasoningEffort: async () => undefined, connectToAgent: mock(async () => adapter) as never },
+      { getDebugTranscriptTraceId: () => 'trace-engine' },
+    )
+
+    try {
+      await customFetch('/chat', {
+        method: 'POST',
+        body: JSON.stringify({ messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+      })
+
+      expect(getDebugTranscriptNotes('t-engine')[0]?.engine).toBe(engine)
+    } finally {
+      setDebugTranscriptCaptureEnabled(false)
+    }
+  })
+
+  it('reuses a web-tool budget across revision-incrementing retries and refreshes it for restarted turns', async () => {
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
+    const connectToAgent = mock(async () => adapter)
+    hydrateSessionWith('t-web-budget', builtInAgent)
+    const routingState = { regenerationRevision: 0, webToolBudgetRevision: 0 }
+    const customFetch = createAgentRoutingFetch(
+      't-web-budget',
+      saveMessages,
+      httpClient,
+      getProxyFetch,
+      { getChatReasoningEffort: async () => undefined, connectToAgent: connectToAgent as never },
+      routingState,
+    )
+    const request = (id: string, text: string): RequestInit => ({
+      method: 'POST',
+      body: JSON.stringify({ messages: [{ id, role: 'user', parts: [{ type: 'text', text }] }] }),
+    })
+
+    await customFetch('/chat', request('message-1', '/search topic'))
+    routingState.regenerationRevision++
+    await customFetch('/chat', request('message-1', '/search topic'))
+    await customFetch('/chat', request('message-2', 'new topic'))
+    routingState.webToolBudgetRevision++
+    routingState.regenerationRevision++
+    await customFetch('/chat', request('message-2', 'new topic'))
+
+    const budgets = adapterFetch.mock.calls.map(
+      (call) => (call as unknown as [RequestInit, AgentAdapterContext])[1].webToolBudget,
+    )
+    expect(budgets[0]).toBeDefined()
+    expect(budgets[1]).toBe(budgets[0])
+    expect(budgets[2]).not.toBe(budgets[1])
+    expect(budgets[3]).not.toBe(budgets[2])
+    expect(budgets[0]?.intent).toBe('search')
+    expect(budgets[2]?.intent).toBe('auto')
+  })
+
+  it('sends the agent a stop marker after a prompt the user stopped', async () => {
+    resetStore()
+    const sentBodies: string[] = []
+    const adapter: AgentAdapter = {
+      ...buildFakeAdapter(builtInAgent).adapter,
+      fetch: async (init) => {
+        sentBodies.push(String(init.body))
+        return new Response('streamed')
+      },
+    }
+    hydrateSessionWith('t-stopped', builtInAgent)
+    const customFetch = createAgentRoutingFetch('t-stopped', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
+      connectToAgent: async () => adapter,
+    })
+    const messages: ThunderboltUIMessage[] = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }], metadata: { stoppedByUser: true } },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'Which city?' }] },
+    ]
+
+    await customFetch('/chat', { method: 'POST', body: JSON.stringify({ id: 't-stopped', messages }) })
+
+    const sent: { id: string; messages: ThunderboltUIMessage[] } = JSON.parse(sentBodies[0]!)
+    expect(sent.id).toBe('t-stopped')
+    expect(sent.messages.map((message) => message.id)).toEqual(['u1', 'u1-stopped', 'u2'])
+  })
+
+  it('passes the current regenerate revision without changing it on normal sends', async () => {
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
+    const connectToAgent = mock(async () => adapter)
+    hydrateSessionWith('t-revision', builtInAgent)
+    const regeneration = { regenerationRevision: 0 }
+    const customFetch = createAgentRoutingFetch(
+      't-revision',
+      saveMessages,
+      httpClient,
+      getProxyFetch,
+      { getChatReasoningEffort: async () => undefined, connectToAgent: connectToAgent as never },
+      regeneration,
+    )
+    const init: RequestInit = { method: 'POST', body: JSON.stringify({ messages: [] }) }
+
+    await customFetch('/chat', init)
+    await customFetch('/chat', init)
+    regeneration.regenerationRevision++
+    await customFetch('/chat', init)
+
+    const revisions = adapterFetch.mock.calls.map(
+      (call) => (call as unknown as [RequestInit, AgentAdapterContext])[1].regenerationRevision,
+    )
+    expect(revisions).toEqual([0, 0, 1])
+  })
+
   it('routes built-in agent through connectToAgent with type "built-in"', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
@@ -120,6 +246,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-built-in', builtInAgent)
 
     const customFetch = createAgentRoutingFetch('t-built-in', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -139,6 +266,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-remote', remoteAgent)
 
     const customFetch = createAgentRoutingFetch('t-remote', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -156,6 +284,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-cache', remoteAgent)
 
     const customFetch = createAgentRoutingFetch('t-cache', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -177,6 +306,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-switch', remoteAgent)
 
     const customFetch = createAgentRoutingFetch('t-switch', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -226,6 +356,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('thread-77', remoteAgent, chatThread)
 
     const customFetch = createAgentRoutingFetch('thread-77', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: updateChatThread as never,
       getDb: (() => fakeDb) as never,
@@ -272,6 +403,7 @@ describe('createAgentRoutingFetch', () => {
     }
 
     const customFetch = createAgentRoutingFetch('t-save-builtin', saveMessagesSpy, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -299,6 +431,7 @@ describe('createAgentRoutingFetch', () => {
     }
 
     const customFetch = createAgentRoutingFetch('t-save-remote', saveMessagesSpy, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -311,7 +444,7 @@ describe('createAgentRoutingFetch', () => {
     expect(saveMessagesSpy.mock.calls[0]?.[0]).toEqual({ id: 't-save-remote', messages: [userMessage] })
   })
 
-  it('does NOT persist acpSessionId when the session has no chatThread (new chat)', async () => {
+  it('persists acpSessionId by thread id even on a new chat whose in-memory chatThread snapshot is null', async () => {
     resetStore()
     const disconnect = mock(() => {})
     const fakeDb = { __id: 'fake-db' } as never
@@ -334,9 +467,13 @@ describe('createAgentRoutingFetch', () => {
 
     const updateChatThread = mock(async () => {})
 
+    // A brand-new chat: the store's `chatThread` snapshot is still null, but
+    // `saveMessages` creates the row, so the fresh ACP id must still persist —
+    // otherwise resume/load could never fire on the next reconnect.
     hydrateSessionWith('t-no-thread', remoteAgent, null)
 
     const customFetch = createAgentRoutingFetch('t-no-thread', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: updateChatThread as never,
       getDb: (() => fakeDb) as never,
@@ -345,7 +482,8 @@ describe('createAgentRoutingFetch', () => {
     await customFetch('/chat', { method: 'POST', body: '{}' })
     await capturedOnAcpSessionId!('any-sess')
 
-    expect(updateChatThread).not.toHaveBeenCalled()
+    expect(updateChatThread).toHaveBeenCalledTimes(1)
+    expect(updateChatThread).toHaveBeenCalledWith(fakeDb, 't-no-thread', { acpSessionId: 'any-sess' })
   })
 
   it('resolves user-skill instructions into the fetch context for a remote-acp agent', async () => {
@@ -358,6 +496,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-skill', remoteAgent)
 
     const customFetch = createAgentRoutingFetch('t-skill', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: getAllSkills as never,
       getDb: (() => ({})) as never,
@@ -370,6 +509,61 @@ describe('createAgentRoutingFetch', () => {
     expect(ctx.skillInstructions).toEqual(['Tell a cat joke.'])
   })
 
+  it('forwards the chat’s project context to a remote-acp agent', async () => {
+    // Project context was prepared only in the built-in pipeline, so switching a
+    // project's chat to a remote agent silently dropped its instructions and
+    // knowledge. ACP has no system channel; the adapter folds this into the prompt.
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(remoteAgent)
+    const connectToAgent = mock(async () => adapter)
+    hydrateSessionWith('t-project', remoteAgent, null, 'p1')
+
+    const customFetch = createAgentRoutingFetch('t-project', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
+      connectToAgent: connectToAgent as never,
+      getAllSkills: (async () => []) as never,
+      getDb: (() => ({})) as never,
+      loadProjectContext: (async () => ({
+        id: 'p1',
+        siblingThreadIds: [],
+        titleByThreadId: {},
+        prompt: { name: 'Cabin build', instructions: 'Prefer metric units.', knowledge: [] },
+      })) as never,
+    })
+
+    const body = JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] })
+    await customFetch('/chat', { method: 'POST', body })
+
+    const [, ctx] = adapterFetch.mock.calls[0] as unknown as [unknown, { projectSection?: string }]
+    expect(ctx.projectSection).toContain('Cabin build')
+    expect(ctx.projectSection).toContain('Prefer metric units.')
+  })
+
+  it('skips the project lookup for a chat that is not in a project', async () => {
+    resetStore()
+    const { adapter, fetch: adapterFetch } = buildFakeAdapter(remoteAgent)
+    const connectToAgent = mock(async () => adapter)
+    const getDb = mock(() => ({}))
+    const loadProjectContext = mock(async () => null)
+    hydrateSessionWith('t-no-project', remoteAgent)
+
+    const customFetch = createAgentRoutingFetch('t-no-project', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
+      connectToAgent: connectToAgent as never,
+      getAllSkills: (async () => []) as never,
+      getDb: getDb as never,
+      loadProjectContext: loadProjectContext as never,
+    })
+
+    const body = JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] })
+    await customFetch('/chat', { method: 'POST', body })
+
+    const [, ctx] = adapterFetch.mock.calls[0] as unknown as [unknown, { projectSection?: string }]
+    expect(ctx.projectSection).toBeUndefined()
+    // Not merely absent from the context — never looked up.
+    expect(loadProjectContext).not.toHaveBeenCalled()
+  })
+
   it('does not resolve skill instructions for the built-in agent (it injects them itself)', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
@@ -378,6 +572,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-builtin-skill', builtInAgent)
 
     const customFetch = createAgentRoutingFetch('t-builtin-skill', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: getAllSkills as never,
       getDb: (() => ({})) as never,

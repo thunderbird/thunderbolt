@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { categorizeModels, needsApiKey } from './model-selector'
+import { i18n } from '@lingui/core'
+import { categorizeModels } from './model-selector'
+import { needsApiKey } from '@/settings/models/model-policy'
 import type { Model } from '@/types'
 import type { ChatThread } from '@/layout/sidebar/types'
 
@@ -28,72 +30,73 @@ const customModel = makeModel({ id: 'custom-1', name: 'Custom Model', isConfiden
 const confidentialChat = { isEncrypted: 1 } as ChatThread
 const standardChat = { isEncrypted: 0 } as ChatThread
 
-describe('categorizeModels', () => {
-  test('no chat thread: all models are available, no disabled sections', () => {
-    const groups = categorizeModels([confidentialModel, standardModel, customModel], null)
+/** `.find()` a group by id, failing the test loudly when it's absent. */
+const groupById = (groups: ReturnType<typeof categorizeModels>, id: string) => {
+  const group = groups.find((g) => g.id === id)
+  if (!group) {
+    throw new Error(`expected a '${id}' group`)
+  }
+  return group
+}
 
-    expect(groups).toHaveLength(2)
-    expect(groups[0].id).toBe('provided')
-    expect(groups[0].items).toHaveLength(2)
+describe('categorizeModels', () => {
+  test('no chat thread: all models are available in one group, no disabled sections', () => {
+    const groups = categorizeModels([confidentialModel, standardModel, customModel], null, i18n)
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0].id).toBe('available')
+    expect(groups[0].items).toHaveLength(3)
     expect(groups[0].items.every((i) => !i.disabled)).toBe(true)
-    expect(groups[1].id).toBe('custom')
-    expect(groups[1].items).toHaveLength(1)
-    expect(groups[1].items[0].disabled).toBe(false)
   })
 
   test('encrypted chat: standard models in disabled section', () => {
-    const groups = categorizeModels([confidentialModel, standardModel], confidentialChat)
+    const groups = categorizeModels([confidentialModel, standardModel], confidentialChat, i18n)
 
-    const provided = groups.find((g) => g.id === 'provided')
-    expect(provided).toBeDefined()
-    expect(provided!.items).toHaveLength(1)
-    expect(provided!.items[0].id).toBe('conf-1')
-    expect(provided!.items[0].disabled).toBe(false)
+    const available = groupById(groups, 'available')
+    expect(available.items).toHaveLength(1)
+    expect(available.items[0].id).toBe('conf-1')
+    expect(available.items[0].disabled).toBe(false)
 
-    const disabled = groups.find((g) => g.id === 'standard-disabled')
-    expect(disabled).toBeDefined()
-    expect(disabled!.label).toBe('Standard Models')
-    expect(disabled!.subtitle).toBe('Not available in confidential chats.')
-    expect(disabled!.items).toHaveLength(1)
-    expect(disabled!.items[0].id).toBe('std-1')
-    expect(disabled!.items[0].disabled).toBe(true)
+    const disabled = groupById(groups, 'standard-disabled')
+    expect(disabled.label).toBe('Not available in private chats.')
+    expect(disabled.subtitle).toBeUndefined()
+    expect(disabled.items).toHaveLength(1)
+    expect(disabled.items[0].id).toBe('std-1')
+    expect(disabled.items[0].disabled).toBe(true)
   })
 
   test('standard chat: encrypted models in disabled section', () => {
-    const groups = categorizeModels([confidentialModel, standardModel], standardChat)
+    const groups = categorizeModels([confidentialModel, standardModel], standardChat, i18n)
 
-    const provided = groups.find((g) => g.id === 'provided')
-    expect(provided).toBeDefined()
-    expect(provided!.items).toHaveLength(1)
-    expect(provided!.items[0].id).toBe('std-1')
+    const available = groupById(groups, 'available')
+    expect(available.items).toHaveLength(1)
+    expect(available.items[0].id).toBe('std-1')
 
-    const disabled = groups.find((g) => g.id === 'confidential-disabled')
-    expect(disabled).toBeDefined()
-    expect(disabled!.label).toBe('Confidential Models')
-    expect(disabled!.subtitle).toBe('Available only in confidential chats.')
-    expect(disabled!.items).toHaveLength(1)
-    expect(disabled!.items[0].id).toBe('conf-1')
-    expect(disabled!.items[0].disabled).toBe(true)
+    const disabled = groupById(groups, 'confidential-disabled')
+    expect(disabled.label).toBe('Only available in private chats.')
+    expect(disabled.subtitle).toBeUndefined()
+    expect(disabled.items).toHaveLength(1)
+    expect(disabled.items[0].id).toBe('conf-1')
+    expect(disabled.items[0].disabled).toBe(true)
   })
 
-  test('custom models are grouped separately when available', () => {
-    const groups = categorizeModels([standardModel, customModel], null)
+  test('custom models merge into the same group as built-in models', () => {
+    const groups = categorizeModels([standardModel, customModel], null, i18n)
 
-    expect(groups.find((g) => g.id === 'provided')!.items).toHaveLength(1)
-    expect(groups.find((g) => g.id === 'custom')!.items).toHaveLength(1)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].items.map((i) => i.id)).toEqual(['std-1', 'custom-1'])
   })
 
   test('disabled custom models go to the disabled section', () => {
-    const groups = categorizeModels([confidentialModel, customModel], confidentialChat)
+    const groups = categorizeModels([confidentialModel, customModel], confidentialChat, i18n)
 
-    const disabled = groups.find((g) => g.id === 'standard-disabled')
-    expect(disabled).toBeDefined()
-    expect(disabled!.items).toHaveLength(1)
-    expect(disabled!.items[0].id).toBe('custom-1')
+    const disabled = groupById(groups, 'standard-disabled')
+    expect(disabled.items).toHaveLength(1)
+    expect(disabled.items[0].id).toBe('custom-1')
   })
 
   test('empty models returns empty groups', () => {
-    const groups = categorizeModels([], null)
+    const groups = categorizeModels([], null, i18n)
     expect(groups).toHaveLength(0)
   })
 })
@@ -102,7 +105,7 @@ describe('needsApiKey', () => {
   test('system tinfoil rows do not need a key (injected by backend proxy)', () => {
     const model = makeModel({
       id: 'tinfoil-system',
-      name: 'DeepSeek V4 Pro',
+      name: 'GLM 5.2',
       provider: 'tinfoil',
       isSystem: 1,
       apiKey: null,

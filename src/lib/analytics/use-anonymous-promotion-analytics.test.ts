@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
 import { createAnonymousPromotionAnalytics, pendingAnonIdKey } from './use-anonymous-promotion-analytics'
 import type { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { AuthClient } from '@/contexts'
@@ -37,6 +37,7 @@ describe('createAnonymousPromotionAnalytics', () => {
 
   afterEach(() => {
     sessionStorage.clear()
+    mock.restore()
   })
 
   it('captureAnonId stores the id when session is anonymous', async () => {
@@ -64,6 +65,33 @@ describe('createAnonymousPromotionAnalytics', () => {
     await analytics.captureAnonId(makeEmptyAuthClient())
 
     expect(ref.current).toBeNull()
+  })
+
+  it('does not refetch a session already resolved as signed out', async () => {
+    const authClient = makeAuthClient(true, 'unexpected-refetch')
+    const getSession = spyOn(authClient, 'getSession')
+    const ref = makeRef()
+    const analytics = createAnonymousPromotionAnalytics(ref, trackEvent, alias)
+
+    await analytics.captureAnonId(authClient, null)
+
+    expect(getSession).not.toHaveBeenCalled()
+    expect(ref.current).toBeNull()
+  })
+
+  it('keeps the resolved anonymous identity when authentication has already changed', async () => {
+    const authClient = makeAuthClient(false, 'real-user')
+    const getSession = spyOn(authClient, 'getSession')
+    const analytics = createAnonymousPromotionAnalytics(makeRef(), trackEvent, alias)
+
+    await analytics.captureAnonId(authClient, { user: { id: 'anonymous-before-sign-in', isAnonymous: true } })
+    analytics.persistForSso()
+    analytics.onPromotionSuccess('real-user')
+
+    expect(getSession).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem(pendingAnonIdKey)).toBe('anonymous-before-sign-in')
+    expect(aliasMock).toHaveBeenCalledWith('real-user', 'anonymous-before-sign-in')
+    expect(trackEventMock).toHaveBeenCalledWith('anonymous_user_promoted')
   })
 
   it('persistForSso writes the anon id to sessionStorage', async () => {

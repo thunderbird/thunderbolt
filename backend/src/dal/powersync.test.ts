@@ -1,0 +1,481 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { user } from '@/db/auth-schema'
+import { chatThreadsTable, devicesTable, modelsTable, settingsTable } from '@/db/schema'
+import { createTestDb } from '@/test-utils/db'
+import { and, eq } from 'drizzle-orm'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { applyOperation } from './powersync'
+
+describe('powersync upload gate (applyOperation)', () => {
+  let db: Awaited<ReturnType<typeof createTestDb>>['db']
+  let cleanup: () => Promise<void>
+  const userId = 'user-a'
+  const otherUserId = 'user-b'
+
+  const insertUser = async (id: string, email: string) => {
+    const now = new Date()
+    await db.insert(user).values({ id, name: id, email, emailVerified: true, createdAt: now, updatedAt: now })
+  }
+
+  beforeEach(async () => {
+    const testEnv = await createTestDb()
+    db = testEnv.db
+    cleanup = testEnv.cleanup
+    await insertUser(userId, 'a@test.com')
+    await insertUser(otherUserId, 'b@test.com')
+  })
+
+  afterEach(async () => {
+    if (cleanup) {
+      await cleanup()
+    }
+  })
+
+  describe('invalid / malformed operations', () => {
+    it('rejects an unknown table name', async () => {
+      const ok = await applyOperation(db, { op: 'PUT', type: 'not_a_table', id: 'x', data: { foo: 1 } }, userId)
+      expect(ok).toBe(false)
+    })
+
+    it('accepts-and-ignores a legacy (removed) table so an old client can drain its queue', async () => {
+      // A device with a queued write for a dropped table (modes, THU-739) must
+      // not wedge on a 400 retry loop. applyOperation returns true without touching the DB.
+      const ok = await applyOperation(db, { op: 'PUT', type: 'modes', id: 'legacy-1', data: { name: 'x' } }, userId)
+      expect(ok).toBe(true)
+    })
+
+    it('drains a queued project_files write, which never shipped but exists on branch devices', async () => {
+      // The table's migration was removed before merge, so it has no production
+      // history — but a device that ran the Projects branch can still hold writes
+      // for it, and an unknown table is a 400 the client retries forever.
+      const ok = await applyOperation(
+        db,
+        { op: 'PUT', type: 'project_files', id: 'pf-1', data: { filename: 'a.md', content: 'x' } },
+        userId,
+      )
+      expect(ok).toBe(true)
+    })
+  })
+
+  describe('DELETE allowlist (security: protected tables)', () => {
+    it('REFUSES to delete a devices row via upload — identity-deletion vector', async () => {
+      const now = new Date()
+      await db
+        .insert(devicesTable)
+        .values({ id: 'dev-1', userId, name: 'Phone', trusted: true, lastSeen: now, createdAt: now })
+
+      const ok = await applyOperation(db, { op: 'DELETE', type: 'devices', id: 'dev-1' }, userId)
+
+      expect(ok).toBe(false)
+      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'dev-1'))
+      // row fully intact — not deleted, not mutated
+      expect(rows).toHaveLength(1)
+      expect(rows[0].name).toBe('Phone')
+      expect(rows[0].trusted).toBe(true)
+      expect(rows[0].revokedAt).toBeNull()
+    })
+
+    it('allows deleting a non-protected table row owned by the user', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'models', id: 'm-del', data: { name: 'Custom' } }, userId)
+
+      const ok = await applyOperation(db, { op: 'DELETE', type: 'models', id: 'm-del' }, userId)
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(modelsTable).where(eq(modelsTable.id, 'm-del'))
+      expect(rows).toHaveLength(0)
+    })
+
+    it('does NOT delete another user’s row even on an allowed table (user isolation)', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-iso', data: { title: 'A' } }, userId)
+
+      // user-b tries to delete user-a's thread (chat_threads pk is global id)
+      const ok = await applyOperation(db, { op: 'DELETE', type: 'chat_threads', id: 't-iso' }, otherUserId)
+
+      // Accepted for queue liveness, but scoped by user_id, so the owner's row
+      // survives untouched — that is the property this test guards.
+      expect(ok).toBe(true)
+      const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-iso'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0].userId).toBe(userId)
+    })
+
+    it('accepts deleting a non-existent row — the end state already holds', async () => {
+      const ok = await applyOperation(db, { op: 'DELETE', type: 'models', id: 'ghost' }, userId)
+      expect(ok).toBe(true)
+    })
+  })
+
+  describe('PUT (insert-or-upsert)', () => {
+    it('forces user_id to the authenticated user, ignoring a spoofed payload user_id', async () => {
+      const ok = await applyOperation(
+        db,
+        { op: 'PUT', type: 'chat_threads', id: 't-spoof', data: { title: 'Mine', user_id: otherUserId } },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-spoof'))
+      expect(rows[0].userId).toBe(userId)
+    })
+
+    it('ignores a spoofed payload id and uses op.id', async () => {
+      await applyOperation(
+        db,
+        { op: 'PUT', type: 'chat_threads', id: 'real-id', data: { id: 'fake-id', title: 'X' } },
+        userId,
+      )
+      const real = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'real-id'))
+      const fake = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'fake-id'))
+      expect(real).toHaveLength(1)
+      expect(fake).toHaveLength(0)
+    })
+
+    it('strips EVERY server-managed deny column on devices (client cannot grant itself trust)', async () => {
+      const ok = await applyOperation(
+        db,
+        {
+          op: 'PUT',
+          type: 'devices',
+          id: 'dev-trust',
+          data: {
+            name: 'Evil', // the only non-protected field
+            trusted: true,
+            approval_pending: true,
+            public_key: 'attacker-pk',
+            mlkem_public_key: 'attacker-mlkem',
+            revoked_at: '2020-01-01T00:00:00.000Z',
+            app_version: '99.99.99',
+            device_type: 'bridge',
+            node_id: 'attacker-node',
+            node_id_attested_at: '2020-01-01T00:00:00.000Z',
+          },
+        },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'dev-trust'))
+      expect(rows[0].name).toBe('Evil') // non-protected column is applied
+      expect(rows[0].trusted).toBe(false) // server-managed defaults, never client-set
+      expect(rows[0].approvalPending).toBe(false)
+      expect(rows[0].publicKey).toBeNull()
+      expect(rows[0].mlkemPublicKey).toBeNull()
+      expect(rows[0].revokedAt).toBeNull()
+      expect(rows[0].appVersion).toBeNull()
+      expect(rows[0].deviceType).toBe('normal') // client can't relabel itself a bridge
+      expect(rows[0].nodeId).toBeNull()
+      expect(rows[0].nodeIdAttestedAt).toBeNull()
+    })
+
+    it('REFUSES to create a devices row in the reserved bridge- id namespace (squat vector)', async () => {
+      // The bridge- id namespace is server-owned (POST /devices/bridge). A client upload must not
+      // be able to pre-create a row there, or it could squat another account's deterministic
+      // bridge id and block that account's later registration.
+      const ok = await applyOperation(
+        db,
+        { op: 'PUT', type: 'devices', id: 'bridge-deadbeef', data: { name: 'Squat' } },
+        userId,
+      )
+      expect(ok).toBe(false)
+      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'bridge-deadbeef'))
+      expect(rows).toHaveLength(0)
+    })
+
+    it('REFUSES to create or overwrite rows in the reserved cli- device namespace', async () => {
+      const id = 'cli-019f0000-0000-7000-8000-000000000001'
+      expect(await applyOperation(db, { op: 'PUT', type: 'devices', id, data: { name: 'Squat' } }, userId)).toBe(false)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, id))).toHaveLength(0)
+
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id,
+        userId,
+        name: 'Server CLI',
+        deviceType: 'cli',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      expect(
+        await applyOperation(db, { op: 'PUT', type: 'devices', id, data: { name: 'Overwritten CLI' } }, userId),
+      ).toBe(false)
+      expect(
+        await applyOperation(db, { op: 'PATCH', type: 'devices', id, data: { name: 'Patched CLI' } }, userId),
+      ).toBe(false)
+      const [persisted] = await db.select().from(devicesTable).where(eq(devicesTable.id, id))
+      expect(persisted.name).toBe('Server CLI')
+      expect(persisted.deviceType).toBe('cli')
+    })
+
+    it('updates an existing row on conflict (upsert)', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-up', data: { title: 'First' } }, userId)
+      await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-up', data: { title: 'Second' } }, userId)
+
+      const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-up'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0].title).toBe('Second')
+    })
+
+    it('does NOT overwrite another user’s row when a global-pk id collides (cross-user isolation)', async () => {
+      await applyOperation(
+        db,
+        { op: 'PUT', type: 'chat_threads', id: 't-shared', data: { title: 'Owned by A' } },
+        userId,
+      )
+
+      // user-b PUTs the same global id; insert conflicts, but setWhere(userId=b) matches no row
+      const ok = await applyOperation(
+        db,
+        { op: 'PUT', type: 'chat_threads', id: 't-shared', data: { title: 'Hijacked by B' } },
+        otherUserId,
+      )
+
+      expect(ok).toBe(true) // gate accepts (no error) but the update affects 0 rows
+      const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-shared'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0].userId).toBe(userId)
+      expect(rows[0].title).toBe('Owned by A')
+    })
+
+    it('does not clobber an existing row when an upsert carries no real columns (only unknowns)', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'models', id: 'm-noop', data: { name: 'Original' } }, userId)
+
+      // data has only unknown columns -> the conflicting upsert has nothing to update
+      const ok = await applyOperation(db, { op: 'PUT', type: 'models', id: 'm-noop', data: { bogus: 'z' } }, userId)
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(modelsTable).where(eq(modelsTable.id, 'm-noop'))
+      expect(rows[0].name).toBe('Original') // untouched, no clobber to null
+    })
+
+    it('creates a bare row (id + user_id + defaults) when an insert carries only unknown columns', async () => {
+      const ok = await applyOperation(db, { op: 'PUT', type: 'models', id: 'm-bare', data: { bogus: 'z' } }, userId)
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(modelsTable).where(eq(modelsTable.id, 'm-bare'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0].userId).toBe(userId)
+      expect(rows[0].name).toBeNull()
+      expect(rows[0].enabled).toBe(1) // schema default applied
+    })
+
+    it('converts ISO timestamp strings to Date on the PUT path too', async () => {
+      const iso = '2026-03-04T05:06:07.000Z'
+      await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-put-ts', data: { deleted_at: iso } }, userId)
+      const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-put-ts'))
+      expect(rows[0].deletedAt).toBeInstanceOf(Date)
+      expect(rows[0].deletedAt!.toISOString()).toBe(iso)
+    })
+
+    it('upserts settings whose DB pk column is named "id" but maps to the "key" field', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'settings', id: 'theme', data: { value: 'dark' } }, userId)
+      await applyOperation(db, { op: 'PUT', type: 'settings', id: 'theme', data: { value: 'light' } }, userId)
+
+      const rows = await db
+        .select()
+        .from(settingsTable)
+        .where(and(eq(settingsTable.key, 'theme'), eq(settingsTable.userId, userId)))
+      expect(rows).toHaveLength(1)
+      expect(rows[0].value).toBe('light')
+    })
+  })
+
+  describe('PATCH', () => {
+    it('returns true (drainable no-op) for empty data and leaves the target untouched', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'models', id: 'm-empty', data: { name: 'Keep' } }, userId)
+      const ok = await applyOperation(db, { op: 'PATCH', type: 'models', id: 'm-empty', data: {} }, userId)
+      expect(ok).toBe(true)
+      const rows = await db.select().from(modelsTable).where(eq(modelsTable.id, 'm-empty'))
+      expect(rows[0].name).toBe('Keep')
+    })
+
+    it('returns true (drainable no-op) when data is omitted entirely', async () => {
+      const ok = await applyOperation(db, { op: 'PATCH', type: 'models', id: 'whatever' }, userId)
+      expect(ok).toBe(true)
+    })
+
+    it('strips a spoofed id from the patch so it cannot rewrite the primary key', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-pid', data: { title: 'Orig' } }, userId)
+
+      const ok = await applyOperation(
+        db,
+        { op: 'PATCH', type: 'chat_threads', id: 't-pid', data: { id: 'hijack', title: 'New' } },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const stillThere = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-pid'))
+      const hijacked = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'hijack'))
+      expect(stillThere[0].title).toBe('New') // allowed field applied
+      expect(hijacked).toHaveLength(0) // pk untouched
+    })
+
+    it('clears a timestamp column when patched with null (un-soft-delete)', async () => {
+      const iso = '2026-01-02T03:04:05.000Z'
+      await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-undel', data: { deleted_at: iso } }, userId)
+
+      const ok = await applyOperation(
+        db,
+        { op: 'PATCH', type: 'chat_threads', id: 't-undel', data: { deleted_at: null } },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-undel'))
+      expect(rows[0].deletedAt).toBeNull()
+    })
+
+    it('returns true (drainable no-op) when only unknown/server-managed columns remain after stripping', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({ id: 'dev-strip', userId, name: 'Phone', lastSeen: now, createdAt: now })
+
+      // trusted is deny-listed, user_id is stripped, foo is unknown -> empty patch
+      const ok = await applyOperation(
+        db,
+        { op: 'PATCH', type: 'devices', id: 'dev-strip', data: { trusted: true, user_id: otherUserId, foo: 1 } },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'dev-strip'))
+      expect(rows[0].trusted).toBe(false)
+      expect(rows[0].userId).toBe(userId)
+    })
+
+    it('applies allowed columns but strips deny-listed ones in the same patch', async () => {
+      const now = new Date()
+      await db.insert(devicesTable).values({ id: 'dev-mix', userId, name: 'Old', lastSeen: now, createdAt: now })
+
+      const ok = await applyOperation(
+        db,
+        { op: 'PATCH', type: 'devices', id: 'dev-mix', data: { name: 'Renamed', trusted: true } },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'dev-mix'))
+      expect(rows[0].name).toBe('Renamed')
+      expect(rows[0].trusted).toBe(false)
+    })
+
+    it('accepts a patch against a non-existent row so the queue can drain', async () => {
+      // Rejecting would stop the client calling complete(), retry the batch
+      // forever, and — since PowerSync defers checkpoints while writes are
+      // pending — kill sync in both directions. Reachable for devices holding
+      // rows left by the pre-GH-#1299 `DELETE FROM ps_crud`.
+      const ok = await applyOperation(
+        db,
+        { op: 'PATCH', type: 'chat_threads', id: 'nope', data: { title: 'X' } },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'nope'))
+      expect(rows).toHaveLength(0)
+    })
+
+    it('never patches another user’s row, though it accepts the op', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-patch-iso', data: { title: 'A' } }, userId)
+
+      const ok = await applyOperation(
+        db,
+        { op: 'PATCH', type: 'chat_threads', id: 't-patch-iso', data: { title: 'B' } },
+        otherUserId,
+      )
+
+      // Acceptance is about queue liveness, never about authority: the write
+      // is still scoped by user_id and the owner's row is untouched.
+      expect(ok).toBe(true)
+      const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-patch-iso'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0].title).toBe('A')
+      expect(rows[0].userId).toBe(userId)
+    })
+
+    it('converts ISO timestamp strings to Date for timestamp columns (soft-delete)', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-ts', data: { title: 'A' } }, userId)
+      const iso = '2026-01-02T03:04:05.000Z'
+
+      const ok = await applyOperation(
+        db,
+        { op: 'PATCH', type: 'chat_threads', id: 't-ts', data: { deleted_at: iso } },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const rows = await db
+        .select()
+        .from(chatThreadsTable)
+        .where(and(eq(chatThreadsTable.id, 't-ts'), eq(chatThreadsTable.userId, userId)))
+      expect(rows[0].deletedAt).toBeInstanceOf(Date)
+      expect(rows[0].deletedAt!.toISOString()).toBe(iso)
+    })
+  })
+  describe('PUT with ifAbsent (create-only, GH #1299)', () => {
+    it('does not overwrite an existing row', async () => {
+      // Device A completed onboarding and synced it.
+      await applyOperation(db, { op: 'PUT', type: 'settings', id: 'onb', data: { value: 'true' } }, userId)
+
+      // Device B seeded the bundled default offline and is now enabling sync.
+      const ok = await applyOperation(
+        db,
+        { op: 'PUT', type: 'settings', id: 'onb', data: { value: 'false' }, ifAbsent: true },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'onb'))
+      expect(rows[0].value).toBe('true')
+    })
+
+    it('still creates the row when the account does not have it', async () => {
+      // Without this the row would never reach the server, and the device's
+      // later PATCH against it would miss, 400, and wedge the upload queue.
+      const ok = await applyOperation(
+        db,
+        { op: 'PUT', type: 'settings', id: 'onb-new', data: { value: 'false' }, ifAbsent: true },
+        userId,
+      )
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'onb-new'))
+      expect(rows[0].value).toBe('false')
+      expect(rows[0].userId).toBe(userId)
+    })
+
+    it('leaves an unflagged PUT overwriting as before', async () => {
+      await applyOperation(db, { op: 'PUT', type: 'settings', id: 'onb-plain', data: { value: 'true' } }, userId)
+
+      await applyOperation(db, { op: 'PUT', type: 'settings', id: 'onb-plain', data: { value: 'false' } }, userId)
+
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'onb-plain'))
+      expect(rows[0].value).toBe('false')
+    })
+
+    it("does not let one user's create-only write shadow another user's row", async () => {
+      await applyOperation(db, { op: 'PUT', type: 'settings', id: 'onb-iso', data: { value: 'true' } }, userId)
+
+      const ok = await applyOperation(
+        db,
+        { op: 'PUT', type: 'settings', id: 'onb-iso', data: { value: 'false' }, ifAbsent: true },
+        otherUserId,
+      )
+
+      expect(ok).toBe(true)
+      const mine = await db
+        .select()
+        .from(settingsTable)
+        .where(and(eq(settingsTable.key, 'onb-iso'), eq(settingsTable.userId, userId)))
+      const theirs = await db
+        .select()
+        .from(settingsTable)
+        .where(and(eq(settingsTable.key, 'onb-iso'), eq(settingsTable.userId, otherUserId)))
+      expect(mine[0].value).toBe('true')
+      expect(theirs[0].value).toBe('false')
+    })
+  })
+})

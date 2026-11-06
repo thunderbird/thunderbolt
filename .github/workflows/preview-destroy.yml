@@ -49,54 +49,31 @@ jobs:
           # likewise no-ops on already-gone resources), and fork-PR previews
           # are now real things that need teardown on close.
 
-  drop-db:
-    needs: resolve-pr
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          # Explicit `ref: main` — never run a fork's version of the drop
-          # script with our deploy creds. (pull_request_target defaults to
-          # the base ref anyway, but being explicit prevents accidents if
-          # the trigger is ever changed.)
-          ref: main
-      - uses: aws-actions/configure-aws-credentials@d979d5b3a71173a29b74b5b88418bfda9437d885 # v6.1.1
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: us-east-1
-      - name: Drop per-stack database
-        # Must run before `pulumi destroy` — the per-stack secrets and backend
-        # task definition disappear with the stack, and we need both to invoke
-        # the drop. Script is idempotent if the stack is already partially gone.
-        run: ./scripts/drop-preview-db.sh "${{ needs.resolve-pr.outputs.pr_number }}"
-
+  # stack-deploy's destroy job drops the PR's databases before `pulumi destroy`.
   destroy:
-    needs: [resolve-pr, drop-db]
-    # Run even if drop-db failed — a flaky DB drop must not orphan the whole
-    # stack (ECS services, ALB, secrets) and leak cost indefinitely.
-    if: ${{ always() && needs.resolve-pr.result == 'success' }}
+    needs: resolve-pr
+    if: ${{ needs.resolve-pr.result == 'success' }}
     uses: ./.github/workflows/stack-deploy.yml
     with:
       action: destroy
       platform: fargate
       region: us-east-1
       stack_name: preview-pr-${{ needs.resolve-pr.outputs.pr_number }}
-    # inherit passes AWS_DEPLOY_ROLE_ARN, PULUMI_*, GHCR_PAT, CLOUDFLARE_API_TOKEN
-    secrets: inherit
+    # Destroy only needs AWS credentials and Pulumi authentication.
+    secrets:
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
 
   comment:
-    needs: [resolve-pr, drop-db, destroy]
+    needs: [resolve-pr, destroy]
     if: ${{ always() && needs.resolve-pr.result == 'success' && github.event.pull_request.number }}
     runs-on: ubuntu-latest
     steps:
       - name: Update sticky comment to note teardown
-        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: preview-env
           message: |
-            **Preview environment destroyed** 🧹
+            ${{ needs.destroy.result == 'success' && '**Preview environment destroyed** 🧹' || '**Preview teardown failed** ⚠️' }}
 
-            Stack `preview-pr-${{ needs.resolve-pr.outputs.pr_number }}` and its Cloudflare subdomain have been cleaned up.
+            ${{ needs.destroy.result == 'success' && format('Stack `preview-pr-{0}` and its Cloudflare subdomain have been cleaned up.', needs.resolve-pr.outputs.pr_number) || format('Stack `preview-pr-{0}`, its databases or its PowerSync slot may be left behind. See the [run]({1}/{2}/actions/runs/{3}).', needs.resolve-pr.outputs.pr_number, github.server_url, github.repository, github.run_id) }}

@@ -273,38 +273,38 @@ describe('determineNavigationTarget', () => {
     })
   })
 
-  it('navigates to integrations page when returnContext is "integrations"', () => {
+  it('navigates to the connections page when returnContext is "integrations"', () => {
     const result = determineNavigationTarget('integrations', mockOAuthData)
 
     expect(result).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: mockOAuthData,
     })
   })
 
-  it('defaults to integrations page when returnContext is null', () => {
+  it('defaults to the connections page when returnContext is null', () => {
     const result = determineNavigationTarget(null, mockOAuthData)
 
     expect(result).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: mockOAuthData,
     })
   })
 
-  it('defaults to integrations page when returnContext is empty string', () => {
+  it('defaults to the connections page when returnContext is empty string', () => {
     const result = determineNavigationTarget('' as unknown as ReturnContext, mockOAuthData)
 
     expect(result).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: mockOAuthData,
     })
   })
 
-  it('defaults to integrations page when returnContext is undefined', () => {
+  it('defaults to the connections page when returnContext is undefined', () => {
     const result = determineNavigationTarget(undefined as unknown as ReturnContext, mockOAuthData)
 
     expect(result).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: mockOAuthData,
     })
   })
@@ -338,7 +338,7 @@ describe('determineNavigationTarget', () => {
     const result = determineNavigationTarget('//evil.com' as ReturnContext, mockOAuthData)
 
     expect(result).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: mockOAuthData,
     })
   })
@@ -347,20 +347,20 @@ describe('determineNavigationTarget', () => {
     const result = determineNavigationTarget('chats/123' as unknown as ReturnContext, mockOAuthData)
 
     expect(result).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: mockOAuthData,
     })
   })
 
-  it('routes an MCP callback (matching handshake nonce) to the MCP servers page', () => {
+  it('routes an MCP callback (matching handshake nonce) to the connections page', () => {
     // Even though the shared return-context slot points at integrations, a callback
-    // whose state matches the pending MCP handshake belongs to the MCP page.
+    // whose state matches the pending MCP handshake belongs to the MCP flow.
     setMcpOAuthState({ serverId: 'server-1', stateNonce: 'xyz789', startedAt: Date.now() })
 
     const result = determineNavigationTarget('integrations', mockOAuthData)
 
     expect(result).toEqual({
-      path: '/settings/mcp-servers',
+      path: '/settings/connections',
       oauth: mockOAuthData,
     })
   })
@@ -372,7 +372,7 @@ describe('determineNavigationTarget', () => {
     const result = determineNavigationTarget('integrations', mockOAuthData)
 
     expect(result).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: mockOAuthData,
     })
   })
@@ -387,7 +387,7 @@ describe('determineNavigationTarget', () => {
     const result = determineNavigationTarget('integrations', errorCallback)
 
     expect(result).toEqual({
-      path: '/settings/mcp-servers',
+      path: '/settings/connections',
       oauth: errorCallback,
     })
   })
@@ -398,7 +398,7 @@ describe('determineNavigationTarget', () => {
     const result = determineNavigationTarget('integrations', errorCallback)
 
     expect(result).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: errorCallback,
     })
   })
@@ -411,7 +411,7 @@ describe('determineNavigationTarget', () => {
     const result = determineNavigationTarget('integrations', errorCallback)
 
     expect(result).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: errorCallback,
     })
   })
@@ -448,7 +448,7 @@ describe('parseOAuthCallback + determineNavigationTarget integration', () => {
     const target = determineNavigationTarget('integrations', oauthData!)
 
     expect(target).toEqual({
-      path: '/settings/integrations',
+      path: '/settings/connections',
       oauth: {
         code: null,
         state: null,

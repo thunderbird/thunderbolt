@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
+import { join } from 'path'
 
 // Store original process.argv and console methods
 const originalArgv = process.argv
@@ -51,7 +52,7 @@ describe('create-release.ts', () => {
   describe('Version Bumping', () => {
     it('should bump major version correctly', () => {
       const current = '1.2.3'
-      const [major, minor, patch] = current.split('.').map(Number)
+      const [major] = current.split('.').map(Number)
       const result = `${major + 1}.0.0`
 
       expect(result).toBe('2.0.0')
@@ -59,7 +60,7 @@ describe('create-release.ts', () => {
 
     it('should bump minor version correctly', () => {
       const current = '1.2.3'
-      const [major, minor, patch] = current.split('.').map(Number)
+      const [major, minor] = current.split('.').map(Number)
       const result = `${major}.${minor + 1}.0`
 
       expect(result).toBe('1.3.0')
@@ -100,6 +101,18 @@ describe('create-release.ts', () => {
   })
 
   describe('File Operations', () => {
+    it('includes the CLI package in a release version bump', () => {
+      const result = Bun.spawnSync({
+        cmd: ['bun', 'run', 'scripts/create-release.ts', '--version', '9.8.7', '--dry-run'],
+        cwd: join(import.meta.dir, '..'),
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout.toString()).toContain('  - cli/package.json')
+    })
+
     describe('package.json', () => {
       it('should read and parse package.json correctly', () => {
         const mockPackageJson = { name: 'test', version: '1.0.0' }
@@ -250,15 +263,18 @@ describe('create-release.ts', () => {
     })
 
     it('should detect tag does NOT exist when git throws error', () => {
-      // This simulates failed git rev-parse --verify (exception thrown)
-      let exists = false
-      try {
-        throw new Error('fatal: Needed a single revision')
-      } catch {
-        exists = false
+      // This simulates failed git rev-parse --verify (exception thrown).
+      // Expressed as a function so the catch RETURNS the answer: the throw is
+      // unconditional, so any seed value on a `let` would be dead code.
+      const tagExists = (): boolean => {
+        try {
+          throw new Error('fatal: Needed a single revision')
+        } catch {
+          return false
+        }
       }
 
-      expect(exists).toBe(false)
+      expect(tagExists()).toBe(false)
     })
 
     it('should NOT be fooled by error messages containing tag name (THE BUG)', () => {
@@ -635,7 +651,7 @@ describe('create-release.ts', () => {
     it('should strip iOS release candidate suffix before bumping minor', () => {
       const current = '0.3.0-ios-rc'
       const cleanVersion = current.split('-')[0]
-      const [major, minor, patch] = cleanVersion.split('.').map(Number)
+      const [major, minor] = cleanVersion.split('.').map(Number)
       const result = `${major}.${minor + 1}.0`
 
       expect(result).toBe('0.4.0')
@@ -681,7 +697,7 @@ describe('create-release.ts', () => {
 
     it('should handle very large version numbers', () => {
       const version = '999.999.999'
-      const [major, minor, patch] = version.split('.').map(Number)
+      const [major] = version.split('.').map(Number)
       const nextMajor = `${major + 1}.0.0`
 
       expect(nextMajor).toBe('1000.0.0')
@@ -693,5 +709,33 @@ describe('create-release.ts', () => {
 
       expect(isEmpty).toBe(true)
     })
+  })
+})
+
+describe('create-release.ts input validation', () => {
+  const scriptPath = join(import.meta.dir, 'create-release.ts')
+
+  /** Runs the real script in dry-run mode, so nothing is written even if validation lets an input through. */
+  const runDryRun = (...args: string[]) => {
+    const result = Bun.spawnSync(['bun', scriptPath, '--dry-run', ...args], { stdout: 'pipe', stderr: 'pipe' })
+    return { exitCode: result.exitCode, stderr: result.stderr.toString() }
+  }
+
+  it.each([['1.2.3; touch /tmp/pwned'], ['1.2.3$(id)'], ['1.2'], ['1.2.3-rc']])('rejects version %p', (version) => {
+    const { exitCode, stderr } = runDryRun('--version', version)
+
+    expect(exitCode).toBe(1)
+    expect(stderr).toContain('Invalid version')
+  })
+
+  it('rejects an unknown platform', () => {
+    const { exitCode, stderr } = runDryRun('--version', '1.2.3', '--platform', 'all;id')
+
+    expect(exitCode).toBe(1)
+    expect(stderr).toContain('Invalid platform')
+  })
+
+  it('accepts a valid version and platform', () => {
+    expect(runDryRun('--version', 'v1.2.3', '--platform', 'desktop').exitCode).toBe(0)
   })
 })

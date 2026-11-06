@@ -87,6 +87,42 @@ describe('hydrateAttachmentsAsFileParts — history reduction', () => {
     expect(texts(u1)).toEqual(['summarize', '[Attachment: doc.pdf]\n\nEXTRACTED', '[Attachment: pic.png]'])
   })
 
+  test('an unreadable attachment is skipped instead of failing the turn', async () => {
+    // The reported bug: a file stored as a reference to a path on disk (rather
+    // than a copy of its bytes) throws once the source is edited. Because every
+    // send re-reads the whole history, letting that propagate failed the turn,
+    // burned all three auto-retries, and broke even a plain-text follow-up.
+    const unreadable: HydrationDeps = {
+      ...deps,
+      getTransformer: async () => async () => {
+        throw new DOMException('The requested file could not be read', 'NotReadableError')
+      },
+    }
+
+    const result = await hydrateAttachmentsAsFileParts(conversation(), unreadable)
+
+    // The turn survives, carrying the user's text and the attachment reference.
+    expect(texts(result[0])).toContain('summarize')
+    expect(result).toHaveLength(3)
+  })
+
+  test('one unreadable attachment does not take the readable ones with it', async () => {
+    const oneBadFile: HydrationDeps = {
+      ...deps,
+      getAttachment: async (id: string) => {
+        if (id === 'f1') {
+          throw new DOMException('gone', 'NotReadableError')
+        }
+        return { blob: new Blob(['x']) } as StoredFile
+      },
+    }
+
+    const result = await hydrateAttachmentsAsFileParts(conversation(), oneBadFile)
+
+    // f3 (csv, latest turn) still extracts even though f1 could not be read.
+    expect(texts(result[2])).toEqual(['and this', '[Attachment: data.csv]\n\nEXTRACTED'])
+  })
+
   test('the latest turn still delivers its attachment in full (here: csv as text)', async () => {
     const result = await hydrateAttachmentsAsFileParts(conversation(), deps)
     const u2 = result[2]

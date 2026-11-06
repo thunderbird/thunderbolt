@@ -1,0 +1,84 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * Assembles the Pi `AgentHarness` — the spine that lets the CLI talk to the
+ * selected model provider. It opens an in-memory session, resolves the model,
+ * and registers coding tools bound to the working directory (real bash +
+ * filesystem). Workspace-root harnesses omit bash because arbitrary shell
+ * commands cannot be confined to that workspace.
+ */
+
+import { isReasoningEffort } from '../../../shared/reasoning-effort.ts'
+import { AgentHarness, InMemorySessionRepo, toError } from '@earendil-works/pi-agent-core'
+import type { AgentTool, Session } from '@earendil-works/pi-agent-core'
+import { createModels } from '@earendil-works/pi-ai'
+import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-coding-agent'
+import { createPiHarnessRuntime, installPreparedBinding } from '../provider-runtime/harness-runtime.ts'
+import type { HarnessRuntime, PreparedPiBinding } from '../provider-runtime/types.ts'
+import { cleanupFailure, collectCleanupErrors } from './cleanup-errors.ts'
+import { configureNativeWebSearch } from './model.ts'
+import { createSkillTool } from './skill-tool.ts'
+import { buildSystemPrompt } from './system-prompt.ts'
+import type { HarnessConfig } from './types.ts'
+import { createWorkspaceTools } from './workspace-jail.ts'
+import { createWebFetchTool } from './webfetch.ts'
+
+/** Build complete toolset shared by local CLI and ACP-served harnesses. */
+export const createHarnessTools = (config: Pick<HarnessConfig, 'cwd' | 'workspaceRoot' | 'skills'>): AgentTool[] => {
+  const codingTools = config.workspaceRoot
+    ? createWorkspaceTools(config.workspaceRoot)
+    : [createBashTool(config.cwd), createReadTool(config.cwd), createWriteTool(config.cwd), createEditTool(config.cwd)]
+  const skillTools = config.skills?.length ? [createSkillTool(config.skills)] : []
+  return [...codingTools, createWebFetchTool(), ...skillTools]
+}
+
+/** Build the sole live runtime from a prepared provider binding. */
+export const createHarnessRuntime = async (
+  config: HarnessConfig,
+  binding: PreparedPiBinding,
+  session?: Session,
+): Promise<HarnessRuntime> => {
+  try {
+    const activeSession = session ?? (await new InMemorySessionRepo().create({}))
+    const savedThinking = (await activeSession.getBranch()).findLast((entry) => entry.type === 'thinking_level_change')
+    const savedLevel = savedThinking?.type === 'thinking_level_change' ? savedThinking.thinkingLevel : undefined
+    const thinkingLevel =
+      savedLevel === 'off' || (isReasoningEffort(savedLevel) && savedLevel !== 'none') ? savedLevel : config.thinking
+    const models = createModels()
+    installPreparedBinding(models, binding)
+    const tools = createHarnessTools(config)
+    const harness = new AgentHarness({
+      session: activeSession,
+      models,
+      model: binding.piModel,
+      tools,
+      activeToolNames: tools.map((tool) => tool.name),
+      thinkingLevel,
+      systemPrompt: buildSystemPrompt({
+        cwd: config.cwd,
+        modelId: config.announceModel ? binding.wireModel : undefined,
+        bashEnabled: tools.some((tool) => tool.name === 'bash'),
+        skills: config.skills,
+      }),
+    })
+    const unsubscribeWebSearch = harness.on('before_provider_payload', ({ model: requestModel, payload }) => ({
+      payload: configureNativeWebSearch(requestModel, payload),
+    }))
+    return await createPiHarnessRuntime({
+      harness,
+      models,
+      binding,
+      cleanupHarness: async () => {
+        const errors = await collectCleanupErrors([unsubscribeWebSearch])
+        if (errors.length > 0) throw cleanupFailure('Harness cleanup failed.', errors)
+      },
+    })
+  } catch (error) {
+    const cleanupErrors = await collectCleanupErrors([() => binding.dispose()])
+    const failure = toError(error)
+    if (cleanupErrors.length > 0) throw cleanupFailure(failure.message, [failure, ...cleanupErrors])
+    throw error
+  }
+}

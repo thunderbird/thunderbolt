@@ -6,7 +6,7 @@ import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { mcpSecretsTable, mcpServersTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
-import { setMcpServerCredentials, type McpServerCredentials } from './mcp-secrets'
+import { deleteMcpServerCredentials, setMcpServerCredentials, type McpServerCredentials } from './mcp-secrets'
 import { type McpServer } from '@/types'
 import type { DrizzleQueryWithPromise } from '@/types'
 
@@ -19,8 +19,9 @@ export const getAllMcpServers = (db: AnyDrizzleDatabase) => {
 }
 
 /**
- * Gets all remote (HTTP / SSE) MCP servers with non-null URLs from the database (excluding soft-deleted).
- * Local (stdio) servers are excluded — they have no URL and are connected via a different transport.
+ * Gets all remote (HTTP / SSE / iroh) MCP servers with non-null URLs from the database (excluding soft-deleted).
+ * Local (stdio) servers are excluded — they have no URL and are connected via a different transport. An iroh
+ * server's `url` carries the bridge NodeId/ticket, so it satisfies the non-null-url filter the same way.
  */
 export const getRemoteMcpServers = (db: AnyDrizzleDatabase) => {
   const query = db
@@ -28,7 +29,7 @@ export const getRemoteMcpServers = (db: AnyDrizzleDatabase) => {
     .from(mcpServersTable)
     .where(
       and(
-        inArray(mcpServersTable.type, ['http', 'sse']),
+        inArray(mcpServersTable.type, ['http', 'sse', 'iroh']),
         isNotNull(mcpServersTable.url),
         isNull(mcpServersTable.deletedAt),
       ),
@@ -78,6 +79,51 @@ export const createMcpServerWithCredentials = async (
       await setMcpServerCredentials(tx, data.id, credentials)
     }
     await createMcpServer(tx, data)
+  })
+}
+
+/**
+ * Patches an MCP server row (and bumps updatedAt). The patch must NOT include
+ * `id` or `createdAt`; touch only mutable columns. No-op when the id doesn't
+ * match (the update silently affects zero rows).
+ */
+export const updateMcpServer = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  patch: Partial<Omit<McpServer, 'id' | 'createdAt'>>,
+): Promise<void> => {
+  await db
+    .update(mcpServersTable)
+    .set({ ...patch, updatedAt: nowIso() })
+    .where(eq(mcpServersTable.id, id))
+}
+
+/** Updates only the enabled flag through the MCP DAL boundary. */
+export const updateMcpServerEnabled = async (db: AnyDrizzleDatabase, id: string, enabled: boolean): Promise<void> => {
+  await updateMcpServer(db, id, { enabled: enabled ? 1 : 0 })
+}
+
+/**
+ * Updates an MCP server row and (optionally) its on-device credentials in a
+ * single transaction. Symmetric to {@link createMcpServerWithCredentials}.
+ * `credentials` semantics:
+ *   - `undefined`: leave existing credential alone (e.g. rename without touching the token)
+ *   - `null`: delete existing credential (user cleared the bearer field)
+ *   - object: replace existing credential
+ */
+export const updateMcpServerWithCredentials = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  patch: Partial<Omit<McpServer, 'id' | 'createdAt'>>,
+  credentials?: McpServerCredentials | null,
+): Promise<void> => {
+  await db.transaction(async (tx) => {
+    if (credentials === null) {
+      await deleteMcpServerCredentials(tx, id)
+    } else if (credentials) {
+      await setMcpServerCredentials(tx, id, credentials)
+    }
+    await updateMcpServer(tx, id, patch)
   })
 }
 

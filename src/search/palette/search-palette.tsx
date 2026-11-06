@@ -1,0 +1,281 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
+import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
+import { LogoutModal } from '@/components/logout-modal'
+import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandList } from '@/components/ui/command'
+import { useSidebar } from '@/components/ui/sidebar'
+import { useDatabase } from '@/contexts'
+import { getModel } from '@/dal'
+import { useDebounce } from '@/hooks/use-debounce'
+import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
+import { useSettings } from '@/hooks/use-settings'
+import { trackEvent as trackEventImpl } from '@/lib/posthog'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
+import { buildActionNav } from '../actions/entity-actions'
+import type { PaletteCommand } from '../commands/types'
+import { useCommands as useCommandsImpl } from '../commands/use-commands'
+import { foldForMatch } from '../fold'
+import { searchEntities, minimalModeHiddenEntityTypes } from '../registry'
+import type { SearchEntityType, SearchResult } from '../types'
+import { useSearch as useSearchImpl } from '../use-search'
+import { CommandActionItem } from './command-item'
+import { entityLabels } from './entity-meta'
+import { SearchResultItem } from './search-result-item'
+
+/** Wait for typing to settle before running FTS, to avoid a query per keystroke. */
+const debounceMs = 180
+
+/**
+ * Groups results by entity type, preserving the registry's ordering so the
+ * palette always lists types in the same, intentional sequence.
+ */
+const groupByEntity = (results: SearchResult[]) =>
+  searchEntities
+    .map((entity) => ({ entity, hits: results.filter((result) => result.entityType === entity.type) }))
+    .filter((group) => group.hits.length > 0)
+
+/**
+ * Matches a static command against the query: every whitespace token must
+ * appear in the command's title or keywords. cmdk's built-in filter is disabled
+ * on the palette (it would also re-filter — and wrongly hide — the
+ * already-FTS-filtered result rows), so we filter the command list here.
+ *
+ * Commands never enter the FTS index — their titles are locale-resolved at
+ * render time — but they are folded with the same {@link foldForMatch} the index
+ * uses, so `parametres` finds `Paramètres` and `gerate` finds `Geräte`.
+ */
+const commandMatchesQuery = (command: PaletteCommand, query: string): boolean => {
+  const haystack = foldForMatch(`${command.title} ${command.keywords?.join(' ') ?? ''}`).folded
+  return foldForMatch(query)
+    .folded.split(/\s+/)
+    .filter((token) => token.length > 0)
+    .every((token) => haystack.includes(token))
+}
+
+type SearchPaletteProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /**
+   * Data/analytics dependencies, injected in tests to drive dispatch with canned
+   * commands/results and a spy — the component uses the real hooks by default.
+   * Keeps the suite from module-mocking these shared modules (which leaks across
+   * files under `--randomize`).
+   */
+  useCommands?: typeof useCommandsImpl
+  useSearch?: typeof useSearchImpl
+  trackEvent?: typeof trackEventImpl
+}
+
+/**
+ * The Cmd+K command palette modal. Owns the debounced query, drives `useSearch`,
+ * and renders grouped results (or the command groups when the query is empty).
+ */
+export const SearchPalette = ({
+  open,
+  onOpenChange,
+  useCommands = useCommandsImpl,
+  useSearch = useSearchImpl,
+  trackEvent = trackEventImpl,
+}: SearchPaletteProps) => {
+  const { i18n, t } = useLingui()
+  const navigate = useNavigate()
+  const db = useDatabase()
+  // No-op on desktop / when the drawer is closed; on mobile it dismisses the
+  // sidebar drawer sitting behind the palette before we navigate.
+  const { closeMobileSidebar } = useSidebar()
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, debounceMs)
+  const trimmedQuery = debouncedQuery.trim()
+  const hasQuery = trimmedQuery.length > 0
+
+  const { experimentalFeatureTasks } = useSettings({ experimental_feature_tasks: false })
+
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+
+  // Settings and Projects results are left out of the query in minimal mode:
+  // those routes redirect away, and filtering after the query's LIMIT would let
+  // them crowd out the chats that can be shown.
+  const excludeTypes = useMemo(() => (minimalMode ? [...minimalModeHiddenEntityTypes] : []), [minimalMode])
+  const { results } = useSearch(hasQuery ? trimmedQuery : '', { excludeTypes })
+  const groups = useMemo(() => {
+    if (!hasQuery) {
+      return []
+    }
+    // Tasks stay indexed, but the Tasks result group is hidden when the feature
+    // flag is off — `/tasks` isn't mounted then (app.tsx), so a click would 404.
+    // Mirrors the flag-gating on the Tasks nav/create commands.
+    const withTasks = experimentalFeatureTasks.value
+      ? results
+      : results.filter((result) => result.entityType !== 'task')
+    return groupByEntity(withTasks)
+  }, [hasQuery, results, experimentalFeatureTasks.value])
+
+  // Results and the command list share one scroll container, so a query change
+  // swaps the content underneath a scroll offset that belonged to the old set:
+  // clearing a scrolled-down result list used to land you partway down the
+  // commands. Reset from the keystroke rather than an effect — that is the cause,
+  // and 0 stays valid once the debounced content catches up, since the list is
+  // only ever replaced or shortened.
+  const listRef = useRef<HTMLDivElement>(null)
+  const handleQueryChange = useCallback((next: string) => {
+    setQuery(next)
+    if (listRef.current) {
+      listRef.current.scrollTop = 0
+    }
+  }, [])
+
+  const [logoutOpen, setLogoutOpen] = useState(false)
+  const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
+  const deleteAllChats = useDeleteNonProjectChats()
+
+  const commandOpts = useMemo(
+    () => ({
+      onSignOut: () => setLogoutOpen(true),
+      onClearAllChats: () => deleteAllChatsDialogRef.current?.open(),
+    }),
+    [],
+  )
+  const commands = useCommands(commandOpts)
+  const visibleCommands = hasQuery ? commands.filter((command) => commandMatchesQuery(command, trimmedQuery)) : commands
+  const navCommands = visibleCommands.filter((command) => command.section === 'navigation')
+  const actionCommands = visibleCommands.filter((command) => command.section === 'actions')
+  const createCommands = visibleCommands.filter((command) => command.section === 'create')
+
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        setQuery('')
+      }
+      onOpenChange(nextOpen)
+    },
+    [onOpenChange],
+  )
+
+  const handleSelect = useCallback(
+    async (to: string, entityType: SearchEntityType, id: string) => {
+      handleOpenChange(false)
+      // System-only models can't be edited, so skip the edit intent and just
+      // land on the models page. Entities with an inline editor (non-system
+      // models, skills, agents) open straight into their edit panel; everything
+      // else navigates to its page (messages also carry a scroll-to-message intent).
+      const isSystemModel = entityType === 'model' && (await getModel(db, id).catch(() => null))?.isSystem === 1
+      const editNav = isSystemModel ? null : buildActionNav(entityType, { type: 'edit', id })
+      // Dismiss the mobile sidebar drawer behind the palette before navigating.
+      await closeMobileSidebar()
+      if (editNav) {
+        trackEvent('search_result_select', { entityType, jumpToMessage: false })
+        navigate(editNav.to, { state: editNav.state })
+        return
+      }
+      const jumpToMessage = entityType === 'message'
+      trackEvent('search_result_select', { entityType, jumpToMessage })
+      navigate(to, jumpToMessage ? { state: { [scrollToMessageStateKey]: id } } : undefined)
+    },
+    [handleOpenChange, navigate, trackEvent, db, closeMobileSidebar],
+  )
+
+  const handleCommand = useCallback(
+    async (command: PaletteCommand) => {
+      handleOpenChange(false)
+      trackEvent('search_command_run', { commandId: command.id })
+      if ('to' in command) {
+        // Dismiss the mobile sidebar drawer before navigating (go to page, create…).
+        await closeMobileSidebar()
+        navigate(command.to, command.state ? { state: command.state } : undefined)
+        return
+      }
+      void Promise.resolve(command.run()).catch((error) => {
+        console.error(`[search] command '${command.id}' failed`, error)
+      })
+    },
+    [handleOpenChange, navigate, trackEvent, closeMobileSidebar],
+  )
+
+  const handleClearAllChatsConfirm = useCallback(async () => {
+    try {
+      await deleteAllChats()
+      deleteAllChatsDialogRef.current?.close()
+    } catch (error) {
+      console.error('[search] clear all chats failed', error)
+    }
+  }, [deleteAllChats])
+
+  const commandSections = (
+    <>
+      {createCommands.length > 0 ? (
+        <CommandGroup heading={t`Create`}>
+          {createCommands.map((command) => (
+            <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
+          ))}
+        </CommandGroup>
+      ) : null}
+      {navCommands.length > 0 ? (
+        <CommandGroup heading={t`Go to`}>
+          {navCommands.map((command) => (
+            <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
+          ))}
+        </CommandGroup>
+      ) : null}
+      {actionCommands.length > 0 ? (
+        <CommandGroup heading={t`Actions`}>
+          {actionCommands.map((command) => (
+            <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
+          ))}
+        </CommandGroup>
+      ) : null}
+    </>
+  )
+
+  return (
+    <>
+      <CommandDialog
+        open={open}
+        onOpenChange={handleOpenChange}
+        title={t`Search`}
+        description={t`Search across chats, models, skills, agents, and more`}
+        className="rounded-2xl"
+        // FTS already filters result rows and we filter commands manually; cmdk's
+        // fuzzy filter would otherwise hide valid prefix and substring FTS matches.
+        shouldFilter={false}
+      >
+        <CommandInput
+          placeholder={minimalMode ? t`Search chats…` : t`Search chats, models, skills, agents…`}
+          value={query}
+          onValueChange={handleQueryChange}
+        />
+        <CommandList ref={listRef}>
+          {!hasQuery ? (
+            commandSections
+          ) : (
+            <>
+              <CommandEmpty>
+                <Trans>No results found.</Trans>
+              </CommandEmpty>
+              {commandSections}
+              {groups.map(({ entity, hits }) => (
+                <CommandGroup key={entity.type} heading={i18n._(entityLabels[entity.type])}>
+                  {hits.map((result) => (
+                    <SearchResultItem
+                      key={`${result.entityType}-${result.id}`}
+                      result={result}
+                      query={trimmedQuery}
+                      onSelect={handleSelect}
+                    />
+                  ))}
+                </CommandGroup>
+              ))}
+            </>
+          )}
+        </CommandList>
+      </CommandDialog>
+      <LogoutModal open={logoutOpen} onOpenChange={setLogoutOpen} />
+      <DeleteAllChatsDialog ref={deleteAllChatsDialogRef} onConfirm={() => void handleClearAllChatsConfirm()} />
+    </>
+  )
+}

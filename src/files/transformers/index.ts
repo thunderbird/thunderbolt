@@ -31,6 +31,9 @@ export type TransformerKey = `${string}->${TransformTarget}`
 /** MIME type for `.docx` (OOXML Word documents). */
 export const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
+/** MIME type for `.xlsx` (OOXML spreadsheets). */
+export const xlsxMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
 /**
  * True for files that are already text (CSV, plain text, Markdown, JSON, logs…).
  * These get a passthrough text transformer (so any `text/*` type works without
@@ -41,13 +44,64 @@ export const docxMime = 'application/vnd.openxmlformats-officedocument.wordproce
 export const isPlainTextMime = (mime: string): boolean => mime.startsWith('text/') || mime === 'application/json'
 
 /**
+ * Extensions the OS reports with an empty or actively wrong MIME type, but which
+ * are plain text.
+ *
+ * A file picker gives `.md` an **empty** `type`. Keying only off MIME rejects it
+ * as unsupported — or worse, accepts it and then delivers raw bytes the model
+ * can't read, because {@link defaultDeliveryMode} routes an unknown type as
+ * native.
+ *
+ * Scoped to the extensions the composer accepts (see `acceptedAttachmentExtensions`
+ * in `chat-prompt-input.tsx`). It was briefly much broader, to serve project
+ * knowledge; listing types that can no longer be attached would only suggest
+ * support that isn't there.
+ */
+export const plainTextExtensions: ReadonlySet<string> = new Set(['md', 'markdown', 'txt', 'csv', 'json'])
+
+/**
+ * Office formats we can extract, keyed by extension, for when the OS names them
+ * badly: a machine without Office installed reports `.xlsx` and `.docx` as an
+ * empty type, `application/octet-stream`, or (since both are zips)
+ * `application/zip`. The composer accepts them on extension either way, so
+ * without this they'd be stored under a type no transformer serves — delivered
+ * as bytes the model can't read, with remediation unable to recover because it
+ * looks the file up by that same type.
+ */
+const officeExtensionMimes: ReadonlyMap<string, string> = new Map([
+  ['xlsx', xlsxMime],
+  ['docx', docxMime],
+])
+
+/**
+ * The MIME type a file should be treated as: a declared type we can already
+ * handle, otherwise an extension-based fallback — `text/plain` for text-ish
+ * files, the real office type for xlsx/docx.
+ *
+ * Normalizing at the point a file enters the app is what makes the rest work —
+ * {@link defaultDeliveryMode} then routes it as text instead of native bytes.
+ */
+export const resolveTextMimeType = (filename: string, declaredType: string): string => {
+  if (declaredType && (isPlainTextMime(declaredType) || hasTransformer(declaredType, 'text'))) {
+    return declaredType
+  }
+  const extension = filename.includes('.') ? filename.split('.').pop()!.toLowerCase() : ''
+  if (plainTextExtensions.has(extension)) {
+    return 'text/plain'
+  }
+  return officeExtensionMimes.get(extension) ?? declaredType
+}
+
+/**
  * Default delivery mode for an attachment given its MIME type, when no explicit
  * {@link import('@/types').AttachmentData.deliverAs} override is set. Plain-text
- * files go out as text (lossless and universally accepted); everything else
- * defaults to native bytes (`undefined`).
+ * files go out as text (lossless and universally accepted), and so do
+ * spreadsheets: no provider accepts xlsx as a native file part, so native-first
+ * would only buy a guaranteed rejection and a retry. Everything else defaults to
+ * native bytes (`undefined`).
  */
 export const defaultDeliveryMode = (mime: string): TransformTarget | undefined =>
-  isPlainTextMime(mime) ? 'text' : undefined
+  isPlainTextMime(mime) || mime === xlsxMime ? 'text' : undefined
 
 /**
  * Lazy loaders keyed by `"<source-mime>-><target>"`. Adding a transformer is a
@@ -58,6 +112,7 @@ const loaders: Partial<Record<TransformerKey, () => Promise<Transformer>>> = {
   'application/pdf->text': async () => (await import('./pdf-to-text')).pdfToText,
   [`${docxMime}->text`]: async () => (await import('./docx-to-text')).docxToText,
   'application/pdf->images': async () => (await import('./pdf-to-images')).pdfToImages,
+  [`${xlsxMime}->text`]: async () => (await import('./xlsx-to-text')).xlsxToText,
 }
 
 /** True if a transformer exists for this source MIME → target. Sync, for routing decisions. */

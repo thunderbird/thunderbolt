@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ArrowRight } from 'lucide-react'
-
+import { Plural, Trans } from '@lingui/react/macro'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -18,15 +17,9 @@ import type { Skill } from '@/types'
 
 export type DependentsAction = 'disable' | 'delete'
 
-const verbLower: Record<DependentsAction, string> = {
-  disable: 'disable',
-  delete: 'delete',
-}
-
-const verbLabel: Record<DependentsAction, string> = {
-  disable: 'Disable',
-  delete: 'Delete',
-}
+// A whole message per action rather than a verb interpolated into a sentence:
+// injecting a translated verb (or, as before, the raw action id) into a
+// translated frame gets the grammar wrong in most languages.
 
 export const DependentsDialog = ({
   open,
@@ -35,47 +28,49 @@ export const DependentsDialog = ({
   targetName,
   dependents,
   onConfirm,
-  onJumpToDependent,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   action: DependentsAction
+  /** Human display name of the skill being disabled/deleted. */
   targetName: string
   dependents: Skill[]
   onConfirm: () => void
-  onJumpToDependent: (id: string) => void
-}) => (
-  <AlertDialog open={open} onOpenChange={onOpenChange}>
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>
-          {verbLabel[action]} /{targetName}?
-        </AlertDialogTitle>
-        <AlertDialogDescription>
-          {dependents.length === 1 ? 'One skill references' : `${dependents.length} skills reference`} this. If you{' '}
-          {verbLower[action]} it, they may no longer resolve:
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <ul className="flex flex-col gap-1.5">
-        {dependents.map((dep) => (
-          <li key={dep.id}>
-            <button
-              type="button"
-              onClick={() => onJumpToDependent(dep.id)}
-              className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
-            >
-              <span>/{dep.name}</span>
-              <ArrowRight size={14} className="text-muted-foreground" />
-            </button>
-          </li>
-        ))}
-      </ul>
-      <AlertDialogFooter>
-        <AlertDialogCancel>Cancel</AlertDialogCancel>
-        <Button variant="destructive" onClick={onConfirm}>
-          {verbLabel[action]} skill
-        </Button>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-)
+}) => {
+  const count = dependents.length
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {action === 'disable' ? <Trans>Disable {targetName}?</Trans> : <Trans>Delete {targetName}?</Trans>}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {action === 'disable' ? (
+              <Plural
+                value={count}
+                one="One skill references this. If you disable it, that skill may no longer resolve."
+                other="# skills reference this. If you disable it, they may no longer resolve."
+              />
+            ) : (
+              <Plural
+                value={count}
+                one="One skill references this. If you delete it, that skill may no longer resolve."
+                other="# skills reference this. If you delete it, they may no longer resolve."
+              />
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>
+            <Trans>Cancel</Trans>
+          </AlertDialogCancel>
+          <Button variant="destructive" onClick={onConfirm}>
+            {action === 'disable' ? <Trans>Disable skill</Trans> : <Trans>Delete skill</Trans>}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}

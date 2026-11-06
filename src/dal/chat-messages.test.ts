@@ -9,10 +9,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
-  deleteChatMessageAndDescendants,
   getChatMessages,
   getLastMessage,
   saveMessagesWithContextUpdate,
+  saveStreamingAssistantMessage,
 } from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -339,6 +339,44 @@ describe('Chat Messages DAL', () => {
       expect(saved?.role).toBe('assistant')
     })
 
+    it('should not overwrite parent_id when re-saving an existing message (self-parent guard)', async () => {
+      // Reproduces the streaming re-save: the assistant row already exists and is
+      // now the newest message in the thread, so `getLastMessage` would return
+      // the row itself. The conflict-update must NOT re-point parent_id to that
+      // (making the message its own parent).
+      const threadId = uuidv7()
+      const userMessageId = uuidv7()
+      const assistantMessageId = uuidv7()
+      const db = getDb()
+
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Test Thread', isEncrypted: 0 })
+      await db.insert(chatMessagesTable).values([
+        { id: userMessageId, chatThreadId: threadId, role: 'user', content: 'Question', parentId: null },
+        {
+          id: assistantMessageId,
+          chatThreadId: threadId,
+          role: 'assistant',
+          content: 'Partial',
+          parentId: userMessageId,
+        },
+      ])
+
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Complete answer' }],
+        },
+      ]
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, messages)
+
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.content).toBe('Complete answer')
+      // parent_id stays pointed at the user message, never at itself.
+      expect(saved?.parentId).toBe(userMessageId)
+    })
+
     it('should update context size from message metadata', async () => {
       const threadId = uuidv7()
       const messageId = uuidv7()
@@ -370,145 +408,181 @@ describe('Chat Messages DAL', () => {
       const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
       expect(thread?.contextSize).toBe(300)
     })
+
+    it('persists a compaction checkpoint and context size without changing billing usage or transcript content', async () => {
+      const db = getDb()
+      const threadId = uuidv7()
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Compacted', isEncrypted: 0 })
+      const checkpoint = {
+        version: 1 as const,
+        summary: 'Decisions',
+        tokensBefore: 9_000,
+        contextTokens: 123,
+        retainedTail: [],
+      }
+      const message: ThunderboltUIMessage = {
+        id: uuidv7(),
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Visible answer' }],
+        metadata: {
+          contextCompaction: checkpoint,
+          contextTokens: 123,
+          usage: { inputTokens: 8900, outputTokens: 100, totalTokens: 9000 },
+        },
+      }
+      await saveMessagesWithContextUpdate(db, threadId, [message])
+      const saved = await getChatMessages(db, threadId)
+      expect(saved[0].content).toBe('Visible answer')
+      expect(saved[0].metadata).toEqual(message.metadata!)
+      expect(
+        (await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get())?.contextSize,
+      ).toBe(123)
+    })
+
+    it.each([undefined, 500])(
+      'preserves current context when patching a historical compaction with contextTokens %p',
+      async (contextTokens) => {
+        const db = getDb()
+        const threadId = uuidv7()
+        await db.insert(chatThreadsTable).values({ id: threadId, title: 'Compacted', isEncrypted: 0 })
+        const compaction = {
+          agentId: 'agent',
+          sessionId: 'session',
+          compactionId: 'compact-1',
+          status: 'in_progress',
+        }
+        const older: ThunderboltUIMessage = {
+          id: uuidv7(),
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Earlier reply' },
+            { type: 'data-acp-compaction', data: compaction },
+          ],
+          metadata: {
+            ...(contextTokens !== undefined ? { contextTokens } : {}),
+            usage: { inputTokens: 800, outputTokens: 50, totalTokens: 850 },
+          },
+        }
+        const latest: ThunderboltUIMessage = {
+          id: uuidv7(),
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Current reply' }],
+          metadata: { contextTokens: 2000 },
+        }
+        await saveMessagesWithContextUpdate(db, threadId, [older, latest])
+
+        const updated: ThunderboltUIMessage = {
+          ...older,
+          parts: [
+            older.parts[0],
+            {
+              type: 'data-acp-compaction',
+              data: { ...compaction, status: 'completed', summary: [{ type: 'text', text: 'Earlier decisions' }] },
+            },
+          ],
+        }
+        await saveMessagesWithContextUpdate(db, threadId, [updated], { updateContext: false })
+
+        const saved = await getChatMessages(db, threadId)
+        expect(saved).toHaveLength(2)
+        expect(saved[0].parts).toEqual(updated.parts)
+        expect(saved[0].metadata).toEqual(older.metadata!)
+        expect(saved[0].parentId).toBeNull()
+        expect(saved[1].parts).toEqual(latest.parts)
+        expect(saved[1].parentId).toBe(older.id)
+        expect(
+          (await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get())?.contextSize,
+        ).toBe(2000)
+      },
+    )
   })
 
-  describe('cascade delete with parent_id', () => {
-    it('should delete child messages when parent is deleted', async () => {
+  describe('saveStreamingAssistantMessage', () => {
+    it('should insert a new assistant message with the supplied parent_id', async () => {
       const threadId = uuidv7()
-      const parentMessageId = uuidv7()
-      const childMessageId = uuidv7()
+      const userMessageId = uuidv7()
+      const assistantMessageId = uuidv7()
       const db = getDb()
 
-      await db.insert(chatThreadsTable).values({
-        id: threadId,
-        title: 'Test Thread',
-        isEncrypted: 0,
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Test Thread', isEncrypted: 0 })
+      await db.insert(chatMessagesTable).values({
+        id: userMessageId,
+        chatThreadId: threadId,
+        role: 'user',
+        content: 'Question',
+        parentId: null,
       })
 
-      await db.insert(chatMessagesTable).values([
-        {
-          id: parentMessageId,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Parent message',
-          parentId: null,
-        },
-        {
-          id: childMessageId,
-          chatThreadId: threadId,
-          role: 'assistant',
-          content: 'Child message',
-          parentId: parentMessageId,
-        },
-      ])
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Partial' }] },
+        userMessageId,
+      )
 
-      // Soft delete parent message and descendants (DAL cascade)
-      await deleteChatMessageAndDescendants(getDb(), parentMessageId)
-
-      // No messages visible (soft-deleted)
-      const messages = await getChatMessages(getDb(), threadId)
-      expect(messages).toHaveLength(0)
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.role).toBe('assistant')
+      expect(saved?.content).toBe('Partial')
+      expect(saved?.parentId).toBe(userMessageId)
     })
 
-    it('should delete entire chain when root message is deleted', async () => {
+    it('should update content/parts on repeat saves without changing parent_id', async () => {
       const threadId = uuidv7()
-      const msg1Id = uuidv7()
-      const msg2Id = uuidv7()
-      const msg3Id = uuidv7()
-      const msg4Id = uuidv7()
+      const userMessageId = uuidv7()
+      const assistantMessageId = uuidv7()
       const db = getDb()
 
-      await db.insert(chatThreadsTable).values({
-        id: threadId,
-        title: 'Test Thread',
-        isEncrypted: 0,
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Test Thread', isEncrypted: 0 })
+      await db.insert(chatMessagesTable).values({
+        id: userMessageId,
+        chatThreadId: threadId,
+        role: 'user',
+        content: 'Question',
+        parentId: null,
       })
 
-      // Create a chain: msg1 -> msg2 -> msg3 -> msg4
-      await db.insert(chatMessagesTable).values([
-        {
-          id: msg1Id,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Message 1',
-          parentId: null,
-        },
-        {
-          id: msg2Id,
-          chatThreadId: threadId,
-          role: 'assistant',
-          content: 'Message 2',
-          parentId: msg1Id,
-        },
-        {
-          id: msg3Id,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Message 3',
-          parentId: msg2Id,
-        },
-        {
-          id: msg4Id,
-          chatThreadId: threadId,
-          role: 'assistant',
-          content: 'Message 4',
-          parentId: msg3Id,
-        },
-      ])
+      // First partial → insert with the correct parent.
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Hel' }] },
+        userMessageId,
+      )
 
-      // Soft delete root message and descendants (DAL cascade)
-      await deleteChatMessageAndDescendants(getDb(), msg1Id)
+      // Subsequent partials pass parentId=null (caller only recomputes the parent
+      // once); the upsert must keep the original parent, never null it out.
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Hello world' }] },
+        null,
+      )
 
-      // No messages visible (soft-deleted)
-      const messages = await getChatMessages(getDb(), threadId)
-      expect(messages).toHaveLength(0)
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.content).toBe('Hello world')
+      expect(saved?.parentId).toBe(userMessageId)
+
+      // Exactly one row for the message id (no duplicate inserted).
+      const all = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId))
+      expect(all).toHaveLength(1)
     })
 
-    it('should delete only descendant branch when deleting middle message', async () => {
+    it('should not require a thread row to exist (skips the existence check)', async () => {
+      // The generic path throws "Thread not found"; the fast path trusts the
+      // streaming invariant and goes straight to the upsert.
       const threadId = uuidv7()
-      const msg1Id = uuidv7()
-      const msg2Id = uuidv7()
-      const msg3Id = uuidv7()
+      const assistantMessageId = uuidv7()
       const db = getDb()
 
-      await db.insert(chatThreadsTable).values({
-        id: threadId,
-        title: 'Test Thread',
-        isEncrypted: 0,
-      })
+      await saveStreamingAssistantMessage(
+        getDb(),
+        threadId,
+        { id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Orphan-safe' }] },
+        null,
+      )
 
-      // Create chain: msg1 -> msg2 -> msg3
-      await db.insert(chatMessagesTable).values([
-        {
-          id: msg1Id,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Message 1',
-          parentId: null,
-        },
-        {
-          id: msg2Id,
-          chatThreadId: threadId,
-          role: 'assistant',
-          content: 'Message 2',
-          parentId: msg1Id,
-        },
-        {
-          id: msg3Id,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Message 3',
-          parentId: msg2Id,
-        },
-      ])
-
-      // Soft delete middle message and its descendants (DAL cascade)
-      await deleteChatMessageAndDescendants(getDb(), msg2Id)
-
-      // Only msg1 visible (msg2 and msg3 soft-deleted)
-      const messages = await getChatMessages(getDb(), threadId)
-      expect(messages).toHaveLength(1)
-      expect(messages[0]?.id).toBe(msg1Id)
+      const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
+      expect(saved?.content).toBe('Orphan-safe')
     })
   })
 })

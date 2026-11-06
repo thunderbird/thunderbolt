@@ -3,6 +3,32 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
+import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
+import { z } from 'zod'
+
+const chatErrorKinds = [
+  'attestation',
+  'timeout',
+  'rate-limit',
+  'provider',
+  'network',
+  'connection-lost',
+  'tools-unsupported',
+] as const
+export type ChatErrorKind = (typeof chatErrorKinds)[number]
+const inferenceQuotaWindowSchema = z.enum(['5h', '7d'])
+export type InferenceQuotaWindow = z.infer<typeof inferenceQuotaWindowSchema>
+const inferenceQuotaErrorSchema = z.object({
+  code: z.literal('INFERENCE_QUOTA_EXCEEDED'),
+  window: inferenceQuotaWindowSchema,
+})
+const inferenceQuotaResponseSchema = z.object({ error: inferenceQuotaErrorSchema })
+const serializedErrorSchema = z.object({ error: z.string() })
+const agentErrorBodySchema = z.object({ error: z.object({ code: z.string() }) })
+const toolParameterErrorSchema = z.object({ param: z.literal('tools') })
+const toolParameterResponseSchema = z.union([toolParameterErrorSchema, z.object({ error: toolParameterErrorSchema })])
+
+const isChatErrorKind = (value: unknown): value is ChatErrorKind => chatErrorKinds.includes(value as ChatErrorKind)
 
 const parseJson = (str: string): Record<string, unknown> | undefined => {
   try {
@@ -10,6 +36,176 @@ const parseJson = (str: string): Record<string, unknown> | undefined => {
   } catch {
     return undefined
   }
+}
+const providerErrorNames = new Set(['KeyConfigMismatchError', 'ProtocolError', 'DecryptionError'])
+const timeoutMarkers = [tinfoilUpstreamTimeoutMessage, tinfoilUpstreamIdleTimeoutMessage]
+const networkErrorMarkers = ['failed to fetch', 'load failed', 'networkerror']
+
+/** Names for tool support as a whole. Singular `tool` is left out so one named tool
+ *  doesn't read as all tools; snake_case options like `tool_choice` fail the word boundaries. */
+const toolSupportTermPattern = String.raw`(?:tools|tool use|tool calling|function calling)`
+
+/**
+ * Provider messages for "this model can't take a request with tools". Each
+ * provider rejects with its own status (Ollama and vLLM 400, OpenRouter 404,
+ * llama.cpp 500), so the wording is the only common signal. Matched by sentence
+ * shape rather than exact text, so a reworded or new provider message still
+ * classifies; anything that merely mentions tools does not.
+ */
+const toolSupportRejectionPatterns = [
+  // "does not support tools" (Ollama), "does not support Function Calling" (DeepSeek)
+  new RegExp(String.raw`\b(?:does not|doesn't|do not) support\s+${toolSupportTermPattern}\b`, 'i'),
+  // "'tools' is not supported" (OpenAI), "tool calling is not supported" (Groq),
+  // "Function calling is not enabled" and "… is unsupported" (Gemini),
+  // "'tools' functionality not supported." (the AI SDK's own client-side refusal)
+  new RegExp(
+    String.raw`\b${toolSupportTermPattern}\b['"]?(?: functionality)?\s+(?:(?:is|are)\s+)?(?:not (?:supported|enabled)|unsupported)`,
+    'i',
+  ),
+  // A server started without tool support: "tools param requires --jinja" (llama.cpp),
+  // "tool choice requires --enable-auto-tool-choice" (vLLM)
+  /\b(?:tools param|tool choice) requires --/i,
+  // OpenRouter, when none of a model's providers accepts tools
+  /\bno endpoints found that support tool use\b/i,
+]
+
+/** Whether a provider error message says the model rejected the request's tools. */
+const isToolSupportRejectionMessage = (message: string): boolean =>
+  toolSupportRejectionPatterns.some((pattern) => pattern.test(message))
+
+type ErrorClassificationFields = {
+  name?: string
+  status?: number
+  message?: string
+}
+
+const firstNumber = (...values: unknown[]): number | undefined =>
+  values.find((value): value is number => typeof value === 'number')
+
+const firstString = (...values: unknown[]): string | undefined =>
+  values.find((value): value is string => typeof value === 'string')
+
+const getPiErrorStatusCode = (message: string): number | undefined => {
+  const jsonBodyMatch = message.match(/^(\d{3})\s+((?:\{|\[)[\s\S]*)$/)
+  const match =
+    message.match(/^(\d{3}):\s/) ??
+    message.match(/^[^(]*\((\d{3})\):/) ??
+    (jsonBodyMatch && parseJson(jsonBodyMatch[2]) !== undefined ? jsonBodyMatch : null)
+  const status = match ? Number(match[1]) : undefined
+  return status !== undefined && status >= 400 && status <= 599 ? status : undefined
+}
+
+/** Normalize raw error fields used by chat error classification. */
+const getErrorClassificationFields = (error: unknown): ErrorClassificationFields => {
+  if (typeof error === 'string') {
+    return { message: error }
+  }
+  if (typeof error !== 'object' || error === null) {
+    return {}
+  }
+
+  const value = error as Record<string, unknown>
+  const response = (value.response ?? {}) as Record<string, unknown>
+  return {
+    name: getErrorName(value),
+    status: firstNumber(value.status, value.statusCode, response.status),
+    message: firstString(value.responseBody, value.message),
+  }
+}
+
+/**
+ * The error `Response` an agent adapter hands the AI SDK in place of a stream:
+ * `{ error, status, kind }`, which `DefaultChatTransport` throws as the error
+ * message and the chat error UI parses back (`getChatErrorKind`,
+ * `getInferenceQuotaWindow`, and the `isAgent*Error` helpers).
+ */
+export const createChatErrorResponse = (
+  message: string,
+  status: number | undefined,
+  kind: ChatErrorKind | undefined,
+): Response =>
+  new Response(JSON.stringify({ error: message, status, kind }), {
+    status: status ?? 500,
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+/**
+ * Classify a raw pipeline error into a stable user-facing chat error kind.
+ * Classification uses only normalized error name, HTTP status, and message.
+ */
+export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => {
+  const { name, status: structuredStatus, message } = getErrorClassificationFields(error)
+  const status = structuredStatus ?? (message ? getPiErrorStatusCode(message) : undefined)
+  const normalizedMessage = message?.toLowerCase()
+  const isContentRejectionStatus = status === 400 || status === 422
+
+  if (name === 'TinfoilAttestationTimeoutError') {
+    return 'timeout'
+  }
+  if (name === 'TinfoilAttestationError') {
+    return 'attestation'
+  }
+  if (status === 429) {
+    return 'rate-limit'
+  }
+  if (status === 408 || (normalizedMessage && timeoutMarkers.some((marker) => normalizedMessage.includes(marker)))) {
+    return 'timeout'
+  }
+  // Ahead of `provider`, which would claim its 400 or 500; a 404 matches nothing else.
+  if (message && isToolSupportRejectionMessage(message)) {
+    return 'tools-unsupported'
+  }
+  // ChatErrorKind has no content-rejection bucket, so use its existing provider class.
+  if ((name && providerErrorNames.has(name)) || isContentRejectionStatus || (status !== undefined && status >= 500)) {
+    return 'provider'
+  }
+  if (
+    name === 'TypeError' &&
+    normalizedMessage &&
+    networkErrorMarkers.some((marker) => normalizedMessage.includes(marker))
+  ) {
+    return 'network'
+  }
+  return undefined
+}
+
+/**
+ * Read a serialized chat error kind, falling back to legacy status/message
+ * classification when older payloads do not carry one.
+ */
+export const getChatErrorKind = (error?: Error | null): ChatErrorKind | undefined => {
+  if (!error?.message) {
+    return undefined
+  }
+
+  const parsed = parseJson(error.message)
+  if (!parsed) {
+    return classifyErrorKind(error)
+  }
+  if (isChatErrorKind(parsed.kind)) {
+    return parsed.kind
+  }
+
+  return classifyErrorKind({
+    status: firstNumber(parsed.status, parsed.statusCode),
+    message: firstString(parsed.error),
+  })
+}
+
+/**
+ * Whether the model rejected the turn because it can't take tools. Identical
+ * input fails again until tools are turned off for the model, so it is neither
+ * retried nor treated as an attachment problem.
+ */
+export const isToolSupportRejectionError = (error?: Error | null): boolean =>
+  getChatErrorKind(error) === 'tools-unsupported'
+
+/** Return an error-like value's string name, when present. */
+export const getErrorName = (error: unknown): string | undefined => {
+  if (typeof error !== 'object' || error === null || !('name' in error)) {
+    return undefined
+  }
+  return typeof error.name === 'string' ? error.name : undefined
 }
 
 /** Check whether an error represents a rate-limit (HTTP 429) response. */
@@ -21,7 +217,7 @@ export const isRateLimitError = (error?: Error | null): boolean => {
   // aiFetchStreamingResponse serializes errors as {"error":"...","status":429}
   // DefaultChatTransport may use {"error":"...","statusCode":429}
   const parsed = parseJson(error.message)
-  if (parsed?.status === 429 || parsed?.statusCode === 429) {
+  if (parsed?.status === 429 || parsed?.statusCode === 429 || getPiErrorStatusCode(error.message) === 429) {
     return true
   }
 
@@ -31,21 +227,67 @@ export const isRateLimitError = (error?: Error | null): boolean => {
 /**
  * Extract an HTTP status code from a serialized stream/transport error, if one
  * is present. The frontend serializes API errors as `{"error":...,"status":N}`
- * (see `aiFetchStreamingResponse`), which is the only place the upstream status
- * survives — the AI SDK otherwise flattens it to a bare "Bad Request".
+ * (see `aiFetchStreamingResponse`). The Pi path instead flattens errors to text
+ * through pi-ai's `formatProviderError`, using either `"<status>: <body>"` or
+ * `"<prefix> (<status>): <message>"`. Direct managed inference errors may use
+ * `"<status> <JSON body>"` instead.
  */
 export const getErrorStatusCode = (error?: Error | null): number | undefined => {
   if (!error?.message) {
     return undefined
   }
   const parsed = parseJson(error.message)
-  if (typeof parsed?.status === 'number') {
-    return parsed.status
+  return firstNumber(parsed?.status, parsed?.statusCode) ?? getPiErrorStatusCode(error.message)
+}
+
+/** Extract the window from a known managed-inference quota rejection. */
+export const getInferenceQuotaWindow = (error?: Error | null): InferenceQuotaWindow | undefined => {
+  if (!error?.message || getErrorStatusCode(error) !== 429) {
+    return undefined
   }
-  if (typeof parsed?.statusCode === 'number') {
-    return parsed.statusCode
+
+  const serializedError = parseJson(error.message)
+  const directBodyMatch = error.message.match(/^429\s+(\{[\s\S]*)$/)
+  const directBody = directBodyMatch ? parseJson(directBodyMatch[1]) : undefined
+  const directQuotaError = inferenceQuotaErrorSchema.safeParse(directBody)
+
+  if (directQuotaError.success) {
+    return directQuotaError.data.window
   }
-  return undefined
+
+  const serializedQuotaError = serializedErrorSchema.safeParse(serializedError)
+  const responseBody = serializedQuotaError.success ? parseJson(serializedQuotaError.data.error) : undefined
+  const nestedQuotaError = inferenceQuotaResponseSchema.safeParse(responseBody)
+  return nestedQuotaError.success ? nestedQuotaError.data.error.window : undefined
+}
+
+/**
+ * Whether the hosted agent refused the turn because the user's previous reply is
+ * still running (`429 AGENT_RUN_IN_PROGRESS` from `POST /v1/agent/chat`, as the
+ * managed-http adapter serializes it). Unlike a rate limit it clears on its own
+ * once that run finishes, so the chat retries it after a delay.
+ */
+export const isAgentRunInProgressError = (error?: Error | null): boolean =>
+  getAgentErrorCode(error, 429) === 'AGENT_RUN_IN_PROGRESS'
+
+/**
+ * Whether the hosted agent refused the turn because the project and skill
+ * instructions sent with it are over its cap (`400 AGENT_INSTRUCTIONS_TOO_LARGE`
+ * from `POST /v1/agent/chat`). Skill instructions have no length cap of their
+ * own, so one long skill is enough to trip it.
+ */
+export const isAgentInstructionsTooLargeError = (error?: Error | null): boolean =>
+  getAgentErrorCode(error, 400) === 'AGENT_INSTRUCTIONS_TOO_LARGE'
+
+/** The `error.code` of a hosted agent refusal with the given status, as the managed-http adapter serializes it. */
+const getAgentErrorCode = (error: Error | null | undefined, status: number): string | undefined => {
+  if (!error?.message || getErrorStatusCode(error) !== status) {
+    return undefined
+  }
+  const serializedError = serializedErrorSchema.safeParse(parseJson(error.message))
+  const responseBody = serializedError.success ? parseJson(serializedError.data.error) : undefined
+  const agentError = agentErrorBodySchema.safeParse(responseBody)
+  return agentError.success ? agentError.data.error.code : undefined
 }
 
 /**
@@ -62,7 +304,14 @@ export const getErrorRetryable = (error?: Error | null): boolean | undefined => 
     return undefined
   }
   const parsed = parseJson(error.message)
-  return typeof parsed?.isRetryable === 'boolean' ? parsed.isRetryable : undefined
+  if (typeof parsed?.isRetryable === 'boolean') {
+    return parsed.isRetryable
+  }
+
+  const status = getErrorStatusCode(error)
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 409 && status !== 429
+    ? false
+    : undefined
 }
 
 /**
@@ -94,21 +343,39 @@ export const isContextOverflowError = (error?: Error | null): boolean => {
   return contextOverflowMarkers.some((marker) => message.includes(marker))
 }
 
+/** Read the rejected parameter from a structured provider body, including transport envelopes and Pi prefixes. */
+const isToolParameterError = (message: string): boolean => {
+  const parsed = parseJson(message)
+  const serializedError = serializedErrorSchema.safeParse(parsed)
+  const body = serializedError.success
+    ? parseJson(serializedError.data.error)
+    : (parsed ?? parseJson(message.replace(/^(?:\d{3}:?\s+|[^(]*\(\d{3}\):\s*)/, '')))
+  return toolParameterResponseSchema.safeParse(body).success
+}
+
 /**
  * A content rejection: the endpoint rejected the *form* of the request body —
  * a file part it can't carry — surfaced as a 400 (e.g. the OpenAI-compat
  * `content.str` error) or the 422 `serializeStreamError` mints for a file-part
  * `UnsupportedFunctionalityError`. Deliberately narrow: it excludes auth
- * (401/403), not-found (404), timeouts (408), rate limits (429), and context
- * overflow — none of which attachment remediation can fix by re-delivering as
- * text/images. This is the ONLY signal that should trigger remediation.
+ * (401/403), not-found (404), timeouts (408), rate limits (429), context overflow,
+ * structured tool-parameter errors, tool-support rejections, and the hosted
+ * agent's oversized-instructions 400. Attachment remediation can fix none of
+ * these by re-delivering as text/images. This is the ONLY signal that should
+ * trigger remediation.
  */
 export const isContentRejectionError = (error?: Error | null): boolean => {
-  if (isRateLimitError(error) || isContextOverflowError(error)) {
+  if (
+    !error?.message ||
+    isRateLimitError(error) ||
+    isContextOverflowError(error) ||
+    isAgentInstructionsTooLargeError(error) ||
+    isToolSupportRejectionError(error)
+  ) {
     return false
   }
   const status = getErrorStatusCode(error)
-  return status === 400 || status === 422
+  return (status === 400 || status === 422) && !isToolParameterError(error.message)
 }
 
 /**

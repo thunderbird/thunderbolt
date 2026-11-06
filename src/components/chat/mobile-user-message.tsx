@@ -2,25 +2,35 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useLongPress } from '@/hooks/use-long-press'
 import { extractTextFromParts } from '@/lib/message-utils'
 import type { UIMessage } from 'ai'
+import { Trans } from '@lingui/react/macro'
 import { Copy } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { MessageBubbles, type ResendAttachmentHandler } from './message-bubbles'
 
 type MobileUserMessageProps = {
   message: UIMessage
+  lastMessageAction?: ReactNode
   onResendAttachment?: ResendAttachmentHandler
 }
 
-export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMessageProps) => {
+export const MobileUserMessage = ({ message, lastMessageAction, onResendAttachment }: MobileUserMessageProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isPressing, setIsPressing] = useState(false)
   const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
   const { copy } = useCopyToClipboard()
 
-  const longPressHandlers = useLongPress(() => setIsMenuOpen(true))
+  const longPressHandlers = useLongPress(
+    () => {
+      window.getSelection()?.removeAllRanges()
+      setIsMenuOpen(true)
+    },
+    { onPressChange: setIsPressing },
+  )
 
   const handleClose = useCallback(() => setIsMenuOpen(false), [])
   const handleCopy = useCallback(async () => {
@@ -30,7 +40,11 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
 
   return (
     <div data-message-id={message.id}>
-      <div {...longPressHandlers} className={isMenuOpen ? 'relative z-50 select-none' : 'select-none'}>
+      <div
+        {...longPressHandlers}
+        data-long-press={isPressing || isMenuOpen ? '' : undefined}
+        className={isMenuOpen ? 'relative z-50' : undefined}
+      >
         <div className={isMenuOpen ? 'transition-transform scale-[1.02]' : undefined}>
           <MessageBubbles message={message} onResendAttachment={onResendAttachment} />
         </div>
@@ -42,13 +56,23 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
                 className="flex items-center gap-3 px-3 py-2 text-sm w-full active:bg-accent"
               >
                 <Copy className="size-4 text-muted-foreground" />
-                Copy
+                <Trans>Copy</Trans>
               </button>
             </div>
           </div>
         )}
       </div>
-      {isMenuOpen && <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={handleClose} />}
+      {lastMessageAction && <div className="mt-1 flex justify-end">{lastMessageAction}</div>}
+      {isMenuOpen && (
+        <MobileBlurBackdrop
+          // A black scrim in both modes rather than the default theme-tinted one.
+          className="bg-black/40"
+          onClick={handleClose}
+          // Keep the backdrop in the message scroller's stacking context so
+          // the selected message and its action remain above it.
+          disablePortal
+        />
+      )}
     </div>
   )
 }

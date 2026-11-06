@@ -16,6 +16,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import { buildAttachmentPart } from '@/lib/attachments'
+import { buildQuotePart } from '@/lib/quotes'
 import { buildPromptBlocks, type PromptBlockDeps } from './acp-adapter'
 
 // PDF has a text transformer; everything else (e.g. images) has none. The
@@ -117,5 +118,40 @@ describe('buildPromptBlocks — embeddedContext', () => {
     expect(blocks).toHaveLength(1)
     expect(blocks[0]?.text).toContain('hi')
     expect(blocks[0]?.text).toContain('[Attachment "doc.pdf" could not be delivered to this agent]')
+  })
+})
+
+describe('buildPromptBlocks — quotes', () => {
+  const quote = (text: string) => buildQuotePart({ text, sourceMessageId: 'm0' })
+
+  test('prepends the quoted passage as a Markdown blockquote ahead of the reply text', async () => {
+    const blocks = (await buildPromptBlocks(
+      initWith([quote('the mitochondria is the powerhouse of the cell'), textPart('is this right?')]),
+      undefined,
+      false,
+      deps,
+    )) as Block[]
+
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]?.text).toBe('> the mitochondria is the powerhouse of the cell\n\nis this right?')
+  })
+
+  test('sends a quote-only reply (no typed text) as the blockquote alone', async () => {
+    const blocks = (await buildPromptBlocks(initWith([quote('quoted line')]), undefined, false, deps)) as Block[]
+
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]?.text).toBe('> quoted line')
+  })
+
+  test('carries quotes through the embeddedContext path alongside attachments', async () => {
+    const blocks = (await buildPromptBlocks(
+      initWith([quote('context'), textPart('summarize'), pdf()]),
+      undefined,
+      true,
+      deps,
+    )) as Block[]
+
+    expect(blocks[0]?.text).toBe('> context\n\nsummarize')
+    expect(blocks[1]?.type).toBe('resource')
   })
 })

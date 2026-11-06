@@ -2,6 +2,241 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// Intentionally empty — the docs are light-only.
-// See web/src/styles/starlight.css for the forced palette.
+/**
+ * Three-position theme switch (light / auto / dark) replacing Starlight's
+ * native <select>.
+ *
+ * It reuses Starlight's own contract rather than inventing one: the same
+ * `starlight-theme-select` element name, the same `starlight-theme` storage key,
+ * and the same `data-theme` attribute on <html>. That matters because
+ * ThemeProvider.astro applies the stored theme in an inline pre-paint script, so
+ * anything that diverged here would reintroduce a flash of the wrong palette.
+ *
+ * Radio inputs rather than buttons, so arrow-key navigation, focus handling and
+ * the accessible group name all come from the platform.
+ */
+const options = [
+	{ value: 'light', label: 'Light' },
+	{ value: 'auto', label: 'System' },
+	{ value: 'dark', label: 'Dark' },
+] as const;
+
+/**
+ * Starlight renders this component twice, in the header and in the mobile menu.
+ * Radios sharing a name outside a <form> are one document-wide group, so a
+ * single shared name made the two controls fight: checking one unchecked the
+ * other, and the visible control ended up with nothing checked at all for
+ * keyboard and screen-reader users. A per-instance name keeps them independent.
+ */
+const groupName = `tb-theme-${crypto.randomUUID().slice(0, 8)}`;
 ---
+
+<starlight-theme-select>
+	<fieldset class="switch" data-active="auto">
+		<legend class="sr-only">Color theme</legend>
+		<span class="indicator" aria-hidden="true"></span>
+		{
+			options.map(({ value, label }) => (
+				<label class="option" title={label}>
+					<input type="radio" name={groupName} value={value} checked={value === 'auto'} />
+					<span class="sr-only">{label}</span>
+					{value === 'light' && (
+						<svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14">
+							<circle cx="12" cy="12" r="4.2" fill="currentColor" />
+							<g stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+								<path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2" />
+								<path d="M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6" />
+							</g>
+						</svg>
+					)}
+					{value === 'auto' && (
+						<svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14">
+							<rect
+								x="3.2"
+								y="5"
+								width="17.6"
+								height="11.4"
+								rx="1.6"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.8"
+							/>
+							<path d="M2 19.4h20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+						</svg>
+					)}
+					{value === 'dark' && (
+						<svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14">
+							<path
+								d="M20 14.2A8.4 8.4 0 1 1 9.8 4a6.8 6.8 0 0 0 10.2 10.2z"
+								fill="currentColor"
+							/>
+						</svg>
+					)}
+				</label>
+			))
+		}
+	</fieldset>
+</starlight-theme-select>
+
+{/* Inline so the pill starts under the right option instead of animating into
+place on hydration. Mirrors ThemeProvider's own pre-paint read. */}
+<script is:inline>
+	(() => {
+		const stored = typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const active = stored === 'light' || stored === 'dark' ? stored : 'auto';
+		document.querySelectorAll('starlight-theme-select .switch').forEach((el) => {
+			el.dataset.active = active;
+			const input = el.querySelector(`input[value="${active}"]`);
+			if (input) input.checked = true;
+		});
+	})();
+</script>
+
+<script>
+	type Theme = 'auto' | 'dark' | 'light';
+
+	const storageKey = 'starlight-theme';
+
+	const parseTheme = (theme: unknown): Theme =>
+		theme === 'auto' || theme === 'dark' || theme === 'light' ? theme : 'auto';
+
+	const loadTheme = (): Theme =>
+		parseTheme(typeof localStorage !== 'undefined' && localStorage.getItem(storageKey));
+
+	/** Auto is stored as an empty string, which is what ThemeProvider treats as "no preference". */
+	const storeTheme = (theme: Theme): void => {
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem(storageKey, theme === 'light' || theme === 'dark' ? theme : '');
+		}
+	};
+
+	const preferredColorScheme = (): Exclude<Theme, 'auto'> =>
+		matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+
+	/** Single owner of every piece of visible state: the resolved palette on
+	 *  <html>, the stored preference, the pill position, and which radio is
+	 *  checked. Splitting these is how the control ends up with a pill under one
+	 *  option and the checked radio under another. */
+	const onThemeChange = (theme: Theme): void => {
+		document.documentElement.dataset.theme = theme === 'auto' ? preferredColorScheme() : theme;
+		storeTheme(theme);
+		document.querySelectorAll<HTMLElement>('starlight-theme-select .switch').forEach((el) => {
+			el.dataset.active = theme;
+			const input = el.querySelector<HTMLInputElement>(`input[value="${theme}"]`);
+			if (input) input.checked = true;
+		});
+	};
+
+	// Follow the system while the switch sits on System.
+	matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+		if (loadTheme() === 'auto') onThemeChange('auto');
+	});
+
+	class StarlightThemeSelect extends HTMLElement {
+		constructor() {
+			super();
+			onThemeChange(loadTheme());
+			this.addEventListener('change', (event) => {
+				const input = event.target;
+				if (input instanceof HTMLInputElement) onThemeChange(parseTheme(input.value));
+			});
+		}
+	}
+	customElements.define('starlight-theme-select', StarlightThemeSelect);
+</script>
+
+<style>
+	.switch {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 0;
+		margin: 0;
+		padding: 2px;
+		border: 1px solid var(--tb-border-strong);
+		border-radius: 999px;
+		background: var(--tb-surface-subtle);
+		line-height: 0;
+	}
+
+	.option {
+		position: relative;
+		z-index: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.75rem;
+		height: 1.5rem;
+		border-radius: 999px;
+		color: var(--tb-text-muted);
+		cursor: pointer;
+		transition: color 150ms ease;
+	}
+
+	.option:hover {
+		color: var(--tb-text-secondary);
+	}
+
+	.option input {
+		position: absolute;
+		inset: 0;
+		margin: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+
+	/* The pill slides between three equal slots. Driven by data-active rather
+	   than :checked so the inline pre-paint script can position it before
+	   hydration. */
+	.indicator {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 1.75rem;
+		height: 1.5rem;
+		border-radius: 999px;
+		background: var(--tb-surface);
+		box-shadow: 0 1px 2px rgb(16 24 40 / 0.14);
+		transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+	}
+
+	.switch[data-active='light'] .indicator {
+		transform: translateX(0);
+	}
+	.switch[data-active='auto'] .indicator {
+		transform: translateX(100%);
+	}
+	.switch[data-active='dark'] .indicator {
+		transform: translateX(200%);
+	}
+
+	.switch[data-active='light'] .option:nth-of-type(1),
+	.switch[data-active='auto'] .option:nth-of-type(2),
+	.switch[data-active='dark'] .option:nth-of-type(3) {
+		color: var(--tb-text);
+	}
+
+	/* Keyboard focus lands on the hidden input; show it on the visible pill. */
+	.option:focus-within {
+		outline: 2px solid var(--tb-text-dim);
+		outline-offset: 1px;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.indicator {
+			transition: none;
+		}
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
+	}
+</style>

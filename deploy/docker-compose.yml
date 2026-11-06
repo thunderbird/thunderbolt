@@ -7,7 +7,7 @@ services:
         VITE_THUNDERBOLT_CLOUD_URL: "/v1"
         VITE_AUTH_MODE: "sso"
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-3000}:8080"
     depends_on:
       - backend
 
@@ -52,6 +52,8 @@ services:
       POWERSYNC_JWT_SECRET: enterprise-thunderbolt-powersync-jwt-default-secret
       POWERSYNC_JWT_KID: enterprise-powersync
       RATE_LIMIT_ENABLED: "false"
+      MIN_APP_VERSION: ${MIN_APP_VERSION:-}
+      CLI_DEVICE_REGISTRATION_ENABLED: ${CLI_DEVICE_REGISTRATION_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,7 +84,7 @@ services:
       retries: 5
 
   powersync:
-    image: journeyapps/powersync-service:latest
+    image: journeyapps/powersync-service:1.28.0
     command: ["start", "-r", "unified"]
     environment:
       POWERSYNC_CONFIG_PATH: /config/config.yaml
@@ -93,6 +95,10 @@ services:
       # Default value below = base64("enterprise-thunderbolt-powersync-jwt-default-secret"),
       # which matches the default backend POWERSYNC_JWT_SECRET.
       PS_JWT_KEY_BASE64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
+      # Label paired with the JWT secret. Must match the backend's POWERSYNC_JWT_KID.
+      PS_JWT_KID: enterprise-powersync
+      # Bump to make PowerSync rebuild its storage (see `version_label` in the config).
+      PS_SYNC_CONFIG_VERSION: "1"
     volumes:
       - ./config/powersync-config.yaml:/config/config.yaml
     ports:
@@ -102,7 +108,7 @@ services:
         condition: service_healthy
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0
+    image: quay.io/keycloak/keycloak:26.8
     command: start-dev --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin

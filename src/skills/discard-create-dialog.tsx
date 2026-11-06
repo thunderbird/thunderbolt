@@ -2,42 +2,38 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
+import { useLingui } from '@lingui/react/macro'
 
+/**
+ * Dirty-form discard prompt for the skill create/edit flows. Thin wrapper
+ * over ConfirmActionDialog so it inherits the responsive mobile bottom
+ * sheet / desktop alert dialog treatment.
+ */
 export const DiscardCreateDialog = ({
   open,
   onOpenChange,
   onConfirm,
-  title = 'Leave without creating?',
-  description = "You'll lose what you've added so far.",
+  title,
+  description,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
   title?: string
   description?: string
-}) => (
-  <AlertDialog open={open} onOpenChange={onOpenChange}>
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>{title}</AlertDialogTitle>
-        <AlertDialogDescription>{description}</AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel>Keep editing</AlertDialogCancel>
-        <Button variant="destructive" onClick={onConfirm}>
-          Discard
-        </Button>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-)
+}) => {
+  const { t } = useLingui()
+
+  return (
+    <ConfirmActionDialog
+      open={open}
+      title={title ?? t`Leave without creating?`}
+      description={description ?? t`You'll lose what you've added so far.`}
+      confirmLabel={t`Discard`}
+      cancelLabel={t`Keep editing`}
+      onConfirm={onConfirm}
+      onCancel={() => onOpenChange(false)}
+    />
+  )
+}

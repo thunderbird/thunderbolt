@@ -3,15 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 const mockSetSyncEnabled = mock(() => Promise.resolve())
 const mockTrackEvent = mock(() => {})
 
 // Partial mock: spread the REAL module so every other export (incl. reconnectSync,
-// which powersync-status.test.tsx consumes for real) survives if this registration
+// which sidebar-footer.tsx consumes for real) survives if this registration
 // leaks across files under `--randomize`. Only `setSyncEnabled` is overridden with
-// the local spy this suite asserts on. See docs/development/testing.md §65.
+// the local spy this suite asserts on. See docs/internals/development/testing.md §65.
 const realPowersync = await import('@/db/powersync/sync-state')
 mock.module('@/db/powersync/sync-state', () => ({
   ...realPowersync,
@@ -20,8 +20,10 @@ mock.module('@/db/powersync/sync-state', () => ({
 
 // Spread the REAL modules so every untouched export survives if these
 // registrations leak across files under `--randomize`; only the symbols this
-// suite drives are overridden. See docs/development/testing.md §65.
-const realPosthog = await import('@/lib/posthog')
+// suite drives are overridden. See docs/internals/development/testing.md §65.
+// Snapshot exports before mock.module replaces their live bindings. Restore
+// them below so later startup-telemetry tests exercise the real event buffer.
+const realPosthog = { ...(await import('@/lib/posthog')) }
 mock.module('@/lib/posthog', () => ({
   ...realPosthog,
   trackEvent: mockTrackEvent,
@@ -29,12 +31,22 @@ mock.module('@/lib/posthog', () => ({
 
 const mockGetCK = mock(() => Promise.resolve(null))
 
-const realEncryption = await import('@/db/encryption')
+// Spread into a fresh object: mocking the '@/db/encryption' barrel mutates the
+// re-exported '@/db/encryption/config' live bindings in place, so we capture a
+// value-copy of both up front and restore them in afterAll — otherwise the
+// needsSyncSetupWizard override leaks into config-dependent files
+// (config/upload-encoder/key-request-responder tests). See testing.md §65.
+const realEncryption = { ...(await import('@/db/encryption')) }
+const realEncryptionConfig = { ...(await import('@/db/encryption/config')) }
 mock.module('@/db/encryption', () => ({
   ...realEncryption,
-  isEncryptionEnabled: () => true,
   needsSyncSetupWizard: async () => !(await mockGetCK()),
 }))
+afterAll(() => {
+  mock.module('@/lib/posthog', () => realPosthog)
+  mock.module('@/db/encryption', () => realEncryption)
+  mock.module('@/db/encryption/config', () => realEncryptionConfig)
+})
 
 const realKeyStorage = await import('@/crypto/key-storage')
 mock.module('@/crypto/key-storage', () => ({

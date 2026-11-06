@@ -2,30 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { cn } from '@/lib/utils'
 import { type LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 type OnboardingFeatureCardProps = {
-  className?: string
   icon: LucideIcon
-  title: string
-  description: string
-  iconClassName?: string
+  // ReactNode, like OnboardingStepHeader, so callers pass <Trans> rather than
+  // needing useLingui() to produce a string.
+  title: ReactNode
+  description: ReactNode
 }
 
-export const OnboardingFeatureCard = ({
-  className,
-  icon: Icon,
-  title,
-  description,
-  iconClassName,
-}: OnboardingFeatureCardProps) => {
+export const OnboardingFeatureCard = ({ icon: Icon, title, description }: OnboardingFeatureCardProps) => {
   return (
-    <div className={cn('flex items-center gap-4 p-4 rounded-lg bg-muted/50', className)}>
-      <Icon className={`w-6 h-6 flex-shrink-0 ${iconClassName || ''}`} />
-      <div>
-        <h3 className="font-medium text-sm">{title}</h3>
-        <p className="text-xs text-muted-foreground">{description}</p>
+    <div className="flex items-center gap-4 p-4">
+      <Icon className="size-6 shrink-0" />
+      <div className="space-y-0.5">
+        <h3 className="text-[length:var(--font-size-body)] font-medium">{title}</h3>
+        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{description}</p>
       </div>
     </div>
   )

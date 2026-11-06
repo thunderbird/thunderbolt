@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { isTauri } from '@/lib/platform'
-import { usePostHog } from 'posthog-js/react'
+import { usePostHogClient } from '@/lib/posthog'
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router'
 
@@ -12,7 +12,7 @@ import { useLocation } from 'react-router'
  */
 export const usePageTracking = () => {
   const location = useLocation()
-  const posthog = usePostHog()
+  const posthog = usePostHogClient()
   const previousUrl = useRef<string | null>(null)
 
   useEffect(() => {

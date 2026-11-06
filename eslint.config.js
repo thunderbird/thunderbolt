@@ -15,6 +15,9 @@ import globals from 'globals'
 import { sharedParserOptions, sharedRules } from './shared/eslint/base.js'
 
 export default [
+  // Global ignores (object with only `ignores` applies repo-wide). The generated
+  // wasm-bindgen glue is a build artifact — never lint it.
+  { ignores: ['src/acp/iroh/pkg/**', 'crates/**'] },
   js.configs.recommended,
   prettier,
   {
@@ -79,6 +82,66 @@ export default [
             "React namespace access in types is not allowed. Use direct imports instead (e.g. import { type ReactNode } from 'react').",
         },
       ],
+    },
+  },
+  {
+    // Environment-agnostic code shared by frontend and backend. No React or
+    // browser assumptions here — just the shared TypeScript conventions.
+    files: ['shared/**/*.{ts,tsx}'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: sharedParserOptions,
+      globals: {
+        ...globals.node,
+        Bun: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: sharedRules,
+  },
+  {
+    // Playwright specs and their harness. Node-side test code that also runs
+    // browser snippets inside `page.evaluate`, so both global sets apply.
+    files: ['e2e/**/*.ts'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: sharedParserOptions,
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+        Bun: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: sharedRules,
+  },
+  {
+    // Repo tooling run under Bun, never bundled. Previously matched no block at
+    // all, so `scripts/org-escrow-{decrypt,keygen}.ts` — which handle the org
+    // escrow private key — were the only unlinted TypeScript in the repo.
+    files: ['scripts/**/*.{ts,mjs,cjs,js}'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: { ...sharedParserOptions, sourceType: 'module' },
+      globals: {
+        ...globals.node,
+        ...globals.commonjs,
+        Bun: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: {
+      ...sharedRules,
+      // These are CLIs: stdout/stderr IS the interface. `org-escrow-decrypt`
+      // writes recovered plaintext to stdout and diagnostics to stderr by
+      // contract, and the release/licence scripts report progress the same way.
+      'no-console': 'off',
     },
   },
   ...storybook.configs['flat/recommended'],

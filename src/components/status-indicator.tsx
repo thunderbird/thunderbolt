@@ -12,7 +12,19 @@ import type { FC } from 'react'
  * @example
  *   <StatusIndicator status="online" />
  */
-export type StatusState = 'online' | 'offline' | 'connected' | 'disconnected' | 'connecting' | 'error' | 'neutral'
+/** Every visualisable state, in display order — the type derives from this
+ *  array so stories/docs that enumerate states can't silently miss one. */
+export const statusStates = [
+  'online',
+  'offline',
+  'connected',
+  'disconnected',
+  'connecting',
+  'error',
+  'neutral',
+] as const
+
+export type StatusState = (typeof statusStates)[number]
 
 export type StatusIndicatorProps = {
   /**
@@ -37,11 +49,11 @@ const sizeClasses: Record<NonNullable<StatusIndicatorProps['size']>, string> = {
 }
 
 const stateClasses: Record<StatusState, string> = {
-  online: 'bg-green-500',
-  connected: 'bg-green-500',
-  offline: 'bg-red-500',
-  disconnected: 'bg-red-500',
-  connecting: 'bg-yellow-500',
+  online: 'bg-success',
+  connected: 'bg-success',
+  offline: 'bg-destructive',
+  disconnected: 'bg-destructive',
+  connecting: 'bg-warning',
   error: 'bg-destructive',
   neutral: 'bg-muted-foreground/30',
 }

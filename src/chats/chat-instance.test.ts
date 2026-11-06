@@ -8,20 +8,28 @@
  * each call to the injected `connectToAgent`.
  */
 
-import '@/testing-library'
-
+import { createTurnBudget, maxRequestsPerTurn, type TurnBudget } from '@/ai/retry-budget'
+import { webToolCaps } from '@/ai/web-tool-budget'
+import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
+import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
-import type { Agent, AgentAdapter } from '@/types/acp'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { createMockChatInstance, createMockChatThread, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
+import { getClock } from '@/testing-library'
+import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
+import type { RequestPermissionResponse } from '@agentclientprotocol/sdk'
+import type { ChatInit, ChatOnFinishCallback } from 'ai'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from './chat-store'
-import { createAgentRoutingFetch } from './chat-instance'
+import { createAgentRoutingFetch, createChatInstance, type CreateChatInstanceDeps } from './chat-instance'
+import { getTurnActivity } from './turn-activity'
 
 const sessionId = 'sess-1'
 const httpClient: HttpClient = {} as HttpClient
-const getProxyFetch: () => FetchFn = () => (async () => new Response('ok')) as unknown as FetchFn
+const getProxyFetch = (): FetchFn => Object.assign(async () => new Response('ok'), { preconnect: async () => false })
 
 const makeAdapter = (agent: Agent): AgentAdapter => ({
   agent,
@@ -41,6 +49,151 @@ const hydrate = () => {
   })
 }
 
+/** Build a chat instance whose retry callbacks and original methods are observable. */
+const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {}) => {
+  const regenerate = mock(async () => {})
+  const sendMessage = mock(async (_message: ThunderboltUIMessage) => {})
+  const budgets: TurnBudget[] = []
+  let onFinish: ChatOnFinishCallback<ThunderboltUIMessage> | undefined
+  let onError: ((error: Error) => void) | undefined
+  let sendAutomaticallyWhen: ChatInit<ThunderboltUIMessage>['sendAutomaticallyWhen']
+  const wakeAdapterReconnect = mock(() => {})
+  const trackEventImplementation: NonNullable<CreateChatInstanceDeps['trackEvent']> = () => {}
+  const trackEvent = mock(trackEventImplementation)
+
+  const createTrackedTurnBudget = () => {
+    const budget = createTurnBudget()
+    budgets.push(budget)
+    return budget
+  }
+
+  const createChat = (init: ChatInit<ThunderboltUIMessage>) => {
+    onFinish = init.onFinish
+    onError = init.onError
+    sendAutomaticallyWhen = init.sendAutomaticallyWhen
+    return {
+      id: init.id ?? sessionId,
+      messages: init.messages ?? [],
+      status: 'ready',
+      regenerate,
+      sendMessage,
+      stop: mock(() => Promise.resolve()),
+    } as never
+  }
+
+  const instance = createChatInstance(sessionId, [], saveMessages, httpClient, getProxyFetch, {
+    createChat,
+    createTurnBudget: createTrackedTurnBudget,
+    wakeAdapterReconnect,
+    trackEvent,
+  })
+  hydrateStore({
+    chatInstance: instance,
+    chatThread: null,
+    id: sessionId,
+    selectedModel: {
+      id: 'm1',
+      model: 'claude-opus',
+      provider: 'anthropic',
+      apiKey: 'secret',
+      isConfidential: 0,
+    } as never,
+    triggerData: null,
+  })
+
+  const finishWithError = (
+    error?: Error,
+    message: ThunderboltUIMessage = { id: 'failed-assistant', role: 'assistant', parts: [] },
+  ) => {
+    if (error) {
+      onError?.(error)
+    }
+    return onFinish!({
+      message,
+      messages: [],
+      isAbort: false,
+      isDisconnect: false,
+      isError: true,
+    })
+  }
+
+  const finishSuccessfully = (
+    message: ThunderboltUIMessage = {
+      id: 'successful-assistant',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Done' }],
+    },
+  ) =>
+    onFinish!({
+      message,
+      messages: [],
+      isAbort: false,
+      isDisconnect: false,
+      isError: false,
+    })
+
+  const finishAborted = () =>
+    onFinish!({
+      message: {
+        id: 'aborted-assistant',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Partial' }],
+      },
+      messages: [],
+      isAbort: true,
+      isDisconnect: false,
+      isError: false,
+    })
+
+  const finishAbortedEmpty = () =>
+    onFinish!({
+      message: { id: 'aborted-empty', role: 'assistant', parts: [] },
+      messages: [],
+      isAbort: true,
+      isDisconnect: false,
+      isError: false,
+    })
+
+  const getTurnBudget = () => budgets.at(-1)!
+
+  /** Ask the SDK's auto-send predicate what it would do with the current messages. */
+  const wouldAutoSend = () => sendAutomaticallyWhen!({ messages: instance.messages })
+
+  return {
+    finishSuccessfully,
+    finishAborted,
+    finishAbortedEmpty,
+    finishWithError,
+    getTurnBudget,
+    instance,
+    regenerate,
+    sendMessage,
+    trackEvent,
+    wakeAdapterReconnect,
+    wouldAutoSend,
+  }
+}
+
+/** Create a save function whose calls can be resumed in any order. */
+const createDeferredSaveMessages = () => {
+  const resolvers: Array<() => void> = []
+  const saveMessages: SaveMessagesFunction = async () => {
+    await new Promise<void>((resolve) => {
+      resolvers.push(resolve)
+    })
+  }
+  const resolveSave = (index: number) => resolvers[index]!()
+  return { resolveSave, saveMessages }
+}
+
+/** Fully consume one injected chat-instance turn budget. */
+const exhaustTurnBudget = (budget: TurnBudget) => {
+  for (let request = 0; request < maxRequestsPerTurn; request++) {
+    budget.consumer.tryConsumeRequest()
+  }
+  return budget
+}
+
 describe('createAgentRoutingFetch — connection status', () => {
   beforeEach(() => {
     resetStore()
@@ -51,6 +204,157 @@ describe('createAgentRoutingFetch — connection status', () => {
     resetStore()
   })
 
+  it.each(['prompt', 'compact'] as const)('waits for an effort write before routing %s', async (operation) => {
+    const write = Promise.withResolvers<void>()
+    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
+    const getChatReasoningEffort = mock(async () => 'high' as const)
+    const seen: AgentAdapterContext[] = []
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) => {
+        seen.push(context)
+        return new Response('ok')
+      },
+      compact: async (_init, context) => {
+        seen.push(context)
+        return { version: 1, summary: 'Summary', tokensBefore: 100, contextTokens: 10, retainedTail: [] }
+      },
+    }
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort,
+      getOrConnectAdapter: async () => adapter,
+    })
+    const request =
+      operation === 'prompt'
+        ? route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+        : route.compact([], undefined, new AbortController().signal)
+    await Promise.resolve()
+    expect(getChatReasoningEffort).not.toHaveBeenCalled()
+    expect(seen).toHaveLength(0)
+    write.resolve()
+    await request
+    expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.reasoningEffort).toBe('high')
+  })
+
+  it('does not send with stale effort when its pending settings write fails', async () => {
+    const write = Promise.withResolvers<void>()
+    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
+    const connect = mock(async () => makeAdapter(builtInAgent))
+    const resolveEffort = mock(async () => 'low' as const)
+    const save = mock(async () => {})
+    const route = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
+      getChatReasoningEffort: resolveEffort,
+      getOrConnectAdapter: connect,
+    })
+    const request = route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+    write.reject(new Error('Settings write failed'))
+    await expect(request).rejects.toThrow('Settings write failed')
+    expect(resolveEffort).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('leaves effort resolution to remote agents', async () => {
+    const agent: Agent = {
+      ...builtInAgent,
+      id: 'remote',
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://agent.test',
+    }
+    useChatStore.getState().updateSession(sessionId, { selectedAgent: agent })
+    const resolveEffort = mock(async () => 'high' as const)
+    const adapter: AgentAdapter = {
+      ...makeAdapter(agent),
+      fetch: async (_init, context) => {
+        expect(context.reasoningEffort).toBeUndefined()
+        return new Response('ok')
+      },
+    }
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: resolveEffort,
+      getOrConnectAdapter: async () => adapter,
+    })
+    await route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+    expect(resolveEffort).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['/research latest', 'research', 30],
+    ['/search latest', 'search', 12],
+    ['An ordinary question', 'auto', 5],
+  ] as const)('sets the turn budget and preserves exhaustion guidance for %s', async (text, intent, cap) => {
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) => {
+        const budget = context.webToolBudget!
+        for (let call = 0; call < cap; call++) {
+          await budget.execute('search', { query: String(call) }, async () => call)
+        }
+        const denial = await budget.execute('search', { query: 'denied' }, async () => 'must not execute')
+        return Response.json({
+          intent: budget.intent,
+          initialCap: budget.initialCap,
+          cap: budget.cap,
+          promoted: budget.promoted,
+          denial,
+        })
+      },
+    }
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
+      getOrConnectAdapter: async () => adapter,
+    })
+    const response = await fetch('https://backend.test', {
+      body: JSON.stringify({ messages: [{ id: 'user', role: 'user', parts: [{ type: 'text', text }] }] }),
+    })
+    expect(await response.json()).toEqual({
+      intent,
+      initialCap: cap,
+      cap,
+      promoted: false,
+      denial: {
+        status: 'budget_exhausted',
+        message:
+          'Per-turn web tool budget reached. Answer now from the results already gathered. If coverage is insufficient, tell the user they can ask you to search more or use /research.',
+      },
+    })
+  })
+
+  it.each([
+    [false, ['WEATHER_BODY']],
+    [true, []],
+  ])(
+    'resolves a /weather token for a non-built-in agent only outside minimal mode (%s)',
+    async (minimalMode, expected) => {
+      useConfigStore.setState({ config: { minimalMode } })
+      const remote: Agent = { ...builtInAgent, id: 'remote', type: 'managed-http' }
+      useChatStore.getState().updateSession(sessionId, { selectedAgent: remote })
+      const seen: Array<string[] | undefined> = []
+      const adapter: AgentAdapter = {
+        ...makeAdapter(remote),
+        fetch: async (_init, context) => {
+          seen.push(context.skillInstructions)
+          return new Response('ok')
+        },
+      }
+      const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+        getChatReasoningEffort: async () => undefined,
+        getOrConnectAdapter: async () => adapter,
+        getAllSkills: (async () => [{ name: 'weather', instruction: 'WEATHER_BODY', enabled: 1 }]) as never,
+        getDb: (() => ({})) as never,
+      })
+      await fetch('https://x', {
+        body: JSON.stringify({
+          messages: [{ id: 'u', role: 'user', parts: [{ type: 'text', text: '/weather today' }] }],
+        }),
+      })
+      expect(seen[0] ?? []).toEqual(expected)
+    },
+  )
+
   it('transitions connecting → ready when connectToAgent resolves', async () => {
     const observed: string[] = []
     const connectToAgent = mock(async (agent: Agent) => {
@@ -59,12 +363,13 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
     })
 
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
 
     expect(observed).toEqual(['connecting'])
     expect(useChatStore.getState().sessions.get(sessionId)!.connectionStatus).toBe('ready')
@@ -77,12 +382,13 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
     })
 
-    await expect(fetch('http://x', { body: '{}' } as RequestInit)).rejects.toThrow('boom')
+    await expect(fetch('https://x', { body: '{}' } as RequestInit)).rejects.toThrow('boom')
 
     const session = useChatStore.getState().sessions.get(sessionId)!
     expect(session.connectionStatus).toBe('error')
@@ -93,13 +399,14 @@ describe('createAgentRoutingFetch — connection status', () => {
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
     })
 
-    await fetch('http://x', { body: '{}' } as RequestInit)
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
 
     expect(connectToAgent).toHaveBeenCalledTimes(1)
     expect(useChatStore.getState().sessions.get(sessionId)!.connectionStatus).toBe('ready')
@@ -110,16 +417,1407 @@ describe('createAgentRoutingFetch — connection status', () => {
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
     })
 
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
     useChatStore.getState().updateSession(sessionId, { selectedAgent: altAgent })
-    await fetch('http://x', { body: '{}' } as RequestInit)
+    await fetch('https://x', { body: '{}' } as RequestInit)
 
     expect(connectToAgent).toHaveBeenCalledTimes(2)
     expect(useChatStore.getState().sessions.get(sessionId)!.connectionStatus).toBe('ready')
+  })
+
+  it('throws TurnBudgetExhaustedError before invoking the adapter when the consumer is drained', async () => {
+    const budget = exhaustTurnBudget(createTurnBudget())
+    const adapterFetch = mock(async () => new Response('ok'))
+    const connectToAgent = mock(async (agent: Agent) => ({
+      ...makeAdapter(agent),
+      fetch: adapterFetch,
+    }))
+    const fetch = createAgentRoutingFetch(
+      sessionId,
+      async () => {},
+      httpClient,
+      getProxyFetch,
+      {
+        getChatReasoningEffort: async () => undefined,
+        connectToAgent: connectToAgent as never,
+        updateChatThread: (async () => {}) as never,
+        getDb: (() => ({})) as never,
+      },
+      { getTurnBudget: () => budget },
+    )
+
+    await expect(fetch('https://x', { body: '{}' } as RequestInit)).rejects.toMatchObject({
+      name: 'TurnBudgetExhaustedError',
+    })
+    expect(adapterFetch).not.toHaveBeenCalled()
+  })
+
+  it('marks TTFT only on the first content delta and preserves response metadata', async () => {
+    const time = { current: 0 }
+    const telemetry = createTurnTelemetry({ now: () => time.current, generateId: () => 'trace-1' })
+    const stream = { controller: undefined as ReadableStreamDefaultController<Uint8Array> | undefined }
+    const adapterResponse = new Response(
+      new ReadableStream<Uint8Array>({
+        start: (controller) => {
+          stream.controller = controller
+        },
+      }),
+      {
+        status: 206,
+        statusText: 'Streaming',
+        headers: { 'Content-Type': 'text/event-stream', 'X-Stream-Id': 'stream-1' },
+      },
+    )
+    const adapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async () => adapterResponse,
+    }
+    const fetch = createAgentRoutingFetch(
+      sessionId,
+      async () => {},
+      httpClient,
+      getProxyFetch,
+      {
+        getChatReasoningEffort: async () => undefined,
+        getOrConnectAdapter: (async () => adapter) as never,
+        updateChatThread: (async () => {}) as never,
+        getDb: (() => ({})) as never,
+      },
+      { getTurnTelemetry: () => telemetry },
+    )
+
+    const response = await fetch('https://x', { body: '{}' } as RequestInit)
+    const reader = response.body!.getReader()
+    const encoder = new TextEncoder()
+
+    expect(response.status).toBe(206)
+    expect(response.statusText).toBe('Streaming')
+    expect(response.headers.get('X-Stream-Id')).toBe('stream-1')
+
+    time.current = 10
+    stream.controller!.enqueue(encoder.encode('data: {"type":"start","messageId":"a"}\n\n'))
+    await reader.read()
+    expect(telemetry.buildPayload('success')).not.toHaveProperty('ttft_ms')
+
+    time.current = 15
+    stream.controller!.enqueue(encoder.encode('data: {"type":"text-delta","id":"text-1","delta":""}\n\n'))
+    await reader.read()
+    expect(telemetry.buildPayload('success')).not.toHaveProperty('ttft_ms')
+
+    time.current = 20
+    stream.controller!.enqueue(encoder.encode('data: {"type":"text-d'))
+    await reader.read()
+    expect(telemetry.buildPayload('success')).not.toHaveProperty('ttft_ms')
+
+    time.current = 25
+    stream.controller!.enqueue(encoder.encode('elta","id":"text-1","delta":"Hello"}\n\n'))
+    await reader.read()
+    expect(telemetry.buildPayload('success').ttft_ms).toBe(25)
+
+    time.current = 40
+    stream.controller!.enqueue(
+      encoder.encode('data: {"type":"reasoning-delta","id":"reasoning-1","delta":"Later"}\n\n'),
+    )
+    await reader.read()
+    expect(telemetry.buildPayload('success').ttft_ms).toBe(25)
+
+    stream.controller!.close()
+    await reader.read()
+  })
+
+  it('passes the stream through without parsing once the first content delta is seen', async () => {
+    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
+    const markFirstToken = spyOn(telemetry, 'markFirstToken')
+    const stream = { controller: undefined as ReadableStreamDefaultController<Uint8Array> | undefined }
+    const adapterResponse = new Response(
+      new ReadableStream<Uint8Array>({
+        start: (controller) => {
+          stream.controller = controller
+        },
+      }),
+    )
+    const adapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async () => adapterResponse,
+    }
+    const fetch = createAgentRoutingFetch(
+      sessionId,
+      async () => {},
+      httpClient,
+      getProxyFetch,
+      {
+        getChatReasoningEffort: async () => undefined,
+        getOrConnectAdapter: (async () => adapter) as never,
+        updateChatThread: (async () => {}) as never,
+        getDb: (() => ({})) as never,
+      },
+      { getTurnTelemetry: () => telemetry },
+    )
+
+    const response = await fetch('https://x', { body: '{}' } as RequestInit)
+    const reader = response.body!.getReader()
+    const encoder = new TextEncoder()
+    const received: string[] = []
+    const readChunk = async () => {
+      const { value } = await reader.read()
+      received.push(new TextDecoder().decode(value))
+    }
+
+    const firstDelta = 'data: {"type":"text-delta","id":"text-1","delta":"Hello"}\n\n'
+    stream.controller!.enqueue(encoder.encode(firstDelta))
+    await readChunk()
+    expect(markFirstToken).toHaveBeenCalledTimes(1)
+
+    // Past the first-token latch the wrapper is a pure pass-through: no more
+    // decoding or JSON.parse, so markFirstToken is never consulted again.
+    const secondDelta = 'data: {"type":"text-delta","id":"text-1","delta":" world"}\n\n'
+    stream.controller!.enqueue(encoder.encode(secondDelta))
+    await readChunk()
+    expect(markFirstToken).toHaveBeenCalledTimes(1)
+    expect(telemetry.buildPayload('success').ttft_ms).toBe(0)
+
+    stream.controller!.close()
+    await reader.read()
+    expect(received.join('')).toBe(firstDelta + secondDelta)
+  })
+})
+
+describe('createChatInstance — retry policy', () => {
+  beforeEach(() => {
+    resetStore()
+    sessionStorage.clear()
+  })
+
+  afterEach(() => {
+    setDebugTranscriptCaptureEnabled(false)
+    resetStore()
+    sessionStorage.clear()
+  })
+
+  it('uses 2s, 4s, and 8s exponential retry delays', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishWithError, regenerate } = createRetryHarness()
+
+    try {
+      for (const [completedRetries, delay] of [2_000, 4_000, 8_000].entries()) {
+        await finishWithError()
+
+        await getClock().tickAsync(delay - 1)
+        expect(regenerate).toHaveBeenCalledTimes(completedRetries)
+
+        await getClock().tickAsync(1)
+        expect(regenerate).toHaveBeenCalledTimes(completedRetries + 1)
+      }
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('retries an empty turn after 250ms with reason empty-response', async () => {
+    const { finishSuccessfully, regenerate, trackEvent } = createRetryHarness()
+
+    await finishSuccessfully({ id: 'empty-assistant', role: 'assistant', parts: [] })
+
+    await getClock().tickAsync(249)
+    expect(regenerate).not.toHaveBeenCalled()
+
+    await getClock().tickAsync(1)
+    expect(regenerate).toHaveBeenCalledTimes(1)
+
+    const autoRetry = trackEvent.mock.calls.find(([event]) => event === 'chat_auto_retry')?.[1]
+    expect(autoRetry?.reason).toBe('empty-response')
+    expect(autoRetry?.attempt).toBe(1)
+  })
+
+  it('drops the empty shell of an aborted loader turn without re-sending it', async () => {
+    const { instance, finishAbortedEmpty, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    // Two halves of one invariant, asserted together because each masks the
+    // other's regression: kept, the shell renders an empty-turn recovery spinner
+    // nothing will recover; dropped without the `stopRequested` gate, the now
+    // trailing user message makes the SDK re-send the stopped turn.
+    expect(instance.messages).toHaveLength(1)
+    expect(instance.messages[0]!.role).toBe('user')
+    expect(wouldAutoSend()).toBe(false)
+  })
+
+  it('flags and saves the prompt when stop() cancels a running reply', async () => {
+    const saved: ThunderboltUIMessage[] = []
+    const { instance, finishAbortedEmpty } = createRetryHarness(async ({ messages }) => {
+      saved.push(...messages)
+    })
+    Object.assign(instance, { status: 'submitted' })
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(true)
+    expect(saved.map((message) => [message.id, message.metadata?.stoppedByUser])).toEqual([['u1', true]])
+  })
+
+  it('flags the stopped prompt, not one sent before the aborted request unwinds', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    Object.assign(instance, { status: 'streaming' })
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Partial' }] },
+    ] as never
+
+    await instance.stop()
+    instance.messages = [
+      ...instance.messages,
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'Which city?' }] },
+    ]
+    await finishAborted()
+
+    expect(instance.messages.map((message) => message.metadata?.stoppedByUser)).toEqual([true, undefined, undefined])
+  })
+
+  it('clears the stop flag when the prompt is regenerated', async () => {
+    const { instance } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }], metadata: { stoppedByUser: true } },
+    ]
+
+    await instance.regenerate()
+
+    expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(false)
+  })
+
+  it('flags the prompt when stop() cancels a pending retry, without resetting a turn started meanwhile', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishWithError, getTurnBudget, instance } = createRetryHarness(saveMessages)
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }] }] as never
+    await finishWithError()
+
+    const stopped = instance.stop()
+    await instance.sendMessage({ text: 'Which city?' })
+    const newTurnBudget = getTurnBudget()
+    resolveSave(0)
+    await stopped
+
+    expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(true)
+    expect(getTurnBudget()).toBe(newTurnBudget)
+  })
+
+  it('does not flag the last prompt when stop() runs with nothing in flight', async () => {
+    const { instance } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Hello' }] },
+    ] as never
+
+    await instance.stop()
+
+    expect(instance.messages[0]!.metadata?.stoppedByUser).toBeUndefined()
+  })
+
+  it('settles the composer to idle after an aborted loader turn', async () => {
+    const { instance, finishAbortedEmpty } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    const session = useChatStore.getState().sessions.get(sessionId)
+    const activity = getTurnActivity({
+      status: 'ready',
+      lastMessage: instance.messages[instance.messages.length - 1],
+      hasChatError: false,
+      retriesExhausted: session?.retriesExhausted ?? false,
+      retryCount: session?.retryCount ?? 0,
+      stopRequested: session?.stopping ?? false,
+    })
+    expect(activity.isActive).toBe(false)
+  })
+
+  it('suppresses the SDK auto-send after a stop, so the turn cannot restart itself', async () => {
+    const { instance, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    // Stop pressed while the model was still thinking: nothing streamed, so no
+    // assistant message was ever pushed and the user message is trailing.
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] as never
+
+    expect(wouldAutoSend()).toBe(true)
+
+    await instance.stop()
+
+    expect(wouldAutoSend()).toBe(false)
+  })
+
+  it('lifts the auto-send suppression on the next explicit send', async () => {
+    const { instance, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] as never
+
+    await instance.stop()
+    await instance.sendMessage({ text: 'again' })
+
+    expect(wouldAutoSend()).toBe(true)
+  })
+
+  it('stop() flags the session as stopping while the abort unwinds', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+
+    await instance.stop()
+
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
+  })
+
+  it('keeps the session stopping after the aborted turn settles, until the next explicit send', async () => {
+    const { instance, finishAbortedEmpty } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    // Dropping the shell leaves the user message trailing — the exact shape
+    // useChatAutomation auto-runs. The flag must survive the turn settling
+    // so Stop cannot restart the turn it cancelled.
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
+
+    await instance.sendMessage({ text: 'again' })
+
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(false)
+  })
+
+  it('resolves an open tool-permission dialog when the turn is stopped', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+    const resolve = mock((_response: RequestPermissionResponse) => {})
+    useChatStore.getState().setPendingPermission(sessionId, {
+      agentId: 'agent-1',
+      requestId: 'req-1',
+      request: {} as never,
+      resolve,
+    })
+
+    await instance.stop()
+
+    // Left pending, the dialog stays on screen awaiting an answer the cancelled
+    // turn will never consume.
+    expect(resolve).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get(sessionId)?.pendingPermission).toBeNull()
+  })
+
+  it('finalizes a reasoning part left streaming when a turn is aborted mid-thinking', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'List things' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'reasoning', text: 'The user is asking…', state: 'streaming' }] },
+    ] as never
+
+    await finishAborted()
+
+    // Left streaming, the reasoning part keeps its spinner running after the stop
+    // (reasoning-group.tsx) even though the turn has settled.
+    const last = instance.messages[instance.messages.length - 1] as { parts: Array<{ state?: string }> }
+    expect(last.parts[0]!.state).toBe('done')
+  })
+
+  it('keeps a partial assistant message when an aborted turn had content', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Partial' }] },
+    ] as never
+
+    await finishAborted()
+
+    expect(instance.messages).toHaveLength(2)
+    expect(instance.messages[1]!.role).toBe('assistant')
+  })
+
+  it('stop() delegates an in-flight abort to onFinish (no drop/reset in the handler)', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      { id: 'a1', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+
+    // The abort's onFinish settles the turn on the correct `currentTurn`; the
+    // handler must not swap it out early, so it neither drops the shell nor resets.
+    expect(instance.messages).toHaveLength(2)
+  })
+
+  it('stop() cancels a pending auto-retry and settles the session to idle', async () => {
+    const { finishWithError, regenerate, instance } = createRetryHarness()
+
+    await finishWithError()
+    // A retry is scheduled and the store reflects the in-flight recovery.
+    expect(useChatStore.getState().sessions.get(sessionId)?.retryCount).toBe(1)
+
+    await instance.stop()
+
+    // The scheduled retry is cancelled — advancing past every backoff never fires.
+    await getClock().tickAsync(30_000)
+    expect(regenerate).not.toHaveBeenCalled()
+
+    const session = useChatStore.getState().sessions.get(sessionId)
+    expect(session?.retryCount).toBe(0)
+    expect(session?.retriesExhausted).toBe(false)
+  })
+
+  it('keeps exponential backoff for empty-turn retries after the first', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishSuccessfully, regenerate } = createRetryHarness()
+
+    try {
+      await finishSuccessfully({ id: 'empty-assistant', role: 'assistant', parts: [] })
+      await getClock().tickAsync(250)
+      expect(regenerate).toHaveBeenCalledTimes(1)
+
+      await finishSuccessfully({ id: 'empty-assistant', role: 'assistant', parts: [] })
+      await getClock().tickAsync(3_999)
+      expect(regenerate).toHaveBeenCalledTimes(1)
+
+      await getClock().tickAsync(1)
+      expect(regenerate).toHaveBeenCalledTimes(2)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('labels empty-turn retry exhaustion with empty-response reason', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishSuccessfully, trackEvent } = createRetryHarness()
+    const emptyMessage = { id: 'empty-assistant', role: 'assistant' as const, parts: [] }
+
+    try {
+      await finishSuccessfully(emptyMessage)
+      await getClock().tickAsync(250)
+
+      await finishSuccessfully(emptyMessage)
+      await getClock().tickAsync(4_000)
+
+      await finishSuccessfully(emptyMessage)
+      await getClock().tickAsync(8_000)
+
+      await finishSuccessfully(emptyMessage)
+
+      const exhausted = trackEvent.mock.calls.find(([event]) => event === 'chat_retries_exhausted')?.[1]
+      expect(exhausted?.reason).toBe('empty-response')
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('marks retries exhausted when the scheduled retry bails on session switch', async () => {
+    const { finishSuccessfully, regenerate } = createRetryHarness()
+
+    await finishSuccessfully({ id: 'empty-assistant', role: 'assistant', parts: [] })
+    useChatStore.getState().setCurrentSessionId('another-session')
+
+    await getClock().tickAsync(250)
+
+    expect(regenerate).not.toHaveBeenCalled()
+    const session = useChatStore.getState().sessions.get(sessionId)!
+    expect(session.retryCount).toBe(0)
+    expect(session.retriesExhausted).toBe(true)
+  })
+
+  it('marks retries exhausted without scheduling when turn budget is exhausted', async () => {
+    const { finishWithError, getTurnBudget, regenerate } = createRetryHarness()
+    exhaustTurnBudget(getTurnBudget())
+
+    await finishWithError()
+    await getClock().runAllAsync()
+
+    const session = useChatStore.getState().sessions.get(sessionId)!
+    expect(session.retryCount).toBe(0)
+    expect(session.retriesExhausted).toBe(true)
+    expect(regenerate).not.toHaveBeenCalled()
+  })
+
+  it('never auto-regenerates a turn interrupted by connection loss', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    const { finishWithError, regenerate } = createRetryHarness()
+
+    try {
+      await finishWithError(new Error(JSON.stringify({ error: 'relay dropped', kind: 'connection-lost' })))
+      await getClock().runAllAsync()
+
+      const session = useChatStore.getState().sessions.get(sessionId)!
+      expect(session.retryCount).toBe(0)
+      expect(session.retriesExhausted).toBe(true)
+      expect(regenerate).not.toHaveBeenCalled()
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
+  it.each([
+    ['an Ollama 400', '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'],
+    ['a llama.cpp 500', '500: tools param requires --jinja flag'],
+  ])('never auto-regenerates %s that rejects tools', async (_label, message) => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    const { finishWithError, regenerate } = createRetryHarness()
+
+    try {
+      await finishWithError(new Error(message))
+      await getClock().runAllAsync()
+
+      const session = useChatStore.getState().sessions.get(sessionId)!
+      expect(session.retryCount).toBe(0)
+      expect(session.retriesExhausted).toBe(true)
+      expect(regenerate).not.toHaveBeenCalled()
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
+  it('never auto-regenerates a pi-ai flattened JSON 429', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    const { finishWithError, regenerate, trackEvent } = createRetryHarness()
+
+    try {
+      await finishWithError(new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}'))
+      await getClock().runAllAsync()
+
+      const session = useChatStore.getState().sessions.get(sessionId)!
+      expect(session.retryCount).toBe(0)
+      expect(session.retriesExhausted).toBe(true)
+      expect(regenerate).not.toHaveBeenCalled()
+      expect(trackEvent).toHaveBeenCalledWith(
+        'chat_turn_error',
+        expect.objectContaining({ kind: 'rate-limit', status: 429 }),
+      )
+      expect(trackEvent).toHaveBeenCalledWith(
+        'chat_retries_exhausted',
+        expect.objectContaining({ reason: 'rate-limit', attempts: 1 }),
+      )
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
+  it('retries a hosted-agent turn refused for a run in progress, after a longer delay', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    const { finishWithError, regenerate } = createRetryHarness()
+    const runInProgress = JSON.stringify({
+      error: JSON.stringify({ error: { code: 'AGENT_RUN_IN_PROGRESS' } }),
+      status: 429,
+      kind: 'rate-limit',
+    })
+
+    try {
+      await finishWithError(new Error(runInProgress))
+      await getClock().tickAsync(9_999)
+      expect(regenerate).not.toHaveBeenCalled()
+
+      await getClock().tickAsync(1)
+      expect(regenerate).toHaveBeenCalledTimes(1)
+      expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(1)
+    } finally {
+      random.mockRestore()
+      errorLog.mockRestore()
+    }
+  })
+
+  it('records the model a retry runs on, so a later tool rejection names it', async () => {
+    const { instance, regenerate } = createRetryHarness()
+    instance.messages = [
+      { id: 'prompt', role: 'user', parts: [{ type: 'text', text: 'hi' }], metadata: { modelId: 'previous-model' } },
+    ]
+
+    await instance.regenerate()
+
+    expect(instance.messages[0].metadata?.modelId).toBe('m1')
+    expect(regenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the history untouched when a retry runs on the same model', async () => {
+    const { instance } = createRetryHarness()
+    const history: ThunderboltUIMessage[] = [
+      { id: 'prompt', role: 'user', parts: [{ type: 'text', text: 'hi' }], metadata: { modelId: 'm1' } },
+    ]
+    instance.messages = history
+
+    await instance.regenerate()
+
+    expect(instance.messages).toBe(history)
+  })
+
+  it('manual regenerate resets the turn budget', async () => {
+    const { getTurnBudget, instance, regenerate, wakeAdapterReconnect } = createRetryHarness()
+    const exhaustedBudget = exhaustTurnBudget(getTurnBudget())
+
+    await instance.regenerate()
+
+    expect(getTurnBudget()).not.toBe(exhaustedBudget)
+    expect(getTurnBudget().probe.isExhausted).toBe(false)
+    expect(getTurnBudget().consumer.tryConsumeRequest()).toBe(true)
+    expect(regenerate).toHaveBeenCalledTimes(1)
+    expect(wakeAdapterReconnect).toHaveBeenCalledWith(builtInAgent.id)
+  })
+
+  it.each([
+    ['the built-in agent', builtInAgent, true],
+    ['the hosted agent, which ignores the selected model', { ...builtInAgent, type: 'managed-http' } as Agent, false],
+  ])("enforces a private chat's model lock for %s: %p", async (_label, agent, enforced) => {
+    const { instance, sendMessage } = createRetryHarness()
+    useChatStore.getState().updateSession(sessionId, {
+      selectedAgent: agent,
+      chatThread: createMockChatThread({ id: sessionId, isEncrypted: 1 }),
+    })
+
+    const sending = instance.sendMessage({ text: 'hi' })
+
+    if (enforced) {
+      await expect(sending).rejects.toThrow('This model is not available for encrypted conversations.')
+      expect(sendMessage).not.toHaveBeenCalled()
+    } else {
+      await sending
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('throws the friendly guard (not a TypeError) when a turn starts with no selected model', async () => {
+    const { instance, regenerate } = createRetryHarness()
+    useChatStore.getState().updateSession(sessionId, { selectedModel: null as never })
+
+    await expect(instance.sendMessage({ text: 'hi' })).rejects.toThrow('No selected model')
+    await expect(instance.regenerate()).resolves.toBeUndefined()
+    expect(regenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('auto-retry does not reset the turn budget', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishWithError, getTurnBudget, regenerate } = createRetryHarness()
+    const budget = getTurnBudget()
+    budget.consumer.tryConsumeRequest()
+
+    try {
+      await finishWithError()
+      await getClock().tickAsync(2_000)
+
+      expect(regenerate).toHaveBeenCalledTimes(1)
+      expect(getTurnBudget()).toBe(budget)
+      for (let request = 1; request < maxRequestsPerTurn; request++) {
+        expect(budget.consumer.tryConsumeRequest()).toBe(true)
+      }
+      expect(budget.consumer.tryConsumeRequest()).toBe(false)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('resets the turn budget after success so the next automatic turn starts fresh', async () => {
+    const { finishSuccessfully, getTurnBudget } = createRetryHarness()
+    const exhaustedBudget = exhaustTurnBudget(getTurnBudget())
+
+    await finishSuccessfully()
+
+    expect(getTurnBudget()).not.toBe(exhaustedBudget)
+    expect(getTurnBudget().probe.isExhausted).toBe(false)
+    expect(getTurnBudget().consumer.tryConsumeRequest()).toBe(true)
+  })
+
+  it('user send resets the turn budget', async () => {
+    const { getTurnBudget, instance, sendMessage } = createRetryHarness()
+    const exhaustedBudget = exhaustTurnBudget(getTurnBudget())
+
+    await instance.sendMessage({ text: 'new turn' })
+
+    expect(getTurnBudget()).not.toBe(exhaustedBudget)
+    expect(getTurnBudget().probe.isExhausted).toBe(false)
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts text parts in prompt telemetry', async () => {
+    const { instance, trackEvent } = createRetryHarness()
+    const prompt = 'Summarize the telemetry behavior of this non-empty prompt without exposing it.'
+
+    await instance.sendMessage({ parts: [{ type: 'text', text: prompt }] })
+
+    const sendProperties = trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')?.[1]
+    expect(sendProperties).toEqual(expect.objectContaining({ length: prompt.length }))
+  })
+
+  it('omits transcript correlation from persisted user and assistant messages when capture is disabled', async () => {
+    const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
+    const { finishSuccessfully, instance, sendMessage } = createRetryHarness(saveMessages)
+    setDebugTranscriptCaptureEnabled(false)
+
+    await instance.sendMessage({ text: 'disabled turn' })
+    await finishSuccessfully()
+
+    const sentMessage = sendMessage.mock.calls[0]?.[0]
+    const savedMessage = saveMessages.mock.calls[0]?.[0].messages[0]
+    expect(Object.hasOwn(sentMessage.metadata ?? {}, 'debugTranscript')).toBe(false)
+    expect(Object.hasOwn(savedMessage?.metadata ?? {}, 'debugTranscript')).toBe(false)
+  })
+
+  it('stamps transcript correlation when capture is enabled', async () => {
+    const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
+    const { finishSuccessfully, instance, sendMessage } = createRetryHarness(saveMessages)
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'route this turn' })
+    await finishSuccessfully()
+
+    const sentMessage = sendMessage.mock.calls[0]?.[0]
+    const savedMessage = saveMessages.mock.calls[0]?.[0].messages[0]
+    expect(sentMessage.metadata?.debugTranscript?.engine).toBeNull()
+    expect(Object.hasOwn(sentMessage.metadata ?? {}, 'debugTranscript')).toBe(true)
+    expect(savedMessage?.metadata?.debugTranscript?.engine).toBe('legacy')
+  })
+
+  it.each([
+    ['managed-http', 'hosted'],
+    ['remote-acp', 'acp'],
+  ] as const)('keeps a %s turn stamped as engine %p once it finishes', async (type, engine) => {
+    const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
+    const { finishSuccessfully, instance } = createRetryHarness(saveMessages)
+    useChatStore.getState().updateSession(sessionId, { selectedAgent: { ...builtInAgent, type } })
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'route this turn' })
+    await finishSuccessfully()
+
+    expect(saveMessages.mock.calls[0]?.[0].messages[0]?.metadata?.debugTranscript?.engine).toBe(engine)
+  })
+
+  it('starts stamping only new messages after capture is enabled mid-session', async () => {
+    const { instance, sendMessage } = createRetryHarness()
+    setDebugTranscriptCaptureEnabled(false)
+
+    await instance.sendMessage({ text: 'before enable' })
+    const beforeEnable = sendMessage.mock.calls[0]?.[0]
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'after enable' })
+    const afterEnable = sendMessage.mock.calls[1]?.[0]
+
+    expect(Object.hasOwn(beforeEnable.metadata ?? {}, 'debugTranscript')).toBe(false)
+    expect(Object.hasOwn(afterEnable.metadata ?? {}, 'debugTranscript')).toBe(true)
+  })
+
+  it('stops stamping only new messages after capture is disabled mid-session', async () => {
+    const { instance, sendMessage } = createRetryHarness()
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'before disable' })
+    const beforeDisable = sendMessage.mock.calls[0]?.[0]
+    setDebugTranscriptCaptureEnabled(false)
+    await instance.sendMessage({ text: 'after disable' })
+    const afterDisable = sendMessage.mock.calls[1]?.[0]
+
+    expect(Object.hasOwn(beforeDisable.metadata ?? {}, 'debugTranscript')).toBe(true)
+    expect(Object.hasOwn(afterDisable.metadata ?? {}, 'debugTranscript')).toBe(false)
+  })
+
+  it('tracks scalar model identifiers and one correlated success summary', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+
+    await instance.sendMessage({ text: 'new turn' })
+    await finishSuccessfully()
+
+    const sendCall = trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')!
+    const receiveCall = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')!
+    const summaryCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    const sendProperties = sendCall[1] as TurnTelemetryPayload
+    const receiveProperties = receiveCall[1] as TurnTelemetryPayload
+    const summaryProperties = summaryCalls[0]![1] as TurnTelemetryPayload
+
+    expect(sendProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
+    expect(receiveProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
+    expect(JSON.stringify(sendProperties)).not.toContain('secret')
+    expect(summaryCalls).toHaveLength(1)
+    expect(summaryProperties.outcome).toBe('success')
+    expect(sendProperties.trace_id).toBe(receiveProperties.trace_id)
+    expect(receiveProperties.trace_id).toBe(summaryProperties.trace_id)
+  })
+
+  it('emits one terminal summary for abort and non-retryable error outcomes', async () => {
+    const abortHarness = createRetryHarness()
+    await abortHarness.instance.sendMessage({ text: 'abort turn' })
+    await abortHarness.finishAborted()
+    expect(
+      abortHarness.trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed').map((call) => call[1]),
+    ).toEqual([expect.objectContaining({ outcome: 'abort' })])
+
+    const errorHarness = createRetryHarness()
+    await errorHarness.instance.sendMessage({ text: 'error turn' })
+    await errorHarness.finishWithError(
+      new Error(JSON.stringify({ error: 'private provider message', kind: 'provider-error', isRetryable: false })),
+    )
+    const summaries = errorHarness.trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]![1]).toEqual(expect.objectContaining({ outcome: 'error', error_class: 'Error' }))
+    expect(JSON.stringify(summaries[0]![1])).not.toContain('private provider message')
+  })
+
+  it('reports one total attempt when retries stop before the first retry', async () => {
+    const { finishWithError, instance, trackEvent } = createRetryHarness()
+    await instance.sendMessage({ text: 'do not retry' })
+
+    await finishWithError(new Error(JSON.stringify({ kind: 'provider-error', isRetryable: false })))
+
+    const exhausted = trackEvent.mock.calls.find(([event]) => event === 'chat_retries_exhausted')?.[1]
+    const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+    expect(exhausted).toEqual(expect.objectContaining({ attempts: 1 }))
+    expect(summary).toEqual(expect.objectContaining({ attempts: 1 }))
+  })
+
+  it('reports total attempts after an automatic retry', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishWithError, instance, trackEvent } = createRetryHarness()
+
+    try {
+      await instance.sendMessage({ text: 'retry once' })
+      await finishWithError()
+      await getClock().tickAsync(2_000)
+      await finishWithError(new Error(JSON.stringify({ kind: 'provider-error', isRetryable: false })))
+
+      const exhausted = trackEvent.mock.calls.find(([event]) => event === 'chat_retries_exhausted')?.[1]
+      const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+      expect(exhausted).toEqual(expect.objectContaining({ attempts: 2 }))
+      expect(summary).toEqual(expect.objectContaining({ attempts: 2 }))
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('keeps one trace across auto-retry attempts', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const { finishSuccessfully, finishWithError, instance, trackEvent } = createRetryHarness()
+
+    try {
+      await instance.sendMessage({ text: 'retry turn' })
+      await finishWithError()
+      await getClock().tickAsync(2_000)
+      await finishSuccessfully()
+
+      const retrySuccess = trackEvent.mock.calls.find(([event]) => event === 'chat_retry_success')?.[1]
+      const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+      expect(retrySuccess).toEqual(expect.objectContaining({ attempts: 2 }))
+      expect(summary).toEqual(expect.objectContaining({ attempts: 2, retry_layers: ['auto_retry'] }))
+      expect(summary).not.toHaveProperty('error_class')
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('emits one abort summary for a turn left in flight across reload', async () => {
+    const firstBoot = createRetryHarness()
+    await firstBoot.instance.sendMessage({ text: 'stream until reload' })
+    const traceId = (
+      firstBoot.trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')?.[1] as
+        | TurnTelemetryPayload
+        | undefined
+    )?.trace_id
+
+    resetStore()
+    const reloaded = createRetryHarness()
+
+    expect(
+      reloaded.trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed').map((call) => call[1]),
+    ).toEqual([expect.objectContaining({ outcome: 'abort', trace_id: traceId, total_ms: expect.any(Number) })])
+
+    resetStore()
+    const nextBoot = createRetryHarness()
+    expect(nextBoot.trackEvent.mock.calls.some(([event]) => event === 'chat_turn_completed')).toBe(false)
+  })
+
+  it('does not emit an abort summary on a fresh boot', () => {
+    const { trackEvent } = createRetryHarness()
+
+    expect(trackEvent.mock.calls.some(([event]) => event === 'chat_turn_completed')).toBe(false)
+  })
+
+  it('keeps retry events and summaries on the model that started the turn', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const retryHarness = createRetryHarness()
+
+    try {
+      await retryHarness.instance.sendMessage({ text: 'retry turn' })
+      useChatStore.getState().updateSession(sessionId, {
+        selectedModel: {
+          id: 'm2',
+          model: 'gpt-5',
+          provider: 'openai',
+          isConfidential: 0,
+        } as never,
+      })
+      await retryHarness.finishWithError()
+      await getClock().tickAsync(2_000)
+      await retryHarness.finishSuccessfully()
+
+      const autoRetry = retryHarness.trackEvent.mock.calls.find(([event]) => event === 'chat_auto_retry')?.[1]
+      const retrySuccess = retryHarness.trackEvent.mock.calls.find(([event]) => event === 'chat_retry_success')?.[1]
+      const successSummary = retryHarness.trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+      expect(autoRetry).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
+      expect(retrySuccess).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
+      expect(successSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
+      expect((autoRetry as TurnTelemetryPayload).trace_id).toBe((successSummary as TurnTelemetryPayload).trace_id)
+
+      const exhaustedHarness = createRetryHarness()
+      await exhaustedHarness.instance.sendMessage({ text: 'failed turn' })
+      useChatStore.getState().updateSession(sessionId, {
+        selectedModel: {
+          id: 'm2',
+          model: 'gpt-5',
+          provider: 'openai',
+          isConfidential: 0,
+        } as never,
+      })
+      await exhaustedHarness.finishWithError(new Error(JSON.stringify({ kind: 'provider-error', isRetryable: false })))
+
+      const retriesExhausted = exhaustedHarness.trackEvent.mock.calls.find(
+        ([event]) => event === 'chat_retries_exhausted',
+      )?.[1]
+      const errorSummary = exhaustedHarness.trackEvent.mock.calls.find(
+        ([event]) => event === 'chat_turn_completed',
+      )?.[1]
+      expect(retriesExhausted).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
+      expect(errorSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
+      expect((retriesExhausted as TurnTelemetryPayload).trace_id).toBe((errorSummary as TurnTelemetryPayload).trace_id)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('normalizes dynamic tool timings without relying on MCP metadata', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+    const namespacedToolName = 'private_customer_server_list_documents'
+
+    await instance.sendMessage({ text: 'use a tool' })
+    await finishSuccessfully({
+      id: 'successful-assistant',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolName: namespacedToolName,
+          toolCallId: 'call-1',
+          state: 'output-available',
+          input: {},
+          output: {},
+        },
+      ],
+      metadata: {
+        reasoningTime: { 'call-1': 12 },
+      },
+    })
+
+    const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+    expect(summary).toEqual(
+      expect.objectContaining({
+        tool_count: 1,
+        tools: [{ name: 'mcp', duration_ms: 12 }],
+      }),
+    )
+    expect(JSON.stringify(summary)).not.toContain('private_customer_server')
+  })
+
+  it('ignores malformed persisted tool durations', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+
+    await instance.sendMessage({ text: 'use a tool' })
+    await finishSuccessfully({
+      id: 'successful-assistant',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolName: 'lookup',
+          toolCallId: 'call-1',
+          state: 'output-available',
+          input: {},
+          output: {},
+        },
+      ],
+      metadata: {
+        reasoningTime: { 'call-1': '12' as never },
+      },
+    })
+
+    const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+    expect(summary).toEqual(expect.objectContaining({ tool_count: 0, tools: [] }))
+  })
+
+  it('emits terminal telemetry before transcript-only message processing', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+    const parts: ThunderboltUIMessage['parts'] = [{ type: 'text', text: 'Done' }]
+    Object.defineProperty(parts, 'flatMap', {
+      value: () => {
+        throw new Error('transcript extraction failed')
+      },
+    })
+
+    await instance.sendMessage({ text: 'new turn' })
+    await expect(
+      finishSuccessfully({
+        id: 'successful-assistant',
+        role: 'assistant',
+        parts,
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]).toEqual(
+      expect.objectContaining({ outcome: 'success' }),
+    )
+  })
+
+  it('preserves built-in tool names in turn telemetry', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+
+    await instance.sendMessage({ text: 'search the web' })
+    await finishSuccessfully({
+      id: 'successful-assistant',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-web_search',
+          toolCallId: 'call-1',
+          state: 'output-available',
+          input: {},
+          output: {},
+        },
+      ],
+      metadata: {
+        reasoningTime: { 'call-1': 9 },
+      },
+    })
+
+    const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+    expect(summary).toEqual(
+      expect.objectContaining({
+        tool_count: 1,
+        tools: [{ name: 'web_search', duration_ms: 9 }],
+      }),
+    )
+  })
+
+  it('does not emit built-in turn summaries for external ACP agents', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+    useChatStore.getState().updateSession(sessionId, {
+      selectedAgent: {
+        ...builtInAgent,
+        id: 'external-agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://agent.test',
+      },
+    })
+
+    await instance.sendMessage({ text: 'external turn' })
+    await finishSuccessfully()
+
+    expect(trackEvent.mock.calls.some(([event]) => event === 'chat_turn_completed')).toBe(false)
+  })
+
+  it('emits both summaries when the newer turn completes before the older save resumes', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishSuccessfully, finishWithError, instance, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const firstFinish = finishSuccessfully()
+
+    await instance.sendMessage({ text: 'second turn' })
+    await finishWithError(new Error(JSON.stringify({ kind: 'provider-error', isRetryable: false })))
+
+    resolveSave(0)
+    await firstFinish
+
+    const sendCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_send_prompt')
+    const firstTrace = (sendCalls[0]![1] as TurnTelemetryPayload).trace_id
+    const secondTrace = (sendCalls[1]![1] as TurnTelemetryPayload).trace_id
+    const summaries = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+
+    expect(firstTrace).toBeDefined()
+    expect(secondTrace).toBeDefined()
+    expect(firstTrace).not.toBe(secondTrace)
+    expect(summaries).toHaveLength(2)
+    expect(summaries[0]![1]).toEqual(expect.objectContaining({ outcome: 'error', trace_id: secondTrace }))
+    expect(summaries[1]![1]).toEqual(expect.objectContaining({ outcome: 'success', trace_id: firstTrace }))
+  })
+
+  it('does not let an older external turn reset a newer turn retry', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishSuccessfully, finishWithError, getTurnBudget, instance, regenerate } =
+      createRetryHarness(saveMessages)
+    useChatStore.getState().updateSession(sessionId, {
+      selectedAgent: {
+        ...builtInAgent,
+        id: 'external-agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://agent.test',
+      },
+    })
+
+    await instance.sendMessage({ text: 'first external turn' })
+    const firstFinish = finishSuccessfully()
+
+    await instance.sendMessage({ text: 'second external turn' })
+    const secondTurnBudget = getTurnBudget()
+    await finishWithError()
+    expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(1)
+
+    resolveSave(0)
+    await firstFinish
+
+    expect(getTurnBudget()).toBe(secondTurnBudget)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(1)
+    await getClock().runAllAsync()
+    expect(regenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry a newer turn when an older failed response finishes saving', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishWithError, getTurnBudget, instance, regenerate, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const firstFinish = finishWithError(new Error('Connection failed'), {
+      id: 'partial-assistant',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Partial response' }],
+    })
+
+    await instance.sendMessage({ text: 'second turn' })
+    const secondTurnBudget = getTurnBudget()
+    resolveSave(0)
+    await firstFinish
+
+    expect(getTurnBudget()).toBe(secondTurnBudget)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(0)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retriesExhausted).toBe(false)
+    await getClock().runAllAsync()
+    expect(regenerate).not.toHaveBeenCalled()
+    const summaries = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]![1]).toEqual(expect.objectContaining({ outcome: 'error' }))
+  })
+
+  it('attributes a reply to the turn model when the session model changes mid-save', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const finish = finishSuccessfully()
+    useChatStore.getState().sessions.get(sessionId)!.selectedModel = {
+      id: 'm2',
+      model: 'gpt-5',
+      provider: 'openai',
+      isConfidential: 0,
+    } as never
+
+    resolveSave(0)
+    await finish
+
+    const reply = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')?.[1]
+    expect(reply).toEqual(expect.objectContaining({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' }))
+  })
+
+  it('keeps a turn that starts mid-save on its own trace and state', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishSuccessfully, getTurnBudget, instance, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const firstTurnBudget = getTurnBudget()
+
+    // Park the first turn's onFinish inside its final saveMessages await.
+    const finish = finishSuccessfully()
+
+    // A new turn starting now swaps the shared turn state (telemetry, budget).
+    await instance.sendMessage({ text: 'second turn' })
+    const secondTurnBudget = getTurnBudget()
+    expect(secondTurnBudget).not.toBe(firstTurnBudget)
+
+    resolveSave(0)
+    await finish
+
+    const sendCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_send_prompt')
+    const firstTrace = (sendCalls[0]![1] as TurnTelemetryPayload).trace_id
+    const secondTrace = (sendCalls[1]![1] as TurnTelemetryPayload).trace_id
+    expect(firstTrace).toBeDefined()
+    expect(secondTrace).toBeDefined()
+    expect(firstTrace).not.toBe(secondTrace)
+
+    // The finished turn's events stay on ITS trace even though the new turn
+    // installed fresh telemetry while the save was parked.
+    const receiveCall = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')
+    expect(receiveCall?.[1]).toEqual(expect.objectContaining({ trace_id: firstTrace }))
+    const summaryCalls = () => trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    expect(summaryCalls()).toHaveLength(1)
+    expect(summaryCalls()[0]![1]).toEqual(expect.objectContaining({ outcome: 'success', trace_id: firstTrace }))
+    expect(summaryCalls()[0]![1]).toHaveProperty('final_save_ms')
+
+    // ...and the new turn keeps ownership of the shared retry/budget state.
+    expect(getTurnBudget()).toBe(secondTurnBudget)
+
+    // The old turn's emit must not block the new turn's own completion.
+    const secondFinish = finishSuccessfully()
+    resolveSave(1)
+    await secondFinish
+    expect(summaryCalls()).toHaveLength(2)
+    expect(summaryCalls()[1]![1]).toEqual(expect.objectContaining({ outcome: 'success', trace_id: secondTrace }))
+  })
+})
+
+/** Exercise routing, SDK transcript mutation and retry callbacks with only the agent response injected. */
+const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unavailable', promote = false) => {
+  const attempts: Array<NonNullable<AgentAdapterContext['webToolBudget']>> = []
+  const adapter: AgentAdapter = {
+    ...makeAdapter(builtInAgent),
+    fetch: async (_init, context) => {
+      const budget = context.webToolBudget!
+      attempts.push(budget)
+      if (attempts.length === 1) {
+        if (promote) {
+          budget.promote('research')
+        }
+        for (let call = 0; call < webCalls; call++) {
+          await budget.execute('search', { query: `query ${call}` }, async () => ({ title: `source ${call}` }))
+        }
+      }
+      const chunks = [
+        { type: 'start', messageId: `attempt-${attempts.length}` },
+        { type: 'text-start', id: 'text' },
+        { type: 'text-delta', id: 'text', delta: attempts.length === 1 ? 'Research already gathered' : 'Completed' },
+        { type: 'text-end', id: 'text' },
+        ...(attempts.length === 1 ? [{ type: 'error', errorText }] : []),
+        { type: 'finish' },
+      ]
+      return new Response(chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n', {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    },
+  }
+  const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
+    getChatReasoningEffort: async () => undefined,
+    getOrConnectAdapter: async () => adapter,
+    trackEvent: () => {},
+  })
+  hydrateStore({
+    chatInstance: instance,
+    chatThread: null,
+    id: sessionId,
+    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    triggerData: null,
+  })
+  return { instance, attempts }
+}
+
+describe('logical-turn web retry state through the SDK', () => {
+  beforeEach(() => resetStore())
+  afterEach(() => resetStore())
+
+  it('keeps an exhausted partial response before automatic regeneration can truncate it; manual Retry starts fresh', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(webToolCaps.auto)
+      await instance.sendMessage({ text: 'Research a topic' })
+      const partial = [...instance.messages]
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(1)
+      expect(instance.messages).toEqual(partial)
+      expect(instance.messages.at(-1)?.parts).toContainEqual({
+        type: 'text',
+        text: 'Research already gathered',
+        state: 'done',
+      })
+      expect(useChatStore.getState().sessions.get(sessionId)?.retriesExhausted).toBe(true)
+      await instance.regenerate()
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).not.toBe(attempts[0])
+      expect(attempts[1]!.probe.isExhausted).toBe(false)
+      expect(instance.messages.at(-1)?.parts).toContainEqual({ type: 'text', text: 'Completed', state: 'done' })
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('retains the web budget on a below-cap transient retry after tool execution', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(1)
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).toBe(attempts[0])
+      for (let call = 1; call < webToolCaps.auto; call++) {
+        await attempts[1]!.execute('search', { query: `remaining ${call}` }, async () => 'source')
+      }
+      expect(attempts[1]!.probe.isExhausted).toBe(true)
+      await instance.sendMessage({ text: 'A new question' })
+      expect(attempts[2]).not.toBe(attempts[0])
+      expect(attempts[2]!.probe.isExhausted).toBe(false)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('preserves promotion, consumed calls and cache on automatic retry but starts a new turn at auto', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(1, '503: temporarily unavailable', true)
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).toBe(attempts[0])
+      expect(attempts[1].cap).toBe(30)
+      expect(attempts[1].consumed).toBe(1)
+      expect(
+        await attempts[1].execute('search', { query: 'query 0' }, async () => {
+          throw new Error('must be cached')
+        }),
+      ).toEqual({ title: 'source 0' })
+      expect(attempts[1].consumed).toBe(1)
+      await instance.sendMessage({ text: 'A new ordinary question' })
+      expect(attempts[2].cap).toBe(webToolCaps.auto)
+      expect(attempts[2].consumed).toBe(0)
+      expect(attempts[2].promoted).toBe(false)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('does not automatically replay the exact tools-schema 400 after research', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(
+        1,
+        '400: {"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}',
+      )
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(1)
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 })

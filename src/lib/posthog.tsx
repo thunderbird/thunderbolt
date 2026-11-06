@@ -5,47 +5,109 @@
 import { type HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
+import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createClient } from '@/lib/http'
 import type { HandleError, HandleResult } from '@/types/handle-errors'
-import posthog, { type PostHog } from 'posthog-js'
-import { PostHogProvider as PostHogReactProvider } from 'posthog-js/react'
+import type { PostHog } from 'posthog-js'
 import { createContext, useContext, type ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
+// Only fixed startup events are buffered: no unbounded queue of user activity.
+const startupEvents = new Set<EventType>(['app_init_timing', 'app_chat_ready', 'app_content_ready'])
+const pendingStartupEvents = new Map<EventType, Record<string, unknown> | undefined>()
 
 /**
  * Reset the PostHog client - for testing only
  */
 export const resetPosthogClient = () => {
   posthogClient = null
+  pendingStartupEvents.clear()
 }
+
+/**
+ * Returns the initialized PostHog client, or null if analytics has not been
+ * initialized (self-hosted without a key, or before {@link initPosthog} resolves).
+ * The single site allowed to hold a client reference outside of React.
+ */
+export const getPosthogClient = (): PostHog | null => posthogClient
 
 const routePatterns = ['/chats/:chatThreadId'] as const
 
 /**
- * Replaces dynamic URL segments with their parameter placeholders so analytics do not collect raw IDs.
+ * Replaces dynamic URL segments and removes query strings and hashes so analytics do not collect secrets or raw IDs.
  * @param url - Full URL or pathname
- * @returns URL with pathname replaced to match the route pattern
+ * @returns URL containing only its sanitized route
  */
 export const sanitizeUrl = (url: string): string => {
-  const pathname = (() => {
+  const parsedPathname = (() => {
     try {
       return new URL(url, 'http://localhost').pathname
     } catch {
-      return url.startsWith('/') ? url : `/${url}`
+      return null
     }
   })()
 
+  const pathname = parsedPathname ?? (url.startsWith('/') ? url : `/${url}`)
+  const routeOnlyUrl = parsedPathname === null ? url : url.split(/[?#]/, 1)[0]
   for (const pattern of routePatterns) {
     const regex = new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}$`)
     if (regex.test(pathname)) {
-      return url.replace(pathname, pattern)
+      return routeOnlyUrl.replace(pathname, pattern)
     }
   }
 
-  return url
+  return routeOnlyUrl
+}
+
+/** Remove API keys from a PostHog property tree before it leaves the app. */
+export const stripApiKeys = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  if (Array.isArray(value)) {
+    return value.reduce<boolean>((removed, item) => stripApiKeys(item) || removed, false)
+  }
+
+  const record = value as Record<string, unknown>
+  const removedHere = Object.hasOwn(record, 'apiKey')
+  if (removedHere) {
+    delete record.apiKey
+  }
+  return Object.values(record).reduce<boolean>((removed, item) => stripApiKeys(item) || removed, removedHere)
+}
+
+type CaptureConsent = {
+  /** The synced `data_collection` setting, false while its row is missing. */
+  dataCollection: boolean
+  syncEnabled: boolean
+  /** Whether this device has completed its first sync. */
+  hasSynced: boolean
+}
+
+/**
+ * Whether this device may capture: `data_collection` is on and, when sync is on, the device has completed its first
+ * sync. Before that, its local settings are defaults it seeded itself (the reason its writes are create-only then,
+ * see `isCreateOnlyWrite`), so its `true` may be a guess about an account that opted out on another device.
+ */
+export const shouldCapture = ({ dataCollection, syncEnabled, hasSynced }: CaptureConsent): boolean =>
+  dataCollection && (!syncEnabled || hasSynced)
+
+/**
+ * Opt this device's PostHog in or out to match `isCapturing`. PostHog keeps a choice of its own per device, saved by
+ * the Preferences toggle, and `opt_out_capturing_by_default` applies only where none is saved, so the setting
+ * overrides it here: that is what keeps an opt-out on one device in force on every other.
+ */
+export const setCapturing = (client: PostHog, isCapturing: boolean) => {
+  if (isCapturing && client.has_opted_out_capturing()) {
+    // Not the user's action on this device, so no `$opt_in` event.
+    client.opt_in_capturing({ captureEventName: false })
+  }
+  if (!isCapturing && !client.has_opted_out_capturing()) {
+    client.opt_out_capturing()
+  }
 }
 
 /**
@@ -57,13 +119,10 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const cloudUrl = getLocalSetting('cloudUrl')
     const debugPosthog = getLocalSetting('debugPosthog')
     const db = getDb()
-    const { dataCollection } = await getSettings(db, {
-      data_collection: false,
-    })
 
     const client = httpClient ?? createClient({ prefixUrl: cloudUrl })
     const { public_posthog_api_key: apiKey } = await client
-      .get('posthog/config')
+      .get('posthog/config', { timeout: 5_000 })
       .json<{ public_posthog_api_key?: string }>()
 
     if (!apiKey) {
@@ -74,9 +133,18 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     // Use the cloudUrl proxy for PostHog analytics
     const apiHost = `${cloudUrl}/posthog`
 
+    const { default: posthog } = await import('posthog-js')
+    // The app is already interactive: consent may have changed while config
+    // or the SDK was loading. Read it immediately before attaching analytics.
+    const { dataCollection } = await getSettings(db, { data_collection: false })
+    const isCapturing = shouldCapture({
+      dataCollection,
+      syncEnabled: getLocalSetting('syncEnabled'),
+      hasSynced: getPowerSyncInstance()?.currentStatus.hasSynced ?? false,
+    })
     if (!posthogClient) {
       posthogClient = posthog.init(apiKey, {
-        opt_out_capturing_by_default: !dataCollection,
+        opt_out_capturing_by_default: !isCapturing,
         api_host: apiHost,
         debug: debugPosthog,
         autocapture: false,
@@ -93,10 +161,9 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
           if (!event) {
             return null
           }
-          if (event.event === '$pageview' || event.event === '$pageleave') {
-            if (typeof event.properties?.$current_url === 'string') {
-              event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
-            }
+
+          if (typeof event.properties?.$current_url === 'string') {
+            event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
           }
 
           if (typeof event.properties?.url === 'string') {
@@ -105,12 +172,27 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
           if (typeof event.properties?.$pathname === 'string') {
             event.properties.$pathname = sanitizeUrl(event.properties.$pathname)
           }
+          if (typeof event.properties?.$referrer === 'string') {
+            event.properties.$referrer = sanitizeUrl(event.properties.$referrer)
+          }
+
+          if (stripApiKeys(event.properties) && import.meta.env.DEV) {
+            console.warn('Removed apiKey from PostHog event properties')
+          }
 
           return event
         },
       }) as PostHog
     }
+    // The start state; `useAnalyticsConsent` keeps it following the setting while the app runs.
+    setCapturing(posthogClient, isCapturing)
 
+    if (isCapturing) {
+      for (const [event, properties] of pendingStartupEvents) {
+        posthogClient.capture(event, properties)
+      }
+    }
+    pendingStartupEvents.clear()
     return { success: true, data: posthogClient }
   } catch (error) {
     console.warn('Failed to initialize PostHog, continuing without analytics:', error)
@@ -121,22 +203,30 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
   }
 }
 
-const TelemetryAvailableContext = createContext(false)
+const PostHogClientContext = createContext<PostHog | null>(null)
+
+/**
+ * Access the nullable PostHog client from React. Returns null until {@link initPosthog}
+ * resolves (analytics attaches a beat after first paint) or when analytics is disabled.
+ */
+export const usePostHogClient = () => useContext(PostHogClientContext)
 
 /**
  * Whether telemetry is actually wired up (i.e. a PostHog client was successfully initialized
- * because the backend supplied a public API key). Self-hosted deployments without a configured
- * key return false here regardless of the user's `data_collection` consent setting.
+ * because the backend supplied a public API key). Derived from the client context — telemetry
+ * is available exactly when a client exists — so self-hosted deployments without a configured
+ * key return false regardless of the user's `data_collection` consent setting.
  */
-export const useTelemetryAvailable = () => useContext(TelemetryAvailableContext)
+export const useTelemetryAvailable = () => usePostHogClient() !== null
 
 /**
- * PostHog Provider component for React
+ * PostHog Provider component for React. Carries the nullable client through an in-house
+ * context so posthog-js/react is never statically imported (keeping the SDK out of the
+ * entry chunk). {@link useTelemetryAvailable} derives from this same client.
  */
-export const PostHogProvider = ({ children, client }: { children: ReactNode; client: PostHog | null }) => {
-  const inner = client ? <PostHogReactProvider client={client}>{children}</PostHogReactProvider> : children
-  return <TelemetryAvailableContext.Provider value={!!client}>{inner}</TelemetryAvailableContext.Provider>
-}
+export const PostHogProvider = ({ children, client }: { children: ReactNode; client: PostHog | null }) => (
+  <PostHogClientContext.Provider value={client}>{children}</PostHogClientContext.Provider>
+)
 
 export type EventType =
   // Chat & Messaging
@@ -144,10 +234,15 @@ export type EventType =
   | 'chat_send_prompt_overflow'
   | 'chat_receive_reply'
   | 'chat_auto_retry'
+  | 'chat_retry_success'
+  | 'chat_retries_exhausted'
+  | 'chat_turn_completed'
+  | 'chat_turn_error'
   | 'chat_select'
   | 'chat_new_clicked'
   | 'chat_delete'
   | 'chat_clear_all'
+  | 'tinfoil_attestation'
   // Model & Settings
   | 'model_select'
   | 'mode_select'
@@ -161,6 +256,7 @@ export type EventType =
   | 'settings_location_set'
   | 'settings_location_update'
   | 'settings_localization_update'
+  | 'settings_external_link_behavior_update'
   | 'settings_localization_reset'
   | 'settings_database_reset'
   | 'settings_data_export'
@@ -196,6 +292,9 @@ export type EventType =
   | 'ui_shortcut_use'
   | 'ui_sidebar_open'
   | 'ui_sidebar_close'
+  | 'search_palette_open'
+  | 'search_result_select'
+  | 'search_command_run'
   // Anonymous session & promotion
   | 'anonymous_user_promoted'
   // Sync Diagnostics
@@ -225,11 +324,14 @@ export type EventType =
   // Startup performance
   | 'app_init_timing'
   | 'app_chat_ready'
+  | 'app_content_ready'
 
 export const trackEvent = (eventName: EventType, properties?: Record<string, unknown>) => {
   try {
     if (posthogClient) {
       posthogClient.capture(eventName, properties)
+    } else if (startupEvents.has(eventName)) {
+      pendingStartupEvents.set(eventName, properties)
     }
   } catch (error) {
     console.error('Failed to track event:', error)

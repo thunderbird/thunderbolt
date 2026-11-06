@@ -5,6 +5,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:app.thunderbolt.io</string>
+		<string>webcredentials:app.thunderbolt.io</string>
 	</array>
 </dict>
 </plist>

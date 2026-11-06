@@ -1,0 +1,17 @@
+{
+  "name": "thunderbolt-acp-client",
+  "type": "module",
+  "description": "Relay-only iroh client (wasm) that dials a Thunderbolt CLI ACP/MCP bridge over an n0 relay.",
+  "version": "0.1.0",
+  "license": "MPL-2.0",
+  "files": [
+    "thunderbolt_acp_client_bg.wasm",
+    "thunderbolt_acp_client.js",
+    "thunderbolt_acp_client.d.ts"
+  ],
+  "main": "thunderbolt_acp_client.js",
+  "types": "thunderbolt_acp_client.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

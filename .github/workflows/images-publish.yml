@@ -15,6 +15,11 @@ on:
         description: 'Override for VITE_THUNDERBOLT_CLOUD_URL build arg (frontend image). Default is /v1 (same-origin path). For preview stacks with cross-origin subdomains set this to e.g. https://api-pr-123.preview.thunderbolt.io/v1.'
         type: string
         required: false
+      platforms:
+        description: 'Target platforms for the image builds. Defaults to amd64 + arm64; callers that only consume one (preview stacks run on amd64 Fargate) should pass just that to skip the emulated build.'
+        type: string
+        required: false
+        default: 'linux/amd64,linux/arm64'
     outputs:
       version:
         description: 'The tag the images were published with'
@@ -29,12 +34,20 @@ on:
         description: 'Override for VITE_THUNDERBOLT_CLOUD_URL'
         type: string
         required: false
+      platforms:
+        description: 'Target platforms for the image builds'
+        type: string
+        required: false
+        default: 'linux/amd64,linux/arm64'
   push:
     branches: [main]
     paths:
       - 'deploy/**'
       - 'backend/**'
       - 'src/**'
+      - 'shared/defaults/models.ts'
+      - 'shared/inference-usage.ts'
+      - 'scripts/prune-unreachable-deps.ts'
       - 'package.json'
 
 env:
@@ -58,10 +71,13 @@ jobs:
       # and the caller workflow gates this job behind a maintainer-approval
       # environment. The version step below reads package.json from the checkout
       # but routes the value through a $GITHUB_OUTPUT → env var, never interpolated
-      # into a shell with ${{ }} syntax.
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      # into a shell with ${{ }} syntax. checkout v7 refuses fork refs under
+      # pull_request_target without the explicit opt-in below; it is safe here
+      # because of the sandboxing and approval gating described above.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || github.ref }}
+          allow-unsafe-pr-checkout: true
 
       - name: Resolve version
         id: version
@@ -81,21 +97,34 @@ jobs:
           fi
 
       - name: Log in to GHCR
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # -- Multi-arch (linux/amd64 + linux/arm64) build support --
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
       # -- Build and push Docker images --
 
       - name: Build and push frontend
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/frontend.Dockerfile
           push: true
           no-cache: true
+          # Buildx's container driver attaches provenance attestations by
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           build-args: |
             VITE_THUNDERBOLT_CLOUD_URL=${{ inputs.vite_backend_url || '/v1' }}
             VITE_AUTH_MODE=sso
@@ -106,12 +135,17 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push backend
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/backend.Dockerfile
           push: true
           no-cache: true
+          # Buildx's container driver attaches provenance attestations by
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-backend:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-backend:latest', env.IMAGE_PREFIX) || '' }}
@@ -119,12 +153,17 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push postgres
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/postgres.Dockerfile
           push: true
           no-cache: true
+          # Buildx's container driver attaches provenance attestations by
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-postgres:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-postgres:latest', env.IMAGE_PREFIX) || '' }}
@@ -132,12 +171,17 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push keycloak
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/keycloak.Dockerfile
           push: true
           no-cache: true
+          # Buildx's container driver attaches provenance attestations by
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-keycloak:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-keycloak:latest', env.IMAGE_PREFIX) || '' }}
@@ -145,12 +189,17 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push powersync
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/powersync.Dockerfile
           push: true
           no-cache: true
+          # Buildx's container driver attaches provenance attestations by
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-powersync:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-powersync:latest', env.IMAGE_PREFIX) || '' }}
@@ -158,12 +207,17 @@ jobs:
             org.opencontainers.image.source=${{ env.IMAGE_SOURCE }}
 
       - name: Build and push marketing
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: deploy/docker/marketing.Dockerfile
           push: true
           no-cache: true
+          # Buildx's container driver attaches provenance attestations by
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-marketing:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-marketing:latest', env.IMAGE_PREFIX) || '' }}

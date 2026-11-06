@@ -56,3 +56,15 @@ export const defaultTasks: ReadonlyArray<Task> = [
   defaultTaskSetPreferences,
   defaultTaskExplorePro,
 ] as const
+
+/**
+ * Monotonic version of the shipped task defaults. Bump every time `defaultTasks`
+ * changes in any way. Reconcile uses this as the ordering signal so multi-device
+ * sync groups converge without ping-ponging (THU-637 pattern extended to tasks
+ * in THU-677): a device only overwrites existing rows when this bundled version
+ * is strictly newer than the highest ever applied on this account.
+ *
+ * The paired snapshot test in `tasks.test.ts` fails on any change to this
+ * file's defaults without a matching version bump.
+ */
+export const defaultTasksVersion = 1

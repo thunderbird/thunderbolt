@@ -64,6 +64,8 @@ describe('testAcpConnection', () => {
       success: true,
       capabilities: {
         loadSession: true,
+        skills: false,
+        resume: false,
         promptCapabilities: { image: true, audio: false, embeddedContext: true },
       },
     })
@@ -84,9 +86,41 @@ describe('testAcpConnection', () => {
       success: true,
       capabilities: {
         loadSession: false,
+        skills: false,
+        resume: false,
         promptCapabilities: { image: false, audio: false, embeddedContext: false },
       },
     })
+  })
+
+  it('maps sessionCapabilities.resume presence to resume: true', async () => {
+    const { openTransport, FakeConnection } = buildFakeDeps({
+      capabilities: { loadSession: false, sessionCapabilities: { resume: {} } },
+    })
+
+    const result = await testAcpConnection({
+      url: 'wss://example.test/ws',
+      openTransport: openTransport as never,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    expect(result).toMatchObject({ success: true, capabilities: { resume: true, loadSession: false } })
+  })
+
+  it('maps Thunderbolt skills capability metadata to skills: true', async () => {
+    const { openTransport, FakeConnection } = buildFakeDeps({
+      capabilities: {
+        _meta: { 'thunderbird.net/thunderbolt': { skills: true } },
+      },
+    })
+
+    const result = await testAcpConnection({
+      url: 'wss://example.test/ws',
+      openTransport: openTransport as never,
+      ClientSideConnection: FakeConnection as never,
+    })
+
+    expect(result).toMatchObject({ success: true, capabilities: { skills: true } })
   })
 
   it('returns the error message when initialize rejects', async () => {

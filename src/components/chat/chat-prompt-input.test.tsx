@@ -12,14 +12,23 @@ import {
   resetStore,
 } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import type { Model } from '@/types'
-import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { createElement, type ReactNode, type RefObject } from 'react'
+import type { Model, ThunderboltUIMessage } from '@/types'
+import { act, cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { createElement, createRef, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
+import { useAcpSessionStore } from '@/acp/session-state-store'
+import { sessionConfigKey } from '@/acp/session-config-store'
+import { useConfigStore } from '@/api/config-store'
+import { CreateItemProvider } from '@/components/create-item/context'
+import { ContentViewProvider } from '@/content-view/context'
+import { ActiveContentView } from '@/content-view/active-content-view'
 import { getClock } from '@/testing-library'
+import { builtInAgent } from '@/defaults/agents'
+import type { Agent } from '@/types/acp'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
+import type { ImageSupportCheck } from './use-image-support-check'
 
 // The real blob store uses IndexedDB, which isn't available in the test env.
 // Back it with an in-memory Map so the attach path (put → chip render) works.
@@ -50,6 +59,27 @@ const createMockUseContextTracking =
     estimateTokensForInput: (_input: string) => 0,
   })
 
+const remoteAcpAgent: Agent = {
+  ...builtInAgent,
+  id: 'remote-agent',
+  type: 'remote-acp',
+  transport: 'websocket',
+  url: 'wss://agent.example/ws',
+  isSystem: 0,
+  userId: 'user-1',
+}
+
+const hostedAgent: Agent = {
+  ...builtInAgent,
+  id: 'hosted-agent',
+  type: 'managed-http',
+  transport: 'http',
+  url: '/v1/agent/chat',
+}
+
+/** Skips the agent warm-up, which would otherwise open a real connection to a test agent's url. */
+const noWarmUp = () => {}
+
 const createMockUseIsMobile =
   (isMobile: boolean = false) =>
   () => ({
@@ -58,13 +88,25 @@ const createMockUseIsMobile =
 
 const TestWrapper = ({ children }: { children: ReactNode }) => {
   const queryWrapper = createQueryTestWrapper()
-  return createElement(BrowserRouter, null, createElement(queryWrapper, null, children))
+  return createElement(
+    BrowserRouter,
+    null,
+    createElement(
+      ContentViewProvider,
+      null,
+      createElement(CreateItemProvider, null, createElement(queryWrapper, null, children)),
+      createElement(ActiveContentView),
+    ),
+  )
 }
 
 /** Hydrate the chat store with sensible defaults for testing */
-const setupStore = () => {
+const setupStore = (
+  status: 'ready' | 'submitted' | 'streaming' | 'error' = 'ready',
+  messages: ThunderboltUIMessage[] = [],
+) => {
   const mockModel = createMockModel()
-  const mockChatInstance = createMockChatInstance([], 'ready')
+  const mockChatInstance = createMockChatInstance(messages, status)
   const mockUseChat = createMockUseChat(mockChatInstance)
 
   hydrateStore({
@@ -91,11 +133,13 @@ describe('ChatPromptInput', () => {
 
   beforeEach(() => {
     resetStore()
+    useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() })
   })
 
   afterEach(async () => {
     cleanup()
     resetStore()
+    useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() })
     await resetTestDatabase()
   })
 
@@ -107,7 +151,305 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Ask me anything…')).toBeInTheDocument()
+    })
+  })
+
+  describe('stop button', () => {
+    it('shows the Stop button while the model is thinking (submitted)', () => {
+      const { mockUseChat } = setupStore('submitted')
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Send message')).toBeNull()
+    })
+
+    it('shows the Stop button while streaming', () => {
+      const { mockUseChat } = setupStore('streaming')
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    it('preserves an editable draft while compaction blocks sending and allows stopping', () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacting' })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const input = screen.getByPlaceholderText('Ask me anything…')
+      expect(screen.queryByText('Compacting…')).toBeNull()
+      expect(input).toBeEnabled()
+      fireEvent.change(input, { target: { value: 'My next question' } })
+      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
+      fireEvent.submit(input.closest('form')!)
+      expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+      expect(input).toHaveValue('My next question')
+      expect(screen.queryByLabelText('Send message')).toBeNull()
+
+      fireEvent.click(screen.getByLabelText('Stop generating'))
+      expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacted' }))
+      expect(screen.queryByText('Compacting…')).toBeNull()
+      expect(screen.queryByText('Compacted')).toBeNull()
+      expect(input).toHaveValue('My next question')
+      expect(screen.getByLabelText('Send message')).toBeEnabled()
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'idle' }))
+      expect(screen.queryByText('Compacted')).toBeNull()
+    })
+
+    // Empty assistant turn sitting with status `ready` and retryCount 0 while the
+    // thread shows a recovery spinner — the Stop button must still be present.
+    it('shows the Stop button during empty-turn recovery (status ready, retryCount 0)', () => {
+      const messages: ThunderboltUIMessage[] = [
+        { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you doing?' }] },
+        { id: 'a1', role: 'assistant', parts: [] },
+      ]
+      const { mockUseChat } = setupStore('ready', messages)
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    it('shows the Stop button during an auto-retry backoff (status ready)', () => {
+      const { mockUseChat } = setupStore('ready')
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { retryCount: 1, retriesExhausted: false })
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    it('hides the Stop button once retries are exhausted', () => {
+      const { mockUseChat } = setupStore('ready')
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { retryCount: 3, retriesExhausted: true })
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.queryByLabelText('Stop generating')).toBeNull()
+    })
+
+    it('calls stop on click', () => {
+      const { mockUseChat, mockChatInstance } = setupStore('streaming')
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const stopButton = screen.getByLabelText('Stop generating') as HTMLButtonElement
+      act(() => {
+        fireEvent.click(stopButton)
+      })
+
+      expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
+      // The mock `stop` doesn't flip the session's `stopping` flag, so the button
+      // still shows its pre-stop state here; the stopping state is covered below.
+      expect(stopButton.querySelector('.animate-spin')).toBeNull()
+    })
+
+    it('shows the stopping spinner and stays pressable while the turn unwinds', () => {
+      const { mockUseChat, mockChatInstance } = setupStore('streaming')
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { stopping: true })
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const stopButton = screen.getByLabelText('Stopping') as HTMLButtonElement
+      expect(stopButton.querySelector('.animate-spin')).not.toBeNull()
+      // Stays pressable: stop is idempotent, and disabling it would leave no
+      // escape hatch if the teardown stalls.
+      expect(stopButton.disabled).toBe(false)
+      act(() => {
+        fireEvent.click(stopButton)
+      })
+      expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('ACP context controls', () => {
+    it.each([undefined, ''])(
+      'offers manual compaction using the session command (input hint: %p)',
+      async (inputHint) => {
+        const { mockUseChat, mockChatInstance } = setupStore()
+        const compact = mock(async () => {})
+        Object.assign(mockChatInstance, { compactContext: compact })
+        useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent })
+        useAcpSessionStore
+          .getState()
+          .set(
+            sessionConfigKey(remoteAcpAgent.id, 'thread-1'),
+            { sessionId: 'acp-1', commands: [{ name: 'compact', description: 'Compact context', inputHint }] },
+            {},
+          )
+        render(
+          <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+          { wrapper: TestWrapper },
+        )
+        const trigger = screen.getByRole('button', { name: 'Context usage' })
+        expect(trigger).toHaveTextContent('—')
+        fireEvent.click(trigger)
+        expect(screen.queryByLabelText('Compaction instructions (optional)') !== null).toBe(inputHint !== undefined)
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Compact now' })))
+        expect(compact).toHaveBeenCalledWith(undefined)
+        expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+      },
+    )
+
+    it('does not borrow another thread’s command or the built-in model’s usage', () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      Object.assign(mockChatInstance, { compactContext: mock(async () => {}) })
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent })
+      useAcpSessionStore
+        .getState()
+        .set(
+          sessionConfigKey(remoteAcpAgent.id, 'another-thread'),
+          { sessionId: 'acp-other', commands: [{ name: 'compact', description: 'Compact context' }] },
+          {},
+        )
+      render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useContextTracking={createMockUseContextTracking(false, true, 1000, 2000)}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
+        { wrapper: TestWrapper },
+      )
+      expect(screen.queryByRole('button', { name: 'Context usage' })).toBeNull()
+    })
+
+    it('uses matching persisted usage until live session usage arrives and clears it for a replacement session', () => {
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: 'reply',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Done' }],
+          metadata: { acpContextUsage: { agentId: remoteAcpAgent.id, sessionId: 'acp-1', used: 100, size: 1000 } },
+        },
+      ]
+      const { mockUseChat } = setupStore('ready', messages)
+      useChatStore.getState().updateSession('thread-1', {
+        selectedAgent: remoteAcpAgent,
+        chatThread: createMockChatThread({ agentId: remoteAcpAgent.id, acpSessionId: 'acp-1' }),
+      })
+      const { rerender } = render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+      expect(screen.getByRole('button', { name: 'Context usage' })).toHaveTextContent('10%')
+      const key = sessionConfigKey(remoteAcpAgent.id, 'thread-1')
+      act(() =>
+        useAcpSessionStore.getState().set(
+          key,
+          {
+            sessionId: 'acp-1',
+            commands: [],
+            usage: { agentId: remoteAcpAgent.id, sessionId: 'acp-1', used: 600, size: 2000 },
+          },
+          {},
+        ),
+      )
+      expect(screen.getByRole('button', { name: 'Context usage' })).toHaveTextContent('30%')
+      act(() => useAcpSessionStore.getState().set(key, { sessionId: 'acp-2', commands: [] }, {}))
+      expect(screen.queryByRole('button', { name: 'Context usage' })).toBeNull()
+      act(() => useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() }))
+      messages[0].metadata!.acpContextUsage!.agentId = 'another-agent'
+      rerender(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+      )
+      expect(screen.queryByRole('button', { name: 'Context usage' })).toBeNull()
+    })
+
+    it('leaves token limits to the external agent rather than blocking a normal send', async () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent })
+      const { container } = render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useContextTracking={createMockUseContextTracking(true)}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
+        { wrapper: TestWrapper },
+      )
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'Continue' } })
+      await act(async () => fireEvent.submit(container.querySelector('form')!))
+      expect(mockChatInstance.sendMessage).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('saved compaction summary', () => {
+    it('opens from the saved context menu without sending or compacting', async () => {
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: 'saved',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Original reply' }],
+          metadata: {
+            contextCompaction: {
+              version: 1,
+              summary: '## Saved decisions\n\nPreserve the keyboard shortcuts.',
+              tokensBefore: 8_000,
+              contextTokens: 2_000,
+              retainedTail: [],
+            },
+          },
+        },
+      ]
+      const { mockUseChat, mockChatInstance } = setupStore('ready', messages)
+      // Reading a stored summary remains available even after switching agents.
+      useChatStore
+        .getState()
+        .updateSession('thread-1', { selectedAgent: remoteAcpAgent, compactionStatus: 'compacted' })
+      render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useContextTracking={createMockUseContextTracking(false, false, null, null)}
+          useWarmAcpCommands={noWarmUp}
+        />,
+        { wrapper: TestWrapper },
+      )
+
+      const contextTrigger = screen.getByRole('button', { name: 'Context usage' })
+      fireEvent.click(contextTrigger)
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'View summary' }))
+      expect(screen.getByRole('region', { name: 'Compaction summary' })).toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(screen.getByRole('heading', { name: 'Saved decisions' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+      await act(async () => {
+        await getClock().tickAsync(1)
+      })
+      expect(contextTrigger).toHaveFocus()
+      expect(contextTrigger).toHaveAttribute('aria-expanded', 'false')
+
+      expect(screen.queryByRole('button', { name: 'View summary' })).toBeNull()
+      expect(screen.queryByRole('region', { name: 'Compaction summary' })).toBeNull()
+      expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+      expect(messages[0].parts).toEqual([{ type: 'text', text: 'Original reply' }])
     })
   })
 
@@ -138,7 +480,7 @@ describe('ChatPromptInput', () => {
       expect(form?.className).toContain('p-2')
     })
 
-    it('should hide context usage indicator on mobile', () => {
+    it('keeps context controls available on mobile', () => {
       const { mockUseChat } = setupStore()
 
       render(
@@ -150,7 +492,7 @@ describe('ChatPromptInput', () => {
         { wrapper: TestWrapper },
       )
 
-      expect(screen.queryByText('50%')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Context usage' })).toBeInTheDocument()
     })
 
     it('should show context usage indicator on desktop', () => {
@@ -172,13 +514,13 @@ describe('ChatPromptInput', () => {
   describe('ref methods', () => {
     it('should expose focus method that focuses textarea', () => {
       const { mockUseChat } = setupStore()
-      const ref = { current: null } as unknown as RefObject<ChatPromptInputRef>
+      const ref = createRef<ChatPromptInputRef>()
 
       render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const focusSpy = mock(() => {})
       const setSelectionRangeSpy = mock(() => {})
       textarea.focus = focusSpy
@@ -194,7 +536,7 @@ describe('ChatPromptInput', () => {
 
     it('should expose setInput method that updates textarea value', () => {
       const { mockUseChat } = setupStore()
-      const ref = { current: null } as unknown as RefObject<ChatPromptInputRef>
+      const ref = createRef<ChatPromptInputRef>()
 
       render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
         wrapper: TestWrapper,
@@ -204,12 +546,37 @@ describe('ChatPromptInput', () => {
         ref.current?.setInput('Test input')
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       expect(textarea.value).toBe('Test input')
     })
   })
 
   describe('submitOnEnter', () => {
+    it('keeps overflow protection and hides compaction for an Anthropic model outside Pi’s catalog', async () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      Object.assign(mockChatInstance, { compactContext: mock(async () => {}) })
+      useChatStore.getState().updateSession('thread-1', {
+        selectedModel: createMockModel({ provider: 'anthropic', model: 'unlisted-model', toolUsage: 1 }),
+      })
+      const trackEvent = mock(() => {})
+      const { container } = render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useContextTracking={createMockUseContextTracking(true)}
+          trackEvent={trackEvent}
+        />,
+        { wrapper: TestWrapper },
+      )
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'too long' } })
+      await act(async () => fireEvent.submit(container.querySelector('form')!))
+      expect(trackEvent).toHaveBeenCalledWith(
+        'chat_send_prompt_overflow',
+        expect.objectContaining({ model_name: 'unlisted-model' }),
+      )
+      expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+    })
+
     it('should disable submit on enter when mobile viewport', () => {
       const { mockUseChat } = setupStore()
 
@@ -228,6 +595,172 @@ describe('ChatPromptInput', () => {
       // On mobile, Enter should NOT be prevented (it creates a newline naturally)
       expect(preventDefaultSpy).not.toHaveBeenCalled()
     })
+
+    it('tracks overflow with scalar model properties only', async () => {
+      const { mockUseChat } = setupStore()
+      const trackEvent = mock(() => {})
+      const { container } = render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useContextTracking={createMockUseContextTracking(true)}
+          trackEvent={trackEvent}
+        />,
+        { wrapper: TestWrapper },
+      )
+      const textarea = screen.getByPlaceholderText('Ask me anything…')
+
+      fireEvent.change(textarea, { target: { value: 'too long' } })
+      await act(async () => {
+        fireEvent.submit(container.querySelector('form')!)
+      })
+
+      expect(trackEvent).toHaveBeenCalledWith('chat_send_prompt_overflow', {
+        model_id: 'model-1',
+        model_name: 'gpt-4',
+        provider: 'openai',
+        length: 8,
+        prompt_number: 1,
+      })
+    })
+  })
+
+  describe('backspace atomic chip deletion', () => {
+    const chipSkill = {
+      id: 'skill-1',
+      name: 'daily-brief',
+      label: 'Daily Brief',
+      description: '',
+      instruction: 'You are a daily brief assistant.',
+      enabled: 1,
+      pinnedOrder: null,
+      deletedAt: null,
+      defaultHash: null,
+      userId: null,
+    }
+
+    // Typed against the real hooks (no casts) so a signature change here is a
+    // compile error, not a silently-drifting fake.
+    const fakeUseLibrarySkills: typeof import('@/skills/use-skills').useLibrarySkills = () => ({
+      skills: [chipSkill],
+      isLoading: false,
+      createSkill: async () => chipSkill,
+      updateSkill: async () => undefined,
+      softDeleteSkill: async () => undefined,
+    })
+
+    const fakeUseEnabledSkills: typeof import('@/skills/use-skills').useEnabledSkills = () => ({
+      isEnabled: () => true,
+      setEnabled: async () => undefined,
+    })
+
+    // 'run /Daily Brief now' — the display token spans [4, 16).
+    const tokenText = 'run /Daily Brief now'
+
+    /** Render with the chip skill in the library, seed the input, place the caret. */
+    const setupWithToken = (caret: number, text = tokenText) => {
+      const { mockUseChat } = setupStore()
+      const ref = createRef<ChatPromptInputRef>()
+      render(
+        <ChatPromptInput
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useLibrarySkills={fakeUseLibrarySkills}
+          useEnabledSkills={fakeUseEnabledSkills}
+        />,
+        { wrapper: TestWrapper },
+      )
+      act(() => {
+        ref.current?.setInput(text)
+      })
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+      textarea.setSelectionRange(caret, caret)
+      return textarea
+    }
+
+    const pressBackspace = (textarea: HTMLTextAreaElement, modifiers: KeyboardEventInit = {}) => {
+      const event = new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true, ...modifiers })
+      act(() => {
+        textarea.dispatchEvent(event)
+      })
+      return event
+    }
+
+    it('deletes the whole display token on Backspace with a collapsed caret right after it', () => {
+      const textarea = setupWithToken(16)
+      const event = pressBackspace(textarea)
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(textarea.value).toBe('run  now')
+    })
+
+    it('deletes the whole badge and separator from the insertion caret position', () => {
+      const textarea = setupWithToken(17)
+      const event = pressBackspace(textarea)
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(textarea.value).toBe('run now')
+    })
+
+    it('does not delete atomically when Backspace carries a modifier', () => {
+      for (const modifiers of [{ metaKey: true }, { ctrlKey: true }, { altKey: true }]) {
+        cleanup()
+        resetStore()
+        const textarea = setupWithToken(16)
+        const event = pressBackspace(textarea, modifiers)
+
+        // The default (word/line) deletion proceeds — our handler stays out.
+        expect(event.defaultPrevented).toBe(false)
+        expect(textarea.value).toBe(tokenText)
+      }
+    })
+
+    it('leaves plain Backspace mid-word alone (no token touched)', () => {
+      // Caret inside the trailing "now", clear of the token span.
+      const textarea = setupWithToken(19)
+      const event = pressBackspace(textarea)
+
+      expect(event.defaultPrevented).toBe(false)
+      expect(textarea.value).toBe(tokenText)
+    })
+
+    describe.each([
+      [false, true],
+      [true, false],
+    ])('slash commands, minimalMode: %s', (minimalMode, active) => {
+      beforeEach(() => {
+        useConfigStore.setState({ config: { minimalMode } })
+      })
+
+      it('opens the slash popup on `/` only when active', () => {
+        const textarea = setupWithToken(1, '/')
+        fireEvent.select(textarea)
+        expect(screen.queryByRole('listbox') !== null).toBe(active)
+      })
+
+      it('highlights a committed token only when active', () => {
+        setupWithToken(16)
+        expect(document.querySelector('.skill-token') !== null).toBe(active)
+      })
+
+      it('sends the token verbatim in minimal mode and normalized to the slug otherwise', async () => {
+        setupWithToken(16)
+        await act(async () => {
+          fireEvent.submit(document.querySelector('form')!)
+        })
+        const sent = useChatStore.getState().sessions.get('thread-1')!.chatInstance.sendMessage as ReturnType<
+          typeof mock
+        >
+        expect(sent.mock.calls[0][0].parts[0].text).toBe(active ? 'run /daily-brief now' : tokenText)
+      })
+
+      it('lets Backspace delete one character of a token only in minimal mode', () => {
+        const textarea = setupWithToken(16)
+        const event = pressBackspace(textarea)
+        expect(event.defaultPrevented).toBe(active)
+      })
+    })
   })
 
   describe('agent availability', () => {
@@ -239,8 +772,125 @@ describe('ChatPromptInput', () => {
         { wrapper: TestWrapper },
       )
 
-      expect(screen.queryByPlaceholderText('Ask me anything...')).toBeNull()
+      expect(screen.queryByPlaceholderText('Ask me anything…')).toBeNull()
       expect(screen.getByRole('status').textContent ?? '').toMatch(/not available on this platform/)
+    })
+  })
+
+  describe('no model fits the thread', () => {
+    /** Built-in agent on a non-private thread whose session holds `selectedModel`. */
+    const renderWithModel = (selectedModel: Model) => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedModel })
+      const { container } = render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'hello' } })
+      const submit = async () => {
+        await act(async () => {
+          fireEvent.submit(container.querySelector('form')!)
+        })
+      }
+      return { sendMessage: mockChatInstance.sendMessage, submit }
+    }
+
+    it('says why and holds the send instead of throwing on it', async () => {
+      const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 1 }))
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'None of your models can be used in this chat. Choose another agent to send.',
+      )
+      await submit()
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('clears the notice and selects a model once one that fits is added', async () => {
+      const confidentialModel = createMockModel({ isConfidential: 1 })
+      renderWithModel(confidentialModel)
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+
+      const added = createMockModel({ id: 'added', provider: 'thunderbolt', isConfidential: 0 })
+      act(() => {
+        useChatStore.getState().setModels([confidentialModel, added])
+      })
+
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(useChatStore.getState().sessions.get('thread-1')?.selectedModel.id).toBe(added.id)
+    })
+
+    it('sends when the model matches the thread', async () => {
+      const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 0 }))
+
+      expect(screen.queryByRole('alert')).toBeNull()
+      await submit()
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('private chat held back from a non-built-in agent', () => {
+    const notice = "This private chat won't run on Assistant. Switch to Thunderbolt to run it."
+
+    /** An automation thread: private, ending on its unanswered prompt, resolved to `agent`. */
+    const renderAutomationThread = ({ isEncrypted = 1 }: { isEncrypted?: 0 | 1 } = {}) => {
+      const { mockUseChat, mockChatInstance } = setupStore('ready', [
+        { id: 'msg-1', role: 'user', parts: [{ type: 'text', text: 'Daily brief' }] },
+      ])
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', {
+          chatThread: createMockChatThread({ isEncrypted }),
+          selectedAgent: { ...hostedAgent, name: 'Assistant' },
+        })
+      })
+      const { container } = render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+      return { container, sendMessage: mockChatInstance.sendMessage }
+    }
+
+    beforeEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: true })
+    })
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it('says so and holds typed and voice sends, which would carry the history out unencrypted', async () => {
+      const { container, sendMessage } = renderAutomationThread()
+
+      expect(screen.getByText(notice)).toBeInTheDocument()
+      // Voice sends straight through the chat, so it is held here too.
+      expect(screen.getByRole('button', { name: 'Start voice mode' })).toBeDisabled()
+
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'Go on' } })
+      await act(async () => {
+        fireEvent.submit(container.querySelector('form')!)
+      })
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('clears once the chat is back on the built-in agent', () => {
+      renderAutomationThread()
+
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { selectedAgent: builtInAgent })
+      })
+
+      expect(screen.queryByText(notice)).toBeNull()
+    })
+
+    it('drops the switch advice where the deployment has no built-in agent', () => {
+      useConfigStore.setState({ config: { builtInAgentEnabled: false } })
+      renderAutomationThread()
+
+      expect(screen.getByText("This private chat won't run on Assistant.")).toBeInTheDocument()
+    })
+
+    it('stays quiet for a chat that is not private', () => {
+      renderAutomationThread({ isEncrypted: 0 })
+
+      expect(screen.queryByText(notice)).toBeNull()
     })
   })
 
@@ -298,6 +948,109 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe('attach control', () => {
+    const openAddMenu = () =>
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'Add to chat' }), { button: 0, ctrlKey: false })
+
+    it.each([
+      ['the built-in agent', builtInAgent],
+      ['an ACP agent', remoteAcpAgent],
+    ])('offers Upload file for %s', async (_label, agent) => {
+      // A real connection to the test agent's url fails asynchronously and poisons later tests.
+      const openSocket = spyOn(globalThis, 'WebSocket')
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: agent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      openAddMenu()
+
+      expect(screen.getByRole('menuitem', { name: 'Upload file' })).toBeInTheDocument()
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(openSocket).not.toHaveBeenCalled()
+      openSocket.mockRestore()
+    })
+
+    it('hides Upload file for the hosted agent, which takes no attachments', () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      openAddMenu()
+
+      expect(screen.getByRole('menuitem', { name: 'Connections' })).toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'Upload file' })).toBeNull()
+    })
+  })
+
+  describe.each([
+    [true, false],
+    [false, true],
+  ])('add menu, minimalMode: %s', (minimalMode, present) => {
+    beforeEach(() => {
+      useConfigStore.setState({ config: { minimalMode } })
+    })
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it(`${present ? 'shows' : 'hides'} the add menu for an agent that takes no attachments`, () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByRole('button', { name: 'Add to chat' }) !== null).toBe(present)
+    })
+  })
+
+  describe.each([
+    [true, false],
+    [false, true],
+  ])('voice mode button, minimalMode: %s', (minimalMode, present) => {
+    beforeEach(() => {
+      // An earlier test's persisted draft would swap the voice button for Send.
+      localStorage.clear()
+    })
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it(`${present ? 'shows' : 'hides'} the button in the empty composer`, () => {
+      useConfigStore.setState({ config: minimalMode ? { minimalMode } : {}, configLoaded: true })
+      const { mockUseChat } = setupStore()
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByRole('button', { name: 'Start voice mode' }) !== null).toBe(present)
+    })
+  })
+
+  it('renders no voice mode button until config settles', () => {
+    localStorage.clear()
+    useConfigStore.setState({ config: {}, configLoaded: false })
+    const { mockUseChat } = setupStore()
+    render(
+      <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+      { wrapper: TestWrapper },
+    )
+
+    expect(screen.queryByRole('button', { name: 'Start voice mode' })).toBeNull()
+  })
+
   describe('clipboard paste', () => {
     type ClipboardItemInit = { kind: string; type: string; getAsFile: () => File | null }
 
@@ -327,7 +1080,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['data'], 'shot.png', { type: 'image/png' })
       const preventDefaultSpy = pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
       await flushAttachments()
@@ -342,7 +1095,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['data'], '', { type: 'image/png' })
       pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
       await flushAttachments()
@@ -356,7 +1109,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const preventDefaultSpy = pasteItems(textarea, [{ kind: 'string', type: 'text/plain', getAsFile: () => null }])
 
       expect(preventDefaultSpy).not.toHaveBeenCalled()
@@ -368,12 +1121,215 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['<html>'], 'page.html', { type: 'text/html' })
       pasteItems(textarea, [{ kind: 'file', type: 'text/html', getAsFile: () => file }])
       await flushAttachments()
 
       expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
+    })
+
+    it('lets a file paste fall through untouched for the hosted agent', async () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+      const file = new File(['data'], 'shot.png', { type: 'image/png' })
+      const preventDefaultSpy = pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
+      await flushAttachments()
+
+      expect(preventDefaultSpy).not.toHaveBeenCalled()
+      expect(screen.queryByLabelText('Remove shot.png')).toBeNull()
+    })
+
+    it.each([
+      ['the hosted agent', hostedAgent, false],
+      ['the built-in agent', builtInAgent, true],
+    ])('on a file drop, %s attaches it: %p', async (_label, agent, attaches) => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: agent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      const textarea = screen.getByPlaceholderText('Ask me anything…')
+      const file = new File(['data'], 'dropped.png', { type: 'image/png' })
+      fireEvent.dragOver(textarea)
+      expect(screen.queryByText('Drop file to attach') !== null).toBe(attaches)
+      fireEvent.drop(textarea, { dataTransfer: { files: [file] } })
+      await flushAttachments()
+
+      expect(screen.queryByLabelText('Remove dropped.png') !== null).toBe(attaches)
+    })
+
+    describe('files queued before the chat moved to the hosted agent', () => {
+      /** Queue an image on the built-in agent, then move the chat onto the hosted agent. */
+      const renderWithQueuedImageOnHostedAgent = async () => {
+        const { mockUseChat, mockChatInstance } = setupStore()
+        const { container } = render(
+          <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+          { wrapper: TestWrapper },
+        )
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['data'], 'queued.png', { type: 'image/png' })
+        pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
+        await flushAttachments()
+        fireEvent.change(textarea, { target: { value: 'What is in this picture?' } })
+        act(() => {
+          useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
+        })
+        const submit = async () => {
+          await act(async () => {
+            fireEvent.submit(container.querySelector('form')!)
+          })
+        }
+        return { sendMessage: mockChatInstance.sendMessage, submit }
+      }
+
+      it('keeps the queued file visible, says why, and holds the send', async () => {
+        const { sendMessage, submit } = await renderWithQueuedImageOnHostedAgent()
+
+        expect(screen.getByLabelText('Remove queued.png')).toBeInTheDocument()
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          `${hostedAgent.name} can't take attachments. Remove the attached files to send.`,
+        )
+        await submit()
+        expect(sendMessage).not.toHaveBeenCalled()
+      })
+
+      it('sends again once the queued file is removed', async () => {
+        const { sendMessage, submit } = await renderWithQueuedImageOnHostedAgent()
+
+        fireEvent.click(screen.getByLabelText('Remove queued.png'))
+        await flushAttachments()
+
+        expect(screen.queryByRole('alert')).toBeNull()
+        await submit()
+        expect(sendMessage).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    describe('image support gate', () => {
+      /** Render with a fixed image-support check, attach an image, and type a prompt. */
+      const renderWithImage = async (check: ImageSupportCheck) => {
+        const { mockUseChat, mockChatInstance } = setupStore()
+        const { container } = render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            useImageSupportCheck={() => check}
+          />,
+          { wrapper: TestWrapper },
+        )
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['data'], 'birds.jpeg', { type: 'image/jpeg' })
+        pasteItems(textarea, [{ kind: 'file', type: 'image/jpeg', getAsFile: () => file }])
+        await flushAttachments()
+        fireEvent.change(textarea, { target: { value: 'Tell me about this image' } })
+        const submit = async () => {
+          await act(async () => {
+            fireEvent.submit(container.querySelector('form')!)
+          })
+        }
+        return { sendMessage: mockChatInstance.sendMessage, submit }
+      }
+
+      it('blocks the send and says why when the model can’t read images', async () => {
+        const { sendMessage, submit } = await renderWithImage({ notice: 'unsupported', tryAnyway: undefined })
+
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          "Test Model can't read images. Switch to a model that can, or remove the image.",
+        )
+        expect(screen.queryByRole('button', { name: 'Try anyway' })).toBeNull()
+        await submit()
+        expect(sendMessage).not.toHaveBeenCalled()
+      })
+
+      it('offers to try anyway when detection made the call', async () => {
+        const tryAnyway = mock(() => {})
+        await renderWithImage({ notice: 'unsupported', tryAnyway })
+
+        fireEvent.click(screen.getByRole('button', { name: 'Try anyway' }))
+        expect(tryAnyway).toHaveBeenCalledTimes(1)
+      })
+
+      it('holds the send while the model is being checked', async () => {
+        const { sendMessage, submit } = await renderWithImage({ notice: 'checking', tryAnyway: undefined })
+
+        expect(screen.getByText('Checking whether Test Model can read images…')).toBeInTheDocument()
+        await submit()
+        expect(sendMessage).not.toHaveBeenCalled()
+      })
+
+      it('sends the image when nothing rules it out', async () => {
+        const { sendMessage, submit } = await renderWithImage({ notice: undefined, tryAnyway: undefined })
+
+        expect(screen.queryByText(/can't read images|Checking whether/)).toBeNull()
+        await submit()
+        expect(sendMessage).toHaveBeenCalledTimes(1)
+      })
+    })
+  })
+
+  describe('new-chat focus request', () => {
+    // Typed against the real hooks so a router signature change is a compile
+    // error rather than a fake drifting out of shape.
+    const fakeUseLocation =
+      (state: unknown): typeof import('react-router').useLocation =>
+      () => ({ pathname: '/chats/new', search: '', hash: '', state, key: 'test' })
+
+    const renderWithState = (state: unknown) => {
+      const { mockUseChat } = setupStore()
+      const navigate = mock(() => {})
+      render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          // Mobile viewport: mount-time autoFocus is off, so focus can only
+          // come from the navigation request under test.
+          useIsMobile={createMockUseIsMobile(true)}
+          useLocation={fakeUseLocation(state)}
+          useNavigate={(() => navigate) as unknown as typeof import('react-router').useNavigate}
+        />,
+        { wrapper: TestWrapper },
+      )
+      return { navigate, textarea: screen.getByPlaceholderText('Ask me anything…') }
+    }
+
+    it('focuses the composer a frame after the navigation asks for it', () => {
+      const { textarea } = renderWithState({ focusComposer: true })
+
+      expect(textarea).not.toHaveFocus()
+      act(() => {
+        getClock().tick(20)
+      })
+
+      expect(textarea).toHaveFocus()
+    })
+
+    it('consumes the request so back/forward cannot re-raise the keyboard', () => {
+      const { navigate } = renderWithState({ focusComposer: true })
+
+      act(() => {
+        getClock().tick(20)
+      })
+
+      expect(navigate).toHaveBeenCalledWith('/chats/new', { replace: true, state: {} })
+    })
+
+    it('leaves focus alone when the navigation carries no request', () => {
+      const { textarea, navigate } = renderWithState(null)
+
+      act(() => {
+        getClock().tick(20)
+      })
+
+      expect(textarea).not.toHaveFocus()
+      expect(navigate).not.toHaveBeenCalled()
     })
   })
 

@@ -2,18 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { mergeMcpTools } from '@/ai/fetch'
 import { useChatStore } from '@/chats/chat-store'
 import { setMcpServerCredentials } from '@/dal/mcp-secrets'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
+import type { MCPTransportType } from '@/lib/mcp-transport'
 import type { MCPClient } from '@ai-sdk/mcp'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { createElement, type ReactNode } from 'react'
+import { z } from 'zod'
 import type { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
-import { MCPProvider, resolveMcpAccessToken, useMCP, type MCPClient as ProviderMCPClient } from './mcp-provider'
+import { MCPProvider, useMCP, type MCPClient as ProviderMCPClient } from './mcp-provider'
+import { resolveMcpAccessToken } from './mcp-client'
 
 /** A `Deferred` lets a test hold a fake `createClient` open so two concurrent
  *  reconnects (or a remove mid-reconnect) overlap deterministically. */
@@ -40,7 +44,7 @@ const fakeClient = (): MCPClient & { closeCount: () => number } => {
 
 const server = { id: 's1', name: 'Server 1', url: 'https://example.test/mcp', type: 'http' as const, enabled: true }
 
-const renderProvider = (createClient: (id: string, url: string, type: 'http' | 'sse') => Promise<MCPClient>) => {
+const renderProvider = (createClient: (id: string, url: string, type: MCPTransportType) => Promise<MCPClient>) => {
   const queryWrapper = createQueryTestWrapper()
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(queryWrapper, null, createElement(MCPProvider, { createClient, children }))
@@ -58,6 +62,78 @@ describe('MCPProvider reconnect', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it.each([false, true])(
+    'surfaces discovery failure during recovery and settles provider state (recovery fails: %p)',
+    async (fails) => {
+      const discoveryError = Object.assign(new Error('MCP SSE Transport Error: 404 Not Found'), {
+        name: 'MCPClientError',
+      })
+      const recoveryError = new TypeError('Failed to fetch')
+      const initial = Object.assign(fakeClient(), {
+        tools: async () => {
+          throw discoveryError
+        },
+      })
+      const recoveredTool = { description: 'Recovered tool', inputSchema: z.object({}) }
+      const fresh = Object.assign(fakeClient(), { tools: async () => ({ search: recoveredTool }) })
+      const gate = deferred<void>()
+      const clients = [initial]
+      const { result } = renderProvider(async () => {
+        const first = clients.pop()
+        if (first) {
+          return first
+        }
+        await gate.promise
+        if (fails) {
+          throw recoveryError
+        }
+        return fresh
+      })
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      const error = spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        await act(async () => {
+          await result.current.addServer(server)
+        })
+        await act(async () => {
+          const send = await mergeMcpTools({}, result.current.getEnabledClients(), result.current.reconnectClient)
+          expect(send.toolset).toEqual({})
+        })
+        expect(result.current.servers[0]).toMatchObject({ isConnected: false, error: discoveryError, client: null })
+        expect(result.current.getEnabledClients()).toEqual([])
+        expect(initial.closeCount()).toBe(1)
+        await act(async () => {
+          gate.resolve()
+          await result.current.reconnectServer(server.id)
+        })
+        expect(result.current.servers[0]).toMatchObject({
+          isConnected: !fails,
+          error: fails ? recoveryError : null,
+          client: fails ? null : fresh,
+        })
+        const next = await mergeMcpTools({}, result.current.getEnabledClients(), result.current.reconnectClient)
+        expect(next.toolset).toEqual(fails ? {} : { server_1_search: recoveredTool })
+      } finally {
+        gate.resolve()
+        warn.mockRestore()
+        error.mockRestore()
+      }
+    },
+  )
+
+  it('reconnects without a discovery error and ignores a retired client callback', async () => {
+    const initial = fakeClient()
+    const fresh = fakeClient()
+    const clients = [fresh, initial]
+    const { result } = renderProvider(async () => clients.pop()!)
+    await act(async () => {
+      await result.current.addServer(server)
+      expect(await result.current.reconnectClient(initial)).toBe(fresh)
+      expect(await result.current.reconnectClient(initial, new TypeError('Failed to fetch'))).toBeNull()
+    })
+    expect(result.current.servers[0]).toMatchObject({ client: fresh, isConnected: true, error: null })
   })
 
   it('coalesces concurrent reconnects of the same server into one createClient call', async () => {
@@ -207,7 +283,7 @@ describe('MCPProvider reconnect', () => {
     await act(async () => {
       const pending = result.current.addServer(server)
       // Disable the server while the initial connect's createClient is in flight.
-      result.current.updateServerStatus(server.id, false)
+      result.current.updateServer({ ...server, enabled: false })
       gate.resolve()
       await pending
     })
@@ -217,9 +293,9 @@ describe('MCPProvider reconnect', () => {
     expect(result.current.getEnabledClients()).toHaveLength(0)
   })
 
-  // UNIT 1 (#2): the addServer→connect vs updateServerStatus(enable)→connect
-  // race. Without coalescing the second connect would cacheClient over the
-  // first live client without closing it, leaking the first connection.
+  // UNIT 1 (#2): the addServer→connect vs updateServer(enable)→connect race.
+  // Without coalescing the second connect would cacheClient over the first
+  // live client without closing it, leaking the first connection.
   it('coalesces overlapping connects for the same server (no leaked client)', async () => {
     const created: Array<ReturnType<typeof fakeClient>> = []
     const gate = deferred<void>()
@@ -233,9 +309,9 @@ describe('MCPProvider reconnect', () => {
     const { result } = renderProvider(createClient)
 
     await act(async () => {
-      // addServer fires the first connect; a concurrent enable re-fires it.
+      // addServer fires the first connect; a concurrent enable patch re-fires it.
       const a = result.current.addServer(server)
-      result.current.updateServerStatus(server.id, true)
+      result.current.updateServer({ ...server, enabled: true })
       gate.resolve()
       await a
     })
@@ -276,7 +352,7 @@ describe('MCPProvider reconnect', () => {
     await act(async () => {
       const pending = result.current.reconnectServer(server.id)
       // Disable the server while the reconnect's createClient is still pending.
-      result.current.updateServerStatus(server.id, false)
+      result.current.updateServer({ ...server, enabled: false })
       gate.resolve()
       await pending
     })
@@ -319,6 +395,210 @@ describe('MCPProvider reconnect', () => {
     const after = useChatStore.getState().getMcpClients()
     expect(after[0].client).toBe(reconnected as unknown as ProviderMCPClient)
     expect(after[0].client).not.toBe(initial as unknown as ProviderMCPClient)
+  })
+
+  // Settings can edit a server in-place (rename, new url/transport, new bearer
+  // token). The provider had no patch path, so the live client kept dialing the
+  // old endpoint while the UI showed the new config — `updateServer` closes the
+  // stale client, patches state, and redials so a save actually takes effect.
+  it('patches url+name and reconnects the live client on updateServer', async () => {
+    const initial = fakeClient()
+    const refreshed = fakeClient()
+    let calls = 0
+    const seenArgs: Array<{ url: string }> = []
+    const createClient = async (_id: string, url: string): Promise<MCPClient> => {
+      calls++
+      seenArgs.push({ url })
+      return calls === 1 ? initial : refreshed
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+    expect(seenArgs[0].url).toBe(server.url)
+
+    await act(async () => {
+      result.current.updateServer({ ...server, name: 'Renamed', url: 'https://new.test/mcp' })
+      // Reconnect kicks off synchronously; await its in-flight promise via a
+      // follow-up reconnectServer call (coalesces into the same promise).
+      await result.current.reconnectServer(server.id)
+    })
+
+    // Stale client closed, fresh one cached with the new URL fed to createClient.
+    expect(initial.closeCount()).toBe(1)
+    expect(seenArgs[1].url).toBe('https://new.test/mcp')
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.name).toBe('Renamed')
+    expect(after?.url).toBe('https://new.test/mcp')
+    expect(after?.client).toBe(refreshed as unknown as ProviderMCPClient)
+  })
+
+  // A rename (or any pure metadata edit) on an already-connected server must
+  // NOT close the healthy client. The provider used to reconnect unconditionally
+  // whenever `updateServer` fired on the steady state, which bumped the client
+  // generation, refetched tools, and dropped any tool call in flight — all for
+  // a change that never touches the connection.
+  it('applies the row patch without reconnecting when only name changes on a connected server', async () => {
+    const initial = fakeClient()
+    let calls = 0
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      return initial
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+    expect(calls).toBe(1)
+
+    await act(async () => {
+      await result.current.updateServer({ ...server, name: 'Renamed' })
+    })
+
+    // Row patch applied, but the live client wasn't churned.
+    expect(calls).toBe(1)
+    expect(initial.closeCount()).toBe(0)
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.name).toBe('Renamed')
+    expect(after?.client).toBe(initial as unknown as ProviderMCPClient)
+  })
+
+  // Credential-only edits (same endpoint) DO need to redial so the new bearer /
+  // OAuth value gets picked up on the next connect; callers opt in via
+  // `forceRedial`. This is the settings Save path with token changes.
+  it('reconnects on same endpoint + forceRedial so a credential-only edit takes effect', async () => {
+    const initial = fakeClient()
+    const refreshed = fakeClient()
+    let calls = 0
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      return calls === 1 ? initial : refreshed
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+
+    await act(async () => {
+      await result.current.updateServer({ ...server }, { forceRedial: true })
+    })
+
+    expect(calls).toBe(2)
+    expect(initial.closeCount()).toBe(1)
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.client).toBe(refreshed as unknown as ProviderMCPClient)
+  })
+
+  it('disconnects without redialing when updateServer flips enabled to false', async () => {
+    const initial = fakeClient()
+    let calls = 0
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      return initial
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+    expect(calls).toBe(1)
+
+    await act(async () => {
+      result.current.updateServer({ ...server, enabled: false })
+    })
+
+    // No second createClient (no reconnect on a disabled patch) and the old client closed.
+    expect(calls).toBe(1)
+    expect(initial.closeCount()).toBe(1)
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.enabled).toBe(false)
+    expect(after?.client).toBeNull()
+    expect(after?.isConnected).toBe(false)
+  })
+
+  // Credential-only edits (same url + transport) saved while the initial
+  // connect is still in-flight must redial after that connect settles —
+  // otherwise the live client keeps using credentials captured at the start
+  // of the original connect, and the new bearer/OAuth value sits unused in
+  // `mcp_secrets`. The settings save path opts in via `forceRedial`; without
+  // it (the useMcpSync row-diff path) the in-flight guard still suppresses
+  // redundant connects.
+  it('redials after the in-flight connect settles when updateServer is called with forceRedial', async () => {
+    const initial = fakeClient()
+    const refreshed = fakeClient()
+    let calls = 0
+    const gate = deferred<void>()
+    const createClient = async (): Promise<MCPClient> => {
+      calls++
+      if (calls === 1) {
+        await gate.promise
+        return initial
+      }
+      return refreshed
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      const pending = result.current.addServer(server)
+      // Same url + type, simulating a credential-only edit during the connect window.
+      const reconciled = result.current.updateServer({ ...server }, { forceRedial: true })
+      gate.resolve()
+      await pending
+      await reconciled
+    })
+
+    expect(calls).toBe(2)
+    expect(initial.closeCount()).toBe(1)
+    const after = result.current.servers.find((s) => s.id === server.id)
+    expect(after?.client).toBe(refreshed as unknown as ProviderMCPClient)
+  })
+
+  // Without `forceRedial`, the in-flight guard keeps its original contract:
+  // a redundant updateServer during the connect window collapses to one
+  // createClient call (useMcpSync's row-diff path relies on this).
+  it('skips redial without forceRedial when url/type match an in-flight connect', async () => {
+    const created: Array<ReturnType<typeof fakeClient>> = []
+    const gate = deferred<void>()
+    const createClient = async (): Promise<MCPClient> => {
+      await gate.promise
+      const c = fakeClient()
+      created.push(c)
+      return c
+    }
+
+    const { result } = renderProvider(createClient)
+
+    await act(async () => {
+      const pending = result.current.addServer(server)
+      // No forceRedial → in-flight guard returns early.
+      result.current.updateServer({ ...server })
+      gate.resolve()
+      await pending
+    })
+
+    expect(created).toHaveLength(1)
+  })
+
+  it('is a no-op when updateServer targets an unknown id', async () => {
+    const createClient = async (): Promise<MCPClient> => fakeClient()
+    const { result } = renderProvider(createClient)
+
+    // No throw, no spurious entry inserted. Await the returned promise so its
+    // microtask settles inside act — leaving it dangling leaks into the next
+    // test file's setup (breaks framer-motion animation timing on unrelated
+    // component renders).
+    await act(async () => {
+      await result.current.updateServer({ ...server, id: 'unknown' })
+    })
+    expect(result.current.servers.some((s) => s.id === 'unknown')).toBe(false)
   })
 })
 

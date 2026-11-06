@@ -86,11 +86,8 @@ export type IsolatedTestDb = {
  * Create a fully ISOLATED PGlite-backed test DB: its own WASM runtime and its
  * own connection, NOT the shared BEGIN/ROLLBACK singleton (`createTestDb`).
  *
- * Use this for tests that bind a real `.listen()` server whose server-side
- * `getSession` reads run on a separate task: those reads must see committed
- * rows without racing the singleton's open transaction (head-of-line blocking
- * under CI CPU starvation). Rows inserted here are committed on a real
- * connection, so a concurrent reader on the same instance sees them.
+ * Prefer `getSharedIsolatedTestDb()` for test suites. Constructing one PGlite
+ * per `--rerun-each` pass accumulates WASM runtimes until initialization stalls.
  *
  * Caller MUST `await close()` in `afterAll` — PGlite 0.4.x leaves WASM worker
  * threads open without an explicit close, crashing Bun with exit code 99 under
@@ -115,13 +112,13 @@ export const createIsolatedTestDb = async (): Promise<IsolatedTestDb> => {
 let sharedIsolatedTestDb: IsolatedTestDb | null = null
 
 /**
- * A SINGLE shared isolated PGlite instance, reused by every test that binds a
- * real `.listen()` server. Creating a fresh `new PGlite()` per describe (× the
- * `--rerun-each` passes) accumulated WASM workers on CI until `new PGlite()`
- * hung — an 8-minute stall at the first ws-e2e `beforeAll`. One instance,
- * created on first use and closed once in the global `afterAll` (test-setup.ts),
- * removes the accumulation. Rows committed here are UUID-keyed and unique, so
- * they can't collide across tests or reruns sharing the instance.
+ * A SINGLE shared isolated PGlite instance for suites that cannot use the
+ * BEGIN/ROLLBACK singleton, including real `.listen()` servers and middleware
+ * that opens nested transactions. Creating a fresh `new PGlite()` per describe
+ * (× the `--rerun-each` passes) accumulated WASM workers on CI until
+ * `new PGlite()` hung. One instance, created on first use and closed once in the
+ * global `afterAll` (test-setup.ts), removes the accumulation. Callers must use
+ * unique rows or clear their owned tables between tests.
  */
 export const getSharedIsolatedTestDb = async (): Promise<IsolatedTestDb> => {
   if (!sharedIsolatedTestDb) {

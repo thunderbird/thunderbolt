@@ -1,0 +1,225 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/*
+ * Thunderbolt's palette, so an embedded app doesn't look pasted in.
+ *
+ * These are the values from the host's `src/index.css`, copied rather than
+ * imported: the app is a separate origin and a separate build, and a Mini App
+ * that could not be styled independently would be a plugin rather than an app.
+ * Copying them is the honest version of "matches the host" — if the host
+ * rebrands, this follows on the next sync, and nothing breaks in between.
+ *
+ * `data-theme` is set from `hostContext.theme`, so the app follows Thunderbolt's
+ * light/dark state rather than the OS preference. Those can disagree, and the
+ * host's answer is the one the user can see.
+ */
+:root {
+  --bg: #f5f2ee;
+  --fg: #262120;
+  --card: #faf8f5;
+  --muted: #f0ede6;
+  --muted-fg: #7f7870;
+  --border: #e5e0d8;
+  --accent: #eeebe6;
+  --brand: #c12d6c;
+  --brand-fg: #faf8f5;
+  --success: #2f7a55;
+  --radius: 10px;
+}
+
+:root[data-theme='dark'] {
+  --bg: #1b1e1f;
+  --fg: #f2f1ee;
+  --card: #282a2b;
+  --muted: #313334;
+  --muted-fg: #a19a91;
+  --border: #3a3d3e;
+  --accent: #383a39;
+  --brand: #bd3778;
+  --brand-fg: #faf8f5;
+  --success: #5cc08d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1.25rem;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    14px/1.5 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+h1 {
+  font-size: 1.0625rem;
+  margin: 0;
+}
+
+.status {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--muted-fg);
+}
+
+.lede {
+  color: var(--muted-fg);
+  margin: 0 0 1rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+th {
+  text-align: left;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-fg);
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:hover {
+  background: var(--accent);
+}
+
+tbody tr[aria-selected='true'] {
+  background: var(--accent);
+  box-shadow: inset 2px 0 0 var(--brand);
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-buy {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.side-sell {
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-fg);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.pill-filled {
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  color: var(--success);
+}
+
+.pill-cancelled {
+  text-decoration: line-through;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+button {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-fg);
+}
+
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.hint {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--muted-fg);
+}
+
+/*
+ * The per-row select control.
+ *
+ * Looks like the cell text it replaced, because it is the cell text — the point
+ * is that it takes focus and answers the keyboard, not that it looks like a
+ * button. The focus ring is the only visible difference, and it has to stay.
+ */
+.row-select {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-select:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+tbody tr[aria-selected='true'] .row-select {
+  font-weight: 650;
+}

@@ -3,6 +3,38 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
+ * Zero-width sigil the composer writes in front of a chip. It takes no width in
+ * the textarea or its overlay, so a chip shows no gap. {@link normalizeSkillTokensToSlugs}
+ * turns it into `/` at send time.
+ */
+export const chipMarker = '\u2060'
+
+const pendingSlash = '\u2061'
+const pendingAt = '\u2062'
+
+/**
+ * Zero-width stand-in the composer stores for a `/` or `@` that opened the picker,
+ * or null for any other key. The value stays the single source of the trigger, and
+ * {@link foldPendingSigils} turns it back into the typed character without changing
+ * any offset.
+ */
+export const pendingSigilForKey = (key: string): string | null => {
+  if (key === '/') {
+    return pendingSlash
+  }
+  return key === '@' ? pendingAt : null
+}
+
+/** True for a stand-in written by {@link pendingSigilForKey}. */
+export const isPendingSigil = (char: string | undefined): boolean => char === pendingSlash || char === pendingAt
+
+/** True when `text` holds a stand-in that has not been folded back yet. */
+export const hasPendingSigil = (text: string): boolean => text.includes(pendingSlash) || text.includes(pendingAt)
+
+/** Replace stand-ins with the characters the user typed. Output length equals input length. */
+export const foldPendingSigils = (text: string): string => text.replaceAll(pendingSlash, '/').replaceAll(pendingAt, '@')
+
+/**
  * Slash-token grammar: `/` followed by one or more `[a-z0-9-_]` chars,
  * matched only when *preceded* by whitespace or start-of-input AND
  * terminated by whitespace or end-of-input. Mirrors the AgentSkills spec
@@ -20,7 +52,7 @@
  * The captured group is the bare slug (no leading `/`), which is also how
  * skills are stored after THU-533 (the `/` is display only).
  */
-const tokenRegex = /(?<=^|\s)\/([\w-]+)(?=\s|$)/g
+export const skillTokenRegex = /(?<=^|\s)\/([\w-]+)(?=\s|$)/g
 
 /**
  * Resolve a bare slug to a skill's instruction text, or `null` if the slug
@@ -54,7 +86,7 @@ export type ParsedSkills = {
 export const parseSkillTokens = (text: string, resolve: SkillResolver): ParsedSkills => {
   const seen = new Set<string>()
   const systemMessages: string[] = []
-  for (const match of text.matchAll(tokenRegex)) {
+  for (const match of text.matchAll(skillTokenRegex)) {
     const slug = match[1]
     if (!slug || seen.has(slug)) {
       continue
@@ -68,27 +100,118 @@ export const parseSkillTokens = (text: string, resolve: SkillResolver): ParsedSk
   return { text, systemMessages }
 }
 
+export type SkillTokenMatch = {
+  /** The bare slug the token resolves to (display tokens are mapped through `displayNameToSlug`). */
+  slug: string
+  start: number
+  end: number
+  committed: boolean
+  /** True for display-title tokens (`/Daily Brief`) — the chips the composer
+   *  inserts. False for hand-typed slug tokens (`/daily-brief`). */
+  isDisplay: boolean
+}
+
+const isSigil = (char: string): boolean => char === '/' || char === chipMarker
+
+/** A token is committed when text follows it, or when it is a picker chip (marker sigil), which is complete on insert. */
+const isCommitted = (text: string, start: number, end: number): boolean =>
+  end < text.length || text[start] === chipMarker
+
+const isBoundary = (text: string, index: number): boolean => index >= text.length || /\s/.test(text[index])
+
 /**
  * Iterate over the raw slash tokens in `text` without resolving them.
  * Useful for the highlight overlay and slash autocomplete, which want token
  * positions but compute their own resolution decision.
  *
+ * Two token shapes are recognized:
+ * - **Display tokens** — `/` followed by a known skill display name from
+ *   `displayNameToSlug` (may contain spaces / arbitrary chars, matched
+ *   longest-first, terminated by whitespace or end). This is what the
+ *   composer inserts, so the user reads titles while the model ultimately
+ *   receives slugs (see {@link normalizeSkillTokensToSlugs}).
+ * - **Slug tokens** — the original `/[\w-]+` grammar, still valid for
+ *   hand-typed slugs and agent commands.
+ *
  * `committed` is true when the token is followed by whitespace (the user
  * has finished typing it). It is false when the token sits at the very
  * end of `text` — the user is likely still typing.
  */
-export const findSkillTokens = (
-  text: string,
-): Array<{ slug: string; start: number; end: number; committed: boolean }> => {
-  const tokens: Array<{ slug: string; start: number; end: number; committed: boolean }> = []
-  for (const match of text.matchAll(tokenRegex)) {
-    const slug = match[1]
-    if (slug === undefined || match.index === undefined) {
+export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<string, string>): SkillTokenMatch[] => {
+  // [name, slug] pairs, longest name first so "Daily Brief Extended" wins
+  // over "Daily Brief". Carrying the slug alongside the name avoids a
+  // second map lookup after a match.
+  const displayEntries = displayNameToSlug
+    ? [...displayNameToSlug.entries()].filter(([name]) => name.length > 0).sort(([a], [b]) => b.length - a.length)
+    : []
+  const tokens: SkillTokenMatch[] = []
+  let i = 0
+  while (i < text.length) {
+    const isTokenStart = isSigil(text[i]) && (i === 0 || /\s/.test(text[i - 1]))
+    if (!isTokenStart) {
+      i++
       continue
     }
-    const end = match.index + match[0].length
-    const committed = end < text.length // i.e., the lookahead matched whitespace, not $
-    tokens.push({ slug, start: match.index, end, committed })
+    const entry = displayEntries.find(([name]) => text.startsWith(name, i + 1) && isBoundary(text, i + 1 + name.length))
+    if (entry) {
+      const [name, slug] = entry
+      const end = i + 1 + name.length
+      tokens.push({ slug, start: i, end, committed: isCommitted(text, i, end), isDisplay: true })
+      i = end
+      continue
+    }
+    const slugMatch = /^[\w-]+/.exec(text.slice(i + 1))
+    if (slugMatch && isBoundary(text, i + 1 + slugMatch[0].length)) {
+      const end = i + 1 + slugMatch[0].length
+      tokens.push({ slug: slugMatch[0], start: i, end, committed: isCommitted(text, i, end), isDisplay: false })
+      i = end
+      continue
+    }
+    i++
   }
   return tokens
+}
+
+/**
+ * Chip-style backspace: when `caret` sits inside a display-title token or
+ * immediately after a committed token's separator, return `text` with the
+ * whole token removed. The latter also covers slug fallback badges, whose
+ * display names are ambiguous. Uncommitted hand-typed slugs remain editable
+ * letter by letter.
+ */
+export const deleteSkillTokenAt = (
+  text: string,
+  caret: number,
+  displayNameToSlug: ReadonlyMap<string, string>,
+): { text: string; caret: number } | null => {
+  const token = findSkillTokens(text, displayNameToSlug).find(
+    (candidate) =>
+      (candidate.isDisplay && caret > candidate.start && caret <= candidate.end) ||
+      (candidate.committed && caret === candidate.end + 1 && text[candidate.end] === ' '),
+  )
+  if (!token) {
+    return null
+  }
+  const removalEnd = caret === token.end + 1 ? token.end + 1 : token.end
+  return { text: text.slice(0, token.start) + text.slice(removalEnd), caret: token.start }
+}
+
+/**
+ * Rewrite display tokens (`/Daily Brief`) in `text` to their canonical slug
+ * form (`/daily-brief`). Run at send time so the composer can show human
+ * titles while the model — and the stored message — only ever sees slugs.
+ * Slug tokens and unrecognized text pass through untouched; pending sigils
+ * become the typed character and stray chip markers are dropped.
+ */
+export const normalizeSkillTokensToSlugs = (text: string, displayNameToSlug: ReadonlyMap<string, string>): string => {
+  const folded = foldPendingSigils(text)
+  const tokens = findSkillTokens(folded, displayNameToSlug)
+  let result = ''
+  let cursor = 0
+  for (const { slug, start, end } of tokens) {
+    result += folded.slice(cursor, start) + `/${slug}`
+    cursor = end
+  }
+  // A marker left behind by editing a chip must not reach the model.
+  return (result + folded.slice(cursor)).replaceAll(chipMarker, '')
 }

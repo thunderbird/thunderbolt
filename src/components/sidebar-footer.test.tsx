@@ -2,24 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import 'fake-indexeddb/auto'
+import { i18n } from '@/i18n'
+import { getFormatters } from '@/i18n/format'
 import '@testing-library/jest-dom'
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
-import { type ReactNode } from 'react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { Cloud, CloudAlert, CloudOff, Loader2 } from 'lucide-react'
+import { type ReactElement, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
+import { clearAllKeys, generateAK, mintDEK, storeAK, storeDEK } from '@/crypto'
+import { useConfigStore } from '@/api/config-store'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 
-// Per docs/development/testing.md: do NOT mock app-internal modules. Real implementations
+// Per docs/internals/development/testing.md: do NOT mock app-internal modules. Real implementations
 // are used via createTestProvider + SignInModalProvider + SidebarProvider. Modal components
 // only render their dialog when `open={true}`, so leaving them real is harmless here.
 
-import { SidebarProvider } from '@/components/ui/sidebar'
+import { SidebarProvider, useSidebar } from '@/components/ui/sidebar'
 import { SignInModalProvider } from '@/contexts'
 import type { AuthClient } from '@/contexts'
-import { SidebarFooter } from './sidebar-footer'
+import { getDatabaseInstance } from '@/db/database'
+import type { DatabaseInterface } from '@/db/database-interface'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { SidebarFooter, SyncStateIcon, syncStatusText } from './sidebar-footer'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -29,11 +39,29 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-afterEach(() => {
-  cleanup()
+beforeEach(() => {
+  useConfigStore.setState({ config: {}, configLoaded: true })
 })
 
-const renderWithProviders = (authClient: AuthClient) => {
+afterEach(() => {
+  cleanup()
+  restoreViewport()
+  useConfigStore.setState({ config: {}, configLoaded: false })
+})
+
+const MobileSidebarStateProbe = () => {
+  const { openMobile, setOpenMobile } = useSidebar()
+  return (
+    <>
+      <button type="button" onClick={() => setOpenMobile(true)}>
+        Open test sidebar
+      </button>
+      <output data-testid="mobile-sidebar-open">{String(openMobile)}</output>
+    </>
+  )
+}
+
+const renderWithProviders = (authClient: AuthClient, children?: ReactNode) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter>
@@ -44,17 +72,26 @@ const renderWithProviders = (authClient: AuthClient) => {
       </TestProvider>
     </MemoryRouter>
   )
-  return render(<SidebarFooter />, { wrapper: Wrapper })
+  return render(
+    <>
+      <SidebarFooter />
+      {children}
+    </>,
+    { wrapper: Wrapper },
+  )
 }
 
 describe('SidebarFooter', () => {
   describe('anonymous users', () => {
-    it('shows the Sign In affordance (treats anonymous as logged-out)', () => {
+    it('shows an icon-only Sign In affordance (treats anonymous as logged-out)', () => {
       const authClient = createMockAuthClient({
         session: { user: { id: 'anon-1', email: 'temp@anon.com', name: 'Anonymous', isAnonymous: true } },
       })
       renderWithProviders(authClient)
-      expect(screen.getByText('Sign In')).toBeInTheDocument()
+      const button = screen.getByRole('button', { name: 'Sign in' })
+      expect(button).toBeInTheDocument()
+      expect(button.textContent).toBe('')
+      expect(button.className).toContain('w-[var(--touch-height-lg)]')
     })
 
     it('does NOT leak the synthetic anonymous email into the UI', () => {
@@ -75,21 +112,119 @@ describe('SidebarFooter', () => {
   })
 
   describe('real authenticated users', () => {
-    it('shows the user email and not the Sign In affordance', () => {
+    it('shows the account pill with the display name and not the Sign In affordance', () => {
       const authClient = createMockAuthClient({
         session: { user: { id: 'real-1', email: 'user@example.com', name: 'Real User', isAnonymous: false } },
       })
       renderWithProviders(authClient)
-      expect(screen.getByText('user@example.com')).toBeInTheDocument()
-      expect(screen.queryByText('Sign In')).toBeNull()
+      expect(screen.getByText('Real User')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    })
+
+    it('falls back to the email when the account has no display name', () => {
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'real-2', email: 'noname@example.com', isAnonymous: false } },
+      })
+      renderWithProviders(authClient)
+      expect(screen.getByText('noname@example.com')).toBeInTheDocument()
+    })
+
+    it('collapses to an icon-only perfect circle when the display label is blank', () => {
+      // OTP sign-ups get name '' (not null); the old pill kept its horizontal
+      // padding and rendered a 48×32 oval around the cloud icon. Blank labels
+      // must produce a square rounded-full icon-only control.
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'real-3', email: '', name: '', isAnonymous: false } },
+      })
+      renderWithProviders(authClient)
+      const button = screen.getByRole('button', { name: 'Account menu' })
+      expect(button.className).toContain('h-[var(--touch-height-lg)]')
+      expect(button.className).toContain('w-[var(--touch-height-lg)]')
+      expect(button.querySelector('span')).toBeNull()
+    })
+  })
+
+  describe('minimal mode', () => {
+    it('renders no account or cloud control', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    })
+
+    it('keeps the mobile New Chat button and drops every account control', () => {
+      forceMobileViewport()
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      renderWithProviders(
+        createMockAuthClient({ session: { user: { id: 'u1', email: 'real@example.com', name: 'Real' } } }),
+      )
+
+      expect(screen.getByRole('button', { name: 'New Chat' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Account menu' })).toBeNull()
+      expect(screen.queryByText('Real')).toBeNull()
+      expect(screen.queryByText('real@example.com')).toBeNull()
+      expect(screen.queryByText('Cloud Sync')).toBeNull()
+    })
+
+    it('renders no footer on desktop', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      const { container } = renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(container.querySelector('[data-sidebar="footer"]')).toBeNull()
+    })
+
+    it('waits for the config before painting the account control', () => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+      renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    })
+
+    it.each([false, true])('renders from a persisted config before the fetch answers (minimal mode %s)', (minimal) => {
+      useConfigStore.setState({ config: { minimalMode: minimal }, configLoaded: false })
+      renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(screen.queryByRole('button', { name: 'Sign in' }) !== null).toBe(!minimal)
+    })
+
+    it('paints the control once the first-ever fetch answers', () => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+      renderWithProviders(createMockAuthClient({ session: null }))
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+
+      act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
+
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    })
+
+    it('renders the control when minimal mode is off', () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
+      renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     })
   })
 
   describe('fully logged-out users', () => {
-    it('shows the Sign In affordance', () => {
+    it('shows the icon-only Sign In affordance', () => {
       const authClient = createMockAuthClient({ session: null })
       renderWithProviders(authClient)
-      expect(screen.getByText('Sign In')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+      expect(screen.queryByText('Sign in')).toBeNull()
+    })
+
+    it('keeps the mobile sidebar open behind the sign-in modal', () => {
+      forceMobileViewport()
+      const authClient = createMockAuthClient({ session: null })
+      renderWithProviders(authClient, <MobileSidebarStateProbe />)
+      fireEvent.click(screen.getByRole('button', { name: 'Open test sidebar' }))
+      expect(screen.getByTestId('mobile-sidebar-open')).toHaveTextContent('true')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+      expect(screen.getByRole('dialog', { name: 'Sign In' })).toBeInTheDocument()
+      expect(screen.getByTestId('mobile-sidebar-open')).toHaveTextContent('true')
     })
   })
 
@@ -97,7 +232,157 @@ describe('SidebarFooter', () => {
     it('shows the loading indicator', () => {
       const authClient = createMockAuthClient({ session: null, isPending: true })
       renderWithProviders(authClient)
-      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(screen.getByText('Loading…')).toBeInTheDocument()
     })
+  })
+})
+
+/** Renders a React element and returns its (single) SVG root. */
+const renderSvg = (node: ReactElement): SVGSVGElement => {
+  const { container } = render(node)
+  const svg = container.querySelector('svg')
+  if (!svg) {
+    throw new Error('Expected the element to render an <svg>')
+  }
+  return svg as SVGSVGElement
+}
+
+/** SVG path data is a stable identity signal for lucide glyphs (unlike class strings). */
+const pathData = (svg: SVGSVGElement): string[] =>
+  Array.from(svg.querySelectorAll('path')).map((path) => path.getAttribute('d') ?? '')
+
+const referencePaths = (icon: ReactElement): string[] => pathData(renderSvg(icon))
+
+describe('SyncStateIcon', () => {
+  it('renders the plain Cloud outline when signed out, regardless of sync state', () => {
+    const svg = renderSvg(<SyncStateIcon isLoggedIn={false} syncEnabled={true} connectionStatus="connected" />)
+    expect(pathData(svg)).toEqual(referencePaths(<Cloud />))
+    // Plain outline — not the gradient-stroked connected variant.
+    expect(svg.querySelector('linearGradient')).toBeNull()
+  })
+
+  it('renders CloudOff when signed in with sync disabled', () => {
+    const svg = renderSvg(<SyncStateIcon isLoggedIn={true} syncEnabled={false} connectionStatus="connected" />)
+    expect(pathData(svg)).toEqual(referencePaths(<CloudOff />))
+  })
+
+  it('renders a spinner while connecting', () => {
+    const svg = renderSvg(<SyncStateIcon isLoggedIn={true} syncEnabled={true} connectionStatus="connecting" />)
+    expect(pathData(svg)).toEqual(referencePaths(<Loader2 />))
+    expect(svg.classList.contains('animate-spin')).toBe(true)
+  })
+
+  it('renders the warning CloudAlert when sync is on but not connected', () => {
+    for (const connectionStatus of ['disconnected', 'not-configured'] as const) {
+      const svg = renderSvg(<SyncStateIcon isLoggedIn={true} syncEnabled={true} connectionStatus={connectionStatus} />)
+      expect(pathData(svg)).toEqual(referencePaths(<CloudAlert />))
+      expect(svg.classList.contains('text-warning')).toBe(true)
+    }
+  })
+
+  it('renders the brand-gradient cloud in the healthy connected state', () => {
+    const svg = renderSvg(<SyncStateIcon isLoggedIn={true} syncEnabled={true} connectionStatus="connected" />)
+    // Same glyph as the signed-out Cloud, but stroked with the brand gradient.
+    expect(pathData(svg)).toEqual(referencePaths(<Cloud />))
+    expect(svg.querySelector('linearGradient')).not.toBeNull()
+  })
+})
+
+describe('sync retry flow', () => {
+  const loggedInAuthClient = () =>
+    createMockAuthClient({
+      session: { user: { id: 'real-1', email: 'user@example.com', name: 'Real User', isAnonymous: false } },
+    })
+
+  // The test database is bun-sqlite (no PowerSync instance), so usePowerSyncStatus
+  // reports 'not-configured' — with sync enabled that is exactly the
+  // "needs attention" state that surfaces the Retry button.
+  //
+  // The premise is a device that HOLDS its keyring but is offline, so one is
+  // staged for real (fake-indexeddb): without it, useSyncEnabledToggle's mount
+  // check (`needsSyncSetupWizard`) auto-disables sync and the Retry state never
+  // exists — or crashes outright when no earlier test file installed indexedDB.
+  beforeEach(async () => {
+    const ak = await generateAK()
+    await storeAK(ak)
+    await storeDEK('0', (await mintDEK(ak, '0')).wrappedKey)
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
+  })
+
+  afterEach(async () => {
+    await clearAllKeys()
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
+  })
+
+  const openAccountMenu = async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    await screen.findByText('Cloud Sync')
+  }
+
+  it('shows the offline warning and a Retry button when sync is enabled but not connected', async () => {
+    renderWithProviders(loggedInAuthClient())
+    await openAccountMenu()
+    expect(screen.getByText('Offline. Changes will sync when back online.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument()
+  })
+
+  it('clicking Retry triggers a reconnect through the database singleton', async () => {
+    // reconnectSync() reaches the registered database via getDatabaseInstance() and
+    // calls its `reconnect` method when present. The bun-sqlite test database has no
+    // reconnect, so attach one to observe the real code path — no module mocking.
+    const database = getDatabaseInstance() as DatabaseInterface & { reconnect?: () => Promise<void> }
+    let reconnectCalls = 0
+    database.reconnect = async () => {
+      reconnectCalls += 1
+    }
+    try {
+      renderWithProviders(loggedInAuthClient())
+      await openAccountMenu()
+      fireEvent.click(screen.getByRole('button', { name: /Retry/ }))
+      await waitFor(() => expect(reconnectCalls).toBe(1))
+    } finally {
+      delete database.reconnect
+    }
+  })
+
+  it('does not offer Retry when sync is disabled', async () => {
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
+    renderWithProviders(loggedInAuthClient())
+    await openAccountMenu()
+    expect(screen.getByText('Keep your data synced across devices.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
+  })
+})
+
+describe('syncStatusText', () => {
+  // Pinned rather than negotiated so the relative-time assertions below don't
+  // depend on the host's locale.
+  const formatters = getFormatters('en')
+
+  it('pitches sync when it is off', () => {
+    expect(syncStatusText(i18n, formatters, false, 'disconnected', false, null)).toBe(
+      'Keep your data synced across devices.',
+    )
+  })
+
+  it('reports connecting and offline states', () => {
+    expect(syncStatusText(i18n, formatters, true, 'connecting', false, null)).toBe('Connecting…')
+    expect(syncStatusText(i18n, formatters, true, 'disconnected', false, null)).toBe(
+      'Offline. Changes will sync when back online.',
+    )
+  })
+
+  it('reports a fresh sync as "Just synced"', () => {
+    expect(syncStatusText(i18n, formatters, true, 'connected', true, new Date(Date.now() - 5_000))).toBe('Just synced')
+  })
+
+  it('reports an older sync as relative time', () => {
+    expect(syncStatusText(i18n, formatters, true, 'connected', true, new Date(Date.now() - 10 * 60_000))).toBe(
+      'Synced 10 minutes ago',
+    )
+  })
+
+  it('falls back to Connected before the first sync lands', () => {
+    expect(syncStatusText(i18n, formatters, true, 'connected', false, null)).toBe('Connected')
   })
 })

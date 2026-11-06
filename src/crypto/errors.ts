@@ -33,3 +33,27 @@ export class ValidationError extends Error {
     this.name = 'ValidationError'
   }
 }
+
+/** Distinguish user confirmation failures from receiver identity-verification failures. */
+export class DeviceApprovalError extends ValidationError {
+  readonly reason: 'fingerprint-mismatch' | 'recipient-unverified'
+
+  constructor(reason: DeviceApprovalError['reason'], options?: ErrorOptions) {
+    super(
+      reason === 'fingerprint-mismatch'
+        ? 'Device fingerprint does not match'
+        : 'Device envelope attestation could not be verified',
+      options,
+    )
+    this.name = 'DeviceApprovalError'
+    this.reason = reason
+  }
+}
+
+/** Thrown when key derivation (KDF / HKDF) fails. */
+export class KeyDerivationError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'KeyDerivationError'
+  }
+}

@@ -2,9 +2,158 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
+import { act, renderHook } from '@testing-library/react'
+import { useState } from 'react'
+import { buildAttachmentPart, getAttachments } from '@/lib/attachments'
+import { getClock } from '@/testing-library'
+import type { ThunderboltUIMessage } from '@/types'
 
-import { nextRemediationTarget } from './use-attachment-remediation'
+import { nextRemediationTarget, useAttachmentRemediation } from './use-attachment-remediation'
+
+/** The hosted agent's oversized-instructions 400, as the managed-http adapter serializes it. */
+const agentInstructionsTooLarge = JSON.stringify({
+  error: JSON.stringify({ error: { code: 'AGENT_INSTRUCTIONS_TOO_LARGE' } }),
+  status: 400,
+})
+
+/** Ollama's rejection of a request with tools, as the Pi engine flattens it. */
+const toolSupportRejection = '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'
+
+describe('useAttachmentRemediation', () => {
+  test.each([
+    {
+      label: 'tool-schema rejection keeps the error visible without converting or regenerating',
+      message:
+        '400: {"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}',
+      delivery: 'text' as const,
+      expectedDelivery: 'text',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'tool-schema rejection does not claim the file delivery ladder was exhausted',
+      message:
+        '400: {"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}',
+      delivery: 'images' as const,
+      expectedDelivery: 'images',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'tool-support rejection keeps the error visible without converting or regenerating',
+      message: toolSupportRejection,
+      delivery: 'text' as const,
+      expectedDelivery: 'text',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'tool-support rejection does not claim the file delivery ladder was exhausted',
+      message: toolSupportRejection,
+      delivery: 'images' as const,
+      expectedDelivery: 'images',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'oversized hosted-agent instructions keep their error without converting or regenerating',
+      message: agentInstructionsTooLarge,
+      delivery: 'text' as const,
+      expectedDelivery: 'text',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'oversized hosted-agent instructions are not replaced by file guidance once the ladder is spent',
+      message: agentInstructionsTooLarge,
+      delivery: 'images' as const,
+      expectedDelivery: 'images',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'genuine file rejection advances text to images and regenerates once',
+      message: '400: invalid file content',
+      delivery: 'text' as const,
+      expectedDelivery: 'images',
+      expectedRegenerations: 1,
+    },
+  ])('$label', async ({ message, delivery, expectedDelivery, expectedRegenerations }) => {
+    const regenerate = mock(() => {})
+    const error = new Error(message)
+    const { result, rerender } = renderHook(
+      ({ active }) => {
+        const [messages, setMessages] = useState<ThunderboltUIMessage[]>([
+          {
+            id: 'user-1',
+            role: 'user',
+            parts: [
+              buildAttachmentPart({
+                localFileId: 'pdf-1',
+                filename: 'research.pdf',
+                mimeType: 'application/pdf',
+                deliverAs: delivery,
+              }),
+            ],
+          },
+        ])
+        const remediation = useAttachmentRemediation({ messages, setMessages, regenerate, error, active })
+        return { messages, ...remediation }
+      },
+      { initialProps: { active: false } },
+    )
+
+    rerender({ active: true })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(getAttachments(result.current.messages[0])[0].deliverAs).toBe(expectedDelivery)
+    expect(regenerate).toHaveBeenCalledTimes(expectedRegenerations)
+    expect(result.current.suppressError).toBe(expectedRegenerations > 0)
+    expect(result.current.deliveryExhausted).toBe(expectedRegenerations > 0)
+  })
+
+  test('skips rendering a file as images for a model known not to read them', async () => {
+    const regenerate = mock(() => {})
+    const glm53 = { provider: 'tinfoil', model: 'glm-5-3', url: null, vendor: 'zhipu' } as const
+    const { result, rerender } = renderHook(
+      ({ active }) => {
+        const [messages, setMessages] = useState<ThunderboltUIMessage[]>([
+          {
+            id: 'user-1',
+            role: 'user',
+            parts: [
+              buildAttachmentPart({
+                localFileId: 'pdf-1',
+                filename: 'scan.pdf',
+                mimeType: 'application/pdf',
+                deliverAs: 'text',
+              }),
+            ],
+          },
+        ])
+        const remediation = useAttachmentRemediation({
+          messages,
+          setMessages,
+          regenerate,
+          error: new Error('400: invalid file content'),
+          active,
+          model: glm53,
+        })
+        return { messages, ...remediation }
+      },
+      { initialProps: { active: false } },
+    )
+
+    rerender({ active: true })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // The adapter would strip page images for this model, so the ladder ends here
+    // with the file-specific message instead of a retry the model can't use.
+    expect(getAttachments(result.current.messages[0])[0].deliverAs).toBe('text')
+    expect(regenerate).not.toHaveBeenCalled()
+    expect(result.current.suppressError).toBe(false)
+    expect(result.current.deliveryExhausted).toBe(true)
+  })
+})
 
 describe('nextRemediationTarget', () => {
   const caps = (over: Partial<{ canText: boolean; canImages: boolean; hasUsableText: boolean }> = {}) => ({

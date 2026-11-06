@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
+import { msg } from '@lingui/core/macro'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { deleteMcpServer } from '@/dal'
 import { clearMcpOAuthState, getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
@@ -25,9 +27,9 @@ export type McpOAuthCallback = { code?: string; state?: string; iss?: string; er
 /** Maps a raw OAuth `error` query value to a short, user-facing message. */
 export const friendlyOAuthError = (error?: string): string => {
   if (error === 'access_denied') {
-    return 'Authorization was declined.'
+    return i18n._(msg`Authorization was declined.`)
   }
-  return 'Authorization failed. Please try again.'
+  return i18n._(msg`Authorization failed. Please try again.`)
 }
 
 type OAuthStateShape = {
@@ -119,7 +121,7 @@ export const handleMcpOAuthCallback = async (
   }
 
   if (!oauth.code) {
-    deps.setCard(serverId, { phase: 'error', message: 'Authorization was cancelled.' })
+    deps.setCard(serverId, { phase: 'error', message: i18n._(msg`Authorization was cancelled.`) })
     clearMcpOAuthState()
     return
   }
@@ -140,7 +142,7 @@ export const handleMcpOAuthCallback = async (
     console.error('Failed to complete MCP OAuth flow:', error)
     deps.setCard(serverId, {
       phase: 'error',
-      message: error instanceof Error ? error.message : 'Authorization failed.',
+      message: error instanceof Error ? error.message : i18n._(msg`Authorization failed.`),
     })
   }
 }

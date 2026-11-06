@@ -19,6 +19,7 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { isMobile as isMobilePlatform, isTauri as isTauriPlatform } from '@/lib/platform'
 import type { McpAuthActionability } from './auth-decision'
 import { cimdClientMetadataAvailable, createMcpOAuthClientProvider } from './oauth-client-provider'
+import { i18n } from '@/i18n'
 import { validateMcpOAuthCallback } from './callback-validation'
 import { startMcpOAuthLoopback } from './mcp-oauth-loopback'
 import { abandonedFlowMs, clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
@@ -114,7 +115,7 @@ const discoverServer = async (
   serverUrl: string,
   fetchFn: FetchLike,
   deps: WebOAuthDeps,
-): Promise<{ authorizationServerUrl: string; metadata: AuthorizationServerMetadata }> => {
+): Promise<{ authorizationServerUrl: string; metadata: AuthorizationServerMetadata; scope?: string }> => {
   const discover = deps.discoverOAuthProtectedResourceMetadata ?? discoverOAuthProtectedResourceMetadata
   const discoverAs = deps.discoverAuthorizationServerMetadata ?? discoverAuthorizationServerMetadata
 
@@ -135,7 +136,14 @@ const discoverServer = async (
     throw new Error('Authorization server does not support PKCE S256.')
   }
 
-  return { authorizationServerUrl, metadata }
+  // RFC 9728: request the scopes the resource advertises (space-delimited). A
+  // scope-gated server issues a token authorized for nothing without this — e.g.
+  // Metabase gates every MCP tool behind an `agent:*` scope, so an unscoped token
+  // makes `tools/list` return empty. `undefined` when none are advertised, which
+  // omits the `scope` parameter and preserves behavior for non-gated servers.
+  const scope = prm.scopes_supported?.join(' ') || undefined
+
+  return { authorizationServerUrl, metadata, scope }
 }
 
 /**
@@ -223,7 +231,7 @@ const prepareAuthorization = async (
   const register = deps.registerClient ?? registerClient
   const start = deps.startAuthorization ?? startAuthorization
 
-  const { authorizationServerUrl, metadata } = await discoverServer(serverUrl, fetchFn, deps)
+  const { authorizationServerUrl, metadata, scope } = await discoverServer(serverUrl, fetchFn, deps)
 
   const provider = createMcpOAuthClientProvider({ serverId, db, origin, redirectUri, isBackendConnected })
 
@@ -237,17 +245,16 @@ const prepareAuthorization = async (
     // cryptic registration failure (mirrors `classifyMcpServerAuth`'s token-only case).
     throw new Error('This server requires a personal access token. Add it as the credential to connect.')
   }
+  // The new client_id rides in the handshake; writing it to the stored credential now would pair it with
+  // the old refresh token if the user abandons the flow, breaking every refresh until remove + re-add.
   const clientInformation = useCimd
     ? { client_id: provider.clientMetadataUrl! }
-    : await (async () => {
-        const full = await register(authorizationServerUrl, {
-          metadata,
-          clientMetadata: provider.clientMetadata,
-          fetchFn,
-        })
-        await provider.saveClientInformation(full)
-        return full
-      })()
+    : await register(authorizationServerUrl, {
+        metadata,
+        clientMetadata: provider.clientMetadata,
+        scope,
+        fetchFn,
+      })
 
   const stateNonce = uuidv4()
   const resource = resourceUrlFromServerUrl(serverUrl)
@@ -273,6 +280,7 @@ const prepareAuthorization = async (
     metadata,
     clientInformation,
     redirectUrl: provider.redirectUrl,
+    scope,
     state: stateNonce,
     resource,
   })
@@ -448,7 +456,9 @@ export const completeMcpOAuthFlow = async (
     issParameterSupported: issParameterSupported(metadata),
   })
   if (!validation.ok) {
-    throw new Error(validation.reason)
+    // Resolved here rather than carried as a descriptor: this is an async flow and
+    // the snapshot is taken while the user is looking at the screen (see AGENTS.md).
+    throw new Error(i18n._(validation.reason))
   }
 
   if (!handshake.clientInfo || !handshake.codeVerifier || !handshake.redirectUrl || !handshake.serverUrl) {

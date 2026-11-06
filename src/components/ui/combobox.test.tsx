@@ -39,8 +39,22 @@ describe('Combobox', () => {
     it('supports controlled open state', () => {
       const handleOpenChange = mock()
       render(<Combobox items={mockItems} onValueChange={() => {}} open={true} onOpenChange={handleOpenChange} />)
-      // When open, the search input should be visible
-      expect(screen.getByPlaceholderText('Search...')).toBeInTheDocument()
+      const searchInput = screen.getByPlaceholderText('Search…')
+      const command = searchInput.closest('[data-slot="command"]')
+      const popoverContent = command?.parentElement
+
+      expect(searchInput).toBeInTheDocument()
+      expect(command).toHaveClass(
+        '[&_[data-slot=command-input-wrapper]]:rounded-lg',
+        '[&_[data-slot=command-input-wrapper]]:border',
+      )
+      expect(searchInput.parentElement?.parentElement).toHaveClass('p-1')
+      expect(popoverContent).toHaveClass('w-[var(--radix-popover-trigger-width)]')
+    })
+
+    it('names the search input after its placeholder', () => {
+      render(<Combobox items={mockItems} onValueChange={() => {}} open={true} searchPlaceholder="Search models…" />)
+      expect(screen.getByPlaceholderText('Search models…')).toHaveAccessibleName('Search models…')
     })
 
     it('calls onOpenChange when trigger is clicked', () => {
@@ -99,7 +113,7 @@ describe('Combobox', () => {
           onSearchChange={handleSearchChange}
         />,
       )
-      const input = screen.getByPlaceholderText('Search...')
+      const input = screen.getByPlaceholderText('Search…')
       fireEvent.change(input, { target: { value: 'test' } })
       expect(handleSearchChange).toHaveBeenCalledWith('test')
     })
@@ -115,7 +129,7 @@ describe('Combobox', () => {
           onSearchChange={() => {}}
         />,
       )
-      const input = screen.getByPlaceholderText('Search...')
+      const input = screen.getByPlaceholderText('Search…')
       expect(input).toHaveValue('hello')
     })
   })

@@ -4,8 +4,7 @@
 
 import { useEffect, useCallback } from 'react'
 import { create } from 'zustand'
-import { check, type Update } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
+import type { Update } from '@tauri-apps/plugin-updater'
 import { isDesktop } from '@/lib/platform'
 import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { setPostUpdateFlag, clearPostUpdateFlag } from '@/lib/post-update-redirect'
@@ -59,6 +58,21 @@ export const updateReducer = (state: UpdateState, action: UpdateAction): UpdateS
   }
 }
 
+/**
+ * Maps an update status to the primary user action — the single source of the
+ * check → download → restart progression shared by every update surface (toast,
+ * settings, the min-version blocker). Any non-actionable status (re)checks.
+ */
+export const selectUpdateAction = (status: UpdateStatus): 'download' | 'restart' | 'check' => {
+  if (status === 'available') {
+    return 'download'
+  }
+  if (status === 'ready') {
+    return 'restart'
+  }
+  return 'check'
+}
+
 const extractErrorMessage = (err: unknown, fallback: string): string => {
   if (err instanceof Error) {
     return err.message
@@ -90,6 +104,10 @@ export type DesktopUpdateState = UpdateState & {
   checkForUpdates: () => Promise<void>
   downloadAndInstall: () => Promise<void>
   restartApp: () => Promise<void>
+  /** The status-driven primary action shared by every update surface (toast,
+   *  settings, the min-version blocker): download when an update is available,
+   *  restart when one is ready, otherwise (re)check. */
+  primaryAction: () => Promise<void>
 }
 
 let didAutoCheck = false
@@ -122,6 +140,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
     dispatch({ type: 'CHECK_START' })
 
     try {
+      // Import the desktop-only updater plugin lazily so it stays out of the web
+      // entry bundle (this path is guarded by isDesktop above).
+      const { check } = await import('@tauri-apps/plugin-updater')
       const availableUpdate = await check()
       dispatch({ type: 'CHECK_SUCCESS', update: availableUpdate })
     } catch (err) {
@@ -183,6 +204,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
       }
       // Signal the new process to reset navigation (WebView may restore stale route)
       setPostUpdateFlag()
+      // Lazily import the desktop-only process plugin so it stays out of the web
+      // entry bundle — this only runs from the desktop update flow.
+      const { relaunch } = await import('@tauri-apps/plugin-process')
       await relaunch()
     } catch (err) {
       // Clear the flag so a stale flag doesn't force-redirect on next manual launch
@@ -195,6 +219,17 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
       })
     }
   }, [])
+
+  const primaryAction = useCallback(async () => {
+    const action = selectUpdateAction(useUpdateStore.getState().status)
+    if (action === 'download') {
+      await downloadAndInstall()
+    } else if (action === 'restart') {
+      await restartApp()
+    } else {
+      await checkForUpdates()
+    }
+  }, [checkForUpdates, downloadAndInstall, restartApp])
 
   // Auto-check once per session on desktop. Guarded so mounting the hook in
   // multiple places (toast + Settings) doesn't fire repeat checks. The guard
@@ -222,5 +257,6 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
     checkForUpdates,
     downloadAndInstall,
     restartApp,
+    primaryAction,
   }
 }

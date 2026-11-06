@@ -85,9 +85,35 @@ static void lockWebViewScrollPosition() {
     }
 }
 
+// Allow programmatic focus() to present the keyboard.
+//
+// WKWebView only raises the keyboard for focus that happens inside a user
+// gesture (the equivalent of the old `keyboardDisplayRequiresUserAction`
+// setting, which WKWebView does not expose). Our UX relies on programmatic
+// focus: autofocusing the composer on launch, focusing the first field of
+// create forms after navigation, and focusing search inputs revealed by a
+// tap in an earlier event loop turn. Swizzle WKContentView's focus
+// notification to always report `userIsInteracting = YES` — the same
+// approach Capacitor and Cordova use.
+static void allowKeyboardWithoutUserAction() {
+    Class WKContentViewClass = NSClassFromString(@"WKContentView");
+    if (!WKContentViewClass) return;
+
+    SEL selector = sel_getUid("_elementDidFocus:userIsInteracting:blurPreviousNode:activityStateChanges:userObject:");
+    Method method = class_getInstanceMethod(WKContentViewClass, selector);
+    if (!method) return;
+
+    IMP originalImp = method_getImplementation(method);
+    IMP override = imp_implementationWithBlock(^void(id me, void *arg0, BOOL arg1, BOOL arg2, NSUInteger arg3, id arg4) {
+        ((void (*)(id, SEL, void *, BOOL, BOOL, NSUInteger, id))originalImp)(me, selector, arg0, YES, arg2, arg3, arg4);
+    });
+    method_setImplementation(method, override);
+}
+
 int main(int argc, char * argv[]) {
 	removeKeyboardAccessoryBar();
 	lockWebViewScrollPosition();
+	allowKeyboardWithoutUserAction();
 	ffi::start_app();
 	return 0;
 }

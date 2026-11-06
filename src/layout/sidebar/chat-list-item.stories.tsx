@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { SidebarProvider } from '@/components/ui/sidebar'
+import { SidebarMenu, SidebarProvider } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ChatListItem } from './chat-list-item'
 import type { ChatThread } from './types'
 
 const meta = {
-  title: 'layout/sidebar/ChatListItem',
+  title: 'Sidebar/ChatListItem',
   component: ChatListItem,
   parameters: {
     layout: 'padded',
@@ -24,7 +24,11 @@ const meta = {
       <SidebarProvider>
         <TooltipProvider>
           <div className="w-64 border rounded-lg p-2 bg-sidebar">
-            <Story />
+            {/* ChatListItem renders a SidebarMenuItem (<li>); without the
+                SidebarMenu (<ul>) parent the browser draws a list marker. */}
+            <SidebarMenu>
+              <Story />
+            </SidebarMenu>
           </div>
         </TooltipProvider>
       </SidebarProvider>
@@ -39,30 +43,34 @@ const mockThread: ChatThread = {
   id: '1',
   title: 'Example Chat Thread',
   isEncrypted: 0,
+  projectId: null,
+  miniAppId: null,
 }
 
 const encryptedThread: ChatThread = {
   id: '2',
   title: 'Encrypted Chat Thread',
   isEncrypted: 1,
+  projectId: null,
+  miniAppId: null,
 }
 
 export const Expanded: Story = {
   args: {
     thread: mockThread,
     isActive: false,
-    isCollapsed: false,
     isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: false,
-    } as any,
+    },
     threadIdRef: { current: null },
     deleteChatDialogRef: {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
-    } as any,
+    },
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {
@@ -77,18 +85,18 @@ export const ExpandedActive: Story = {
   args: {
     thread: mockThread,
     isActive: true,
-    isCollapsed: false,
     isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: false,
-    } as any,
+    },
     threadIdRef: { current: null },
     deleteChatDialogRef: {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
-    } as any,
+    },
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {
@@ -103,18 +111,18 @@ export const ExpandedEncrypted: Story = {
   args: {
     thread: encryptedThread,
     isActive: false,
-    isCollapsed: false,
     isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: false,
-    } as any,
+    },
     threadIdRef: { current: null },
     deleteChatDialogRef: {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
-    } as any,
+    },
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {
@@ -125,100 +133,22 @@ export const ExpandedEncrypted: Story = {
   },
 }
 
-export const Collapsed: Story = {
-  args: {
-    thread: mockThread,
-    isActive: false,
-    isCollapsed: true,
-    isMobile: false,
-    deleteChatMutation: {
-      mutate: () => console.log('Delete clicked'),
-      isPending: false,
-    } as any,
-    threadIdRef: { current: null },
-    deleteChatDialogRef: {
-      current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
-    } as any,
-    onChatClick: () => console.log('Chat clicked'),
-    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
-  },
-  parameters: {
-    docs: {
-      description: {
-        story: 'Collapsed icon-only view showing message icon with tooltip.',
-      },
-    },
-  },
-}
-
-export const CollapsedActive: Story = {
-  args: {
-    thread: mockThread,
-    isActive: true,
-    isCollapsed: true,
-    isMobile: false,
-    deleteChatMutation: {
-      mutate: () => console.log('Delete clicked'),
-      isPending: false,
-    } as any,
-    threadIdRef: { current: null },
-    deleteChatDialogRef: {
-      current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
-    } as any,
-    onChatClick: () => console.log('Chat clicked'),
-    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
-  },
-  parameters: {
-    docs: {
-      description: {
-        story: 'Collapsed view when the chat thread is currently active.',
-      },
-    },
-  },
-}
-
-export const CollapsedEncrypted: Story = {
-  args: {
-    thread: encryptedThread,
-    isActive: false,
-    isCollapsed: true,
-    isMobile: false,
-    deleteChatMutation: {
-      mutate: () => console.log('Delete clicked'),
-      isPending: false,
-    } as any,
-    threadIdRef: { current: null },
-    deleteChatDialogRef: {
-      current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
-    } as any,
-    onChatClick: () => console.log('Chat clicked'),
-    onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
-  },
-  parameters: {
-    docs: {
-      description: {
-        story: 'Collapsed view of encrypted thread (lock icon shown in tooltip).',
-      },
-    },
-  },
-}
-
 export const Deleting: Story = {
   args: {
     thread: mockThread,
     isActive: false,
-    isCollapsed: false,
     isMobile: false,
     deleteChatMutation: {
       mutate: () => console.log('Delete clicked'),
       isPending: true,
-    } as any,
+    },
     threadIdRef: { current: null },
     deleteChatDialogRef: {
       current: { open: () => console.log('Open delete dialog'), close: () => console.log('Close delete dialog') },
-    } as any,
+    },
     onChatClick: () => console.log('Chat clicked'),
     onRename: (threadId: string, title: string) => console.log('Rename', threadId, title),
+    onMoveToProject: (threadId: string) => console.log('Move to project', threadId),
   },
   parameters: {
     docs: {

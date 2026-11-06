@@ -6,11 +6,11 @@ import { ModificationIndicator } from '@/components/modification-indicator'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { SectionCard } from '@/components/ui/section-card'
+import { SettingsPageShell } from '@/components/settings/settings-list'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { getCapabilities, isTauri } from '@/lib/platform'
-import { useQuery } from '@tanstack/react-query'
+import { isTauri } from '@/lib/platform'
 import { useShallow } from 'zustand/react/shallow'
 
 export default function DevSettingsPage() {
@@ -29,14 +29,8 @@ export default function DevSettingsPage() {
   const resetSetting = <K extends keyof typeof initialLocalSettings>(key: K) =>
     setLocalSetting(key, initialLocalSettings[key])
 
-  const { data: capabilities } = useQuery({
-    queryKey: ['capabilities'],
-    queryFn: getCapabilities,
-    enabled: isTauri(),
-  })
-
   return (
-    <div className="flex flex-col gap-6 p-4 w-full max-w-[760px] mx-auto">
+    <SettingsPageShell className="gap-6">
       <PageHeader title="Developer Settings" />
 
       <SectionCard title="Network">
@@ -54,7 +48,16 @@ export default function DevSettingsPage() {
             <Input
               type="url"
               value={cloudUrl}
-              onChange={(e) => setLocalSetting('cloudUrl', e.target.value || initialLocalSettings.cloudUrl)}
+              onChange={(e) => setLocalSetting('cloudUrl', e.target.value)}
+              // Consumers (http client, PowerSync, ACP transports) can't work
+              // with a blank base URL, but snapping back mid-edit would make
+              // the field impossible to clear and retype — so restore the
+              // default only when the field is left empty.
+              onBlur={(e) => {
+                if (e.target.value.trim() === '') {
+                  resetSetting('cloudUrl')
+                }
+              }}
               placeholder="http://localhost:8000"
             />
             <p className="text-sm text-muted-foreground">The URL of the Thunderbolt backend</p>
@@ -81,15 +84,12 @@ export default function DevSettingsPage() {
                   <Switch
                     checked={isNativeFetchEnabled}
                     onCheckedChange={(value) => setLocalSetting('isNativeFetchEnabled', value)}
-                    disabled={!capabilities?.native_fetch}
+                    disabled={!isTauri()}
                   />
                 </span>
               </TooltipTrigger>
-              {!capabilities?.native_fetch && (
-                <TooltipContent sideOffset={4}>
-                  This feature is only available on some desktop versions of the app that were built with the
-                  native_fetch feature flag.
-                </TooltipContent>
+              {!isTauri() && (
+                <TooltipContent sideOffset={4}>Native HTTP is only available in the Tauri app.</TooltipContent>
               )}
             </Tooltip>
           </div>
@@ -113,6 +113,6 @@ export default function DevSettingsPage() {
           </div>
         </div>
       </SectionCard>
-    </div>
+    </SettingsPageShell>
   )
 }

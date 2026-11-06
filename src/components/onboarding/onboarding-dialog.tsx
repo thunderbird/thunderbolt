@@ -2,39 +2,74 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { useAppName } from '@/lib/branding-selectors'
+import { Trans } from '@lingui/react/macro'
+import { useEffect, useEffectEvent, useState } from 'react'
+import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
+import { useDatabase } from '@/contexts'
+import { deleteIntegrationCredentials } from '@/dal'
+import type { OAuthProvider } from '@/lib/auth'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '@/hooks/use-settings'
-import { useOnboardingState } from '@/hooks/use-onboarding-state'
+import { onboardingStepCount, useOnboardingState } from '@/hooks/use-onboarding-state'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
 import { OnboardingAuthStep } from './onboarding-auth-step'
 import { OnboardingNameStep } from './onboarding-name-step'
 import { OnboardingLocationStep } from './onboarding-location-step'
+import { OnboardingLanguageStep } from './onboarding-language-step'
+import { OnboardingPasskeyStep } from './onboarding-passkey-step'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
+import { useAccountPasskey } from '@/lib/passkey'
 import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
+import { Loader2 } from 'lucide-react'
+
+/** Wizard position of the passkey step. */
+const passkeyStep = 6
 
 export const OnboardingDialog = () => {
+  const appName = useAppName()
   const { isMobile } = useIsMobile()
+  const db = useDatabase()
+  const queryClient = useQueryClient()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })
-  const [isOpen, setIsOpen] = useState(false)
   const { state, actions } = useOnboardingState()
+  // The account gets one passkey, so the step is offered only while it has none.
+  const accountPasskey = useAccountPasskey()
+  const shouldOfferPasskeyStep = accountPasskey.isSettled && !accountPasskey.isUnavailable && !accountPasskey.passkey
 
+  /**
+   * Derived during render rather than mirrored into state. The previous effect
+   * only ever called `setIsOpen(true)`, so nothing closed the wizard when the
+   * flag flipped to true — a device that learned it was already onboarded, via
+   * sign-in or a sync download, kept it on screen (GH #1299).
+   */
+  const isOpen =
+    import.meta.env.VITE_SKIP_ONBOARDING !== 'true' &&
+    !userHasCompletedOnboarding.isLoading &&
+    !userHasCompletedOnboarding.value
+
+  // Skip the step when it isn't offered (no passkey support, or the account
+  // already has one), but only once that's known: the skip is persisted, so
+  // skipping while still loading would lose the step for good.
+  const skipPasskeyStep = useEffectEvent(() => {
+    actions.skipStep().catch((error) => console.error('Failed to skip the passkey step:', error))
+  })
   useEffect(() => {
-    if (import.meta.env.VITE_SKIP_ONBOARDING === 'true') {
-      return
+    if (isOpen && state.currentStep === passkeyStep && accountPasskey.isSettled && !shouldOfferPasskeyStep) {
+      skipPasskeyStep()
     }
-    if (!userHasCompletedOnboarding.isLoading && !userHasCompletedOnboarding.value) {
-      setIsOpen(true)
-    }
-  }, [userHasCompletedOnboarding.value, userHasCompletedOnboarding.isLoading])
+  }, [isOpen, state.currentStep, accountPasskey.isSettled, shouldOfferPasskeyStep])
 
-  const handleClose = () => {
-    setIsOpen(false)
+  // Owned here (the connected container) so the auth step stays presentational.
+  const handleProviderDisconnect = async (provider: OAuthProvider) => {
+    await deleteIntegrationCredentials(db, provider)
+    await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
   }
 
   // Celebration step completion handler
@@ -48,12 +83,11 @@ export const OnboardingDialog = () => {
     setIsCompleting(true)
     await Promise.all([userHasCompletedOnboarding.setValue(true), onboardingCurrentStep.setValue('1')])
     setIsCompleting(false)
-    handleClose()
   }
 
   // Unified action handlers
   const handleContinue = async () => {
-    if (state.currentStep === 5) {
+    if (state.currentStep === onboardingStepCount) {
       // Special handling for celebration step
       handleCelebrationComplete()
     } else if (state.currentStep === 2) {
@@ -76,6 +110,8 @@ export const OnboardingDialog = () => {
     }
   }
 
+  const isCelebration = state.currentStep === onboardingStepCount
+
   const handleBackAction = () => {
     if (state.canGoBack) {
       actions.prevStep()
@@ -90,34 +126,31 @@ export const OnboardingDialog = () => {
 
   return (
     <Dialog open={isOpen}>
-      <DialogContent
-        className={cn('p-0 overflow-hidden', !isMobile && 'h-[650px]')}
+      <ResponsiveModalContentComposable
+        className={cn('overflow-hidden p-0', !isMobile && 'h-[650px] max-h-[calc(100dvh-2rem)]')}
         showCloseButton={false}
-        useTransparentOverlay={!isMobile}
-        fullScreen={isMobile}
       >
-        <DialogTitle className="sr-only">Onboarding Wizard</DialogTitle>
+        <DialogTitle className="sr-only">
+          <Trans>Onboarding Wizard</Trans>
+        </DialogTitle>
         <DialogDescription className="sr-only">
-          Complete the setup process to get started with Thunderbolt
+          <Trans>Complete the setup process to get started with {appName}</Trans>
         </DialogDescription>
         <div
-          className={cn('flex flex-col items-center', isMobile && 'h-dvh')}
-          style={{
-            paddingBottom: 'calc(var(--safe-area-bottom-padding) + 24px + var(--kb, 0px))',
-            paddingTop: 'calc(var(--safe-area-top-padding) + 32px)',
-          }}
+          className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}
+          style={isMobile ? { paddingBottom: 'var(--kb, 0px)' } : undefined}
         >
-          <div className="flex items-center justify-center px-4 relative w-full pb-2">
-            <StepIndicators currentStep={state.currentStep} totalSteps={5} />
-            <div className="absolute -bottom-5.5 w-full h-6 bg-gradient-to-b from-background to-transparent" />
+          <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
+            <StepIndicators currentStep={state.currentStep} totalSteps={onboardingStepCount} />
           </div>
-          <div className="flex flex-1 flex-col px-6 overflow-scroll py-4">
+          <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
             {state.currentStep === 2 && (
               <OnboardingAuthStep
                 isProcessing={state.processingOAuth}
                 isConnected={state.isProviderConnected}
                 onConnectionChange={actions.setProviderConnected}
+                onDisconnect={handleProviderDisconnect}
               />
             )}
             {state.currentStep === 3 && (
@@ -126,16 +159,22 @@ export const OnboardingDialog = () => {
             {state.currentStep === 4 && (
               <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
             )}
-            {state.currentStep === 5 && <OnboardingCelebrationStep />}
+            {state.currentStep === 5 && <OnboardingLanguageStep />}
+            {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
+              <div className="flex flex-1 items-center justify-center">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
+            {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
           </div>
-          <div className="flex w-full px-5 pt-2 relative">
-            <div className="absolute -top-5.5 w-full h-6 bg-gradient-to-b from-transparent to-background" />
+          <div className="relative flex w-full shrink-0 px-5 pt-2">
             <OnboardingActionButtons
-              onBack={state.currentStep === 5 ? undefined : state.canGoBack ? handleBackAction : undefined}
-              onSkip={state.currentStep === 5 ? undefined : state.canSkip ? handleSkipAction : undefined}
+              onBack={isCelebration ? undefined : state.canGoBack ? handleBackAction : undefined}
+              onSkip={isCelebration ? undefined : state.canSkip ? handleSkipAction : undefined}
               onContinue={handleContinue}
-              showBack={state.currentStep === 5 ? false : state.canGoBack}
-              showSkip={state.currentStep === 5 ? false : state.canSkip}
+              showBack={isCelebration ? false : state.canGoBack}
+              showSkip={isCelebration ? false : state.canSkip}
               skipDisabled={
                 (state.currentStep === 2 && state.isProviderConnected) ||
                 (state.currentStep === 3 && state.isNameValid) ||
@@ -150,17 +189,25 @@ export const OnboardingDialog = () => {
                       ? !state.isNameValid
                       : state.currentStep === 4
                         ? !state.isLocationValid
-                        : state.currentStep === 5
-                          ? isCompleting
-                          : true
+                        : state.currentStep === passkeyStep
+                          ? !accountPasskey.isSettled
+                          : isCelebration && isCompleting
               }
               continueText={
-                state.currentStep === 5 ? (isCompleting ? 'Completing...' : 'Start Using Thunderbolt') : 'Continue'
+                isCelebration ? (
+                  isCompleting ? (
+                    <Trans>Completing…</Trans>
+                  ) : (
+                    <Trans>Start Using {appName}</Trans>
+                  )
+                ) : (
+                  <Trans>Continue</Trans>
+                )
               }
             />
           </div>
         </div>
-      </DialogContent>
+      </ResponsiveModalContentComposable>
     </Dialog>
   )
 }

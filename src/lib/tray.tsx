@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { msg } from '@lingui/core/macro'
+import { i18n } from '@lingui/core'
 import { createContext, useContext, type ReactNode } from 'react'
-import { isDesktop, isTauri } from './platform'
+import { isTauri, isTauriDesktop } from './platform'
 
 // Lazy load Tauri modules only when needed
+let tauriApp: any = null
 let tauriCore: any = null
 let tauriMenu: any = null
 let tauriTray: any = null
@@ -15,6 +18,7 @@ let tauriProcess: any = null
 const loadTauriModules = async () => {
   if (isTauri() && !tauriCore) {
     try {
+      tauriApp = await import('@tauri-apps/api/app')
       tauriCore = await import('@tauri-apps/api/core')
       tauriMenu = await import('@tauri-apps/api/menu')
       tauriTray = await import('@tauri-apps/api/tray')
@@ -62,7 +66,7 @@ export class TrayManager {
   }
 
   static async initIfSupported(): Promise<{ tray: any | undefined; window: any | undefined }> {
-    if (isTauri() && isDesktop()) {
+    if (isTauriDesktop()) {
       return TrayManager.init()
     }
     // Return empty tray/window for mobile platforms or web
@@ -93,7 +97,7 @@ export class TrayManager {
     await this.appWindow.show()
     await this.appWindow.setSkipTaskbar(false)
 
-    if (isDesktop()) {
+    if (isTauriDesktop()) {
       try {
         await tauriCore.invoke('toggle_dock_icon', { show: true })
       } catch (error) {
@@ -134,7 +138,7 @@ export class TrayManager {
       await this.appWindow.hide()
       await this.appWindow.setSkipTaskbar(true)
 
-      if (isDesktop()) {
+      if (isTauriDesktop()) {
         try {
           await tauriCore.invoke('toggle_dock_icon', { show: false })
         } catch (error) {
@@ -162,7 +166,7 @@ export class TrayManager {
     this.appWindow = tauriWindow.getCurrentWindow()
 
     // Only set up tray-related features on desktop platforms
-    if (isDesktop() && tauriMenu && tauriTray) {
+    if (isTauriDesktop() && tauriMenu && tauriTray) {
       await this.setupWindowBehavior()
 
       try {
@@ -170,19 +174,22 @@ export class TrayManager {
           items: [
             {
               id: 'show',
-              text: 'Show',
+              text: i18n._(msg`Show`),
               action: this.handleShowClick.bind(this),
             },
             {
               id: 'quit',
-              text: 'Quit',
+              text: i18n._(msg`Quit`),
               action: this.handleQuitClick.bind(this),
             },
           ],
         })
 
         this.tray = await tauriTray.TrayIcon.new({
-          title: 'Thunderbolt',
+          icon: await tauriApp?.defaultWindowIcon(),
+          // macOS template mode: alpha-only render that inverts with the menu
+          // bar. No-op on Windows/Linux (they show the icon as-is).
+          iconAsTemplate: true,
           tooltip: 'Thunderbolt',
           menu,
         })

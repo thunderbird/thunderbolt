@@ -3,15 +3,25 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getDb } from '@/db/database'
-import { agentsSystemTable, agentsTable } from '@/db/tables'
+import { agentsSystemTable, agentsTable, chatThreadsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { HttpError, type HttpClient, type ResponsePromise } from '@/lib/http'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
 import { clearAdapterCache, getOrConnectAdapter } from '@/acp/adapter-cache'
 import type { AgentAdapter } from '@/types/acp'
-import type { AgentDiscoveryResponse } from '@shared/acp-types'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { composeAllAgents, createAgent, deleteAgent, getAgentSecrets, setAgentSecrets, updateAgent } from './agents'
+import type { AgentDiscoveryResponse, CustomAgentType } from '@shared/acp-types'
+import { eq } from 'drizzle-orm'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import {
+  composeAllAgents,
+  createAgent,
+  deleteAgent,
+  getAgentSecrets,
+  loadAllAgents,
+  setAgentSecrets,
+  updateAgent,
+} from './agents'
+import { getChatThread } from './chat-threads'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import type { Agent } from '@/types/acp'
 
@@ -95,6 +105,23 @@ describe('agents DAL', () => {
       expect(row?.deletedAt).toBeNull()
     })
 
+    it('persists a custom agent on the iroh transport (NodeId/ticket in url)', async () => {
+      const db = getDb()
+      const nodeId = 'a'.repeat(52)
+      await createAgent(db, {
+        id: 'agent-iroh',
+        name: 'Laptop Bridge',
+        type: 'remote-acp',
+        transport: 'iroh',
+        url: nodeId,
+        userId: 'user-42',
+      })
+
+      const row = await db.select().from(agentsTable).get()
+      expect(row?.transport).toBe('iroh')
+      expect(row?.url).toBe(nodeId)
+    })
+
     it('defaults enabled = 1 when omitted', async () => {
       await createAgent(getDb(), {
         id: 'agent-default',
@@ -161,7 +188,31 @@ describe('agents DAL', () => {
       expect(cached.disconnectCount()).toBe(1)
     })
 
-    it('does NOT dispose the connection on a non-wire patch (rename only)', async () => {
+    it('clears ACP sessions from every thread using an agent whose wire identity changes', async () => {
+      await createAgent(getDb(), {
+        id: 'a-sessions',
+        name: 'Wired',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://old/ws',
+        userId: 'u1',
+      })
+      await getDb()
+        .insert(chatThreadsTable)
+        .values([
+          { id: 'thread-a1', agentId: 'a-sessions', acpSessionId: 'session-a1' },
+          { id: 'thread-a2', agentId: 'a-sessions', acpSessionId: 'session-a2' },
+          { id: 'thread-other', agentId: 'other-agent', acpSessionId: 'session-other' },
+        ])
+
+      await updateAgent(getDb(), 'a-sessions', { url: 'wss://new/ws' })
+
+      expect((await getChatThread(getDb(), 'thread-a1'))?.acpSessionId).toBeNull()
+      expect((await getChatThread(getDb(), 'thread-a2'))?.acpSessionId).toBeNull()
+      expect((await getChatThread(getDb(), 'thread-other'))?.acpSessionId).toBe('session-other')
+    })
+
+    it('preserves the connection and ACP sessions when submitted wire fields are unchanged', async () => {
       await createAgent(getDb(), {
         id: 'a-name',
         name: 'Before',
@@ -171,10 +222,18 @@ describe('agents DAL', () => {
         userId: 'u1',
       })
       const cached = await seedCachedAdapter('a-name')
+      await getDb()
+        .insert(chatThreadsTable)
+        .values({ id: 'thread-same-wire', agentId: 'a-name', acpSessionId: 'session-same-wire' })
 
-      await updateAgent(getDb(), 'a-name', { name: 'After' })
+      await updateAgent(getDb(), 'a-name', {
+        name: 'After',
+        transport: 'websocket',
+        url: 'wss://keep/ws',
+      })
 
       expect(cached.disconnectCount()).toBe(0)
+      expect((await getChatThread(getDb(), 'thread-same-wire'))?.acpSessionId).toBe('session-same-wire')
     })
   })
 
@@ -214,6 +273,54 @@ describe('agents DAL', () => {
       await deleteAgent(getDb(), 'a-disp')
 
       expect(cached.disconnectCount()).toBe(1)
+    })
+  })
+
+  describe('loadAllAgents', () => {
+    const seedSystemAndCustomRows = async () => {
+      await getDb().insert(agentsSystemTable).values({
+        id: 'hosted-agent',
+        name: 'Assistant',
+        type: 'managed-http',
+        transport: 'http',
+        url: '/v1/agent/chat',
+        fetchedAt: new Date().toISOString(),
+      })
+      await createAgent(getDb(), {
+        id: 'custom-agent',
+        name: 'Custom',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://custom.example/ws',
+        userId: 'u1',
+      })
+    }
+
+    it('loads the built-in agent, then system rows, then custom rows', async () => {
+      await seedSystemAndCustomRows()
+
+      const agents = await loadAllAgents(getDb())
+
+      expect(agents.map((agent) => agent.id)).toEqual([builtInAgent.id, 'hosted-agent', 'custom-agent'])
+    })
+
+    it('leaves the built-in agent out when the deployment disables it', async () => {
+      await seedSystemAndCustomRows()
+
+      const agents = await loadAllAgents(getDb(), { includeBuiltIn: false })
+
+      expect(agents.map((agent) => agent.id)).toEqual(['hosted-agent', 'custom-agent'])
+    })
+
+    it('clamps a custom row whose plaintext type was rewritten to managed-http', async () => {
+      await seedSystemAndCustomRows()
+      // What a server could write into the synced, unencrypted `type` column.
+      const rewrittenType = 'managed-http' as CustomAgentType
+      await getDb().update(agentsTable).set({ type: rewrittenType }).where(eq(agentsTable.id, 'custom-agent'))
+
+      const agents = await loadAllAgents(getDb())
+
+      expect(agents.find((agent) => agent.id === 'custom-agent')?.type).toBe('remote-acp')
     })
   })
 
@@ -323,14 +430,107 @@ describe('agents DAL', () => {
     it('upserts returned agents and stamps fetchedAt on 200', async () => {
       const client = makeHttpClient(async () => baseResponse)
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
-      expect(result).toEqual({ refreshed: true })
+      const result = await refreshSystemAgents(getDb(), client)
+      expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [], defaultAgent: null })
 
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toHaveLength(1)
       expect(rows[0]?.id).toBe('haystack-rag')
       expect(rows[0]?.name).toBe('RAG Chat')
       expect(rows[0]?.fetchedAt).toBeTruthy()
+    })
+
+    it('invalidates only system-agent sessions whose discovered wire identity changed', async () => {
+      const fetchedAt = new Date().toISOString()
+      await getDb()
+        .insert(agentsSystemTable)
+        .values([
+          {
+            id: 'changed-agent',
+            name: 'Changed',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://old.example/ws',
+            fetchedAt,
+          },
+          {
+            id: 'unchanged-agent',
+            name: 'Unchanged',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://stable.example/ws',
+            fetchedAt,
+          },
+        ])
+      await getDb()
+        .insert(chatThreadsTable)
+        .values([
+          { id: 'thread-changed-system', agentId: 'changed-agent', acpSessionId: 'session-changed' },
+          { id: 'thread-unchanged-system', agentId: 'unchanged-agent', acpSessionId: 'session-unchanged' },
+        ])
+      const changedAdapter = await seedCachedAdapter('changed-agent')
+      const unchangedAdapter = await seedCachedAdapter('unchanged-agent')
+      const response: AgentDiscoveryResponse = {
+        version: '1',
+        agents: [
+          {
+            id: 'changed-agent',
+            name: 'Changed',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://new.example/ws',
+            description: null,
+            icon: null,
+            isSystem: 1,
+          },
+          {
+            id: 'unchanged-agent',
+            name: 'Unchanged',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://stable.example/ws',
+            description: null,
+            icon: null,
+            isSystem: 1,
+          },
+        ],
+        allowCustomAgents: true,
+      }
+
+      const result = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => response),
+      )
+
+      expect(result).toEqual({
+        refreshed: true,
+        wireIdentityChangedAgents: [
+          {
+            id: 'changed-agent',
+            name: 'Changed',
+            type: 'managed-acp',
+            transport: 'websocket',
+            url: 'wss://new.example/ws',
+            description: null,
+            icon: null,
+            isSystem: 1,
+            enabled: 1,
+            deletedAt: null,
+            userId: null,
+          },
+        ],
+        defaultAgent: null,
+      })
+      expect((await getChatThread(getDb(), 'thread-changed-system'))?.acpSessionId).toBeNull()
+      expect((await getChatThread(getDb(), 'thread-unchanged-system'))?.acpSessionId).toBe('session-unchanged')
+      expect(changedAdapter.disconnectCount()).toBe(1)
+      expect(unchangedAdapter.disconnectCount()).toBe(0)
+
+      const unchangedResult = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => response),
+      )
+      expect(unchangedResult).toEqual({ refreshed: true, wireIdentityChangedAgents: [], defaultAgent: null })
     })
 
     it('removes local rows that disappear from the discovery response', async () => {
@@ -347,9 +547,27 @@ describe('agents DAL', () => {
       })
 
       const client = makeHttpClient(async () => baseResponse)
-      await refreshSystemAgents(getDb(), 'https://api.example', client)
+      await refreshSystemAgents(getDb(), client)
 
       const ids = (await getDb().select().from(agentsSystemTable).all()).map((r) => r.id)
+      expect(ids).toEqual(['haystack-rag'])
+    })
+
+    it('skips a kind this build does not know, so a newer backend cannot add one', async () => {
+      const futureDescriptor = { ...baseResponse.agents[0]!, id: 'future', type: 'future-kind' }
+      const response = {
+        ...baseResponse,
+        agents: [...baseResponse.agents, futureDescriptor],
+        defaultAgentId: 'future',
+      } as unknown as AgentDiscoveryResponse
+
+      const result = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => response),
+      )
+
+      expect(result).toMatchObject({ refreshed: true, defaultAgent: null })
+      const ids = (await getDb().select().from(agentsSystemTable).all()).map((row) => row.id)
       expect(ids).toEqual(['haystack-rag'])
     })
 
@@ -372,10 +590,90 @@ describe('agents DAL', () => {
       }
       const client = makeHttpClient(async () => response)
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
-      expect(result).toEqual({ refreshed: true })
+      const result = await refreshSystemAgents(getDb(), client)
+      expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [], defaultAgent: null })
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toEqual([])
+    })
+
+    const hostedAgentResponse: AgentDiscoveryResponse = {
+      version: '1',
+      agents: [
+        ...baseResponse.agents,
+        {
+          id: 'hosted-agent',
+          name: 'Assistant',
+          type: 'managed-http',
+          transport: 'http',
+          url: '/v1/agent/chat',
+          description: null,
+          icon: null,
+          isSystem: 1,
+          anonymousSafe: true,
+        },
+      ],
+      allowCustomAgents: true,
+      defaultAgentId: 'hosted-agent',
+    }
+
+    it('seeds managed-http agents and flags the discovered default', async () => {
+      const result = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => hostedAgentResponse),
+      )
+
+      expect(result).toMatchObject({
+        refreshed: true,
+        defaultAgent: { id: 'hosted-agent', type: 'managed-http', transport: 'http', url: '/v1/agent/chat' },
+      })
+      const rows = await getDb().select().from(agentsSystemTable).orderBy(agentsSystemTable.id).all()
+      expect(rows.map(({ id, type, isDefault }) => ({ id, type, isDefault }))).toEqual([
+        { id: 'haystack-rag', type: 'managed-acp', isDefault: 0 },
+        { id: 'hosted-agent', type: 'managed-http', isDefault: 1 },
+      ])
+    })
+
+    it('clears the default flag when the response stops naming a default', async () => {
+      await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => hostedAgentResponse),
+      )
+
+      const { defaultAgentId: _, ...withoutDefault } = hostedAgentResponse
+      const result = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => withoutDefault),
+      )
+
+      expect(result).toMatchObject({ refreshed: true, defaultAgent: null })
+      const rows = await getDb().select().from(agentsSystemTable).all()
+      expect(rows.every((row) => row.isDefault === 0)).toBe(true)
+    })
+
+    it('lets a newer refresh win when an aborted older one resolves after it', async () => {
+      // An anonymous refresh is still in flight when the visitor signs in.
+      const resolvers: { anonymous?: () => void } = {}
+      const anonymousClient = makeHttpClient(
+        () =>
+          new Promise((_, reject) => {
+            resolvers.anonymous = () => reject(httpErrorOf(403))
+          }),
+      )
+      const anonymous = new AbortController()
+      const anonymousRefresh = refreshSystemAgents(getDb(), anonymousClient, anonymous.signal)
+      await Promise.resolve()
+
+      anonymous.abort()
+      const signedIn = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => hostedAgentResponse),
+      )
+      resolvers.anonymous!()
+
+      expect(signedIn).toMatchObject({ refreshed: true })
+      expect(await anonymousRefresh).toEqual({ refreshed: false, reason: 'aborted' })
+      const rows = await getDb().select().from(agentsSystemTable).all()
+      expect(rows.map((row) => row.id).sort()).toEqual(['haystack-rag', 'hosted-agent'])
     })
 
     it('clears agents_system on 403 (anonymous user)', async () => {
@@ -395,7 +693,7 @@ describe('agents DAL', () => {
         throw httpErrorOf(403)
       })
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: false, reason: 'unauthenticated' })
 
       const rows = await getDb().select().from(agentsSystemTable).all()
@@ -419,10 +717,31 @@ describe('agents DAL', () => {
         throw httpErrorOf(401)
       })
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: false, reason: 'unauthenticated' })
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toEqual([])
+    })
+
+    it('logs a discovery failure other than 401/403, and stays quiet about an aborted one', async () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      const failure = new TypeError('Network down')
+      const failing = makeHttpClient(async () => {
+        throw failure
+      })
+
+      try {
+        await refreshSystemAgents(getDb(), failing)
+        expect(warn).toHaveBeenCalledWith('Agent discovery failed; keeping the cached agents', failure)
+
+        warn.mockClear()
+        const aborted = new AbortController()
+        aborted.abort()
+        await refreshSystemAgents(getDb(), failing, aborted.signal)
+        expect(warn).not.toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+      }
     })
 
     it('preserves existing rows on network error', async () => {
@@ -442,7 +761,7 @@ describe('agents DAL', () => {
         throw new TypeError('Network down')
       })
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: false, reason: 'network' })
 
       const rows = await getDb().select().from(agentsSystemTable).all()
@@ -467,7 +786,7 @@ describe('agents DAL', () => {
         throw httpErrorOf(503)
       })
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: false, reason: 'network' })
 
       const rows = await getDb().select().from(agentsSystemTable).all()

@@ -2,32 +2,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { AppLocale } from '@shared/i18n/locales'
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
-import { MagicLinkEmail } from '@/emails/magic-link'
+import { getEmailI18n } from '@/emails/i18n'
+import { MagicLinkEmail, magicLinkSubject } from '@/emails/magic-link'
 
-/** Tauri app origin - always included for mobile/desktop app support */
-const tauriOrigin = 'tauri://localhost'
+/** Tauri app origins - always included: `tauri://` on macOS/iOS, `http://tauri.localhost` on Android/Windows */
+const tauriOrigins = ['tauri://localhost', 'http://tauri.localhost']
 
 /** Default trusted origins for development */
 const defaultTrustedOrigins = [
   'http://localhost:1420', // Vite dev server
-  tauriOrigin, // Tauri app (iOS/Android/Desktop)
+  ...tauriOrigins,
 ]
 
 /**
  * Parse trusted origins from environment variable or use defaults
- * Always includes tauri://localhost for Tauri app support
+ * Always includes the Tauri app origins
  */
 export const parseTrustedOrigins = (envValue?: string): string[] => {
   const origins = envValue?.split(',').filter(Boolean)
   const baseOrigins = origins && origins.length > 0 ? origins : defaultTrustedOrigins
-
-  // Always ensure tauri://localhost is included for Tauri app support
-  if (!baseOrigins.includes(tauriOrigin)) {
-    return [...baseOrigins, tauriOrigin]
-  }
-
-  return baseOrigins
+  const missingTauriOrigins = tauriOrigins.filter((origin) => !baseOrigins.includes(origin))
+  return missingTauriOrigins.length > 0 ? [...baseOrigins, ...missingTauriOrigins] : baseOrigins
 }
 
 /**
@@ -47,20 +44,22 @@ type SendSignInEmailParams = {
   email: string
   otp: string
   verifyUrl: string
+  locale: AppLocale
 }
 
 /** Send sign-in email with both OTP code and a clickable link. */
-export const sendSignInEmail = async ({ email, otp, verifyUrl }: SendSignInEmailParams): Promise<void> => {
+export const sendSignInEmail = async ({ email, otp, verifyUrl, locale }: SendSignInEmailParams): Promise<void> => {
   if (shouldSkipEmail()) {
     console.info(`🔗 [DEV] Verify URL (no email sent): ${verifyUrl}`)
     console.info(`🔢 [DEV] OTP code: ${otp}`)
     return
   }
 
+  const i18n = getEmailI18n(locale)
   const data = await sendEmail({
     to: email,
-    subject: 'Your Thunderbolt verification code',
-    react: <MagicLinkEmail code={otp} magicLinkUrl={verifyUrl} />,
+    subject: magicLinkSubject(i18n),
+    react: <MagicLinkEmail i18n={i18n} code={otp} magicLinkUrl={verifyUrl} />,
   })
 
   console.info(`✅ Sign-in email sent successfully. ID: ${data?.id}`)

@@ -2,7 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createPrompt } from '@/ai/prompt'
+import { loadReasoningCapabilities } from './reasoning-effort'
+import { reasoningProviderOptions } from './reasoning-provider-options'
+import type { ReasoningEffort } from '@shared/reasoning-effort'
+import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
+import { loadProjectContextForThread } from '@/projects/load-project-context'
+import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
+import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
+import { requestMiniAppApproval } from '@/mini-apps/mini-app-approval'
+import { chooseEmbeddedSurface, type EmbeddedSurfaceChoice } from '@/ai/embedded-surface'
+import { buildMiniAppContextNote, supersedeAppContextResults } from '@/mini-apps/mini-app-context-note'
+import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
+import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
+import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
+import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from '@/mini-apps/mini-app-tools'
+import { buildProjectPromptSection } from '@/projects/project-prompt'
+import { createProjectSearchTool } from '@/projects/project-search-tool'
+import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
+import type { TurnTelemetry } from '@/ai/turn-telemetry'
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
+import { resolveSkillWebToolIntent } from '@/ai/turn-web-budget'
 import {
   buildStepOverrides,
   extractTextFromMessages,
@@ -14,23 +34,35 @@ import {
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
 import { getMessage } from '@/dal/chat-messages'
+import { isWidgetSkillId } from '@/defaults/skills'
+import { getActiveLocale } from '@/i18n/active-locale'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { createSkillTool, selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import { isVoiceModeActive, voiceModeSystemNote } from '@/voice/voice-mode'
 import { collectAskEntriesFromCache, formatAskResponsesNote } from '@/widgets/ask/lib'
 import { getDb } from '@/db/database'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
+import { hydrateQuotesAsText } from '@/lib/quotes'
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
+import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
+import { classifyErrorKind, createChatErrorResponse } from '@/lib/error-utils'
 import { fetch as baseFetch } from '@/lib/fetch'
+import { isLoopbackHost } from '@/lib/mcp-url-validation'
+import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
-import type { Model, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
+import { recordDebugTranscriptRetry, recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
+import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
+import type { Model, ModelProfile, Skill, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { HttpClient } from '@/lib/http'
-import type { SecureClient } from 'tinfoil'
 import { v7 as uuidv7 } from 'uuid'
 
 // Currently @openrouter/ai-sdk-provider is NOT compatible with Vercel AI SDK v5. If you enable this, you will get the following error:
@@ -42,10 +74,11 @@ import {
   APICallError,
   convertToModelMessages,
   createUIMessageStream,
-  InvalidToolInputError,
-  NoSuchToolError,
   createUIMessageStreamResponse,
   extractReasoningMiddleware,
+  InvalidToolInputError,
+  NoSuchToolError,
+  smoothStream,
   stepCountIs,
   streamText,
   UnsupportedFunctionalityError,
@@ -53,28 +86,43 @@ import {
   type Tool,
   type ToolSet,
 } from 'ai'
-import { type MCPClient } from '@ai-sdk/mcp'
-import type { NamedMCPClient } from '@/lib/mcp-provider'
-import { isClosedConnectionError } from '@/lib/mcp-errors'
+import type { MCPClient, NamedMCPClient, ReconnectClient } from '@/lib/mcp-provider'
+import { isMcpDiscoveryError } from '@/lib/mcp-errors'
+import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
+import type { SkillDefinition } from '@shared/agent-core/skills'
+import { sanitizeToolPrefix } from '@shared/mcp-tool-names'
+import { detectStreamChunk } from './smooth-chunking'
 import { createMessageMetadata } from './message-metadata'
-
-/**
- * Sanitizes a server name into a valid tool prefix.
- * Server names are already meaningful (set by user or auto-generated),
- * so this just lowercases and replaces non-alphanumeric chars with underscores.
- * `mcp_servers.name` is a nullable synced column, so a null/missing name falls
- * back to the generic `mcp` prefix rather than crashing the chat send.
- */
-export const sanitizeToolPrefix = (serverName: string | null | undefined): string =>
-  (serverName ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '') || 'mcp'
 
 /** Wrap fetch to include credentials in SSO mode so session cookies are sent to the backend. */
 const fetch: typeof baseFetch = (input, init) =>
   baseFetch(input, isSsoMode() ? { ...init, credentials: 'include' } : init)
 fetch.preconnect = baseFetch.preconnect
+
+/**
+ * Wrap a fetch so every request carries the `X-App-Version` header. Only apply
+ * to fetches that hit OUR backend (the thunderbolt provider posts direct to
+ * `cloudUrl`) — external LLM/MCP upstreams must never receive it.
+ *
+ * Sending the header means this hop is subject to the version gate, so it must
+ * also raise the 426: otherwise a below-minimum client just sees the model call
+ * fail with no upgrade blocker. A bare status check is safe here precisely
+ * because the target is always our backend.
+ */
+export const withAppVersionHeader = (base: typeof fetch): typeof fetch => {
+  const wrapped: typeof fetch = async (input, init) => {
+    const headers = new Headers(init?.headers)
+    for (const [key, value] of Object.entries(appVersionHeader())) {
+      headers.set(key, value)
+    }
+    const response = await base(input, { ...init, headers })
+    handleAppVersionUnsupported(response.status)
+    await handleSessionRejected(response)
+    return response
+  }
+  wrapped.preconnect = base.preconnect
+  return wrapped
+}
 
 export const ollama = createOpenAI({
   baseURL: 'http://localhost:11434/v1',
@@ -83,108 +131,17 @@ export const ollama = createOpenAI({
   fetch,
 })
 
-// Cached so attestation runs once per page load. `tinfoil` is dynamically
-// imported to code-split its attestation/crypto deps.
-//
-// system: HPKE body POSTs to <cloudUrl>/tinfoil; backend injects our key.
-// user:   BYOK — direct to the enclave with the user's own key.
-//
-// System cache is keyed by cloudUrl so a dev-tools URL switch hits the new
-// backend on the next call.
-const systemTinfoilClients = new Map<string, Promise<SecureClient>>()
-let userTinfoilClient: SecureClient | null = null
-
-/**
- * Build a fresh system `SecureClient` promise and cache it synchronously
- * (before the dynamic `import('tinfoil')` resolves) so a prewarm and an
- * immediate first send share one client and attest once instead of racing into
- * two attestations. On construction failure we drop the entry so the next call
- * retries the import rather than inheriting a sticky rejection.
- */
-const createSystemTinfoilClient = (cloudUrl: string): Promise<SecureClient> => {
-  const clientPromise = import('tinfoil').then(
-    ({ SecureClient }) => new SecureClient({ baseURL: `${cloudUrl}/tinfoil` }),
-  )
-  void clientPromise.catch(() => systemTinfoilClients.delete(cloudUrl))
-  systemTinfoilClients.set(cloudUrl, clientPromise)
-  return clientPromise
-}
-
-export const getSystemTinfoilClient = async (): Promise<SecureClient> => {
-  // cloudUrl already ends in /v1 (shared with the OpenAI chat baseURL).
-  const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
-  // Reuse the cached construction promise across concurrent callers; `ready()`
-  // is awaited per call below (idempotent once attested).
-  const client = await (systemTinfoilClients.get(cloudUrl) ?? createSystemTinfoilClient(cloudUrl))
-  await client.ready()
-  return client
-}
-
-/**
- * Best-effort warm-up of the Tinfoil system enclave so the first chat send
- * doesn't pay the attestation handshake on the critical path. Fired (fire-and-
- * forget) from the chat-ready path for the built-in agent only — see
- * {@link useHydrateChatStore}; ACP agents route over the wire and never reach
- * {@link createModel}. No-op unless `model` is a Tinfoil *system* model (the
- * only path that attests via {@link getSystemTinfoilClient}); BYO/other
- * providers never attest here.
- *
- * Idempotent: `getSystemTinfoilClient` memoizes per cloudUrl, so repeated warm-
- * ups and a concurrent real send share the same in-flight client. Errors are
- * swallowed ONLY here because this is a speculative cache fill — the real send
- * still surfaces attestation failures loudly through {@link createModel}.
- */
-export const prewarmSystemModel = async (model: Pick<Model, 'provider' | 'isSystem'> | null | undefined) => {
-  if (!model || model.provider !== 'tinfoil' || !model.isSystem) {
-    return
-  }
-  try {
-    await getSystemTinfoilClient()
-  } catch (error) {
-    console.warn('prewarmSystemModel: warm-up skipped', error)
-  }
-}
-
-/** Drop the cached `SecureClient` so the next send constructs a fresh one with
- *  a new attestation context. Use when a key-config error keeps repeating
- *  inside the SDK's own reset+retry — the cached client's transport is wedged
- *  and only a brand-new instance breaks the cycle. */
-const evictSystemTinfoilClient = (): void => {
-  const cloudUrl = getLocalSetting('cloudUrl').replace(/\/$/, '')
-  systemTinfoilClients.delete(cloudUrl)
-}
-
-export const getTinfoilClient = async (): Promise<SecureClient> => {
-  if (!userTinfoilClient) {
-    const { SecureClient } = await import('tinfoil')
-    userTinfoilClient = new SecureClient()
-  }
-  await userTinfoilClient.ready()
-  return userTinfoilClient
-}
-
-const evictUserTinfoilClient = (): void => {
-  userTinfoilClient = null
-}
-
-/** A KeyConfigMismatchError that survives the SDK's internal reset+retry means
- *  our cached `SecureClient` has a wedged transport. Evict it so the next call
- *  builds a fresh instance with a brand-new attestation context. */
-const isKeyConfigMismatchError = (err: unknown): boolean =>
-  err instanceof Error && err.name === 'KeyConfigMismatchError'
-
-/** Reconnect a dropped MCP client; returns a fresh client or null. Supplied by
- *  the MCP provider via the chat store. See `src/lib/mcp-provider.tsx`. */
-type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
-
 type AiFetchStreamingResponseOptions = {
+  reasoningEffort?: ReasoningEffort
   init: RequestInit
   modelId: string
-  modeSystemPrompt?: string
-  modeName?: string
   mcpClients?: NamedMCPClient[]
   reconnectClient?: ReconnectClient
   httpClient: HttpClient
+  turnBudget?: TurnBudgetConsumer
+  webToolBudget?: WebToolBudget
+  telemetry?: TurnTelemetry
+  debugTranscript?: { threadId: string; traceId: string }
   /** Returns the current proxy fetch. Production callers pass the getter from
    *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
    *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
@@ -201,11 +158,10 @@ type AiFetchStreamingResponseOptions = {
  * (`render`, `render_2`, …); each final prefix is reserved, so a later server
  * that itself sanitizes to a generated prefix (`render_2`) is bumped again.
  *
- * Per server we call `tools()`; if it rejects with a closed-connection error we
- * reconnect once and retry. A reconnect that fails or a second `tools()` failure
- * skips that server — discovery must never block the send. Non-closed errors
- * propagate so real failures aren't masked. After prefixing, a name that still
- * collides with an already-registered tool is skipped (first-registered wins) as
+ * Expected discovery failures skip that server for this turn and reconnect once
+ * in the background for the next send, surfacing the error in the provider.
+ * Programming errors propagate. After prefixing, a name that still collides
+ * with an already-registered tool is skipped (first-registered wins) as
  * a safety net. The returned `summary` lists `- <prefix> (<n> tools)` per server
  * (undefined when no MCP tools were added), injected into the system prompt.
  *
@@ -258,28 +214,20 @@ export const mergeMcpTools = async (
     takenPrefixes.add(prefix)
 
     const server = { name: serverName, url }
-    const merge = async (): Promise<number> => {
+    const discover = async () => {
       try {
-        return addTools(prefix, server, await client.tools())
+        return await client.tools()
       } catch (err) {
-        if (!isClosedConnectionError(err)) {
+        if (!isMcpDiscoveryError(err)) {
           throw err
         }
-        const fresh = await reconnectClient(client)
-        if (!fresh) {
-          console.warn('MCP server reconnect failed; skipping its tools for this send')
-          return 0
-        }
-        try {
-          return addTools(prefix, server, await fresh.tools())
-        } catch (retryErr) {
-          console.warn('MCP server still failing after reconnect; skipping its tools for this send', retryErr)
-          return 0
-        }
+        console.warn(`MCP tool discovery failed for "${serverName}"; skipping its tools for this send`, err)
+        void reconnectClient(client, err)
+        return {}
       }
     }
 
-    const added = await merge()
+    const added = addTools(prefix, server, await discover())
     if (added > 0) {
       mcpServerEntries.push(`- ${prefix} (${added} ${added === 1 ? 'tool' : 'tools'})`)
     }
@@ -292,15 +240,132 @@ export const mergeMcpTools = async (
   }
 }
 
-export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
-  // The thunderbolt provider goes through its own SSO-aware fetch below; all
-  // other providers route through the universal proxy. We resolve the proxy
-  // fetch lazily so a settings change between chat creation and this call
-  // (e.g. cloudUrl, proxy_enabled toggle) is picked up.
+/** Raw OpenAI-compatible connection for a model: the three knobs every
+ *  OpenAI-wire provider construction needs ({@link createModel} for the legacy
+ *  Vercel SDK, the in-browser Pi harness for the built-in agent). `fetch` is the
+ *  provider-specific app fetch — the platform/toggle-aware fetch for
+ *  `openai`/`openrouter` and non-loopback `custom` URLs, device-direct fetch
+ *  for loopback Custom models, or the SSO-aware fetch for `thunderbolt`. */
+export type OpenAiCompatConnection = {
+  baseURL: string
+  apiKey: string
+  fetch: FetchFn
+}
+
+/**
+ * Resolve the raw OpenAI-compatible connection for a model, mirroring the
+ * per-provider construction in {@link createModel}. Returns `null` for providers
+ * the OpenAI wire doesn't serve (`anthropic` has its own SDK; `tinfoil` runs only
+ * through the Pi harness) or when required config is missing (no api key / url).
+ *
+ * Centralizes the intricate `thunderbolt` SSO-fetch logic so the legacy and Pi
+ * paths can't drift.
+ *
+ * @param modelConfig - the model whose connection to resolve
+ * @param getProxyFetch - lazily resolved platform/toggle-aware fetch
+ * @param backendFetch - transport for authenticated backend requests
+ * @returns the connection, or `null` when unsupported/unconfigured
+ */
+export const resolveOpenAiCompatConnection = (
+  modelConfig: Pick<Model, 'provider' | 'apiKey' | 'url'>,
+  getProxyFetch: () => FetchFn,
+  backendFetch: FetchFn = fetch,
+): OpenAiCompatConnection | null => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const cloudUrl = getLocalSetting('cloudUrl')
       const token = getAuthToken() || 'thunderbolt'
+      // See the `thunderbolt` case in createModel for the SSO/token rationale:
+      // SSO web has no bearer token (cookie auth), so strip the placeholder
+      // Authorization and send credentials; Tauri SSO keeps its real bearer.
+      const sso = isSsoMode()
+      const hasRealToken = Boolean(getAuthToken())
+      const ssoFetch: typeof fetch = Object.assign(
+        (input: RequestInfo | URL, init?: RequestInit) => {
+          const headers = new Headers(init?.headers)
+          if (!hasRealToken) {
+            headers.delete('authorization')
+          }
+          return backendFetch(input, { ...init, headers, credentials: 'include' })
+        },
+        { preconnect: backendFetch.preconnect },
+      )
+      const providerFetch: FetchFn = withAppVersionHeader(sso ? ssoFetch : backendFetch)
+      return { baseURL: cloudUrl, apiKey: token, fetch: providerFetch }
+    }
+    case 'openai':
+      return modelConfig.apiKey
+        ? { baseURL: 'https://api.openai.com/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
+        : null
+    case 'custom': {
+      if (!modelConfig.url) {
+        return null
+      }
+      // Loopback always stays device-direct through src/lib/fetch.ts. Other
+      // Custom URLs use native HTTP on Tauri with Use Cloud Proxy off, or the
+      // hosted proxy (and its SSRF checks) on web or with the toggle on.
+      const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
+      const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
+      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()
+      return { baseURL, apiKey: modelConfig.apiKey ?? '', fetch: providerFetch }
+    }
+    case 'openrouter':
+      return modelConfig.apiKey
+        ? { baseURL: 'https://openrouter.ai/api/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
+        : null
+    default:
+      return null
+  }
+}
+
+/**
+ * Derive a native Messages connection from Thunderbolt's shared auth policy.
+ * Anthropic SDKs send `x-api-key`; the backend instead expects the same
+ * bearer/cookie credential used by the OpenAI-compatible managed route.
+ */
+export const resolveManagedAnthropicConnection = (
+  modelConfig: Model,
+  getProxyFetch: () => FetchFn,
+  client: 'anthropic-sdk' | 'ai-sdk' = 'anthropic-sdk',
+  backendFetch: FetchFn = fetch,
+): OpenAiCompatConnection => {
+  const connection = resolveOpenAiCompatConnection(modelConfig, getProxyFetch, backendFetch)
+  if (!connection) {
+    throw new Error('No connection resolved for managed Anthropic model')
+  }
+  const managedFetch: FetchFn = Object.assign(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers)
+      const apiKey = headers.get('x-api-key')
+      headers.delete('x-api-key')
+      if (apiKey && apiKey !== 'thunderbolt') {
+        headers.set('Authorization', `Bearer ${apiKey}`)
+      } else {
+        headers.delete('Authorization')
+      }
+      return connection.fetch(input, { ...init, headers })
+    },
+    { preconnect: connection.fetch.preconnect },
+  )
+  const sdkPath = client === 'ai-sdk' ? '/v1' : ''
+  return {
+    baseURL: `${connection.baseURL.replace(/\/$/, '')}/chat${sdkPath}`,
+    apiKey: connection.apiKey,
+    fetch: managedFetch,
+  }
+}
+
+export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
+  // Resolve transports lazily so cloudUrl and proxy_enabled changes are picked
+  // up. Managed models use backend auth; own-key models use platform/toggle
+  // routing, except loopback Custom models, which always stay device-direct.
+  switch (modelConfig.provider) {
+    case 'thunderbolt': {
+      if (modelConfig.vendor === 'anthropic') {
+        const connection = resolveManagedAnthropicConnection(modelConfig, getProxyFetch, 'ai-sdk')
+        const provider = createAnthropic(connection)
+        return provider(modelConfig.model)
+      }
       // SSO web flow authenticates via session cookies — the SSO callback is a
       // browser redirect, not an XHR, so `set-auth-token` never reaches the
       // client and getAuthToken() returns null.  The AI SDKs require an apiKey
@@ -312,170 +377,151 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // Tauri desktop SSO uses a loopback server that returns a real bearer
       // token (stored via setAuthToken).  In that case we must keep the
       // Authorization header because WKWebView can't send cross-origin cookies.
-      const sso = isSsoMode()
-      const hasRealToken = Boolean(getAuthToken())
-      const ssoFetch = (input: RequestInfo | URL, init?: RequestInit) => {
-        const headers = new Headers(init?.headers)
-        headers.delete('authorization')
-        return fetch(input, { ...init, headers, credentials: 'include' })
+      // The connection (baseURL/apiKey/SSO-fetch) lives in
+      // resolveOpenAiCompatConnection so the Pi harness reuses the same logic.
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      if (!conn) {
+        throw new Error('No connection resolved for thunderbolt provider')
       }
-      ssoFetch.preconnect = fetch.preconnect
-      const providerFetch: typeof fetch = sso && !hasRealToken ? ssoFetch : fetch
+      const { baseURL, apiKey, fetch: providerFetch } = conn
       // OpenAI-vendor thunderbolt models use createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
-        const provider = createOpenAI({ baseURL: cloudUrl, apiKey: token, fetch: providerFetch })
+        const provider = createOpenAI({ baseURL, apiKey, fetch: providerFetch })
         return provider.chat(modelConfig.model)
       }
       const provider = createOpenAICompatible({
         name: 'thunderbolt',
-        baseURL: cloudUrl,
-        apiKey: token,
+        baseURL,
+        apiKey,
         fetch: providerFetch,
       })
       return provider(modelConfig.model)
     }
     case 'anthropic': {
-      // Route Anthropic through the universal proxy. Hosted mode (web) sends
-      // the request to /v1/proxy with Authorization rewritten to
-      // X-Proxy-Passthrough-Authorization; Standalone mode (Tauri) hits
-      // Anthropic directly via the Rust HTTP plugin. Either way, the user's
-      // Anthropic key never goes through Thunderbolt's session auth path.
+      // Anthropic uses native HTTP on Tauri with Use Cloud Proxy off, otherwise
+      // the hosted proxy forwards x-api-key separately from backend session auth.
       const anthropic = createAnthropic({
         apiKey: modelConfig.apiKey || '',
+        // Native HTTP always sends an Origin, so Anthropic requires this opt-in there too.
+        headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
         fetch: getProxyFetch(),
       })
       return anthropic(modelConfig.model)
     }
     case 'openai': {
-      if (!modelConfig.apiKey) {
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      if (!conn) {
         throw new Error('No API key provided')
       }
       const openai = createOpenAI({
-        apiKey: modelConfig.apiKey,
-        fetch: getProxyFetch(),
+        apiKey: conn.apiKey,
+        fetch: conn.fetch,
       })
       return openai(modelConfig.model)
     }
     case 'custom': {
-      if (!modelConfig.url) {
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      if (!conn) {
         throw new Error('No URL provided for custom provider')
       }
+      // `conn.baseURL` and `conn.fetch` already carry the `/v1` normalization
+      // and the loopback-vs-proxy dispatch (see resolveOpenAiCompatConnection).
+      // Both the legacy path here and the Pi path in `resolvePiModel` read
+      // through the same connection object, so their upstream URL + transport
+      // stay in lockstep by construction.
       const openaiCompatible = createOpenAICompatible({
         name: 'custom',
-        baseURL: modelConfig.url,
-        apiKey: modelConfig.apiKey || undefined,
-        fetch: getProxyFetch(),
+        baseURL: conn.baseURL,
+        apiKey: conn.apiKey || undefined,
+        fetch: conn.fetch,
       })
       return openaiCompatible(modelConfig.model)
     }
     case 'openrouter': {
-      if (!modelConfig.apiKey) {
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      if (!conn) {
         throw new Error('No API key provided')
       }
       // Using OpenAI-compatible approach until @openrouter/ai-sdk-provider supports Vercel AI SDK v5
       // https://github.com/OpenRouterTeam/ai-sdk-provider/pull/77
       const openrouter = createOpenAICompatible({
         name: 'openrouter',
-        baseURL: 'https://openrouter.ai/api/v1',
-        apiKey: modelConfig.apiKey,
-        fetch: getProxyFetch(),
+        baseURL: conn.baseURL,
+        apiKey: conn.apiKey,
+        fetch: conn.fetch,
       })
       return openrouter(modelConfig.model)
-    }
-    case 'tinfoil': {
-      // System Tinfoil models proxy through Thunderbolt's backend; the bearer
-      // key is injected server-side, so we pass a placeholder here only to
-      // satisfy the SDK's apiKey requirement. User-added Tinfoil models keep
-      // the BYOK flow and require a real key.
-      if (modelConfig.isSystem) {
-        const client = await getSystemTinfoilClient()
-        // Wrap SecureClient.fetch so the backend route's auth guard sees the
-        // real Thunderbolt session token (Bearer) or cookies (SSO), not the
-        // `Bearer thunderbolt-managed` placeholder the OpenAI SDK adds.
-        const sso = isSsoMode()
-        const token = getAuthToken()
-        const wrappedFetch: typeof fetch = Object.assign(
-          async (input: RequestInfo | URL, init?: RequestInit) => {
-            const headers = new Headers(init?.headers)
-            const upstreamInit: RequestInit = { ...init, headers }
-            if (sso && !token) {
-              upstreamInit.credentials = 'include'
-              headers.delete('authorization')
-            } else if (token) {
-              headers.set('Authorization', `Bearer ${token}`)
-            }
-            try {
-              return await client.fetch(input, upstreamInit)
-            } catch (err) {
-              if (isKeyConfigMismatchError(err)) {
-                evictSystemTinfoilClient()
-              }
-              throw err
-            }
-          },
-          { preconnect: fetch.preconnect },
-        )
-        const tinfoil = createOpenAICompatible({
-          name: 'tinfoil',
-          baseURL: client.getBaseURL()!,
-          apiKey: 'thunderbolt-managed',
-          fetch: wrappedFetch,
-        })
-        return tinfoil(modelConfig.model)
-      }
-      if (!modelConfig.apiKey) {
-        throw new Error('No API key provided')
-      }
-      const client = await getTinfoilClient()
-      const evictingFetch: typeof fetch = Object.assign(
-        async (input: RequestInfo | URL, init?: RequestInit) => {
-          try {
-            return await client.fetch(input, init)
-          } catch (err) {
-            if (isKeyConfigMismatchError(err)) {
-              evictUserTinfoilClient()
-            }
-            throw err
-          }
-        },
-        { preconnect: fetch.preconnect },
-      )
-      const tinfoil = createOpenAICompatible({
-        name: 'tinfoil',
-        baseURL: client.getBaseURL()!,
-        apiKey: modelConfig.apiKey,
-        fetch: evictingFetch,
-      })
-      return tinfoil(modelConfig.model)
     }
     default:
       throw new Error(`Unsupported provider: ${modelConfig.provider}`)
   }
 }
 
-export const aiFetchStreamingResponse = async ({
-  init,
+export type PreparedAiRequestConfig = {
+  readonly model: Model
+  readonly profile: ModelProfile | null
+  readonly supportsTools: boolean
+  readonly sourceCollector: SourceMetadata[]
+  readonly toolset: Record<string, Tool>
+  readonly skills: readonly SkillDefinition[]
+  readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
+  readonly stableSystemPrompt: string
+  /** Per-send tail of the system prompt: the date/time, plus the open Mini App's
+   *  current view when that is the surface the model is answering about. */
+  readonly volatileSystemPrompt: string
+  /** Which embedded surface `get_app_context` describes this send, if any. */
+  readonly embeddedSurface: EmbeddedSurfaceChoice
+}
+
+export type PrepareAiRequestConfigOptions = {
+  readonly modelId: string
+  readonly mcpClients?: NamedMCPClient[]
+  readonly reconnectClient?: ReconnectClient
+  readonly httpClient: HttpClient
+  readonly webToolBudget?: WebToolBudget
+  /** Thread being sent to. Resolves the owning project's instructions into the
+   *  stable system prompt; omit for non-thread callers. */
+  readonly chatThreadId?: string
+  readonly telemetry?: TurnTelemetry
+}
+
+/** Register progressive skill loading only for models that support tools. */
+export const addSkillTool = (
+  toolset: Record<string, Tool>,
+  skills: readonly SkillDefinition[],
+  supportsTools: boolean,
+  webToolBudget?: WebToolBudget,
+): Record<string, Tool> => {
+  if (supportsTools) {
+    toolset.skill = createSkillTool(skills, (name) => {
+      webToolBudget?.promote(resolveSkillWebToolIntent(name))
+    })
+  }
+  return toolset
+}
+
+/**
+ * Select skills disclosed in the built-in model's system prompt.
+ *
+ * Tool-capable models receive every enabled skill, while non-tool models only
+ * receive widget rendering contracts inline.
+ */
+export const selectPromptSkillDefinitions = (skills: readonly Skill[], supportsTools: boolean): SkillDefinition[] =>
+  selectEnabledSkillDefinitions(supportsTools ? skills : skills.filter(({ id }) => isWidgetSkillId(id)))
+
+/** Load model/profile/settings and build one send's app + MCP tools and prompt. */
+export const prepareAiRequestConfig = async ({
   modelId,
-  modeSystemPrompt,
-  modeName,
-  mcpClients,
-  reconnectClient,
+  mcpClients = [],
+  reconnectClient = async () => null,
   httpClient,
-  getProxyFetch,
-}: AiFetchStreamingResponseOptions) => {
-  const options = init as RequestInit & { body: string }
-  const body = JSON.parse(options.body)
-  const abortSignal: AbortSignal | undefined = options.signal ?? undefined
-  const { messages } = body as { messages: ThunderboltUIMessage[]; id: string }
-
-  // The chat instance saves the user message via `saveMessages` before
-  // invoking the adapter — see `src/chats/chat-instance.ts`. By the time we
-  // reach this function the user turn is already persisted.
-
+  webToolBudget,
+  chatThreadId,
+  telemetry,
+}: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
+  telemetry?.startPhase('request_config')
   const db = getDb()
-
-  // Fetch all settings in a single query (returns camelCase by default)
   const settings = await getSettings(db, {
     preferred_name: '',
     location_name: '',
@@ -483,68 +529,143 @@ export const aiFetchStreamingResponse = async ({
     location_lng: '',
     distance_unit: 'imperial',
     temperature_unit: 'f',
-    date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
     integrations_do_not_ask_again: false,
-    // Also fetch the tool-availability gates here so `getAvailableTools` can
-    // reuse them (via ToolAvailabilityContext) instead of re-reading settings.
     experimental_feature_tasks: false,
     integrations_pro_is_enabled: false,
   })
-
   const integrationStatus = await getIntegrationStatus(db)
-
   const model = await getModel(db, modelId)
-
   if (!model) {
     throw new Error('Model not found')
   }
-
   const profile = await getModelProfile(db, modelId)
-
+  const storedSkills = await getAllSkills(db)
+  telemetry?.endPhase('request_config')
+  const skills = selectEnabledSkillDefinitions(storedSkills)
   const supportsTools = model.toolUsage !== 0
-
-  const sourceCollector: SourceMetadata[] = []
-  // Dedupe identical read-only tool calls within this send (same lifetime as
-  // sourceCollector — one request, no cross-turn state).
+  // Minimal mode offers no `skill` tool, so the widget contracts it keeps are
+  // inlined into the prompt (as for non-tool models) instead of loaded on demand.
+  const loadsSkillsByTool = supportsTools && !selectMinimalMode(useConfigStore.getState().config)
+  // Loaded before the toolset so the cross-chat search tool can be registered
+  // conditionally alongside the other app tools.
+  const projectContext = await loadProjectContextForThread(db, chatThreadId)
+  const sourceCollector = webToolBudget?.sourceCollector ?? []
   const toolCallCache: ToolCallCache = new Map()
-
-  let toolset: Record<string, Tool> = {}
-  let mcpServersSummary: string | undefined
-  let mcpToolsMetadata: UIMessageMetadata['mcpTools']
-  if (supportsTools) {
-    const availableTools = await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
-    toolset = createToolset(availableTools, toolCallCache)
-
-    const merged = await mergeMcpTools(toolset, mcpClients ?? [], reconnectClient ?? (async () => null))
-    mcpServersSummary = merged.summary
-    mcpToolsMetadata = merged.mcpTools
-  } else {
-    console.log('Model does not support tools, skipping tool setup')
+  const availableTools = supportsTools
+    ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
+    : []
+  const appToolset = addSkillTool(
+    createToolset(availableTools, toolCallCache, webToolBudget),
+    skills,
+    loadsSkillsByTool,
+    webToolBudget,
+  )
+  // Cross-chat recall is a tool, not an injection: it costs nothing when unused
+  // and leaves the cacheable stable prompt untouched. Only registered when there
+  // is actually something to search.
+  if (supportsTools && projectContext && projectContext.siblingThreadIds.length > 0) {
+    appToolset.search_project_chats = createProjectSearchTool({
+      db,
+      projectName: projectContext.prompt.name,
+      threadIds: projectContext.siblingThreadIds,
+      titleByThreadId: projectContext.titleByThreadId,
+    })
   }
-
-  // Compute integration status for the model (can return multiple statuses)
-  const computeIntegrationStatusLabel = (): string => {
-    const statuses: string[] = []
-
-    if (integrationStatus.googleConnected && !integrationStatus.googleEnabled) {
-      statuses.push('GOOGLE_DISABLED')
-    }
-    if (integrationStatus.microsoftConnected && !integrationStatus.microsoftEnabled) {
-      statuses.push('MICROSOFT_DISABLED')
-    }
-    if (settings.integrationsDoNotAskAgain) {
-      statuses.push('PROMPTS_DISABLED')
-    }
-
-    return statuses.length > 0 ? statuses.join(', ') : 'READY'
+  // Mini App context is a tool for the same reason cross-chat recall is: the
+  // app's state changes on every click, and injecting it would invalidate the
+  // cacheable stable prompt on every send. Registered only while an app is open.
+  const miniAppSnapshot = getMiniAppSnapshot()
+  const miniApp = miniAppSnapshot.app
+  // One tool name for both embedded surfaces — see `chooseEmbeddedSurface` for
+  // which one it describes when both are open, and why that is a rule rather
+  // than a condition.
+  const artifactSnapshot = getArtifactContextSnapshot()
+  const surface = chooseEmbeddedSurface({
+    miniAppOpenedAt: miniApp ? miniAppSnapshot.openedAt : null,
+    artifactOpenedAt: artifactSnapshot.openedAt,
+    hasArtifactTitle: artifactSnapshot.title !== null,
+  })
+  // Reads the frame live rather than a cache, so state the user changed a
+  // moment ago is in the answer with no notification needed.
+  const readMiniAppContext = () => useMiniAppStore.getState().requestContext?.() ?? Promise.resolve(null)
+  if (supportsTools && surface === 'artifact') {
+    appToolset.get_app_context = createArtifactContextTool({ getSnapshot: getArtifactContextSnapshot })
+  } else if (supportsTools && surface === 'mini-app') {
+    appToolset.get_app_context = createMiniAppContextTool({
+      getSnapshot: getMiniAppSnapshot,
+      requestContext: readMiniAppContext,
+    })
   }
+  // The view also goes into the volatile system prompt on every send, because a
+  // tool is only as fresh as the model's decision to call it — see
+  // `mini-app-context-note.ts`. Started here so the frame round trip overlaps
+  // MCP discovery below instead of adding to it.
+  const miniAppContextPromise = supportsTools && surface === 'mini-app' && miniApp ? readMiniAppContext() : null
+  // Tools the app declares over the bridge. Merged the same way MCP tools are
+  // (prefixed, conflicts skipped) since both are externally-defined toolsets we
+  // discover at runtime.
+  const { invokeTool } = useMiniAppStore.getState()
+  // Approvals are queued on the chat that provoked them, so the request needs
+  // the thread id — a global queue showed one chat's prompt over another's.
+  const miniAppTools =
+    supportsTools && miniApp && invokeTool && chatThreadId
+      ? createMiniAppTools({
+          app: miniApp,
+          tools: miniAppSnapshot.tools,
+          invoke: invokeTool,
+          requestApproval: (tool, args) => requestMiniAppApproval({ chatThreadId, app: miniApp, tool, args }),
+        })
+      : {}
+  // Tracked, not just counted: a tool skipped for a name conflict is not
+  // callable, and advertising it in the prompt anyway had the model calling a
+  // name that was never registered.
+  const registeredMiniAppTools = new Set<string>()
+  for (const [name, miniAppTool] of Object.entries(miniAppTools)) {
+    if (appToolset[name]) {
+      console.warn(`Mini App tool "${name}" conflicts with an existing tool and was skipped`)
+      continue
+    }
+    appToolset[name] = miniAppTool
+    registeredMiniAppTools.add(name)
+  }
+  const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
+  telemetry?.startPhase('mcp_discovery')
+  const merged = supportsTools
+    ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
+    : { toolset: appToolset, summary: undefined, mcpTools: undefined }
+  telemetry?.endPhase('mcp_discovery')
+  const miniAppContextNote =
+    miniAppContextPromise && miniApp ? buildMiniAppContextNote(miniApp, await miniAppContextPromise) : null
 
-  const systemPrompt = createPrompt({
+  const integrationStatuses = [
+    integrationStatus.googleConnected && !integrationStatus.googleEnabled ? 'GOOGLE_DISABLED' : null,
+    integrationStatus.microsoftConnected && !integrationStatus.microsoftEnabled ? 'MICROSOFT_DISABLED' : null,
+    settings.integrationsDoNotAskAgain ? 'PROMPTS_DISABLED' : null,
+  ].filter((status): status is string => status !== null)
+  const prompt = createPromptParts({
     modelName: model.name,
     profile,
-    modeName: modeName ?? null,
+    projectSection: buildProjectPromptSection(projectContext?.prompt ?? null, {
+      // Only advertise the tool when it was actually registered above.
+      hasSearchableChats: supportsTools && (projectContext?.siblingThreadIds.length ?? 0) > 0,
+    }),
+    // Same rule: only describe the app when `get_app_context` actually exists,
+    // and only advertise the actions that survived the merge above.
+    miniAppSection: supportsTools
+      ? [
+          // Gated on the surface: with an artifact selected, `get_app_context`
+          // reports the artifact, so claiming the app is on screen would point
+          // the model at a tool that answers about something else.
+          buildMiniAppPromptSection(miniApp, surface),
+          buildMiniAppToolsPromptSection(
+            miniAppSnapshot.tools.filter((tool) => registeredMiniAppTools.has(toToolsetName(tool))),
+          ),
+        ]
+          .filter((section) => section !== null)
+          .join('\n\n') || null
+      : null,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,
@@ -554,16 +675,136 @@ export const aiFetchStreamingResponse = async ({
     localization: {
       distanceUnit: settings.distanceUnit,
       temperatureUnit: settings.temperatureUnit,
-      dateFormat: settings.dateFormat,
       timeFormat: settings.timeFormat,
       currency: settings.currency,
     },
-    integrationStatus: computeIntegrationStatusLabel(),
-    modeSystemPrompt,
-    mcpServersSummary,
+    integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
+    hasWebTools,
+    mcpServersSummary: merged.summary,
+    skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
+    supportsTools: loadsSkillsByTool,
+    // The resolved locale rather than a `language` settings read: it is synchronous, so
+    // it cannot lag behind the watched-query hydration, and it already folds in browser
+    // negotiation the same way `X-App-Language` does.
+    appLanguage: getActiveLocale(),
   })
 
-  const activeNudges = getNudgeMessagesFromProfile(profile, modeName)
+  return {
+    model,
+    profile,
+    supportsTools,
+    sourceCollector,
+    toolset: merged.toolset,
+    skills,
+    mcpToolsMetadata: merged.mcpTools,
+    stableSystemPrompt: prompt.stablePrompt,
+    // The note rides the volatile prompt rather than a separate field so every
+    // engine that composes stable + volatile (this file and the ACP harness)
+    // carries it without knowing it exists.
+    volatileSystemPrompt: miniAppContextNote
+      ? `${prompt.volatilePrompt}\n\n${miniAppContextNote}`
+      : prompt.volatilePrompt,
+    embeddedSurface: surface,
+  }
+}
+
+/** Order per-send system notes for the trailing half of the system prompt, with date/time first. */
+export const buildVolatileSystemNotes = ({
+  volatileSystemPrompt,
+  voiceNotes,
+  skillSystemMessages,
+  askResponsesNote,
+}: {
+  volatileSystemPrompt: string
+  voiceNotes: readonly string[]
+  skillSystemMessages: readonly string[]
+  askResponsesNote: string | null
+}): string[] => [
+  volatileSystemPrompt,
+  ...voiceNotes,
+  ...skillSystemMessages,
+  ...(askResponsesNote ? [askResponsesNote] : []),
+]
+
+/** Record one legacy empty-response retry in telemetry and transcript vocabularies. */
+export const recordLegacyEmptyResponseRetry = (
+  telemetry: Pick<TurnTelemetry, 'recordRetry'> | undefined,
+  debugTranscript: { threadId: string; traceId: string } | undefined,
+  attemptNumber: number,
+): void => {
+  telemetry?.recordRetry({
+    layer: 'empty_response',
+    reason: 'empty_response',
+    attempt: attemptNumber + 1,
+  })
+  if (debugTranscript) {
+    recordDebugTranscriptRetry(
+      debugTranscript.threadId,
+      debugTranscript.traceId,
+      emptyResponseRetryReason,
+      attemptsMadeFromCompletedRetries(attemptNumber - 1),
+    )
+  }
+}
+
+/**
+ * Stream one response through the legacy built-in pipeline.
+ *
+ * Adapter callers supply the active turn consumer; direct callers receive a
+ * local budget. Only empty-response attempts after the first consume here
+ * because the routing fetch already consumed the initial request.
+ */
+export const aiFetchStreamingResponse = async ({
+  reasoningEffort,
+  init,
+  modelId,
+  mcpClients,
+  reconnectClient,
+  httpClient,
+  getProxyFetch,
+  turnBudget,
+  webToolBudget,
+  telemetry,
+  debugTranscript,
+}: AiFetchStreamingResponseOptions) => {
+  const options = init as RequestInit & { body: string }
+  const body = JSON.parse(options.body) as { messages: ThunderboltUIMessage[]; id: string }
+  const abortSignal: AbortSignal | undefined = options.signal ?? undefined
+  const { messages } = body
+  const requestBudget = turnBudget ?? createTurnBudget().consumer
+
+  // The chat instance saves the user message via `saveMessages` before
+  // invoking the adapter — see `src/chats/chat-instance.ts`. By the time we
+  // reach this function the user turn is already persisted.
+
+  const db = getDb()
+  const {
+    model,
+    profile,
+    supportsTools,
+    sourceCollector,
+    toolset,
+    skills,
+    mcpToolsMetadata,
+    stableSystemPrompt,
+    volatileSystemPrompt,
+    embeddedSurface,
+  } = await prepareAiRequestConfig({
+    modelId,
+    mcpClients,
+    reconnectClient,
+    httpClient,
+    webToolBudget,
+    // The chat id rides the request body (see the destructure above), which is
+    // how this path knows which thread — and so which project — it is serving.
+    chatThreadId: body.id,
+    telemetry,
+  })
+  if (!supportsTools) {
+    console.log('Model does not support tools, skipping tool setup')
+  }
+
+  const activeNudges = getNudgeMessagesFromProfile(profile)
 
   try {
     const baseModel = await createModel(model, getProxyFetch)
@@ -597,20 +838,40 @@ export const aiFetchStreamingResponse = async ({
       ...(model.vendor === 'openai' && { systemMessageMode: 'developer' as const }),
       ...profile?.providerOptions,
     }
-    const providerOptions = Object.keys(rawOptions).length > 0 ? { [providerOptionsKey]: rawOptions } : undefined
+    const effortProvider = model.provider === 'thunderbolt' ? (model.vendor ?? model.provider) : model.provider
+    const toggleThinking =
+      reasoningEffort !== undefined &&
+      effortProvider === 'anthropic' &&
+      (await loadReasoningCapabilities(model)).kind === 'toggle'
+    const providerOptions =
+      reasoningEffort === undefined
+        ? { [providerOptionsKey]: rawOptions }
+        : { [effortProvider]: reasoningProviderOptions(rawOptions, effortProvider, reasoningEffort, toggleThinking) }
 
     /**
      * Run a single streamText attempt and return the result along with metadata
      */
-    const runStreamText = (inputMessages: Awaited<ReturnType<typeof convertToModelMessages>>) => {
+    const runStreamText = (input: BuiltInModelInput) => {
       return streamText({
+        // SDK-internal retries are invisible to the shared per-turn request budget.
+        // Keep retries in the app layers where every request is counted.
+        maxRetries: 0,
         temperature: modelTemperature,
         model: wrappedModel,
-        system: systemPrompt,
-        messages: inputMessages,
+        system: input.system,
+        messages: input.messages,
         tools: supportsTools ? (toolset as ToolSet) : undefined,
         stopWhen: stepCountIs(maxSteps),
         providerOptions,
+
+        // Re-pace the model's text/reasoning deltas to a steady word-by-word
+        // cadence (claude.ai-style fluid streaming) instead of surfacing whole
+        // provider/network chunks as large jumps. smoothStream only affects
+        // delivery timing — tool calls, step boundaries, and onFinish are
+        // untouched — and drains any buffered text fully before the stream ends.
+        // `detectStreamChunk` keeps latin word-by-word but bounds space-free runs
+        // (CJK, URLs, minified JSON) so they stream instead of buffering to the end.
+        experimental_transform: smoothStream({ chunking: detectStreamChunk, delayInMs: smoothStreamWordDelayMs }),
 
         prepareStep: ({ steps, stepNumber, messages: stepMessages }) => {
           if (isFinalStep(steps.length, maxSteps)) {
@@ -619,57 +880,37 @@ export const aiFetchStreamingResponse = async ({
           return buildStepOverrides({
             steps,
             messages: stepMessages,
-            systemPrompt,
+            currentSystemPrompt: input.system,
             profile,
             maxSteps,
             nudgeThreshold,
             activeNudges,
+            webBudgetProbe: webToolBudget?.probe,
           })
         },
 
         abortSignal,
-        onStepFinish: (step) => {
-          console.info('step', {
-            text: step.text,
-            finishReason: step.finishReason,
-            toolCallCount: step.toolCalls?.length || 0,
-          })
-
-          // When a step includes tool calls, log their names and arguments for easier debugging
-          step.toolCalls?.forEach((call, idx) => {
-            console.groupCollapsed(`Tool call #${idx + 1}: ${call.toolName}`)
-            console.log('Arguments:', call)
-            console.groupEnd()
-          })
+        onStepFinish: () => {
+          telemetry?.recordStep()
         },
-        onFinish: (finish) => {
-          console.info('finish', {
-            text: finish.text,
-            finishReason: finish.finishReason,
-            toolCallCount: finish.toolCalls?.length || 0,
-            usage: finish.totalUsage,
-          })
-        },
-        onError: (error) => {
-          console.error('streamText error', error)
+        onError: ({ error }) => {
+          console.error('streamText error', { kind: classifyErrorKind(error) ?? 'unknown' })
         },
 
         // Handle malformed tool calls from models with weaker tool-calling capabilities
-        experimental_repairToolCall: async ({ toolCall, error }) => {
-          // Don't attempt to repair calls to non-existent tools
+        experimental_repairToolCall: async ({ error }) => {
           if (NoSuchToolError.isInstance(error)) {
-            console.warn(`Tool "${toolCall.toolName}" does not exist, skipping`)
+            telemetry?.recordToolCallValidationFailure('no_such_tool')
+            console.warn('Tool call references unknown tool, skipping')
             return null
           }
-
-          // Log invalid tool arguments and skip the call
           if (InvalidToolInputError.isInstance(error)) {
-            console.warn(`Invalid arguments for tool "${toolCall.toolName}": ${error.message}`)
+            telemetry?.recordToolCallValidationFailure('invalid_tool_input')
+            console.warn('Tool call has invalid input, skipping')
             return null
           }
-
-          // For other errors, skip the tool call
-          console.warn('Tool call error for "%s":', toolCall.toolName, error)
+          telemetry?.recordToolCallValidationFailure('other')
+          console.warn('Tool call failed validation, skipping')
           return null
         },
       })
@@ -684,23 +925,11 @@ export const aiFetchStreamingResponse = async ({
     // regenerate so the model sees the user's *current* skill library, not
     // a snapshot from when the message was originally typed.
     //
-    // Skills v1 §OQ6: skills are intentionally available in *every* mode
-    // (Chat, Search, Research). There's no per-mode gating here — a skill
-    // is text injection, not a tool, and modes that disagree on tools
-    // still agree on text. If a future mode wants to exclude skills it'd
-    // need an explicit `noSkills` flag on the mode definition.
-    //
     // The composer (`chat-prompt-input.tsx`) uses the same helpers to size
-    // the context-overflow estimate so the budget and the actual prepend
+    // the context-overflow estimate so the budget and the actual injection
     // stay in lockstep.
     const lastUserText = extractLastUserText(messages)
-    const allSkills = await getAllSkills(db)
-    const instructionBySlug = new Map<string, string>()
-    for (const skill of allSkills) {
-      if (skill.enabled === 1 && skill.name && skill.instruction) {
-        instructionBySlug.set(skill.name, skill.instruction)
-      }
-    }
+    const instructionBySlug = new Map(skills.map(({ name, instruction }) => [name, instruction]))
     const skillSystemMessages = resolveSkillTokenInstructions(lastUserText, instructionBySlug)
 
     // Preserve the upstream status (and detail) when surfacing an API error to
@@ -709,12 +938,15 @@ export const aiFetchStreamingResponse = async ({
     // layers need to classify it. Serialized as JSON so the client can parse it
     // back out (see `getErrorStatusCode`). Applied to every stream that can
     // surface the error — both `toUIMessageStream` calls and the outer stream.
-    const serializeStreamError = (error: unknown): string => {
+    // The AI SDK callback supplies unknown; this exact alias keeps its contract because anti-slop rejects an explicit unknown parameter.
+    type StreamError = Parameters<NonNullable<Parameters<typeof createUIMessageStream>[0]['onError']>>[0]
+    const serializeStreamError = (error: StreamError): string => {
       if (APICallError.isInstance(error)) {
         return JSON.stringify({
           error: error.responseBody ?? error.message,
           status: error.statusCode,
           isRetryable: error.isRetryable,
+          kind: classifyErrorKind(error),
         })
       }
       // A provider that can't serialize a part throws this client-side, before
@@ -725,9 +957,16 @@ export const aiFetchStreamingResponse = async ({
       // must NOT be tagged 422, or they'd masquerade as a fixable attachment.
       if (UnsupportedFunctionalityError.isInstance(error)) {
         const isFilePart = /file part|media type/i.test(`${error.functionality} ${error.message}`)
-        return JSON.stringify({ error: error.message, status: isFilePart ? 422 : undefined, isRetryable: false })
+        return JSON.stringify({
+          error: error.message,
+          status: isFilePart ? 422 : undefined,
+          isRetryable: false,
+          kind: classifyErrorKind(error),
+        })
       }
-      return error instanceof Error ? error.message : String(error)
+      const message = error instanceof Error ? error.message : String(error)
+      const kind = classifyErrorKind(error)
+      return kind ? JSON.stringify({ error: message, kind }) : message
     }
 
     // Surface the user's persisted ask-widget responses (stored in each
@@ -748,13 +987,22 @@ export const aiFetchStreamingResponse = async ({
               .filter((message) => message.role === 'assistant')
               .map(async (message) => {
                 const stored = await getMessage(db, message.id)
-                return stored?.cache ? collectAskEntriesFromCache(stored.cache as Record<string, unknown>) : []
+                return stored?.cache ? collectAskEntriesFromCache(stored.cache) : []
               }),
           )
         ).flat()
       : []
     const askResponsesNote = formatAskResponsesNote(askEntries)
-    const systemNotes = [...skillSystemMessages, ...(askResponsesNote ? [askResponsesNote] : [])]
+    // Voice turns reuse this same send path; when voice is active, include the
+    // voice self-context so the model knows it's speaking aloud, keeps replies
+    // brief, and answers about itself instead of web-searching its own identity.
+    const voiceNotes = isVoiceModeActive() ? [voiceModeSystemNote] : []
+    const volatileSystemNotes = buildVolatileSystemNotes({
+      volatileSystemPrompt,
+      voiceNotes,
+      skillSystemMessages,
+      askResponsesNote,
+    })
 
     const stream = createUIMessageStream({
       generateId: uuidv7,
@@ -763,11 +1011,20 @@ export const aiFetchStreamingResponse = async ({
         // Hydrate reference-only PDF attachments into AI SDK file parts (bytes
         // read from IndexedDB) so the model receives them. Only the reference is
         // persisted/synced; the bytes are inlined here, in-flight to the model.
-        const baseMessages = await convertToModelMessages(await hydrateAttachmentsAsFileParts(messages))
-        let currentMessages: typeof baseMessages = [
-          ...systemNotes.map((content) => ({ role: 'system' as const, content })),
-          ...baseMessages,
-        ]
+        // Quote parts are likewise flattened to Markdown blockquote text parts.
+        // With a Mini App on screen, prior-turn `get_app_context` results are
+        // superseded by the view in the system prompt — two descriptions of the
+        // screen in one request is an invitation to pick the stale one.
+        telemetry?.startPhase('attachment_hydration')
+        const historyMessages = embeddedSurface === 'mini-app' ? supersedeAppContextResults(messages) : messages
+        const baseMessages = await convertToModelMessages(
+          hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(historyMessages)),
+        )
+        telemetry?.endPhase('attachment_hydration')
+        let currentInput = assembleBuiltInModelInput(stableSystemPrompt, baseMessages, volatileSystemNotes)
+        if (debugTranscript) {
+          recordDebugTranscriptSystemPrompts(debugTranscript.threadId, debugTranscript.traceId, [currentInput.system])
+        }
         let attemptNumber = 1
         let isRetry = false
         // Track tool calls across ALL attempts — a retry may produce no tool calls
@@ -775,8 +1032,20 @@ export const aiFetchStreamingResponse = async ({
         let anyAttemptHadToolCalls = false
 
         while (attemptNumber <= maxAttempts) {
-          const result = runStreamText(currentMessages)
-          const messageMetadata = createMessageMetadata(modelId, sourceCollector, mcpToolsMetadata)
+          if (attemptNumber > 1 && !requestBudget.tryConsumeRequest()) {
+            // Mirror the routing choke point's denial so both layers surface the
+            // same named error instead of ending the turn as a silent finish.
+            telemetry?.recordRetry({ layer: 'turn_budget', reason: 'request_budget_exhausted', attempt: attemptNumber })
+            throw createTurnBudgetExhaustedError()
+          }
+
+          const result = runStreamText(currentInput)
+          const messageMetadata = createMessageMetadata(
+            modelId,
+            sourceCollector,
+            mcpToolsMetadata,
+            embeddedSurface ?? undefined,
+          )
 
           // If this is not the last possible attempt, we need to check for empty response
           if (attemptNumber < maxAttempts) {
@@ -811,11 +1080,15 @@ export const aiFetchStreamingResponse = async ({
                   : activeNudges.retry
 
               console.info(`Empty response detected, retrying (attempt ${attemptNumber + 1}/${maxAttempts})...`)
-              currentMessages = [
-                ...currentMessages,
-                ...response.messages,
-                { role: 'user' as const, content: retryNudge },
-              ]
+              recordLegacyEmptyResponseRetry(telemetry, debugTranscript, attemptNumber)
+              currentInput = {
+                ...currentInput,
+                messages: [
+                  ...currentInput.messages,
+                  ...response.messages,
+                  { role: 'user' as const, content: retryNudge },
+                ],
+              }
 
               isRetry = true
               attemptNumber++
@@ -846,9 +1119,6 @@ export const aiFetchStreamingResponse = async ({
     console.error('aiFetchStreamingResponse error', error)
     const status =
       (error as { status?: number }).status ?? (error as { response?: { status?: number } }).response?.status
-    return new Response(JSON.stringify({ error: (error as Error).message, status }), {
-      status: status ?? 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return createChatErrorResponse((error as Error).message, status, classifyErrorKind(error))
   }
 }

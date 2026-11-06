@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { anonymousSignInPath, authBasePath, getSessionPath } from '@/auth/paths'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
 import { extractClientIp } from '@/utils/request'
@@ -13,7 +14,19 @@ type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-type RateLimitTier = 'inference' | 'pro' | 'auth'
+type RateLimitTier =
+  | 'inference'
+  | 'receipt'
+  | 'pro'
+  | 'auth'
+  | 'anonymous-sign-in'
+  | 'anonymous-sign-in-global'
+  | 'captcha-challenge'
+  | 'debug-transcript'
+  | 'debug-transcript-intake'
+/** Tiers with a hardcoded limit; the anonymous sign-in and captcha challenge tiers are configured by the operator. */
+type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in' | 'anonymous-sign-in-global' | 'captcha-challenge'>
+export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>
 
 type RateLimitTierConfig = {
   max: number
@@ -28,17 +41,23 @@ export type IpRateLimitSettings = RateLimitSettings & {
   trustedProxy: '' | 'cloudflare' | 'akamai'
 }
 
-/** Hardcoded per-tier limits. */
-const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
-  inference: { max: 60, durationSecs: 60 },
-  pro: { max: 100, durationSecs: 60 },
-  auth: { max: 10, durationSecs: 60 },
+export type AuthPluginIpRateLimitSettings = IpRateLimitSettings & {
+  anonymousSignIn: RateLimitTierConfig
 }
 
+/** Hardcoded per-tier limits. */
+const tierConfigs = {
+  inference: { max: 60, durationSecs: 60 },
+  receipt: { max: 100, durationSecs: 60 },
+  pro: { max: 100, durationSecs: 60 },
+  auth: { max: 10, durationSecs: 60 },
+  'debug-transcript': { max: 10, durationSecs: 60 * 60 },
+  'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
+} satisfies Record<FixedRateLimitTier, RateLimitTierConfig>
+
 /** Create a rate-limiter-flexible instance for a specific tier. */
-const createLimiter = (database: typeof DbType, tier: RateLimitTier) => {
-  const config = tierConfigs[tier]
-  return new RateLimiterDrizzle({
+const createLimiter = (database: typeof DbType, tier: RateLimitTier, config: RateLimitTierConfig) =>
+  new RateLimiterDrizzle({
     storeClient: database,
     schema: rateLimits,
     keyPrefix: tier,
@@ -46,7 +65,6 @@ const createLimiter = (database: typeof DbType, tier: RateLimitTier) => {
     duration: config.durationSecs,
     clearExpiredByTimeout: true,
   })
-}
 
 /** Set rate limit response headers. */
 const setRateLimitHeaders = (
@@ -104,6 +122,18 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
     })
     .as('scoped')
 
+/** Create user-keyed middleware for one configured rate-limit tier. */
+export const createUserTierRateLimit = (
+  database: typeof DbType,
+  settings: RateLimitSettings,
+  tier: UserRateLimitTier,
+) => {
+  if (!settings.enabled) {
+    return new Elysia()
+  }
+  return createUserRateLimitMiddleware(createLimiter(database, tier, tierConfigs[tier]))
+}
+
 /**
  * Build an IP-based rate limit middleware for unauthenticated routes.
  * Uses `extractClientIp` to resolve the real client IP behind a trusted proxy,
@@ -118,11 +148,20 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
  * (`server.requestIP()` always returns the peer address); it would only arise on
  * a non-TCP transport (e.g. a Unix-domain socket), where collectively capping
  * unattributable traffic is the safe default.
+ *
+ * `limiterFor` returns null for a request that is exempt from this middleware.
  */
-const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: IpRateLimitSettings['trustedProxy']) =>
+const createIpRateLimitMiddleware = (
+  limiterFor: (request: Request) => RateLimiterDrizzle | null,
+  trustedProxy: IpRateLimitSettings['trustedProxy'],
+) =>
   new Elysia()
     .onBeforeHandle(async (ctx) => {
       const { set } = ctx
+      const limiter = limiterFor(ctx.request)
+      if (!limiter) {
+        return
+      }
       // `|| 'unknown'` (not `??`): a degenerate empty-string address folds into the
       // same shared fail-closed bucket as a missing one, never a stray `ip:` key.
       const socketIp = ctx.server?.requestIP(ctx.request)?.address || 'unknown'
@@ -131,29 +170,81 @@ const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: 
     })
     .as('scoped')
 
-/** Create rate limit middleware for inference routes (keyed by user). */
-export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
-  if (!settings.enabled) {
-    return new Elysia()
-  }
-  const limiter = createLimiter(database, 'inference')
-  return createUserRateLimitMiddleware(limiter)
-}
+/**
+ * A tier and its limit: fixed tiers use `tierConfigs`; operator-sized tiers take their config
+ * from the caller ('captcha-challenge' the object that sizes 'anonymous-sign-in').
+ */
+type TierArgs =
+  | [tier: FixedRateLimitTier]
+  | [tier: 'captcha-challenge' | 'anonymous-sign-in-global', config: RateLimitTierConfig]
 
-/** Create rate limit middleware for pro tool routes (keyed by user). */
-export const createProRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
+/** Create the limiter for a tier, from `tierConfigs` or the caller's operator config. */
+const createTierLimiter = (database: typeof DbType, ...args: TierArgs) =>
+  args.length === 1 ? createLimiter(database, args[0], tierConfigs[args[0]]) : createLimiter(database, ...args)
+
+/** IP-keyed middleware for one tier; fails closed like createAuthIpRateLimit. */
+export const createIpTierRateLimit = (database: typeof DbType, settings: IpRateLimitSettings, ...args: TierArgs) => {
   if (!settings.enabled) {
     return new Elysia()
   }
-  const limiter = createLimiter(database, 'pro')
-  return createUserRateLimitMiddleware(limiter)
+  const limiter = createTierLimiter(database, ...args)
+  return createIpRateLimitMiddleware(() => limiter, settings.trustedProxy)
 }
 
 /** Create IP-based rate limit middleware for auth and unauthenticated routes. */
-export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateLimitSettings) => {
+export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateLimitSettings) =>
+  createIpTierRateLimit(database, settings, 'auth')
+
+const anonymousSignInMountPath = `${authBasePath}${anonymousSignInPath}`
+const getSessionMountPath = `${authBasePath}${getSessionPath}`
+
+/** Exact match, as Better Auth routes it: a trailing slash or lookalike prefix is a 404 there. */
+const isAnonymousSignIn = (request: Request) => new URL(request.url).pathname === anonymousSignInMountPath
+
+/** GET with an exact path match, like `isAnonymousSignIn`; the app only ever GETs it. */
+const isGetSession = (request: Request) =>
+  request.method === 'GET' && new URL(request.url).pathname === getSessionMountPath
+
+/**
+ * IP rate limit for the Better Auth mount. Anonymous sign-in draws from its own
+ * operator-configured 'anonymous-sign-in' bucket so raising it never loosens any other
+ * auth route. GET get-session is exempt: the app calls it on every boot, reconnect and
+ * cross-tab session change, so visitors sharing one IP would exhaust 'auth' between them,
+ * and Better Auth's own '/get-session' rule still limits it. Everything else draws from the fixed 'auth' tier.
+ * The deployment-wide 'anonymous-sign-in-global' budget is charged later, in the auth
+ * before-hook, once the captcha has passed.
+ */
+export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: AuthPluginIpRateLimitSettings) => {
   if (!settings.enabled) {
     return new Elysia()
   }
-  const limiter = createLimiter(database, 'auth')
-  return createIpRateLimitMiddleware(limiter, settings.trustedProxy)
+  const authLimiter = createLimiter(database, 'auth', tierConfigs.auth)
+  const anonymousSignInLimiter = createLimiter(database, 'anonymous-sign-in', settings.anonymousSignIn)
+  return createIpRateLimitMiddleware((request) => {
+    if (isGetSession(request)) {
+      return null
+    }
+    return isAnonymousSignIn(request) ? anonymousSignInLimiter : authLimiter
+  }, settings.trustedProxy)
+}
+
+export type RateLimitSet = Parameters<typeof consumeOrReject>[2]
+
+/** Consume one point for `key`; resolves to the 429 body when the limit is hit. */
+export type RateLimitConsumer = (key: string, set: RateLimitSet) => Promise<{ error: string } | undefined>
+
+/**
+ * Rate limiting whose key is neither the session user nor the IP (an intake client, or the
+ * single key of the deployment-wide anonymous sign-in budget).
+ */
+export const createRateLimitConsumer = (
+  database: typeof DbType,
+  settings: RateLimitSettings,
+  ...args: TierArgs
+): RateLimitConsumer | null => {
+  if (!settings.enabled) {
+    return null
+  }
+  const limiter = createTierLimiter(database, ...args)
+  return (key, set) => consumeOrReject(limiter, key, set)
 }

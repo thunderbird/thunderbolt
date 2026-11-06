@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, relative } from 'node:path';
 import {
 	computeSlug,
 	extractDescription,
@@ -10,6 +13,7 @@ import {
 	parseFrontmatter,
 	resolveRepoPath,
 	rewriteLinks,
+	walkMarkdown,
 } from './repo-docs-loader';
 
 // ---------------------------------------------------------------------------
@@ -292,5 +296,28 @@ describe('rewriteLinks', () => {
 		expect(rewriteLinks(body, 'architecture/e2e-encryption.md', 'docs', GITHUB, known)).toBe(
 			`[Ghost](${GITHUB}/docs/architecture/nonexistent.md)`,
 		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// walkMarkdown
+// ---------------------------------------------------------------------------
+
+describe('walkMarkdown', () => {
+	test('skips internals/ only at the docs root', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'repo-docs-'));
+		try {
+			await mkdir(join(root, 'internals'));
+			await mkdir(join(root, 'using', 'internals'), { recursive: true });
+			await writeFile(join(root, 'internals', 'hidden.md'), '# Hidden');
+			await writeFile(join(root, 'using', 'internals', 'nested.md'), '# Nested');
+			await writeFile(join(root, 'using', 'page.md'), '# Page');
+
+			const files = (await walkMarkdown(root)).map((file) => relative(root, file));
+
+			expect(files).toEqual([join('using', 'internals', 'nested.md'), join('using', 'page.md')]);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });

@@ -1,0 +1,51 @@
+name: thunderbolt-nightly
+
+services:
+  postgres:
+    build:
+      context: ..
+      dockerfile: deploy/docker/postgres.Dockerfile
+    command: [postgres, -c, wal_level=logical]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: postgres
+      POWERSYNC_DB_PASSWORD: myhighlyrandompassword
+    ports:
+      - '${NIGHTLY_DOCKER_BIND:-127.0.0.1}:${NIGHTLY_POSTGRES_PORT:-15434}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  powersync:
+    build:
+      context: ..
+      dockerfile: deploy/docker/powersync.Dockerfile
+    environment:
+      PS_PG_URI: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/postgres
+      PS_STORAGE_URI: postgresql://postgres:postgres@postgres:5432/powersync_storage
+      PS_JWT_KEY_BASE64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
+      PS_JWT_KID: enterprise-powersync
+    ports:
+      - '${NIGHTLY_DOCKER_BIND:-127.0.0.1}:${NIGHTLY_POWERSYNC_PORT:-18081}:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:8080/probes/liveness').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 18
+
+volumes:
+  postgres_data:

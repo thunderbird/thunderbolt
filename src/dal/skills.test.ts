@@ -4,6 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { skillsTable } from '@/db/tables'
+import { defaultSkillDailyBrief, defaultSkillWeather } from '@/defaults/skills'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import {
@@ -20,9 +21,11 @@ import {
   setPinned,
   SkillNameInvalidError,
   SkillNameTakenError,
+  slugifySkillName,
   softDeleteSkill,
   updateSkill,
   validateSkillName,
+  type UpdateSkillInput,
 } from './skills'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -38,12 +41,19 @@ beforeEach(async () => {
   await resetTestDatabase()
 })
 
-const seed = async (input: { name: string; description?: string; instruction?: string }) =>
+const seed = async (input: { name: string; label?: string; description?: string; instruction?: string }) =>
   createSkill(getDb(), {
     name: input.name,
+    label: input.label ?? `Label for ${input.name}`,
     description: input.description ?? `desc for ${input.name}`,
     instruction: input.instruction ?? `instruction for ${input.name}`,
   })
+
+/** Insert one stable widget contract for DAL mutation tests. */
+const seedWidgetSkill = async () => {
+  await getDb().insert(skillsTable).values(defaultSkillWeather)
+  return defaultSkillWeather
+}
 
 describe('validateSkillName (AgentSkills spec)', () => {
   it('accepts canonical slugs', () => {
@@ -82,6 +92,49 @@ describe('validateSkillName (AgentSkills spec)', () => {
   it('rejects consecutive hyphens', () => {
     expect(validateSkillName('meeting--notes')).toMatch(/consecutive hyphens/i)
     expect(validateSkillName('a--b')).toMatch(/consecutive hyphens/i)
+  })
+})
+
+describe('slugifySkillName', () => {
+  it('lowercases letters and hyphenates spaces', () => {
+    expect(slugifySkillName('Daily Brief')).toBe('daily-brief')
+  })
+
+  it('collapses runs of non-alphanumeric chars into single hyphens', () => {
+    expect(slugifySkillName('Daily   Brief')).toBe('daily-brief')
+    expect(slugifySkillName('Daily / Brief')).toBe('daily-brief')
+    expect(slugifySkillName("It's a brief — daily!")).toBe('it-s-a-brief-daily')
+  })
+
+  it('strips leading and trailing hyphens', () => {
+    expect(slugifySkillName('  daily-brief  ')).toBe('daily-brief')
+    expect(slugifySkillName('!daily-brief?')).toBe('daily-brief')
+  })
+
+  it('preserves single hyphens already present', () => {
+    expect(slugifySkillName('weekly-review')).toBe('weekly-review')
+  })
+
+  it('truncates to 64 chars without leaving a trailing hyphen', () => {
+    expect(slugifySkillName('a'.repeat(70))).toBe('a'.repeat(64))
+    expect(slugifySkillName(`${'a'.repeat(63)} b`)).toBe('a'.repeat(63))
+  })
+
+  it('handles unicode by replacing non-ascii letters with hyphens', () => {
+    expect(slugifySkillName('café résumé')).toBe('caf-r-sum')
+  })
+
+  it('returns an empty string when nothing is slugifiable', () => {
+    expect(slugifySkillName('')).toBe('')
+    expect(slugifySkillName('   ')).toBe('')
+    expect(slugifySkillName('!!!')).toBe('')
+    expect(slugifySkillName('---')).toBe('')
+  })
+
+  it('always produces a spec-valid slug for non-empty results', () => {
+    for (const input of ['Daily Brief', '  !!Weekly -- Review!!  ', 'café', 'a'.repeat(100)]) {
+      expect(validateSkillName(slugifySkillName(input))).toBeNull()
+    }
   })
 })
 
@@ -146,6 +199,36 @@ describe('skills DAL', () => {
       const a = await seed({ name: 'legit-name' })
       await expect(updateSkill(getDb(), a.id, { name: 'SHOUTING' })).rejects.toBeInstanceOf(SkillNameInvalidError)
     })
+
+    it('allows enabled patches for widget skills', async () => {
+      const widget = await seedWidgetSkill()
+
+      await updateSkill(getDb(), widget.id, { enabled: 0 })
+
+      const after = await getSkill(getDb(), widget.id)
+      expect(after?.enabled).toBe(0)
+      expect(after?.pinnedOrder).toBe(defaultSkillWeather.pinnedOrder)
+    })
+
+    it('rejects locked-field patches for widget skills', async () => {
+      const widget = await seedWidgetSkill()
+      const disallowedPatches: UpdateSkillInput[] = [
+        { name: 'renamed-widget' },
+        { label: 'Renamed Widget' },
+        { description: 'Changed description' },
+        { instruction: 'Changed instruction' },
+        { pinnedOrder: 2 },
+        { enabled: 0, description: 'Mixed allowed and disallowed fields' },
+      ]
+
+      for (const patch of disallowedPatches) {
+        await expect(updateSkill(getDb(), widget.id, patch)).rejects.toThrow(/widget skill/i)
+      }
+
+      const after = await getSkill(getDb(), widget.id)
+      expect(after?.enabled).toBe(1)
+      expect(after?.description).toBe(defaultSkillWeather.description)
+    })
   })
 
   describe('softDeleteSkill', () => {
@@ -157,6 +240,7 @@ describe('skills DAL', () => {
       const tomb = await getDb().select().from(skillsTable).where(eq(skillsTable.id, skill.id)).get()
       expect(tomb?.deletedAt).toBeTruthy()
       expect(tomb?.name).toBeNull()
+      expect(tomb?.label).toBeNull()
       expect(tomb?.description).toBeNull()
       expect(tomb?.instruction).toBeNull()
     })
@@ -178,9 +262,34 @@ describe('skills DAL', () => {
       const all = await getAllSkills(getDb())
       expect(all.find((s) => s.id === skill.id)).toBeUndefined()
     })
+
+    it('rejects deleting widget skills', async () => {
+      const widget = await seedWidgetSkill()
+
+      await expect(softDeleteSkill(getDb(), widget.id)).rejects.toThrow(/widget skill/i)
+      expect(await getSkill(getDb(), widget.id)).toEqual(widget)
+    })
   })
 
   describe('setPinned', () => {
+    it('rejects pinning widget skills but allows unpinning them', async () => {
+      const widget = await seedWidgetSkill()
+
+      await expect(setPinned(getDb(), widget.id, 0)).rejects.toThrow(/widget skill/i)
+      await setPinned(getDb(), widget.id, null)
+
+      expect((await getSkill(getDb(), widget.id))?.pinnedOrder).toBeNull()
+    })
+
+    it('pins task skills', async () => {
+      const task = { ...defaultSkillDailyBrief, pinnedOrder: null }
+      await getDb().insert(skillsTable).values(task)
+
+      await setPinned(getDb(), task.id, 0)
+
+      expect((await getSkill(getDb(), task.id))?.pinnedOrder).toBe(0)
+    })
+
     it('pins and unpins', async () => {
       const skill = await seed({ name: 'p' })
       await setPinned(getDb(), skill.id, 0)
@@ -239,6 +348,80 @@ describe('skills DAL', () => {
     it(`rejects more than ${maxPinnedSkills} ids`, async () => {
       const ids = Array.from({ length: maxPinnedSkills + 1 }, () => crypto.randomUUID())
       await expect(reorderPins(getDb(), ids)).rejects.toBeInstanceOf(PinLimitExceededError)
+    })
+
+    it('permits reordering other pins before a stationary widget when stored orders have gaps', async () => {
+      const a = await seed({ name: 'a' })
+      const b = await seed({ name: 'b' })
+      await setPinned(getDb(), a.id, 0)
+      await setPinned(getDb(), b.id, 1)
+      await getDb()
+        .insert(skillsTable)
+        .values({ ...defaultSkillWeather, pinnedOrder: 4 })
+
+      await reorderPins(getDb(), [b.id, a.id, defaultSkillWeather.id])
+
+      const pinned = await getPinnedSkills(getDb())
+      expect(pinned.map((skill) => skill.id)).toEqual([b.id, a.id, defaultSkillWeather.id])
+    })
+
+    it('rejects moving a pinned widget relative to other pins when stored orders have gaps', async () => {
+      const a = await seed({ name: 'a' })
+      const b = await seed({ name: 'b' })
+      await setPinned(getDb(), a.id, 0)
+      await setPinned(getDb(), b.id, 1)
+      await getDb()
+        .insert(skillsTable)
+        .values({ ...defaultSkillWeather, pinnedOrder: 4 })
+
+      await expect(reorderPins(getDb(), [a.id, defaultSkillWeather.id, b.id])).rejects.toThrow(/widget skill/i)
+
+      const pinned = await getPinnedSkills(getDb())
+      expect(pinned.map(({ id, pinnedOrder }) => ({ id, pinnedOrder }))).toEqual([
+        { id: a.id, pinnedOrder: 0 },
+        { id: b.id, pinnedOrder: 1 },
+        { id: defaultSkillWeather.id, pinnedOrder: 4 },
+      ])
+    })
+
+    it('rejects adding an unpinned widget to the submitted pin order', async () => {
+      const a = await seed({ name: 'a' })
+      await setPinned(getDb(), a.id, 0)
+      await getDb()
+        .insert(skillsTable)
+        .values({ ...defaultSkillWeather, pinnedOrder: null })
+
+      await expect(reorderPins(getDb(), [a.id, defaultSkillWeather.id])).rejects.toThrow(/widget skill/i)
+
+      expect((await getSkill(getDb(), defaultSkillWeather.id))?.pinnedOrder).toBeNull()
+    })
+
+    it('rejects an order that omits a pinned widget and moves another pin across it', async () => {
+      const a = await seed({ name: 'a' })
+      const b = await seed({ name: 'b' })
+      await setPinned(getDb(), a.id, 0)
+      await setPinned(getDb(), b.id, 4)
+      await getDb().insert(skillsTable).values(defaultSkillWeather)
+
+      await expect(reorderPins(getDb(), [b.id, a.id])).rejects.toThrow(/widget skill/i)
+
+      const pinned = await getPinnedSkills(getDb())
+      expect(pinned.map((skill) => skill.id)).toEqual([a.id, defaultSkillWeather.id, b.id])
+    })
+
+    it('allows an order that omits a pinned widget when submitted pins stay on the same side', async () => {
+      const a = await seed({ name: 'a' })
+      const b = await seed({ name: 'b' })
+      await setPinned(getDb(), a.id, 0)
+      await setPinned(getDb(), b.id, 1)
+      await getDb()
+        .insert(skillsTable)
+        .values({ ...defaultSkillWeather, pinnedOrder: 4 })
+
+      await reorderPins(getDb(), [b.id, a.id])
+
+      const pinned = await getPinnedSkills(getDb())
+      expect(pinned.map((skill) => skill.id)).toEqual([b.id, a.id, defaultSkillWeather.id])
     })
   })
 

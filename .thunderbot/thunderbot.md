@@ -132,7 +132,7 @@ Follow the plan systematically. Use subagent patterns from the playbook for para
 
 **Quality gate before every push:**
 1. `make check` -- fix any type, lint, or format errors
-2. `bun test` (root and backend/) -- fix any test failures
+2. `bun run test` and `bun run test:backend` -- fix any test failures
 3. `/thunderimprove` -- review changes, apply improvements, re-run steps 1-2 if needed
 4. `/thunderpush` -- atomic conventional commit
 5. `/thunderfix` -- monitor CI and address feedback

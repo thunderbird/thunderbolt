@@ -2,8 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
-import { createSafeFetch, isPrivateAddress, validateAndPin, validateSafeUrl, type DnsLookup } from './url-validation'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  BlockedUrlError,
+  createSafeFetch,
+  isPrivateAddress,
+  TooManyRedirectsError,
+  validateAndPin,
+  validateSafeUrl,
+  type DnsLookup,
+} from './url-validation'
 
 describe('isPrivateAddress', () => {
   // --- Blocked IPv4 ranges ---
@@ -81,13 +93,13 @@ describe('isPrivateAddress', () => {
     expect(isPrivateAddress(ip)).toBe(true)
   })
 
-  // The embedded-IPv4 check must NOT block transition addresses wrapping a PUBLIC
-  // IPv4 — on a DNS64 deployment, legitimate IPv4-only sites resolve to 64:ff9b::<public>.
+  // Transition mechanisms remain blocked when the embedded IPv4 is public because
+  // the shared policy rejects non-global-unicast and deprecated IPv6 ranges.
   it.each([
     ['64:ff9b::808:808', 'NAT64 → 8.8.8.8'],
     ['2002:0808:0808::', '6to4 → 8.8.8.8'],
-  ])('allows %s (%s)', (ip) => {
-    expect(isPrivateAddress(ip)).toBe(false)
+  ])('blocks %s (%s)', (ip) => {
+    expect(isPrivateAddress(ip)).toBe(true)
   })
 
   // --- Allowed addresses ---
@@ -182,7 +194,7 @@ describe('validateSafeUrl', () => {
 /** Deterministic resolver for the SSRF-engine tests: avoids real network/DNS so
  *  the pin + redirect-revalidation invariants are exercised hermetically. */
 const testLookup: DnsLookup = (host) => {
-  if (host === 'public.test') {
+  if (host === 'public.test' || host === 'other.test') {
     return Promise.resolve([{ address: '93.184.216.34', family: 4 }])
   }
   if (host === 'rebind.test') {
@@ -192,6 +204,15 @@ const testLookup: DnsLookup = (host) => {
     return Promise.resolve([
       { address: '93.184.216.34', family: 4 },
       { address: '10.0.0.1', family: 4 },
+    ])
+  }
+  if (host === 'invalid-answer.test') {
+    return Promise.resolve([{ address: 'not-an-ip', family: 4 }])
+  }
+  if (host === 'mixed-invalid-answer.test') {
+    return Promise.resolve([
+      { address: '93.184.216.34', family: 4 },
+      { address: 'not-an-ip', family: 4 },
     ])
   }
   // DNS64-style synthesis: AAAA wraps an IPv4 in the NAT64 well-known prefix.
@@ -205,6 +226,34 @@ const testLookup: DnsLookup = (host) => {
 }
 
 describe('validateAndPin', () => {
+  it('allows only the exact test host and port in the test environment', async () => {
+    const previousEnv = process.env.NODE_ENV
+    const previousHosts = process.env.TEST_PROXY_ALLOWED_HOSTS
+    try {
+      process.env.NODE_ENV = 'test'
+      process.env.TEST_PROXY_ALLOWED_HOSTS = '127.0.0.1:9879'
+      expect((await validateAndPin('http://127.0.0.1:9879/mcp'))[0]).toBe('http://127.0.0.1:9879/mcp')
+      await expect(validateAndPin('http://127.0.0.1:9880/mcp')).rejects.toThrow(/private\/internal/)
+      await expect(validateAndPin('http://127.0.0.2:9879/mcp')).rejects.toThrow(/private\/internal/)
+      process.env.NODE_ENV = 'production'
+      await expect(validateAndPin('http://127.0.0.1:9879/mcp')).rejects.toThrow(/private\/internal/)
+      process.env.NODE_ENV = 'test'
+      delete process.env.TEST_PROXY_ALLOWED_HOSTS
+      await expect(validateAndPin('http://127.0.0.1:9879/mcp')).rejects.toThrow(/private\/internal/)
+    } finally {
+      if (previousEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = previousEnv
+      }
+      if (previousHosts === undefined) {
+        delete process.env.TEST_PROXY_ALLOWED_HOSTS
+      } else {
+        process.env.TEST_PROXY_ALLOWED_HOSTS = previousHosts
+      }
+    }
+  })
+
   it('blocks a public hostname that resolves to a private/metadata address (DNS rebinding)', async () => {
     await expect(validateAndPin('http://rebind.test/latest/meta-data/', undefined, testLookup)).rejects.toThrow(
       /private\/internal address 169\.254\.169\.254/,
@@ -215,20 +264,48 @@ describe('validateAndPin', () => {
     await expect(validateAndPin('http://mixed.test/', undefined, testLookup)).rejects.toThrow(/10\.0\.0\.1/)
   })
 
+  it('rejects an unparseable resolver answer instead of pinning it', async () => {
+    await expect(validateAndPin('http://invalid-answer.test/', undefined, testLookup)).rejects.toThrow(
+      /invalid IP address not-an-ip/,
+    )
+  })
+
+  it('rejects when any resolver answer is unparseable, even if the first is public', async () => {
+    await expect(validateAndPin('http://mixed-invalid-answer.test/', undefined, testLookup)).rejects.toThrow(
+      /invalid IP address not-an-ip/,
+    )
+  })
+
+  it('passes domain names through the pre-resolution check to DNS', async () => {
+    const resolvedHostnames: string[] = []
+    const lookup: DnsLookup = (hostname) => {
+      resolvedHostnames.push(hostname)
+      return Promise.resolve([{ address: '93.184.216.34', family: 4 }])
+    }
+
+    const [pinnedUrl] = await validateAndPin('http://domain-name.test/path', undefined, lookup)
+
+    expect(resolvedHostnames).toEqual(['domain-name.test'])
+    expect(pinnedUrl).toBe('http://93.184.216.34/path')
+  })
+
   it('blocks a hostname whose AAAA wraps a private IPv4 in a NAT64 prefix', async () => {
     await expect(validateAndPin('http://nat64-private.test/', undefined, testLookup)).rejects.toThrow(/64:ff9b::7f00:1/)
   })
 
-  it('allows a hostname whose AAAA wraps a PUBLIC IPv4 in a NAT64 prefix (DNS64)', async () => {
-    const [pinnedUrl, headers] = await validateAndPin('http://nat64-public.test/', undefined, testLookup)
-    expect(pinnedUrl).toBe('http://[64:ff9b::808:808]/')
-    expect(headers.get('host')).toBe('nat64-public.test')
+  it('blocks a hostname whose AAAA wraps a public IPv4 in a NAT64 prefix', async () => {
+    await expect(validateAndPin('http://nat64-public.test/', undefined, testLookup)).rejects.toThrow(/64:ff9b::808:808/)
   })
 
   it('pins to the resolved IP and preserves the original Host header', async () => {
     const [pinnedUrl, headers] = await validateAndPin('http://public.test/path?q=1', undefined, testLookup)
     expect(pinnedUrl).toBe('http://93.184.216.34/path?q=1')
     expect(headers.get('host')).toBe('public.test')
+  })
+
+  it('names the original hostname for TLS SNI, since the pinned URL carries an IP', async () => {
+    const [, , tls] = await validateAndPin('https://public.test/path', undefined, testLookup)
+    expect(tls).toEqual({ serverName: 'public.test' })
   })
 
   it('strips userinfo before pinning', async () => {
@@ -240,9 +317,10 @@ describe('validateAndPin', () => {
     await expect(validateAndPin('http://127.0.0.1/', undefined, testLookup)).rejects.toThrow(/private\/internal/)
   })
 
-  it('allows a public IP literal as-is (no Host rewrite needed)', async () => {
-    const [pinnedUrl] = await validateAndPin('http://93.184.216.34/ok', undefined, testLookup)
+  it('allows a public IP literal as-is (no Host rewrite or SNI override needed)', async () => {
+    const [pinnedUrl, , tls] = await validateAndPin('http://93.184.216.34/ok', undefined, testLookup)
     expect(pinnedUrl).toBe('http://93.184.216.34/ok')
+    expect(tls).toBeUndefined()
   })
 })
 
@@ -254,18 +332,59 @@ const requestUrl = (input: string | URL | Request): string => {
 }
 
 /** Build a fetch stub that returns a queued response per call and records the
- *  URL + Host header each call was made with. */
+ *  URL, Host header and TLS server name each call was made with. */
 const stubFetch = (responses: Response[]) => {
   const queue = [...responses]
-  const calls: Array<{ url: string; host: string | null }> = []
-  const fn = ((input: string | URL | Request, init?: RequestInit) => {
-    calls.push({ url: requestUrl(input), host: new Headers(init?.headers).get('host') })
+  const calls: Array<{ url: string; host: string | null; serverName: string | undefined }> = []
+  const fn = ((input: string | URL | Request, init?: BunFetchRequestInit) => {
+    calls.push({
+      url: requestUrl(input),
+      host: new Headers(init?.headers).get('host'),
+      serverName: init?.tls?.serverName,
+    })
     return Promise.resolve(queue.shift())
   }) as typeof fetch
   return { fn, calls }
 }
 
 describe('createSafeFetch', () => {
+  it('refuses an http redirect hop when https only', async () => {
+    const { fn, calls } = stubFetch([
+      new Response(null, { status: 302, headers: { location: 'http://public.test/logo.png' } }),
+      new Response('PNG', { status: 200 }),
+    ])
+    const safeFetch = createSafeFetch(fn, testLookup, { httpsOnly: true })
+    await expect(safeFetch('https://public.test/logo.png')).rejects.toBeInstanceOf(BlockedUrlError)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('refuses an http first URL when https only, naming only its host', async () => {
+    const { fn, calls } = stubFetch([new Response('PNG', { status: 200 })])
+    const request = createSafeFetch(fn, testLookup, { httpsOnly: true })('http://public.test/logo.png?token=secret')
+    await expect(request).rejects.toBeInstanceOf(BlockedUrlError)
+    await expect(request).rejects.toThrow('Blocked: public.test is not served over https')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('reports a redirect loop as TooManyRedirectsError, cancelling each redirect body', async () => {
+    const state = { cancelled: 0 }
+    const redirect = () =>
+      new Response(new ReadableStream({ cancel: () => void (state.cancelled += 1) }), {
+        status: 302,
+        headers: { location: 'http://public.test/loop' },
+      })
+    const { fn } = stubFetch(Array.from({ length: 6 }, redirect))
+    await expect(createSafeFetch(fn, testLookup)('http://public.test/loop')).rejects.toBeInstanceOf(
+      TooManyRedirectsError,
+    )
+    expect(state.cancelled).toBe(6)
+  })
+
+  it('reports a private address as a BlockedUrlError', async () => {
+    const { fn } = stubFetch([new Response('LEAK', { status: 200 })])
+    await expect(createSafeFetch(fn, testLookup)('http://127.0.0.1/')).rejects.toBeInstanceOf(BlockedUrlError)
+  })
+
   it('blocks a redirect hop that points at a loopback address', async () => {
     const { fn, calls } = stubFetch([
       new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/admin' } }),
@@ -290,6 +409,16 @@ describe('createSafeFetch', () => {
     expect(calls[1].host).toBe('public.test')
   })
 
+  it('sends the hostname as TLS SNI on every hop, following a cross-host redirect', async () => {
+    const { fn, calls } = stubFetch([
+      new Response(null, { status: 302, headers: { location: 'https://other.test/next' } }),
+      new Response('ok', { status: 200 }),
+    ])
+    const safeFetch = createSafeFetch(fn, testLookup)
+    await safeFetch('https://public.test/')
+    expect(calls.map((c) => c.serverName)).toEqual(['public.test', 'other.test'])
+  })
+
   it('returns the redirect unfollowed when the caller asks for manual redirects', async () => {
     const { fn, calls } = stubFetch([new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/' } })])
     const safeFetch = createSafeFetch(fn, testLookup)
@@ -305,5 +434,65 @@ describe('createSafeFetch', () => {
     expect(res.status).toBe(200)
     expect(calls).toHaveLength(1)
     expect(calls[0].url).toBe('http://93.184.216.34/')
+  })
+})
+
+/** Generate a throwaway self-signed cert valid only for `hostname`, so no private key is committed
+ *  (same approach as e2e/saml-test-certs.ts). */
+const generateCert = (hostname: string) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pinned-tls-'))
+  const keyPath = join(dir, 'key.pem')
+  const certPath = join(dir, 'cert.pem')
+  try {
+    execFileSync(
+      'openssl',
+      ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', `/CN=${hostname}`].concat([
+        '-addext',
+        `subjectAltName=DNS:${hostname}`,
+        '-keyout',
+        keyPath,
+        '-out',
+        certPath,
+      ]),
+      { stdio: 'pipe' },
+    )
+    return { key: readFileSync(keyPath, 'utf-8'), cert: readFileSync(certPath, 'utf-8') }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// A real TLS handshake, not a fetch stub: the assertions above only prove `tls.serverName`
+// is passed, so this guards against a Bun upgrade that stops honouring it for an IP URL
+// (Bun 1.4.1 already stopped deriving SNI from the Host header).
+describe('createSafeFetch TLS handshake', () => {
+  const hostname = 'pinned.test'
+  const { key, cert } = generateCert(hostname)
+  const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
+  let server: ReturnType<typeof Bun.serve>
+
+  beforeAll(() => {
+    server = Bun.serve({ hostname: '127.0.0.1', port: 0, tls: { key, cert }, fetch: () => new Response('ok') })
+  })
+
+  afterAll(() => {
+    server.stop(true)
+  })
+
+  it('verifies the certificate against the original hostname when connecting to the pinned IP', async () => {
+    const publicLookup: DnsLookup = () => Promise.resolve([{ address: '93.184.216.34', family: 4 }])
+    // Route the pinned public IP to the local server and trust the test cert; SNI and
+    // certificate verification are left to whatever `createSafeFetch` passes.
+    const toLocalServer = ((input: string, init?: BunFetchRequestInit) => {
+      const url = new URL(input)
+      url.hostname = '127.0.0.1'
+      url.port = String(server.port)
+      return realFetch(url, { ...init, tls: { ...init?.tls, ca: cert } })
+    }) as typeof fetch
+
+    const res = await createSafeFetch(toLocalServer, publicLookup)(`https://${hostname}/`)
+
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('ok')
   })
 })

@@ -1,0 +1,217 @@
+# Authentication
+
+`AUTH_MODE` picks the primary sign-in path, and the app build follows it. There is no username-and-password sign-in, and no Google or Microsoft social login. The email-code endpoints stay mounted in every mode, so an SSO deployment that does not need mail should leave `RESEND_API_KEY` unset. Personal access tokens, the command-line device grant and optional anonymous sessions sit alongside the primary path.
+
+## Pick a method
+
+| Method              | Setting              | You provide                                     | Use it when                                                                     |
+| ------------------- | -------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| OIDC single sign-on | `AUTH_MODE=oidc`     | An issuer URL, a client ID and a client secret  | Your organization already has an identity provider. Start here.                 |
+| SAML single sign-on | `AUTH_MODE=saml`     | A sign-on URL, two entity IDs and a certificate | Your identity provider speaks SAML 2.0 and not OIDC.                            |
+| Email sign-in code  | `AUTH_MODE=consumer` | A transactional email service                   | You have no identity provider. Read the limitations below before choosing this. |
+
+We recommend OIDC wherever you have the choice. Both SSO modes put sign-in and access control with your identity provider; OIDC is the simpler of the two to configure.
+
+Every deployment path (Docker Compose, Kubernetes, AWS) ships with `oidc` set and a Keycloak container preloaded with a realm and a `demo@thunderbolt.io` / `demo` user, so sign-in works on first boot. Replace that with your own provider before real users arrive.
+
+## The mode is set in two places
+
+| Where     | Setting                             | Values                                        |
+| --------- | ----------------------------------- | --------------------------------------------- |
+| Server    | `AUTH_MODE`                         | `consumer`, `oidc`, `saml`                    |
+| App build | `VITE_AUTH_MODE` (a build argument) | `sso` for OIDC or SAML, unset for email codes |
+
+An unset `AUTH_MODE` falls back to `consumer`, so set it explicitly. `VITE_AUTH_MODE` is baked into the app at build time rather than read at runtime, so switching between SSO and email sign-in means rebuilding the app image. The server refuses to start if the chosen mode's settings are incomplete.
+
+## OIDC
+
+### What you configure
+
+| Variable             |  Required   | What it is                                                                                        |
+| -------------------- | :---------: | ------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`          |     yes     | Set to `oidc`                                                                                     |
+| `OIDC_ISSUER`        |     yes     | Your provider's issuer URL, as it appears in tokens                                               |
+| `OIDC_CLIENT_ID`     |     yes     | The client (application) registered with your provider                                            |
+| `OIDC_CLIENT_SECRET` |     yes     | That client's secret                                                                              |
+| `OIDC_DISCOVERY_URL` |     no      | Override when the server reaches the provider at a different hostname                             |
+| `TRUSTED_ORIGINS`    | in practice | Comma-separated list. Has a default, but sign-in fails unless it includes your provider's origin. |
+
+Any provider serving standard discovery at `{OIDC_ISSUER}/.well-known/openid-configuration` works: Keycloak, Okta, Auth0, Microsoft Entra ID, and others.
+
+```sh
+AUTH_MODE=oidc
+OIDC_ISSUER=https://login.example.com/realms/thunderbolt
+OIDC_CLIENT_ID=thunderbolt-app
+OIDC_CLIENT_SECRET=<from your provider>
+TRUSTED_ORIGINS=https://thunderbolt.example.com,https://login.example.com
+```
+
+### What to register with your provider
+
+One redirect URI, built from `BETTER_AUTH_URL` (the public URL of the server itself, which is not always the same host as the app):
+
+```
+<BETTER_AUTH_URL>/v1/api/auth/sso/callback/sso
+```
+
+Request the standard `openid`, `email` and `profile` scopes. Thunderbolt identifies a user by email address.
+
+### Two hostnames for one provider
+
+Inside a container network the server often reaches the provider at an internal address (`http://keycloak:8080`) while browsers reach it at a public one. Tokens carry the public issuer, so set `OIDC_ISSUER` to the browser-facing URL and `OIDC_DISCOVERY_URL` to the internal one:
+
+```sh
+OIDC_ISSUER=https://login.example.com/realms/thunderbolt
+OIDC_DISCOVERY_URL=http://keycloak:8080/realms/thunderbolt/.well-known/openid-configuration
+```
+
+Put **both** origins in `TRUSTED_ORIGINS`. The server validates discovery and metadata URLs against that list and refuses anything not on it.
+
+## SAML
+
+### What you configure
+
+| Variable                   | Required | What it is                                                                                        |
+| -------------------------- | :------: | ------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`                |   yes    | Set to `saml`                                                                                     |
+| `SAML_ENTRY_POINT`         |   yes    | Your provider's sign-on URL, where users are sent to authenticate                                 |
+| `SAML_ENTITY_ID`           |   yes    | Thunderbolt's own entity ID. Must match the application you register with your provider.          |
+| `SAML_IDP_ISSUER`          |   yes    | Your provider's entity ID. Assertions are checked against it.                                     |
+| `SAML_CERT`                |   yes    | Your provider's signing certificate                                                               |
+| `SAML_ALLOW_IDP_INITIATED` |    no    | Set `true` to accept logins that start at the provider's dashboard. Off by default. See below.    |
+| `TRUSTED_ORIGINS`          |    no    | Needed only if you pass a `callbackURL` on another origin; SAML has no discovery step to validate |
+
+```sh
+AUTH_MODE=saml
+SAML_ENTRY_POINT=https://login.example.com/sso/saml
+SAML_ENTITY_ID=thunderbolt-saml-sp
+SAML_IDP_ISSUER=https://login.example.com
+SAML_CERT=MIIDazCCAlOgAwIBAgI...
+TRUSTED_ORIGINS=https://thunderbolt.example.com,https://login.example.com
+```
+
+`SAML_CERT` is the raw base64 body of the certificate. Strip the `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` lines, or validation fails with a certificate error.
+
+### What to register with your provider
+
+Point your provider at Thunderbolt's service-provider metadata, which the server publishes at:
+
+```
+<BETTER_AUTH_URL>/v1/api/auth/sso/saml2/sp/metadata?providerId=sso
+```
+
+If your provider needs the assertion consumer URL entered by hand:
+
+```
+<BETTER_AUTH_URL>/v1/api/auth/sso/saml2/sp/acs/sso
+```
+
+Assertions must be signed. Thunderbolt validates the signature against `SAML_CERT` and the issuer against `SAML_IDP_ISSUER`.
+
+### Logging in from the provider's dashboard
+
+Thunderbolt refuses a SAML response that does not answer a login request it sent. That rules out a login that starts at your provider's dashboard, where a user clicks the Thunderbolt icon and the provider sends a response nobody asked for. The user is sent to `APP_URL` and sees the app's sign-in error page, which asks them to open Thunderbolt and sign in from there. Its "Try again" button starts a normal login. Nothing is signed in from the unrequested response. This redirect needs the app's origin in `TRUSTED_ORIGINS`.
+
+You can keep the dashboard icon working without changing this. Most providers let you point the icon at a URL. Set it to the address of your Thunderbolt app, such as `https://thunderbolt.example.com`. In Azure (Microsoft Entra ID) the field is called "Sign on URL". The login then starts at Thunderbolt, which sends a request, and the provider answers it.
+
+If your provider cannot do that, set `SAML_ALLOW_IDP_INITIATED=true` and restart the API. The setting is a risk. With no request to compare against, Thunderbolt cannot tell whether the person started the login or someone else did, for example by getting a signed response into their browser. The SAML library calls this a known attack vector, and the SAML2Int interoperability profile advises against this kind of login. Turn it on only if your provider leaves you no other way.
+
+## What single sign-on looks like to the user
+
+There is no Thunderbolt login form. Opening the app with no session sends the browser straight to your identity provider.
+
+When someone signs in through your provider with an identity Thunderbolt has not seen before, and a Thunderbolt account with the same email address already exists, they land in that account instead of getting a second one. This happens when either of these is true:
+
+- The account's email is verified in Thunderbolt, which means its owner signed in with an emailed code.
+- The account already has an identity from your provider. This covers the same person arriving with a new identity: you switched `AUTH_MODE` between `oidc` and `saml`, moved to a different provider, or the provider changed their subject (OIDC) or NameID (SAML).
+
+An account that meets neither condition is not linked, and that sign-in fails with "account not linked". An address with no account gets a new one.
+
+Automatic linking trusts the email address your provider assigns, so your provider must not let users change their own email to someone else's address.
+
+Under OIDC, a user is also never linked when the provider reports `email_verified` as false for them. The sign-in fails with "account not linked" until you mark the address as verified at the provider. Keycloak marks an address verified only when the realm makes users confirm it ("Verify email") or an admin ticks "Email verified". When Keycloak loads users from LDAP, it sends `email_verified` false unless "Trust Email" is turned on in the LDAP user federation settings, so turn it on. SAML has no such claim, so this does not apply to it.
+
+If a sign-in fails or the user cancels at the provider, they come back to the app with a message and a "Try again" button, which starts the login again. Only a few failures, such as a login attempt that expired before the provider answered, still end on the API's own plain error page.
+
+Signing out of Thunderbolt ends the Thunderbolt session and leaves the one your identity provider holds in place, so the next visit may re-authenticate silently. That session ends at the provider.
+
+## Replacing the bundled Keycloak
+
+The shipped Keycloak's realm, client secret, admin password and demo user are all published in the Thunderbolt repository.
+
+On Docker Compose, delete the `keycloak` service from the Compose file and set your own OIDC or SAML values. On Kubernetes, point the backend settings at your provider and disable the demo user with `keycloak.demoUserEnabled: false`. That change needs the Keycloak pod restarted, because the realm file is only read at startup.
+
+The AWS stack installs that same chart only when you set `platform` to `k8s`. On the default Fargate platform Keycloak runs as an ECS task from a prebuilt image whose realm, demo user included, is baked in at build time, so there is no `demoUserEnabled` to set: point `OIDC_*` at your own provider and remove the Keycloak service instead.
+
+> Whichever path you are on, the bundled Keycloak stores nothing outside its own container and re-imports its realm from a file on startup. Anything you configure in its admin console is lost when the container is replaced.
+
+## Email sign-in codes
+
+Under `AUTH_MODE=consumer` a user types an email address and receives an 8-digit code, sent both as a code to type and as a link to click. Either works.
+
+An address with no account gets a code only once it is approved; otherwise it is put on a waitlist and sent a waitlist email instead. Approve whole domains with `WAITLIST_AUTO_APPROVE_DOMAINS`, or one address by setting its `waitlist` row to `status = 'approved'`. [Configuration](./configuration.md#first-time-email-sign-in) has the details.
+
+| Behaviour            | Value                                                          |
+| -------------------- | -------------------------------------------------------------- |
+| Code length          | 8 digits                                                       |
+| Valid for            | 10 minutes                                                     |
+| Attempts per code    | 3, then the code is dead                                       |
+| Resend               | Re-sends the same code, so it cannot reset the attempt counter |
+| Requests per address | One every 15 seconds                                           |
+
+Typing the code also requires a challenge token issued alongside it, so the eight digits on their own are not enough. That token is tied to the email address rather than to one browser, and the emailed link carries it, so treat the message itself as the credential.
+
+### Before choosing this mode
+
+**The sender address is not configurable.** Sign-in email is sent through [Resend](https://resend.com) using a fixed Thunderbolt sender domain, so a self-hosted deployment cannot currently send these emails under its own domain. We recommend single sign-on instead.
+
+In production mode a server with no email service refuses the sign-in request outright, with an "Email service not configured" error.
+
+> Outside production mode it writes the code and the sign-in link to its own logs instead of sending them. Anyone who can read your logs can sign in as anyone.
+
+## Desktop and mobile
+
+On desktop, OIDC and SAML sign-in opens your system browser: you authenticate there, and the browser hands the session back to the app over a local connection on the same machine. Email sign-in happens entirely inside the app.
+
+That browser handoff needs one of the ports `17421`, `17422` or `17423` free on the user's own machine. A listener opens on one of them only during a sign-in, and only the same machine connects to it. A local firewall blocking all three breaks desktop sign-in, with no fallback.
+
+Each desktop sign-in generates a fresh, unguessable `client_state`. The native loopback listener ignores malformed requests and callbacks without that exact state, continuing to wait for the real redirect. The app independently accepts a token or error only from its expected loopback address and with that same state. Per-connection reads are capped at two seconds, and the listener closes after the overall sign-in timeout even if unrelated requests keep arriving. The backend also signs the callback port, client state, and system browser's HttpOnly nonce with `BETTER_AUTH_SECRET`. This server-minted proof prevents changing the callback destination or app state, or forging a binding from a caller-chosen cookie. No persistent server-side flow store is required.
+
+**Roll out the backend before the desktop app.** The updated backend accepts initiations from older clients without `client_state`, but those clients retain their original callback protection and should then be upgraded. The updated desktop app rejects unbound callbacks from an older backend and eventually shows its sign-in retry screen; there is no compatibility fallback that accepts an unbound token. Sign-ins already in progress when the backend is upgraded must be restarted because their callbacks lack the new browser binding. Browser-only sign-in is unchanged.
+
+Which server the apps talk to is fixed when they are built. Pointing desktop or mobile users at your deployment means producing your own builds with your API and app URLs, and rebuilding when you change the authentication mode. The browser app has no such constraint.
+
+The sign-in link in an email opens the hosted Thunderbolt app directly on iOS and Android. For a self-hosted deployment that link opens in the browser instead, which still signs the user in.
+
+## Other ways in
+
+Command-line sign-in is enabled by default. `thunderbolt login` shows a code, the user approves it in the app, and the CLI receives a session. Registering the CLI as a visible, revocable device requires `CLI_DEVICE_REGISTRATION_ENABLED=true`. Two settings tune the grant: `DEVICE_AUTH_EXPIRES_IN` (default `30m`) is how long an unapproved code stays valid, and `DEVICE_AUTH_INTERVAL` (default `5s`) the minimum polling gap.
+
+Personal access tokens, the long-lived tokens users create for scripts and automation, are enabled by default too. A token is shown once at creation and lasts 90 days, or whatever `API_KEY_DEFAULT_EXPIRES_IN` (in seconds) says. Confidential models refuse a token unless `CONFIDENTIAL_API_KEYS_ENABLED=true`.
+
+Anonymous sessions ship disabled, and an SSO-built app never offers them. The server setting is mode-independent, though: `AUTH_ALLOW_ANONYMOUS=true` mounts the anonymous sign-in endpoint whatever `AUTH_MODE` is, so leave it off on an SSO deployment. Turning them on takes `AUTH_ALLOW_ANONYMOUS=true` on the server, which lets visitors try the app with no account, plus an app built with `VITE_AUTH_ENABLE_ANONYMOUS=true` and `VITE_BYPASS_WAITLIST=true`. With the server setting alone, visitors still meet the sign-in wall; with the build flags alone, they get a button the server has no endpoint for.
+
+## Sessions and devices
+
+A session belongs to the device that created it. With sync on, users see every signed-in device under Settings, Devices, and can revoke any of them. Without sync a device only ever sees itself, so revoking a lost one needs sync. Revoking ends that device's sessions and stops it syncing. The next time the revoked device reaches the server it clears its local data and shows why.
+
+## Troubleshooting
+
+| Symptom                                                        | Likely cause                                                              | Fix                                                                                                                   |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| The app loads normally instead of redirecting to your provider | The app was built without `VITE_AUTH_MODE=sso`, or a stale session exists | Rebuild the app image, or clear site data in the browser and reload                                                   |
+| An untrusted-origin error during sign-in                       | Your provider's origin is missing from `TRUSTED_ORIGINS`                  | Add it. Container deployments usually need both the public and the internal origin.                                   |
+| A discovery error during sign-in                               | The provider is unreachable from the server                               | Check the provider is running and set `OIDC_DISCOVERY_URL` to an address the server can reach                         |
+| The server will not start, naming an OIDC or SAML variable     | A setting the chosen mode requires is missing or misspelled               | Set every variable listed for that mode above                                                                         |
+| The callback returns 404                                       | The redirect URI registered with the provider does not match              | Register `<BETTER_AUTH_URL>/v1/api/auth/sso/callback/sso` exactly                                                     |
+| SAML rejects the assertion                                     | The wrong assertion consumer URL, or a mismatched entity ID               | Compare the provider's configuration against the service-provider metadata URL above                                  |
+| An invalid certificate error on SAML                           | The certificate still has its PEM header and footer                       | Use the raw base64 body only                                                                                          |
+| Clicking the icon in the provider's dashboard does not sign in | Thunderbolt refuses SAML responses it did not ask for                     | Point the icon at your app's address, or set `SAML_ALLOW_IDP_INITIATED=true` (read the risk)                          |
+| Many users get `429` at the same time                          | `TRUSTED_PROXY` is empty behind a CDN, so everyone shares one limit       | Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if you use one. See [Configuration](./configuration.md#rate-limiting) |
+| Nobody receives a sign-in code                                 | No email service is configured                                            | Check the server logs                                                                                                 |
+| A new user gets a waitlist email instead of a code             | The address has no account and is not approved                            | Add its domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart, or approve its `waitlist` row                          |
+
+## Next
+
+- [Configuration](./configuration.md): the full settings reference, including everything on this page.
+- [Docker Compose](./docker-compose.md), [Kubernetes](./kubernetes.md), [AWS with Pulumi](./pulumi.md): where to put these settings for each deployment path.

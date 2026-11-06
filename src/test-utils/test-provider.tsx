@@ -11,13 +11,14 @@ import { type ReactNode } from 'react'
 import { createMockAuthClient } from './auth-client'
 import { createMockHttpClient } from './http-client'
 import { PowerSyncMockProvider } from './powersync-mock'
-
-const mockProxyFetch = (async () => new Response()) as unknown as FetchFn
+import { mockProxyFetch } from './proxy-fetch'
 
 type TestProviderOptions = {
   mockResponse?: unknown
   authClient?: AuthClient
   httpClient?: HttpClient
+  /** Universal proxy fetch; defaults to a no-op that answers every call with an empty response. */
+  proxyFetch?: FetchFn
   queryOptions?: {
     defaultOptions?: {
       queries?: {
@@ -75,7 +76,7 @@ export const createTestProvider = (options?: TestProviderOptions) => {
           <QueryClientProvider client={queryClient}>
             <HttpClientProvider httpClient={mockHttpClient}>
               <AuthProvider authClient={mockAuthClient}>
-                <ProxyFetchProvider proxyFetch={mockProxyFetch}>{children}</ProxyFetchProvider>
+                <ProxyFetchProvider proxyFetch={options?.proxyFetch ?? mockProxyFetch}>{children}</ProxyFetchProvider>
               </AuthProvider>
             </HttpClientProvider>
           </QueryClientProvider>

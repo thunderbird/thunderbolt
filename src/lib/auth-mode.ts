@@ -14,3 +14,9 @@ export const isAnonymousAuthEnabled = () => import.meta.env.VITE_AUTH_ENABLE_ANO
  * Returns true when the waitlist gate is bypassed for this deployment
  */
 export const isWaitlistBypassed = () => import.meta.env.VITE_BYPASS_WAITLIST === 'true'
+
+/**
+ * Returns true when anonymous sign-in must first solve an ALTCHA challenge.
+ * Has to match the API's CAPTCHA_PROVIDER, which refuses unsolved sign-ins when set to `altcha`.
+ */
+export const isAltchaCaptchaEnabled = () => import.meta.env.VITE_CAPTCHA_PROVIDER === 'altcha'

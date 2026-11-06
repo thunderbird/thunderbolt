@@ -2,35 +2,317 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useDatabase } from '@/contexts'
-import { getAllDevices, getPendingDevices } from '@/dal'
+import { getAllDevices, getPendingDevices, type Device } from '@/dal'
 import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
 import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
+import { RemoveBridgeDialog } from '@/components/remove-bridge-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import dayjs from 'dayjs'
-import { SectionCard } from '@/components/ui/section-card'
-import { CheckCircle2, Loader2, Smartphone, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import type { Formatters } from '@/i18n/format'
+import { useFormatters } from '@/i18n/use-formatters'
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useApproveDevice } from '@/hooks/use-approve-device'
 import { useDenyDevice } from '@/hooks/use-deny-device'
-import { useRevokeDevice } from '@/hooks/use-revoke-device'
+import { useRefreshKeys, useRevokeDevice } from '@/hooks/use-revoke-device'
+import { useFinishLockout, useLockoutPending } from '@/hooks/use-lockout-pending'
+import { describeRevokeFailure } from '@/services/revoke-failure'
+import { useRemoveDevice } from '@/hooks/use-remove-device'
+import { useSetDeviceNodeId } from '@/hooks/use-set-device-node-id'
+import { useDevicePairing } from '@/hooks/use-device-pairing'
+import { encodePairingTicket } from '@/lib/pairing-ticket'
+import { SettingsPageShell, SettingsSectionLabel } from '@/components/settings/settings-list'
 
-const formatLastSeen = (ts: string | null): string => {
-  if (ts == null) {
-    return '—'
-  }
-  const date = dayjs(ts)
-  const now = dayjs()
-  const diffMs = date.diff(now)
-  return dayjs.duration(diffMs, 'millisecond').humanize(true)
+const DeviceQrCode = lazy(() => import('@/components/device-qr-code'))
+const SetNodeIdDialog = lazy(() => import('@/components/set-node-id-dialog'))
+
+type ConfirmationTarget = ({ action: 'approve'; device: Device } | { action: 'deny' | 'remove' | 'revoke' }) & {
+  deviceId: string
+}
+
+/** Compact card shell shared by the pending and trusted device rows. */
+const DeviceCard = ({ children }: { children: ReactNode }) => (
+  <Card className="gap-0 border-border py-0">
+    <CardContent className="px-4 py-3">{children}</CardContent>
+  </Card>
+)
+
+/** Muted status pill next to a device name (Bridge / This device / Revoked). */
+const DeviceBadge = ({ children }: { children: ReactNode }) => (
+  <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{children}</span>
+)
+
+/** Whether a device-id mutation is currently in flight for this specific device. */
+const isMutatingDevice = (mutation: { isPending: boolean; variables: string | undefined }, deviceId: string) =>
+  mutation.isPending && mutation.variables === deviceId
+
+/** A revoked device lingers in the list for a day so the revocation is visible. */
+const revokedDeviceVisibilityMs = 24 * 60 * 60 * 1000
+
+const formatLastSeen = (formatters: Formatters, ts: string | null): string =>
+  ts == null ? '—' : formatters.relativeTime(ts)
+
+type PendingDeviceRowProps = {
+  device: Device
+  isApprovePending: boolean
+  isApprovingThisDevice: boolean
+  isDenyPending: boolean
+  isDenyingThisDevice: boolean
+  onApprove: () => void
+  onDeny: () => void
+}
+
+/** A device awaiting approval, with its deny/approve actions. */
+const PendingDeviceRow = ({
+  device,
+  isApprovePending,
+  isApprovingThisDevice,
+  isDenyPending,
+  isDenyingThisDevice,
+  onApprove,
+  onDeny,
+}: PendingDeviceRowProps) => {
+  const { t } = useLingui()
+  const deviceName = device.name
+
+  return (
+    <DeviceCard>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{device.name}</p>
+          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+            <Trans>Waiting for approval</Trans>
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={t`Deny ${deviceName}`}
+            onClick={onDeny}
+            disabled={isDenyPending}
+            isLoading={isDenyingThisDevice}
+            loadingLabel={t`Denying…`}
+          >
+            <Trans>Deny</Trans>
+          </Button>
+          <Button
+            size="sm"
+            aria-label={t`Approve ${deviceName}`}
+            onClick={onApprove}
+            disabled={isApprovePending}
+            isLoading={isApprovingThisDevice}
+            loadingLabel={t`Approving…`}
+          >
+            <Trans>Approve</Trans>
+          </Button>
+        </div>
+      </div>
+    </DeviceCard>
+  )
+}
+
+type TrustedDeviceRowProps = {
+  device: Device
+  isCurrent: boolean
+  isQrVisible: boolean
+  isRevokePending: boolean
+  isRevokingThisDevice: boolean
+  isRemovePending: boolean
+  isRemovingThisDevice: boolean
+  /** Revoked, but the AK rotation that locks it out never landed (THU-887). */
+  isAwaitingLockout: boolean
+  isFinishingLockout: boolean
+  onRevoke: () => void
+  onRemove: () => void
+  onFinishLockout: () => void
+  onToggleQr: () => void
+  onOpenPairingDialog: () => void
+}
+
+/** A trusted (or recently revoked) device with its badges, actions, and pairing identity. */
+const TrustedDeviceRow = ({
+  device,
+  isCurrent,
+  isQrVisible,
+  isRevokePending,
+  isRevokingThisDevice,
+  isRemovePending,
+  isRemovingThisDevice,
+  isAwaitingLockout,
+  isFinishingLockout,
+  onRevoke,
+  onRemove,
+  onFinishLockout,
+  onToggleQr,
+  onOpenPairingDialog,
+}: TrustedDeviceRowProps) => {
+  const { t } = useLingui()
+  const formatters = useFormatters()
+  const deviceName = device.name
+  const lastSeen = formatLastSeen(formatters, device.lastSeen)
+  const isRevoked = device.revokedAt != null
+  const isBridge = device.deviceType === 'bridge'
+  const isCli = device.deviceType === 'cli'
+  const supportsPairing = device.deviceType === null || device.deviceType === 'normal' || isBridge
+  const pairingPanelId = `device-pairing-${device.id}`
+  return (
+    <DeviceCard>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="min-w-0 truncate font-medium">{device.name}</p>
+            {isBridge && (
+              <DeviceBadge>
+                <Trans>Bridge</Trans>
+              </DeviceBadge>
+            )}
+            {isCli && (
+              <DeviceBadge>
+                <Trans>CLI</Trans>
+              </DeviceBadge>
+            )}
+            {isCli && !isRevoked && (
+              <DeviceBadge>
+                <Trans>Active</Trans>
+              </DeviceBadge>
+            )}
+            {isCurrent && (
+              <DeviceBadge>
+                <Trans>This device</Trans>
+              </DeviceBadge>
+            )}
+            {isRevoked && (
+              <DeviceBadge>
+                <Trans>Revoked</Trans>
+              </DeviceBadge>
+            )}
+          </div>
+          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+            {isRevoked && isBridge
+              ? t`No longer accepts device connections`
+              : isBridge
+                ? t`Accepts connections from your devices`
+                : t`Last seen ${lastSeen}`}
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:shrink-0">
+          {!isRevoked && !isCurrent && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={t`Revoke ${deviceName}`}
+              onClick={onRevoke}
+              disabled={isRevokePending}
+              isLoading={isRevokingThisDevice}
+              loadingLabel={t`Revoking…`}
+            >
+              <Trans>Revoke</Trans>
+            </Button>
+          )}
+          {isRevoked && isBridge && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRemove}
+              disabled={isRemovePending}
+              isLoading={isRemovingThisDevice}
+              loadingLabel={t`Removing…`}
+            >
+              <Trans>Remove</Trans>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/*
+        Revoked, but the rotation that makes its account key worthless never
+        landed (THU-887). The "Revoked" badge above is, on its own, the lie this
+        ticket is about — so say what is still true and offer the one action that
+        fixes it. Every device on the account sees this, because the server
+        derives it rather than the client that failed remembering it.
+      */}
+      {isAwaitingLockout && (
+        <div className="mt-3 flex flex-col gap-2 border-t pt-3">
+          <p className="text-[length:var(--font-size-sm)] text-destructive" role="alert">
+            <Trans>
+              This device lost access, but your account key was not replaced — so it can still read data it already has,
+              and anything written since. Finish securing your account to lock it out.
+            </Trans>
+          </p>
+          <div className="grid grid-cols-1 md:flex md:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={t`Finish securing after revoking ${deviceName}`}
+              onClick={onFinishLockout}
+              disabled={isFinishingLockout}
+              isLoading={isFinishingLockout}
+              loadingLabel={t`Securing…`}
+            >
+              <Trans>Finish securing</Trans>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!isRevoked && supportsPairing && (
+        <div className="mt-3 flex flex-col gap-2 border-t pt-3">
+          <p className="text-[length:var(--font-size-xs)] font-medium uppercase tracking-wide text-muted-foreground">
+            <Trans>Pairing identity</Trans>
+          </p>
+          <p className="break-all font-mono text-[length:var(--font-size-xs)] text-muted-foreground">
+            {device.nodeId ?? t`Not configured`}
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:flex md:justify-end">
+            {device.nodeId && (
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={isQrVisible ? t`Hide QR code for ${deviceName}` : t`Show QR code for ${deviceName}`}
+                aria-expanded={isQrVisible}
+                aria-controls={pairingPanelId}
+                onClick={onToggleQr}
+              >
+                {isQrVisible ? <Trans>Hide QR</Trans> : <Trans>Show QR</Trans>}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={device.nodeId ? t`Update pairing for ${deviceName}` : t`Set up pairing for ${deviceName}`}
+              onClick={onOpenPairingDialog}
+            >
+              {device.nodeId ? <Trans>Update pairing</Trans> : <Trans>Set up pairing</Trans>}
+            </Button>
+          </div>
+          {device.nodeId && isQrVisible && (
+            <div id={pairingPanelId} className="flex justify-center pt-2 md:justify-start">
+              <Suspense
+                fallback={
+                  <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                    <Trans>Loading code…</Trans>
+                  </p>
+                }
+              >
+                <DeviceQrCode value={encodePairingTicket({ nodeId: device.nodeId, name: device.name })} />
+              </Suspense>
+            </div>
+          )}
+        </div>
+      )}
+    </DeviceCard>
+  )
 }
 
 export default function DevicesSettingsPage() {
+  const { i18n, t } = useLingui()
   const db = useDatabase()
   const currentDeviceId = getDeviceId()
   const { data: devices = [], isLoading } = useQuery({
@@ -41,176 +323,304 @@ export default function DevicesSettingsPage() {
     queryKey: ['pending-devices'],
     query: toCompilableQuery(getPendingDevices(db)),
   })
-  const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
-  const [denyTarget, setDenyTarget] = useState<string | null>(null)
-  const [approveTarget, setApproveTarget] = useState<string | null>(null)
+  const [confirmationTarget, setConfirmationTarget] = useState<ConfirmationTarget | null>(null)
+
+  const awaitingLockout = useLockoutPending()
+  const finishLockoutMutation = useFinishLockout()
 
   const visibleDevices = devices.filter((d) => {
     if (d.revokedAt != null) {
-      return dayjs().diff(dayjs(d.revokedAt), 'hour') < 24
+      // The visibility window is cosmetic tidying, and it used to dispose of the
+      // evidence: a device whose lockout rotation never landed still holds a
+      // usable account key, so hiding it would hide the one thing the user needs
+      // to act on (THU-887). It stays until the rotation actually happens.
+      return (
+        awaitingLockout.deviceIds.has(d.id) || Date.now() - new Date(d.revokedAt).getTime() < revokedDeviceVisibilityMs
+      )
     }
     return !!d.trusted
   })
 
   const revokeMutation = useRevokeDevice()
+  const refreshKeysMutation = useRefreshKeys()
+  const removeMutation = useRemoveDevice()
   const denyMutation = useDenyDevice()
-  const approveMutation = useApproveDevice(pendingDevices)
+  const approveMutation = useApproveDevice()
+  const setNodeIdMutation = useSetDeviceNodeId()
+  const pairing = useDevicePairing()
 
-  const confirmRevoke = () => {
-    if (revokeTarget) {
-      revokeMutation.mutate(revokeTarget, {
-        onSuccess: () => setRevokeTarget(null),
-      })
+  const dialogDevice = devices.find((d) => d.id === pairing.dialogFor) ?? null
+  const revokeDevice =
+    confirmationTarget?.action === 'revoke'
+      ? devices.find((device) => device.id === confirmationTarget.deviceId)
+      : undefined
+  const confirmSetNodeId = async (nodeId: string) => {
+    if (!pairing.dialogFor) {
+      return
     }
+    await setNodeIdMutation.mutateAsync({ deviceId: pairing.dialogFor, nodeId })
+    pairing.closeDialog()
   }
 
-  const confirmDeny = () => {
-    if (denyTarget) {
-      denyMutation.mutate(denyTarget, {
-        onSuccess: () => setDenyTarget(null),
-      })
-    }
-  }
+  /** Runs the confirmed action's mutation against the pending target, closing the dialog on success.
+   *  The action guard makes a stale dialog's confirm a no-op if the target changed under it. */
+  /**
+   * The action currently in flight, claimed SYNCHRONOUSLY.
+   *
+   * `isPending` already disables the confirm button, and it is not enough:
+   * `mutate()` returns before TanStack's observer notification, the React
+   * render and the commit that actually puts `disabled` on the DOM node, so two
+   * clicks inside that window both see an enabled button. A ref is written in
+   * the same task as the first click, so the second one sees it. A human
+   * double-click usually loses that race; an automated one, or a main thread
+   * busy rendering a long device list, wins it.
+   *
+   * Starting a revoke twice is not harmless: the second run's revoke call is
+   * idempotent and succeeds, its rotation then 403s on key material the first
+   * run already replaced, and that pair is indistinguishable from a genuinely
+   * half-finished lockout — so the dialog tells the user their account key was
+   * never replaced when it was.
+   */
+  const inFlightAction = useRef<string | null>(null)
 
-  const confirmApprove = () => {
-    if (approveTarget) {
-      approveMutation.mutate(approveTarget, {
-        onSuccess: () => setApproveTarget(null),
-      })
+  const confirmPendingAction = (
+    action: ConfirmationTarget['action'],
+    mutation: {
+      mutate: (deviceId: string, options: { onSuccess: () => void; onSettled: () => void }) => void
+    },
+  ) => {
+    if (confirmationTarget?.action !== action) {
+      return
     }
+    const claim = `${action}:${confirmationTarget.deviceId}`
+    if (inFlightAction.current === claim) {
+      return
+    }
+    inFlightAction.current = claim
+    mutation.mutate(confirmationTarget.deviceId, {
+      onSuccess: () => setConfirmationTarget(null),
+      // Released on settle, not on success: a failure leaves the dialog open as
+      // the retry affordance, and a claim that outlived it would make that
+      // button dead.
+      onSettled: () => {
+        inFlightAction.current = null
+      },
+    })
   }
 
   const hasPendingDevices = pendingDevices.length > 0
 
+  /**
+   * The revoke failure, scoped to the device the dialog is currently about.
+   * Scoping by `variables` rather than resetting the mutation on open gets the
+   * same staleness protection per-device instead of globally, and also covers
+   * dismissing the dialog mid-flight — where a reset-on-open would have dropped
+   * the failure that arrived afterwards.
+   */
+  const revokeFailure =
+    revokeMutation.error && revokeMutation.variables === confirmationTarget?.deviceId
+      ? describeRevokeFailure(revokeMutation.error)
+      : null
+
   return (
-    <div className="flex flex-col gap-6 p-4 pb-12 w-full max-w-[760px] mx-auto">
-      <PageHeader title="Devices" />
+    <SettingsPageShell className="gap-6 md:pb-12">
+      <PageHeader title={t`Devices`} />
 
-      {hasPendingDevices && (
-        <>
-          <SectionCard title="Pending Approvals">
-            <div className="flex flex-col gap-3">
-              {pendingDevices.map((device) => (
-                <Card key={device.id} className="bg-secondary/50">
-                  <CardContent>
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <Smartphone className="size-5 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0 flex-1">
-                          <span className="font-medium truncate">{device.name}</span>
-                          <p className="text-sm text-muted-foreground">Waiting for approval</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDenyTarget(device.id)}
-                          disabled={denyMutation.isPending}
-                        >
-                          <Trash2 className="size-4 mr-1" />
-                          Deny
-                        </Button>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={() => setApproveTarget(device.id)}
-                          disabled={approveMutation.isPending}
-                        >
-                          {approveMutation.isPending && approveMutation.variables === device.id ? (
-                            <Loader2 className="size-4 mr-1 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="size-4 mr-1" />
-                          )}
-                          Approve
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </SectionCard>
-
-          <div className="h-px bg-border" />
-        </>
+      {removeMutation.error && (
+        <p className="text-sm text-destructive" role="alert">
+          {removeMutation.error.message}
+        </p>
       )}
 
-      {hasPendingDevices && <h3 className="text-lg font-semibold -mb-2">Trusted Devices</h3>}
+      {/* Without this, a failed fetch is indistinguishable from "nothing owed"
+          — the page would quietly claim every revoked device is locked out. */}
+      {awaitingLockout.error && (
+        <p className="text-sm text-destructive" role="alert">
+          <Trans>Could not check whether a removed device still holds your account key. Reload to try again.</Trans>
+        </p>
+      )}
+
+      {/* The lockout retry has no dialog of its own, so its failure surfaces here. */}
+      {finishLockoutMutation.error && (
+        <p className="text-sm text-destructive" role="alert">
+          {i18n._(describeRevokeFailure(finishLockoutMutation.error).message)}
+        </p>
+      )}
+
+      {hasPendingDevices && (
+        <section className="flex flex-col gap-2">
+          <SettingsSectionLabel>
+            <Trans>Pending approvals</Trans>
+          </SettingsSectionLabel>
+          <ul className="flex flex-col gap-4">
+            {pendingDevices.map((device) => (
+              <li key={device.id}>
+                <PendingDeviceRow
+                  device={device}
+                  isApprovePending={approveMutation.isPending}
+                  isApprovingThisDevice={
+                    approveMutation.isPending && approveMutation.variables?.device.id === device.id
+                  }
+                  isDenyPending={denyMutation.isPending}
+                  isDenyingThisDevice={isMutatingDevice(denyMutation, device.id)}
+                  onApprove={() =>
+                    setConfirmationTarget({ action: 'approve', deviceId: device.id, device: { ...device } })
+                  }
+                  onDeny={() => setConfirmationTarget({ action: 'deny', deviceId: device.id })}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {isLoading ? (
-        <p className="text-muted-foreground py-4">Loading devices…</p>
+        <p className="text-muted-foreground py-4">
+          <Trans>Loading devices…</Trans>
+        </p>
       ) : visibleDevices.length === 0 ? (
-        <p className="text-muted-foreground py-4">No devices yet. Sign in with sync to see devices here.</p>
+        <p className="text-muted-foreground py-4">
+          <Trans>No devices yet. Sign in with sync to see devices here.</Trans>
+        </p>
       ) : (
-        <div className="flex flex-col gap-4">
-          {visibleDevices.map((device) => {
-            const isCurrent = device.id === currentDeviceId
-            const isRevoked = device.revokedAt != null
-            return (
-              <Card key={device.id}>
-                <CardContent>
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <Smartphone className="size-5 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium truncate">{device.name}</span>
-                          {isCurrent && (
-                            <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-                              This Device
-                            </span>
-                          )}
-                          {isRevoked && (
-                            <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-                              Revoked
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">Last seen: {formatLastSeen(device.lastSeen)}</p>
-                      </div>
-                    </div>
-                    {!isRevoked && !isCurrent && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setRevokeTarget(device.id)}
-                        disabled={revokeMutation.isPending}
-                      >
-                        <Trash2 className="size-4 mr-1" />
-                        Revoke
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+        <section className="flex flex-col gap-2">
+          {hasPendingDevices && (
+            <SettingsSectionLabel>
+              <Trans>Trusted devices</Trans>
+            </SettingsSectionLabel>
+          )}
+          <ul className="flex flex-col gap-4">
+            {visibleDevices.map((device) => (
+              <li key={device.id}>
+                <TrustedDeviceRow
+                  device={device}
+                  isCurrent={device.id === currentDeviceId}
+                  isQrVisible={pairing.qrFor === device.id}
+                  isRevokePending={revokeMutation.isPending}
+                  isRevokingThisDevice={isMutatingDevice(revokeMutation, device.id)}
+                  isRemovePending={removeMutation.isPending}
+                  isRemovingThisDevice={isMutatingDevice(removeMutation, device.id)}
+                  isAwaitingLockout={awaitingLockout.deviceIds.has(device.id)}
+                  isFinishingLockout={finishLockoutMutation.isPending}
+                  onRevoke={() => setConfirmationTarget({ action: 'revoke', deviceId: device.id })}
+                  onRemove={() => setConfirmationTarget({ action: 'remove', deviceId: device.id })}
+                  onFinishLockout={() => finishLockoutMutation.mutate()}
+                  onToggleQr={() => pairing.toggleQr(device.id)}
+                  onOpenPairingDialog={() => pairing.openDialog(device.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <ApproveDeviceDialog
-        open={approveTarget !== null}
-        onOpenChange={(open) => !open && setApproveTarget(null)}
-        onConfirm={confirmApprove}
+        device={confirmationTarget?.action === 'approve' ? confirmationTarget.device : null}
+        open={confirmationTarget?.action === 'approve'}
+        onOpenChange={(open) => !open && setConfirmationTarget(null)}
+        onConfirm={async (fingerprint) => {
+          if (confirmationTarget?.action !== 'approve') {
+            return
+          }
+          await approveMutation.mutateAsync({ device: confirmationTarget.device, fingerprint })
+          setConfirmationTarget(null)
+        }}
         isPending={approveMutation.isPending}
       />
 
       <RevokeDeviceDialog
-        open={revokeTarget !== null}
-        onOpenChange={(open) => !open && setRevokeTarget(null)}
-        onConfirm={confirmRevoke}
+        open={confirmationTarget?.action === 'revoke'}
+        onOpenChange={(open) => !open && setConfirmationTarget(null)}
+        onConfirm={() => confirmPendingAction('revoke', revokeMutation)}
         isPending={revokeMutation.isPending}
-        variant="trusted"
+        variant={revokeDevice?.deviceType === 'cli' ? 'cli' : 'trusted'}
+        error={revokeFailure && i18n._(revokeFailure.message)}
+        errorAction={
+          revokeFailure?.action === 'refreshKeys' ? (
+            // The revoke NEVER refreshes keys as a silent side effect (THU-872)
+            // — adopting a server-supplied account key inside an emergency cut
+            // is exactly the dependency THU-887 removed. One explicit action:
+            // refresh (witness-gated), then retry the same revoke.
+            <div className="flex flex-col gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                isLoading={refreshKeysMutation.isPending}
+                loadingLabel={t`Refreshing keys…`}
+                onClick={() =>
+                  refreshKeysMutation.mutate(undefined, {
+                    onSuccess: () => confirmPendingAction('revoke', revokeMutation),
+                  })
+                }
+              >
+                <Trans>Refresh keys and retry</Trans>
+              </Button>
+              {refreshKeysMutation.error && (
+                <p className="text-[length:var(--font-size-xs)] text-destructive" role="alert">
+                  {refreshKeysMutation.error.message}
+                </p>
+              )}
+              <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                <Trans>
+                  Another device changed the account keys. Refreshing fetches the current key, then the revoke runs
+                  again.
+                </Trans>
+              </p>
+            </div>
+          ) : revokeFailure?.action === 'phraseChange' ? (
+            // A link, not a sentence: the section lives in Settings →
+            // Preferences → Data, so naming it in prose leaves the user to find
+            // it. The cost is stated because it is irreversible — the phrase
+            // they hold today stops working.
+            <div className="flex flex-col gap-1">
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/settings/preferences">
+                  <Trans>Change recovery phrase</Trans>
+                </Link>
+              </Button>
+              <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                <Trans>
+                  This replaces your 24-word phrase. The one you have now will stop working, and you will need to save
+                  the new one.
+                </Trans>
+              </p>
+            </div>
+          ) : null
+        }
       />
 
       <RevokeDeviceDialog
-        open={denyTarget !== null}
-        onOpenChange={(open) => !open && setDenyTarget(null)}
-        onConfirm={confirmDeny}
+        open={confirmationTarget?.action === 'deny'}
+        onOpenChange={(open) => !open && setConfirmationTarget(null)}
+        onConfirm={() => confirmPendingAction('deny', denyMutation)}
         isPending={denyMutation.isPending}
         variant="pending"
+        error={
+          denyMutation.error && denyMutation.variables === confirmationTarget?.deviceId
+            ? denyMutation.error.message
+            : null
+        }
       />
-    </div>
+
+      <RemoveBridgeDialog
+        open={confirmationTarget?.action === 'remove'}
+        onOpenChange={(open) => !open && setConfirmationTarget(null)}
+        onConfirm={() => confirmPendingAction('remove', removeMutation)}
+        isPending={removeMutation.isPending}
+      />
+
+      {dialogDevice && (
+        <Suspense fallback={null}>
+          <SetNodeIdDialog
+            key={dialogDevice.id}
+            open
+            onOpenChange={(open) => !open && pairing.closeDialog()}
+            deviceName={dialogDevice.name}
+            onConfirm={confirmSetNodeId}
+            isPending={setNodeIdMutation.isPending}
+          />
+        </Suspense>
+      )}
+    </SettingsPageShell>
   )
 }

@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Universal proxy client. Hosted mode (web) routes cross-origin requests
+ * Universal proxy client. Hosted mode routes cross-origin requests
  * through `${cloudUrl}/v1/proxy`, mapping caller headers to `X-Proxy-Passthrough-*`.
- * Standalone mode (Tauri) calls the upstream directly via Tauri's HTTP plugin.
+ * Web always uses Hosted mode. Tauri calls upstream via the native HTTP adapter with
+ * Use Cloud Proxy off, or for loopback targets; other targets use Hosted mode with it on.
  *
  * The helper hides the difference so call sites — AI SDKs, MCP transports,
  * favicon fetches — look like normal `fetch` calls.
@@ -17,17 +18,24 @@
  * requires non-trivial sign-in scaffolding.
  */
 
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import type { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import {
+  finalUrlHeader,
   passthroughPrefix,
   passthroughPrefixCased,
   proxyFramingHeaders,
   targetUrlHeader,
   wsTargetPrefix,
 } from '@shared/proxy-protocol'
+import { encodeBase64Url } from '@shared/base64url'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
+import { appVersionHeader } from './app-version'
+import { handleAppVersionUnsupported } from './app-version-unsupported'
 import { getAuthToken } from './auth-token'
-import { getCapabilities, isTauri } from './platform'
+import { isLoopbackHost } from './mcp-url-validation'
+import { isTauri } from './platform'
+import { nativeFetch } from './native-fetch'
+import { handleSessionRejected } from './session-rejected'
 
 const defaultIsStandalone = isTauri
 const defaultReadProxyEnabled = (): string | null =>
@@ -76,6 +84,10 @@ const skipHeaders = new Set([
   'sec-fetch-site',
   'sec-fetch-user',
   'upgrade-insecure-requests',
+  // These belong on the OUTER request to our backend only — never promote them
+  // to passthrough headers, or they would leak to external LLM/MCP upstreams.
+  'x-app-version',
+  'x-app-language',
 ])
 
 const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: RequestInit): Request => {
@@ -100,8 +112,11 @@ const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: R
     method,
     headers: proxyHeaders,
     body: body as BodyInit | null,
-    credentials: init?.credentials ?? (input instanceof Request ? input.credentials : 'include'),
-    signal: init?.signal,
+    // Not inherited from a `Request` input: its browser default ('same-origin') was
+    // chosen for the upstream, and this hop goes to our backend, where cookie-only
+    // SSO needs the session cookie even when the backend is cross-origin.
+    credentials: init?.credentials ?? 'include',
+    signal: init?.signal !== undefined ? init.signal : input instanceof Request ? input.signal : undefined,
     // @ts-expect-error -- Bun/Tauri/modern browsers support duplex:'half' for streaming uploads
     duplex: 'half',
   })
@@ -133,6 +148,29 @@ const unwrapHostedResponse = (response: Response): Response => {
   })
 }
 
+/**
+ * Raise the upgrade blocker when the OUTER hop — our backend's version gate —
+ * rejected the proxy request.
+ *
+ * Status alone is not a safe signal on this transport: the proxy relays upstream
+ * status codes verbatim, so an external provider answering 426 would otherwise
+ * blank the whole app. Our gate is the only party that pairs 426 with the
+ * `APP_VERSION_UNSUPPORTED` envelope, so that code is the discriminator. Reads a
+ * clone so the response body reaches the caller intact.
+ */
+const raiseOuterHopVersionBlock = async (response: Response): Promise<void> => {
+  if (response.status !== 426) {
+    return
+  }
+  const body = (await response
+    .clone()
+    .json()
+    .catch(() => ({}))) as { code?: string }
+  if (body.code === 'APP_VERSION_UNSUPPORTED') {
+    handleAppVersionUnsupported(response.status, body)
+  }
+}
+
 export type ProxyFetchOptions = {
   /** Cloud (backend) base URL ending in `/v1`, e.g. `http://localhost:8000/v1`. */
   cloudUrl: string
@@ -142,47 +180,26 @@ export type ProxyFetchOptions = {
   fetchImpl?: typeof fetch
   /** Optional Tauri-detection override — defaults to `isTauri()` from `@/lib/platform`.
    *  Tests pass an explicit boolean to avoid mocking the shared platform module
-   *  (which would leak across files; see docs/development/testing.md). */
+   *  (which would leak across files; see docs/internals/development/testing.md). */
   isStandalone?: () => boolean
   /** Optional Tauri fetch override — defaults to `@tauri-apps/plugin-http` fetch.
    *  Tests inject a stub. */
-  tauriFetch?: typeof fetch
-  /** Effective `proxy_enabled` value. Defaults to `() => true`, which preserves
-   *  Hosted-mode (web) behaviour for callers that don't wire the user setting.
-   *
-   *  Web always proxies (browser CORS forces it — the toggle is disabled in the
-   *  UI). Tauri respects the user toggle; when off, requests go upstream-direct
-   *  via the Tauri HTTP plugin so the user's IP is hidden from us. Callers that
-   *  want to honour the toggle (the React provider and the module-scoped cache
-   *  in `src/ai/fetch.ts`) pass a getter that reads the `proxy_enabled` localStorage
-   *  key + derives the effective value per platform. */
+  tauriFetch?: typeof tauriFetch
+  /** Effective setting getter, read per request. Defaults to computeEffectiveProxyEnabled. */
   getProxyEnabled?: () => boolean
-  /** Whether `tauri-plugin-http` is registered in the current build. Defaults
-   *  to `getCapabilities()` (memoised) — tests inject a stub. When false, the
-   *  Tauri-direct path is unreachable (the plugin's JS shim would throw
-   *  "plugin http not found"), so we fall through to the hosted proxy even on
-   *  Tauri with `proxy_enabled=false`. Universal Proxy (THU-467) is the
-   *  intended path; this guard makes the toggle a no-op in builds that ship
-   *  without the native fetch capability. */
-  getNativeFetchCapability?: () => Promise<boolean>
 }
 
-/** Build a fetch implementation that hides Hosted/Standalone mode from callers. */
+/** Build a fetch implementation that hides Hosted/Standalone mode from callers.
+ *  Tauri uses native HTTP with Use Cloud Proxy off or for loopback targets.
+ *  Web always uses the backend proxy. */
 export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
   const proxyUrl = `${options.cloudUrl.replace(/\/$/, '')}/proxy`
-  const readNativeFetchCapability =
-    options.getNativeFetchCapability ?? (() => getCapabilities().then((c) => c.native_fetch))
   const proxyFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const standalone = (options.isStandalone ?? isTauri)()
-    const proxyEnabled = options.getProxyEnabled?.() ?? true
-    if (standalone && !proxyEnabled && (await readNativeFetchCapability())) {
-      // Standalone + toggle off + plugin compiled in: hit the upstream directly
-      // through Tauri's HTTP plugin. Builds without `--features native_fetch`
-      // fall through to the hosted proxy (THU-467 Universal Proxy is the
-      // canonical path; the Tauri-direct branch is opt-in for builds that
-      // want to keep the user's IP off our backend).
-      const tFetch = options.tauriFetch ?? (tauriFetch as unknown as typeof fetch)
-      return tFetch(input as RequestInfo, init ?? {}) as unknown as Response
+    const proxyEnabled = options.getProxyEnabled?.() ?? computeEffectiveProxyEnabled(options.isStandalone)
+    const targetUrl = input instanceof Request ? input.url : input.toString()
+    if (standalone && (!proxyEnabled || isLoopbackHost(new URL(targetUrl).hostname))) {
+      return nativeFetch(input, init, options.tauriFetch)
     }
 
     const proxyRequest = buildHostedRequest(proxyUrl, input as RequestInfo | URL, init)
@@ -192,8 +209,20 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
         proxyRequest.headers.set('Authorization', `Bearer ${token}`)
       }
     }
+    // The outer hop targets `${cloudUrl}/proxy` (our backend), so it carries the
+    // app-version header directly. `x-app-version` is in `skipHeaders`, so it is
+    // never promoted to a passthrough header bound for the external upstream.
+    for (const [key, value] of Object.entries(appVersionHeader())) {
+      proxyRequest.headers.set(key, value)
+    }
     const f = options.fetchImpl ?? globalThis.fetch
     const proxyResponse = await f(proxyRequest)
+    await raiseOuterHopVersionBlock(proxyResponse)
+    // The backend stamps the final-URL header on every response it relays from an
+    // upstream, so its absence is what proves this 401 came from our own auth gate.
+    if (!proxyResponse.headers.has(finalUrlHeader)) {
+      await handleSessionRejected(proxyResponse)
+    }
     return unwrapHostedResponse(proxyResponse)
   }
   return Object.assign(proxyFetch, { preconnect: () => Promise.resolve(false) })
@@ -209,7 +238,8 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
  *  default request logs (URL/Referer do). The server validates the bearer via
  *  the same signed-bearer path REST uses.
  *
- *  Standalone: returns a real WebSocket to the upstream URL directly.
+ *  Tauri: follows the same routing as createProxyFetch — direct with Use Cloud Proxy
+ *  off (the default), or for loopback targets. With it on, other targets use the hosted path.
  *
  *  Returns a *sync* factory `(url, protocols?) => WebSocket` so callers keep
  *  the synchronous `(url) => WebSocketLike` contract used by the ACP transport.
@@ -226,11 +256,11 @@ export const createProxyWebSocket = (options: {
 
   return (url: string, protocols?: string[]): WebSocket => {
     const standalone = standaloneCheck()
-    if (standalone) {
+    if (standalone && (!computeEffectiveProxyEnabled(standaloneCheck) || isLoopbackHost(new URL(url).hostname))) {
       return new WebSocket(url, protocols)
     }
     const wsBase = options.cloudUrl.replace(/^http/, 'ws').replace(/\/$/, '')
-    const targetSubprotocol = `${wsTargetPrefix}${b64UrlEncode(url)}`
+    const targetSubprotocol = `${wsTargetPrefix}${encodeBase64Url(url)}`
     const token = readAuthToken()
     const authEntries = token ? [`${wsBearerSubprotocolPrefix}${encodeWsBearer(token)}`] : []
     return new WebSocket(`${wsBase}/proxy/ws`, [
@@ -240,16 +270,4 @@ export const createProxyWebSocket = (options: {
       ...(protocols ?? []),
     ])
   }
-}
-
-const b64UrlEncode = (text: string): string => {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(text, 'utf-8').toString('base64url')
-  }
-  const bytes = new TextEncoder().encode(text)
-  let binary = ''
-  for (const b of bytes) {
-    binary += String.fromCharCode(b)
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }

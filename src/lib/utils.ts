@@ -5,7 +5,6 @@
 import type { ChatMessage, UIMessageMetadata } from '@/types'
 import type { UIMessage } from 'ai'
 import { clsx, type ClassValue } from 'clsx'
-import dayjs from 'dayjs'
 import { getTableConfig, type SQLiteColumn, type SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { twMerge } from 'tailwind-merge'
 import {
@@ -19,9 +18,16 @@ export const cn = (...inputs: ClassValue[]) => {
   return twMerge(clsx(inputs))
 }
 
-export const uuidv7ToDate = (uuid: string) => {
-  return new Date(parseInt(uuid.slice(0, 8), 16) * 1000)
-}
+export { isRecord } from '@shared/lib/is-record'
+
+/**
+ * Recover the creation time embedded in a UUIDv7.
+ *
+ * v7 puts a 48-bit big-endian millisecond timestamp in the first 12 hex digits
+ * (`xxxxxxxx-xxxx-7...`). Reading only the first 8 digits and scaling by 1000 —
+ * as this did before — treats the top 32 bits as seconds and lands in 1970.
+ */
+export const uuidv7ToDate = (uuid: string): Date => new Date(parseInt(uuid.replace(/-/g, '').slice(0, 12), 16))
 
 export const convertDbChatMessageToUIMessage = (message: ChatMessage): UIMessage => {
   return {
@@ -170,38 +176,6 @@ export const camelCasedPropertiesDeep = <T extends Record<string, any>>(obj: T):
 export const nowIso = (): string => new Date().toISOString()
 
 /**
- * Format a date for display. Accepts Unix ms, or ISO 8601 datetime string.
- */
-export const formatDate = (value: number | string): string => {
-  const d = dayjs(value)
-  const now = dayjs()
-
-  if (d.isSame(now, 'day')) {
-    return d.format('HH:mm')
-  }
-
-  if (d.isSame(now, 'year')) {
-    return d.format('MMM D')
-  }
-
-  return d.format('MMM D, YYYY')
-}
-
-/**
- * Format large numbers with k/M/B abbreviations using Intl.NumberFormat
- * @param num The number to format
- * @returns Formatted string like "256K" or "1.2M"
- */
-export const formatNumber = (num: number): string => {
-  const formatter = new Intl.NumberFormat('en', {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  })
-
-  return formatter.format(num)
-}
-
-/**
  * Split UI part types like "tool-read_file" into [type, name]
  */
 export const splitPartType = (type: string): [string, string] => {
@@ -212,20 +186,11 @@ export const splitPartType = (type: string): [string, string] => {
   return [type.slice(0, dashIndex), type.slice(dashIndex + 1)]
 }
 
-/**
- * Compute a simple hash from an array of values
- * Uses a basic hash algorithm suitable for change detection
- */
-export const hashValues = (values: (string | number | null | undefined)[]): string => {
-  const str = values.join('|')
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash // Convert to 32-bit integer
-  }
-  return hash.toString(36)
-}
+// Re-exported from the shared package so backend, frontend, and the shared
+// defaults module all fingerprint values identically. Stored `defaultHash`
+// values in user databases depend on this being byte-for-byte stable across
+// call sites — see `shared/lib/hash.ts` for the load-bearing contract.
+export { hashValues } from '@shared/lib/hash'
 
 /**
  * Format tool output as a string, handling both string and object outputs
@@ -237,14 +202,6 @@ export const formatToolOutput = (output: unknown): string => {
     return output
   }
   return JSON.stringify(output, null, 2)
-}
-
-export const formatDuration = (ms: number): string => {
-  const seconds = ms / 1000
-  if (seconds < 1) {
-    return `${Math.round(ms)}ms`
-  }
-  return `${seconds.toFixed(1)}s`
 }
 
 /**

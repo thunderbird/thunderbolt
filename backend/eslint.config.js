@@ -32,6 +32,23 @@ export default [
     plugins: {
       '@typescript-eslint': typescript,
     },
-    rules: sharedRules,
+    rules: {
+      ...sharedRules,
+      // The backend has no Babel pass, so a Lingui macro import resolves to the
+      // stub and throws when called. `shouldSkipEmail()` short-circuits in dev
+      // and test, so that failure would first surface in production on the
+      // sign-in path. See `src/emails/i18n.ts`.
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@lingui/*/macro'],
+              message: 'No macro transform on the backend — use i18n._({ id }) from @lingui/core.',
+            },
+          ],
+        },
+      ],
+    },
   },
 ]

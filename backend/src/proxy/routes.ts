@@ -5,7 +5,13 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { ensureHttps, validateAndPin, type DnsLookup } from '@/utils/url-validation'
+import {
+  ensureHttps,
+  isAllowedTestProxyTarget,
+  validateAndPin,
+  type DnsLookup,
+  type PinnedTls,
+} from '@/utils/url-validation'
 import {
   droppedResponseHeaders,
   finalUrlHeader,
@@ -49,6 +55,19 @@ const withDnsTimeout = <T>(p: Promise<T>): Promise<T> => {
   ]).finally(() => clearTimeout(timer))
 }
 
+/** DNS-pin a hop under the DNS timeout. Returns the fetch-ready pinned request, or the
+ *  failure message (`'DNS_TIMEOUT'` on expiry) for the caller to map to a response. */
+const pinHop = async (
+  url: string,
+  dnsLookup: DnsLookup | undefined,
+): Promise<Awaited<ReturnType<typeof validateAndPin>> | { error: string }> => {
+  try {
+    return await withDnsTimeout(validateAndPin(url, undefined, dnsLookup))
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 const isPrintableAscii = (value: string) => /^[\x20-\x7E]*$/.test(value)
 
 const textResponse = (status: number, body: string): Response =>
@@ -56,6 +75,10 @@ const textResponse = (status: number, body: string): Response =>
 
 /** Auto-upgrade `http://` URLs to `https://` and reject all other non-https schemes. */
 const normaliseTargetUrl = (raw: string): URL | { error: string } => {
+  const parsed = URL.canParse(raw) ? new URL(raw) : null
+  if (parsed && isAllowedTestProxyTarget(parsed)) {
+    return parsed
+  }
   const upgraded = ensureHttps(raw)
   if (!upgraded) {
     try {
@@ -300,27 +323,17 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
 
             for (let hop = 0; hop <= maxHops; hop++) {
               // DNS-pin each hop so cross-origin redirects can't bypass SSRF.
-              let pinnedUrl: string
-              let pinnedExtraHeaders: Headers
-              try {
-                ;[pinnedUrl, pinnedExtraHeaders] = await withDnsTimeout(
-                  validateAndPin(currentUrl, undefined, dnsLookup),
-                )
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err)
-                const isTimeout = msg === 'DNS_TIMEOUT'
+              const pinned = await pinHop(currentUrl, dnsLookup)
+              if ('error' in pinned) {
+                const errorType = pinned.error === 'DNS_TIMEOUT' ? 'dns_timeout' : 'ssrf'
                 if (hop === 0) {
-                  return fail(400, `Blocked: ${msg}`, isTimeout ? 'dns_timeout' : 'ssrf', currentUrl)
+                  return fail(400, `Blocked: ${pinned.error}`, errorType, currentUrl)
                 }
-                return fail(
-                  502,
-                  'Bad gateway (SSRF or DNS error on redirect)',
-                  isTimeout ? 'dns_timeout' : 'ssrf',
-                  currentUrl,
-                )
+                return fail(502, 'Bad gateway (SSRF or DNS error on redirect)', errorType, currentUrl)
               }
+              const [pinnedUrl, pinnedExtraHeaders, pinnedTls] = pinned
 
-              // Compose hop-specific headers: passthrough + Host (for SNI).
+              // Compose hop-specific headers: passthrough + Host (for virtual hosting).
               const hopHeadersResult =
                 hop === 0
                   ? initialPassthroughHeaders
@@ -353,11 +366,13 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               // Bun-specific fetch options: `decompress: false` lets the original
               // compressed bytes (and `content-encoding`) pass through unchanged so
               // the browser decodes; `duplex: 'half'` enables streaming request
-              // bodies. Both are absent from the standard `RequestInit` type.
+              // bodies; `tls` names the original hostname for SNI since the URL
+              // carries the pinned IP (see validateAndPin). All three are absent
+              // from the standard `RequestInit` type.
               // Bun (>=1.3) auto-decompresses but ALSO keeps `content-encoding` on the
               // Response — without `decompress: false` we would forward gzip headers
               // with already-decoded bodies and the browser would corrupt the result.
-              // Verified empirically on Bun 1.3.10; if Bun ever changes this, the
+              // Verified empirically on Bun 1.4.4; if Bun ever changes this, the
               // routes.test.ts "passes decompress: false" assertion will still pass
               // but real responses will silently break — add an integration test
               // before bumping Bun major.
@@ -369,7 +384,8 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
                 signal: upstreamCtl.signal,
                 decompress: false,
                 duplex: 'half',
-              } as RequestInit & { decompress: boolean; duplex: 'half' })
+                tls: pinnedTls,
+              } as RequestInit & { decompress: boolean; duplex: 'half'; tls: PinnedTls | undefined })
 
               /** Bytes uploaded to upstream. Buffered bodies have a fixed size known
                *  up-front; for streamed bodies we expose a late-read getter so the

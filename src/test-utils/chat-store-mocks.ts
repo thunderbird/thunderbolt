@@ -4,25 +4,11 @@
 
 import { clearAdapterCache } from '@/acp/adapter-cache'
 import { useChatStore } from '@/chats/chat-store'
-import { builtInAgent } from '@/defaults/agents'
-import type { AutomationRun, ChatThread, Mode, Model, ThunderboltUIMessage } from '@/types'
+import { builtInAgent, isHostedAgent } from '@/defaults/agents'
+import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
 import { mock } from 'bun:test'
-
-/**
- * Creates a mock Mode for testing
- */
-export const createMockMode = (overrides?: Partial<Mode>): Mode =>
-  ({
-    id: 'mode-chat',
-    name: 'chat',
-    label: 'Chat',
-    icon: 'message-square',
-    systemPrompt: null,
-    isDefault: 1,
-    order: 0,
-    ...overrides,
-  }) as Mode
 
 /**
  * Creates a mock Model for testing
@@ -129,9 +115,9 @@ export const createMockChatInstanceWithValidation = (
       throw new Error('No selected model')
     }
 
-    const chatThread = session.chatThread
+    const { chatThread, selectedAgent, selectedModel } = session
 
-    if (chatThread && chatThread.isEncrypted !== session.selectedModel.isConfidential) {
+    if (chatThread && !isHostedAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)) {
       throw new Error(
         `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
       )
@@ -157,19 +143,6 @@ export const createMockChatInstanceWithValidation = (
 }
 
 /**
- * Default mode used when selectedMode is null but a session needs to be created
- */
-const defaultTestMode: Mode = {
-  id: 'mode-chat',
-  name: 'chat',
-  label: 'Chat',
-  icon: 'message-square',
-  systemPrompt: null,
-  isDefault: 1,
-  order: 0,
-} as Mode
-
-/**
  * Default model used when selectedModel is null but a session needs to be created
  */
 const defaultTestModel: Model = {
@@ -190,18 +163,11 @@ export const hydrateStore = (state: {
   chatThread: ChatThread | null
   id: string
   mcpClients?: unknown[]
-  modes?: Mode[]
   models?: Model[]
-  selectedMode?: Mode | null
   selectedModel: Model | null
   triggerData: AutomationRun | null
 }) => {
   const store = useChatStore.getState()
-
-  // Set modes first (needed for setSelectedMode)
-  if (state.modes) {
-    store.setModes(state.modes)
-  }
 
   // Set models first (needed for setSelectedModel)
   if (state.models) {
@@ -224,11 +190,17 @@ export const hydrateStore = (state: {
       connectionError: null,
       id: state.id,
       pendingPermission: null,
+      miniAppApprovalQueue: [],
       retryCount: 0,
       retriesExhausted: false,
+      stopping: false,
       selectedAgent: builtInAgent,
-      selectedMode: state.selectedMode ?? defaultTestMode,
+      agentChosenByUser: false,
       selectedModel: state.selectedModel ?? defaultTestModel,
+      // Mirrors production: a chat's project and originating app both come from
+      // its persisted thread.
+      projectId: state.chatThread?.projectId ?? null,
+      miniAppId: state.chatThread?.miniAppId ?? null,
       triggerData: state.triggerData,
     }
 
@@ -253,9 +225,9 @@ export const resetStore = () => {
   useChatStore.setState({
     currentSessionId: null,
     getMcpClients: () => [],
-    modes: [],
     models: [],
     sessions: new Map(),
+    agentDiscovery: { status: 'pending' },
   })
 }
 

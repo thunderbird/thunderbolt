@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { getActiveLocale } from '@/i18n/active-locale'
+import { getFormatters } from '@/i18n/format'
+import { isRecord } from '@/lib/utils'
 import { eq } from 'drizzle-orm'
 import { getTableConfig, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 import { exportFormat, exportSchemaVersion, exportedTableNames, includedTables, type IncludedTableName } from './export'
@@ -81,9 +84,6 @@ export class ImportFormatError extends Error {
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 const isIncludedTableName = (name: string): name is IncludedTableName =>
   (exportedTableNames as readonly string[]).includes(name)
 
@@ -142,7 +142,7 @@ export const summarizeExportEnvelope = (
     typeof payload.exportedAt === 'string'
       ? (() => {
           const parsed = new Date(payload.exportedAt)
-          return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString()
+          return Number.isNaN(parsed.getTime()) ? null : getFormatters(getActiveLocale()).date(parsed)
         })()
       : null
   const sourceEmail = isRecord(payload.user) && typeof payload.user.email === 'string' ? payload.user.email : null

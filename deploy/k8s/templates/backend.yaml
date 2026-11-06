@@ -1,3 +1,4 @@
+{{- include "thunderbolt.validateOidc" . }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -28,6 +29,7 @@ spec:
       {{- include "thunderbolt.podAnnotations" (dict "component" .Values.backend "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
+      {{- include "thunderbolt.nodeSelector" . | nindent 6 }}
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
@@ -65,14 +67,36 @@ spec:
                   key: postgres-password
             - name: DATABASE_URL
               value: "postgresql://{{ .Values.postgres.credentials.user }}:$(THUNDERBOLT_POSTGRES_PASSWORD)@postgres:5432/{{ .Values.postgres.credentials.database }}?sslmode={{ .Values.postgres.sslmode | default "disable" }}"
-            # OIDC_ISSUER must equal what Keycloak puts in the `iss` claim of issued tokens —
-            # i.e. the browser-facing URL. The backend reaches Keycloak in-cluster via OIDC_DISCOVERY_URL.
+            {{- /* Guarded by thunderbolt.validateOidc at the top of this file. */}}
+            {{- /*
+              `oidc` is absent on an install upgraded with --reuse-values, which
+              drops the chart's new defaults (see thunderbolt.keycloakEnabled), so
+              read it nil-safely and normalise the issuer to a string once.
+            */}}
+            {{- $oidc := .Values.oidc | default dict }}
+            {{- $oidcIssuer := $oidc.issuer | default "" }}
+            {{- $external := ne $oidcIssuer "" }}
+            {{- $issuer := ternary $oidcIssuer (printf "%s/realms/thunderbolt" .Values.appUrl) $external }}
+            {{- $keycloakDiscovery := printf "http://keycloak:%v/realms/thunderbolt/.well-known/openid-configuration" .Values.keycloak.service.port }}
+            {{- /*
+              Set explicitly rather than left to the backend, which needs the
+              internal address for the bundled Keycloak. Trailing slashes are
+              stripped, as OIDC Discovery requires: several providers, Authentik
+              among them, publish issuer URLs with one.
+            */}}
+            {{- $externalDiscovery := printf "%s/.well-known/openid-configuration" (trimSuffix "/" $oidcIssuer) }}
+            {{- $discovery := $oidc.discoveryUrl | default (ternary $externalDiscovery $keycloakDiscovery $external) }}
+            # OIDC_ISSUER must equal the `issuer` field of the provider's discovery
+            # document byte-for-byte, i.e. the browser-facing URL. When the backend
+            # reaches the provider at a different hostname than the browser does
+            # (e.g. the bundled in-cluster Keycloak), OIDC_DISCOVERY_URL carries
+            # that internal address instead.
             - name: OIDC_ISSUER
-              value: "{{ .Values.appUrl }}/realms/thunderbolt"
+              value: {{ $issuer | quote }}
             - name: OIDC_DISCOVERY_URL
-              value: "http://keycloak:8080/realms/thunderbolt/.well-known/openid-configuration"
+              value: {{ $discovery | quote }}
             - name: OIDC_CLIENT_ID
-              value: {{ .Values.keycloak.oidc.clientId }}
+              value: {{ $oidc.clientId | default .Values.keycloak.oidc.clientId | quote }}
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -87,9 +111,20 @@ spec:
               value: {{ .Values.appUrl }}
             - name: APP_URL
               value: {{ .Values.appUrl }}
-            # The internal Keycloak hostname is included so Better Auth's SSO plugin
-            # trusts OIDC_DISCOVERY_URL when fetching the discovery doc server-to-server
-            # (see backend/src/auth/auth.ts where `trustedOrigins` is consumed).
+            {{- $origins := list .Values.appUrl }}
+            {{- if $external }}
+            {{- $u := urlParse $oidcIssuer }}
+            {{- $origins = append $origins (printf "%s://%s" $u.scheme $u.host) }}
+            {{- if $oidc.discoveryUrl }}
+            {{- $d := urlParse $oidc.discoveryUrl }}
+            {{- $origins = append $origins (printf "%s://%s" $d.scheme $d.host) }}
+            {{- end }}
+            {{- else }}
+            {{- $origins = append $origins (printf "http://keycloak:%v" .Values.keycloak.service.port) }}
+            {{- end }}
+            # The identity provider's origin must be trusted so Better Auth's SSO
+            # plugin accepts its discovery/token/jwks endpoints when fetching them
+            # server-to-server (see backend/src/auth/auth.ts, `trustedOrigins`).
             #
             # CSRF protection is not weakened by this entry: the `Origin` request header
             # is on the Fetch-spec Forbidden Header list, so JS in a browser cannot forge
@@ -97,11 +132,26 @@ spec:
             # Primary CSRF defenses (SameSite cookies + `X-Challenge-Token` custom header
             # on sensitive endpoints) are unaffected.
             - name: TRUSTED_ORIGINS
-              value: "{{ .Values.appUrl }},http://keycloak:8080"
+              value: {{ concat $origins ($oidc.extraTrustedOrigins | default list) | uniq | join "," | quote }}
             - name: CORS_ORIGINS
               value: {{ .Values.appUrl }}
+            # POWERSYNC_URL is echoed straight to the browser for real-time sync, so it
+            # must be browser-reachable. Unlike every other in-cluster service URL on
+            # this page, it can NOT be the internal DNS name. It follows whichever
+            # ingress mode is configured: the dedicated hostname when one is set, and
+            # otherwise the app's own path-based route (templates/ingress.yaml strips
+            # the `/powersync` prefix). `backend.env.powersyncUrl` overrides both.
+            {{- $psHost := "" }}
+            {{- with .Values.ingress.hostnames }}{{ $psHost = .powersync | default "" }}{{ end }}
+            {{- $psScheme := hasPrefix "https://" (lower .Values.appUrl) | ternary "https" "http" }}
+            {{- $psDefault := ternary (printf "%s://%s" $psScheme $psHost) (printf "%s/powersync" (trimSuffix "/" .Values.appUrl)) (not (empty $psHost)) }}
             - name: POWERSYNC_URL
-              value: "http://powersync:{{ .Values.powersync.service.port }}"
+              value: {{ .Values.backend.env.powersyncUrl | default $psDefault | quote }}
+            # Server-side target for GET /v1/health/powersync. POWERSYNC_URL now points
+            # at the public ingress, which this pod should not have to hairpin through,
+            # so the probe keeps using the in-cluster service.
+            - name: POWERSYNC_INTERNAL_URL
+              value: {{ .Values.backend.env.powersyncInternalUrl | default (printf "http://powersync:%v" .Values.powersync.service.port) | quote }}
             - name: POWERSYNC_JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -111,8 +161,17 @@ spec:
               value: {{ .Values.powersync.jwt.kid }}
             - name: RATE_LIMIT_ENABLED
               value: {{ .Values.backend.env.rateLimitEnabled | quote }}
+            - name: MIN_APP_VERSION
+              value: {{ .Values.backend.env.minAppVersion | quote }}
+            - name: CLI_DEVICE_REGISTRATION_ENABLED
+              value: {{ .Values.backend.env.cliDeviceRegistrationEnabled | quote }}
             - name: THUNDERBOLT_INFERENCE_URL
               value: {{ .Values.backend.env.thunderboltInferenceUrl | default "" | quote }}
+            {{- /* Read nil-safely: absent on an install upgraded with --reuse-values. */}}
+            {{- with .Values.backend.env.branding }}
+            - name: BRANDING
+              value: {{ . | quote }}
+            {{- end }}
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -123,11 +182,6 @@ spec:
                 secretKeyRef:
                   name: thunderbolt-secrets
                   key: fireworks-api-key
-            - name: MISTRAL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: thunderbolt-secrets
-                  key: mistral-api-key
             - name: THUNDERBOLT_INFERENCE_API_KEY
               valueFrom:
                 secretKeyRef:

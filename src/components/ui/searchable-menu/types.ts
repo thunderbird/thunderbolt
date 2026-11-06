@@ -4,12 +4,20 @@
 
 import type { ReactNode } from 'react'
 
+import type { MobileCardMenuSide } from '@/components/ui/mobile-card-menu'
+
 export type SearchableMenuItem<T = unknown> = {
   id: string
   label: string
   description?: string
   icon?: ReactNode
   disabled?: boolean
+  /** Independent row action, such as configuring an item without selecting it. */
+  action?: {
+    label: string
+    icon: ReactNode
+    onAction: () => void
+  }
   data?: T
   /** Additional searchable text (not displayed) */
   searchTerms?: string
@@ -22,7 +30,19 @@ export type SearchableMenuGroup<T = unknown> = {
   items: SearchableMenuItem<T>[]
 }
 
+/** Declarative footer action row ("Add Model", "Add Agent"). The menu renders
+ *  the row itself and closes synchronously before running the action, so a
+ *  surface the action opens (e.g. the quick-create panel) never races the
+ *  closing menu. */
+export type SearchableMenuFooterAction = {
+  label: string
+  onAction: () => void
+  icon?: ReactNode
+}
+
 export type SearchableMenuProps<T = unknown> = {
+  /** Render the list inside an existing surface, keeping it open on selection. */
+  embedded?: boolean
   /** Items to display - can be flat or grouped */
   items: SearchableMenuItem<T>[] | SearchableMenuGroup<T>[]
   /** Currently selected item ID */
@@ -35,14 +55,18 @@ export type SearchableMenuProps<T = unknown> = {
   searchPlaceholder?: string
   /** Message when no items match search */
   emptyMessage?: string
-  /** Show blur backdrop on mobile */
-  blurBackdrop?: boolean
+  /** Accessible heading shown on the mobile card menu */
+  mobileTitle?: string
+  /** Also show the mobile title as a small heading above the desktop list. */
+  showDesktopTitle?: boolean
+  /** Screen edge the mobile card menu enters from */
+  mobileSide?: MobileCardMenuSide
   /** Custom trigger content - receives selected item */
   trigger?: ReactNode | ((selected: SearchableMenuItem<T> | undefined, isOpen: boolean) => ReactNode)
   /** Custom item renderer */
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
-  /** Footer content (e.g., "Add Models" button) */
-  footer?: ReactNode
+  /** One or more footer actions; the menu owns rendering and close-first behavior. */
+  footerAction?: SearchableMenuFooterAction | SearchableMenuFooterAction[]
   /** Popover width */
   width?: string | number
   /** Controlled open state */

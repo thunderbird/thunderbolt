@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { Check, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Button } from './button'
@@ -71,7 +72,7 @@ export const ActionFeedbackButton = ({
           loadingContent ?? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sending...
+              <Trans>Sending…</Trans>
             </>
           )
         )
@@ -81,7 +82,7 @@ export const ActionFeedbackButton = ({
             {successContent ?? (
               <>
                 <Check className="mr-2 h-4 w-4" />
-                Sent
+                <Trans>Sent</Trans>
               </>
             )}
           </span>

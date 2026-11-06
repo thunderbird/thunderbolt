@@ -44,6 +44,14 @@ describe('useAutoScroll', () => {
     })
   }
 
+  // Dependency-driven auto-scroll is coalesced into a requestAnimationFrame, so tests must
+  // flush a frame to observe the scroll (fake timers fake requestAnimationFrame).
+  const flushFrame = () => {
+    act(() => {
+      getClock().tick(16)
+    })
+  }
+
   describe('initialization', () => {
     it('should return all required refs and handlers', () => {
       const { result } = renderHook(() => useAutoScroll())
@@ -147,6 +155,7 @@ describe('useAutoScroll', () => {
       act(() => {
         rerender({ deps: ['b'] })
       })
+      flushFrame()
 
       expect(container.scrollTop).toBe(scrollTopBefore)
     })
@@ -170,10 +179,11 @@ describe('useAutoScroll', () => {
         result.current.scrollHandlers.onWheel({ deltaY: 100 } as WheelEvent)
       })
 
-      // Change dependencies - should still auto-scroll
+      // Change dependencies - should still auto-scroll (after the coalescing frame)
       act(() => {
         rerender({ deps: ['b'] })
       })
+      flushFrame()
 
       expect(container.scrollTop).toBe(500)
     })
@@ -205,6 +215,7 @@ describe('useAutoScroll', () => {
       act(() => {
         rerender({ deps: ['b'] })
       })
+      flushFrame()
 
       expect(container.scrollTop).toBe(scrollTopBefore)
     })
@@ -223,6 +234,7 @@ describe('useAutoScroll', () => {
       act(() => {
         rerender({ deps: ['b'] })
       })
+      flushFrame()
       expect(container.scrollTop).toBe(0)
 
       // Enable auto-scroll
@@ -230,10 +242,11 @@ describe('useAutoScroll', () => {
         result.current.resetUserScroll()
       })
 
-      // Now changing deps should scroll
+      // Now changing deps should scroll (after the coalescing frame)
       act(() => {
         rerender({ deps: ['c'] })
       })
+      flushFrame()
       expect(container.scrollTop).toBe(500)
     })
   })
@@ -253,6 +266,7 @@ describe('useAutoScroll', () => {
       act(() => {
         rerender({ deps: ['b'] })
       })
+      flushFrame()
 
       expect(container.scrollTop).toBe(scrollTopBefore)
     })
@@ -274,6 +288,7 @@ describe('useAutoScroll', () => {
       act(() => {
         rerender({ deps: ['b'] })
       })
+      flushFrame()
 
       expect(container.scrollTop).toBe(500)
     })
@@ -405,6 +420,163 @@ describe('useAutoScroll', () => {
           })
         }).not.toThrow()
       })
+    })
+  })
+
+  describe('coalesced auto-scroll', () => {
+    // Container that records every scrollTop write so coalescing can be asserted.
+    const createCountingContainer = (scrollHeight = 1000, clientHeight = 500) => {
+      const writes: number[] = []
+      let value = 0
+      const div = document.createElement('div')
+      Object.defineProperties(div, {
+        scrollTop: {
+          get: () => value,
+          set: (val: number) => {
+            value = val
+            writes.push(val)
+          },
+          configurable: true,
+        },
+        scrollHeight: { value: scrollHeight, configurable: true },
+        clientHeight: { value: clientHeight, configurable: true },
+      })
+      return { div, writes }
+    }
+
+    it('collapses many dependency changes within one frame into a single scroll', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+
+      const { div, writes } = createCountingContainer()
+      const target = createMockTarget()
+      setupRefs(result, div, target)
+
+      act(() => {
+        result.current.resetUserScroll()
+      })
+      writes.length = 0
+
+      // A burst of dependency changes (simulating many streamed tokens in one frame).
+      act(() => {
+        rerender({ deps: ['b'] })
+        rerender({ deps: ['c'] })
+        rerender({ deps: ['d'] })
+      })
+
+      // Nothing scrolls synchronously — the scroll is deferred to the animation frame.
+      expect(writes.length).toBe(0)
+
+      flushFrame()
+
+      // The whole burst collapsed into exactly one scroll for the frame.
+      expect(writes.length).toBe(1)
+      expect(div.scrollTop).toBe(500)
+    })
+
+    it('schedules a fresh scroll for dependency changes in a later frame', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+
+      const { div, writes } = createCountingContainer()
+      const target = createMockTarget()
+      setupRefs(result, div, target)
+
+      act(() => {
+        result.current.resetUserScroll()
+      })
+      writes.length = 0
+
+      act(() => {
+        rerender({ deps: ['b'] })
+      })
+      flushFrame()
+      expect(writes.length).toBe(1)
+
+      act(() => {
+        rerender({ deps: ['c'] })
+      })
+      flushFrame()
+      expect(writes.length).toBe(2)
+    })
+
+    it('does not scroll on unmount even if a frame was pending', () => {
+      const { result, rerender, unmount } = renderHook(
+        ({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }),
+        { initialProps: { deps: ['a'] } },
+      )
+
+      const { div, writes } = createCountingContainer()
+      const target = createMockTarget()
+      setupRefs(result, div, target)
+
+      act(() => {
+        result.current.resetUserScroll()
+      })
+      writes.length = 0
+
+      act(() => {
+        rerender({ deps: ['b'] })
+      })
+
+      // Unmount before the pending frame fires — cleanup must cancel it.
+      unmount()
+      flushFrame()
+
+      expect(writes.length).toBe(0)
+    })
+  })
+
+  describe('IntersectionObserver lifecycle', () => {
+    it('creates the observer once and does not rebuild it when dependencies change', () => {
+      const realIntersectionObserver = globalThis.IntersectionObserver
+      const counts = { construction: 0, observe: 0, disconnect: 0 }
+
+      class CountingObserver {
+        constructor(_callback: IntersectionObserverCallback) {
+          counts.construction += 1
+        }
+        observe() {
+          counts.observe += 1
+        }
+        disconnect() {
+          counts.disconnect += 1
+        }
+        unobserve() {}
+        takeRecords(): IntersectionObserverEntry[] {
+          return []
+        }
+      }
+      globalThis.IntersectionObserver = CountingObserver as unknown as typeof IntersectionObserver
+
+      try {
+        const { result, rerender } = renderHook(
+          ({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }),
+          { initialProps: { deps: ['a'] } },
+        )
+
+        const container = createMockContainer(0, 1000, 500)
+        const target = createMockTarget()
+        setupRefs(result, container, target)
+
+        expect(counts.construction).toBe(1)
+        expect(counts.observe).toBe(1)
+
+        // Burst of dependency changes (streamed tokens) must not tear down / rebuild it.
+        act(() => {
+          rerender({ deps: ['b'] })
+          rerender({ deps: ['c'] })
+          rerender({ deps: ['d'] })
+        })
+
+        expect(counts.construction).toBe(1)
+        expect(counts.disconnect).toBe(0)
+        expect(counts.observe).toBe(1)
+      } finally {
+        globalThis.IntersectionObserver = realIntersectionObserver
+      }
     })
   })
 })

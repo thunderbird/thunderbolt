@@ -5,6 +5,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { acceptLanguageFor } from '@/utils/accept-language'
 import { createSafeFetch, ensureHttps, validateSafeUrl, type DnsLookup } from '@/utils/url-validation'
 import { Elysia, t, type AnyElysia } from 'elysia'
 
@@ -134,7 +135,7 @@ export const createPreviewRoutes = (options: CreatePreviewRoutesOptions) => {
       // POST so target URLs do not appear in access logs.
       return g.post(
         '/preview',
-        async ({ body, set }): Promise<PreviewDto | { error: string }> => {
+        async ({ body, request, set }): Promise<PreviewDto | { error: string }> => {
           const targetUrl = body.url
           const validation = validateSafeUrl(targetUrl)
           if (!validation.valid) {
@@ -150,7 +151,7 @@ export const createPreviewRoutes = (options: CreatePreviewRoutesOptions) => {
               headers: {
                 'User-Agent': userAgent,
                 Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Language': acceptLanguageFor(request.headers.get('x-app-language')),
               },
               signal: controller.signal,
             })
@@ -173,8 +174,9 @@ export const createPreviewRoutes = (options: CreatePreviewRoutesOptions) => {
             const html = new TextDecoder().decode(buffer)
             // Cache successful OG metadata per-user for 10 minutes. Safe here (unlike
             // /v1/proxy) because the response is a small, derived JSON DTO — not the
-            // raw upstream body — and the request body is the only cache key (no
-            // `?token=` style explosion). `private` keeps shared/CDN caches out.
+            // raw upstream body — and the key space is bounded by the request body
+            // plus the caller's app language (no `?token=` style explosion).
+            // `private` keeps shared/CDN caches out.
             // Only set on the success path so transient upstream failures (empty
             // fallback) aren't sticky for 10 minutes.
             set.headers['Cache-Control'] = 'private, max-age=600'

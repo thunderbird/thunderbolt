@@ -200,3 +200,55 @@ export const parseContentParts = (rawText: string): ContentPart[] => {
 
   return parts
 }
+
+/**
+ * Streaming cache for {@link parseContentPartsIncremental}. Keyed on the exact
+ * raw text so the reference of {@link parts} stays stable across renders that
+ * don't change the text, and `hasMarkers` records whether a full parse is needed.
+ */
+export type ContentPartsState = {
+  rawText: string
+  parts: ContentPart[]
+  hasMarkers: boolean
+}
+
+/**
+ * Whether text contains a widget-tag opener (`<`) or a model-native citation
+ * bracket (`【`) — the only markers {@link parseContentParts} reacts to. Marker-free
+ * text always parses to a single trimmed text part (or none).
+ */
+const hasContentMarker = (text: string): boolean => text.includes('<') || text.includes('【')
+
+/**
+ * Incremental {@link parseContentParts} for the streaming-append case.
+ *
+ * The overwhelmingly common streamed message is marker-free prose, which parses
+ * to a single trimmed text part. When the previous text was marker-free and the
+ * appended tail introduces no markers either, that result is produced directly —
+ * skipping the citation-strip and widget-tag scans that otherwise re-run over the
+ * whole growing string every token. Anything containing widget tags or citation
+ * brackets falls back to a full parse (correctness over cleverness).
+ *
+ * @param rawText - Current full text of the streamed part.
+ * @param prev - State from the previous call for the same part, or null.
+ * @returns The parsed parts plus the state to thread into the next call.
+ */
+export const parseContentPartsIncremental = (
+  rawText: string,
+  prev: ContentPartsState | null,
+): { parts: ContentPart[]; state: ContentPartsState } => {
+  if (prev && prev.rawText === rawText) {
+    return { parts: prev.parts, state: prev }
+  }
+
+  const isMarkerFreeAppend =
+    prev !== null && prev.rawText.length > 0 && !prev.hasMarkers && rawText.startsWith(prev.rawText)
+  if (isMarkerFreeAppend && !hasContentMarker(rawText.slice(prev.rawText.length))) {
+    const trimmed = rawText.trim()
+    const parts: ContentPart[] = trimmed ? [{ type: 'text', content: trimmed }] : []
+    return { parts, state: { rawText, parts, hasMarkers: false } }
+  }
+
+  const parts = parseContentParts(rawText)
+  return { parts, state: { rawText, parts, hasMarkers: hasContentMarker(rawText) } }
+}

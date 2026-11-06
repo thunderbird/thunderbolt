@@ -6,7 +6,7 @@ import { StepIndicators } from '@/components/onboarding/step-indicators'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 const meta = {
-  title: 'components/onboarding/step-indicators',
+  title: 'Onboarding/StepIndicators',
   component: StepIndicators,
   parameters: {
     layout: 'centered',

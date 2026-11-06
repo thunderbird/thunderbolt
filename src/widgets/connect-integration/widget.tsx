@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -40,15 +44,15 @@ const getProviderName = (provider: OAuthProvider): string => {
   return provider === 'google' ? 'Google' : 'Microsoft'
 }
 
-const getServiceName = (service: 'email' | 'calendar' | 'both'): string => {
-  switch (service) {
-    case 'email':
-      return 'Email'
-    case 'calendar':
-      return 'Calendar'
-    case 'both':
-      return 'Email and Calendar'
-  }
+// A whole sentence per service, not a translated clause dropped into a
+// translated frame. The placeholder hid the clause from the translator, who saw
+// only "Choose your email provider {reason}" and could not know a purpose clause
+// was coming — German needs a comma before it and Japanese needs it ahead of the
+// verb, and neither is reachable from either half alone.
+const providerPrompts: Record<'email' | 'calendar' | 'both', MessageDescriptor> = {
+  email: msg`Choose your email provider to access your email`,
+  calendar: msg`Choose your email provider to access your calendar`,
+  both: msg`Choose your email provider to access your email and calendar`,
 }
 
 const getIconComponent = (provider: OAuthProvider, service: 'email' | 'calendar' | 'both') => {
@@ -59,11 +63,6 @@ const getIconComponent = (provider: OAuthProvider, service: 'email' | 'calendar'
     return provider === 'google' ? GoogleCalendarIcon : MicrosoftCalendarIcon
   }
   return provider === 'google' ? GoogleIcon : MicrosoftIcon
-}
-
-const getDefaultReason = (service: 'email' | 'calendar' | 'both'): string => {
-  const serviceName = getServiceName(service)
-  return `to access your ${serviceName.toLowerCase()}`
 }
 
 /**
@@ -84,13 +83,14 @@ const isProviderConnected = (
  */
 export const ConnectIntegrationWidget = memo(
   ({ provider, service, reason, messageId, override }: ConnectIntegrationWidgetProps) => {
+    const { i18n, t } = useLingui()
+    const appName = useAppName()
     const location = useLocation()
     const navigate = useNavigate()
     const { integrationsDoNotAskAgain } = useSettings({ integrations_do_not_ask_again: false })
     const [state, dispatch] = useConnectIntegrationWidgetState(provider)
     const { data: integrationStatus, isLoading: isLoadingIntegrationStatus } = useIntegrationStatus()
     const queryClient = useQueryClient()
-    const displayReason = reason === '' ? getDefaultReason(service) : reason
 
     // Use widget-specific connecting key (messageId is unique per widget instance)
     const connectingKey = `widget_${messageId}`
@@ -193,20 +193,22 @@ export const ConnectIntegrationWidget = memo(
       return (
         <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground text-center">You can connect integrations later in Settings.</p>
+            <p className="text-sm text-muted-foreground text-center">
+              <Trans>You can connect integrations later in Settings.</Trans>
+            </p>
           </CardContent>
         </Card>
       )
     }
-
-    const serviceName = getServiceName(service)
 
     if (isLoadingIntegrationStatus) {
       return (
         <Card className="w-full border border-border rounded-lg my-4">
           <CardContent className="p-6">
             <div className="flex items-center justify-center">
-              <p className="text-sm text-muted-foreground">Loading...</p>
+              <p className="text-sm text-muted-foreground">
+                <Trans>Loading…</Trans>
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -238,7 +240,15 @@ export const ConnectIntegrationWidget = memo(
           <CardContent className="p-6 flex flex-col min-h-[400px]">
             <div className="flex flex-col items-center space-y-4 flex-1">
               <div className="text-center space-y-2">
-                <h3 className="text-lg font-semibold">Choose your email provider {displayReason}</h3>
+                <h3 className="text-lg font-semibold">
+                  {/* A caller-supplied `reason` is model output, i.e. a value — safe in a
+                      placeholder in a way a translated clause is not. */}
+                  {reason === '' ? (
+                    i18n._(providerPrompts[service])
+                  ) : (
+                    <Trans>Choose your email provider {reason}</Trans>
+                  )}
+                </h3>
               </div>
 
               <div className="w-full grid grid-cols-2 gap-3">
@@ -254,7 +264,7 @@ export const ConnectIntegrationWidget = memo(
                   </div>
                   <span className="text-sm font-medium">Google</span>
                   <span className="text-xs text-muted-foreground">
-                    {service === 'email' ? 'Gmail' : service === 'calendar' ? 'Calendar' : 'Gmail & Calendar'}
+                    {service === 'email' ? 'Gmail' : service === 'calendar' ? t`Calendar` : t`Gmail & Calendar`}
                   </span>
                 </button>
 
@@ -270,7 +280,7 @@ export const ConnectIntegrationWidget = memo(
                   </div>
                   <span className="text-sm font-medium">Microsoft</span>
                   <span className="text-xs text-muted-foreground">
-                    {service === 'email' ? 'Outlook' : service === 'calendar' ? 'Calendar' : 'Outlook & Calendar'}
+                    {service === 'email' ? 'Outlook' : service === 'calendar' ? t`Calendar` : t`Outlook & Calendar`}
                   </span>
                 </button>
               </div>
@@ -279,10 +289,10 @@ export const ConnectIntegrationWidget = memo(
             <div className="mt-auto w-full">
               <div className="w-full flex gap-2">
                 <Button onClick={handleNotNow} disabled={isConnecting} variant="ghost" className="flex-1">
-                  Not now
+                  <Trans>Not now</Trans>
                 </Button>
                 <Button onClick={handleDoNotAskAgain} disabled={isConnecting} variant="ghost" className="flex-1">
-                  Do not ask again
+                  <Trans>Do not ask again</Trans>
                 </Button>
               </div>
             </div>
@@ -314,14 +324,20 @@ export const ConnectIntegrationWidget = memo(
 
               <div className="text-center space-y-2">
                 <h3 className="text-lg font-semibold">
-                  Connected to {connectedProviderName} {serviceName}
+                  {service === 'email' ? (
+                    <Trans>Connected to {connectedProviderName} Email</Trans>
+                  ) : service === 'calendar' ? (
+                    <Trans>Connected to {connectedProviderName} Calendar</Trans>
+                  ) : (
+                    <Trans>Connected to {connectedProviderName} Email and Calendar</Trans>
+                  )}
                 </h3>
               </div>
 
               <div className="w-full">
                 <Button variant="ghost" className="w-full" disabled>
-                  <Check className="w-4 h-4 mr-2 text-green-600" />
-                  Connected
+                  <Check className="w-4 h-4 mr-2 text-success" />
+                  <Trans>Connected</Trans>
                 </Button>
               </div>
             </div>
@@ -362,13 +378,25 @@ export const ConnectIntegrationWidget = memo(
 
             <div className="text-center space-y-2">
               <h3 className="text-lg font-semibold">
-                Thunderbolt wants to connect to {providerName} {serviceName}
+                {service === 'email' ? (
+                  <Trans>
+                    {appName} wants to connect to {providerName} Email
+                  </Trans>
+                ) : service === 'calendar' ? (
+                  <Trans>
+                    {appName} wants to connect to {providerName} Calendar
+                  </Trans>
+                ) : (
+                  <Trans>
+                    {appName} wants to connect to {providerName} Email and Calendar
+                  </Trans>
+                )}
               </h3>
             </div>
 
             {error && (
-              <div className="w-full p-3 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+              <div className="w-full p-3 rounded-md bg-destructive/10 border border-destructive/30">
+                <p className="text-sm text-destructive">{error}</p>
               </div>
             )}
 
@@ -376,10 +404,11 @@ export const ConnectIntegrationWidget = memo(
               <Button
                 onClick={handleConnect}
                 disabled={isConnecting || !state.selectedProvider}
+                variant="secondary"
                 className="w-full"
                 size="lg"
               >
-                {isConnecting ? 'Connecting...' : `Connect ${providerName}`}
+                {isConnecting ? <Trans>Connecting…</Trans> : <Trans>Connect {providerName}</Trans>}
               </Button>
             </div>
           </div>
@@ -387,10 +416,10 @@ export const ConnectIntegrationWidget = memo(
           <div className="self-end w-full">
             <div className="w-full flex gap-2">
               <Button onClick={handleNotNow} disabled={isConnecting} variant="ghost" className="flex-1">
-                Not now
+                <Trans>Not now</Trans>
               </Button>
               <Button onClick={handleDoNotAskAgain} disabled={isConnecting} variant="ghost" className="flex-1">
-                Do not ask again
+                <Trans>Do not ask again</Trans>
               </Button>
             </div>
           </div>

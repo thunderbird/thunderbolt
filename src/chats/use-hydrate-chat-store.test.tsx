@@ -6,42 +6,27 @@ import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/da
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { moveChatToProject } from '@/projects/use-move-chat-to-project'
+import { setChatThreadProject } from '@/dal/projects'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { modelsTable, modesTable } from '@/db/tables'
+import { agentsSystemTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
+import { builtInAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
 import { updateSettings } from '@/dal/settings'
-import { getModel } from '@/dal/models'
+import { getModel, updateModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
-import { BrowserRouter } from 'react-router'
+import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
-
-/**
- * Helper function to create a default mode (required for getSelectedMode)
- */
-const createDefaultMode = async () => {
-  const db = getDb()
-
-  await db.insert(modesTable).values({
-    id: 'mode-chat',
-    name: 'chat',
-    label: 'Chat',
-    icon: 'message-square',
-    systemPrompt: null,
-    isDefault: 1,
-    order: 0,
-    deletedAt: null,
-    defaultHash: null,
-  })
-
-  return 'mode-chat'
-}
+import { DatabaseProvider } from '@/contexts/database-context'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { getClock } from '@/testing-library'
 
 /**
  * Helper function to create a system model (required for getDefaultModelForThread)
@@ -129,6 +114,31 @@ const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): Thunderbo
 })
 
 /**
+ * The test database, except that building a read of `agents_system` first calls
+ * `onRead`: discovery landing while hydration is mid-way through its queries.
+ */
+const withAgentsSystemRead = (db: AnyDrizzleDatabase, onRead: () => void): AnyDrizzleDatabase =>
+  new Proxy(db, {
+    get: (target, property) => {
+      const value = Reflect.get(target, property, target)
+      if (property !== 'select') {
+        return typeof value === 'function' ? value.bind(target) : value
+      }
+      return (...args: Parameters<AnyDrizzleDatabase['select']>) => {
+        const builder = target.select(...args)
+        const from = builder.from.bind(builder)
+        builder.from = ((table: Parameters<typeof from>[0]) => {
+          if (table === agentsSystemTable) {
+            onRead()
+          }
+          return from(table)
+        }) as typeof builder.from
+        return builder
+      }
+    },
+  })
+
+/**
  * Wrapper that includes Router context for useNavigate and MCPProvider
  */
 const TestWrapper = ({ children }: { children: ReactNode }) => {
@@ -139,6 +149,18 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
     createElement(queryWrapper, null, createElement(MCPProvider, null, children)),
   )
 }
+
+/** The hosted agent's row as discovery writes it, named as the default. */
+const seedDiscoveredDefault = () =>
+  getDb().insert(agentsSystemTable).values({
+    id: 'hosted-agent',
+    name: 'Assistant',
+    type: 'managed-http',
+    transport: 'http',
+    url: '/v1/agent/chat',
+    fetchedAt: new Date().toISOString(),
+    isDefault: 1,
+  })
 
 describe('useHydrateChatStore', () => {
   beforeAll(async () => {
@@ -153,8 +175,7 @@ describe('useHydrateChatStore', () => {
     // Reset store state before each test
     resetStore()
     await resetTestDatabase()
-    // Create default mode (required for getSelectedMode) and system model (required for getDefaultModelForThread)
-    await createDefaultMode()
+    // Create system model (required for getDefaultModelForThread)
     await createSystemModel()
   })
 
@@ -329,6 +350,354 @@ describe('useHydrateChatStore', () => {
       const session = getCurrentSession()
       expect(session?.selectedAgent.id).toBe('custom-last-used')
     })
+
+    const hydrateNewChat = async () => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+    }
+
+    it('restores the selected model for a new chat without creating a thread', async () => {
+      const modelId = await createTestModel()
+      await updateSettings(getDb(), { selected_model: modelId })
+
+      await hydrateNewChat()
+
+      const session = getCurrentSession()
+      expect(session?.selectedModel.id).toBe(modelId)
+      expect(session?.chatThread).toBeNull()
+      expect(session?.chatInstance.messages).toEqual([])
+      expect(session?.triggerData).toBeNull()
+    })
+
+    it('falls back to a system model when the selected model is disabled', async () => {
+      const modelId = await createTestModel()
+      await updateSettings(getDb(), { selected_model: modelId })
+      await updateModel(getDb(), modelId, { enabled: 0 })
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedModel.isSystem).toBe(1)
+      expect(getCurrentSession()?.selectedModel.id).not.toBe(modelId)
+    })
+
+    it('keeps the last-used agent for a new chat ahead of the agent discovery names as default', async () => {
+      await createAgent(getDb(), {
+        id: 'custom-last-used',
+        name: 'Last Used Agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.test/ws',
+        userId: 'u1',
+      })
+      await updateSettings(getDb(), { selected_agent: 'custom-last-used' })
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('custom-last-used')
+    })
+
+    it('opens on the discovered default when discovery lands while hydration is reading', async () => {
+      // Discovery reports its default as hydration reads `agents_system`: too late
+      // for the rows (none are written yet), too early to move a session (none exists).
+      const hostedAgent = {
+        ...builtInAgent,
+        id: 'hosted-agent',
+        type: 'managed-http' as const,
+        transport: 'http' as const,
+        url: '/v1/agent/chat',
+      }
+      const db = withAgentsSystemRead(getDb(), () =>
+        useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, [builtInAgent, hostedAgent], {}),
+      )
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(TestWrapper, null, createElement(DatabaseProvider, { db, children }))
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true }), { wrapper })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
+    it('keeps a persisted thread with no agent of its own off the discovered default', async () => {
+      // Automation runs and threads from before `agent_id` existed have none.
+      const threadId = await createTestThread(await createTestModel())
+      await seedDiscoveredDefault()
+
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+    })
+
+    it('keeps a new chat on the built-in agent when the user has picked a model', async () => {
+      await updateSettings(getDb(), { selected_model: await createTestModel() })
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+    })
+
+    it('opens a returning visitor on the cached default row while discovery has not answered yet', async () => {
+      await seedDiscoveredDefault()
+      expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'pending' })
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
+    it('ignores a stale cached default row once discovery has reported no default', async () => {
+      // Discovery cleared the default (a 403, or none named) before this chat
+      // opened, but hydration still reads the row it removed.
+      await seedDiscoveredDefault()
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+    })
+
+    it('uses the cached default row again once discovery restarts for a new account or server', async () => {
+      await seedDiscoveredDefault()
+      // The previous server answered 403; the run for the new one has just started.
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
+      useChatStore.getState().resetAgentDiscovery()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
+    it('opens a first-time visitor with no last-used agent on the agent discovery names as default', async () => {
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent).toMatchObject({ id: 'hosted-agent', type: 'managed-http' })
+    })
+  })
+
+  describe('messages that sync after the chat opens', () => {
+    /** Opens `threadId` while the device is still downloading; resolve the returned promise when it lands. */
+    const openDuringDownload = async (threadId: string) => {
+      const download = Promise.withResolvers<void>()
+      const { result } = renderHook(
+        () => useHydrateChatStore({ id: threadId, isNew: false, waitForSyncCatchUp: () => download.promise }),
+        { wrapper: TestWrapper },
+      )
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      const finishDownload = async () => {
+        await act(async () => {
+          download.resolve()
+          await getClock().runAllAsync()
+        })
+      }
+      return finishDownload
+    }
+
+    const messageIds = () => getCurrentSession()?.chatInstance.messages.map((message) => message.id)
+
+    it('shows the messages of a chat opened before they were downloaded', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      expect(messageIds()).toEqual([])
+
+      const synced = [createTestMessage(), createTestMessage({ role: 'assistant' })]
+      await saveMessagesWithContextUpdate(getDb(), threadId, synced)
+      await finishDownload()
+
+      expect(messageIds()).toEqual(synced.map((message) => message.id))
+    })
+
+    it('marks an empty chat as waiting for its messages until the download lands', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(true)
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [createTestMessage()])
+      await finishDownload()
+
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+
+    it('does not mark a chat that already has messages as waiting', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      await saveMessagesWithContextUpdate(getDb(), threadId, [createTestMessage()])
+      await openDuringDownload(threadId)
+
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+
+    it('appends the messages that arrived after the ones the chat opened with', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const opened = createTestMessage()
+      await saveMessagesWithContextUpdate(getDb(), threadId, [opened])
+      const finishDownload = await openDuringDownload(threadId)
+
+      const synced = [createTestMessage({ role: 'assistant' }), createTestMessage()]
+      await saveMessagesWithContextUpdate(getDb(), threadId, synced)
+      await finishDownload()
+
+      expect(messageIds()).toEqual([opened.id, ...synced.map((message) => message.id)])
+    })
+
+    it('shows a synced failed turn as failed, like a chat opened after it landed', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [
+        createTestMessage(),
+        createTestMessage({ role: 'assistant', parts: [] }),
+      ])
+      await finishDownload()
+
+      expect(messageIds()).toHaveLength(2)
+      expect(getCurrentSession()?.retriesExhausted).toBe(true)
+    })
+
+    it('leaves a chat alone once it no longer matches the start of the saved messages', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      // The user wrote in the empty-looking chat before its history landed.
+      const typed = createTestMessage()
+      getCurrentSession()!.chatInstance.messages = [typed]
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [
+        createTestMessage(),
+        createTestMessage({ role: 'assistant' }),
+      ])
+      await finishDownload()
+
+      expect(messageIds()).toEqual([typed.id])
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+
+    it.each([
+      ['the user is stopping a reply', { stopping: true }],
+      ['its context is being compacted', { compactionStatus: 'compacting' as const }],
+    ])('leaves a chat alone while %s', async (_, busy) => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      useChatStore.getState().updateSession(threadId, busy)
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [createTestMessage()])
+      await finishDownload()
+
+      expect(messageIds()).toEqual([])
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+  })
+
+  describe('model for a thread that falls back to the built-in agent', () => {
+    /** A system Tinfoil model: confidential, and server-keyed so the picker enables it. */
+    const createConfidentialModel = async () => {
+      const modelId = uuidv7()
+      await getDb().insert(modelsTable).values({
+        id: modelId,
+        provider: 'tinfoil',
+        name: 'Confidential Model',
+        model: 'kimi-k2',
+        isSystem: 1,
+        enabled: 1,
+        isConfidential: 1,
+        toolUsage: 1,
+        startWithReasoning: 0,
+      })
+      return modelId
+    }
+
+    /** Hydrates a persisted thread on a device whose `selected_model` is confidential. */
+    const hydrateThread = async (thread: { agentId?: string; isEncrypted: 0 | 1 }) => {
+      const confidentialModelId = await createConfidentialModel()
+      await updateSettings(getDb(), { selected_model: confidentialModelId })
+      const threadId = uuidv7()
+      await createChatThread(
+        getDb(),
+        { id: threadId, title: 'Synced', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0, ...thread },
+        (await getModel(getDb(), confidentialModelId))!,
+      )
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      return getCurrentSession()
+    }
+
+    it('swaps in a non-confidential model when a hosted thread opens before discovery seeds its agent', async () => {
+      // Fresh device: the thread synced, `agents_system` has no hosted row yet.
+      const session = await hydrateThread({ agentId: 'hosted-agent', isEncrypted: 0 })
+
+      expect(session?.selectedAgent.id).toBe(builtInAgent.id)
+      expect(session?.selectedModel).toMatchObject({ name: 'System Model', isConfidential: 0 })
+    })
+
+    it('keeps the model of a thread whose confidentiality already matches it', async () => {
+      const session = await hydrateThread({ isEncrypted: 1 })
+
+      expect(session?.selectedModel).toMatchObject({ name: 'Confidential Model', isConfidential: 1 })
+    })
+  })
+
+  describe('project assignment', () => {
+    it('starts a new chat in the project it was opened from', async () => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true, projectId: 'project-a' }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.projectId).toBe('project-a')
+    })
+
+    it('starts a loose chat with no project', async () => {
+      // The reported bug: leaving `/chats/new?projectId=…` for `/chats/new` kept
+      // the old project, and the first message was filed under it. The route now
+      // makes the project part of the new chat's identity, so this hook is asked
+      // for a fresh chat with none.
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true, projectId: null }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.projectId).toBeNull()
+    })
+
+    it('ignores the URL project for a chat that already exists', async () => {
+      // A persisted thread owns its project; a stale query string must not move it.
+      const systemModelId = await createSystemModel()
+      const threadId = await createTestThread(systemModelId, 'Existing')
+
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false, projectId: 'project-b' }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.projectId).toBeNull()
+    })
   })
 
   describe('saveMessages', () => {
@@ -361,6 +730,134 @@ describe('useHydrateChatStore', () => {
       // For now, we just verify the function completed without error
       expect(result.current.saveMessages).toBeDefined()
     })
+
+    it.each([
+      ['the hosted agent, never private, since its content reaches the backend', true, 0],
+      ['the built-in agent, private on a confidential model', false, 1],
+    ])('creates a new thread on %s', async (_label, onHostedAgent, isEncrypted) => {
+      const confidentialModelId = uuidv7()
+      await getDb().insert(modelsTable).values({
+        id: confidentialModelId,
+        provider: 'tinfoil',
+        name: 'Confidential Model',
+        model: 'confidential-model',
+        isSystem: 1,
+        enabled: 1,
+        isConfidential: 1,
+        contextWindow: 131072,
+        toolUsage: 1,
+        startWithReasoning: 0,
+        deletedAt: null,
+        url: null,
+        defaultHash: null,
+      })
+      if (onHostedAgent) {
+        await seedDiscoveredDefault()
+      }
+      const threadId = uuidv7()
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      const confidentialModel = await getModel(getDb(), confidentialModelId)
+      useChatStore.getState().updateSession(threadId, { selectedModel: confidentialModel! })
+
+      await act(async () => {
+        await result.current.saveMessages({ id: threadId, messages: [createTestMessage()] })
+      })
+
+      expect(getCurrentSession()?.selectedAgent.type).toBe(onHostedAgent ? 'managed-http' : 'built-in')
+      expect((await getThread(getDb(), threadId))?.isEncrypted).toBe(isEncrypted)
+    })
+
+    it.each(['project-b', null])(
+      'keeps first-save membership consistent when a move to %s starts first',
+      async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+        })
+        const wroteProject = Promise.withResolvers<void>()
+        const releaseMove = Promise.withResolvers<void>()
+        await act(async () => {
+          const moving = moveChatToProject(
+            { chatThreadId: id, projectId },
+            {
+              db: getDb(),
+              setProject: async (...args) => {
+                const assigned = await setChatThreadProject(...args)
+                wroteProject.resolve()
+                await releaseMove.promise
+                return assigned
+              },
+              updateOpenSession: (chatThreadId, nextProjectId) =>
+                useChatStore.getState().updateSession(chatThreadId, { projectId: nextProjectId }),
+              refreshChatList: async () => {},
+            },
+          )
+          await wroteProject.promise
+          const saving = result.current.saveMessages({ id, messages: [createTestMessage()] })
+          releaseMove.resolve()
+          await Promise.all([moving, saving])
+        })
+        expect((await getThread(getDb(), id))?.projectId).toBe(projectId)
+        expect(getCurrentSession()?.projectId).toBe(projectId)
+      },
+    )
+
+    it.each(['project-b', null])(
+      'keeps first-save membership consistent when a move to %s starts during insertion',
+      async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+        })
+        const moved = Promise.withResolvers<void>()
+        const db = getDb()
+        const insert = db.insert.bind(db)
+        // Start the move after saveMessages has read the old project but before
+        // the thread's insert is executed, so an uncoordinated UPDATE finds no row.
+        const insertSpy = spyOn(db, 'insert').mockImplementation((table) => {
+          if (Object.is(table, chatThreadsTable)) {
+            moved.resolve(
+              moveChatToProject(
+                { chatThreadId: id, projectId },
+                {
+                  db,
+                  setProject: setChatThreadProject,
+                  updateOpenSession: (chatThreadId, nextProjectId) =>
+                    useChatStore.getState().updateSession(chatThreadId, { projectId: nextProjectId }),
+                  refreshChatList: async () => {},
+                },
+              ),
+            )
+          }
+          return insert(table)
+        })
+        try {
+          await act(async () => {
+            await result.current.saveMessages({ id, messages: [createTestMessage()] })
+            await moved.promise
+          })
+          expect((await getThread(db, id))?.projectId).toBe(projectId)
+          expect(getCurrentSession()?.projectId).toBe(projectId)
+        } finally {
+          insertSpy.mockRestore()
+        }
+      },
+    )
 
     it('should throw error if no session is found when saving messages', async () => {
       const threadId = uuidv7()
@@ -456,6 +953,103 @@ describe('useHydrateChatStore', () => {
 
       // Verify no error was thrown
       expect(result.current.saveMessages).toBeDefined()
+    })
+
+    it('preserves current context for historical edits and updates it for ordinary saves', async () => {
+      const modelId = await createSystemModel()
+      const threadId = await createTestThread(modelId)
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      const message = createTestMessage({ role: 'assistant', metadata: { contextTokens: 2000 } })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+        await result.current.saveMessages({ id: threadId, messages: [message] })
+        await result.current.saveMessages({
+          id: threadId,
+          messages: [{ ...message, metadata: { contextTokens: 500 } }],
+          updateContext: false,
+        })
+      })
+      expect((await getThread(getDb(), threadId))?.contextSize).toBe(2000)
+
+      await act(async () => {
+        await result.current.saveMessages({
+          id: threadId,
+          messages: [{ ...message, metadata: { contextTokens: 600 } }],
+        })
+      })
+      expect((await getThread(getDb(), threadId))?.contextSize).toBe(600)
+    })
+  })
+  /*
+   * The first save of a new chat promotes the URL from /chats/new to
+   * /chats/<id>. That is right for the chat route and wrong for a chat embedded
+   * in another surface — the Mini App panel navigated away mid-send, unmounting
+   * the app and clearing the context the model was being asked about.
+   */
+  describe('navigation on create', () => {
+    /** Renders nothing; mirrors the router's current path into `seen`. */
+    const makeRouterWrapper = (initialPath: string, seen: { path: string }) => {
+      const LocationProbe = () => {
+        seen.path = useLocation().pathname
+        return null
+      }
+      return ({ children }: { children: ReactNode }) => {
+        const queryWrapper = createQueryTestWrapper()
+        return createElement(
+          MemoryRouter,
+          { initialEntries: [initialPath] },
+          createElement(LocationProbe),
+          createElement(queryWrapper, null, createElement(MCPProvider, null, children)),
+        )
+      }
+    }
+
+    /**
+     * Hydrate a brand-new thread and save one message through it.
+     *
+     * `onCreated` is the whole switch: supplying it means the host records the
+     * id itself and nothing navigates.
+     */
+    const hydrateAndSave = async (
+      threadId: string,
+      onCreated: ((chatThreadId: string) => void) | undefined,
+      wrapper: ReturnType<typeof makeRouterWrapper>,
+    ) => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true, onCreated }), {
+        wrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      await act(async () => {
+        await result.current.saveMessages({ id: threadId, messages: [createTestMessage()] })
+      })
+    }
+
+    it('navigates to the new thread on first save by default', async () => {
+      await createSystemModel()
+      const threadId = uuidv7()
+      const seen = { path: '' }
+
+      await hydrateAndSave(threadId, undefined, makeRouterWrapper('/chats/new', seen))
+
+      expect(seen.path).toBe(`/chats/${threadId}`)
+    })
+
+    it('stays put, and hands the id over, when the host takes it', async () => {
+      await createSystemModel()
+      const threadId = uuidv7()
+      const seen = { path: '' }
+      const recorded: string[] = []
+
+      await hydrateAndSave(threadId, (id) => recorded.push(id), makeRouterWrapper('/apps/finance-model', seen))
+
+      expect(seen.path).toBe('/apps/finance-model')
+      // The pair that used to be separable: suppressing the navigation without
+      // recording the id created a real row nothing knew about.
+      expect(recorded).toEqual([threadId])
     })
   })
 })

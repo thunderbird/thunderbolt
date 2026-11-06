@@ -5,6 +5,7 @@
 import { hasTransformer } from '@/files/transformers'
 import { useShowSideview } from '@/content-view/context'
 import { getAttachments } from '@/lib/attachments'
+import { getQuotes } from '@/lib/quotes'
 import type { ThunderboltUIMessage } from '@/types'
 import { buildDocumentSideviewId } from '@/types/citation'
 import type { UIMessage } from 'ai'
@@ -22,9 +23,22 @@ type MessageBubblesProps = {
 export const MessageBubbles = ({ message, onResendAttachment }: MessageBubblesProps) => {
   const showSideview = useShowSideview()
   const attachments = getAttachments(message as ThunderboltUIMessage)
+  const quotes = getQuotes(message as ThunderboltUIMessage)
 
   return (
     <>
+      {quotes.length > 0 && (
+        <div className="ml-auto mt-6 flex max-w-3/4 flex-col gap-1.5">
+          {quotes.map((quote, i) => (
+            <blockquote
+              key={i}
+              className="whitespace-pre-wrap rounded-lg border border-l-2 border-l-primary/60 bg-muted/50 py-1.5 pl-3 pr-3 text-[length:var(--font-size-sm)] text-muted-foreground dark:bg-secondary/40"
+            >
+              {quote.text}
+            </blockquote>
+          ))}
+        </div>
+      )}
       {attachments.length > 0 && (
         <div className="ml-auto mt-6 flex max-w-3/4 flex-wrap justify-end gap-2">
           {attachments.map((attachment) => {
@@ -65,7 +79,10 @@ export const MessageBubbles = ({ message, onResendAttachment }: MessageBubblesPr
       {message.parts
         .filter((part) => part.type === 'text')
         .map((part, j) => (
-          <div key={j} className="px-4 rounded-2xl max-w-3/4 bg-muted dark:bg-secondary/60 ml-auto mt-6">
+          <div
+            key={j}
+            className="ml-auto mt-6 max-w-3/4 cursor-text select-text rounded-2xl bg-accent px-4 dark:bg-secondary/60"
+          >
             <div className="space-y-2">
               <MemoizedMarkdown id={`${message.id}_${j}`} content={part.text || ''} />
             </div>

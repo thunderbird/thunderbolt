@@ -1274,6 +1274,7 @@ const createBudgetAdapter = (
   })
   const registrations = new Set<unknown>()
   const workspaceRemoved = Promise.withResolvers<void>()
+  const registrationRemoved = Promise.withResolvers<void>()
   const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
     prepareConfig: prepareConfig ?? prepareFixtureConfig,
     loadAgentCore: async () => ({
@@ -1303,6 +1304,7 @@ const createBudgetAdapter = (
           return () => {
             registrations.delete(handler)
             remove()
+            registrationRemoved.resolve()
           }
         }
         return harness
@@ -1348,6 +1350,7 @@ const createBudgetAdapter = (
       return nativeCleanup.pending.promise
     },
     workspaceRemoved: workspaceRemoved.promise,
+    registrationRemoved: registrationRemoved.promise,
   }
 }
 
@@ -1448,7 +1451,7 @@ describe('real Pi approvals', () => {
     }
   })
 
-  it('cleans a disconnected native rebuild after its pending abort without touching the reused adapter', async () => {
+  it('cleans a disconnected native rebuild after its pending abort and refuses to revive a disconnected adapter', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
     const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
     const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
@@ -1474,25 +1477,25 @@ describe('real Pi approvals', () => {
       const rebuilding = run.send()
       await abortStarted.promise
       const disconnectedCleanup = run.nativeCleanup
+      const observeRebuild = async () => {
+        try {
+          await rebuilding
+          return null
+        } catch (error) {
+          return error
+        }
+      }
+      const rebuildingRejected = observeRebuild()
       run.adapter.disconnect()
       expect(run.nativeCalls).toHaveLength(0)
-
-      // The same adapter can start a new lifetime while the old rebuild is waiting.
-      await run.send()
-      expect(harnesses).toHaveLength(2)
+      await expect(run.send()).rejects.toMatchObject({ name: 'AbortError' })
+      expect(harnesses).toHaveLength(1)
       releaseAbort.resolve()
-      await Promise.all([expect(rebuilding).rejects.toThrow('Agent disconnected'), disconnectedCleanup])
-      expect(harnesses).toHaveLength(2)
-      expect(run.requests).toHaveLength(2)
-      expect(run.nativeCalls).toHaveLength(1)
-
-      const reusedCleanup = run.nativeCleanup
-      run.adapter.disconnect()
-      await reusedCleanup
-      expect(run.nativeCalls).toHaveLength(2)
-      const owners = run.nativeCalls.map(({ args }) => args.owner)
-      expect(owners).toEqual([expect.any(String), expect.any(String)])
-      expect(owners[0]).not.toBe(owners[1])
+      const [rebuildError] = await Promise.all([rebuildingRejected, disconnectedCleanup])
+      expect(rebuildError).toMatchObject({ name: 'AbortError' })
+      expect(harnesses).toHaveLength(1)
+      expect(run.requests).toHaveLength(1)
+      expect(run.nativeCalls).toEqual([{ command: 'agent_cleanup_output_files', args: { owner: expect.any(String) } }])
     } finally {
       releaseAbort.resolve()
       run.adapter.disconnect()
@@ -1927,8 +1930,8 @@ it('removes the budget listener when the response consumer stops the live harnes
     await requested.promise
     expect(run.registrations.size).toBe(1)
     await response.body!.cancel()
-    // Cancellation aborts Pi; the prompt's finally removes the turn-local hook.
-    await Promise.resolve()
+    // Consumer cancellation settles promptly; the prompt's teardown removes the hook.
+    await run.registrationRemoved
     expect(run.registrations.size).toBe(0)
   } finally {
     run.adapter.disconnect()
@@ -2015,7 +2018,12 @@ describe('createBuiltInAdapter stop', () => {
 
     // Without this the in-browser loop keeps calling the model and running tools
     // after Stop — the AI SDK only aborts the signal, it never cancels the body.
-    expect(signals).toEqual([controller.signal])
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.aborted).toBe(false)
+    const reason = new Error('user stopped')
+    controller.abort(reason)
+    expect(signals[0]?.aborted).toBe(true)
+    expect(signals[0]?.reason).toBe(reason)
   })
 })
 
@@ -2396,5 +2404,194 @@ describe('attachments in the harness workspace', () => {
     } finally {
       consoleError.mockRestore()
     }
+  })
+})
+
+describe('built-in adapter lifetime ownership', () => {
+  const setup = (blockedPhase?: 'load' | 'config' | 'build' | 'write') => {
+    const reached = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const removed = Promise.withResolvers<void>()
+    let paused = false
+    const pause = async (phase: typeof blockedPhase) => {
+      if (phase === blockedPhase && !paused) {
+        paused = true
+        reached.resolve()
+        await release.promise
+      }
+    }
+    const model = {
+      id: 'lifetime-model',
+      provider: 'anthropic',
+      model: 'claude-opus-4-8',
+      apiKey: 'test',
+      toolUsage: 1,
+    } as Model
+    const config: PreparedAiRequestConfig = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
+      mcpToolsMetadata: undefined,
+    }
+    const listeners = new Set<(event: AgentHarnessEvent) => void>()
+    const run = Promise.withResolvers<void>()
+    const prompt = mock(async () => {
+      for (const listener of listeners) {
+        listener({ type: 'agent_start' })
+      }
+      await run.promise
+    })
+    const abort = mock(async () => {
+      run.resolve()
+    })
+    const compactRequest = mock(async () => {
+      throw new Error('Cancelled preparation must not start a compaction request')
+    })
+    const harness = {
+      ...compactionStub,
+      compaction: { ...compactionStub.compaction, compact: compactRequest },
+      getTools: () => [],
+      setTools: async () => {},
+      prompt,
+      abort,
+      waitForIdle: async () => {},
+      on: () => () => {},
+      subscribe: (listener: (event: AgentHarnessEvent) => void) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    } as unknown as AgentHarness
+    const build = mock(async () => {
+      await pause('build')
+      return harness
+    })
+    const remove = mock(async () => {
+      removed.resolve()
+    })
+    const agentCore = {
+      isKnownAnthropicModel: () => true,
+      buildAppHarness: build,
+      removeAgentWorkspace: remove,
+      toPiAgentTools: async () => [],
+      writeAgentWorkspaceFiles: async () => {
+        await pause('write')
+        return []
+      },
+      piHarnessToUiMessageStream: realAgentCore.piHarnessToUiMessageStream,
+    } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      loadAgentCore: async () => {
+        await pause('load')
+        return agentCore
+      },
+      prepareConfig: async () => {
+        await pause('config')
+        return config
+      },
+      prepareConversation: async () => ({ history: [], prompt: { text: 'hello', images: [] }, files: [] }),
+    })
+    const init = {
+      body: JSON.stringify({ messages: [{ id: 'user', role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }),
+    }
+    const send = (threadId = 'lifetime-thread', regenerationRevision = 0) =>
+      adapter.fetch(init, { ...tinfoilContext(model), threadId, regenerationRevision })
+    const compact = (threadId = 'lifetime-thread') => adapter.compact!(init, { ...tinfoilContext(model), threadId })
+    return {
+      adapter,
+      send,
+      compact,
+      compactRequest,
+      reached,
+      release,
+      build,
+      remove,
+      removed: removed.promise,
+      prompt,
+      abort,
+    }
+  }
+
+  for (const operation of ['send', 'compact'] as const) {
+    for (const phase of ['load', 'config', 'build', 'write'] as const) {
+      it(`does not adopt or run ${operation} work that completes after disconnect during ${phase}`, async () => {
+        const fixture = setup(phase)
+        const pending = fixture[operation]()
+        await fixture.reached.promise
+        fixture.adapter.disconnect()
+        expect(fixture.remove).not.toHaveBeenCalled()
+        fixture.release.resolve()
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+        if (phase === 'build' || phase === 'write') {
+          await fixture.removed
+        }
+        expect(fixture.prompt).not.toHaveBeenCalled()
+        expect(fixture.compactRequest).not.toHaveBeenCalled()
+        expect(fixture.remove).toHaveBeenCalledTimes(phase === 'build' || phase === 'write' ? 1 : 0)
+        expect(fixture.build).toHaveBeenCalledTimes(phase === 'build' || phase === 'write' ? 1 : 0)
+        await expect(fixture[operation]()).rejects.toMatchObject({ name: 'AbortError' })
+      })
+    }
+  }
+
+  it('aborts an active stream when the adapter disconnects and disposes its workspace once', async () => {
+    const fixture = setup()
+    const response = await fixture.send()
+    fixture.adapter.disconnect()
+    fixture.adapter.disconnect()
+    await response.text()
+    await fixture.removed
+    expect(fixture.abort).toHaveBeenCalled()
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('retains workspace cleanup when disconnect cancels a replacement build behind the previous run', async () => {
+    const fixture = setup()
+    const response = await fixture.send()
+    const aborting = Promise.withResolvers<void>()
+    const stopped = Promise.withResolvers<void>()
+    fixture.abort.mockImplementationOnce(async () => {
+      aborting.resolve()
+      await stopped.promise
+    })
+    const replacement = fixture.send('lifetime-thread', 1)
+    await aborting.promise
+    fixture.adapter.disconnect()
+    stopped.resolve()
+    await expect(replacement).rejects.toMatchObject({ name: 'AbortError' })
+    await response.text()
+    await fixture.removed
+    expect(fixture.build).toHaveBeenCalledTimes(1)
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([false, true])('retains failed-build cleanup and permits a fresh retry (retry: %s)', async (retry) => {
+    const fixture = setup()
+    fixture.build.mockRejectedValueOnce(new Error('build failed'))
+    await expect(fixture.send()).rejects.toThrow('build failed')
+    const response = retry ? await fixture.send() : undefined
+    fixture.adapter.disconnect()
+    await response?.text()
+    await fixture.removed
+    expect(fixture.build).toHaveBeenCalledTimes(retry ? 2 : 1)
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('disposes a ready workspace without waiting for another thread to finish loading', async () => {
+    const fixture = setup('build')
+    const pending = fixture.send('blocked-thread')
+    await fixture.reached.promise
+    const response = await fixture.send('ready-thread')
+    fixture.adapter.disconnect()
+    await response.text()
+    await fixture.removed
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+    fixture.release.resolve()
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

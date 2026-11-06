@@ -50,7 +50,7 @@ export {
 export {
   getOrCreateOtpChallenge,
   validateOtpChallenge,
-  deleteOtpChallengesForEmail,
+  consumeOtpChallenge,
   deletePersistedSignInOtp,
 } from './otp-challenge'
 

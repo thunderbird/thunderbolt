@@ -5,28 +5,12 @@
 import { AppWordmark } from '@/components/app-wordmark'
 import { useAppName } from '@/lib/branding-selectors'
 import { Button } from '@/components/ui/button'
-import { isDesktopUpdateEnabled, useDesktopUpdate, type UpdateStatus } from '@/hooks/use-desktop-update'
-import type { MessageDescriptor } from '@lingui/core'
-import { msg } from '@lingui/core/macro'
+import { desktopUpdateActionLabel, isDesktopUpdateEnabled, useDesktopUpdate } from '@/hooks/use-desktop-update'
 import { Trans, useLingui } from '@lingui/react/macro'
 
 type UpgradeRequiredProps = {
   currentVersion: string
   minVersion: string
-}
-
-/** Desktop button label per update status — mirrors the primary action of the
- *  `UpdateNotification` popover, extended to the states the popover hides.
- *  Descriptors, not strings: this table lives at module scope, so `t` would
- *  freeze the locale at import time (see docs in CLAUDE.md). */
-const desktopActionLabel: Record<UpdateStatus, MessageDescriptor> = {
-  initial: msg`Check for updates`,
-  idle: msg`Check for updates`,
-  checking: msg`Checking…`,
-  available: msg`Download update`,
-  downloading: msg`Downloading…`,
-  ready: msg`Restart to update`,
-  error: msg`Retry`,
 }
 
 /**
@@ -46,11 +30,11 @@ const UpgradeAction = () => {
     )
   }
 
-  const busy = status === 'checking' || status === 'downloading'
+  const busy = status === 'checking' || status === 'downloading' || status === 'restarting'
 
   return (
     <Button variant="secondary" onClick={primaryAction} disabled={busy}>
-      {i18n._(desktopActionLabel[status])}
+      {i18n._(desktopUpdateActionLabel[status])}
     </Button>
   )
 }

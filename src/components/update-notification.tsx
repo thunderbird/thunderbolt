@@ -22,6 +22,7 @@ const statusConfig = {
   checking: { icon: Loader2, message: msg`Checking for updates…`, showActions: false },
   available: { icon: Download, message: msg`A new version is available!`, showActions: true },
   downloading: { icon: Loader2, message: msg`Downloading update…`, showActions: false },
+  restarting: { icon: Loader2, message: msg`Update ready! Restart to apply.`, showActions: false },
   ready: { icon: RefreshCw, message: msg`Update ready! Restart to apply.`, showActions: true },
   error: { icon: AlertCircle, message: msg`Update failed`, showActions: true },
 } satisfies Record<UpdateStatus, { icon: typeof Download; message: MessageDescriptor | null; showActions: boolean }>

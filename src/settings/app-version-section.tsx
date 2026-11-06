@@ -9,13 +9,14 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import {
+  desktopUpdateActionLabel,
   isDesktopUpdateEnabled,
   useDesktopUpdate,
   type UpdateErrorPhase,
   type UpdateStatus,
 } from '@/hooks/use-desktop-update'
 import { downloadLinks } from '@/lib/download-links'
-import { getPlatform, isDesktop, isMobile, isTauri } from '@/lib/platform'
+import { getPlatform, isMobile, isTauri } from '@/lib/platform'
 
 // A whole sentence per phase and per shape, rather than a translated prefix glued
 // to the raw error with a hardcoded `: ` and `.`. The separator and the full stop
@@ -55,6 +56,7 @@ const desktopStatusText = (
         : i18n._(msg`A new version is available. See the update prompt to install.`)
     case 'downloading':
       return i18n._(msg`Downloading update… ${downloadProgress}%`)
+    case 'restarting':
     case 'ready':
       return i18n._(msg`Update ready. Restart to apply.`)
     case 'error':
@@ -65,15 +67,15 @@ const desktopStatusText = (
 export const AppVersionSection = () => {
   const { t } = useLingui()
   const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
-  const desktop = isDesktop()
+  const desktop = isDesktopUpdateEnabled()
   const mobile = isMobile()
-  const showCheckButton = isTauri() && (isDesktopUpdateEnabled() || mobile)
+  const showCheckButton = isTauri() && (desktop || mobile)
 
-  const { status, update, error, errorPhase, downloadProgress, checkForUpdates } = useDesktopUpdate()
-  const checkDisabled = desktop && (status === 'checking' || status === 'downloading' || status === 'ready')
+  const { status, update, error, errorPhase, downloadProgress, primaryAction, checkForUpdates } = useDesktopUpdate()
+  const checkDisabled = desktop && (status === 'checking' || status === 'downloading' || status === 'restarting')
 
   const handleDesktopCheck = () => {
-    checkForUpdates()
+    void primaryAction()
   }
 
   const handleMobileCheck = () => {
@@ -111,8 +113,13 @@ export const AppVersionSection = () => {
                 disabled={checkDisabled}
                 onClick={desktop ? handleDesktopCheck : handleMobileCheck}
               >
-                {desktop && status === 'checking' ? <Trans>Checking…</Trans> : <Trans>Check for updates</Trans>}
+                {desktop ? i18n._(desktopUpdateActionLabel[status]) : <Trans>Check for updates</Trans>}
               </Button>
+              {desktop && (status === 'available' || (status === 'error' && errorPhase === 'download')) && (
+                <Button variant="ghost" onClick={() => void checkForUpdates()}>
+                  <Trans>Check for updates</Trans>
+                </Button>
+              )}
             </div>
           </>
         )}

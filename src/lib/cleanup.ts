@@ -6,8 +6,10 @@ import { disposeAllAdapters } from '@/acp/adapter-cache'
 import { clearImageSupportCache } from '@/ai/image-support'
 import { clearIrohClientSecret } from '@/acp/iroh/iroh-transport'
 import { setSyncEnabled } from '@/db/powersync/sync-state'
+import { supportsKeyStoreLock, withKeyStoreLock, type KeyStoreLock } from '@/crypto/key-store-lock'
+import { invalidateEncryptionOperations } from '@/crypto/key-storage-lifetime'
 import { clearActiveLocale } from '@/i18n/active-locale'
-import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
+import { clearAuthToken, clearDeviceId, clearUserCacheSecret, invalidateAuthRequests } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
 import { clearAllAttachments } from '@/lib/file-blob-storage'
 import { clearIdentityScopedMemory } from '@/lib/identity-memory'
@@ -32,10 +34,20 @@ type ClearLocalDataOptions = {
  *
  * Does NOT reload the page or navigate — callers handle that.
  */
-export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<void> => {
-  const { disableSync = true, clearEncryptionKeys = true, clearDatabase = true, clearAuth = true } = options ?? {}
-
+export const clearLocalData = (options?: ClearLocalDataOptions): Promise<void> => {
+  invalidateAuthRequests()
+  if (options?.clearEncryptionKeys !== false) {
+    invalidateEncryptionOperations()
+  }
   clearIdentityScopedMemory()
+  // Keep other tabs' key writers waiting until keys AND the old identity are gone.
+  return supportsKeyStoreLock()
+    ? withKeyStoreLock((lock) => clearLocalDataLocked(options, lock))
+    : clearLocalDataLocked(options)
+}
+
+const clearLocalDataLocked = async (options?: ClearLocalDataOptions, lock?: KeyStoreLock): Promise<void> => {
+  const { disableSync = true, clearEncryptionKeys = true, clearDatabase = true, clearAuth = true } = options ?? {}
 
   // Tear down every warm ACP connection first so no agent transport survives
   // across user identities (sign-out, account deletion, device revocation all
@@ -56,7 +68,7 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
 
   if (clearEncryptionKeys) {
     try {
-      await handleFullWipe()
+      await handleFullWipe(lock)
     } catch (error) {
       console.error('[clearLocalData] Failed to clear encryption keys:', error)
     }

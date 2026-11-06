@@ -31,9 +31,11 @@ import { OnboardingServerStep } from './onboarding-server-step'
 import { useOnboardingServerState } from './use-onboarding-server-state'
 import { OnboardingSearchStep } from './onboarding-search-step'
 import { useNeedsOwnModel } from '@/hooks/use-needs-own-model'
+import { preloadInBackground } from '@/lib/after-paint'
 
-// The provider catalog and connection probe load only when this step is opened.
-const OnboardingModelStep = lazy(() => import('./onboarding-model-step'))
+/** Share the AI setup bundle between lazy rendering and background preloading. */
+const loadOnboardingModelStep = () => import('./onboarding-model-step')
+const OnboardingModelStep = lazy(loadOnboardingModelStep)
 
 /** Wizard position of the passkey step. */
 const passkeyStep = 6
@@ -67,6 +69,12 @@ export const OnboardingDialog = () => {
     import.meta.env.VITE_SKIP_ONBOARDING !== 'true' &&
     !userHasCompletedOnboarding.isLoading &&
     !userHasCompletedOnboarding.value
+
+  useEffect(() => {
+    if (isOpen && state.currentStep === 8) {
+      return preloadInBackground([loadOnboardingModelStep])
+    }
+  }, [isOpen, state.currentStep])
 
   // Skip the step when it isn't offered (no passkey support, or the account
   // already has one), but only once that's known: the skip is persisted, so

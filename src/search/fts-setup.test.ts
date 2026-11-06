@@ -7,7 +7,14 @@ import { describe, expect, it } from 'bun:test'
 import { LockContext, type RawQueryResult, type SqliteRecord, type Transaction } from '@powersync/common'
 import { AppSchema } from '@/db/powersync/schema'
 import type { SearchEntityConfig } from './registry'
-import { buildBackfillSql, buildCreateSql, buildDropSql, buildTriggerSql, createSearchIndex } from './fts-setup'
+import {
+  buildBackfillSql,
+  buildCreateKeysSql,
+  buildCreateSql,
+  buildDropSql,
+  buildTriggerSql,
+  createSearchIndex,
+} from './fts-setup'
 import { searchEntities, searchIndexVersion } from './registry'
 
 const configOf = (type: string): SearchEntityConfig => {
@@ -43,6 +50,8 @@ describe('buildCreateSql', () => {
 })
 
 describe('buildTriggerSql', () => {
+  const removeOldChatRow = `DELETE FROM search_index WHERE rowid = (SELECT fts_rowid FROM search_index_keys WHERE entity_type = 'chat' AND id = OLD.id)`
+
   it('emits insert/update/delete triggers on the given internal table', () => {
     const [insert, update, remove] = buildTriggerSql(configOf('chat'), 'ps_data__chat_threads')
     expect(insert).toContain('CREATE TRIGGER search_index_ai_chat AFTER INSERT ON ps_data__chat_threads')
@@ -52,7 +61,8 @@ describe('buildTriggerSql', () => {
 
   it('inserts the literal entity_type and NEW.id', () => {
     const [insert] = buildTriggerSql(configOf('chat'), 'ps_data__chat_threads')
-    expect(insert).toContain("SELECT NEW.id, 'chat',")
+    expect(insert).toContain("SELECT 'chat', NEW.id")
+    expect(insert).toContain("NEW.id, 'chat',")
   })
 
   it('guards insert and update re-insert against soft-deleted rows (deleted_at not null)', () => {
@@ -60,7 +70,7 @@ describe('buildTriggerSql', () => {
     expect(insert).toContain(`WHERE json_extract(NEW.data, '$.deleted_at') IS NULL`)
     // the update deletes then conditionally re-inserts, so setting deleted_at
     // hard-deletes the index row and clearing it re-adds the row
-    expect(update).toContain(`DELETE FROM search_index WHERE id = OLD.id AND entity_type = 'chat'`)
+    expect(update).toContain(removeOldChatRow)
     expect(update).toContain(`WHERE json_extract(NEW.data, '$.deleted_at') IS NULL`)
   })
 
@@ -96,36 +106,41 @@ describe('buildTriggerSql', () => {
     )
   })
 
-  it('scopes the delete predicate to id AND the literal entity_type', () => {
+  it('deletes through the key map, scoped to id AND the literal entity_type', () => {
     const [, update, remove] = buildTriggerSql(configOf('chat'), 'ps_data__chat_threads')
-    expect(remove).toContain(`DELETE FROM search_index WHERE id = OLD.id AND entity_type = 'chat'`)
+    expect(remove).toContain(removeOldChatRow)
     // update re-syncs by deleting the old row first, then inserting
-    expect(update).toContain(`DELETE FROM search_index WHERE id = OLD.id AND entity_type = 'chat'`)
+    expect(update).toContain(removeOldChatRow)
     expect(update).toContain('INSERT INTO search_index')
+    expect(remove).toContain("DELETE FROM search_index_keys WHERE entity_type = 'chat' AND id = OLD.id")
   })
 })
 
 describe('buildBackfillSql', () => {
   it('selects from the internal table into the index with the literal entity_type', () => {
-    const sql = buildBackfillSql(configOf('chat'), 'ps_data__chat_threads')
-    expect(sql).toContain('INSERT INTO search_index(id, entity_type, parent_id, title, body) SELECT')
+    const [keys, sql] = buildBackfillSql(configOf('chat'), 'ps_data__chat_threads')
+    expect(keys).toContain(
+      "INSERT INTO search_index_keys(entity_type, id) SELECT 'chat', id FROM ps_data__chat_threads",
+    )
+    expect(sql).toContain('INSERT INTO search_index(rowid, id, entity_type, parent_id, title, body) SELECT')
     expect(sql).toContain(`'chat'`)
     expect(sql).toContain('FROM ps_data__chat_threads')
   })
 
   it('reads fields from the bare data column (not NEW.data) in backfill', () => {
-    const sql = buildBackfillSql(configOf('chat'), 'ps_data__chat_threads')
+    const [, sql] = buildBackfillSql(configOf('chat'), 'ps_data__chat_threads')
     expect(sql).toContain(`json_extract(data, '$.title')`)
     expect(sql).not.toContain('NEW.data')
   })
 
   it('skips soft-deleted rows in the backfill', () => {
-    const sql = buildBackfillSql(configOf('chat'), 'ps_data__chat_threads')
-    expect(sql).toContain(`FROM ps_data__chat_threads WHERE json_extract(data, '$.deleted_at') IS NULL`)
+    for (const sql of buildBackfillSql(configOf('chat'), 'ps_data__chat_threads')) {
+      expect(sql).toContain(`FROM ps_data__chat_threads WHERE json_extract(data, '$.deleted_at') IS NULL`)
+    }
   })
 
   it('emits empty-string title and NULL parent for an entity lacking both (device)', () => {
-    const sql = buildBackfillSql(configOf('device'), 'ps_data__devices')
+    const [, sql] = buildBackfillSql(configOf('device'), 'ps_data__devices')
     expect(sql).toContain(`json_extract(data, '$.name')`)
     expect(sql).not.toContain('parentId')
     expect(sql).toContain('NULL')
@@ -135,17 +150,20 @@ describe('buildBackfillSql', () => {
 describe('buildDropSql', () => {
   const statements = buildDropSql()
 
-  it('drops every trigger for every registered entity, then the table last', () => {
+  it('drops every trigger for every registered entity, then the key map and the table last', () => {
     for (const cfg of searchEntities) {
       expect(statements).toContain(`DROP TRIGGER IF EXISTS search_index_ai_${cfg.type}`)
       expect(statements).toContain(`DROP TRIGGER IF EXISTS search_index_au_${cfg.type}`)
       expect(statements).toContain(`DROP TRIGGER IF EXISTS search_index_ad_${cfg.type}`)
     }
-    expect(statements.at(-1)).toBe('DROP TABLE IF EXISTS search_index')
+    expect(statements.slice(-2)).toEqual([
+      'DROP TABLE IF EXISTS search_index_keys',
+      'DROP TABLE IF EXISTS search_index',
+    ])
   })
 
-  it('drops 3 triggers per entity plus one table statement', () => {
-    expect(statements).toHaveLength(searchEntities.length * 3 + 1)
+  it('drops 3 triggers per entity plus two table statements', () => {
+    expect(statements).toHaveLength(searchEntities.length * 3 + 2)
   })
 })
 
@@ -165,6 +183,7 @@ describe('FTS SQL end-to-end against real SQLite', () => {
     const db = new Database(':memory:')
     db.run(`CREATE TABLE ${internalName} (id TEXT PRIMARY KEY, data TEXT)`)
     db.run(buildCreateSql())
+    db.run(buildCreateKeysSql())
     if (installTriggers) {
       for (const statement of buildTriggerSql(modelCfg, internalName)) {
         db.run(statement)
@@ -245,11 +264,67 @@ describe('FTS SQL end-to-end against real SQLite', () => {
     db.close()
   })
 
+  it('keeps one index row when a synced REPLACE rewrites a row, and drops it on a later delete', () => {
+    const db = makeDb()
+    insertRow(db, 'm1', { name: 'Alpha', deleted_at: null })
+    // PowerSync applies a synced PUT as REPLACE INTO, which does not fire the DELETE trigger.
+    db.run(`REPLACE INTO ${internalName}(id, data) VALUES (?, ?)`, ['m1', JSON.stringify({ name: 'Beta' })])
+
+    expect(search(db, 'alpha')).toHaveLength(0)
+    expect(search(db, 'beta').map((row) => row.id)).toEqual(['m1'])
+
+    db.run(`DELETE FROM ${internalName} WHERE id = ?`, ['m1'])
+    expect(search(db, 'beta')).toHaveLength(0)
+    db.close()
+  })
+
+  it("leaves another entity's index row with the same id alone", () => {
+    const db = makeDb()
+    const skillTable = 'ps_data__skills'
+    db.run(`CREATE TABLE ${skillTable} (id TEXT PRIMARY KEY, data TEXT)`)
+    for (const statement of buildTriggerSql(configOf('skill'), skillTable)) {
+      db.run(statement)
+    }
+    insertRow(db, 'shared', { name: 'Epsilon', deleted_at: null })
+    db.run(`INSERT INTO ${skillTable}(id, data) VALUES (?, ?)`, ['shared', JSON.stringify({ name: 'Epsilon' })])
+
+    setData(db, 'shared', { name: 'Epsilon', deleted_at: 'yes' })
+    expect(db.query(`SELECT entity_type FROM search_index WHERE search_index MATCH 'epsilon'`).all()).toEqual([
+      { entity_type: 'skill' },
+    ])
+    db.close()
+  })
+
+  // Every write to an indexed row runs these deletes. FTS5 can only seek by rowid
+  // or MATCH, so a predicate on an UNINDEXED column scans the whole index — once
+  // per written row, which made soft-deleting a large chat quadratic.
+  it('finds the index row to remove by rowid instead of scanning the whole index', () => {
+    const db = makeDb()
+    const removals = buildTriggerSql(modelCfg, internalName).flatMap((trigger) =>
+      trigger
+        .slice(trigger.indexOf(' BEGIN ') + ' BEGIN '.length, trigger.lastIndexOf('; END'))
+        .split('; ')
+        .filter((statement) => statement.startsWith('DELETE FROM search_index ')),
+    )
+
+    for (const statement of removals) {
+      const plan = db.query(`EXPLAIN QUERY PLAN ${statement.replace(/\b(?:OLD|NEW)\.id\b/g, "'m1'")}`).all() as {
+        detail: string
+      }[]
+      const ftsStep = plan.find((step) => step.detail.startsWith('SCAN search_index VIRTUAL TABLE'))
+      expect(ftsStep?.detail).toMatch(/:=$/) // FTS5 rowid-equality plan; a full scan ends in a bare ':'
+    }
+    expect(removals).toHaveLength(3) // insert (sync REPLACE), update, and delete triggers
+    db.close()
+  })
+
   it('backfills pre-existing rows and skips soft-deleted ones', () => {
     const db = makeDb(false) // rows pre-exist before any trigger — the backfill must catch them
     insertRow(db, 'keep', { name: 'Keeper', deleted_at: null })
     insertRow(db, 'skip', { name: 'Skipper', deleted_at: 'yes' })
-    db.run(buildBackfillSql(modelCfg, internalName))
+    for (const statement of buildBackfillSql(modelCfg, internalName)) {
+      db.run(statement)
+    }
 
     expect(search(db, 'keep*').map((row) => row.id)).toEqual(['keep'])
     expect(search(db, 'skip*')).toHaveLength(0)
@@ -306,7 +381,7 @@ describe('createSearchIndex transactions', () => {
   it('rolls back an interrupted same-version repair and retries without accepting a partial index', async () => {
     const lastEntity = searchEntities.at(-1)!
     const table = AppSchema.tables.find((candidate) => candidate.name === lastEntity.tableName)!
-    const lastBackfill = buildBackfillSql(lastEntity, table.internalName)
+    const lastBackfill = buildBackfillSql(lastEntity, table.internalName).at(-1)
     const failure = { enabled: false }
     const { sqlite, powerSync } = makeDatabase(async (sql) => {
       if (failure.enabled && sql === lastBackfill) {

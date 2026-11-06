@@ -840,6 +840,33 @@ describe('useHydrateChatStore', () => {
       // Verify no error was thrown
       expect(result.current.saveMessages).toBeDefined()
     })
+
+    it('preserves current context for historical edits and updates it for ordinary saves', async () => {
+      const modelId = await createSystemModel()
+      const threadId = await createTestThread(modelId)
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      const message = createTestMessage({ role: 'assistant', metadata: { contextTokens: 2000 } })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+        await result.current.saveMessages({ id: threadId, messages: [message] })
+        await result.current.saveMessages({
+          id: threadId,
+          messages: [{ ...message, metadata: { contextTokens: 500 } }],
+          updateContext: false,
+        })
+      })
+      expect((await getThread(getDb(), threadId))?.contextSize).toBe(2000)
+
+      await act(async () => {
+        await result.current.saveMessages({
+          id: threadId,
+          messages: [{ ...message, metadata: { contextTokens: 600 } }],
+        })
+      })
+      expect((await getThread(getDb(), threadId))?.contextSize).toBe(600)
+    })
   })
   /*
    * The first save of a new chat promotes the URL from /chats/new to

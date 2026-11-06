@@ -37,7 +37,7 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 | `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
 | `backend`       | Always                                                                         | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
 | `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
-| `agent-core`    | `shared/agent-core/**`, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
+| `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
 | `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test                         |
 | `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`        | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
 | `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |

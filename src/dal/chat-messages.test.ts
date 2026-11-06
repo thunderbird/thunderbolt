@@ -408,6 +408,93 @@ describe('Chat Messages DAL', () => {
       const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
       expect(thread?.contextSize).toBe(300)
     })
+
+    it('persists a compaction checkpoint and context size without changing billing usage or transcript content', async () => {
+      const db = getDb()
+      const threadId = uuidv7()
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Compacted', isEncrypted: 0 })
+      const checkpoint = {
+        version: 1 as const,
+        summary: 'Decisions',
+        tokensBefore: 9_000,
+        contextTokens: 123,
+        retainedTail: [],
+      }
+      const message: ThunderboltUIMessage = {
+        id: uuidv7(),
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Visible answer' }],
+        metadata: {
+          contextCompaction: checkpoint,
+          contextTokens: 123,
+          usage: { inputTokens: 8900, outputTokens: 100, totalTokens: 9000 },
+        },
+      }
+      await saveMessagesWithContextUpdate(db, threadId, [message])
+      const saved = await getChatMessages(db, threadId)
+      expect(saved[0].content).toBe('Visible answer')
+      expect(saved[0].metadata).toEqual(message.metadata!)
+      expect(
+        (await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get())?.contextSize,
+      ).toBe(123)
+    })
+
+    it.each([undefined, 500])(
+      'preserves current context when patching a historical compaction with contextTokens %p',
+      async (contextTokens) => {
+        const db = getDb()
+        const threadId = uuidv7()
+        await db.insert(chatThreadsTable).values({ id: threadId, title: 'Compacted', isEncrypted: 0 })
+        const compaction = {
+          agentId: 'agent',
+          sessionId: 'session',
+          compactionId: 'compact-1',
+          status: 'in_progress',
+        }
+        const older: ThunderboltUIMessage = {
+          id: uuidv7(),
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Earlier reply' },
+            { type: 'data-acp-compaction', data: compaction },
+          ],
+          metadata: {
+            ...(contextTokens !== undefined ? { contextTokens } : {}),
+            usage: { inputTokens: 800, outputTokens: 50, totalTokens: 850 },
+          },
+        }
+        const latest: ThunderboltUIMessage = {
+          id: uuidv7(),
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Current reply' }],
+          metadata: { contextTokens: 2000 },
+        }
+        await saveMessagesWithContextUpdate(db, threadId, [older, latest])
+
+        const updated: ThunderboltUIMessage = {
+          ...older,
+          parts: [
+            older.parts[0],
+            {
+              type: 'data-acp-compaction',
+              data: { ...compaction, status: 'completed', summary: [{ type: 'text', text: 'Earlier decisions' }] },
+            },
+          ],
+        }
+        await saveMessagesWithContextUpdate(db, threadId, [updated], { updateContext: false })
+
+        const saved = await getChatMessages(db, threadId)
+        expect(saved).toHaveLength(2)
+        expect(saved[0].parts).toEqual(updated.parts)
+        expect(saved[0].metadata).toEqual(older.metadata!)
+        expect(saved[0].parentId).toBeNull()
+        expect(saved[1].parts).toEqual(latest.parts)
+        expect(saved[1].parentId).toBe(older.id)
+        expect(
+          (await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get())?.contextSize,
+        ).toBe(2000)
+      },
+    )
   })
 
   describe('saveStreamingAssistantMessage', () => {

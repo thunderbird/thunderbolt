@@ -1,7 +1,7 @@
 {
   "name": "thunderbolt",
   "private": true,
-  "version": "0.1.154",
+  "version": "0.1.155",
   "description": "Thunderbolt",
   "type": "module",
   "license": "MPL-2.0",
@@ -67,7 +67,7 @@
     }
   ],
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.22.1",
+    "@agentclientprotocol/sdk": "1.9.0",
     "@ai-sdk/anthropic": "^3.0.14",
     "@ai-sdk/mcp": "^1.0.9",
     "@ai-sdk/openai": "^3.0.11",

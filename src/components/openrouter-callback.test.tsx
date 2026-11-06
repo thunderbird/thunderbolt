@@ -2,82 +2,74 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { afterEach, expect, it, mock, spyOn } from 'bun:test'
+import { act, render, screen, cleanup } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { I18nProvider } from '@lingui/react'
-import { act, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { i18n } from '@/i18n'
-import { getClock } from '@/testing-library'
-import type { OpenRouterCallbackChannel } from '@/lib/openrouter-callback'
+import { startProviderBrowserConnection, cancelProviderBrowserConnection } from '@/lib/provider-browser-auth'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import OpenRouterCallback from './openrouter-callback'
 
-const flowId = 'a'.repeat(43)
 const originalLocation = window.location
-
-/** Renders a returned popup with no opener and an isolated channel boundary. */
-const renderCallback = (query: string) => {
-  const callbackUrl = new URL(`https://app.test/oauth/openrouter/${flowId}${query}`)
-  Object.defineProperty(window, 'location', { value: callbackUrl, configurable: true, writable: true })
-  spyOn(window.history, 'replaceState').mockImplementation((_state, _unused, url) => {
-    Object.defineProperty(window, 'location', {
-      value: new URL(String(url), callbackUrl),
-      configurable: true,
-      writable: true,
-    })
-  })
-  const postMessage = mock(() => {})
-  const close = mock(() => {})
-  const channel: OpenRouterCallbackChannel = { onmessage: null, postMessage, close }
-  const createChannel = mock(() => channel)
-  const closeWindow = spyOn(window, 'close').mockImplementation(() => {})
-  const view = render(
-    <I18nProvider i18n={i18n}>
-      <OpenRouterCallback createChannel={createChannel} />
-    </I18nProvider>,
-  )
-  return { ...view, postMessage, close, createChannel, closeWindow }
-}
-
+const nonce = 's'.repeat(43)
 afterEach(() => {
+  cleanup()
+  cancelProviderBrowserConnection()
   Object.defineProperty(window, 'location', { value: originalLocation, configurable: true, writable: true })
   mock.restore()
 })
-
-describe('OpenRouter callback without a window opener', () => {
-  it('relays across the flow channel, clears sensitive URL parameters, and closes itself', async () => {
-    expect(window.opener ?? null).toBeNull()
-    const view = renderCallback(`?code=authorization-code&state=${flowId}#discard`)
-    expect(view.createChannel).toHaveBeenCalledWith(`thunderbolt-openrouter-${flowId}`)
-    expect(view.postMessage).toHaveBeenCalledWith({
-      type: 'openrouter-callback',
-      state: flowId,
-      code: 'authorization-code',
+it.each(['openrouter', 'tinfoil'] as const)(
+  'returns %s to setup in the same tab and removes the code from history',
+  async (provider) => {
+    const callback = `https://app.test/oauth/${provider}${provider === 'openrouter' ? `/${nonce}` : ''}`
+    await startProviderBrowserConnection(
+      provider,
+      'connections',
+      { provider, revision: '1' },
+      new AbortController().signal,
+      {
+        origin: () => 'https://app.test',
+        currentPath: () => '/settings/connections',
+        verifier: () => nonce,
+        challenge: async () => 'challenge',
+        navigate: () => {},
+      },
+    )
+    Object.defineProperty(window, 'location', {
+      value: new URL(`${callback}?code=secret&state=${nonce}`),
+      configurable: true,
+      writable: true,
     })
-    expect(window.location.search).toBe('')
-    expect(window.location.hash).toBe('')
-    expect(screen.getByRole('heading')).toHaveTextContent('Return to Thunderbolt')
-    await act(async () => getClock().tickAsync(1000))
-    expect(view.closeWindow).toHaveBeenCalledTimes(1)
-    view.unmount()
-    expect(view.close).toHaveBeenCalledTimes(1)
-  })
-
-  it('relays a sanitized denial even when OpenRouter omits state', () => {
-    const view = renderCallback('?error=access_denied&error_description=private-provider-message')
-    expect(view.postMessage).toHaveBeenCalledWith({ type: 'openrouter-callback', state: flowId, error: 'cancelled' })
-    expect(screen.getByRole('heading')).toHaveTextContent('Connection not completed')
-    expect(screen.queryByText('private-provider-message')).not.toBeInTheDocument()
-  })
-
-  it('does not relay an authorization code with mismatched state and cancels the close timer on unmount', async () => {
-    const view = renderCallback('?code=authorization-code&state=wrong')
-    expect(view.postMessage).toHaveBeenCalledWith({
-      type: 'openrouter-callback',
-      state: flowId,
-      error: 'invalid_response',
+    const replace = spyOn(window.history, 'replaceState').mockImplementation(() => {})
+    const close = spyOn(window, 'close').mockImplementation(() => {})
+    await act(async () => {
+      render(
+        <I18nProvider i18n={i18n}>
+          <MemoryRouter>
+            <Routes>
+              <Route path="/" element={<OpenRouterCallback />} />
+              <Route path="/settings/connections" element={<p>Connection setup</p>} />
+            </Routes>
+          </MemoryRouter>
+        </I18nProvider>,
+      )
     })
-    view.unmount()
-    await act(async () => getClock().tickAsync(1000))
-    expect(view.closeWindow).not.toHaveBeenCalled()
-    expect(view.close).toHaveBeenCalledTimes(1)
-  })
+    expect(await waitForElement(() => screen.queryByText('Connection setup'))).toBeInTheDocument()
+    expect(replace).toHaveBeenCalledWith(window.history.state, '', new URL(callback).pathname)
+    expect(close).not.toHaveBeenCalled()
+  },
+)
+it('keeps invalid callbacks in the current tab with a return action', () => {
+  spyOn(window.history, 'replaceState').mockImplementation(() => {})
+  const close = spyOn(window, 'close').mockImplementation(() => {})
+  render(
+    <I18nProvider i18n={i18n}>
+      <MemoryRouter>
+        <OpenRouterCallback />
+      </MemoryRouter>
+    </I18nProvider>,
+  )
+  expect(screen.getByRole('link')).toBeInTheDocument()
+  expect(close).not.toHaveBeenCalled()
 })

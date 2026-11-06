@@ -21,6 +21,7 @@ import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-suppor
 import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
 import { createEvalAdapterContext } from '@/ai/eval/runner'
 import { createModel as insertModel } from '@/dal/models'
+import { saveProviderConnectionInTransaction } from '@/dal/provider-connections'
 import { updateSkill } from '@/dal/skills'
 import { useConfigStore } from '@/api/config-store'
 import { updateSettings } from '@/dal/settings'
@@ -88,10 +89,10 @@ const openaiCompat = (
 describe('isPiModelCandidate', () => {
   it('matches the production provider and tool-usage routing boundary', () => {
     expect(
-      ['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'].map((provider) =>
+      ['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt', 'otari'].map((provider) =>
         isPiModelCandidate({ provider: provider as Model['provider'], toolUsage: 1 }),
       ),
-    ).toEqual([true, true, true, true, true])
+    ).toEqual([true, true, true, true, true, true])
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 0 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'anthropic', toolUsage: 0 })).toBe(false)
@@ -423,6 +424,59 @@ const createHarnessEvents = () => {
 }
 
 describe('resolvePiModel — Tinfoil', () => {
+  it('refreshes linked OAuth credentials once per request and never bypasses their binding', async () => {
+    await setupTestDatabase()
+    const access = spyOn(tinfoilSession, 'getAccessToken').mockResolvedValue('initial')
+    const send = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer refreshed')
+      return new Response()
+    })
+    try {
+      const id = await getDb().transaction((tx) =>
+        saveProviderConnectionInTransaction(tx, {
+          provider: 'tinfoil',
+          name: 'Private account',
+          authMethod: 'oauth',
+          credentials: { access_token: 'initial', refresh_token: 'refresh', expires_at: Date.now() + 120_000 },
+        }),
+      )
+      const model = tinfoilModel({ isSystem: 0, providerConnectionId: id, oauthProvider: 'tinfoil', apiKey: 'stale' })
+      const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(model), null, {
+        getTinfoilClient: async () => createSecureClient(send),
+      })
+      const descriptor = requireDescriptor(resolved, 'openai-compat')
+      expect(access).toHaveBeenCalledTimes(1)
+      expect(descriptor.apiKey).toBe('initial')
+      access.mockResolvedValue('refreshed')
+      await descriptor.fetch('https://enclave.example.com/v1/chat/completions', {
+        headers: { Authorization: 'Bearer initial' },
+      })
+      expect(access).toHaveBeenCalledTimes(2)
+      expect(send).toHaveBeenCalledTimes(1)
+
+      await getDb().transaction((tx) =>
+        saveProviderConnectionInTransaction(tx, {
+          id,
+          provider: 'tinfoil',
+          name: 'Replacement account',
+          authMethod: 'oauth',
+          credentials: {
+            access_token: 'replacement',
+            refresh_token: 'replacement-refresh',
+            expires_at: Date.now() + 120_000,
+          },
+        }),
+      )
+      await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toThrow(
+        'connection changed',
+      )
+      expect(send).toHaveBeenCalledTimes(1)
+    } finally {
+      access.mockRestore()
+      await teardownTestDatabase()
+    }
+  })
+
   it('uses fresh OAuth bearer tokens inside the direct encrypted transport, never the managed proxy', async () => {
     const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
     useLocalSettingsStore.setState({ cloudUrl: '' })

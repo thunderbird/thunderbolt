@@ -17,11 +17,14 @@ import { createMockHttpClient, createRecordingClient } from '@/test-utils/http-c
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
-import { createModel } from '@/dal/models'
+import {
+  saveProviderConnection,
+  disconnectProviderConnection,
+  updateProviderConnection,
+} from '@/dal/provider-connections'
 import { updateSettings } from '@/dal/settings'
 import { clearCachedSession } from '@/lib/session-cache'
-import * as integrations from '@/dal/integrations'
-import * as tinfoilConnection from '@/hooks/use-tinfoil-connection'
+import * as searchAvailability from '@/integrations/standalone-search/use-search-provider-availability'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { LinkPreviewWidget } from './widget'
 import type { ReactElement } from 'react'
@@ -338,63 +341,62 @@ describe('cloud-account private-search preview routing', () => {
     useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: true })
   })
 
-  it.each(['tinfoil', 'custom', 'none'] as const)(
-    'never sends preview URLs to the server when %s is selected',
-    async (selection) => {
-      useSearchProviderStore.getState().selectSearchProvider(selection)
-      const { client, requests } = createRecordingClient(() => previewResponse)
-      const { getByText } = renderWithProviders(
-        <LinkPreviewWidget url="https://example.com/private-research" messageId="msg-1" />,
-        client,
-      )
-      await settleQueries()
-      expect(requests).toEqual([])
-      expect(getByText('example.com')).toBeTruthy()
-    },
-  )
-
-  it.each(['custom', 'tinfoil-oauth', 'tinfoil-byok'] as const)(
-    'keeps automatic %s selection off the server',
+  it.each(['connection', 'none'] as const)('never sends previews to Cloud when %s is selected', async (selection) => {
+    if (selection === 'connection') {
+      useSearchProviderStore.getState().selectSearchConnection('missing-private-connection')
+    } else {
+      useSearchProviderStore.getState().selectSearchProvider('none')
+    }
+    const { client, requests } = createRecordingClient(() => previewResponse)
+    renderWithProviders(<LinkPreviewWidget url="https://example.com/private-research" messageId="msg-1" />, client)
+    await settleQueries()
+    expect(requests).toEqual([])
+  })
+  it.each(['exa', 'tinfoil', 'otari'] as const)(
+    'keeps selected %s connection previews off Cloud without any model',
     async (provider) => {
-      if (provider === 'custom') {
-        useSearchProviderStore.getState().configureSearchProvider('own-key', 'exa')
-      } else if (provider === 'tinfoil-oauth') {
-        await integrations.saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'own-token' }, true)
+      const id = await saveProviderConnection(getDb(), {
+        provider,
+        name: 'Private',
+        url: provider === 'otari' ? 'https://otari.example/api/v1' : null,
+        authMethod: 'api_key',
+        credentials: { apiKey: 'key' },
+      })
+      useSearchProviderStore.getState().selectSearchConnection(id)
+      const { client, requests } = createRecordingClient(() => previewResponse)
+      renderWithProviders(<LinkPreviewWidget url="https://example.com/private-research" messageId="msg-1" />, client)
+      await settleQueries()
+      expect(requests).toEqual([])
+    },
+  )
+  it.each(['disabled', 'disconnected'] as const)(
+    'does not fall back to Cloud after a selected connection is %s',
+    async (change) => {
+      const id = await saveProviderConnection(getDb(), {
+        provider: 'tinfoil',
+        name: 'Private',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'key' },
+      })
+      useSearchProviderStore.getState().selectSearchConnection(id)
+      if (change === 'disabled') {
+        await updateProviderConnection(getDb(), id, { enabled: false })
       } else {
-        await createModel(getDb(), {
-          id: 'tinfoil',
-          name: 'Tinfoil',
-          provider: 'tinfoil',
-          model: 'test',
-          apiKey: 'own-key',
-          enabled: 1,
-        })
+        await disconnectProviderConnection(getDb(), id)
       }
-      useSearchProviderStore.getState().selectSearchProvider('auto')
       const { client, requests } = createRecordingClient(() => previewResponse)
       renderWithProviders(<LinkPreviewWidget url="https://example.com/private-research" messageId="msg-1" />, client)
       await settleQueries()
       expect(requests).toEqual([])
     },
   )
-
-  it.each([
-    { access_token: 'disabled', enabled: false },
-    { access_token: '', enabled: false },
-    { access_token: 'expired', reauth_required: true, enabled: true },
-  ])(
-    'keeps automatic selection off the cloud after Tinfoil becomes unavailable: %j',
-    async ({ enabled, ...credentials }) => {
-      await integrations.saveIntegrationCredentials(getDb(), 'tinfoil', credentials, enabled)
-      const { client, requests } = createRecordingClient(() => previewResponse)
-      renderWithProviders(<LinkPreviewWidget url="https://example.com/private-research" messageId="msg-1" />, client)
-      await settleQueries()
-      expect(requests).toEqual([])
-    },
-  )
-
-  it('allows an explicit cloud choice despite connected private providers', async () => {
-    await integrations.saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'own-token' }, true)
+  it('allows an explicit Cloud choice despite an unused private connection', async () => {
+    await saveProviderConnection(getDb(), {
+      provider: 'tinfoil',
+      name: 'Private',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'key' },
+    })
     useSearchProviderStore.getState().selectSearchProvider('cloud')
     const { client, requests } = createRecordingClient(() => previewResponse)
     renderWithProviders(<LinkPreviewWidget url="https://example.com/article" messageId="msg-1" />, client)
@@ -403,9 +405,9 @@ describe('cloud-account private-search preview routing', () => {
   })
 
   it('does not infer cloud permission from an unresolved or failed provider lookup', async () => {
-    const useConnection = tinfoilConnection.useTinfoilConnection
-    const status = { isLoading: true, isFetching: true, isSuccess: false }
-    const session = spyOn(tinfoilConnection, 'useTinfoilConnection').mockImplementation(() => ({
+    const useConnection = searchAvailability.useSearchProviderAvailability
+    const status = { loading: true, ready: false }
+    const session = spyOn(searchAvailability, 'useSearchProviderAvailability').mockImplementation(() => ({
       ...useConnection(),
       ...status,
     }))
@@ -417,7 +419,7 @@ describe('cloud-account private-search preview routing', () => {
       )
       await settleQueries()
       expect(requests).toEqual([])
-      Object.assign(status, { isLoading: false, isFetching: false })
+      Object.assign(status, { loading: false, ready: false })
       view.rerender(<LinkPreviewWidget url="https://example.com/article" messageId="msg-1" />)
       await settleQueries()
       expect(requests).toEqual([])

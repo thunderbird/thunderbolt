@@ -2,16 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { updateModelInTransaction } from '@/dal/models'
-import { tinfoilSession } from '@/lib/tinfoil-session'
-import { invalidateProviderConnectionAttempts } from '@/lib/provider-connection-attempt'
+import { getProviderConnections, disconnectProviderConnection } from '@/dal/provider-connections'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
-import { getAllModels, getAvailableModels } from '@/dal'
+import { getAllModels, getAvailableModels, getSettings } from '@/dal'
 import { useQueryClient } from '@tanstack/react-query'
-import { useTinfoilConnection } from '@/hooks/use-tinfoil-connection'
-import { hasTinfoilSearchConnection } from '@/integrations/tinfoil-search/eligibility'
 import { useChatStore } from '@/chats/chat-store'
 import type { OnboardingProvider } from './provider-default-model'
 import { isStandaloneModelReady } from '@/settings/models/model-policy'
@@ -29,54 +25,36 @@ export const useOnboardingModelState = () => {
     queryKey: ['models', 'onboarding'],
     query: toCompilableQuery(getAllModels(db)),
   })
-  const { data: session, isLoading: sessionLoading } = useTinfoilConnection()
-  const oauthAvailable = Boolean(session?.enabled && session.connected && !session.needsReauth)
-  // Connection status must not flip to disconnected when the user switches a model off.
-  const connectedModels = models.filter(
-    (model) =>
-      isConfiguredStandaloneModel({ ...model, enabled: 1 }) && (model.oauthProvider !== 'tinfoil' || oauthAvailable),
-  )
+  const connectedModels = models.filter((model) => isConfiguredStandaloneModel({ ...model, enabled: 1 }))
   const configuredModels = connectedModels.filter((model) => model.enabled === 1)
-  const connectedProviders = connectedModels
-    .filter(
-      (model) =>
-        !['openrouter', 'tinfoil'].includes(model.provider) ||
-        model.providerDefault === 1 ||
-        model.oauthProvider === 'tinfoil',
-    )
-    .map(({ provider }): OnboardingProvider | 'custom' =>
-      provider === 'openrouter' || provider === 'tinfoil' ? provider : 'custom',
-    )
-  const hasBuiltInSearch = hasTinfoilSearchConnection(models, oauthAvailable)
+  const connectedProviders = connectedModels.map(({ provider }): OnboardingProvider | 'otari' | 'custom' =>
+    provider === 'openrouter' || provider === 'tinfoil' || provider === 'otari' ? provider : 'custom',
+  )
   const disconnectProvider = async (provider: OnboardingProvider) => {
-    if (provider === 'tinfoil') {
-      await tinfoilSession.disconnect()
-    } else {
-      // Keep model identities and chat history while removing device-local access.
-      await db.transaction(async (tx) => {
-        for (const model of await getAllModels(tx)) {
-          if (
-            model.provider === provider &&
-            model.providerDefault === 1 &&
-            model.isSystem !== 1 &&
-            !model.oauthProvider
-          ) {
-            await updateModelInTransaction(tx, model.id, { apiKey: null })
-          }
-        }
-        await invalidateProviderConnectionAttempts(tx, provider)
-      })
+    const connections = (await getProviderConnections(db)).filter(
+      (connection) => connection.provider === provider && connection.connected,
+    )
+    const currentModels = ((await getAllModels(db)) as Model[]).filter(
+      (model) => model.provider === provider && isConfiguredStandaloneModel({ ...model, enabled: 1 }),
+    )
+    const { selectedModel } = await getSettings(db, { selected_model: '' })
+    const selected = currentModels.find((model) => model.id === selectedModel) ?? currentModels[0]
+    const connection =
+      connections.find((connection) => connection.authMethod === 'oauth') ??
+      connections.find((connection) => connection.id === selected?.providerConnectionId)
+    if (connection) {
+      await disconnectProviderConnection(db, connection.id)
     }
     useChatStore.getState().setModels(await getAvailableModels(db))
     await queryClient.invalidateQueries({ queryKey: ['models'] })
+    await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
   }
   return {
     connectedModels,
     connectedProviders,
     configuredModels,
     hasConfiguredModel: configuredModels.length > 0,
-    hasBuiltInSearch,
-    isLoading: modelsLoading || sessionLoading,
+    isLoading: modelsLoading,
     disconnectProvider,
   }
 }

@@ -10,6 +10,11 @@ import { getDb } from '@/db/database'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import { createTinfoilSession } from './tinfoil-session'
 import { getProviderConnectionAttempt, saveProviderAuthorization } from './provider-connection-attempt'
+import { invalidateProviderConnectionAttempts } from './provider-connection-attempt'
+import { saveProviderConnectionInTransaction } from '@/dal/provider-connections'
+import { credentialBinding, writeProviderCredentials } from '@/providers/credentials'
+import { providerConnectionsTable, providerConnectionSecretsTable, integrationsSecretsTable } from '@/db/tables'
+import { eq } from 'drizzle-orm'
 import { tinfoilAuth, TinfoilReauthorizationError, TinfoilConnectionError } from './tinfoil-auth'
 
 /** Deterministic stand-in for the browser's origin-wide Web Lock. */
@@ -34,6 +39,22 @@ const harness = () => {
   }
   return { auth, session: createTinfoilSession({ db: getDb, auth, lock: serialLock(), now: () => 100_000 }) }
 }
+
+const saveCanonicalSession = (credentials = expired) =>
+  getDb().transaction((tx) =>
+    saveProviderConnectionInTransaction(tx, {
+      provider: 'tinfoil',
+      name: 'Tinfoil',
+      authMethod: 'oauth',
+      credentials,
+    }),
+  )
+const canonicalSecret = () =>
+  getDb()
+    .select()
+    .from(providerConnectionSecretsTable)
+    .where(eq(providerConnectionSecretsTable.id, 'oauth:tinfoil'))
+    .get()
 
 describe('Tinfoil session lifecycle', () => {
   beforeAll(setupTestDatabase)
@@ -279,19 +300,14 @@ describe('Tinfoil session lifecycle', () => {
   it('keeps the session generation through refresh but rotates it on explicit state changes', async () => {
     await saveIntegrationCredentials(getDb(), 'tinfoil', { ...expired, sessionRevision: 'original' }, true)
     const { session } = harness()
+    const original = await getProviderConnectionAttempt(getDb(), 'tinfoil')
     await session.getAccessToken()
-    expect(await getProviderConnectionAttempt(getDb(), 'tinfoil')).toEqual({
-      provider: 'tinfoil',
-      revision: 'original',
-    })
+    expect(await getProviderConnectionAttempt(getDb(), 'tinfoil')).toEqual(original)
     await session.setEnabled(true)
-    expect(await getProviderConnectionAttempt(getDb(), 'tinfoil')).toEqual({
-      provider: 'tinfoil',
-      revision: 'original',
-    })
+    expect(await getProviderConnectionAttempt(getDb(), 'tinfoil')).toEqual(original)
     await session.setEnabled(false)
     const disabled = await getProviderConnectionAttempt(getDb(), 'tinfoil')
-    expect(disabled).not.toEqual({ provider: 'tinfoil', revision: 'original' })
+    expect(disabled).not.toEqual(original)
     await session.setEnabled(true)
     expect(await getProviderConnectionAttempt(getDb(), 'tinfoil')).not.toEqual(disabled)
     await session.disconnect()
@@ -317,5 +333,106 @@ describe('Tinfoil session lifecycle', () => {
     await expect(session.setEnabled(true)).rejects.toBeInstanceOf(TinfoilReauthorizationError)
     await saveIntegrationCredentials(getDb(), 'tinfoil', { ...renewed, reauth_required: true }, false)
     await expect(session.setEnabled(true)).rejects.toBeInstanceOf(TinfoilReauthorizationError)
+  })
+
+  it('rotates canonical credentials without changing the binding or authorization generation', async () => {
+    await saveCanonicalSession()
+    const before = await getIntegrationCredentials(getDb(), 'tinfoil')
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    const { session } = harness()
+    expect(await session.getAccessToken()).toBe(renewed.access_token)
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual({
+      enabled: true,
+      credentials: { ...renewed, sessionRevision: before?.credentials.sessionRevision },
+    })
+    expect((await canonicalSecret())?.binding).toBe(
+      credentialBinding({ provider: 'tinfoil', authMethod: 'oauth', url: null }),
+    )
+    expect(await getProviderConnectionAttempt(getDb(), 'tinfoil')).toEqual(attempt)
+  })
+
+  for (const outcome of ['success', 'rejection'] as const) {
+    it.each(['disabled', 'deleted', 'redirected', 'invalidated', 'reconnected', 'disconnected'] as const)(
+      `does not overwrite a %s canonical session after a late refresh ${outcome}`,
+      async (change) => {
+        await saveCanonicalSession()
+        const { session, auth } = harness()
+        const started = Promise.withResolvers<void>()
+        const pending = Promise.withResolvers<typeof renewed>()
+        auth.refresh.mockImplementation(() => {
+          started.resolve()
+          return pending.promise
+        })
+        const token = session.getAccessToken()
+        await started.promise
+        const db = getDb()
+        switch (change) {
+          case 'disabled':
+            await db
+              .update(providerConnectionsTable)
+              .set({ enabled: 0 })
+              .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+            break
+          case 'deleted':
+            await db
+              .update(providerConnectionsTable)
+              .set({ deletedAt: new Date().toISOString() })
+              .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+            break
+          case 'redirected':
+            await db
+              .update(providerConnectionsTable)
+              .set({ url: 'https://changed.example/v1' })
+              .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+            break
+          case 'invalidated':
+            await invalidateProviderConnectionAttempts(db, 'tinfoil')
+            break
+          case 'reconnected':
+            await saveCanonicalSession({
+              access_token: 'another-account',
+              refresh_token: 'another-refresh',
+              expires_at: 999_999,
+            })
+            break
+          case 'disconnected':
+            await writeProviderCredentials(db, 'oauth:tinfoil', { sessionRevision: 'tombstone' }, null)
+            break
+        }
+        const changedSecret = await canonicalSecret()
+        const changedSession = await getIntegrationCredentials(db, 'tinfoil')
+        if (outcome === 'success') {
+          pending.resolve(renewed)
+        } else {
+          pending.reject(new TinfoilReauthorizationError())
+        }
+        await expect(token).rejects.toThrow('connection changed')
+        expect(await canonicalSecret()).toEqual(changedSecret)
+        expect(await getIntegrationCredentials(db, 'tinfoil')).toEqual(changedSession)
+        expect(await db.select().from(integrationsSecretsTable)).toEqual([])
+      },
+    )
+  }
+
+  it('rejects a stale canonical credential write without creating a legacy fallback', async () => {
+    await saveCanonicalSession()
+    const old = await getIntegrationCredentials(getDb(), 'tinfoil')
+    await saveCanonicalSession({
+      access_token: 'another-account',
+      refresh_token: 'another-refresh',
+      expires_at: 999_999,
+    })
+    const changed = await canonicalSecret()
+    await expect(
+      saveIntegrationCredentials(
+        getDb(),
+        'tinfoil',
+        { ...renewed, sessionRevision: old?.credentials.sessionRevision },
+        true,
+        true,
+      ),
+    ).rejects.toThrow('connection changed')
+    expect(await canonicalSecret()).toEqual(changed)
+    expect(await getDb().select().from(integrationsSecretsTable)).toEqual([])
   })
 })

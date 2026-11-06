@@ -19,6 +19,7 @@ const storageKey = 'oauth_flow_state'
  * overwrites any abandoned entry.
  */
 type OAuthState = {
+  oauthRelayUrl?: string
   state: string | null
   provider: OAuthProvider | null
   verifier: string | null

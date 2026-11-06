@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { FetchFn } from '@/lib/proxy-fetch'
+import { bindModelProvider } from '@/providers/model-connection'
 import { fetchModelsForProvider } from '@/settings/models/model-catalog'
 import type { Model } from '@/types'
-import type { ImageSupport } from '@shared/defaults/models'
-import { getKnownImageSupport, setCachedImageSupport } from './image-support'
+import { type ImageSupport, staticImageSupport } from '@shared/defaults/models'
+import { getCachedImageSupport, setCachedImageSupport } from './image-support'
 import { probeImageSupport } from './image-support-probe'
 
 /** Upper bound on the whole check, catalog lookup and probe included, generous
@@ -23,13 +24,22 @@ export type DetectImageSupportOptions = {
   readonly probe?: typeof probeImageSupport
 }
 
-/** Settle with `promise`, or reject with the abort reason once `signal` aborts, whichever comes first. */
-const untilAborted = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> =>
+/** Bound an operation by the shared deadline, without starting work after it expires. */
+const untilAborted = <T>(start: () => Promise<T>, signal: AbortSignal): Promise<T> =>
   new Promise((resolve, reject) => {
     signal.throwIfAborted()
     const onAbort = () => reject(signal.reason)
     signal.addEventListener('abort', onAbort, { once: true })
-    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+    const run = async () => {
+      try {
+        resolve(await start())
+      } catch (error) {
+        reject(error)
+      } finally {
+        signal.removeEventListener('abort', onAbort)
+      }
+    }
+    void run()
   })
 
 /** Image support as the provider's catalog reports it, or undefined when the catalog is silent or unreachable. */
@@ -45,10 +55,11 @@ const catalogImageSupport = async (
   try {
     // Neither catalog request has its own timeout, so the deadline bounds it here.
     const catalog = await untilAborted(
-      fetchCatalog(
-        { provider: model.provider, apiKey: model.apiKey ?? undefined, url: model.url ?? undefined },
-        getProxyFetch,
-      ),
+      () =>
+        fetchCatalog(
+          { provider: model.provider, apiKey: model.apiKey ?? undefined, url: model.url ?? undefined },
+          getProxyFetch,
+        ),
       signal,
     )
     const supportsImages = catalog.find((entry) => entry.id === model.model)?.supports_images
@@ -56,9 +67,9 @@ const catalogImageSupport = async (
       return undefined
     }
     return supportsImages ? 'supported' : 'unsupported'
-  } catch (error) {
+  } catch {
     // A catalog outage shouldn't block the answer; the probe can still get one.
-    console.warn('Image support catalog lookup failed; probing the model instead', error)
+    console.warn('Image support catalog lookup failed; probing the model instead')
     return undefined
   }
 }
@@ -70,7 +81,7 @@ const catalogImageSupport = async (
  * together. Definitive answers are cached, so each model is detected at most once
  * per device.
  *
- * @param model - the selected model, with its connection settings and api key
+ * @param inputModel - the selected model, with its connection settings and api key
  * @param getProxyFetch - lazily resolved universal proxy fetch
  * @param options - the deadline, plus seams for the catalog and probe calls
  * @returns whether the model reads images
@@ -78,7 +89,7 @@ const catalogImageSupport = async (
  *   and the check runs again after a reload or a composer remount.
  */
 export const detectImageSupport = async (
-  model: Model,
+  inputModel: Model,
   getProxyFetch: () => FetchFn,
   {
     signal = AbortSignal.timeout(imageSupportTimeoutMs),
@@ -86,13 +97,20 @@ export const detectImageSupport = async (
     probe = probeImageSupport,
   }: DetectImageSupportOptions = {},
 ): Promise<ImageSupport> => {
-  const known = getKnownImageSupport(model)
+  const known = staticImageSupport(inputModel)
   if (known) {
     return known
   }
+  const binding = await untilAborted(() => bindModelProvider(inputModel), signal)
+  const { model } = binding
+  const cached = getCachedImageSupport(model)
+  if (cached) {
+    return cached
+  }
   const support =
     (await catalogImageSupport(model, fetchCatalog, getProxyFetch, signal)) ??
-    (await probe(model, getProxyFetch, signal))
+    (await untilAborted(() => probe(model, getProxyFetch, signal), signal))
+  await untilAborted(binding.assertCurrent, signal)
   setCachedImageSupport(model, support)
   return support
 }

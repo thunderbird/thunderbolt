@@ -5,11 +5,16 @@
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { getSettings, updateSettings } from '@/dal'
+import { getSettings } from '@/dal'
 import { createModel, getAllModels, getModel, updateModel } from '@/dal/models'
 import * as modelsDal from '@/dal/models'
 import { exportUserData } from '@/dal/export'
 import { getIntegrationCredentials } from '@/dal/integrations'
+import {
+  disconnectProviderConnection,
+  getProviderConnections,
+  getProviderCredentials,
+} from '@/dal/provider-connections'
 import { createTinfoilSession } from '@/lib/tinfoil-session'
 import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import * as tinfoilSessionModule from '@/lib/tinfoil-session'
@@ -24,32 +29,12 @@ import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { generateModelName, useAddModelForm } from './use-add-model-form'
+import { useAddModelForm } from './use-add-model-form'
 
 /** Model-save tests represent an authorization started against the current local session. */
 const currentAuthorization = async (credentials: TinfoilCredentials) => ({
   tinfoilCredentials: credentials,
   attempt: await getProviderConnectionAttempt(getDb(), 'tinfoil'),
-})
-
-describe('generateModelName', () => {
-  it('title-cases hyphenated ids and keeps version numbers intact', () => {
-    expect(generateModelName('gpt-4-turbo')).toBe('Gpt 4 Turbo')
-    expect(generateModelName('claude-3-5-sonnet')).toBe('Claude 3 5 Sonnet')
-  })
-
-  it('drops the vendor prefix and tag suffix', () => {
-    expect(generateModelName('anthropic/claude-3-haiku')).toBe('Claude 3 Haiku')
-    expect(generateModelName('llama3:latest')).toBe('Llama 3')
-  })
-
-  it('keeps letter-digit model families like o1 together', () => {
-    expect(generateModelName('o1-preview')).toBe('O1 Preview')
-  })
-
-  it('preserves decimal versions', () => {
-    expect(generateModelName('glm-5.2')).toBe('Glm 5.2')
-  })
 })
 
 /** A provider that answers chat completions but rejects any request carrying tools, as Ollama does. */
@@ -176,7 +161,7 @@ describe('useAddModelForm', () => {
         await result.current.saveModel(values)
       })
       const original = (await getAllModels(getDb())).find((model) => model.oauthProvider === 'tinfoil')!
-      expect(original.apiKey).toBeNull()
+      expect(original).toMatchObject({ apiKey: 'first-token', providerConnectionId: 'oauth:tinfoil' })
       const backup = JSON.stringify(await exportUserData(getDb(), { id: 'user', email: null }))
       expect(backup).not.toContain('first-token')
       expect(backup).not.toContain('refresh-token')
@@ -212,9 +197,10 @@ describe('useAddModelForm', () => {
         expect(oauthModels[0]).toMatchObject({
           id: original.id,
           enabled: 1,
-          apiKey: null,
+          apiKey: accessToken,
+          providerConnectionId: 'oauth:tinfoil',
           name: 'My renamed model',
-          providerDefault: 1,
+          providerDefault: null,
           toolUsage: 0,
           contextWindow: 8192,
         })
@@ -275,7 +261,8 @@ describe('useAddModelForm', () => {
         ).rejects.toHaveProperty('name', 'AbortError')
       })
       expect(await getAllModels(getDb())).toEqual([])
-      expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+      expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
+      expect(await getProviderConnections(getDb())).toEqual([])
       expect(result.current.submitError).toBeNull()
       expect(onClose).not.toHaveBeenCalled()
     } finally {
@@ -290,12 +277,12 @@ describe('useAddModelForm', () => {
     ['tinfoil', 1],
     ['tinfoil', 0],
   ] as const)(
-    'reuses the %s own-key default with enabled=%i and preserves manual models',
+    'creates separate %s API-key connections and preserves existing model preferences (enabled=%i)',
     async (provider, enabled) => {
       await createModel(getDb(), {
         id: 'manual',
         provider,
-        name: 'Manual default with a different key',
+        name: 'Manual model',
         model: 'default-model',
         apiKey: 'manual-key',
       })
@@ -304,83 +291,125 @@ describe('useAddModelForm', () => {
       })
       const values = {
         provider,
-        providerDefault: 1,
         name: 'Default model',
         model: 'default-model',
         apiKey: 'first-key',
         supportsTools: true,
       }
+      let originalId = ''
       await act(async () => {
-        await result.current.saveModel(values)
+        originalId = (await result.current.saveModel(values)).id
       })
-      const original = (await getAllModels(getDb())).find((model) => model.providerDefault === 1)!
-      await updateSettings(getDb(), { selected_model: 'manual' })
-      await updateModel(getDb(), original.id, {
-        name: 'My renamed default',
+      const original = (await getModel(getDb(), originalId))!
+      expect(original.providerConnectionId).toBeTruthy()
+      expect((await getProviderConnections(getDb()))[0].authMethod).toBe('api_key')
+      await updateModel(getDb(), original.id, { name: 'My renamed model', enabled, toolUsage: 0, contextWindow: 8192 })
+      await disconnectProviderConnection(getDb(), original.providerConnectionId!)
+      let nextId = ''
+      await act(async () => {
+        nextId = (await result.current.saveModel({ ...values, apiKey: 'second-key' })).id
+      })
+      expect(nextId).not.toBe(original.id)
+      expect(await getModel(getDb(), original.id)).toMatchObject({
+        name: 'My renamed model',
         enabled,
         toolUsage: 0,
         contextWindow: 8192,
+        apiKey: null,
       })
-      for (const apiKey of ['second-key', 'third-key']) {
-        await updateModel(getDb(), original.id, { apiKey: null })
-        await act(async () => {
-          await result.current.saveModel({ ...values, apiKey })
-        })
-        const defaults = (await getAllModels(getDb())).filter((model) => model.providerDefault === 1)
-        expect(defaults).toHaveLength(1)
-        expect(defaults[0]).toMatchObject({
-          id: original.id,
-          enabled,
-          name: 'My renamed default',
-          toolUsage: 0,
-          contextWindow: 8192,
-          apiKey,
-        })
-        expect(await getModel(getDb(), 'manual')).toMatchObject({
-          name: 'Manual default with a different key',
-          apiKey: 'manual-key',
-          providerDefault: null,
-        })
-        expect((await getSettings(getDb(), { selected_model: '' })).selectedModel).toBe('manual')
-      }
+      expect(await getModel(getDb(), nextId)).toMatchObject({ apiKey: 'second-key', oauthProvider: null })
+      expect(await getModel(getDb(), 'manual')).toMatchObject({ name: 'Manual model', apiKey: 'manual-key' })
+      expect(await getProviderConnections(getDb())).toHaveLength(2)
     },
   )
 
-  it('keeps automatically connected Tinfoil subscription and own-key models separate', async () => {
-    await createModel(getDb(), {
-      id: 'subscription-default',
-      provider: 'tinfoil',
-      oauthProvider: 'tinfoil',
-      providerDefault: 1,
-      name: 'Subscription default',
-      model: 'default-model',
-    })
+  it('keeps Tinfoil OAuth and multiple API-key connections separate', async () => {
+    const lock = spyOn(tinfoilSessionModule, 'withTinfoilSessionLock').mockImplementation(async (operation) =>
+      operation(),
+    )
+    try {
+      const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: () => {} }), {
+        wrapper: createTestProvider(),
+      })
+      const values = {
+        provider: 'tinfoil' as const,
+        name: 'Default model',
+        model: 'default-model',
+        apiKey: 'oauth-key',
+        supportsTools: true,
+      }
+      await act(async () => {
+        await result.current.saveModel({
+          ...values,
+          providerAuthorization: await currentAuthorization({
+            access_token: 'oauth-key',
+            expires_at: Date.now() + 900_000,
+          }),
+        })
+        await result.current.saveModel({ ...values, apiKey: 'first-own-key' })
+        await result.current.saveModel({ ...values, apiKey: 'second-own-key' })
+      })
+      const models = await getAllModels(getDb())
+      expect(models).toHaveLength(3)
+      expect(new Set(models.map((model) => model.providerConnectionId)).size).toBe(3)
+      expect(models.find((model) => model.providerConnectionId === 'oauth:tinfoil')).toMatchObject({
+        apiKey: 'oauth-key',
+        oauthProvider: 'tinfoil',
+      })
+      expect(
+        models
+          .filter((model) => !model.oauthProvider)
+          .map((model) => model.apiKey)
+          .sort(),
+      ).toEqual(['first-own-key', 'second-own-key'])
+    } finally {
+      lock.mockRestore()
+    }
+  })
+
+  it('reuses one Otari OAuth connection across servers while preserving model IDs and preferences', async () => {
+    const values = {
+      provider: 'otari' as const,
+      name: 'Workspace model',
+      model: 'example/model',
+      url: 'https://otari.example.com/api/v1',
+      apiKey: 'delegated-key',
+      supportsTools: true,
+    }
+    await createModel(getDb(), { ...values, id: 'manual', apiKey: 'manual-key' })
     const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: () => {} }), {
       wrapper: createTestProvider(),
     })
-    const values = {
-      provider: 'tinfoil' as const,
-      providerDefault: 1,
-      name: 'Own-key default',
-      model: 'default-model',
-      apiKey: 'own-key',
-      supportsTools: true,
-    }
+    let originalId = ''
     await act(async () => {
-      await result.current.saveModel(values)
-      await result.current.saveModel({ ...values, apiKey: 'updated-key' })
+      originalId = (
+        await result.current.saveModel({
+          ...values,
+          providerAuthorization: { attempt: await getProviderConnectionAttempt(getDb(), 'otari') },
+        })
+      ).id
     })
-    const defaults = (await getAllModels(getDb())).filter((model) => model.providerDefault === 1)
-    expect(defaults).toHaveLength(2)
-    expect(defaults.find((model) => model.oauthProvider === 'tinfoil')).toMatchObject({
-      id: 'subscription-default',
-      name: 'Subscription default',
-      apiKey: null,
+    await updateModel(getDb(), originalId, { name: 'My model', enabled: 0, toolUsage: 0, contextWindow: 8192 })
+    await act(async () => {
+      await result.current.saveModel({
+        ...values,
+        url: 'https://other.example.com/api/v1',
+        apiKey: 'replacement-key',
+        providerAuthorization: { attempt: await getProviderConnectionAttempt(getDb(), 'otari') },
+      })
     })
-    expect(defaults.find((model) => !model.oauthProvider)).toMatchObject({
-      name: 'Own-key default',
-      apiKey: 'updated-key',
+    expect(await getAllModels(getDb())).toHaveLength(2)
+    expect(await getModel(getDb(), originalId)).toMatchObject({
+      providerConnectionId: 'oauth:otari',
+      name: 'My model',
+      enabled: 0,
+      toolUsage: 0,
+      contextWindow: 8192,
+      apiKey: 'replacement-key',
+      url: 'https://other.example.com/api/v1',
     })
+    expect(await getModel(getDb(), 'manual')).toMatchObject({ apiKey: 'manual-key', url: values.url })
+    expect(await getProviderConnections(getDb())).toHaveLength(1)
   })
 
   it('does not overwrite a different OAuth model when connecting the provider default', async () => {
@@ -510,6 +539,38 @@ describe('useAddModelForm', () => {
     const created = useChatStore.getState().models.find((candidate) => candidate.name === 'My Custom Model')
     expect(created?.model).toBe('gpt-4-turbo-preview')
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses shared display names for catalog and unlisted model selections without changing model IDs', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(
+      stubJsonResponse({
+        data: [
+          { id: 'vendor/opaque-123', name: ' DeepSeek V4.1 Flash ' },
+          { id: 'deepseek/deepseek-v4.1-flash', name: 'deepseek/deepseek-v4.1-flash' },
+        ],
+      }),
+    )
+    const { result } = renderHook(() => useAddModelForm({ isOpen: true, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+    try {
+      act(() => {
+        result.current.onProviderChange('openai')
+        result.current.form.setValue('apiKey', 'sk-test')
+      })
+      await act(async () => getClock().runAllAsync())
+      for (const [id, name] of [
+        ['vendor/opaque-123', 'DeepSeek V4.1 Flash'],
+        ['deepseek/deepseek-v4.1-flash', 'Deepseek v4.1 Flash'],
+        ['llama3:latest', 'Llama 3'],
+      ]) {
+        act(() => result.current.onSelectModel(id))
+        expect(result.current.form.getValues('name')).toBe(name)
+        expect(result.current.form.getValues('model')).toBe(id)
+      }
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 
   it('does not refetch an already requested catalog when visibility alone changes', async () => {

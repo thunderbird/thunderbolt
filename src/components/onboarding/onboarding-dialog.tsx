@@ -26,15 +26,16 @@ import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
-import { useSearchProviderStore } from '@/stores/search-provider-store'
+import { useSearchProviderAvailability } from '@/integrations/standalone-search/use-search-provider-availability'
 import { OnboardingServerStep } from './onboarding-server-step'
 import { useOnboardingServerState } from './use-onboarding-server-state'
 import { OnboardingSearchStep } from './onboarding-search-step'
-import { useOnboardingModelState } from './use-onboarding-model-state'
 import { useNeedsOwnModel } from '@/hooks/use-needs-own-model'
+import { preloadInBackground } from '@/lib/after-paint'
 
-// The provider catalog and connection probe load only when this step is opened.
-const OnboardingModelStep = lazy(() => import('./onboarding-model-step'))
+/** Share the AI setup bundle between lazy rendering and background preloading. */
+const loadOnboardingModelStep = () => import('./onboarding-model-step')
+const OnboardingModelStep = lazy(loadOnboardingModelStep)
 
 /** Wizard position of the passkey step. */
 const passkeyStep = 6
@@ -46,8 +47,7 @@ export const OnboardingDialog = () => {
   const isStandalone = useNeedsOwnModel()
   const { openSignInModal } = useSignInModal()
   const serverState = useOnboardingServerState()
-  const hasSearchProvider = useSearchProviderStore((state) => Boolean(state.provider && state.apiKey))
-  const { hasBuiltInSearch } = useOnboardingModelState()
+  const { hasSearchProvider, hasBuiltInSearch } = useSearchProviderAvailability()
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { userHasCompletedOnboarding, dataCollection } = useSettings({
@@ -69,6 +69,12 @@ export const OnboardingDialog = () => {
     import.meta.env.VITE_SKIP_ONBOARDING !== 'true' &&
     !userHasCompletedOnboarding.isLoading &&
     !userHasCompletedOnboarding.value
+
+  useEffect(() => {
+    if (isOpen && state.currentStep === 8) {
+      return preloadInBackground([loadOnboardingModelStep])
+    }
+  }, [isOpen, state.currentStep])
 
   // Skip the step when it isn't offered (no passkey support, or the account
   // already has one), but only once that's known: the skip is persisted, so
@@ -92,10 +98,10 @@ export const OnboardingDialog = () => {
   const [isCompleting, startCompleting] = useTransition()
   const [{ isFormDirty, isSearchReady }, updateForm] = useReducer(
     (
-      state: { isFormDirty: boolean; isSearchReady: boolean },
-      patch: Partial<{ isFormDirty: boolean; isSearchReady: boolean }>,
+      state: { isFormDirty: boolean; isSearchReady: boolean | null },
+      patch: Partial<{ isFormDirty: boolean; isSearchReady: boolean | null }>,
     ) => ({ ...state, ...patch }),
-    { isFormDirty: false, isSearchReady: hasSearchProvider },
+    { isFormDirty: false, isSearchReady: null },
   )
   const setIsFormDirty = (isFormDirty: boolean) => updateForm({ isFormDirty })
   const [completionError, setCompletionError] = useState<string | null>(null)
@@ -123,7 +129,7 @@ export const OnboardingDialog = () => {
       // Special handling for celebration step
       handleCelebrationComplete()
     } else if (state.currentStep === 10) {
-      if (hasSearchProvider && isSearchReady) {
+      if (hasSearchProvider && isSearchReady !== false) {
         await actions.nextStep()
       }
     } else if (state.currentStep === 2) {
@@ -150,7 +156,7 @@ export const OnboardingDialog = () => {
 
   const handleBackAction = () => {
     if (state.currentStep === 10) {
-      updateForm({ isSearchReady: hasSearchProvider })
+      updateForm({ isSearchReady: null })
     }
     if (state.currentStep === 8 && serverState.goBack()) {
       return
@@ -162,7 +168,7 @@ export const OnboardingDialog = () => {
 
   const handleSkipAction = () => {
     if (state.currentStep === 10) {
-      updateForm({ isSearchReady: hasSearchProvider })
+      updateForm({ isSearchReady: null })
     }
     if (state.canSkip) {
       actions.skipStep()
@@ -270,7 +276,7 @@ export const OnboardingDialog = () => {
                           : state.currentStep === 4
                             ? !state.isLocationValid
                             : state.currentStep === 10
-                              ? !hasSearchProvider || !isSearchReady
+                              ? !hasSearchProvider || isSearchReady === false
                               : state.currentStep === passkeyStep
                                 ? !accountPasskey.isSettled
                                 : isCelebration &&

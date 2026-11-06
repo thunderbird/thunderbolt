@@ -2,10 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useState } from 'react'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
+import { useLocation } from 'react-router'
+import { oauthReturnPath } from '@/lib/oauth-return-route'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { AvailableTools, type ToolItem } from '@/components/available-tools'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { ConnectionSetupFooter } from './connection-setup-footer'
 import { Button } from '@/components/ui/button'
 import { ConnectProviderButton } from '@/components/connect-provider-button'
 import type { Integration } from './types'
@@ -16,6 +21,7 @@ import type { Integration } from './types'
  * disable lives on the list row's switch, matching the skills page.
  */
 export const IntegrationDetail = ({
+  initialAction,
   integration,
   tools,
   isProcessingCallback,
@@ -24,7 +30,9 @@ export const IntegrationDetail = ({
   onDisconnect,
   onError,
   onClose,
+  onBack,
 }: {
+  initialAction?: 'edit' | 'remove'
   integration: Integration
   tools: ToolItem[]
   /** True while a returned OAuth callback is still being exchanged. */
@@ -35,8 +43,11 @@ export const IntegrationDetail = ({
   onDisconnect: () => void
   onError: (error: Error) => void
   onClose: () => void
+  onBack?: () => void
 }) => {
   const { t } = useLingui()
+  const location = useLocation()
+  const [confirmRemoval, setConfirmRemoval] = useState(initialAction === 'remove')
   const integrationName = integration.name
   const isPro = integration.provider === 'thunderbolt-pro'
 
@@ -47,6 +58,17 @@ export const IntegrationDetail = ({
       subtitle={integration.isConnected ? integration.userEmail : undefined}
       onClose={onClose}
     >
+      <ConfirmActionDialog
+        open={confirmRemoval && !isPro && integration.isConnected}
+        title={t`Remove ${integrationName}?`}
+        description={t`This disconnects your account on this device. Its tools will no longer be available.`}
+        confirmLabel={t`Remove`}
+        onCancel={() => setConfirmRemoval(false)}
+        onConfirm={() => {
+          setConfirmRemoval(false)
+          onDisconnect()
+        }}
+      />
       <div className="flex shrink-0 flex-col gap-2">
         <DetailSectionTitle>
           <Trans>Account</Trans>
@@ -72,7 +94,7 @@ export const IntegrationDetail = ({
             isConnected={false}
             isProcessing={isProcessingCallback}
             onError={onError}
-            returnContext="integrations"
+            returnContext={oauthReturnPath(`${location.pathname}${location.search}${location.hash}`)}
             className="w-full"
             connectLabel={integration.connectLabel}
           />
@@ -94,6 +116,13 @@ export const IntegrationDetail = ({
           </p>
         )}
       </div>
+      {onBack && (
+        <ConnectionSetupFooter
+          onBack={onBack}
+          onContinue={onClose}
+          ready={integration.isConnected && !isProcessingCallback}
+        />
+      )}
     </DetailPanel>
   )
 }

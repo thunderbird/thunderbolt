@@ -165,6 +165,26 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
     expect(screen.queryByPlaceholderText(/paste an iroh ticket/i)).not.toBeInTheDocument()
   })
 
+  it('opens the existing removal confirmation from a custom agent context menu', async () => {
+    await createAgent(getDb(), {
+      id: 'menu-agent',
+      name: 'Menu agent',
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://agent.example/acp',
+      description: null,
+      enabled: 1,
+      userId: authedSession.user.id,
+    })
+    renderPage(createMockAuthClient({ session: authedSession }))
+    fireEvent.contextMenu(await waitForElement(() => screen.queryByRole('button', { name: 'Open Menu agent' })))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Remove' })))
+    expect(await waitForElement(() => screen.queryByRole('alertdialog'))).toHaveTextContent('Delete Menu agent?')
+    expect((await getAllAgents(getDb())).some((agent) => agent.id === 'menu-agent')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect((await getAllAgents(getDb())).some((agent) => agent.id === 'menu-agent')).toBe(true)
+  })
+
   it('does not enroll when editing an iroh agent', async () => {
     const db = getDb()
     const enrollIroh = mock(async () => {})

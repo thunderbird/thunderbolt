@@ -10,15 +10,14 @@ import { http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
-import { catalogRequiresApiKey } from './model-policy'
+import { catalogRequiresApiKey, providerRequiresUrl } from './model-policy'
 
 export type AvailableModel = {
   id: string
   name?: string
   created?: number
   owned_by?: string
-  /** Only the built-in Thunderbolt catalog sets this; other providers' tool
-   *  support is learned by the connection test. */
+  /** Known catalog support; otherwise require an explicit choice or connection test. */
   supports_tools?: boolean
   /** Whether the model accepts image input. Undefined when the provider doesn't say. */
   supports_images?: boolean
@@ -89,7 +88,7 @@ export const canFetchCatalog = ({ provider, apiKey, url }: CatalogRequest): bool
   if (catalogRequiresApiKey(provider) && !apiKey) {
     return false
   }
-  return provider !== 'custom' || isFetchableCatalogUrl(url)
+  return !providerRequiresUrl(provider) || isFetchableCatalogUrl(url)
 }
 
 /** Stable identity for the inputs that produced a catalog result. */
@@ -118,8 +117,7 @@ export const fetchModelsForProvider = async (
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 
-  // Reuse chat's transport: web needs the proxy for hosts that don't answer preflights;
-  // native follows the Cloud Proxy setting.
+  // Reuse chat's transport, including Otari's direct OAuth connection.
   const connection = resolveOpenAiCompatConnection(
     { provider, apiKey: apiKey ?? null, url: url ?? null },
     getProxyFetch,
@@ -154,8 +152,7 @@ export const describeModelFetchError = (i18n: I18n, error: unknown): string => {
       return i18n._(msg`Server responded with an unknown error.`)
     }
     const status = response.status
-    const statusText = response.statusText
-    return i18n._(msg`Server responded with status ${status} ${statusText}`)
+    return i18n._(msg`Server responded with status ${status}.`)
   }
-  return error instanceof Error && error.message ? error.message : i18n._(msg`Failed to load models`)
+  return i18n._(msg`Failed to load models`)
 }

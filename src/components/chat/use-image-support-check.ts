@@ -84,7 +84,7 @@ export const useImageSupportCheck = ({
       try {
         return await detect(model, getProxyFetch)
       } catch (error) {
-        console.warn(`Couldn't tell whether ${model.model} reads images; sending anyway`, error)
+        console.warn(`Couldn't tell whether ${model.model} reads images; sending anyway`)
         throw error
       }
     },

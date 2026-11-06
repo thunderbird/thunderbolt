@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createModelInTransaction, updateModelInTransaction } from '@/dal/models'
+import { createModelInTransaction } from '@/dal/models'
 import { withTinfoilSessionLock } from '@/lib/tinfoil-session'
-import { saveProviderAuthorization, type ProviderAuthorization } from '@/lib/provider-connection-attempt'
+import { type ProviderAuthorization } from '@/lib/provider-connection-attempt'
+import { saveProviderConnectionInTransaction } from '@/dal/provider-connections'
+import { getProviderDefinition } from '@/providers/registry'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
@@ -24,10 +26,12 @@ import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
 import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
+import { providerRequiresUrl } from './model-policy'
+import { getModelDisplayName } from './model-display-name'
 
 const nameRequired = msg`Name is required.`
 const modelNameRequired = msg`Model name is required.`
-const urlRequiredForCustom = msg`URL is required for Custom providers`
+const urlRequiredForProvider = msg`URL is required for this provider`
 const apiKeyRequired = msg`API Key is required for this provider`
 
 /** Built per render so the validation copy follows the active catalog — see the
@@ -35,7 +39,7 @@ const apiKeyRequired = msg`API Key is required for this provider`
 export const createAddModelFormSchema = (i18n: I18n) =>
   z
     .object({
-      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
+      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil', 'otari']),
       name: z.string().min(1, { message: i18n._(nameRequired) }),
       model: z.string().min(1, { message: i18n._(modelNameRequired) }),
       customModel: z.string().optional(),
@@ -43,8 +47,8 @@ export const createAddModelFormSchema = (i18n: I18n) =>
       apiKey: z.string().optional(),
       supportsTools: z.boolean(),
     })
-    .refine((data) => data.provider !== 'custom' || Boolean(data.url), {
-      message: i18n._(urlRequiredForCustom),
+    .refine((data) => !providerRequiresUrl(data.provider) || Boolean(data.url?.trim()), {
+      message: i18n._(urlRequiredForProvider),
       path: ['url'],
     })
     .refine(
@@ -87,19 +91,6 @@ const addModelReducer = (state: AddModelState, action: AddModelAction): AddModel
     case 'FORM_DISCARDED':
       return initialState
   }
-}
-
-/** Generates a readable display name from a provider model identifier. */
-export const generateModelName = (modelId: string): string => {
-  const segment = modelId.split('/').pop() ?? modelId
-  const beforeColon = segment.split(':')[0]
-  const parts = beforeColon.split(/[-_]+/).flatMap((part) => {
-    if (/^[A-Za-z]\d$/.test(part)) {
-      return [part]
-    }
-    return part.match(/[A-Za-z]+|[0-9]+(?:\.[0-9]+)?/g) ?? []
-  })
-  return parts.map((part) => (/^[0-9]+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1))).join(' ')
 }
 
 type UseAddModelFormOptions = {
@@ -176,45 +167,37 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
         db.transaction(async (tx) => {
           // Authorization can be cancelled while this save waits for the session lock or database.
           signal?.throwIfAborted()
-          const candidates =
-            values.providerDefault === 1 || values.oauthProvider
-              ? (await getAllModels(tx)).filter(
-                  (model) =>
-                    (model.oauthProvider ?? null) === (values.oauthProvider ?? null) &&
-                    model.provider === values.provider &&
-                    model.model === values.model &&
-                    model.isSystem !== 1,
-                )
-              : []
-          // OAuth rows predate the provenance marker; own-key rows cannot be
-          // inferred safely because users may add the same model with different keys.
-          const previous =
-            candidates.find((model) => model.providerDefault === 1) ??
-            (values.oauthProvider ? candidates[0] : undefined)
+          const providerConnectionId =
+            values.provider === 'thunderbolt'
+              ? null
+              : await saveProviderConnectionInTransaction(tx, {
+                  provider: values.provider,
+                  name: getProviderDefinition(values.provider).name,
+                  url: values.url,
+                  authMethod: providerAuthorization ? 'oauth' : 'api_key',
+                  credentials:
+                    providerAuthorization?.tinfoilCredentials ??
+                    (providerAuthorization ? { access_token: values.apiKey } : { apiKey: values.apiKey ?? '' }),
+                  attempt: providerAuthorization?.attempt,
+                })
+          const previous = providerConnectionId
+            ? (await getAllModels(tx)).find(
+                (model) => model.providerConnectionId === providerConnectionId && model.model === values.model,
+              )
+            : undefined
           const id = previous?.id ?? uuidv7()
-
-          if (providerAuthorization) {
-            await saveProviderAuthorization(tx, providerAuthorization)
-          }
-          const modelData = {
-            id,
-            ...modelValues,
-            apiKey: values.oauthProvider ? null : values.apiKey || null,
-            url: values.url || null,
-            isSystem: 0,
-            enabled: 1,
-            toolUsage: supportsTools ? 1 : 0,
-            contextWindow: values.contextWindow ?? null,
-          }
-          if (previous) {
-            // Reauthorization restores access; it must not reset the user's model configuration.
-            await updateModelInTransaction(tx, id, {
-              apiKey: modelData.apiKey,
-              oauthProvider: values.oauthProvider ?? null,
-              providerDefault: values.providerDefault,
+          if (!previous) {
+            const { apiKey, oauthProvider, providerDefault, url, ...fields } = modelValues
+            await createModelInTransaction(tx, {
+              ...fields,
+              id,
+              providerConnectionId,
+              url: null,
+              isSystem: 0,
+              enabled: 1,
+              toolUsage: supportsTools ? 1 : 0,
+              contextWindow: values.contextWindow ?? null,
             })
-          } else {
-            await createModelInTransaction(tx, modelData)
           }
           signal?.throwIfAborted()
           return { id, created: !previous }
@@ -224,18 +207,19 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       if (isStandalone && created) {
         await updateSettings(db, { selected_model: id })
       }
-      return getAvailableModels(db)
+      return { id, models: await getAvailableModels(db) }
     },
     onMutate: () => {
       onMutationStart?.()
       dispatch({ type: 'MUTATION_STARTED' })
     },
-    onSuccess: async (models, values) => {
+    onSuccess: async ({ models }, values) => {
       if (values.signal?.aborted) {
         return
       }
       useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
+      await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
       if (isStandalone) {
         await queryClient.invalidateQueries({ queryKey: ['settings'] })
       }
@@ -286,7 +270,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
     form.setValue('model', modelId, { shouldValidate: true })
     form.setValue('customModel', '')
     const selected = catalog.models.find((candidate) => candidate.id === modelId)
-    form.setValue('name', selected?.name || generateModelName(modelId), { shouldValidate: true })
+    form.setValue('name', getModelDisplayName(selected ?? { id: modelId }), { shouldValidate: true })
     // Thunderbolt models skip the connection test; the shipped defaults already know.
     if (provider === 'thunderbolt') {
       form.setValue('supportsTools', selected?.supports_tools !== false)

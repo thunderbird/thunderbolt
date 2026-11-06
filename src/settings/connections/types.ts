@@ -19,12 +19,3 @@ export type Integration = {
   isConnected: boolean
   userEmail?: string
 }
-
-export type AiProviderConnection = {
-  id: 'openrouter' | 'tinfoil'
-  name: string
-  connected: boolean
-  enabled: boolean
-  needsReauth: boolean
-  oauthConnected?: boolean
-}

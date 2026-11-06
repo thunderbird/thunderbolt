@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createModel, getModel } from '@/dal/models'
 import { tinfoilSession, createTinfoilSession } from '@/lib/tinfoil-session'
+import * as tinfoilSessions from '@/lib/tinfoil-session'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
-import { saveIntegrationCredentials } from '@/dal/integrations'
+import { saveProviderConnection } from '@/dal/provider-connections'
 import { getDb } from '@/db/database'
 import { getClock } from '@/testing-library'
 import { isStandaloneModelReady } from '@/settings/models/model-policy'
@@ -53,21 +54,31 @@ describe('standalone onboarding model requirement', () => {
 
 describe('provider disconnect', () => {
   beforeAll(setupTestDatabase)
-  beforeEach(resetStore)
+  beforeEach(() => {
+    resetStore()
+    spyOn(tinfoilSessions, 'withTinfoilSessionLock').mockImplementation(async (operation) => operation())
+  })
   afterAll(teardownTestDatabase)
   afterEach(async () => {
     cleanup()
+    mock.restore()
     resetStore()
     await resetTestDatabase()
   })
 
   it('shows a key-bearing disabled model as connected without treating it as runnable', async () => {
+    const connectionId = await saveProviderConnection(getDb(), {
+      provider: 'openrouter',
+      name: 'OpenRouter key',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'key' },
+    })
     await createModel(getDb(), {
       id: 'disabled',
       name: 'Disabled model',
       provider: 'openrouter',
       model: 'default-model',
-      apiKey: 'key',
+      providerConnectionId: connectionId,
       enabled: 0,
     })
     const { result } = renderHook(useOnboardingModelState, { wrapper: createTestProvider() })
@@ -78,33 +89,53 @@ describe('provider disconnect', () => {
     expect(result.current.configuredModels).toEqual([])
     expect(result.current.hasConfiguredModel).toBe(false)
     expect((await getModel(getDb(), 'disabled'))?.enabled).toBe(0)
+    await act(async () => result.current.disconnectProvider('openrouter'))
+    expect(await getModel(getDb(), 'disabled')).toMatchObject({ enabled: 0, apiKey: null, deletedAt: null })
   })
 
-  it('does not present manually added Tinfoil models as an onboarding account connection', async () => {
+  it('recognizes a named Tinfoil API-key connection as configured', async () => {
+    const connectionId = await saveProviderConnection(getDb(), {
+      provider: 'tinfoil',
+      name: 'Work Tinfoil',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'manual-key' },
+    })
     await createModel(getDb(), {
       id: 'manual-tinfoil',
       provider: 'tinfoil',
       name: 'Manual Tinfoil',
       model: 'model',
-      apiKey: 'manual-key',
+      providerConnectionId: connectionId,
     })
     const { result } = renderHook(useOnboardingModelState, { wrapper: createTestProvider() })
     await act(async () => {
       await getClock().runAllAsync()
     })
     expect(result.current.hasConfiguredModel).toBe(true)
-    expect(result.current.connectedProviders).toEqual([])
+    expect(result.current.connectedProviders).toEqual(['tinfoil'])
   })
 
   it('preserves manual Tinfoil keys during disconnect', async () => {
     const db = getDb()
+    const manualId = await saveProviderConnection(db, {
+      provider: 'tinfoil',
+      name: 'Manual',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'manual-key' },
+    })
+    const oauthId = await saveProviderConnection(db, {
+      provider: 'tinfoil',
+      name: 'OAuth',
+      authMethod: 'oauth',
+      credentials: { access_token: 'oauth-token', refresh_token: 'refresh', expires_at: Date.now() + 900_000 },
+    })
     for (const enabled of [0, 1]) {
       await createModel(db, {
         id: `manual-tinfoil-${enabled}`,
         provider: 'tinfoil',
         name: 'Manual',
         model: 'model',
-        apiKey: 'manual-key',
+        providerConnectionId: manualId,
         enabled,
       })
     }
@@ -113,17 +144,15 @@ describe('provider disconnect', () => {
       provider: 'tinfoil',
       name: 'Default',
       model: 'model',
-      apiKey: 'default-key',
-      providerDefault: 1,
+      providerConnectionId: oauthId,
     })
     await createModel(db, {
       id: 'oauth-tinfoil',
       provider: 'tinfoil',
       name: 'OAuth',
       model: 'model',
-      oauthProvider: 'tinfoil',
+      providerConnectionId: oauthId,
     })
-    await saveIntegrationCredentials(db, 'tinfoil', { access_token: 'oauth-token' }, true)
     const session = createTinfoilSession({
       db: getDb,
       auth: { ...tinfoilAuth, revoke: async () => {} },
@@ -154,13 +183,18 @@ describe('provider disconnect', () => {
   it('clears models added after the disconnect handler rendered, retaining other providers', async () => {
     const { result } = renderHook(() => useOnboardingModelState(), { wrapper: createTestProvider() })
     const disconnect = result.current.disconnectProvider
+    const connectionId = await saveProviderConnection(getDb(), {
+      provider: 'openrouter',
+      name: 'Late connection',
+      authMethod: 'oauth',
+      credentials: { access_token: 'key' },
+    })
     await createModel(getDb(), {
       id: 'late-model',
-      providerDefault: 1,
+      providerConnectionId: connectionId,
       provider: 'openrouter',
       name: 'Late model',
       model: 'model',
-      apiKey: 'key',
     })
     await createModel(getDb(), {
       id: 'other-provider',
@@ -177,15 +211,20 @@ describe('provider disconnect', () => {
   })
   it('removes keys without overwriting enabled preferences or other providers', async () => {
     const db = getDb()
+    const connectionId = await saveProviderConnection(db, {
+      provider: 'openrouter',
+      name: 'OpenRouter',
+      authMethod: 'oauth',
+      credentials: { access_token: 'router-key' },
+    })
     for (const enabled of [0, 1]) {
       await createModel(db, {
         id: `router-${enabled}`,
         name: `Router model ${enabled}`,
-        providerDefault: 1,
+        providerConnectionId: connectionId,
         provider: 'openrouter',
         model: 'default-model',
         enabled,
-        apiKey: 'router-key',
       })
     }
     await createModel(db, {

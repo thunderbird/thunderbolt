@@ -4,7 +4,10 @@
 
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { createModel, getAllModels, getAvailableModels, getModel, getSettings } from '@/dal'
+import { createModel, getAllModels, getAvailableModels, getModel, getSettings, updateSettings } from '@/dal'
+import * as modelDal from '@/dal/models'
+import { getProviderCredentials, saveProviderConnection } from '@/dal/provider-connections'
+import { addProviderModels } from '@/providers/models'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
@@ -23,6 +26,7 @@ import type { OpenRouterConnectionOptions, OpenRouterManualConnection } from '@/
 import type { OnboardingProvider } from './provider-default-model'
 import { defaultModelId, defaultModels } from '@shared/defaults/models'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { stubJsonResponse } from '@/test-utils/http'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -51,6 +55,8 @@ const makeDependencies = (overrides: Partial<Dependencies> = {}) => ({
     }),
   ),
   exchange: mock(async (_code: string, _verifier: string, _signal?: AbortSignal) => 'manual-key'),
+  browser: () => false,
+  startBrowser: async () => {},
   needsManual: () => false,
   openUrl: mock(async (_url: string | URL) => {}),
   prepareModel: mock(async (provider: OnboardingProvider, apiKey: string) => {
@@ -90,7 +96,13 @@ describe('useOnboardingProviderState', () => {
     await resetTestDatabase()
     rejectNestedTransactions(getDb())
     useLocalSettingsStore.setState({ cloudUrl: '', localMode: true, serverHasAuthenticated: false, syncEnabled: false })
-    spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [{ id: 'example/model', name: 'Example Model' }] }))
+    spyOn(http, 'get').mockImplementation((url) =>
+      stubJsonResponse({
+        data: url.endsWith('/tools')
+          ? [{ id: 'otari_web_search', available: true }]
+          : [{ id: 'example/model', name: 'Example Model' }],
+      }),
+    )
   })
 
   afterEach(() => {
@@ -98,7 +110,30 @@ describe('useOnboardingProviderState', () => {
     cancelTinfoilMobileConnection()
     mock.restore()
     resetStore()
+    useSearchProviderStore.getState().clearSearchProvider()
   })
+
+  it.each(['openrouter', 'tinfoil'] as const)(
+    'redirects %s onboarding in the current browser tab',
+    async (provider) => {
+      const startBrowser = mock<Dependencies['startBrowser']>(async () => {})
+      const deps = makeDependencies({ browser: () => true, startBrowser })
+      const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+      await act(async () =>
+        provider === 'openrouter' ? result.current.connectOpenRouter() : result.current.connectTinfoil(),
+      )
+      expect(startBrowser).toHaveBeenCalledWith(
+        provider,
+        'onboarding',
+        expect.objectContaining({ provider }),
+        expect.any(AbortSignal),
+      )
+      expect(deps.start).not.toHaveBeenCalled()
+      expect(deps.startTinfoil).not.toHaveBeenCalled()
+      expect(deps.prepareModel).not.toHaveBeenCalled()
+      expect(await getAvailableModels(getDb())).toEqual([])
+    },
+  )
 
   it('saves and selects the verified default model after authorization without a picker', async () => {
     const deps = makeDependencies()
@@ -142,6 +177,42 @@ describe('useOnboardingProviderState', () => {
     expect(result.current.error).toBeNull()
     expect(await getAvailableModels(getDb())).toEqual([])
   })
+
+  it.each(['cancel', 'unmount', 'change search'] as const)(
+    'does not replace search after a committed Tinfoil save when the user chooses to %s',
+    async (action) => {
+      const readingSavedModel = Promise.withResolvers<void>()
+      const finishReading = Promise.withResolvers<void>()
+      const readModel = modelDal.getModel
+      spyOn(modelDal, 'getModel').mockImplementationOnce(async (...args) => {
+        const model = await readModel(...args)
+        readingSavedModel.resolve()
+        await finishReading.promise
+        return model
+      })
+      const { result, unmount } = renderHook(() => useOnboardingProviderState([], makeDependencies()), {
+        wrapper: createTestProvider(),
+      })
+      const completion = act(async () => {
+        await result.current.connectTinfoil()
+      })
+      await readingSavedModel.promise
+      if (action === 'cancel') {
+        result.current.showChoices()
+      } else if (action === 'unmount') {
+        unmount()
+      }
+      useSearchProviderStore.getState().selectSearchProvider('none')
+      finishReading.resolve()
+      await completion
+
+      expect(useSearchProviderStore.getState().selection).toBe('none')
+      expect(useSearchProviderStore.getState().connectionId).toBeNull()
+      if (action !== 'change search') {
+        expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+      }
+    },
+  )
 
   it('discards the previous attempt when a newer connection wins', async () => {
     const first = Promise.withResolvers<string>()
@@ -549,6 +620,7 @@ describe('useOnboardingProviderState', () => {
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expect(screen.getByRole('button', { name: 'Connect Tinfoil' })).toBeInTheDocument()
+    expect(screen.queryByText('Connect with a paid Tinfoil subscription.')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Use an API key instead' }))
@@ -634,7 +706,8 @@ describe('useOnboardingProviderState', () => {
     expect((await getAvailableModels(getDb()))[0]).toMatchObject({
       provider: 'tinfoil',
       oauthProvider: 'tinfoil',
-      apiKey: null,
+      apiKey: 'mobile-access',
+      providerConnectionId: 'oauth:tinfoil',
     })
     expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe('mobile-access')
   })
@@ -698,7 +771,11 @@ describe('useOnboardingProviderState', () => {
     expect(deps.start).not.toHaveBeenCalled()
     expect(result.current.view).toBe('tinfoil')
     const connectedModel = (await getAvailableModels(getDb()))[0]
-    expect(connectedModel).toMatchObject({ apiKey: null, oauthProvider: 'tinfoil' })
+    expect(connectedModel).toMatchObject({
+      apiKey: 'tinfoil-oauth-key',
+      oauthProvider: 'tinfoil',
+      providerConnectionId: 'oauth:tinfoil',
+    })
     expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toMatchObject({
       access_token: 'tinfoil-oauth-key',
       refresh_token: 'refresh-token',
@@ -741,8 +818,8 @@ describe('useOnboardingProviderState', () => {
       fireEvent.click(disconnect)
       await getClock().runAllAsync()
     })
-    expect(screen.getByRole('button', { name: 'Connect OpenRouter' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    // The separately configured API-key model remains usable after OAuth disconnects.
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
     const disconnected = await getModel(getDb(), openrouter.id)
     expect(await getModel(getDb(), 'manual-openrouter')).toMatchObject({
       apiKey: 'own-key',
@@ -754,4 +831,45 @@ describe('useOnboardingProviderState', () => {
     expect(disconnected?.deletedAt).toBeNull()
     expect((await getModel(getDb(), tinfoil.id))?.oauthProvider).toBe('tinfoil')
   })
+
+  it.each([false, true])(
+    'disconnects only the current account when additional API-key connections exist (OAuth: %s)',
+    async (oauth) => {
+      const first = await saveProviderConnection(getDb(), {
+        provider: 'openrouter',
+        name: 'Personal',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'personal-key' },
+      })
+      const second = await saveProviderConnection(getDb(), {
+        provider: 'openrouter',
+        name: 'Work',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'work-key' },
+      })
+      await addProviderModels(getDb(), first, [{ id: 'personal-model' }])
+      const [selected] = await addProviderModels(getDb(), second, [{ id: 'work-model' }])
+      await updateSettings(getDb(), { selected_model: selected })
+      if (oauth) {
+        await saveProviderConnection(getDb(), {
+          provider: 'openrouter',
+          name: 'Subscription',
+          authMethod: 'oauth',
+          credentials: { access_token: 'oauth-token' },
+          attempt: await getProviderConnectionAttempt(getDb(), 'openrouter'),
+        })
+        await addProviderModels(getDb(), 'oauth:openrouter', [{ id: 'subscription-model' }])
+      }
+      const { result } = renderHook(() => useOnboardingModelState(), { wrapper: createTestProvider() })
+      await act(async () => result.current.disconnectProvider('openrouter'))
+      expect((await getProviderCredentials(getDb(), first))?.apiKey).toBe('personal-key')
+      if (oauth) {
+        expect(await getProviderCredentials(getDb(), 'oauth:openrouter')).toBeNull()
+        expect((await getProviderCredentials(getDb(), second))?.apiKey).toBe('work-key')
+      } else {
+        expect(await getProviderCredentials(getDb(), second)).toBeNull()
+      }
+      expect(await getAllModels(getDb())).toHaveLength(oauth ? 3 : 2)
+    },
+  )
 })

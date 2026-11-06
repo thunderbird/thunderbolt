@@ -5,9 +5,11 @@
 import { getIntegrationCredentials, updateIntegrationCredentials } from '@/dal'
 import { getDb } from '@/db/database'
 import { refreshAccessToken, type OAuthProvider } from '@/lib/auth'
+import { createIntegrationOAuthClient } from '@/lib/integration-oauth-client'
 import type { HttpClient } from '@/lib/http'
 
 export type OAuthCredentials = {
+  oauthRelayUrl?: string
   access_token: string
   refresh_token?: string
   expires_at?: number
@@ -50,15 +52,17 @@ export const ensureValidOAuthToken = async (
     throw new Error('Access token expired and no refresh token available')
   }
 
-  const newTokens = await refreshAccessToken(httpClient, provider, credentials.refresh_token)
+  const relayClient = credentials.oauthRelayUrl ? createIntegrationOAuthClient(credentials.oauthRelayUrl) : httpClient
+  const newTokens = await refreshAccessToken(relayClient, provider, credentials.refresh_token)
   const updated: OAuthCredentials = {
     ...credentials,
     access_token: newTokens.access_token,
+    refresh_token: newTokens.refresh_token || credentials.refresh_token,
     expires_at: Date.now() + newTokens.expires_in * 1000,
   }
 
   const db = getDb()
-  await updateIntegrationCredentials(db, provider, updated)
+  await updateIntegrationCredentials(db, provider, updated, credentials)
 
   return updated.access_token
 }

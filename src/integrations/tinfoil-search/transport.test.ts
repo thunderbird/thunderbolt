@@ -41,6 +41,7 @@ it('uses authenticated attested MCP requests, supports SSE, and closes each sess
     content: [{ type: 'text', text: '{"results":[]}' }],
   })
   expect(requests.some((request) => request.method === 'tools/call')).toBe(true)
+  expect(requests.some((request) => request.init?.method === 'GET')).toBe(false)
   // The SDK closes local transport resources; no persistent session is retained.
   for (const request of requests) {
     expect(request.url).toBe('https://websearch.tinfoil.sh/mcp')

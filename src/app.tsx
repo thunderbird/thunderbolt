@@ -14,6 +14,7 @@ import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import TinfoilCallback from '@/components/tinfoil-callback'
+import { OtariCallback } from '@/components/otari-connection/otari-callback'
 import OpenRouterCallback from '@/components/openrouter-callback'
 import { AccountDeleted } from '@/components/account-deleted'
 import { DeviceRevoked } from '@/components/device-revoked'
@@ -210,6 +211,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       <Routes>
         {/* Auth flow routes - NO guards (must work during auth) */}
         <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <Route path="/oauth/otari" element={<OtariCallback />} />
         <Route path="/oauth/openrouter/:flowId" element={<OpenRouterCallback />} />
         <Route path="/oauth/tinfoil" element={<TinfoilCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />

@@ -160,7 +160,7 @@ export const modelsTable = powersyncSchema.table(
   {
     id: text('id').notNull(),
     provider: text('provider', {
-      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'tinfoil'],
+      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'tinfoil', 'otari'],
     }),
     name: text('name'),
     model: text('model'),

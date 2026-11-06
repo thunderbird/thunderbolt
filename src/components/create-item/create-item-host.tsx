@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLocation, useNavigate } from 'react-router'
 import { lazy, Suspense, useState } from 'react'
 
 import { createItemTitle, type CreateItemRequest, useCreateItem } from './context'
@@ -17,16 +18,50 @@ const CreateModelPanel = lazy(() =>
   import('./create-model-panel').then((module) => ({ default: module.CreateModelPanel })),
 )
 
+const CreateConnectionPanel = lazy(() =>
+  import('@/settings/connections').then((module) => ({ default: module.CreateConnectionPanel })),
+)
+
 /**
  * Keeps the last request mounted while its surface animates closed. A new
  * request id remounts its form so reopening always starts clean.
  */
 export const CreateItemHost = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
   const { request, isSurfaceOpen, closeCreateItem } = useCreateItem()
   const [renderedRequest, setRenderedRequest] = useState<CreateItemRequest | null>(request)
 
   if (request && request.id !== renderedRequest?.id) {
     setRenderedRequest(request)
+  }
+
+  // Callback state owns this surface until it is dismissed; no redirect to Settings is needed.
+  if (location.state?.connectionOAuthReturn && location.pathname !== '/settings/connections') {
+    const close = () => {
+      closeCreateItem()
+      navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null })
+    }
+    return (
+      <Suspense
+        fallback={
+          <CreateItemLoadingPanel
+            kind="connection"
+            title={createItemTitle({ kind: 'connection', id: 0 })}
+            open
+            onClose={close}
+            onCloseComplete={() => {}}
+          />
+        }
+      >
+        <CreateConnectionPanel
+          key={location.state.connectionOAuthReturn}
+          open
+          onClose={close}
+          onCloseComplete={() => {}}
+        />
+      </Suspense>
+    )
   }
 
   if (!renderedRequest) {
@@ -55,6 +90,14 @@ export const CreateItemHost = () => {
         )
       case 'agent':
         return <CreateAgentPanel {...sharedProps} />
+      case 'connection':
+        return (
+          <CreateConnectionPanel
+            {...sharedProps}
+            connectionId={renderedRequest.connectionId}
+            initialAction={renderedRequest.action}
+          />
+        )
       case 'model':
         return <CreateModelPanel {...sharedProps} />
       default:

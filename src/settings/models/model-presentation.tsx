@@ -22,6 +22,7 @@ export const customProviderLabel = msg`Custom`
 // here or `getProviderLabel` fails to compile.
 const providerBrandNames: Record<Exclude<Model['provider'], 'thunderbolt' | 'custom'>, string> = {
   tinfoil: 'Tinfoil',
+  otari: 'Otari',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
   anthropic: 'Anthropic',
@@ -67,6 +68,7 @@ const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSyste
       return <SiAnthropic size={20} aria-hidden="true" />
     case 'openrouter':
     case 'tinfoil':
+    case 'otari':
       return <ProviderBrandLogo provider={model.provider} className="size-5" />
     case 'custom':
       return <Server className="size-5 text-muted-foreground" aria-hidden="true" />
@@ -91,5 +93,13 @@ export const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider'
  * @param model - The model to label.
  * @param appName - The deployment's app name, from `useAppName()`.
  */
-export const getProviderDisplay = (i18n: I18n, model: Pick<Model, 'provider' | 'isSystem'>, appName: string): string =>
-  getProviderLabel(i18n, isThunderboltManagedModel(model) ? 'thunderbolt' : model.provider, appName)
+export const getProviderDisplay = (
+  i18n: I18n,
+  model: Pick<Model, 'provider' | 'isSystem' | 'connectionName'>,
+  appName: string,
+): string => {
+  const provider = getProviderLabel(i18n, isThunderboltManagedModel(model) ? 'thunderbolt' : model.provider, appName)
+  return model.connectionName && model.connectionName !== provider && !isThunderboltManagedModel(model)
+    ? `${provider} · ${model.connectionName}`
+    : provider
+}

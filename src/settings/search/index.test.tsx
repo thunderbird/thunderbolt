@@ -1,19 +1,26 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
+import { CreateItemProvider, useCreateItem } from '@/components/create-item/context'
 import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { updateSettings } from '@/dal'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, mock, spyOn } from 'bun:test'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
-import { createModel, updateModel } from '@/dal/models'
-import { saveIntegrationCredentials } from '@/dal/integrations'
+import {
+  saveProviderConnection,
+  getProviderCredentials,
+  updateProviderConnection,
+  disconnectProviderConnection,
+} from '@/dal/provider-connections'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import SearchSettingsPage from './index'
+import * as otariBrowser from '@/lib/otari-browser-auth'
+import * as platform from '@/lib/platform'
+import { getClock } from '@/testing-library'
 
 beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
@@ -24,134 +31,183 @@ beforeEach(async () => {
 })
 afterEach(() => {
   cleanup()
+  mock.restore()
   clearAuthToken()
   useSearchProviderStore.getState().clearSearchProvider()
 })
+const renderPage = () =>
+  renderWithReactivity(
+    <CreateItemProvider>
+      <SearchSettingsPage />
+    </CreateItemProvider>,
+    {
+      route: '/settings/search',
+      tables: ['provider_connections', 'provider_connection_secrets', 'settings'],
+    },
+  )
+const save = (provider: 'tinfoil' | 'otari' | 'exa', name: string) =>
+  saveProviderConnection(getDb(), {
+    provider,
+    name,
+    authMethod: 'api_key',
+    url: provider === 'otari' ? 'https://otari.example/api/v1' : null,
+    credentials: { apiKey: `secret-${name}` },
+  })
 
-it.each([true, false])(
-  'shows Tinfoil selection and disables search independently of models (local mode: %s)',
-  async (localMode) => {
-    useLocalSettingsStore.setState({ cloudUrl: localMode ? '' : 'https://server.example/v1', localMode })
-    await createModel(getDb(), {
-      id: 'tf',
-      name: 'Tinfoil',
-      provider: 'tinfoil',
-      model: 'test',
-      apiKey: 'key',
-      enabled: 1,
-      toolUsage: 1,
+it('lists named connections without models or inline credential fields and preserves each credential when switching', async () => {
+  const work = await save('exa', 'Work search')
+  const personal = await save('exa', 'Personal search')
+  useSearchProviderStore.getState().selectSearchConnection(work)
+  renderPage()
+  await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Work search' }))
+  fireEvent.click(screen.getByRole('switch', { name: 'Use Personal search' }))
+  expect(useSearchProviderStore.getState().connectionId).toBe(personal)
+  expect((await getProviderCredentials(getDb(), work))?.apiKey).toBe('secret-Work search')
+  expect((await getProviderCredentials(getDb(), personal))?.apiKey).toBe('secret-Personal search')
+  fireEvent.click(screen.getByRole('button', { name: 'Open Work search' }))
+  expect(screen.queryByLabelText('API key')).toBeNull()
+  expect(screen.getByRole('link', { name: 'Manage connection' })).toHaveAttribute('href', '/settings/connections')
+})
+it.each(['tinfoil', 'otari'] as const)('selects and disables %s search independently of models', async (provider) => {
+  const id = await save(provider, 'My provider')
+  useSearchProviderStore.getState().configureProviderSearch(id, 'available')
+  renderPage()
+  const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable My provider' }))
+  expect(screen.queryByText('Private') !== null).toBe(provider === 'tinfoil')
+  fireEvent.click(toggle)
+  expect(useSearchProviderStore.getState().selection).toBe('none')
+  expect((await getProviderCredentials(getDb(), id))?.apiKey).toBeTruthy()
+  fireEvent.click(screen.getByRole('switch', { name: 'Use My provider' }))
+  expect(useSearchProviderStore.getState().connectionId).toBe(id)
+})
+it.each(['disabled', 'disconnected'] as const)(
+  'retains selection intent but shows an unavailable connection after %s',
+  async (change) => {
+    const id = await save('tinfoil', 'Private search')
+    useSearchProviderStore.getState().selectSearchConnection(id)
+    const { triggerChange } = renderPage()
+    await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Private search' }))
+    await act(async () => {
+      if (change === 'disabled') {
+        await updateProviderConnection(getDb(), id, { enabled: false })
+      } else {
+        await disconnectProviderConnection(getDb(), id)
+      }
+      triggerChange(['provider_connections', 'provider_connection_secrets'])
     })
-    renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
-    const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Tinfoil' }))
-    expect(toggle).toBeTruthy()
-    expect(screen.getByText('Exa search through Tinfoil')).toBeTruthy()
-    expect(screen.queryByText('Exa search through your Tinfoil subscription')).toBeNull()
-    expect(screen.getByText('Private')).toBeTruthy()
-    expect(screen.queryByText('Selected')).toBeNull()
-    fireEvent.click(toggle)
-    expect(useSearchProviderStore.getState().selection).toBe('none')
-    expect(screen.queryByText('Selected')).toBeNull()
-    fireEvent.click(screen.getByRole('switch', { name: 'Use Tinfoil' }))
-    expect(useSearchProviderStore.getState().selection).toBe('tinfoil')
+    await waitForElement(() => screen.queryByRole('switch', { name: 'Use Private search' }))
+    expect(useSearchProviderStore.getState().connectionId).toBe(id)
+    fireEvent.click(screen.getByRole('switch', { name: 'Use Private search' }))
+    expect(screen.getByRole('link', { name: 'Manage connection' })).toBeTruthy()
   },
 )
-
-it('switches to Tinfoil without losing a configured search key', async () => {
-  await createModel(getDb(), {
-    id: 'oauth',
-    name: 'Tinfoil',
-    provider: 'tinfoil',
-    model: 'test',
-    oauthProvider: 'tinfoil',
-    enabled: 1,
-    toolUsage: 1,
-  })
-  await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'token' }, true)
-  useSearchProviderStore.getState().configureSearchProvider('saved-exa', 'exa')
-  renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
-  await waitForElement(() => {
-    const toggle = screen.queryByRole('switch', { name: 'Use Tinfoil' })
-    return toggle && !toggle.hasAttribute('disabled') ? toggle : null
-  })
-  const toggle = screen.getByRole('switch', { name: 'Use Tinfoil' })
-  expect(screen.getByRole('switch', { name: 'Disable Exa' })).toBeTruthy()
-  fireEvent.click(toggle)
-  expect(useSearchProviderStore.getState()).toMatchObject({
-    selection: 'tinfoil',
-    apiKey: 'saved-exa',
-    provider: 'exa',
-  })
-  expect(screen.getByRole('switch', { name: 'Use Exa' })).toBeTruthy()
-  await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Open Tinfoil' }))
-  })
-  expect(
-    screen.getByText(
-      'Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters. No separate Exa API key is needed.',
-    ),
-  ).toBeTruthy()
+it('offers adding a connection when none exists', () => {
+  renderPage()
+  fireEvent.click(screen.getByRole('button', { name: 'New Search Connection' }))
+  expect(screen.getByRole('link', { name: 'Manage all connections' })).toHaveAttribute('href', '/settings/connections')
+  fireEvent.click(screen.getByRole('button', { name: 'Exa Search' }))
+  expect(screen.getByRole('button', { name: 'Connect Exa' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
+  expect(screen.getByLabelText('API key')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'OpenAI Models' })).toBeNull()
 })
 
-it('lists all providers and opens the chosen provider without reusing another provider’s key', async () => {
-  useSearchProviderStore.getState().configureSearchProvider('private-exa-key', 'exa')
-  renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
-  for (const name of ['Tinfoil', 'Exa', 'Brave', 'Tavily']) {
-    expect(screen.getByRole('button', { name: `Open ${name}` })).toBeTruthy()
-  }
-  await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Open Brave' }))
-  })
-  expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('')
-  expect(screen.queryByRole('combobox')).toBeNull()
-  expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull()
-  expect(useSearchProviderStore.getState().apiKey).toBe('private-exa-key')
-})
-
-it('keeps Tinfoil visible but removes selected status when its connection is disabled', async () => {
-  await createModel(getDb(), {
-    id: 'tf',
-    name: 'Tinfoil',
-    provider: 'tinfoil',
-    model: 'test',
-    apiKey: 'key',
-    enabled: 1,
-    toolUsage: 1,
-  })
-  useSearchProviderStore.getState().selectSearchProvider('tinfoil')
-  const { triggerChange } = renderWithReactivity(<SearchSettingsPage />, {
-    route: '/settings/search',
-    tables: ['models', 'settings'],
-  })
-  await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Tinfoil' }))
-  await act(async () => {
-    await updateModel(getDb(), 'tf', { enabled: 0 })
-    triggerChange(['models'])
-  })
-  await waitForElement(() => screen.queryByRole('switch', { name: 'Use Tinfoil' }))
-  expect(screen.getByRole('button', { name: 'Open Tinfoil' })).toBeTruthy()
-  expect(screen.getByText('Private')).toBeTruthy()
-  expect(screen.getByRole('switch', { name: 'Use Tinfoil' }).getAttribute('aria-checked')).toBe('false')
-  expect(useSearchProviderStore.getState().selection).toBe('tinfoil')
-})
-
-it('keeps Thunderbolt visible and selected when only a synced Tinfoil model exists', async () => {
-  useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })
-  setAuthToken('cloud-session')
-  await updateSettings(getDb(), { integrations_pro_is_enabled: true })
-  await createModel(getDb(), { id: 'synced', name: 'Synced Tinfoil', provider: 'tinfoil', model: 'test', enabled: 1 })
-  renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
-  expect(await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Thunderbolt' }))).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeTruthy()
-  expect(screen.getByRole('switch', { name: 'Use Tinfoil' })).toBeTruthy()
-})
-
-it('keeps the Cloud option visible when server integrations are switched off', async () => {
+it.each(['New Search Connection', 'Open Existing search', 'Edit', 'Remove'])(
+  'cancels pending Otari authorization when navigating to %s',
+  async (destination) => {
+    await save('exa', 'Existing search')
+    spyOn(platform, 'isTauri').mockReturnValue(false)
+    const start = spyOn(otariBrowser, 'startOtariBrowserConnection').mockResolvedValue()
+    renderPage()
+    await waitForElement(() => screen.queryByRole('button', { name: 'Open Existing search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New Search Connection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Otari' }))
+    await act(async () => getClock().runAllAsync())
+    expect(start).toHaveBeenCalledTimes(1)
+    const signal = start.mock.calls[0][2]
+    expect(signal.aborted).toBe(false)
+    if (destination === 'Edit' || destination === 'Remove') {
+      fireEvent.contextMenu(screen.getByRole('button', { name: 'Open Existing search' }))
+      fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: destination })))
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: destination }))
+    }
+    expect(signal.aborted).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Cancel connection' })).not.toBeInTheDocument()
+  },
+)
+it.each([true, false])('keeps Cloud visible while its integration is enabled: %s', async (enabled) => {
   useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: false })
-  setAuthToken('cloud-session')
-  await updateSettings(getDb(), { integrations_pro_is_enabled: false })
-  renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
+  setAuthToken('session')
+  await updateSettings(getDb(), { integrations_pro_is_enabled: enabled })
+  renderPage()
   const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Use Thunderbolt' }))
-  fireEvent.click(toggle)
-  expect(screen.getByRole('link', { name: 'Manage connection' })).toBeTruthy()
-  expect(useSearchProviderStore.getState().selection).toBe('auto')
+  expect(toggle.getAttribute('aria-checked')).toBe(String(enabled))
+  if (!enabled) {
+    fireEvent.click(toggle)
+    expect(screen.getByRole('link', { name: 'Manage connection' })).toBeTruthy()
+  }
+})
+
+it.each(['Edit', 'Remove'] as const)('%s opens the shared connection aside without leaving Search', async (action) => {
+  const id = await save('exa', 'Work Exa')
+  const RequestProbe = () => {
+    const { request } = useCreateItem()
+    return <p data-testid="connection-request">{JSON.stringify(request)}</p>
+  }
+  renderWithReactivity(
+    <CreateItemProvider>
+      <SearchSettingsPage />
+      <RequestProbe />
+    </CreateItemProvider>,
+    {
+      route: '/settings/search',
+      tables: ['provider_connections', 'provider_connection_secrets'],
+    },
+  )
+  fireEvent.contextMenu(await waitForElement(() => screen.queryByRole('button', { name: 'Open Work Exa' })))
+  fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: action })))
+  expect(JSON.parse(screen.getByTestId('connection-request').textContent!)).toMatchObject({
+    kind: 'connection',
+    connectionId: id,
+    action: action.toLowerCase(),
+  })
+  expect(screen.getByRole('heading', { name: 'Search' })).toBeVisible()
+})
+
+it('filters named connections and cloud search, and clears the filter', async () => {
+  await save('exa', 'Research')
+  await save('tinfoil', 'Private workspace')
+  useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: false })
+  setAuthToken('session')
+  renderPage()
+  await waitForElement(() => screen.queryByRole('button', { name: 'Open Research' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+  const input = screen.getByPlaceholderText('Search connections')
+  expect(input).toHaveFocus()
+  for (const query of ['  RESEARCH  ', 'Exa']) {
+    fireEvent.change(input, { target: { value: query } })
+    await act(async () => {
+      await getClock().tickAsync(100)
+    })
+    expect(screen.getByRole('button', { name: 'Open Research' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Open Private workspace' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open Thunderbolt' })).toBeNull()
+  }
+  fireEvent.change(input, { target: { value: 'Thunderbolt' } })
+  await act(async () => {
+    await getClock().tickAsync(100)
+  })
+  expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Open Research' })).toBeNull()
+  fireEvent.change(input, { target: { value: 'no match' } })
+  await act(async () => {
+    await getClock().tickAsync(100)
+  })
+  expect(screen.getByText('No matching connections.')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+  expect(screen.getByRole('button', { name: 'Open Research' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Open Private workspace' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeVisible()
 })

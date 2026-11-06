@@ -1,56 +1,66 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-import { afterEach, describe, expect, it } from 'bun:test'
-import { useSearchProviderStore } from './search-provider-store'
-
-const storageKey = 'thunderbolt-search-provider'
-
-/** Replays the storage notification delivered to other windows after a persistent change. */
-const storageChanged = (key: string | null = storageKey, storageArea: Storage = localStorage) => {
-  window.dispatchEvent(new StorageEvent('storage', { key, storageArea }))
-}
+import { afterEach, expect, it } from 'bun:test'
+import { legacySearchStorageKey, searchSelectionStorageKey, useSearchProviderStore } from './search-provider-store'
 
 afterEach(() => useSearchProviderStore.getState().clearSearchProvider())
-
-describe('search credentials across windows', () => {
-  it('stops retaining a key disconnected in another window without writing it back', () => {
-    useSearchProviderStore.getState().configureSearchProvider('old-key', 'exa')
-    const disconnected = JSON.stringify({ state: { provider: null, apiKey: '', selection: 'none' }, version: 0 })
-    localStorage.setItem(storageKey, disconnected)
-    storageChanged()
-    expect(useSearchProviderStore.getState()).toMatchObject({ provider: null, apiKey: '', selection: 'none' })
-    expect(localStorage.getItem(storageKey)).toBe(disconnected)
+it('persists only connection identity, selection and capability status', () => {
+  useSearchProviderStore.getState().configureProviderSearch('oauth:otari', 'available')
+  expect(JSON.parse(localStorage.getItem(searchSelectionStorageKey)!).state).toEqual({
+    selection: 'connection',
+    connectionId: 'oauth:otari',
+    connectionStatus: { connectionId: 'oauth:otari', status: 'available' },
   })
-
-  it.each([storageKey, null])('drops cached credentials when storage is removed (%s)', (eventKey) => {
-    useSearchProviderStore.getState().configureSearchProvider('old-key', 'brave')
-    localStorage.removeItem(storageKey)
-    storageChanged(eventKey)
-    expect(useSearchProviderStore.getState()).toMatchObject({ provider: null, apiKey: '', selection: 'auto' })
-    expect(localStorage.getItem(storageKey)).toBeNull()
-  })
-
-  it('uses the current key and selection when another window changes provider', () => {
-    useSearchProviderStore.getState().configureSearchProvider('old-key', 'exa')
-    localStorage.setItem(
-      storageKey,
-      JSON.stringify({ state: { provider: 'tavily', apiKey: 'replacement-key', selection: 'custom' }, version: 0 }),
-    )
-    storageChanged()
+})
+it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
+  'keeps the current choice when Otari reports %s',
+  (status) => {
+    useSearchProviderStore.getState().selectSearchConnection('own-exa')
+    useSearchProviderStore.getState().configureProviderSearch('oauth:otari', status)
+    expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'connection', connectionId: 'own-exa' })
+    expect(useSearchProviderStore.getState().connectionStatus).toEqual({ connectionId: 'oauth:otari', status })
+  },
+)
+it('selects confirmed built-in search and keeps disabling search separate from disconnecting', () => {
+  useSearchProviderStore.getState().selectSearchProvider('none')
+  useSearchProviderStore.getState().configureProviderSearch('oauth:tinfoil', 'available')
+  expect(useSearchProviderStore.getState().connectionId).toBe('oauth:tinfoil')
+  useSearchProviderStore.getState().selectSearchProvider('none')
+  expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'none', connectionId: null })
+})
+it.each(['auto', 'cloud', 'none', 'connection'] as const)(
+  'records verified capability without changing the current %s selection when saving in Settings',
+  (selection) => {
+    if (selection === 'connection') {
+      useSearchProviderStore.getState().selectSearchConnection('existing-search')
+    } else {
+      useSearchProviderStore.getState().selectSearchProvider(selection)
+    }
+    useSearchProviderStore.getState().configureProviderSearch('oauth:otari', 'available', { select: false })
     expect(useSearchProviderStore.getState()).toMatchObject({
-      provider: 'tavily',
-      apiKey: 'replacement-key',
-      selection: 'custom',
+      selection,
+      connectionId: selection === 'connection' ? 'existing-search' : null,
+      connectionStatus: { connectionId: 'oauth:otari', status: 'available' },
     })
+  },
+)
+it('drops stale routing when another window clears its storage', async () => {
+  useSearchProviderStore.getState().selectSearchConnection('private')
+  localStorage.removeItem(searchSelectionStorageKey)
+  await useSearchProviderStore.persist.rehydrate()
+  expect(useSearchProviderStore.getState()).toMatchObject({
+    selection: 'auto',
+    connectionId: null,
+    connectionStatus: null,
   })
+})
 
-  it('ignores unrelated or session-storage events', () => {
-    useSearchProviderStore.getState().configureSearchProvider('current-key', 'exa')
-    localStorage.removeItem(storageKey)
-    storageChanged('unrelated-key')
-    storageChanged(storageKey, sessionStorage)
-    expect(useSearchProviderStore.getState().apiKey).toBe('current-key')
-  })
+it('removes an unmigrated legacy key during account cleanup', () => {
+  localStorage.setItem(
+    legacySearchStorageKey,
+    JSON.stringify({ state: { provider: 'exa', apiKey: 'old-account-key' } }),
+  )
+  useSearchProviderStore.getState().clearSearchProvider()
+  expect(localStorage.getItem(legacySearchStorageKey)).toBeNull()
 })

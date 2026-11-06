@@ -6,8 +6,12 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { Model } from '@/types'
+import { getDb } from '@/db/database'
+import { saveProviderConnection } from '@/dal/provider-connections'
+import * as providerModels from '@/providers/models'
+import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { useEditModelFormState } from './use-edit-model-form-state'
 
 const completion = () =>
@@ -65,6 +69,7 @@ describe('useEditModelFormState tool support', () => {
 
   afterEach(async () => {
     cleanup()
+    mock.restore()
     await resetTestDatabase()
   })
 
@@ -107,5 +112,35 @@ describe('useEditModelFormState tool support', () => {
 
     expect(result.current.isSaveDisabled).toBe(false)
     expect(result.current.submissionFor(result.current.form.getValues()).toolUsage).toBe(0)
+  })
+
+  it('loads the current connection catalog only after explicitly opening the model selector', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Work',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'local-key' },
+    })
+    const fetch = spyOn(providerModels, 'fetchProviderModels').mockResolvedValue([
+      { id: 'replacement', name: 'Replacement' },
+    ])
+    const { result } = renderEditState(
+      { ...savedModel, provider: 'openai', providerConnectionId: id },
+      providerFetch({ acceptsTools: true }),
+    )
+    expect(fetch).not.toHaveBeenCalled()
+    await act(async () => {
+      result.current.loadCatalog()
+      await getClock().runAllAsync()
+    })
+    expect(fetch).toHaveBeenCalledWith(getDb(), id, expect.any(Function))
+    expect(result.current.modelItems.some((item) => item.id === 'replacement')).toBe(true)
+    act(() => result.current.selectModel('replacement'))
+    expect(result.current.submissionFor(result.current.form.getValues())).toEqual({
+      id: savedModel.id,
+      name: savedModel.name,
+      model: 'replacement',
+      toolUsage: 1,
+    })
   })
 })

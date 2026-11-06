@@ -9,6 +9,7 @@
  */
 
 @import './spark-editorial.css';
+@import '@fontsource-variable/lora';
 
 :root {
   /* Map Starlight UI colors to the active brand palette. */
@@ -54,9 +55,16 @@
   --sl-line-height-headings: 1.25;
 
   /* Tighter, editorial feel */
-  --sl-content-width: 48rem;
-  --sl-sidebar-width: 16rem;
-  --sl-nav-height: 140px;
+  --sl-content-width: 44rem;
+  --sl-sidebar-width: 12rem;
+  --sl-nav-height: 136px;
+  --sl-content-pad-x: 0px;
+  --sl-mobile-toc-height: 40px;
+  --docs-gutter: 48px;
+  --docs-shell-width: min(1120px, calc(100% - var(--docs-gutter) * 2));
+  --docs-shell-offset: max(var(--docs-gutter), calc((100% - 1120px) / 2));
+  --docs-column-gap: 40px;
+  --docs-page-space: 64px;
 
   /* Flat, shadowless aesthetic — override Starlight shadow vars globally */
   --sl-shadow-sm: none;
@@ -100,7 +108,7 @@ html {
   --sl-color-hairline-shade: var(--tb-border-strong);
 }
 
-/* Readable Inter headings throughout; Mozilla stays in the wordmark. */
+/* Editorial headings share the site’s Lora face; compact UI remains Inter. */
 h1,
 .sl-markdown-content h1,
 .sl-markdown-content h2,
@@ -110,6 +118,12 @@ h1,
   color: var(--tb-text);
   letter-spacing: -0.035em;
   font-weight: 550;
+}
+
+main h1,
+.sl-markdown-content h2 {
+  font-family: 'Lora Variable', serif;
+  font-weight: 500;
 }
 
 /* Whitespace-only separation between sections — no divider rule */
@@ -298,13 +312,6 @@ h1,
   border-bottom: 2px solid var(--tb-border-strong);
 }
 
-/* Nav chrome */
-header.header {
-  background: color-mix(in srgb, var(--tb-bg) 85%, transparent);
-  backdrop-filter: saturate(140%) blur(12px);
-  border-bottom: 1px solid var(--tb-border);
-}
-
 /* Hamburger button — explicit brand colors to override Starlight's [data-theme='light'] rules */
 starlight-menu-button button {
   background-color: var(--tb-bg);
@@ -467,7 +474,10 @@ mobile-starlight-toc nav {
 /* Search controls follow the site radius scale. */
 
 site-search dialog {
-  border-radius: var(--tb-radius-control) !important;
+  border: 1px solid var(--spark-border);
+  border-radius: var(--tb-radius-panel) !important;
+  background: var(--spark-surface);
+  color: var(--spark-ink);
 }
 #starlight__search {
   --sl-search-corners: var(--tb-radius-control);
@@ -531,70 +541,67 @@ site-search dialog {
   background: transparent;
 }
 
-/* Spark navigation sits above a compact documentation toolbar. */
+/* Keep documentation inside the same centered frame as the rest of the site. */
 header.header {
   height: var(--sl-nav-height);
-  padding: 0 !important;
+  padding: 0;
+  border-bottom: 0;
   background: var(--spark-background);
-}
-header.header .spark-header {
-  height: 88px;
 }
 header.header:has(.spark-nav-trigger[aria-expanded='true']) {
   z-index: calc(var(--sl-z-index-navbar) + 1);
 }
-header.header .spark-shell {
-  width: min(1440px, calc(100% - 64px));
-}
 .docs-tools site-search button[data-open-modal] {
-  width: 270px;
-  min-height: 34px;
+  width: 240px;
+  min-height: 36px;
   border: 1px solid var(--spark-border);
   border-radius: 50px;
-  background: var(--spark-surface);
+  background: transparent;
   color: var(--spark-muted);
-  padding: 5px 14px;
-  font-size: 12px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+.docs-tools site-search button[data-open-modal]:hover {
+  background: var(--spark-hover);
+  border-color: var(--spark-border-strong);
 }
 .docs-tools site-search kbd {
   border: 0;
   background: transparent;
 }
-.sidebar-content {
-  padding-top: 32px;
+.main-frame {
+  width: var(--docs-shell-width);
+  margin-inline: auto;
+  padding-inline: 0;
 }
-nav.sidebar .top-level > li + li {
-  margin-top: 20px;
-}
-nav.sidebar summary .large {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--spark-ink);
-}
-nav.sidebar ul > li > a {
-  padding: 7px 12px;
-  font-size: 13px;
-}
-nav.sidebar ul ul {
-  border-inline-start: none;
+.main-pane {
+  min-width: 0;
 }
 .content-panel {
   border-top: 0;
-  padding-top: 40px;
+  padding: var(--docs-page-space) 0 0;
 }
 .content-panel + .content-panel {
-  padding-top: 24px;
+  padding-top: 32px;
+  padding-bottom: 64px;
+}
+.sl-container {
+  margin-inline: auto;
 }
 main h1 {
-  font-size: clamp(34px, 3.8vw, 52px);
-  font-weight: 600;
-  line-height: 1.12;
+  font-size: clamp(36px, 3.8vw, 50px);
+  line-height: 1.15;
   letter-spacing: -0.045em;
   text-wrap: pretty;
 }
 .sl-markdown-content {
   font-size: 16px;
   line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.sl-markdown-content h2 {
+  font-size: 30px;
+  line-height: 1.25;
 }
 .sl-markdown-content > :first-child {
   margin-top: 0;
@@ -603,57 +610,164 @@ main h1 {
   border: 1px solid var(--spark-border);
   border-radius: 12px;
 }
+.sidebar-content {
+  padding: var(--docs-page-space) var(--docs-gutter) 32px;
+}
+nav.sidebar .top-level > li + li {
+  margin-top: 28px;
+}
+nav.sidebar summary {
+  padding: 0 10px 10px;
+}
+nav.sidebar summary .large {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--spark-ink);
+}
+nav.sidebar summary .caret {
+  width: 14px;
+  height: 14px;
+  color: var(--spark-muted);
+}
+nav.sidebar ul ul li {
+  margin-inline-start: 0;
+  border-inline-start: 0;
+  padding-inline-start: 0;
+}
+nav.sidebar ul > li > a {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+nav.sidebar ul > li > a:hover {
+  background: var(--spark-hover);
+}
 .right-sidebar {
   border-inline-start: 0;
 }
-@media (min-width: 72rem) {
-  .right-sidebar {
-    padding-top: calc(var(--sl-nav-height) + 24px);
-  }
-}
 .right-sidebar h2 {
+  margin-bottom: 12px;
   font-family: var(--tb-font-sans);
   font-size: 12px;
   font-weight: 550;
   color: var(--spark-muted);
 }
 .right-sidebar a {
+  padding-block: 6px;
   font-size: 12px;
+  line-height: 1.5;
+}
+.pagination-links {
+  gap: 20px;
 }
 .pagination-links a {
   padding: 20px;
-  border-radius: 16px;
+  border-radius: 12px;
+  border-color: var(--spark-border);
+  background: transparent;
+  box-shadow: none;
+}
+.pagination-links a:hover {
   background: var(--spark-surface);
+  border-color: var(--spark-border-strong);
 }
 .pagination-links .link-title {
   font-family: var(--tb-font-sans);
-  font-size: 18px;
+  font-size: 16px;
 }
-@media (min-width: 800px) and (max-width: 900px) {
+/* The compact table of contents uses the same gutters as the article. */
+mobile-starlight-toc nav {
+  inset-inline: var(--docs-shell-offset);
+  border-top: 0;
+  background: var(--spark-background);
+}
+#starlight__mobile-toc > summary {
+  padding-inline: 0;
+  gap: 16px;
+  border-bottom-color: var(--spark-border);
+}
+#starlight__mobile-toc .toggle {
+  gap: 8px;
+  padding-inline: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--spark-muted);
+}
+#starlight__mobile-toc .display-current {
+  color: var(--spark-muted);
+  font-size: 12px;
+}
+#starlight__mobile-toc .dropdown {
+  border-radius: 0 0 12px 12px;
+  background: var(--spark-surface);
+}
+@media (min-width: 50rem) {
+  [data-has-sidebar] .main-frame {
+    padding-inline-start: calc(var(--sl-sidebar-width) + var(--docs-column-gap));
+  }
+  .sidebar-pane {
+    inset-inline-start: var(--docs-shell-offset);
+    border-inline-end: 0;
+    background: transparent;
+    scrollbar-gutter: auto;
+    scrollbar-width: thin;
+  }
+  .sidebar-content {
+    padding-inline: 0;
+  }
+  mobile-starlight-toc nav {
+    inset-inline-start: calc(var(--docs-shell-offset) + var(--sl-sidebar-width) + var(--docs-column-gap));
+  }
+}
+@media (min-width: 72rem) {
   :root {
-    --sl-sidebar-width: 14rem;
+    --sl-mobile-toc-height: 0px;
+  }
+  [data-has-sidebar][data-has-toc] .main-pane {
+    --sl-content-margin-inline: 0;
+    flex: 1;
+    width: auto;
+  }
+  .right-sidebar-container {
+    flex: 0 0 160px;
+    width: 160px;
+    margin-inline-start: 32px;
+  }
+  .right-sidebar {
+    position: sticky;
+    top: calc(var(--sl-nav-height) + var(--docs-page-space));
+    width: auto;
+    height: calc(100vh - var(--sl-nav-height) - var(--docs-page-space) - 32px);
+    padding-top: 0;
+  }
+}
+@media (max-width: 1151px) {
+  :root {
+    --docs-page-space: 48px;
+  }
+}
+@media (max-width: 900px) {
+  :root {
+    --docs-gutter: 32px;
+    --sl-nav-height: 132px;
+    --docs-column-gap: 32px;
   }
 }
 @media (max-width: 799px) {
-  header.header .spark-header {
-    height: 84px;
-  }
-  header.header .spark-shell {
-    width: calc(100% - 48px);
-  }
-  header.header .spark-nav-values {
-    display: none;
+  :root {
+    --docs-page-space: 40px;
   }
   starlight-menu-button button {
-    top: 94px;
-    inset-inline-end: 24px;
+    top: 90px;
+    inset-inline-end: var(--docs-gutter);
     width: 36px;
     height: 36px;
     border-radius: 50%;
   }
   .docs-tools site-search button[data-open-modal] {
     width: auto;
-    min-height: 36px;
     padding: 6px 12px;
   }
   .docs-tools site-search button > span {
@@ -662,23 +776,35 @@ main h1 {
   .docs-tools site-search kbd {
     display: none;
   }
-  .content-panel {
-    padding-top: 32px;
-  }
   .right-sidebar {
     padding-top: 0;
   }
 }
-@media (max-width: 380px) {
-  header.header .spark-shell {
-    width: calc(100% - 40px);
+@media (max-width: 760px) {
+  :root {
+    --docs-gutter: 24px;
   }
-  starlight-menu-button button {
-    inset-inline-end: 20px;
+}
+@media (max-width: 480px) {
+  .sl-markdown-content h2 {
+    font-size: 27px;
+  }
+  .pagination-links {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 380px) {
+  :root {
+    --docs-gutter: 20px;
   }
 }
 @media print {
   header.header {
     display: none;
+  }
+  .main-frame,
+  [data-has-sidebar] .main-frame {
+    width: 100%;
+    padding: 0;
   }
 }

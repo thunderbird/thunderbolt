@@ -26,16 +26,18 @@ const isHome = Astro.locals.starlightRoute.entry.id === 'docs';
 <style>
   .docs-title { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
   .docs-title p { margin: 20px 0 0; font-size: 16px; line-height: 1.7; color: var(--spark-muted); }
-  :global(.docs-burst) { --spark-ink: #292722; width: 80px; flex-shrink: 0; color: var(--spark-yellow); }
-  .docs-start { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 32px; }
-  .docs-start a { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 20px; border: 1px solid var(--spark-border); border-radius: 12px; color: var(--spark-ink); font-size: 14px; font-weight: 500; text-decoration: none; background: var(--spark-surface); }
+  :global(.docs-burst) { --spark-ink: #292722; width: 64px; flex-shrink: 0; color: var(--spark-yellow); }
+  .docs-start { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px; }
+  .docs-start a { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--spark-border); color: var(--spark-ink); font-size: 14px; font-weight: 500; text-decoration: none; }
   .docs-start a:hover { border-color: var(--spark-red); color: var(--spark-red); }
   .docs-start span { color: var(--spark-red); }
   @media (max-width: 480px) {
     .docs-title { gap: 16px; }
-    :global(.docs-burst) { width: 52px; }
+    :global(.docs-burst) { display: none; }
     .docs-title p { font-size: 14px; margin-top: 16px; }
-    .docs-start { grid-template-columns: 1fr; gap: 12px; margin-top: 24px; }
-    .docs-start a { padding: 15px 18px; }
+    .docs-start { gap: 16px; margin-top: 24px; }
+  }
+  @media (max-width: 360px) {
+    .docs-start { grid-template-columns: 1fr; gap: 8px; }
   }
 </style>

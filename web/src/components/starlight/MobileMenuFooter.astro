@@ -1,0 +1,20 @@
+---
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import Default from '@astrojs/starlight/components/MobileMenuFooter.astro';
+---
+
+<nav class="docs-site-links" aria-label="More from Thunderbolt">
+  <a href="/blog/">Blog</a>
+  <a href="/enterprise/">Enterprise</a>
+  <a href="/contact/">Contact</a>
+</nav>
+<Default />
+
+<style>
+  .docs-site-links { display: grid; gap: 4px; margin-top: 16px; }
+  .docs-site-links a { padding: 10px; border-radius: 8px; color: var(--spark-muted); font-size: 13px; text-decoration: none; }
+  .docs-site-links a:hover { background: var(--spark-hover); color: var(--spark-ink); }
+  :global(.mobile-preferences) { border-top: 0; }
+</style>

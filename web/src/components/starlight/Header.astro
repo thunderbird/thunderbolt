@@ -10,20 +10,12 @@ const shouldRenderSearch = config.pagefind ||
   config.components.Search !== '@astrojs/starlight/components/Search.astro';
 ---
 
-<SparkHeader currentPage="Docs" as="div" client:load />
-<div class="docs-toolbar spark-shell">
-  <a class="docs-home" href="/docs/">Documentation</a>
+<SparkHeader currentPage="Docs" as="div" client:load>
   <div class="docs-tools print:hidden">
     {shouldRenderSearch && <Search />}
   </div>
-</div>
+</SparkHeader>
 
 <style>
-  .docs-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 48px; border-top: 1px solid var(--spark-border); }
-  .docs-home { color: var(--spark-red); font-size: 13px; font-weight: 550; text-decoration: none; }
-  .docs-tools { display: flex; align-items: center; gap: 24px; }
-  @media (max-width: 799px) {
-    .docs-toolbar { padding-inline-end: 48px; }
-    .docs-tools { gap: 0; }
-  }
+  .docs-tools { display: flex; align-items: center; }
 </style>

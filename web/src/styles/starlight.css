@@ -57,9 +57,9 @@
   /* Tighter, editorial feel */
   --sl-content-width: 44rem;
   --sl-sidebar-width: 12rem;
-  --sl-nav-height: 136px;
+  --sl-nav-height: 88px;
   --sl-content-pad-x: 0px;
-  --sl-mobile-toc-height: 40px;
+  --sl-mobile-toc-height: 0px;
   --docs-gutter: 48px;
   --docs-shell-width: min(1120px, calc(100% - var(--docs-gutter) * 2));
   --docs-shell-offset: max(var(--docs-gutter), calc((100% - 1120px) / 2));
@@ -316,13 +316,13 @@ main h1,
 starlight-menu-button button {
   background-color: var(--tb-bg);
   color: var(--tb-text);
-  border-radius: var(--tb-radius-control);
+  border-radius: 8px;
   box-shadow: none;
-  border: 1px solid var(--tb-border);
+  border: 0;
 }
+starlight-menu-button button:hover,
 starlight-menu-button[aria-expanded='true'] button {
   background-color: var(--tb-surface-subtle);
-  border-color: var(--tb-border-strong);
 }
 
 .site-title,
@@ -552,22 +552,29 @@ header.header:has(.spark-nav-trigger[aria-expanded='true']) {
   z-index: calc(var(--sl-z-index-navbar) + 1);
 }
 .docs-tools site-search button[data-open-modal] {
-  width: 240px;
-  min-height: 36px;
-  border: 1px solid var(--spark-border);
-  border-radius: 50px;
+  width: auto;
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
   color: var(--spark-muted);
-  padding: 6px 14px;
+  padding: 10px;
   font-size: 13px;
 }
 .docs-tools site-search button[data-open-modal]:hover {
   background: var(--spark-hover);
-  border-color: var(--spark-border-strong);
+  color: var(--spark-ink);
+}
+.docs-tools site-search button[data-open-modal] > svg {
+  width: 18px;
+  height: 18px;
 }
 .docs-tools site-search kbd {
   border: 0;
   background: transparent;
+}
+.docs-tools site-search button > kbd {
+  margin-inline-start: 12px;
 }
 .main-frame {
   width: var(--docs-shell-width);
@@ -676,16 +683,19 @@ nav.sidebar ul > li > a:hover {
   font-family: var(--tb-font-sans);
   font-size: 16px;
 }
-/* The compact table of contents uses the same gutters as the article. */
+/* Section navigation belongs to the article rather than a second fixed header. */
 mobile-starlight-toc nav {
-  inset-inline: var(--docs-shell-offset);
-  border-top: 0;
-  background: var(--spark-background);
+  position: static;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
 }
 #starlight__mobile-toc > summary {
   padding-inline: 0;
   gap: 16px;
-  border-bottom-color: var(--spark-border);
+  height: auto;
+  min-height: 28px;
+  border-bottom: 0;
 }
 #starlight__mobile-toc .toggle {
   gap: 8px;
@@ -717,9 +727,6 @@ mobile-starlight-toc nav {
   .sidebar-content {
     padding-inline: 0;
   }
-  mobile-starlight-toc nav {
-    inset-inline-start: calc(var(--docs-shell-offset) + var(--sl-sidebar-width) + var(--docs-column-gap));
-  }
 }
 @media (min-width: 72rem) {
   :root {
@@ -747,11 +754,17 @@ mobile-starlight-toc nav {
   :root {
     --docs-page-space: 48px;
   }
+  .right-sidebar-container {
+    padding-top: 24px;
+  }
+  body:has(.docs-intro) .right-sidebar-container {
+    display: none;
+  }
 }
 @media (max-width: 900px) {
   :root {
     --docs-gutter: 32px;
-    --sl-nav-height: 132px;
+    --sl-nav-height: 84px;
     --docs-column-gap: 32px;
   }
 }
@@ -759,19 +772,27 @@ mobile-starlight-toc nav {
   :root {
     --docs-page-space: 40px;
   }
+  header.header .spark-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-inline-end: 52px;
+  }
+  header.header .spark-main-nav {
+    display: none;
+  }
   starlight-menu-button button {
-    top: 90px;
+    top: calc((var(--sl-nav-height) - 44px) / 2);
     inset-inline-end: var(--docs-gutter);
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    padding: 12px;
   }
   .docs-tools site-search button[data-open-modal] {
-    width: auto;
-    padding: 6px 12px;
+    justify-content: center;
+    width: 44px;
+    padding: 12px;
   }
   .docs-tools site-search button > span {
-    display: inline;
+    display: none;
   }
   .docs-tools site-search kbd {
     display: none;

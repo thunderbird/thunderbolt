@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 import './spark-chrome.css'
 import { productLinks } from '../../../data/website-product'
 import { useSparkHeaderState } from './use-spark-header-state'
@@ -18,9 +18,10 @@ const pages = [
 type SparkHeaderProps = {
   currentPage?: (typeof pages)[number]['label']
   as?: 'header' | 'div'
+  children?: ReactNode
 }
 
-export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeaderProps) => {
+export const SparkHeader = ({ currentPage, as: Element = 'header', children }: SparkHeaderProps) => {
   const { isOpen, setIsOpen, navigationRef, triggerRef } = useSparkHeaderState()
   const panelId = useId()
 
@@ -89,9 +90,11 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
       </nav>
       <div className="spark-header-actions">
         <SiteThemeToggle />
-        <a className="spark-nav-cta" href={productLinks.download}>
-          Download <span aria-hidden="true">↓</span>
-        </a>
+        {children ?? (
+          <a className="spark-nav-cta" href={productLinks.download}>
+            Download <span aria-hidden="true">↓</span>
+          </a>
+        )}
       </div>
     </Element>
   )

@@ -161,6 +161,8 @@ export type RunReport = {
   gitRef: string
   mode: 'sweep' | 'diff' | 'focus'
   scenarios: ScenarioReport[]
+  /** Requested browser runs that could not start; coverage is incomplete. */
+  browserErrors?: string[]
   bundle?: BundleReport
 }
 

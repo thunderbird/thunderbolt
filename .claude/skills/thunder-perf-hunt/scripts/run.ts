@@ -29,7 +29,9 @@ const flag = (name: string, fallback = ''): string => {
 
 const gitRef = (): string => {
   try {
-    return new TextDecoder().decode(Bun.spawnSync(['git', 'rev-parse', '--short', 'HEAD'], { cwd: REPO_ROOT }).stdout).trim()
+    return new TextDecoder()
+      .decode(Bun.spawnSync(['git', 'rev-parse', '--short', 'HEAD'], { cwd: REPO_ROOT }).stdout)
+      .trim()
   } catch {
     return 'unknown'
   }
@@ -46,7 +48,7 @@ const selectScenarios = (mode: string): ScenarioDef[] => {
 
 const main = async () => {
   const mode = (flag('mode', 'sweep') as RunReport['mode']) || 'sweep'
-  const browsers = (flag('browsers', 'chromium,firefox').split(',').filter(Boolean) as BrowserName[])
+  const browsers = flag('browsers', 'chromium,firefox').split(',').filter(Boolean) as BrowserName[]
   const scenarios = selectScenarios(mode)
   if (scenarios.length === 0) throw new Error(`perf-hunt: no scenarios matched (mode=${mode})`)
 
@@ -54,7 +56,9 @@ const main = async () => {
   const runDir = flag('out', `${REPO_ROOT}/.perf-hunt/runs/${runId}`)
   mkdirSync(runDir, { recursive: true })
 
-  console.error(`perf-hunt: booting stack for run ${runId} (${mode}, ${browsers.join('+')}, ${scenarios.length} scenarios)`)
+  console.error(
+    `perf-hunt: booting stack for run ${runId} (${mode}, ${browsers.join('+')}, ${scenarios.length} scenarios)`,
+  )
   const stack = await bootStack(REPO_ROOT)
 
   const reports: ScenarioReport[] = []
@@ -97,11 +101,13 @@ const main = async () => {
     gitRef: gitRef(),
     mode,
     scenarios: reports,
+    browserErrors,
   }
   const reportPath = `${runDir}/report.json`
   writeFileSync(reportPath, JSON.stringify(report, null, 2))
   // The ONLY thing the agent parses from stdout: the path to the JSON report.
   console.log(reportPath)
+  if (browserErrors.length) process.exitCode = 1
 }
 
 main().catch((err) => {

@@ -22,7 +22,7 @@ export type ScenarioDef = {
   interact?: (page: Page) => Promise<void>
 }
 
-const settle = (page: Page) => page.waitForLoadState('networkidle').catch(() => {})
+const settle = (page: Page) => page.waitForLoadState('domcontentloaded')
 
 /**
  * The canonical sweep. `chat-landing` is first and is the critical surface —
@@ -38,25 +38,22 @@ const BASE_SCENARIOS: ScenarioDef[] = [
     tags: ['chat', 'entry', 'critical'],
     interact: async (page) => {
       const input = page.locator('textarea').first()
-      await input.click({ timeout: 15_000 }).catch(() => {})
+      await input.click({ timeout: 15_000 })
       // Typing exercises INP + reveals re-render storms on the composer without
       // sending a message (no AI key required).
-      await input.pressSequentially('performance probe typing test', { delay: 25 }).catch(() => {})
-      await input.fill('').catch(() => {})
+      await input.pressSequentially('performance probe typing test', { delay: 25 })
+      await input.fill('')
     },
   },
   {
     name: 'chat-sidebar-nav',
     path: '/chats/new',
-    description: 'Open/close the sidebar and navigate chat history — layout + render cost.',
+    description: 'Switch the sidebar between Settings and Chats using named section controls.',
     tags: ['chat', 'sidebar', 'navigation'],
     interact: async (page) => {
-      const toggles = page.getByRole('button')
-      const count = await toggles.count().catch(() => 0)
-      for (let i = 0; i < Math.min(count, 4); i++) {
-        await toggles.nth(i).click({ timeout: 3_000, trial: false }).catch(() => {})
-        await page.waitForTimeout(150)
-      }
+      const sections = page.getByRole('navigation', { name: 'Sidebar sections' })
+      await sections.getByRole('button', { name: 'Settings', exact: true }).click()
+      await sections.getByRole('button', { name: 'Chats', exact: true }).click()
     },
   },
   {
@@ -70,22 +67,16 @@ const BASE_SCENARIOS: ScenarioDef[] = [
       // render path: streamed markdown + a tool-call block). The Combobox trigger
       // exposes role="combobox"; options render as cmdk items.
       const picker = page.getByRole('combobox').first()
-      await picker.click({ timeout: 10_000 }).catch(() => {})
+      await picker.click({ timeout: 10_000 })
       const option = page.getByRole('option', { name: 'Tool call' }).first()
-      await option
-        .click({ timeout: 5_000 })
-        .catch(() => page.getByText('Tool call', { exact: true }).first().click({ timeout: 5_000 }).catch(() => {}))
+      await option.click({ timeout: 5_000 })
       // Run the simulation — it auto-streams through the real pipeline with a fake
       // fetch. The button reads "Stop" while streaming, reverts to "Run" when done.
-      await page.getByRole('button', { name: /^Run$/ }).click({ timeout: 10_000 }).catch(() => {})
-      await page
-        .getByRole('button', { name: /^Stop$/ })
-        .waitFor({ state: 'visible', timeout: 10_000 })
-        .catch(() => {})
-      await page
-        .getByRole('button', { name: /^Stop$/ })
-        .waitFor({ state: 'detached', timeout: 30_000 })
-        .catch(() => {})
+      await page.getByRole('button', { name: /^Run$/ }).click({ timeout: 10_000 })
+      await page.getByRole('button', { name: /^Stop$/ }).waitFor({ state: 'visible', timeout: 10_000 })
+
+      await page.getByRole('button', { name: /^Stop$/ }).waitFor({ state: 'detached', timeout: 30_000 })
+
       // Let final markdown/syntax-highlighting settle.
       await page.waitForTimeout(500)
     },
@@ -134,9 +125,7 @@ const BASE_SCENARIOS: ScenarioDef[] = [
  */
 export const SCENARIOS: ScenarioDef[] = [
   ...BASE_SCENARIOS,
-  ...loadCalibration().extraScenarios.map(
-    (s): ScenarioDef => ({ ...s, interact: settle }),
-  ),
+  ...loadCalibration().extraScenarios.map((s): ScenarioDef => ({ ...s, interact: settle })),
 ]
 
 /**

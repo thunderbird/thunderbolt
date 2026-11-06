@@ -27,6 +27,14 @@ ending one run cannot stop another run's servers or remove its data.
 
 ## (b) Deterministic layer keeps context small
 
+Each scenario first warms its route in a separate document, then installs fresh
+measurement probes. Navigation, readiness, interaction, snapshot, and axe
+failures reject collection instead of becoming empty successful results. An
+unavailable requested browser is recorded in `browserErrors`, marks the summary
+**INCOMPLETE**, and makes the runner exit unsuccessfully while preserving the
+other browser's results. Accessibility runs before dismissing open overlays;
+only the subsequent idle-render probe closes them.
+
 The scripts are the _deterministic layer_: they boot, drive, measure, threshold,
 and write compact JSON. **The agent reads only `findings.json` / `summary.md`
 — never raw traces, never probe stdout beyond the one printed report path**

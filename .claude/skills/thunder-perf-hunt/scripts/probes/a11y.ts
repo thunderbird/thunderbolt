@@ -27,19 +27,13 @@ const resolveAxePath = (): string => require.resolve('axe-core/axe.min.js')
 
 /**
  * Inject axe-core into the page and run it, returning a compact list of
- * violations. Any failure at the axe-injection boundary yields an empty list so
- * the harness never crashes on a page axe can't analyze.
+ * violations. Injection or scan failures reject the run so unavailable checks
+ * cannot be mistaken for a clean accessibility result.
  */
 export const collectA11y = async (page: Page): Promise<A11yViolation[]> => {
-  try {
-    await page.addScriptTag({ path: resolveAxePath() })
-  } catch {
-    return []
-  }
+  await page.addScriptTag({ path: resolveAxePath() })
 
-  const result = (await page.evaluate(
-    `(async () => await window.axe.run())()`,
-  )) as AxeResult
+  const result = (await page.evaluate(`(async () => await window.axe.run())()`)) as AxeResult
 
   return result.violations.slice(0, MAX_VIOLATIONS).map((violation) => ({
     ruleId: violation.id,

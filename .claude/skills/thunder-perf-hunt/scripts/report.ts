@@ -26,7 +26,12 @@ const BIG_ASSET_BYTES = 1_000_000
 const sev = (rating: string): Severity =>
   rating === 'poor' ? 'high' : rating === 'needs-improvement' ? 'medium' : 'low'
 
-const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60)
+const slug = (s: string): string =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 60)
 
 /** Deterministic first-pass candidates. Recall-biased; verify downstream. */
 export const deriveCandidates = (report: RunReport): Finding[] => {
@@ -65,7 +70,8 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
         evidence: `${rnd.commits} commits, ${rnd.totalDuration}ms subtree render during a no-op interaction`,
         sourceAttribution: rnd.component,
         repro: `bun scripts/run.ts --mode focus --focus ${r.scenario} --browsers ${r.browser} (inspect noiseRenders)`,
-        suggestedFix: 'Check for unstable props/context or missing memoization; see references/react-rerender-playbook.md',
+        suggestedFix:
+          'Check for unstable props/context or missing memoization; see references/react-rerender-playbook.md',
       })
     }
 
@@ -82,7 +88,9 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
         browsers: [r.browser],
         scenarios: [r.scenario],
         evidence: `LoAF ${Math.round(f.duration)}ms, blocking ${Math.round(f.blockingDuration)}ms, forced layout ${Math.round(f.forcedStyleAndLayoutDuration)}ms`,
-        sourceAttribution: worst ? `${worst.sourceURL}:${worst.sourceCharPosition} ${worst.sourceFunctionName}` : undefined,
+        sourceAttribution: worst
+          ? `${worst.sourceURL}:${worst.sourceCharPosition} ${worst.sourceFunctionName}`
+          : undefined,
         repro: `bun scripts/run.ts --mode focus --focus ${r.scenario} --browsers ${r.browser}`,
       })
     }
@@ -207,7 +215,9 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
   const cal = loadCalibration()
   const kept = applyExclusions(merged, cal)
   if (kept.length < merged.length) {
-    console.error(`perf-hunt: suppressed ${merged.length - kept.length} finding(s) via ${cal.excludeSignatures.length} learned exclusion(s)`)
+    console.error(
+      `perf-hunt: suppressed ${merged.length - kept.length} finding(s) via ${cal.excludeSignatures.length} learned exclusion(s)`,
+    )
   }
   return kept
 }
@@ -255,6 +265,9 @@ export const summarize = (report: RunReport, findings: Finding[]): string => {
     `# perf-hunt report — ${report.runId}`,
     ``,
     `Mode: **${report.mode}** · git \`${report.gitRef}\` · ${report.scenarios.length} scenario runs`,
+    ...(report.browserErrors?.length
+      ? [`Coverage: **INCOMPLETE**`, ...report.browserErrors.map((error) => `- ${error}`), ``]
+      : []),
     `Findings: **${findings.length}** — 🔴 ${bySev('critical')} critical · 🟠 ${bySev('high')} high · 🟡 ${bySev('medium')} medium · ⚪ ${bySev('low')} low`,
     ``,
     `## Per-scenario metrics`,

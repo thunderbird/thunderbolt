@@ -11,6 +11,12 @@ import { getAvailableModels } from '@/dal/models'
 import { useChatStore } from '@/chats/chat-store'
 import { useQueryClient } from '@tanstack/react-query'
 import { getProviderConnectionAttempt, type ProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
+import {
+  cancelProviderBrowserConnection,
+  startProviderBrowserConnection,
+  getProviderBrowserReturn,
+  clearProviderBrowserReturn,
+} from '@/lib/provider-browser-auth'
 import { isMobile, isTauri } from '@/lib/platform'
 import {
   startOpenRouterConnection,
@@ -52,7 +58,12 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { t } = useLingui()
-  const [returned] = useState(() => getOtariBrowserReturn('connections') ?? getTinfoilMobileReturn('connections'))
+  const [returned] = useState(
+    () =>
+      getProviderBrowserReturn('connections') ??
+      getOtariBrowserReturn('connections') ??
+      getTinfoilMobileReturn('connections'),
+  )
   const [state, update] = useReducer((state: State, change: Partial<State>) => ({ ...state, ...change }), {
     isPending: Boolean(returned),
     error: null,
@@ -134,6 +145,7 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
   // Authorization owns external browser/native listeners; cleanup cancels in-memory work only.
   useEffect(() => {
     if (returned) {
+      clearProviderBrowserReturn(returned.id)
       if ('origin' in returned) {
         clearOtariBrowserReturn(returned.id)
       } else {
@@ -164,7 +176,11 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
         await complete(input, { access_token: await connectOtari(origin, controller.signal) }, attempt, controller)
         return
       }
-      if (isTauri() && isMobile()) {
+      if (!isTauri()) {
+        await startProviderBrowserConnection(input.provider, 'connections', attempt, controller.signal)
+        return
+      }
+      if (isMobile()) {
         if (input.provider === 'tinfoil') {
           await startTinfoilMobileConnection('connections', attempt, controller.signal)
         } else {
@@ -208,6 +224,7 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
     cancel: () => {
       pending.current?.abort()
       returned?.cancel()
+      cancelProviderBrowserConnection()
       cancelTinfoilMobileConnection()
       draftStorage().removeItem(draftKey)
       update({ isPending: false, error: null, manual: null, code: '' })

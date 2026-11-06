@@ -323,6 +323,8 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           <NewConnectionPicker
             onProvider={(id) => dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'add-provider', id } })}
             onMcp={openAddForm}
+            integrations={integrationsController.integrations}
+            onIntegration={(id) => dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'integration', id } })}
           />
         </DetailPanel>
       )
@@ -447,7 +449,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           providerError={providerConnections.error ?? authorization.error}
           onToggleProvider={providerConnections.toggle}
           onSelectProvider={(id) => toggleSelection({ kind: 'provider', id })}
-          integrations={integrationsController.integrations}
+          integrations={integrationsController.integrations.filter((integration) => integration.isConnected)}
           areIntegrationsReady={integrationsController.areIntegrationsReady}
           servers={servers}
           serverStatus={rowStatus}

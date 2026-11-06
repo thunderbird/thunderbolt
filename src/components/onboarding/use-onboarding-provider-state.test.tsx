@@ -54,6 +54,8 @@ const makeDependencies = (overrides: Partial<Dependencies> = {}) => ({
     }),
   ),
   exchange: mock(async (_code: string, _verifier: string, _signal?: AbortSignal) => 'manual-key'),
+  browser: () => false,
+  startBrowser: async () => {},
   needsManual: () => false,
   openUrl: mock(async (_url: string | URL) => {}),
   prepareModel: mock(async (provider: OnboardingProvider, apiKey: string) => {
@@ -109,6 +111,28 @@ describe('useOnboardingProviderState', () => {
     resetStore()
     useSearchProviderStore.getState().clearSearchProvider()
   })
+
+  it.each(['openrouter', 'tinfoil'] as const)(
+    'redirects %s onboarding in the current browser tab',
+    async (provider) => {
+      const startBrowser = mock<Dependencies['startBrowser']>(async () => {})
+      const deps = makeDependencies({ browser: () => true, startBrowser })
+      const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+      await act(async () =>
+        provider === 'openrouter' ? result.current.connectOpenRouter() : result.current.connectTinfoil(),
+      )
+      expect(startBrowser).toHaveBeenCalledWith(
+        provider,
+        'onboarding',
+        expect.objectContaining({ provider }),
+        expect.any(AbortSignal),
+      )
+      expect(deps.start).not.toHaveBeenCalled()
+      expect(deps.startTinfoil).not.toHaveBeenCalled()
+      expect(deps.prepareModel).not.toHaveBeenCalled()
+      expect(await getAvailableModels(getDb())).toEqual([])
+    },
+  )
 
   it('saves and selects the verified default model after authorization without a picker', async () => {
     const deps = makeDependencies()

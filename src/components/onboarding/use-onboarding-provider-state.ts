@@ -27,6 +27,12 @@ import {
   type ProviderConnectionAttempt,
 } from '@/lib/provider-connection-attempt'
 import { useDatabase } from '@/contexts'
+import {
+  cancelProviderBrowserConnection,
+  startProviderBrowserConnection,
+  getProviderBrowserReturn,
+  clearProviderBrowserReturn,
+} from '@/lib/provider-browser-auth'
 import { isMobile, isTauri } from '@/lib/platform'
 import { getModel } from '@/dal/models'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
@@ -90,6 +96,8 @@ const connectionDependencies = {
   start: startOpenRouterConnection,
   prepareManual: prepareOpenRouterManualConnection,
   exchange: exchangeOpenRouterCode,
+  browser: () => !isTauri(),
+  startBrowser: startProviderBrowserConnection,
   needsManual: () => isTauri() && isMobile(),
   openUrl,
   prepareModel: prepareProviderDefaultModel,
@@ -112,10 +120,16 @@ export const useOnboardingProviderState = (
   const { t, i18n } = useLingui()
   const db = useDatabase()
   const getProxyFetch = useProxyFetchGetter()
-  const [returned] = useState(() => getTinfoilMobileReturn(options.returnContext ?? 'onboarding'))
+  const [returned] = useState(
+    () =>
+      getProviderBrowserReturn(options.returnContext ?? 'onboarding') ??
+      getTinfoilMobileReturn(options.returnContext ?? 'onboarding'),
+  )
   const [state, dispatch] = useReducer(onboardingProviderReducer, {
-    selection: returned ? 'tinfoil' : (options.initialProvider ?? connectedProviders[0] ?? 'openrouter'),
-    view: returned ? 'tinfoil' : (options.initialView ?? 'choices'),
+    selection: returned
+      ? returned.attempt.provider
+      : (options.initialProvider ?? connectedProviders[0] ?? 'openrouter'),
+    view: returned ? returned.attempt.provider : (options.initialView ?? 'choices'),
     isConnecting: false,
     isDisconnecting: false,
     showApiKey: false,
@@ -202,6 +216,10 @@ export const useOnboardingProviderState = (
     try {
       const attempt = await getProviderConnectionAttempt(db, provider)
       controller.signal.throwIfAborted()
+      if (dependencies.browser()) {
+        await dependencies.startBrowser(provider, options.returnContext ?? 'onboarding', attempt, controller.signal)
+        return
+      }
       if (provider === 'tinfoil' && dependencies.needsManual()) {
         await dependencies.startTinfoilMobile(options.returnContext ?? 'onboarding', attempt, controller.signal)
         return
@@ -250,7 +268,7 @@ export const useOnboardingProviderState = (
     }
   }
 
-  const resumeMobile = useEffectEvent(async (controller: AbortController) => {
+  const resumeAuthorization = useEffectEvent(async (controller: AbortController) => {
     if (!returned) {
       return
     }
@@ -260,10 +278,17 @@ export const useOnboardingProviderState = (
       controller.signal.throwIfAborted()
       const credentials = await returned.complete()
       controller.signal.throwIfAborted()
-      await connectKey('tinfoil', credentials.access_token, controller, {
-        attempt: returned.attempt,
-        tinfoilCredentials: credentials,
-      })
+      await connectKey(
+        returned.attempt.provider === 'openrouter' ? 'openrouter' : 'tinfoil',
+        credentials.access_token!,
+        controller,
+        {
+          attempt: returned.attempt,
+          ...(returned.attempt.provider === 'tinfoil' && 'expires_at' in credentials
+            ? { tinfoilCredentials: credentials }
+            : {}),
+        },
+      )
     } catch (error) {
       if (!controller.signal.aborted) {
         dispatch({
@@ -271,21 +296,24 @@ export const useOnboardingProviderState = (
           error:
             error instanceof TinfoilConnectionError
               ? error.message
-              : t`Could not connect to Tinfoil. Try again, or use an API key.`,
+              : returned.attempt.provider === 'tinfoil'
+                ? t`Could not connect to Tinfoil. Try again, or use an API key.`
+                : t`Could not connect to OpenRouter. Try again, or use an API key.`,
         })
       }
     }
   })
 
-  // Native returns remount setup. A shared exchange survives StrictMode's effect replay.
+  // Authorization returns remount setup. A shared exchange survives StrictMode's effect replay.
   useEffect(() => {
     if (!returned) {
       return
     }
+    clearProviderBrowserReturn(returned.id)
     clearTinfoilMobileReturn(returned.id)
     const controller = new AbortController()
     pending.current = controller
-    void resumeMobile(controller)
+    void resumeAuthorization(controller)
     return () => controller.abort()
   }, [returned])
 
@@ -313,6 +341,7 @@ export const useOnboardingProviderState = (
 
   const cancelAuthorization = () => {
     cancelTinfoilMobileConnection()
+    cancelProviderBrowserConnection()
     returned?.cancel()
     pending.current?.abort()
   }

@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { mobileOAuthRedirectUri } from '@/lib/oauth-redirect'
-import { i18n } from '@/i18n'
+import { setupI18n } from '@lingui/core'
 import {
   captureOtariBrowserReturn,
   captureOtariMobileReturn,
@@ -16,6 +16,7 @@ import {
   startOtariBrowserConnection,
 } from './otari-browser-auth'
 
+const english = setupI18n({ locale: 'en', messages: { en: {} } })
 const nonce = 'n'.repeat(43)
 const verifier = 'v'.repeat(43)
 const key = 'thunderbolt.otari.authorization'
@@ -144,8 +145,8 @@ describe('Otari same-tab authorization', () => {
       deps,
     )!
     await expect(result.complete()).rejects.toThrow('Otari authorization failed')
-    expect(i18n._(result.error!)).toContain('Connection cancelled')
-    expect(i18n._(result.error!)).not.toContain('private-detail')
+    expect(english._(result.error!)).toContain('Connection cancelled')
+    expect(english._(result.error!)).not.toContain('private-detail')
     expect(exchange).not.toHaveBeenCalled()
     expect(storage.length).toBe(0)
   })
@@ -154,19 +155,16 @@ describe('Otari same-tab authorization', () => {
     const { deps } = setup()
     await startOtariBrowserConnection('https://otari.ai', 'onboarding', new AbortController().signal, attempt, deps)
     const result = captureOtariBrowserReturn(callback(`error=access_denied&state=${nonce}`), deps)!
-    const previousLocale = i18n.locale
-    try {
-      i18n.loadAndActivate({
-        locale: 'de',
-        messages: {
+    const translator = setupI18n({
+      locale: 'de',
+      messages: {
+        de: {
           "Connection cancelled. You can connect to Otari whenever you're ready.": 'Verbindung abgebrochen.',
         },
-      })
-      expect(i18n._(result.error!)).toBe('Verbindung abgebrochen.')
-      await expect(result.complete()).rejects.toThrow('Otari authorization failed')
-    } finally {
-      i18n.activate(previousLocale)
-    }
+      },
+    })
+    expect(translator._(result.error!)).toBe('Verbindung abgebrochen.')
+    await expect(result.complete()).rejects.toThrow('Otari authorization failed')
   })
 
   test('expires the saved request instead of exchanging it', async () => {
@@ -174,7 +172,7 @@ describe('Otari same-tab authorization', () => {
     await startOtariBrowserConnection('https://otari.ai', 'onboarding', new AbortController().signal, attempt, deps)
     const result = captureOtariBrowserReturn(callback(), { ...deps, now: () => 601_001 })!
     await expect(result.complete()).rejects.toThrow('Otari authorization failed')
-    expect(i18n._(result.error!)).toContain('expired')
+    expect(english._(result.error!)).toContain('expired')
     expect(exchange).not.toHaveBeenCalled()
   })
 
@@ -188,8 +186,8 @@ describe('Otari same-tab authorization', () => {
         deps,
       )!
       await expect(result.complete()).rejects.toThrow('Otari authorization failed')
-      expect(i18n._(result.error!)).toContain('invalid response')
-      expect(i18n._(result.error!)).not.toContain('private-detail')
+      expect(english._(result.error!)).toContain('invalid response')
+      expect(english._(result.error!)).not.toContain('private-detail')
       expect(exchange).not.toHaveBeenCalled()
     },
   )
@@ -201,7 +199,7 @@ describe('Otari same-tab authorization', () => {
       await startOtariBrowserConnection('https://otari.ai', 'models', new AbortController().signal, attempt, deps)
       const result = captureOtariBrowserReturn(callback(query), deps)!
       await expect(result.complete()).rejects.toThrow('Otari authorization failed')
-      expect(i18n._(result.error!)).toContain('invalid response')
+      expect(english._(result.error!)).toContain('invalid response')
       expect(storage.length).toBe(0)
       expect(exchange).not.toHaveBeenCalled()
     },
@@ -212,7 +210,7 @@ describe('Otari same-tab authorization', () => {
     await startOtariBrowserConnection('https://otari.ai', 'models', new AbortController().signal, attempt, deps)
     const result = captureOtariBrowserReturn(callback(), { ...deps, now: () => 1_000 + age })!
     await expect(result.complete()).rejects.toThrow('Otari authorization failed')
-    expect(i18n._(result.error!)).toContain('expired')
+    expect(english._(result.error!)).toContain('expired')
     expect(exchange).not.toHaveBeenCalled()
   })
 

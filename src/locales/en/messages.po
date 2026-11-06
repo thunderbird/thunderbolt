@@ -290,8 +290,8 @@ msgid "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 msgstr "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 
 #: src/settings/search/index.tsx
-msgid "Add a connection"
-msgstr "Add a connection"
+#~ msgid "Add a connection"
+#~ msgstr "Add a connection"
 
 #: src/components/chat/chat-model-setup.tsx
 #: src/components/onboarding/onboarding-model-step.tsx
@@ -3332,6 +3332,10 @@ msgstr "New Model"
 msgid "New project"
 msgstr "New project"
 
+#: src/settings/search/index.tsx
+msgid "New Search Connection"
+msgstr "New Search Connection"
+
 #: src/components/chat/chat-skills-bar.tsx
 #: src/skills/skills-list.tsx
 msgid "New Skill"
@@ -3683,6 +3687,10 @@ msgstr "Open Thunderbolt"
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Open Thunderbolt CLI"
 msgstr "Open Thunderbolt CLI"
+
+#: src/settings/connections/new-connection-picker.tsx
+msgid "OpenAI-compatible"
+msgstr "OpenAI-compatible"
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Opening…"

@@ -24,3 +24,15 @@ test('describes both capabilities for Otari and Tinfoil while preserving provide
   expect(screen.getByRole('button', { name: 'OpenAI Models' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Exa Search' })).toBeInTheDocument()
 })
+
+test('keeps generic options first and visually separates them from branded services', () => {
+  render(
+    <I18nProvider i18n={i18n}>
+      <NewConnectionPicker onProvider={() => {}} onMcp={() => {}} />
+    </I18nProvider>,
+  )
+  const buttons = screen.getAllByRole('button')
+  expect(buttons[0]).toHaveTextContent('MCP server')
+  expect(buttons[1]).toHaveTextContent('OpenAI-compatible')
+  expect(buttons[0].parentElement).toHaveClass('border-b')
+})

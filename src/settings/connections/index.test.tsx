@@ -163,7 +163,7 @@ describe('ConnectionsPage list', () => {
     expect(await waitForElement(() => screen.queryByLabelText('Name'))).toHaveValue('Linked account')
   })
 
-  it('shows the pre-baked integrations and updates when mcp_servers changes', async () => {
+  it('offers disconnected integrations in the create menu and updates MCP servers', async () => {
     const db = getDb()
 
     await createMcpServer(db, {
@@ -179,12 +179,12 @@ describe('ConnectionsPage list', () => {
       wrapper: McpProviderWrapper,
     })
 
-    // Pre-baked integrations render at the top (Thunderbolt renamed from
-    // "Thunderbolt Pro").
-    await waitForElement(() => screen.queryByText('Thunderbolt'))
-    expect(screen.getByText('Google')).toBeInTheDocument()
-    expect(screen.getByText('Microsoft')).toBeInTheDocument()
-    expect(screen.queryByText('Thunderbolt Pro')).not.toBeInTheDocument()
+    expect(screen.queryByText('Google')).not.toBeInTheDocument()
+    expect(screen.queryByText('Microsoft')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+    expect(screen.getByRole('button', { name: 'Google' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Microsoft' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Thunderbolt' })).toBeInTheDocument()
 
     await waitForElement(() => screen.queryByText('First Server'))
     expect(screen.getByText('First Server')).toBeInTheDocument()

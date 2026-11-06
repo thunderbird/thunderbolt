@@ -93,8 +93,10 @@ it.each(['disabled', 'disconnected'] as const)(
 )
 it('offers adding a connection when none exists', () => {
   renderPage()
-  expect(screen.getByRole('link', { name: 'Add a connection' })).toHaveAttribute('href', '/settings/connections')
-  expect(screen.queryByLabelText('API key')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'New Search Connection' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Exa Search' }))
+  expect(screen.getByLabelText('API key')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'OpenAI Models' })).toBeNull()
 })
 it.each([true, false])('keeps Cloud visible while its integration is enabled: %s', async (enabled) => {
   useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: false })

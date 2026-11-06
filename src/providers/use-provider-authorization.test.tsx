@@ -7,6 +7,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as opener from '@tauri-apps/plugin-opener'
 import * as platform from '@/lib/platform'
+import * as browserAuth from '@/lib/provider-browser-auth'
 import * as openrouter from '@/lib/openrouter-auth'
 import * as otari from '@/lib/otari-auth'
 import * as otariBrowser from '@/lib/otari-browser-auth'
@@ -45,7 +46,7 @@ describe('provider authorization without a model', () => {
     rejectNestedTransactions(getDb())
     sessionStorage.removeItem('thunderbolt-provider-authorization-draft')
     localStorage.removeItem('thunderbolt-provider-authorization-draft')
-    spyOn(platform, 'isTauri').mockReturnValue(false)
+    spyOn(platform, 'isTauri').mockReturnValue(true)
     spyOn(platform, 'isMobile').mockReturnValue(false)
     spyOn(otariBrowser, 'getOtariBrowserReturn').mockReturnValue(null)
     spyOn(tinfoilMobile, 'getTinfoilMobileReturn').mockReturnValue(null)
@@ -58,6 +59,30 @@ describe('provider authorization without a model', () => {
     useSearchProviderStore.getState().clearSearchProvider()
   })
   afterAll(teardownTestDatabase)
+
+  it.each(['openrouter', 'tinfoil'] as const)(
+    'redirects browser %s in the same tab without starting a popup flow',
+    async (provider) => {
+      spyOn(platform, 'isTauri').mockReturnValue(false)
+      const redirect = spyOn(browserAuth, 'startProviderBrowserConnection').mockResolvedValue()
+      const popup = spyOn(openrouter, 'startOpenRouterConnection').mockResolvedValue('unused')
+      const tinfoilPopup = spyOn(tinfoilAuth, 'startConnection').mockResolvedValue({
+        access_token: 'unused',
+        expires_at: 999999,
+      })
+      const { result } = setup()
+      await act(async () => result.current.authorize({ provider, name: provider }))
+      expect(redirect).toHaveBeenCalledWith(
+        provider,
+        'connections',
+        expect.objectContaining({ provider }),
+        expect.any(AbortSignal),
+      )
+      expect(popup).not.toHaveBeenCalled()
+      expect(tinfoilPopup).not.toHaveBeenCalled()
+      expect(await getProviderConnections(getDb())).toEqual([])
+    },
+  )
 
   it('saves OpenRouter independently of any model and reports its stable connection ID', async () => {
     spyOn(openrouter, 'startOpenRouterConnection').mockResolvedValue('openrouter-token')
@@ -111,6 +136,7 @@ describe('provider authorization without a model', () => {
   })
 
   it('redirects browser Otari authorization and persists nothing until it returns', async () => {
+    spyOn(platform, 'isTauri').mockReturnValue(false)
     const redirect = spyOn(otariBrowser, 'startOtariBrowserConnection').mockResolvedValue()
     const { result, onConnected } = setup()
     await act(async () => result.current.authorize({ provider: 'otari', name: 'Otari' }))

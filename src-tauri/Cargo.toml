@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.149"
+version = "0.1.156"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -24,10 +24,10 @@ name = "thunderbolt"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2.6.0", features = [] }
+tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
-tauri = { version = "2.11.2", features = [
+tauri = { version = "2.12.5", features = [
     "tray-icon",
     "devtools",
     "unstable",            # Required for webview
@@ -47,12 +47,14 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 sha2 = "0.10"
 hex = "0.4"
 tauri-plugin-devtools = "2.0.1"
-tauri-plugin-http = { version = "2.5.9", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "http2", "charset", "macos-system-configuration"] }
+# unsafe-headers lets native-fetch.ts send an empty Origin, which the plugin then strips; without it the
+# plugin always sends the webview Origin, and MCP servers that guard against DNS rebinding answer 403.
+tauri-plugin-http = { version = "2.5.9", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "http2", "charset", "macos-system-configuration", "unsafe-headers"] }
 tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
 tauri-plugin-deep-link = "2.4"
 tauri-plugin-haptics = "2.3"
-tauri-plugin-updater = "2.3"
+tauri-plugin-updater = "2.14.1"
 tauri-plugin-store = "2.4.3"
 # Native WebAuthn passkey ceremonies (iOS, macOS, Android, Windows); no-op stub on Linux.
 tauri-plugin-passkey = { path = "plugins/tauri-plugin-passkey" }

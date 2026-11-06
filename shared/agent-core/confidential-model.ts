@@ -18,6 +18,8 @@ import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { inferenceUsageReceiptHeader, type InferenceUsageReceiptRequest } from '../inference-usage.ts'
 import { buildOpenAiCompatModel, type OpenAiCompatFetch } from './openai-compat-model.ts'
 
+import type { ReasoningEffort } from '../reasoning-effort.ts'
+
 const vendorAliases = { zhipu: 'zai' } as const
 // pi-ai 0.82.1 has no glm-5.3 and no deepseek-v4-1-flash; swap each alias for the real catalog id when upgrading Pi
 const modelAliases = {
@@ -45,6 +47,8 @@ export type CompletedProviderStep = {
 export type ReceiptLifecycle = {
   readonly completeProviderStep: (step: CompletedProviderStep) => void
   readonly clear: () => void
+  /** Summary requests have no harness message_end; settle their receipts in their own scope. */
+  readonly withStandaloneRequests: <T>(run: () => Promise<T>) => Promise<T>
   /** Attach terminal-message correlation; the returned cleanup detaches it and clears pending state. */
   readonly attach: (harness: Pick<AgentHarness, 'subscribe'>) => () => void
 }
@@ -73,6 +77,9 @@ export type BuildConfidentialModelOptions = {
   readonly fetch: OpenAiCompatFetch
   /** Provider-facing capture half of the caller-owned receipt lifecycle. */
   readonly receipts: ReceiptCapture
+  readonly getReasoningEffort?: () => ReasoningEffort | undefined
+  /** Native effort controls may replace Pi's legacy aliases when paired with an exact payload override. */
+  readonly thinkingLevelMap?: Model<'openai-completions'>['thinkingLevelMap']
   readonly reasoning: boolean
   readonly contextWindow?: number
   readonly supportsImages: boolean
@@ -110,10 +117,9 @@ export const resolveConfidentialModelCompatibility = (
       thinkingLevelMap: { ...resolved.thinkingLevelMap, low: 'low', medium: 'high', high: 'high', max: 'max' },
     }
   }
-  // Tinfoil's DeepSeek V4.1 Flash takes reasoning through `chat_template_kwargs`
-  // (`{ thinking: true, reasoning_effort }` on, `{ thinking: false }` off) with its
-  // own effort map, while Pi's deepseek format sends top-level `thinking` and
-  // `reasoning_effort` and maps low/medium to null (clamped up to high).
+  // Legacy inherited Pi levels use the chat-template compatibility mapping.
+  // Explicit native effort uses Tinfoil's documented top-level reasoning_effort
+  // via getReasoningEffort; that override removes these legacy fields and aliases.
   if (model.modelId === 'deepseek-v4-1-flash') {
     return {
       ...resolved,
@@ -288,10 +294,29 @@ const toReceiptUsage = (step: CompletedProviderStep): InferenceUsageReceiptReque
 /** Correlate provider receipts with the exact terminal assistant event that owns their usage. */
 export const createReceiptLifecycle = (options: CreateReceiptLifecycleOptions): ReceiptLifecycle => {
   let pending: CompletedProviderStep | null = null
+  let standalone: CompletedProviderStep[] | null = null
+  const submitStep = async (completed: CompletedProviderStep): Promise<void> => {
+    if (completed.message.stopReason === 'error' || completed.message.stopReason === 'aborted') {
+      return
+    }
+    const usage = toReceiptUsage(completed)
+    if (usage === null) {
+      return
+    }
+    try {
+      await options.submit(usage)
+    } catch (error) {
+      options.reportError(toError(error))
+    }
+  }
   const clear = (): void => {
     pending = null
   }
   const completeProviderStep = (step: CompletedProviderStep): void => {
+    if (standalone) {
+      standalone.push(step)
+      return
+    }
     pending = step
   }
   const attach: ReceiptLifecycle['attach'] = (harness) => {
@@ -309,19 +334,7 @@ export const createReceiptLifecycle = (options: CreateReceiptLifecycleOptions): 
         return
       }
       clear()
-      if (completed.message.stopReason === 'error' || completed.message.stopReason === 'aborted') {
-        return
-      }
-
-      const usage = toReceiptUsage(completed)
-      if (usage === null) {
-        return
-      }
-      try {
-        await options.submit(usage)
-      } catch (error) {
-        options.reportError(toError(error))
-      }
+      await submitStep(completed)
     })
     let subscribed = true
     return () => {
@@ -333,7 +346,22 @@ export const createReceiptLifecycle = (options: CreateReceiptLifecycleOptions): 
       clear()
     }
   }
-  return { completeProviderStep, clear, attach }
+  const withStandaloneRequests: ReceiptLifecycle['withStandaloneRequests'] = async (run) => {
+    if (standalone) {
+      throw new Error('Standalone receipt capture is already running')
+    }
+    const steps: CompletedProviderStep[] = []
+    standalone = steps
+    try {
+      return await run()
+    } finally {
+      standalone = null
+      for (const step of steps) {
+        await submitStep(step)
+      }
+    }
+  }
+  return { completeProviderStep, clear, attach, withStandaloneRequests }
 }
 
 /** Build a catalog-driven confidential model over an already-attested fetch. */
@@ -363,8 +391,10 @@ export const buildConfidentialModel = (
     reasoning: options.reasoning,
     contextWindow: options.contextWindow,
     supportsImages: options.supportsImages,
+    getReasoningEffort: options.getReasoningEffort,
+    effortFormat: 'tinfoil',
     compat: compatible.compat,
-    thinkingLevelMap: compatible.thinkingLevelMap,
+    thinkingLevelMap: options.thinkingLevelMap ?? compatible.thinkingLevelMap,
   })
   const sourceProvider = built.models.getProvider(options.providerId)
   if (!sourceProvider) {

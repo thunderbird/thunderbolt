@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type Anthropic from '@anthropic-ai/sdk'
+import Anthropic from '@anthropic-ai/sdk'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -16,8 +16,8 @@ import {
   groupFindings,
   judge,
   legStartOf,
+  nativeExitCode,
   nativeJobMinutes,
-  nativeReplayCap,
   oracleOf,
   replay,
   replayEnv,
@@ -207,8 +207,8 @@ describe('replay', () => {
     expect(calls).toEqual([
       [
         controlSpec(),
-        join(outDir, 'c2-chat-desktop/repro/console.spec.ts'),
         join(outDir, 'c2-chat-desktop/repro/page-noise.spec.ts'),
+        join(outDir, 'c2-chat-desktop/repro/console.spec.ts'),
       ],
     ])
     expect(titles(result.observations)).toEqual(['blank-evidence', 'no-oracle', 'noise'])
@@ -326,19 +326,25 @@ describe('replay', () => {
     expect(result.confirmed).toEqual([])
   })
 
-  test('replays at most 20 findings and defers the rest, in path order', async () => {
-    const ids = Array.from({ length: 21 }, (_, n) => `f${String(n).padStart(2, '0')}`)
+  test('replays at most 30 findings, most severe first, and defers the rest', async () => {
+    // First in path order, so only the ordering by severity puts this Low finding over the cap.
+    await writeFinding({ ...makeFinding('a-wording', pageError), area: 'i18n' })
+    const ids = Array.from({ length: 30 }, (_, n) => `f${String(n).padStart(2, '0')}`)
     for (const id of ids) await writeFinding(makeFinding(id, pageError))
     const calls: string[][] = []
 
     const result = await replay(outDir, fakeRunner({}, calls), qaDir)
 
-    expect(calls[0]).toHaveLength(21) // the control spec and 20 findings
-    expect(calls[0]).not.toContain(join(outDir, 'c2-chat-desktop/repro/f20.spec.ts'))
+    expect(calls[0]).toHaveLength(31) // the control spec and 30 findings
+    expect(calls[0]).not.toContain(join(outDir, 'c2-chat-desktop/repro/a-wording.spec.ts'))
     expect(result.deferred).toEqual([
-      { file: expect.objectContaining({ id: 'f20' }), step: 'replay', reason: 'over the cap of 20 replayed findings' },
+      {
+        file: expect.objectContaining({ id: 'a-wording' }),
+        step: 'replay',
+        reason: 'over the cap of 30 replayed findings',
+      },
     ])
-    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('f20')
+    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('a-wording')
   })
 
   test('a spec missing from the report is dropped, and nothing replayable means no Playwright run', async () => {
@@ -878,6 +884,27 @@ describe('replay of native flows', () => {
     ])
   })
 
+  test('replay waits for the chat landing text where a flow waited for the greeting it saw', async () => {
+    // Recorded in the evening, replayed in the small hours, when the greeting reads "Up late?".
+    const recorded =
+      '- launchApp\n- extendedWaitUntil: {visible: Good evening, timeout: 120000}\n- tapOn: Toggle Sidebar\n'
+    await writeNative(makeNative('evening', layout), recorded)
+    const sent: { yaml: string; signIn?: string }[] = []
+    const record: RunFlow = async (yaml, _outDir, _run, _session, signIn) => {
+      sent.push({ yaml, signIn })
+      return { passed: true, layout: ['[qa-layout] ready'], logs: [] }
+    }
+
+    await replay(outDir, fakeRunner({}, []), qaDir, record)
+
+    const finding = sent.filter(({ yaml }) => yaml.includes('Toggle Sidebar'))
+    expect(finding).toHaveLength(3)
+    // The landing text is the first screen after sign-in, so the harness signs the flow in.
+    expect(finding[0].signIn).toContain('inputText: "12345678"')
+    expect(finding[0].yaml).toContain('visible: Ask me anything…')
+    expect(JSON.stringify(sent)).not.toContain('Good evening')
+  })
+
   test('a native layout finding confirms at 2/3 failures and is flaky at 1/3, other native oracles still need 3/3', async () => {
     const onboarding = 'c1-first-run-ios'
     const title = 'Name field on onboarding is cut off when the keyboard opens'
@@ -1078,8 +1105,9 @@ describe('replay of native flows', () => {
       server: [logs, logs, logs],
     })
 
-    expect(titles(result.confirmed)).toEqual(['console', 'server'])
-    expect(result.confirmed[0].replay.error).toBe(`logged during the run: ${later}`)
+    // A console error is Low, so it replays after the server error.
+    expect(titles(result.confirmed)).toEqual(['server', 'console'])
+    expect(result.confirmed[1].replay.error).toBe(`logged during the run: ${later}`)
     expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['quiet'])
   })
 
@@ -1124,21 +1152,33 @@ describe('replay of native flows', () => {
     expect(calls.filter((call) => call.title === 'passing')).toHaveLength(3)
   })
 
-  test('a native leg replays at most nativeReplayCap findings, so its worst case fits the job, and defers the rest', async () => {
-    const ids = Array.from({ length: nativeReplayCap + 1 }, (_, n) => `f${n}`)
+  test('a native leg replays at most 24 findings, most severe first, and defers the rest', async () => {
+    // First in path order, so only the ordering by severity puts this Low finding over the cap.
+    await writeNative({ ...makeNative('a-wording', assertFailed), area: 'i18n' })
+    const ids = Array.from({ length: 24 }, (_, n) => `f${String(n).padStart(2, '0')}`)
     for (const id of ids) await writeNative(makeNative(id, assertFailed))
     const calls: FlowCall[] = []
 
     const result = await nativeReplay({}, calls)
 
-    expect(new Set(calls.map((call) => call.title))).toEqual(new Set(['stack control', ...ids.slice(0, -1)]))
+    expect([...new Set(calls.map((call) => call.title))]).toEqual(['stack control', ...ids])
     expect(result.deferred).toEqual([
       {
-        file: expect.objectContaining({ id: ids.at(-1) }),
+        file: expect.objectContaining({ id: 'a-wording' }),
         step: 'replay',
-        reason: `over the cap of ${nativeReplayCap} replayed findings`,
+        reason: 'over the cap of 24 replayed findings',
       },
     ])
+  })
+
+  test("a native leg runs its flows most severe first, so the leg's clock runs out on the least severe", async () => {
+    await writeNative({ ...makeNative('a-wording', assertFailed), area: 'i18n' })
+    await writeNative(makeNative('b-send', assertFailed))
+    const calls: FlowCall[] = []
+
+    await nativeReplay({}, calls)
+
+    expect([...new Set(calls.map((call) => call.title))]).toEqual(['stack control', 'b-send', 'a-wording'])
   })
 
   test('replay lines are compared as the gate showed them, so cleaned evidence still matches', async () => {
@@ -1624,38 +1664,51 @@ describe('native fix verification', () => {
     }
   }
 
-  test('passes only when no patched run shows the bug: the quoted probe line, or the flow failing', async () => {
+  // The platform's pass rests on this exit code, so a verdict that fails either half must exit non-zero.
+  test('the command exits 0 only for a patch that passed with it and, when checked, failed without it', async () => {
+    const steps = { ...base, flow: '- launchApp\n- assertVisible: What should we call you?\n' }
+    const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
+    const bugShown = failsAt('What should we call you?')
+    const fixed = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('nothing'), original: bugShown })
+    const stillBroken = await verifyNativeFix({ ...steps, oracle: asserted, patched: bugShown })
+    const neverBroken = await verifyNativeFix({
+      ...steps,
+      oracle: asserted,
+      patched: failsAt('nothing'),
+      original: failsAt('nothing'),
+    })
+    // A repro flow that shows nothing without the patch cannot judge it, so that one is inconclusive.
+    expect([fixed, stillBroken, neverBroken].map(nativeExitCode)).toEqual([0, 4, 3])
+  })
+
+  test('passes only when no patched run shows the bug, and replaces a run that never reached the screen', async () => {
     const clean = await verifyNativeFix({ ...base, oracle: layout, patched: device([]) })
-    expect(clean).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true })
+    expect(clean).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true, inconclusive: false })
 
     const seen = { layout: ['[qa-layout] ready', nameLine] }
     expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([{}, seen]) })).toMatchObject({
       failed: 1,
       passed: false,
+      inconclusive: false,
       error: `the layout probe logged ${nameLine}`,
     })
-    // A layout flow that failed without the line never reached the screen, which still fails the patch.
-    expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([failed]) })).toMatchObject({
-      failed: 1,
-      passed: false,
-      error: failed.error,
-    })
+    // A layout flow that failed without the line never reached the screen, so it shows nothing about the patch.
+    const runs: number[] = []
+    const replaced = await verifyNativeFix({ ...base, oracle: layout, patched: device([failed], runs) })
+    expect(replaced).toMatchObject({ runs: 3, failed: 0, passed: true })
+    expect(runs).toEqual([1, 2, 3, 4])
   })
 
-  test('a failure-oracle flow failing before its last command fails the patch, but never shows the bug without it', async () => {
+  test('a failure-oracle flow failing before its last command is replaced, and never shows the bug without it', async () => {
     const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
     const steps = { ...base, flow: '- launchApp\n- tapOn: Continue\n- assertVisible: What should we call you?\n' }
 
-    // A fix must leave the whole way to the bug working: one early failure blocks it, and is not run again.
-    const broken = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue', 1) })
-    expect(broken).toEqual({
-      fp: 'ab12cd34',
-      platform: 'ios',
-      runs: 3,
-      failed: 1,
-      passed: false,
-      error: 'Element not found: Continue',
-    })
+    const replaced = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue', 1) })
+    expect(replaced).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true, inconclusive: false })
+    // Every run stopping on the way leaves no counted run: no pass, and no failure either.
+    const blocked = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue') })
+    expect(blocked).toMatchObject({ runs: 0, passed: false, inconclusive: true })
+    expect(nativeExitCode(blocked)).toBe(3)
     const early = await verifyNativeFix({
       ...steps,
       oracle: asserted,
@@ -1677,24 +1730,63 @@ describe('native fix verification', () => {
     expect(reran).toMatchObject({ failsWithout: true, passed: true })
   })
 
-  test('a driver that never starts fails the run after its one retry, so a dead device never passes a patch', async () => {
-    const runs: number[] = []
-    const result = await verifyNativeFix({ ...base, oracle: layout, patched: device([timeout, timeout], runs) })
-    expect(result).toMatchObject({ runs: 3, failed: 1, passed: false })
-    expect(runs).toEqual([1, 2, 3, 4])
+  test('a driver that never starts, even on its retry, leaves the verdict inconclusive and never passes', async () => {
+    const asserted = { type: 'assert-failed', evidence: 'never shows' }
+    for (const oracle of [layout, asserted]) {
+      const runs: number[] = []
+      const dead = await verifyNativeFix({ ...base, oracle, patched: device(Array(12).fill(timeout), runs) })
+      expect({ type: oracle.type, ...dead }).toMatchObject({ type: oracle.type, runs: 0, inconclusive: true })
+      expect(dead.passed).toBe(false)
+      expect(runs).toHaveLength(12)
+    }
   })
 
-  test('a layout verdict needs the probe ready in every patched run: a silent probe proves nothing', async () => {
+  test('a patched run without the probe ready line is replaced, and too many of them are inconclusive', async () => {
     const silent = { layout: [] }
-    expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([{}, silent]) })).toMatchObject({
-      failed: 1,
+    const runs: number[] = []
+    const replaced = await verifyNativeFix({ ...base, oracle: layout, patched: device([{}, silent], runs) })
+    expect(replaced).toMatchObject({ runs: 3, failed: 0, passed: true })
+    expect(runs).toEqual([1, 2, 3, 4])
+    // A dead stream shows no bug either, so it is no pass and no failure.
+    const dead = await verifyNativeFix({ ...base, oracle: layout, patched: device(Array(6).fill(silent)) })
+    expect(dead).toMatchObject({
+      runs: 0,
       passed: false,
-      error: 'the layout probe never reported ready',
+      inconclusive: true,
+      error: 'only 0 of 3 runs reached the screen',
     })
     // An assertion oracle is proven by the flow itself.
     const asserted = { type: 'assert-failed', evidence: 'never shows' }
     const passed = await verifyNativeFix({ ...base, oracle: asserted, patched: device([silent, silent, silent]) })
     expect(passed).toMatchObject({ failed: 0, passed: true })
+  })
+
+  // Only a verdict an app earned on three runs that reached the screen may send the ticket to a person.
+  test('a check is inconclusive unless a run that reached the screen failed it', async () => {
+    const steps = { ...base, flow: '- launchApp\n- tapOn: Skip\n- assertVisible: Where are you located?\n' }
+    const blocked = failsAt('Skip')
+    const shown = failsAt('Where are you located?')
+    const clean = failsAt('nothing')
+    const stopped = { passed: false, signInFailed: true, error: 'Element not found: Skip' }
+    const onceShown = device([...Array(5).fill(stopped), failed])
+    const verdicts = await Promise.all(
+      [
+        // The patched app reached the screen and the defect still shows: a real failure.
+        { patched: shown, original: shown },
+        // Once is enough, even when the other runs never got there.
+        { patched: onceShown, original: shown },
+        // Without the patch the agent's check reached the screen and passed: the check proves nothing.
+        { patched: clean, original: clean },
+        { patched: clean, original: failsAt('Skip', 5) },
+        // Neither app ever got past the step before the screen.
+        { patched: blocked, original: blocked },
+        { patched: clean, original: blocked },
+        { patched: blocked, original: shown },
+      ].map((apps) => verifyNativeFix({ ...steps, ...apps })),
+    )
+    expect(verdicts.map(({ runs, failed }) => [runs, failed])).toContainEqual([1, 1])
+    expect(verdicts.map(({ inconclusive }) => inconclusive)).toEqual([false, false, false, false, true, true, true])
+    expect(verdicts.map(nativeExitCode)).toEqual([4, 4, 4, 4, 3, 3, 3])
   })
 
   test('a real-AI session must also fail without the patch, since it is checked on the fake AI', async () => {
@@ -1709,7 +1801,8 @@ describe('native fix verification', () => {
       patched: device([]),
       original: device([]),
     })
-    expect(noBugOnFakeAi).toMatchObject({ failsWithout: false, passesWith: true, passed: false })
+    // The fake AI may not show a real-AI bug, which says nothing against the patch.
+    expect(noBugOnFakeAi).toMatchObject({ failsWithout: false, passesWith: true, passed: false, inconclusive: true })
     const fixed = await verifyNativeFix({
       ...real,
       oracle: asserted,
@@ -1736,6 +1829,7 @@ describe('native fix verification', () => {
       runs: 3,
       failed: 0,
       passed: true,
+      inconclusive: false,
       failsWithout: true,
       passesWith: true,
     })
@@ -1767,12 +1861,13 @@ describe('native fix verification', () => {
     }
     const shown = await verifyNativeFix({ ...steps, patched: failsAt('nothing'), original: failsAt('Sync is on') })
     expect(shown).toMatchObject({ failsWithout: true, passesWith: true, passed: true })
-    const brokenSetup = await verifyNativeFix({
+    // With the patch too, a run that stopped on the way says nothing and is replaced.
+    const flakySetup = await verifyNativeFix({
       ...steps,
       patched: failsAt('Devices', 1),
       original: failsAt('Sync is on'),
     })
-    expect(brokenSetup).toMatchObject({ failed: 1, passesWith: false, passed: false })
+    expect(flakySetup).toMatchObject({ runs: 3, failed: 0, passesWith: true, passed: true })
 
     const runs: number[] = []
     const tapLast = verifyNativeFix({
@@ -1783,6 +1878,101 @@ describe('native fix verification', () => {
     })
     await expect(tapLast).rejects.toThrow('must end on assertVisible or assertNotVisible')
     expect(runs).toEqual([])
+  })
+
+  test('a wait for the greeting or for the start of the fake reply becomes one that holds on every run', async () => {
+    // Steps of real repro flows: one recorded in the evening, one asserting the first words of the reply.
+    const flow = [
+      "- inputText: '12345678'",
+      '- extendedWaitUntil: {visible: Good evening, timeout: 120000}',
+      '- assertVisible: Up late?',
+      '- tapOn: Ask me anything…',
+      '- extendedWaitUntil: {visible: Hello from the fake provider, timeout: 20000}',
+      '- assertVisible: Hello from the fake provider',
+      '- assertVisible: {text: Hello from the, width: 872, tolerance: 30, index: 1}',
+      '- extendedWaitUntil: {visible: {text: Hello from, below: Choose model}, timeout: 5000}',
+      // A message the flow sends shows as typed, and one word is no sign of the reply.
+      '- inputText: Hello from the fake',
+      '- assertVisible: Hello from the fake',
+      '- assertVisible: Hello',
+      '- assertVisible: fake provider',
+      '- assertVisible: Hello from the fake provider, one word at a time.',
+    ].join('\n')
+    const sent: string[] = []
+    const record: RunFlow = async (yaml) => {
+      sent.push(yaml)
+      return { passed: true, layout: ['[qa-layout] ready'], logs: [] }
+    }
+    const oracle = { type: 'console-error', evidence: 'CONSOLE ERROR Chat error: Error: 404 "Not Found"' }
+
+    await verifyNativeFix({ ...base, session: 'c2-chat-power-user-ios', flow, oracle, patched: record })
+
+    const reply = 'Hello from the fake provider, one word at a time.'
+    expect(Bun.YAML.parse(sent[0].split('\n---\n')[1])).toEqual([
+      { inputText: '12345678' },
+      { extendedWaitUntil: { visible: 'Ask me anything…', timeout: 120000 } },
+      { assertVisible: 'Ask me anything…' },
+      { tapOn: 'Ask me anything…' },
+      { extendedWaitUntil: { visible: reply, timeout: 20000 } },
+      { assertVisible: reply },
+      { assertVisible: { text: reply, width: 872, tolerance: 30, index: 1 } },
+      { extendedWaitUntil: { visible: { text: reply, below: 'Choose model' }, timeout: 5000 } },
+      { inputText: 'Hello from the fake' },
+      { assertVisible: 'Hello from the fake' },
+      { assertVisible: 'Hello' },
+      { assertVisible: 'fake provider' },
+      { assertVisible: reply },
+    ])
+  })
+
+  test('the waits and typed text inside retry, repeat and runFlow blocks count as the ones at the top', async () => {
+    const flow = [
+      '- retry:',
+      '    maxRetries: 2',
+      '    commands:',
+      '      - extendedWaitUntil: {visible: Good evening, timeout: 120000}',
+      '- repeat:',
+      '    times: 2',
+      '    commands:',
+      '      - runFlow:',
+      '          when: {visible: Choose model}',
+      '          commands:',
+      '            - inputText: Hello from the fake',
+      '            - assertVisible: {text: Hello from the, width: 872}',
+      '- assertVisible: Hello from the fake',
+    ].join('\n')
+    const sent: string[] = []
+    const record: RunFlow = async (yaml) => {
+      sent.push(yaml)
+      return { passed: true, layout: ['[qa-layout] ready'], logs: [] }
+    }
+    const oracle = { type: 'console-error', evidence: 'CONSOLE ERROR Chat error: Error: 404 "Not Found"' }
+
+    await verifyNativeFix({ ...base, session: 'c2-chat-power-user-ios', flow, oracle, patched: record })
+
+    const reply = 'Hello from the fake provider, one word at a time.'
+    expect(Bun.YAML.parse(sent[0].split('\n---\n')[1])).toEqual([
+      {
+        retry: {
+          maxRetries: 2,
+          commands: [{ extendedWaitUntil: { visible: 'Ask me anything…', timeout: 120000 } }],
+        },
+      },
+      {
+        repeat: {
+          times: 2,
+          commands: [
+            {
+              runFlow: {
+                when: { visible: 'Choose model' },
+                commands: [{ inputText: 'Hello from the fake' }, { assertVisible: { text: reply, width: 872 } }],
+              },
+            },
+          ],
+        },
+      },
+      { assertVisible: 'Hello from the fake' },
+    ])
   })
 
   test('a repro flow that skips the sign-in code is signed in by the harness, as replay ran it', async () => {
@@ -1955,7 +2145,7 @@ describe('judge', () => {
     expect(worstJudgeCost('s', 'u', 1) - worstJudgeCost('s', 'u', 0)).toBeCloseTo((1_600 * 4) / 1_000_000)
     // Text that fits under the ceiling with room to spare, so only the image pushes it over.
     const base = makeVisual('tight')
-    const room = (2 - (4096 * 20) / 1_000_000) / (4 / 1_000_000) - 1_000 - 26 - 800
+    const room = (17 - (4096 * 20) / 1_000_000) / (4 / 1_000_000) - 1_000 - 26 - 800
     const pad = room - JSON.stringify(base, null, 2).length - '<finding>\n\n</finding>'.length
     const tight = { ...base, actual: 'x'.repeat(Math.floor(pad)) }
     await writeCandidates({ confirmed: [visualCandidate(tight)], flaky: [], observations: [], dropped: [] })
@@ -1965,7 +2155,7 @@ describe('judge', () => {
 
     expect(calls).toEqual([])
     expect(result.deferred).toEqual([
-      { file: visualCandidate(tight), step: 'judge', reason: "over the judge's spend ceiling of $2" },
+      { file: visualCandidate(tight), step: 'judge', reason: "over the judge's spend ceiling of $17" },
     ])
   })
 
@@ -2091,11 +2281,16 @@ describe('judge', () => {
     expect(calls).toEqual([])
   })
 
-  test('judges at most 15 candidates and defers the rest, keeping the replay leg deferrals', async () => {
-    const ids = Array.from({ length: 16 }, (_, n) => `j${String(n).padStart(2, '0')}`)
+  test('judges at most 84 candidates, most severe first, and defers the rest, keeping the replay leg deferrals', async () => {
+    // First in the replay's order, so only the ordering by severity puts this Low candidate over the cap.
+    const wording = {
+      ...candidate('a-wording'),
+      finding: { ...makeFinding('a-wording', pageError), area: 'i18n' as const },
+    }
+    const ids = Array.from({ length: 84 }, (_, n) => `j${String(n).padStart(2, '0')}`)
     const replayDeferred = { file: candidate('late'), step: 'replay' as const, reason: 'over the cap' }
     await writeCandidates({
-      confirmed: ids.map(candidate),
+      confirmed: [wording, ...ids.map(candidate)],
       flaky: [],
       observations: [],
       dropped: [],
@@ -2105,12 +2300,71 @@ describe('judge', () => {
 
     const result = await judge(outDir, fakeCreate({}, calls), qaDir)
 
-    expect(calls).toHaveLength(15)
+    expect(calls).toHaveLength(84)
     expect(result.deferred).toEqual([
       replayDeferred,
-      { file: candidate('j15'), step: 'judge', reason: 'over the cap of 15 judged findings' },
+      { file: wording, step: 'judge', reason: 'over the cap of 84 judged findings' },
     ])
-    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('j15')
+    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('a-wording')
+  })
+
+  describe('a judge call that fails after its retries', () => {
+    const apiError = (status: number, message: string) =>
+      Anthropic.APIError.generate(status, undefined, message, new Headers())
+    const brokenDeferred = { file: candidate('broken'), step: 'judge' as const, reason: 'the judge call failed' }
+    /** Keeps "fine" and answers "broken" with `error`; with `failAll`, every call fails. */
+    const failing = (error: Error, failAll = false): CreateMessage => {
+      const fine = fakeCreate({ fine: '{"keep":true,"reason":"Sending fails."}' }, [])
+      return async (params) => {
+        if (failAll || String(params.messages[0].content).includes('"title": "broken"')) throw error
+        return fine(params)
+      }
+    }
+    const writeBoth = () =>
+      writeCandidates({
+        confirmed: [candidate('broken'), candidate('fine')],
+        flaky: [],
+        observations: [],
+        dropped: [],
+      })
+    const written = async (): Promise<Verified> => Bun.file(join(outDir, 'verified.json')).json()
+
+    test('on a rate limit defers only its own finding, and the rest keep their verdicts', async () => {
+      await writeBoth()
+      const lines: string[] = []
+
+      const result = await judge(outDir, failing(apiError(429, 'rate limited\n::error::injected')), qaDir, (line) =>
+        lines.push(line),
+      )
+
+      expect(result.confirmed.map((file) => file.id)).toEqual(['fine'])
+      expect(result.deferred).toEqual([brokenDeferred])
+      expect(lines).toEqual([
+        '::warning::the judge call for c2-chat-desktop/broken failed: 429 rate limited ::error::injected',
+      ])
+      expect((await written()).confirmed).toHaveLength(1)
+    })
+
+    test('fails the job on an error a retry cannot fix, keeping the other verdicts', async () => {
+      await writeBoth()
+
+      const run = judge(outDir, failing(apiError(400, 'credit balance too low')), qaDir, () => {})
+
+      await expect(run).rejects.toThrow('1 of 2 judge calls failed, 1 for a lasting reason')
+      expect((await written()).confirmed.map((file) => file.id)).toEqual(['fine'])
+    })
+
+    test('fails the job when every call fails, even on rate limits, keeping the deferrals', async () => {
+      await writeBoth()
+
+      const run = judge(outDir, failing(apiError(429, 'rate limited'), true), qaDir, () => {})
+
+      await expect(run).rejects.toThrow('2 of 2 judge calls failed, 0 for a lasting reason')
+      expect((await written()).deferred).toEqual([
+        brokenDeferred,
+        { file: candidate('fine'), step: 'judge', reason: 'the judge call failed' },
+      ])
+    })
   })
 
   test('defers a candidate whose worst-case cost would pass the spend ceiling, and judges the next one', async () => {
@@ -2121,7 +2375,7 @@ describe('judge', () => {
       dropped: [],
     })
     // A byte may cost an input token, so this file alone is over the ceiling.
-    await Bun.write(join(outDir, 'c2-chat-desktop/repro/huge.spec.ts'), 'x'.repeat(600_000))
+    await Bun.write(join(outDir, 'c2-chat-desktop/repro/huge.spec.ts'), 'x'.repeat(4_300_000))
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
 
     const result = await judge(outDir, fakeCreate({ small: '{"keep":true,"reason":"ok"}' }, calls), qaDir)
@@ -2129,7 +2383,7 @@ describe('judge', () => {
     expect(calls).toHaveLength(1)
     expect(result.confirmed.map((file) => file.id)).toEqual(['small'])
     expect(result.deferred).toEqual([
-      { file: candidate('huge'), step: 'judge', reason: "over the judge's spend ceiling of $2" },
+      { file: candidate('huge'), step: 'judge', reason: "over the judge's spend ceiling of $17" },
     ])
   })
 
@@ -2198,9 +2452,9 @@ describe('judge', () => {
       observations: [],
       dropped: [],
     })
-    // Both judge calls fit under the $2 ceiling, and what they leave is less than any call's worst case.
+    // Both judge calls fit under the $17 ceiling, and what they leave is less than any call's worst case.
     for (const title of ['big', 'large']) {
-      await Bun.write(join(outDir, `c2-chat-desktop/repro/${title}.spec.ts`), 'x'.repeat(220_000))
+      await Bun.write(join(outDir, `c2-chat-desktop/repro/${title}.spec.ts`), 'x'.repeat(2_100_000))
     }
     const keep = '{"keep":true,"reason":"Sending fails."}'
     const groupingCalls: Anthropic.MessageCreateParamsNonStreaming[] = []
@@ -2213,7 +2467,7 @@ describe('judge', () => {
     expect(result.confirmed).toHaveLength(2)
     expect(groupingCalls).toEqual([])
     expect(result.groups).toBeUndefined()
-    expect(lines).toEqual(["grouping: over the judge's spend ceiling of $2; findings file grouped by fingerprint"])
+    expect(lines).toEqual(["grouping: over the judge's spend ceiling of $17; findings file grouped by fingerprint"])
   })
 })
 

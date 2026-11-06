@@ -39,7 +39,8 @@
      URLs such as `page.goto('/settings/skills')`.
    - Before its first chat message, a spec selects the model you used, just as you did:
      `await page.getByTestId('model-selector-trigger').click()`, then
-     `await page.getByRole('button', { name: 'Opus 5.5', exact: true }).click()` (or the other model's name).
+     `await page.getByRole('button', { name: 'Opus 5.5', exact: true }).click()` (or the other model's name), then
+     `await page.keyboard.press('Escape')` to close the combined model/effort picker before typing.
      Otherwise no reply ever comes.
    - A `layout` spec reaches the screen, repeats the action and asserts, in its `bug check` step,
      `expect(await layoutProblems(page)).toEqual([])`, where `layoutProblems` comes from

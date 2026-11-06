@@ -131,7 +131,7 @@ describe('createAgentRoutingFetch', () => {
       saveMessages,
       httpClient,
       getProxyFetch,
-      { connectToAgent: mock(async () => adapter) as never },
+      { getChatReasoningEffort: async () => undefined, connectToAgent: mock(async () => adapter) as never },
       { getDebugTranscriptTraceId: () => 'trace-engine' },
     )
 
@@ -158,7 +158,7 @@ describe('createAgentRoutingFetch', () => {
       saveMessages,
       httpClient,
       getProxyFetch,
-      { connectToAgent: connectToAgent as never },
+      { getChatReasoningEffort: async () => undefined, connectToAgent: connectToAgent as never },
       routingState,
     )
     const request = (id: string, text: string): RequestInit => ({
@@ -185,6 +185,33 @@ describe('createAgentRoutingFetch', () => {
     expect(budgets[2]?.intent).toBe('auto')
   })
 
+  it('sends the agent a stop marker after a prompt the user stopped', async () => {
+    resetStore()
+    const sentBodies: string[] = []
+    const adapter: AgentAdapter = {
+      ...buildFakeAdapter(builtInAgent).adapter,
+      fetch: async (init) => {
+        sentBodies.push(String(init.body))
+        return new Response('streamed')
+      },
+    }
+    hydrateSessionWith('t-stopped', builtInAgent)
+    const customFetch = createAgentRoutingFetch('t-stopped', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
+      connectToAgent: async () => adapter,
+    })
+    const messages: ThunderboltUIMessage[] = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }], metadata: { stoppedByUser: true } },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'Which city?' }] },
+    ]
+
+    await customFetch('/chat', { method: 'POST', body: JSON.stringify({ id: 't-stopped', messages }) })
+
+    const sent: { id: string; messages: ThunderboltUIMessage[] } = JSON.parse(sentBodies[0]!)
+    expect(sent.id).toBe('t-stopped')
+    expect(sent.messages.map((message) => message.id)).toEqual(['u1', 'u1-stopped', 'u2'])
+  })
+
   it('passes the current regenerate revision without changing it on normal sends', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
@@ -196,7 +223,7 @@ describe('createAgentRoutingFetch', () => {
       saveMessages,
       httpClient,
       getProxyFetch,
-      { connectToAgent: connectToAgent as never },
+      { getChatReasoningEffort: async () => undefined, connectToAgent: connectToAgent as never },
       regeneration,
     )
     const init: RequestInit = { method: 'POST', body: JSON.stringify({ messages: [] }) }
@@ -219,6 +246,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-built-in', builtInAgent)
 
     const customFetch = createAgentRoutingFetch('t-built-in', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -238,6 +266,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-remote', remoteAgent)
 
     const customFetch = createAgentRoutingFetch('t-remote', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -255,6 +284,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-cache', remoteAgent)
 
     const customFetch = createAgentRoutingFetch('t-cache', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -276,6 +306,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-switch', remoteAgent)
 
     const customFetch = createAgentRoutingFetch('t-switch', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -325,6 +356,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('thread-77', remoteAgent, chatThread)
 
     const customFetch = createAgentRoutingFetch('thread-77', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: updateChatThread as never,
       getDb: (() => fakeDb) as never,
@@ -371,6 +403,7 @@ describe('createAgentRoutingFetch', () => {
     }
 
     const customFetch = createAgentRoutingFetch('t-save-builtin', saveMessagesSpy, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -398,6 +431,7 @@ describe('createAgentRoutingFetch', () => {
     }
 
     const customFetch = createAgentRoutingFetch('t-save-remote', saveMessagesSpy, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -439,6 +473,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-no-thread', remoteAgent, null)
 
     const customFetch = createAgentRoutingFetch('t-no-thread', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: updateChatThread as never,
       getDb: (() => fakeDb) as never,
@@ -461,6 +496,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-skill', remoteAgent)
 
     const customFetch = createAgentRoutingFetch('t-skill', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: getAllSkills as never,
       getDb: (() => ({})) as never,
@@ -483,6 +519,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-project', remoteAgent, null, 'p1')
 
     const customFetch = createAgentRoutingFetch('t-project', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: (async () => []) as never,
       getDb: (() => ({})) as never,
@@ -511,6 +548,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-no-project', remoteAgent)
 
     const customFetch = createAgentRoutingFetch('t-no-project', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: (async () => []) as never,
       getDb: getDb as never,
@@ -534,6 +572,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-builtin-skill', builtInAgent)
 
     const customFetch = createAgentRoutingFetch('t-builtin-skill', saveMessages, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: getAllSkills as never,
       getDb: (() => ({})) as never,

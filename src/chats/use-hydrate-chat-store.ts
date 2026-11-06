@@ -35,6 +35,7 @@ import type { Agent } from '@/types/acp'
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
+import { withChatThreadWrite } from './chat-thread-write'
 import { createChatInstance } from './chat-instance'
 import { resolveSessionAgent } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
@@ -126,32 +127,38 @@ export const useHydrateChatStore = ({
     await updateChatThread(db, threadId, { title })
   }
 
-  const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
-    const { sessions, updateSession } = useChatStore.getState()
+  const saveMessages: SaveMessagesFunction = async ({ id, messages, updateContext = true }) => {
+    const { updateSession } = useChatStore.getState()
+    // Read the session inside the queue so a move that ran before creation is
+    // included in the insert; a later move waits until the row exists.
+    const { session, thread } = await withChatThreadWrite(id, async () => {
+      const { sessions } = useChatStore.getState()
 
-    const session = sessions.get(id)
+      const session = sessions.get(id)
 
-    if (!session) {
-      throw new Error('No session found')
-    }
+      if (!session) {
+        throw new Error('No session found')
+      }
 
-    // Fetch thread info to check if we need to generate a title.
-    // Pass `selectedAgent.id` so a brand-new thread is created with the user's
-    // currently-selected agent — otherwise the row would default to `null`
-    // and a reload would silently fall back to the built-in agent.
-    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, {
-      agentId: session.selectedAgent.id,
-      // Stamped here rather than at navigation time: the row is created lazily
-      // on this first save, so both must ride the session to reach it.
-      projectId: session.projectId,
-      miniAppId: session.miniAppId,
-      // The hosted agent sends the chat to the backend unencrypted, so its threads
-      // are never private chats, whatever the (unused) selected model is.
-      isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
+      // Fetch thread info to check if we need to generate a title.
+      // Pass `selectedAgent.id` so a brand-new thread is created with the user's
+      // currently-selected agent — otherwise the row would default to `null`
+      // and a reload would silently fall back to the built-in agent.
+      const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, {
+        agentId: session.selectedAgent.id,
+        // Stamped here rather than at navigation time: the row is created lazily
+        // on this first save, so both must ride the session to reach it.
+        projectId: session.projectId,
+        miniAppId: session.miniAppId,
+        // The hosted agent sends the chat to the backend unencrypted, so its threads
+        // are never private chats, whatever the (unused) selected model is.
+        isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
+      })
+      return { session, thread }
     })
 
     // Save messages and update context size using DAL
-    await saveMessagesWithContextUpdate(db, id, messages)
+    await saveMessagesWithContextUpdate(db, id, messages, { updateContext })
 
     // Generate title in background if needed
     if (thread?.title === defaultChatTitle) {
@@ -177,10 +184,6 @@ export const useHydrateChatStore = ({
    * are all avoidable per token. The authoritative complete save runs in the
    * chat instance's `onFinish` via {@link saveMessages}.
    */
-  // Stable identity (deps: the stable `db` context value) so it can sit in the
-  // partial-save effect's dependency array without re-firing on every parent
-  // render — otherwise an on-screen error terminal would re-run the direct
-  // error-save (a redundant idempotent upsert + E2EE encrypt/upload) per render.
   const saveStreamingMessage: SaveStreamingMessageFunction = useCallback(
     async ({ threadId, message, parentId }) => {
       await saveStreamingAssistantMessage(db, threadId, message, parentId)

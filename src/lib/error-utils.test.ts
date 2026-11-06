@@ -618,6 +618,16 @@ describe('isContextOverflowError', () => {
     expect(isContextOverflowError(new Error("This model's maximum context length is 128000 tokens"))).toBe(true)
   })
 
+  it('recognizes exhausted compaction so the chat does not retry the same oversized input', () => {
+    expect(
+      isContextOverflowError(
+        new Error(
+          'Context length still exceeds the model window after compaction. Reduce the input or choose a larger model.',
+        ),
+      ),
+    ).toBe(true)
+  })
+
   it('does not match a content rejection', () => {
     const error = new Error(JSON.stringify({ error: 'content.str: Input should be a valid string', status: 400 }))
     expect(isContextOverflowError(error)).toBe(false)

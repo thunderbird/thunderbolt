@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  areas,
   type Finding,
   findingSchema,
   fingerprint,
@@ -467,6 +468,12 @@ test('each charter names exactly the functions of its list, and says the AI is r
     .map((session) => parseSession(session).charter)
     .filter((c) => !c.startsWith('free-'))
   expect(charters.filter((charter) => !(charter in lists))).toEqual([])
+})
+
+test("the prompt's area table has one line for every area and no other", async () => {
+  const prompt = await Bun.file(join(import.meta.dir, '../prompt.md')).text()
+  const tabled = [...prompt.matchAll(/^\s*\| `(\w+)`\s+\|/gm)].map(([, area]) => area)
+  expect(tabled.sort()).toEqual([...areas].sort())
 })
 
 test('parseSession splits the platform off the last hyphen', () => {

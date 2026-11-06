@@ -1,6 +1,6 @@
 {
   "name": "@thunderbolt/cli",
-  "version": "0.1.149",
+  "version": "0.1.156",
   "private": true,
   "type": "module",
   "license": "MPL-2.0",
@@ -31,7 +31,7 @@
     "tinfoil": "1.2.1"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.20",
+    "@types/bun": "^1.4.4",
     "@types/qrcode-terminal": "^0.12.2",
     "typescript": "^6.0.3"
   }

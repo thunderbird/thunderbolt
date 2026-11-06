@@ -90,9 +90,9 @@ msgstr "{appName} はアプリ全体でこの言語を使用します。後で�
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
-msgid "# chat"
-msgid_plural "# chats"
-msgstr[0] "# 件のチャット"
+#~ msgid "# chat"
+#~ msgid_plural "# chats"
+#~ msgstr[0] "# 件のチャット"
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+delete+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+delete+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
 #: src/skills/dependents-dialog.tsx
@@ -117,8 +117,12 @@ msgid "{fileName} will be saved to your Downloads folder."
 msgstr ""
 
 #: src/layout/sidebar/project-drop-list.tsx
-msgid "{label} — already in this project"
-msgstr "{label} — すでにこのプロジェクトにあります"
+#~ msgid "{label} — already in this project"
+#~ msgstr "{label} — すでにこのプロジェクトにあります"
+
+#: src/layout/sidebar/sidebar-section-toggle.tsx
+#~ msgid "{label} options"
+#~ msgstr ""
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -164,6 +168,10 @@ msgid "Imported # row. The app may take a moment to reflect new chats."
 msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] "# 行をインポートしました。新しいチャットが反映されるまで少し時間がかかる場合があります。"
 
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
 msgstr "{verbPhrase}…"
@@ -201,8 +209,8 @@ msgid "A new version is available. See the update prompt to install."
 msgstr "新しいバージョンが利用できます。インストールするには更新の案内を確認してください。"
 
 #: src/projects/index.tsx
-msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
-msgstr "プロジェクトは指示を 1 か所にまとめるため、その中のすべてのチャットが同じコンテキストで始まります。"
+#~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
+#~ msgstr "プロジェクトは指示を 1 か所にまとめるため、その中のすべてのチャットが同じコンテキストで始まります。"
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
@@ -315,6 +323,10 @@ msgstr "モデルを追加"
 msgid "Add Server"
 msgstr "サーバーを追加"
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Add summary instructions (optional)"
+msgstr ""
+
 #: src/components/chat/chat-add-menu.tsx
 #: src/skills/suggestion-chip.tsx
 msgid "Add to chat"
@@ -363,8 +375,9 @@ msgid "All agents"
 msgstr "すべてのエージェント"
 
 #: src/layout/sidebar/project-drop-list.tsx
-msgid "All projects"
-msgstr "すべてのプロジェクト"
+#: src/projects/index.tsx
+#~ msgid "All projects"
+#~ msgstr "すべてのプロジェクト"
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
@@ -443,6 +456,7 @@ msgstr "API キー（任意）"
 msgid "API Key is required for this provider"
 msgstr "このプロバイダーには API キーが必要です"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx
@@ -454,8 +468,8 @@ msgid "App Version"
 msgstr "アプリのバージョン"
 
 #: src/projects/project-form.tsx
-msgid "Applied to every chat in this project."
-msgstr "このプロジェクトのすべてのチャットに適用されます。"
+#~ msgid "Applied to every chat in this project."
+#~ msgstr "このプロジェクトのすべてのチャットに適用されます。"
 
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
@@ -494,9 +508,14 @@ msgstr "続行しますか？行った変更はすべて失われます。"
 msgid "Artifact"
 msgstr "アーティファクト"
 
-#: src/projects/project-detail-panel.tsx
-msgid "Artifacts"
-msgstr "アーティファクト"
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+#: src/projects/project-artifact-gallery.tsx
+#: src/projects/project-artifact-grid.tsx
+#: src/projects/project-artifact-workspace.tsx
+#: src/projects/project-artifacts-dialog.tsx
+#~ msgid "Artifacts"
+#~ msgstr "アーティファクト"
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
@@ -509,6 +528,10 @@ msgstr ""
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "何でも質問してください…"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Assistant"
+msgstr ""
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
@@ -630,6 +653,7 @@ msgstr "カレンダー"
 #: src/components/ui/confirm-action-dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/projects/project-create-form.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -682,7 +706,6 @@ msgid "Chat name"
 msgstr "チャット名"
 
 #: src/layout/sidebar/nav-toggle.tsx
-#: src/projects/project-detail-panel.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Chats"
 msgstr "チャット"
@@ -760,6 +783,11 @@ msgstr "{label} のアイコンを選択"
 msgid "Choose an option"
 msgstr "オプションを選択"
 
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Choose effort"
+msgstr ""
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Choose model"
 msgstr "モデルを選択"
@@ -767,6 +795,10 @@ msgstr "モデルを選択"
 #: src/widgets/ask/display.tsx
 msgid "Choose one"
 msgstr "1 つ選択"
+
+#: src/projects/project-badge.tsx
+msgid "Choose project"
+msgstr "プロジェクトを選択"
 
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "Choose your email provider {displayReason}"
@@ -791,8 +823,8 @@ msgstr "メールとカレンダーにアクセスするためにメールプロ
 #: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/chat-list.tsx
 #: src/search/commands/use-commands.ts
-msgid "Clear all chats"
-msgstr "すべてのチャットを削除"
+#~ msgid "Clear all chats"
+#~ msgstr "すべてのチャットを削除"
 
 #: src/components/app-error-screen.tsx
 msgid "Clear Database"
@@ -841,6 +873,7 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "閉じる"
@@ -885,6 +918,46 @@ msgstr "コマンド / 引数"
 msgid "Command Palette"
 msgstr "コマンドパレット"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Command result"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compact now"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacted"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compacting context…"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacting…"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction cancelled"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction failed"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compaction instructions (optional)"
+msgstr ""
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Compaction summary"
+msgstr ""
+
 #: src/tasks/index.tsx
 msgid "Complete {taskItem}"
 msgstr "{taskItem} を完了"
@@ -904,6 +977,11 @@ msgstr "完了しています…"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
 msgstr "構成"
+
+#. placeholder {0}: candidate.name
+#: src/projects/project-badge.tsx
+msgid "Configure {0}"
+msgstr "{0}を設定"
 
 #: src/components/modification-indicator.tsx
 msgid "Confirm"
@@ -1022,6 +1100,22 @@ msgstr "接続"
 msgid "Contact Support"
 msgstr "サポートに問い合わせる"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Context"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Context compaction is available with supported built-in models."
+#~ msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage is not available."
+msgstr ""
+
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
 msgstr "コンテキストウィンドウを超えました"
@@ -1039,6 +1133,7 @@ msgstr "コンテキストウィンドウを超えました"
 msgid "Continue"
 msgstr "続行"
 
+#: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Copied"
 msgstr "コピーしました"
@@ -1058,6 +1153,10 @@ msgstr "ブリッジのターゲットをコピー"
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy build command"
 msgstr "ビルドコマンドをコピー"
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Copy fingerprint"
+msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
 msgid "Copy HTML"
@@ -1084,9 +1183,21 @@ msgstr "URL をコピー"
 msgid "Could not bind the pairing code"
 msgstr "ペアリングコードを紐づけできませんでした"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Could not change reasoning effort"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Could not compact context. Please try again."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Could not compact context. Your chat history is safe. Please try again."
+#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -1100,9 +1211,17 @@ msgstr "MCP サーバーに接続できませんでした。URL を確認して�
 msgid "Could not connect to this server. Check the URL and that the server is reachable."
 msgstr "このサーバーに接続できませんでした。URL とサーバーに到達できるかを確認してください。"
 
-#: src/projects/project-form.tsx
+#: src/projects/use-project-create-state.ts
 msgid "Could not create the project."
 msgstr "プロジェクトを作成できませんでした。"
+
+#: src/projects/project-delete-dialog.tsx
+msgid "Could not delete the project. Please try again."
+msgstr ""
+
+#: src/projects/project-delete-dialog.tsx
+msgid "Could not delete the projects. Please try again."
+msgstr ""
 
 #: src/hooks/use-external-link-dialog.ts
 msgid "Could not open link. Please try again or copy the URL."
@@ -1140,6 +1259,10 @@ msgstr "パスキーを追加できませんでした。同期を設定すると
 msgid "Couldn't add the agent. Please try again."
 msgstr "エージェントを追加できませんでした。もう一度お試しください。"
 
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't approve this device. Please try again."
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "「{filename}」を添付できませんでした — ブラウザーのストレージが満杯か利用できません。"
@@ -1155,6 +1278,14 @@ msgstr "更新を確認できませんでした: {error}"
 #: src/settings/app-version-section.tsx
 msgid "Couldn't check for updates."
 msgstr "更新を確認できませんでした。"
+
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't complete approval. Close this dialog and check the device list before trying again."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Couldn't copy. Select the fingerprint to copy it manually."
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't download the update"
@@ -1249,7 +1380,11 @@ msgstr "更新できませんでした。もう一度お試しください。"
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
 msgstr "AI への安全な接続を検証できませんでした。通常は一時的なものです — 少し待ってからもう一度お試しください。"
 
-#: src/projects/project-form.tsx
+#: src/hooks/use-sync-setup.ts
+msgid "Couldn't verify this device's approval. Select Check now to try again, or choose another option below."
+msgstr ""
+
+#: src/projects/project-create-form.tsx
 #: src/search/palette/search-palette.tsx
 #: src/skills/skill-form.tsx
 msgid "Create"
@@ -1268,8 +1403,12 @@ msgstr "モデルを作成"
 msgid "Create passkey"
 msgstr "パスキーを作成"
 
-#: src/projects/create-project-panel.tsx
+#: src/projects/project-create-dialog.tsx
 msgid "Create project"
+msgstr "プロジェクトを作成"
+
+#: src/projects/project-badge.tsx
+msgid "Create Project"
 msgstr "プロジェクトを作成"
 
 #: src/components/create-item/context.tsx
@@ -1279,15 +1418,15 @@ msgid "Create Skill"
 msgstr "スキルを作成"
 
 #: src/projects/index.tsx
-msgid "Create your first project"
-msgstr "最初のプロジェクトを作成"
+#~ msgid "Create your first project"
+#~ msgstr "最初のプロジェクトを作成"
 
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
 msgstr "最初のスキルを作成"
 
 #: src/lib/tool-metadata.ts
-#: src/projects/project-form.tsx
+#: src/projects/project-create-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Creating…"
 msgstr "作成中…"
@@ -1348,6 +1487,10 @@ msgstr "データはお使いのデバイスに安全に保存されます。"
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+#~ msgid "Default"
+#~ msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
 msgstr "既定の設定"
@@ -1357,6 +1500,8 @@ msgstr "既定の設定"
 #: src/components/settings/edit-delete-context-menu.tsx
 #: src/components/ui/chat-nav-button.tsx
 #: src/layout/sidebar/chat-list-item.tsx
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
 #: src/skills/library-row.tsx
@@ -1384,20 +1529,44 @@ msgid "Delete agent"
 msgstr "エージェントを削除"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "Delete All Chats"
-msgstr "すべてのチャットを削除"
+#~ msgid "Delete All Chats"
+#~ msgstr "すべてのチャットを削除"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "Delete all chats?"
-msgstr "すべてのチャットを削除しますか？"
+#~ msgid "Delete all chats?"
+#~ msgstr "すべてのチャットを削除しますか？"
 
 #: src/settings/preferences.tsx
 msgid "Delete All Local Data"
 msgstr "すべてのローカルデータを削除"
 
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
+#: src/projects/project-delete-dialog.tsx
+msgid "Delete all projects"
+msgstr ""
+
+#: src/projects/project-delete-dialog.tsx
+msgid "Delete all projects?"
+msgstr ""
+
 #: src/components/delete-chat-dialog.tsx
 msgid "Delete Chat"
 msgstr "チャットを削除"
+
+#: src/components/delete-all-chats-dialog.tsx
+#: src/layout/sidebar/chat-list.tsx
+msgid "Delete chats"
+msgstr ""
+
+#: src/layout/sidebar/recent-chats-menu.tsx
+#: src/search/commands/use-commands.ts
+msgid "Delete chats outside projects"
+msgstr ""
+
+#: src/components/delete-all-chats-dialog.tsx
+msgid "Delete chats?"
+msgstr ""
 
 #: src/components/logout-modal.tsx
 msgid "Delete data from device"
@@ -1411,7 +1580,7 @@ msgstr "モデルを削除"
 msgid "Delete My Account"
 msgstr "アカウントを削除"
 
-#: src/projects/project-detail-panel.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete project"
 msgstr "プロジェクトを削除"
 
@@ -1440,7 +1609,7 @@ msgstr "この MCP サーバーと保存された認証情報を削除します�
 msgid "Delete this model from your configured models?"
 msgstr "設定済みのモデルからこのモデルを削除しますか？"
 
-#: src/projects/project-detail-panel.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete this project?"
 msgstr "このプロジェクトを削除しますか？"
 
@@ -1494,11 +1663,14 @@ msgstr "着氷性の霧"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
-#: src/projects/project-form.tsx
 #: src/skills/skill-detail.tsx
 #: src/skills/skill-form.tsx
 msgid "Description"
 msgstr "説明"
+
+#: src/projects/project-form.tsx
+msgid "Description (optional)"
+msgstr "説明（任意）"
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -1508,6 +1680,11 @@ msgstr "開発者設定"
 #: src/components/device-revoked.tsx
 msgid "Device access revoked"
 msgstr "デバイスのアクセスを取り消しました"
+
+#: src/components/approve-device-dialog.tsx
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Device fingerprint"
+msgstr ""
 
 #: src/components/device-qr-code.tsx
 msgid "Device pairing QR code"
@@ -1611,6 +1788,7 @@ msgstr "完了"
 
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/update-notification.tsx
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "ダウンロード"
 
@@ -1643,7 +1821,7 @@ msgstr "更新をダウンロードしています… {downloadProgress}%"
 msgid "Downloading…"
 msgstr "ダウンロード中…"
 
-#: src/layout/sidebar/project-drop-list.tsx
+#: src/layout/sidebar/project-drop-row.tsx
 msgid "Drop"
 msgstr "ドロップ"
 
@@ -1666,6 +1844,8 @@ msgstr "早期アクセスのログイン"
 
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/skills/library-row.tsx
 msgid "Edit"
 msgstr "編集"
@@ -1683,8 +1863,8 @@ msgid "Edit Model"
 msgstr "モデルを編集"
 
 #: src/projects/index.tsx
-msgid "Edit project"
-msgstr "プロジェクトを編集"
+#~ msgid "Edit project"
+#~ msgstr "プロジェクトを編集"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Edit skill"
@@ -1797,6 +1977,14 @@ msgstr "8 桁のコードを入力してください"
 msgid "Enter the code shown in your terminal to continue."
 msgstr "続行するには、ターミナルに表示されているコードを入力してください。"
 
+#: src/components/approve-device-dialog.tsx
+msgid "Enter the fingerprint from the new device's screen or a separate channel you trust."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Enter this fingerprint on your trusted device before approving."
+msgstr ""
+
 #: src/components/sign-in-modal.tsx
 msgid "Enter your code"
 msgstr "コードを入力してください"
@@ -1836,6 +2024,10 @@ msgstr "エクスポートしています…"
 #: src/settings/preferences.tsx
 msgid "External Links"
 msgstr "外部リンク"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Extra high"
+msgstr ""
 
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
@@ -2005,6 +2197,7 @@ msgstr "天気を取得中…"
 msgid "Gmail & Calendar"
 msgstr "Gmail とカレンダー"
 
+#: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
@@ -2080,6 +2273,14 @@ msgstr "QR を隠す"
 msgid "Hide QR code for {deviceName}"
 msgstr "{deviceName} の QR コードを隠す"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "High"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
+#~ msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
 msgstr "{appName} からの呼びかけ方"
@@ -2107,6 +2308,10 @@ msgstr "アクセス権がある場合は、<0>{email}</0> に 8 桁のコード
 #: src/waitlist/waitlist-page.tsx
 msgid "If you received a code to log in, enter it here:"
 msgstr "ログイン用のコードを受け取っている場合は、ここに入力してください:"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Image retained"
+msgstr ""
 
 #: src/i18n/unit-labels.ts
 msgid "Imperial"
@@ -2148,6 +2353,11 @@ msgstr "インポート中…"
 #: src/components/telemetry-required-modal.tsx
 msgid "In order to use preview features, we ask that you help us improve the product by sharing telemetry data."
 msgstr "プレビュー機能をご利用いただくにあたり、テレメトリーデータの共有による製品改善へのご協力をお願いしています。"
+
+#. placeholder {0}: project.name
+#: src/projects/project-badge.tsx
+msgid "In project: {0}"
+msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "In your own words: what were you trying to do, and what did the agent do instead?"
@@ -2207,7 +2417,7 @@ msgstr "確認リンクが無効です。新しいリンクをリクエストし
 msgid "iOS requires a secure URL (wss://)"
 msgstr "iOS では安全な URL（wss://）が必要です"
 
-#: src/projects/project-detail-panel.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr "プロジェクトの指示は削除されます。プロジェクト内のチャットは保持され、通常のチャットになります。"
 
@@ -2351,6 +2561,7 @@ msgstr "ローカルストレージ"
 msgid "Localization"
 msgstr "地域と言語"
 
+#: src/components/onboarding/onboarding-location-step.tsx
 #: src/settings/preferences.tsx
 msgid "Location"
 msgstr "位置情報"
@@ -2367,6 +2578,10 @@ msgstr "ログアウト"
 #: src/components/logout-modal.tsx
 msgid "Logging out…"
 msgstr "ログアウトしています…"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Low"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
@@ -2388,10 +2603,18 @@ msgstr "このブラウザでは WebGL が無効か利用できないため、�
 msgid "Maximize"
 msgstr "最大化"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Maximum"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr "MCP サーバー"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Medium"
+msgstr ""
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -2418,6 +2641,10 @@ msgstr ""
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 #~ msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Minimal"
+msgstr ""
+
 #: src/components/window-controls.tsx
 msgid "Minimize"
 msgstr "最小化"
@@ -2426,11 +2653,16 @@ msgstr "最小化"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "CSRF ステートがありません。認可をやり直してください。"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
 msgid "Model"
 msgstr "モデル"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
+msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
@@ -2440,6 +2672,14 @@ msgstr "モデル"
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Model name is required."
 msgstr "モデル名は必須です。"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}. Reasoning effort: {effortName}"
+msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -2473,18 +2713,28 @@ msgid "Modified model"
 msgstr "変更されたモデル"
 
 #: src/components/settings/detail-actions-menu.tsx
+#: src/layout/sidebar/chat-list-item.tsx
 msgid "More"
 msgstr "その他"
+
+#: src/layout/sidebar/chat-list-item.tsx
+#: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
+msgid "Move"
+msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Move file"
 msgstr "ファイルを移動"
 
+#: src/projects/project-badge.tsx
+msgid "Move session?"
+msgstr ""
+
 #: src/layout/sidebar/chat-list-item.tsx
-#: src/layout/sidebar/project-drop-list.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
-msgid "Move to project"
-msgstr "プロジェクトに移動"
+#~ msgid "Move to project"
+#~ msgstr "プロジェクトに移動"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "My Agent"
@@ -2492,6 +2742,7 @@ msgstr "マイエージェント"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -2521,7 +2772,11 @@ msgstr "ネットワークリクエストに失敗しました（ブラウザー
 msgid "New Agent"
 msgstr "新しいエージェント"
 
+#: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
 #: src/mini-apps/mini-app-chat-history.tsx
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "新しいチャット"
@@ -2534,8 +2789,9 @@ msgid "New Chat"
 msgstr "新しいチャット"
 
 #: src/projects/project-detail-panel.tsx
-msgid "New chat in this project"
-msgstr "このプロジェクトで新しいチャット"
+#: src/projects/project-workspace.tsx
+#~ msgid "New chat in this project"
+#~ msgstr "このプロジェクトで新しいチャット"
 
 #: src/settings/connections/connections-list.tsx
 msgid "New Connection"
@@ -2549,7 +2805,8 @@ msgstr "新しいデバイスが待機中"
 msgid "New Model"
 msgstr "新しいモデル"
 
-#: src/projects/index.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
 msgid "New project"
 msgstr "新しいプロジェクト"
 
@@ -2571,14 +2828,15 @@ msgid "No agents found"
 msgstr "エージェントが見つかりません"
 
 #: src/projects/project-detail-panel.tsx
-msgid "No artifacts yet."
-msgstr "まだアーティファクトはありません。"
+#~ msgid "No artifacts yet."
+#~ msgstr "まだアーティファクトはありません。"
 
 #: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/chat-menu-items.tsx
 msgid "No chats yet"
 msgstr "まだチャットはありません"
 
-#: src/projects/project-detail-panel.tsx
+#: src/layout/sidebar/project-tree-row.tsx
 msgid "No chats yet."
 msgstr "まだチャットはありません。"
 
@@ -2619,10 +2877,11 @@ msgid "No matching connections."
 msgstr "一致する接続はありません。"
 
 #: src/projects/index.tsx
-msgid "No matching projects"
-msgstr "一致するプロジェクトはありません"
+#~ msgid "No matching projects"
+#~ msgstr "一致するプロジェクトはありません"
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "No matching projects."
 msgstr "一致するプロジェクトはありません。"
 
@@ -2656,12 +2915,16 @@ msgstr "モデルが返されませんでした（サーバーに到達できな
 #~ msgstr ""
 
 #: src/projects/index.tsx
-msgid "No projects yet"
-msgstr "まだプロジェクトはありません"
+#~ msgid "No projects yet"
+#~ msgstr "まだプロジェクトはありません"
 
 #: src/projects/move-chat-to-project-dialog.tsx
-msgid "No projects yet. Create one from the Projects page, then move this chat into it."
-msgstr "まだプロジェクトはありません。プロジェクトページで作成してから、このチャットを移動してください。"
+#~ msgid "No projects yet. Create one from the Projects page, then move this chat into it."
+#~ msgstr "まだプロジェクトはありません。プロジェクトページで作成してから、このチャットを移動してください。"
+
+#: src/projects/move-chat-to-project-dialog.tsx
+msgid "No projects yet. Create one in the sidebar, then move this chat into it."
+msgstr ""
 
 #: src/search/palette/search-palette.tsx
 msgid "No results found."
@@ -2724,6 +2987,10 @@ msgstr ""
 #~ msgid "Nothing to ask about there. Try covering some content."
 #~ msgstr ""
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Nothing to compact yet."
+msgstr ""
+
 #: src/services/revoke-failure.ts
 msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr ""
@@ -2760,6 +3027,10 @@ msgstr "OAuth の検証に失敗しました"
 msgid "Objects"
 msgstr "物"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Off"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr ""
@@ -2771,6 +3042,10 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "オフラインです。オンラインに戻ると変更が同期されます。"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "On"
+msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Onboarding Wizard"
@@ -2876,8 +3151,8 @@ msgid "Optional — leave blank for local servers that don’t require auth."
 msgstr "任意 — 認証が不要なローカルサーバーの場合は空欄のままにしてください。"
 
 #: src/projects/project-form.tsx
-msgid "Optional — what this project is for"
-msgstr "任意 — このプロジェクトの目的"
+#~ msgid "Optional — what this project is for"
+#~ msgstr "任意 — このプロジェクトの目的"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
@@ -2891,6 +3166,11 @@ msgstr "またはメールのマジックリンクをクリックしてくださ
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or enter the 8-digit code"
 msgstr "または 8 桁のコードを入力してください"
+
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
+msgid "Organize chats with projects."
+msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Outlook & Calendar"
@@ -2963,9 +3243,19 @@ msgstr "許可が必要です"
 msgid "Personalization"
 msgstr "パーソナライズ"
 
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Pin"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr "ピン留めの上限（{maxPinnedSkills}）に達しました。先にどれかのピン留めを解除してください。"
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+#~ msgid "Pin project"
+#~ msgstr ""
 
 #: src/skills/suggestion-chip.tsx
 msgid "Pinned skill {label}"
@@ -3025,6 +3315,7 @@ msgstr "Webview のプレビューはデスクトップアプリでのみ利用�
 msgid "Privacy"
 msgstr "プライバシー"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "非公開"
@@ -3033,8 +3324,20 @@ msgstr "非公開"
 msgid "Processing…"
 msgstr "処理中…"
 
-#: src/layout/sidebar/chat-sidebar.tsx
-#: src/projects/index.tsx
+#: src/projects/project-create-form.tsx
+msgid "Project name"
+msgstr ""
+
+#: src/layout/sidebar/project-tree.tsx
+msgid "Project options"
+msgstr ""
+
+#: src/projects/project-editor-dialog.tsx
+msgid "Project settings"
+msgstr ""
+
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Projects"
 msgstr "プロジェクト"
@@ -3084,17 +3387,35 @@ msgstr "送信できます"
 msgid "Reasoning"
 msgstr "推論"
 
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort: {effortName}"
+msgstr ""
+
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."
 msgstr "モデルのテスト中にエラーが発生しました。"
 
 #: src/layout/sidebar/chat-list.tsx
-msgid "Recent Chats"
-msgstr "最近のチャット"
+msgid "Recent chat options"
+msgstr ""
+
+#: src/layout/sidebar/chat-list.tsx
+#~ msgid "Recent Chats"
+#~ msgstr "最近のチャット"
 
 #: src/layout/sidebar/project-drop-list.tsx
-msgid "Recent Projects"
-msgstr "最近のプロジェクト"
+#~ msgid "Recent Projects"
+#~ msgstr "最近のプロジェクト"
+
+#: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
+msgid "Recents"
+msgstr ""
 
 #: src/hooks/use-sync-setup.ts
 msgid "Recovery failed"
@@ -3135,8 +3456,9 @@ msgstr "削除"
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "このデバイスからすべてのチャット、設定、キャッシュデータを削除します。"
 
-#: src/layout/sidebar/project-drop-list.tsx
+#: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Remove from project"
 msgstr "プロジェクトから削除"
 
@@ -3184,8 +3506,8 @@ msgid "Reply"
 msgstr "返信"
 
 #: src/projects/project-form.tsx
-msgid "Reply in British English. Prefer bullet points over prose."
-msgstr "イギリス英語で回答してください。文章よりも箇条書きを優先してください。"
+#~ msgid "Reply in British English. Prefer bullet points over prose."
+#~ msgstr "イギリス英語で回答してください。文章よりも箇条書きを優先してください。"
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Request denied"
@@ -3223,6 +3545,10 @@ msgstr "データベースをリセット"
 msgid "Reset Local Database?"
 msgstr "ローカルデータベースをリセットしますか？"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Reset reasoning effort"
+#~ msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr "既定値に戻す"
@@ -3238,6 +3564,10 @@ msgstr "今すぐ再起動"
 #: src/components/upgrade-required.tsx
 msgid "Restart to update"
 msgstr "再起動して更新"
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Retained messages and tool results"
+msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
@@ -3352,8 +3682,7 @@ msgid "Scroll to bottom"
 msgstr "最下部にスクロール"
 
 #: src/components/ui/page-search.tsx
-#: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/palette/search-palette.tsx
 msgid "Search"
 msgstr "検索"
@@ -3411,8 +3740,8 @@ msgstr "モデルを検索"
 msgid "Search models…"
 msgstr "モデルを検索…"
 
-#: src/projects/index.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Search projects"
 msgstr "プロジェクトを検索"
 
@@ -3597,13 +3926,55 @@ msgstr "設定"
 msgid "Share debug transcript"
 msgstr ""
 
+#: src/projects/project-form.tsx
+msgid "Shared instructions for project chats"
+msgstr "プロジェクト内のチャットに共通の指示"
+
 #: src/lib/tray.tsx
 msgid "Show"
 msgstr "表示"
 
+#. placeholder {0}: project.name
+#: src/layout/sidebar/project-tree-row.tsx
+msgid "Show fewer chats in {0}"
+msgstr ""
+
+#: src/layout/sidebar/project-tree.tsx
+msgid "Show fewer projects"
+msgstr ""
+
+#: src/layout/sidebar/chat-list.tsx
+msgid "Show fewer recent chats"
+msgstr ""
+
 #: src/components/chat/artifact-message-part.tsx
 msgid "Show inline"
 msgstr "インラインで表示"
+
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/sidebar-list-toggle.tsx
+msgid "Show less"
+msgstr ""
+
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/sidebar-list-toggle.tsx
+msgid "Show more"
+msgstr ""
+
+#. placeholder {0}: project.name
+#: src/layout/sidebar/project-tree-row.tsx
+msgid "Show more chats in {0}"
+msgstr ""
+
+#: src/layout/sidebar/project-tree.tsx
+msgid "Show more projects"
+msgstr ""
+
+#: src/layout/sidebar/chat-list.tsx
+msgid "Show more recent chats"
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Show QR"
@@ -3853,6 +4224,10 @@ msgstr "モデルから応答を取得できました。"
 msgid "Suggested"
 msgstr "おすすめ"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Summary"
+msgstr ""
+
 #: src/settings/models/supports-tools-switch.tsx
 msgid "Supports tools"
 msgstr ""
@@ -4045,6 +4420,10 @@ msgstr ""
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
+#: src/components/approve-device-dialog.tsx
+msgid "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
 msgstr "スキルまたはプロジェクトの指示がこのエージェントには長すぎます。長いスキルまたはプロジェクトの指示を短くしてから、もう一度お試しください。"
@@ -4077,6 +4456,7 @@ msgstr ""
 msgid "Theme"
 msgstr "テーマ"
 
+#: src/components/chat/reasoning-group-title.tsx
 #: src/components/chat/reasoning-item.tsx
 #: src/components/chat/reasoning-part.tsx
 #: src/voice/ui/voice-mode-composer.tsx
@@ -4179,6 +4559,10 @@ msgstr ""
 msgid "This model doesn't support tools."
 msgstr ""
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "This model or agent does not offer context compaction."
+msgstr ""
+
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."
 msgstr "このパスキーでサインインはできますが、同期のロックは解除できません。新しいデバイスの承認やリカバリーフレーズは引き続き使えます。"
@@ -4205,6 +4589,7 @@ msgstr "この非公開チャットは{agentName}では実行されません。"
 msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
 msgstr "この非公開チャットは{agentName}では実行されません。実行するには{builtInAgentName}に切り替えてください。"
 
+#: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx
 msgid "this project"
 msgstr "このプロジェクト"
@@ -4249,17 +4634,30 @@ msgstr ""
 msgid "This version of {appName} is no longer supported. Update the app to keep chatting and syncing."
 msgstr "このバージョンの {appName} はサポートされていません。チャットと同期を続けるにはアプリを更新してください。"
 
+#: src/components/delete-all-chats-dialog.tsx
+msgid "This will delete all chats outside projects. Chats in projects won't be deleted."
+msgstr ""
+
+#: src/projects/project-delete-dialog.tsx
+msgid "This will delete all projects and their instructions. Their chats will be kept and moved to Recents."
+msgstr ""
+
 #: src/components/revoke-device-dialog.tsx
 msgid "This will deny the device access to your encrypted data. The device will need to set up sync again."
 msgstr "このデバイスから暗号化されたデータへのアクセスを拒否します。デバイスは同期を再度設定する必要があります。"
+
+#. placeholder {0}: dialog.project.name
+#: src/projects/project-badge.tsx
+msgid "This will move the session to <0>{0}</0>."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
 msgstr "設定、チャット履歴、キャッシュされた情報を含む、すべてのローカルデータが完全に削除されます。この操作は取り消せません。"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "This will permanently delete all your chats."
-msgstr "すべてのチャットが完全に削除されます。"
+#~ msgid "This will permanently delete all your chats."
+#~ msgstr "すべてのチャットが完全に削除されます。"
 
 #: src/skills/delete-skill-dialog.tsx
 msgid "This will permanently delete the skill. Other skills that reference it may no longer resolve."
@@ -4363,6 +4761,10 @@ msgstr "リクエストが多すぎます。少し待ってからもう一度お
 msgid "Tool input"
 msgstr "ツールの入力"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Tool result"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-toast.tsx
 msgid "Transcript sent — thank you."
 msgstr ""
@@ -4456,9 +4858,16 @@ msgstr "パスキーで同期のロックを解除"
 msgid "Unlock with passkey"
 msgstr "パスキーでロック解除"
 
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"
 msgstr "ピン留めを解除"
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+#~ msgid "Unpin project"
+#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
@@ -4569,7 +4978,7 @@ msgstr "メールのコードの代わりに、指紋や顔認証、デバイス
 msgid "User Experience"
 msgstr "ユーザー体験"
 
-#: src/components/context-usage-indicator.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
 msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "コンテキストウィンドウ {maxTokensLabel} のうち {usedTokensLabel} を使用中"
 
@@ -4614,6 +5023,11 @@ msgstr "インストールガイドを見る"
 msgid "View quote"
 msgstr "引用を見る"
 
+#: src/components/context-usage/compaction-notice.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "View summary"
+msgstr ""
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View your schedule and upcoming events."
 msgstr "予定と今後のイベントを表示します。"
@@ -4635,6 +5049,10 @@ msgstr "音声エンジン"
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Voice mode: {status}"
 msgstr "音声モード: {status}"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Wait for the current response to finish before compacting."
+msgstr ""
 
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
@@ -4720,6 +5138,10 @@ msgstr "エージェントが使うもの"
 msgid "What is this for?"
 msgstr "これは何のためのものですか？"
 
+#: src/projects/project-form.tsx
+msgid "What is this project for?"
+msgstr "このプロジェクトの目的は何ですか？"
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "What it uses"
 msgstr "使用するもの"
@@ -4795,6 +5217,10 @@ msgstr "この 24 語を順番どおりに書き留めて、安全な場所に�
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "wss://example.com/ws or paste an iroh ticket"
 msgstr "wss://example.com/ws または iroh チケットを貼り付け"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "You"
+msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."

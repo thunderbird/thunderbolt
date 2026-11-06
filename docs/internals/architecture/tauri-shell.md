@@ -36,22 +36,30 @@ setting and cannot be overridden per app.
 ### How the OAuth loopback server works
 
 1. Binds `127.0.0.1` on one of three ports: `17421`, `17422`, `17423`.
-2. Accepts a single connection and serves an "Authentication Complete" page.
-3. Emits an `oauth-callback` event to the frontend and releases the port.
+2. Waits for a well-formed browser redirect with the listener's local Host header. For SSO,
+   the callback must also carry exactly one `client_state` matching the sign-in attempt.
+   Malformed or unrelated requests receive a 400 response without consuming the listener.
+3. Serves an "Authentication Complete" page for the accepted callback.
+4. Emits an `oauth-callback` event to the frontend and releases the port.
 
 All three ports must be registered as redirect URIs in the provider's console; see
 [self-hosting/configuration.md](../../self-hosting/configuration.md).
 
 - **Non-blocking accept loop with a 305-second deadline**
-  ([`src-tauri/src/oauth_server.rs:62`](../../../src-tauri/src/oauth_server.rs#L62)): five seconds past
+  ([`src-tauri/src/oauth_server.rs`](../../../src-tauri/src/oauth_server.rs)): five seconds past
   the frontend's five-minute timeout, so the frontend resolves first, and an abandoned flow frees
   the port instead of leaking a thread forever.
-- **An unparseable connection still emits `oauth-callback`** with `error=invalid_request`, so a
-  stray TCP probe surfaces immediately instead of stalling the UI for five minutes.
+- **Stray probes do not emit `oauth-callback` or end the flow.** Each request has at most two
+  seconds to supply complete headers, within a 64 KiB budget that accommodates cookies shared
+  across localhost ports. A rejected request leaves the listener available for the real redirect.
+- **Accept errors retry within the same deadline.** Interrupted accepts, aborted connections,
+  and temporary resource exhaustion do not end the flow. Retries pause briefly to avoid spinning;
+  the first non-`WouldBlock` error is logged without request contents.
 - **Why loopback:** the app has no `http(s)` origin a provider will redirect to. `bind_to_port`
   errors rather than picking a random port, since an unregistered redirect URI fails unreadably.
-- **The first connection is unauthenticated**, the accepted risk for loopback OAuth (RFC 8252
-  §8.3); PKCE blocks token theft because the verifier never leaves the frontend.
+- **Local processes can reach the loopback port** (RFC 8252 §8.3). SSO validates its attempt nonce
+  before accepting either a token or an IdP error. Other OAuth flows still validate the provider's
+  state in the frontend, and PKCE blocks token theft because the verifier never leaves it.
 
 ### What the CLI installer does
 
@@ -158,6 +166,12 @@ deep-link and updater config.
 `tauri-plugin-http` is registered unconditionally on desktop and mobile. Its `cookies` feature
 is disabled so it has no persisted cookie jar; HTTP/2, charset handling and macOS system proxy configuration remain enabled. TLS verification
 uses both OS certificates and bundled public roots (Android can have an empty native store).
+
+Native requests carry no `Origin`, like proxied ones. Without the plugin's `unsafe-headers` feature it stamps
+the webview origin (`tauri://localhost`, `http://tauri.localhost`) on every request, and MCP servers that
+validate `Origin` against DNS rebinding, such as Metabase, answer 403. With the feature on,
+`src/lib/native-fetch.ts` sends an empty `Origin` and the plugin strips it. The feature also lets webview
+scripts set other forbidden headers such as `Cookie`; that adds nothing to the accepted native-HTTP risk above.
 
 `createProxyFetch` reads `proxy_enabled` for each request. OFF (or absent) sends provider traffic
 directly from the device; ON opts into the backend universal proxy for non-loopback targets.

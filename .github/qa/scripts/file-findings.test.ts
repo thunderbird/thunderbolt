@@ -32,7 +32,10 @@ type Handlers = {
   labels?: string[]
   /** The team's workflow states; the fake returns the ones whose type the query asks for. */
   states?: { id: string; type: string }[]
+  /** Served 250 a page, as the query asks, with the next page's start index as its cursor. */
   scorecard?: { labels: { nodes: { name: string }[] } }[]
+  /** Answers an operation (`PUT` for the storage upload) with this response instead of success, when it returns one. */
+  fail?: (op: string) => Response | undefined
 }
 
 type Input = { title: string; stateId: string; labelIds: string[]; description: string; priority: number }
@@ -44,6 +47,7 @@ type Vars = {
   label?: string
   contentType?: string
   filename?: string
+  after?: string | null
 }
 
 /** A function usable as `fetch` (adds the `preconnect` member Bun's type requires). */
@@ -55,11 +59,13 @@ const fakeLinear = (handlers: Handlers = {}) => {
   const fetchFn = asFetch(async (url, init) => {
     if (String(url).includes('upload.test')) {
       ops.push({ op: 'PUT', variables: { headers: Object.fromEntries(new Headers(init?.headers)) } })
-      return new Response('', { status: 200 })
+      return handlers.fail?.('PUT') ?? new Response('', { status: 200 })
     }
     const { query, variables }: { query: string; variables: Vars } = JSON.parse(String(init?.body))
     const op = /^\s*(?:query|mutation) (\w+)/.exec(query)?.[1] ?? ''
     ops.push({ op, variables })
+    const failure = handlers.fail?.(op)
+    if (failure) return failure
     const data = (() => {
       if (op === 'Teams') return { teams: { nodes: [{ id: 't1', name: 'Thunderbolt' }] } }
       if (op === 'QaSetup') {
@@ -75,7 +81,16 @@ const fakeLinear = (handlers: Handlers = {}) => {
       }
       if (op === 'Dedupe') return { issues: { nodes: handlers.existing?.[variables.needle ?? ''] ?? [] } }
       if (op === 'Scorecard') {
-        return { issues: { nodes: variables.label === 'qa-agent' ? (handlers.scorecard ?? []) : [] } }
+        const all = variables.label === 'qa-agent' ? (handlers.scorecard ?? []) : []
+        const start = Number(variables.after ?? 0)
+        const end = start + 250
+        const hasNextPage = end < all.length
+        return {
+          issues: {
+            nodes: all.slice(start, end),
+            pageInfo: { hasNextPage, endCursor: hasNextPage ? String(end) : null },
+          },
+        }
       }
       if (op === 'CreateIssue') {
         const n = ops.filter((o) => o.op === 'CreateIssue').length
@@ -246,73 +261,28 @@ describe('dedupe', () => {
   })
 })
 
-describe('cap and roll-up', () => {
-  test('files the 8 most severe, rolls the rest into one ticket', async () => {
-    await writeVerified([
-      ...numbered(9, { area: 'layout', oracle: { type: 'layout', evidence: 'wide' } }).map((f, i) => ({
-        ...f,
-        oracle: { type: 'layout', evidence: `wide ${'y'.repeat(i + 1)}` },
-      })),
-      { title: 'Urgent one' },
-    ])
-    const api = fakeLinear()
-    const filed = await run(api.fetchFn)
-    expect(filed[0]).toMatchObject({ severity: 'Urgent', action: 'created' })
-    expect(filed.filter((f) => f.action === 'created')).toHaveLength(8)
-    const rolled = filed.filter((f) => f.action === 'rolled-up')
-    expect(rolled).toHaveLength(2)
-    expect(new Set(rolled.map((f) => f.identifier)).size).toBe(1)
-    expect(created(api)).toHaveLength(9)
-  })
+describe('one ticket per finding, however many', () => {
+  const many = () => writeVerified([...numbered(9), ...numbered(4, { area: 'security' })])
 
-  test('a security finding over the cap still gets its own ticket, never the roll-up', async () => {
-    await writeVerified([
-      ...numbered(9),
-      { title: 'Leaky thing', area: 'security', oracle: { type: 'console-error', evidence: 'boom' } },
-    ])
+  test('a live run files every bug and every security finding as its own ticket', async () => {
+    await many()
     const api = fakeLinear()
     const filed = await run(api.fetchFn)
-    expect(filed.map((f) => f.action)).toEqual([...Array(8).fill('created'), 'created', 'rolled-up'])
-    const [security, rollup] = created(api).slice(-2)
-    expect(security.title).toContain('Leaky thing')
-    expect(security.labelIds).toContain('l-Security')
-    expect(security.description).not.toContain(runUrl)
-    expect(rollup.title).toContain('1 more finding')
-    expect(rollup.description).not.toContain('Leaky thing')
-  })
-
-  test('security findings have their own cap of 3, then one security roll-up with fingerprints only', async () => {
-    await writeVerified(numbered(5, { area: 'security' }))
-    const api = fakeLinear()
-    const filed = await run(api.fetchFn)
-    expect(filed.map((f) => f.action)).toEqual(['created', 'created', 'created', 'rolled-up', 'rolled-up'])
+    expect(filed.map((f) => f.action)).toEqual(Array(13).fill('created'))
+    expect(new Set(filed.map((f) => f.fp)).size).toBe(13)
     const tickets = created(api)
-    expect(tickets.slice(0, 3).every((t) => t.labelIds.includes('l-Security'))).toBe(true)
-    const rollup = tickets[3]
-    expect(rollup.title).toBe('QA agent: 2 more security findings over the 3-ticket cap')
-    expect(rollup.labelIds).toEqual(['l-qa-agent', 'l-Bug', 'l-Security'])
-    expect(rollup.description).not.toContain(runUrl)
-    expect(rollup.description).not.toContain('Bug ')
-    expect(rollup.description).toContain(`[qa:${filed[3].fp}] High`)
+    expect(tickets.map((t) => t.title)).toEqual(filed.map((f) => expect.stringContaining(`[qa:${f.fp}]`)))
+    expect(tickets.filter((t) => t.labelIds.includes('l-Security'))).toHaveLength(4)
+    expect(new Set(filed.map((f) => f.identifier)).size).toBe(13)
   })
 
-  test('a dry-run security roll-up leaves no finding text in the log or filed.json', async () => {
-    await writeVerified(numbered(4, { area: 'security' }))
+  test('a dry run would file every bug and every security finding as its own ticket', async () => {
+    await many()
     const lines: string[] = []
     const filed = await run(fakeLinear().fetchFn, { live: false, log: (l) => lines.push(l) })
-    expect(filed.map((f) => f.would)).toEqual(['created', 'created', 'created', 'rolled-up'])
-    const written = lines.join('\n') + (await readFile(join(outDir, 'filed.json'), 'utf8'))
-    expect(written).not.toContain('Bug ')
-    expect(written).not.toContain('Distinct failure')
-  })
-
-  test('a dry run over the cap logs the roll-up without any finding text', async () => {
-    await writeVerified(numbered(9))
-    const lines: string[] = []
-    const filed = await run(fakeLinear().fetchFn, { live: false, log: (l) => lines.push(l) })
-    expect(filed.map((f) => f.would)).toEqual([...Array(8).fill('created'), 'rolled-up'])
-    expect(lines.at(-1)).toBe('[dry run] would create the roll-up "QA agent: 1 more finding over the 8-ticket cap"')
-    expect(lines.join('\n')).not.toContain('Bug ')
+    expect(filed.map((f) => f.would)).toEqual(Array(13).fill('created'))
+    expect(new Set(filed.map((f) => f.fp)).size).toBe(13)
+    expect(lines).toEqual(filed.map((f) => `[dry run] would created ${f.fp} (${f.severity})`))
   })
 })
 
@@ -548,6 +518,75 @@ describe('one ticket per defect from the grouping call', () => {
   })
 })
 
+describe('Linear failures', () => {
+  const twoVisual = () =>
+    writeVerified([visualVerified(), visualVerified({ element: 'button "Back"', screenshot: 'mcp/page-2.png' })])
+  const graphqlError = (message: string, status = 400) => Response.json({ errors: [{ message }] }, { status })
+
+  test('a rejected upload files the ticket without it, logs why, and moves on to the next ticket', async () => {
+    await twoVisual()
+    let uploadsAnswered = 0
+    const api = fakeLinear({
+      fail: (op) =>
+        op === 'FileUpload' && uploadsAnswered++ === 0 ? graphqlError('File uploads are not allowed') : undefined,
+    })
+    const lines: string[] = []
+    const filed = await run(api.fetchFn, { log: (l) => lines.push(l) })
+    expect(filed.map((f) => f.action)).toEqual(['created', 'created'])
+    expect(created(api).map((input) => input.description.includes('![Screenshot]'))).toEqual([false, true])
+    const reason = 'Linear FileUpload HTTP 400: File uploads are not allowed'
+    expect(filed[0].lostAttachments).toEqual([{ kind: 'screenshot', reason }])
+    expect(filed[1].lostAttachments).toBeUndefined()
+    expect(lines).toEqual([`::warning::${filed[0].fp}: filing without the screenshot: ${reason}`])
+    expect(JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))[0].lostAttachments).toEqual([
+      { kind: 'screenshot', reason },
+    ])
+  })
+
+  test("a failed storage upload logs storage's message, never the upload URL's signature", async () => {
+    await writeVerified([{}], 'replay/v.webm')
+    await mkdir(join(outDir, 'replay'), { recursive: true })
+    await writeFile(join(outDir, 'replay/v.webm'), 'video')
+    // The sanitizer keeps links to Linear's uploads host, so only the query strip keeps the signature out.
+    const signed = 'https://uploads.linear.app/x?X-Goog-Signature=deadbeef'
+    const xml = `<Error><Code>AccessDenied</Code><Message>Denied for ${signed}</Message></Error>`
+    const lines: string[] = []
+    const [entry] = await run(
+      fakeLinear({ fail: (op) => (op === 'PUT' ? new Response(xml, { status: 403 }) : undefined) }).fetchFn,
+      { log: (l) => lines.push(l) },
+    )
+    expect(entry).toMatchObject({ action: 'created', lostAttachments: [{ kind: 'video' }] })
+    expect(lines.join('\n')).toContain('Linear upload HTTP 403: Denied for')
+    expect(lines.join('\n')).not.toContain('deadbeef')
+  })
+
+  test('a ticket Linear will not create fails the run only after the others are filed', async () => {
+    await writeVerified(numbered(2))
+    let createsAnswered = 0
+    const api = fakeLinear({
+      fail: (op) =>
+        op === 'CreateIssue' && createsAnswered++ === 0 ? graphqlError('Title is too long', 200) : undefined,
+    })
+    const lines: string[] = []
+    await expect(run(api.fetchFn, { log: (l) => lines.push(l) })).rejects.toThrow('Filing failed for 1')
+    expect(created(api)).toHaveLength(2)
+    expect(lines.join('\n')).toContain('Linear CreateIssue HTTP 200 GraphQL errors: Title is too long')
+    const filed: Filed[] = JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))
+    expect(filed.map((f) => [f.action, f.identifier])).toEqual([['created', 'THB-2']])
+  })
+
+  test("a refused security ticket logs only the status, never Linear's message quoting its text", async () => {
+    await writeVerified([{ area: 'security', title: 'Leaky token list', oracle: { type: 'http-5xx', evidence: 'x' } }])
+    const echo = 'Variable "$input" got invalid value { title: "Leaky token list" }'
+    const api = fakeLinear({ fail: (op) => (op === 'CreateIssue' ? graphqlError(echo) : undefined) })
+    const lines: string[] = []
+    const error = await run(api.fetchFn, { log: (l) => lines.push(l) }).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(lines).toEqual([expect.stringContaining('Linear CreateIssue HTTP 400')])
+    expect(`${lines.join('\n')}\n${String(error)}`).not.toContain('Leaky')
+  })
+})
+
 describe('judged priority', () => {
   test('a sign-in code field with no accessible name, judged High, files High', async () => {
     const signInCodeField: Judged = {
@@ -611,12 +650,16 @@ describe('visual findings', () => {
     expect(api.ops.find((o) => o.op === 'PUT')?.variables.headers).toMatchObject({ 'content-type': 'image/jpeg' })
   })
 
-  test('a screenshot that is not a PNG or JPEG is never uploaded', async () => {
+  test('a screenshot that is not a PNG or JPEG is never uploaded, and the ticket files without it', async () => {
     await writeVerified([visualVerified({ screenshot: 'mcp/page-1.png' })])
     await writeFile(join(outDir, 'c2-chat', 'mcp', 'page-1.png'), '<svg onload="x()">')
     const api = fakeLinear()
-    await expect(run(api.fetchFn)).rejects.toThrow('not a PNG, JPEG, WebM or MP4 file')
+    const [entry] = await run(api.fetchFn)
     expect(uploads(api)).toEqual([])
+    expect(created(api)[0].description).not.toContain('![Screenshot]')
+    expect(entry.lostAttachments).toEqual([
+      { kind: 'screenshot', reason: 'not a PNG, JPEG, WebM or MP4 file: page-1.png' },
+    ])
   })
 
   test('a security visual finding uploads no screenshot', async () => {
@@ -799,6 +842,13 @@ describe('scorecard and precision brake', () => {
     const card = await computeScorecard(api.fetchFn, 'k')
     expect(card.labelled).toBe(7)
     expect(shouldBrake(card)).toBe(false)
+  })
+
+  test('reads every page of tickets, so a later page can pull precision under the brake', async () => {
+    const api = fakeLinear({ scorecard: tickets({ 'qa:valid': 250, 'qa:not-a-bug': 200 }) })
+    const card = await computeScorecard(api.fetchFn, 'k')
+    expect(card).toMatchObject({ counts: { valid: 250, notABug: 200 }, labelled: 450 })
+    expect(shouldBrake(card)).toBe(true)
   })
 
   test('a dry run with a key writes the scorecard once and does not brake', async () => {

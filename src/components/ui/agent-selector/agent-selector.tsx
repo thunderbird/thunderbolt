@@ -24,6 +24,8 @@ export type AgentSelectorProps = {
    *  The label and paddings transition, so toggling this mid-mount morphs the
    *  pill smoothly instead of swapping shapes. */
   collapsed?: boolean
+  /** Share the mobile header capsule's background when docked beside the project. */
+  mobileJoined?: boolean
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
 }
@@ -82,6 +84,7 @@ export const AgentSelector = ({
   onAddAgent,
   disabled = false,
   collapsed = false,
+  mobileJoined = false,
   side,
   align,
 }: AgentSelectorProps) => {
@@ -124,6 +127,7 @@ export const AgentSelector = ({
         aria-disabled={dimmed}
         className={cn(
           'group relative h-[var(--touch-height-sm)] max-w-[50vw] text-[length:var(--font-size-body)] max-md:h-[var(--touch-height-lg)] md:max-w-none',
+          collapsed ? 'pointer-events-none' : 'pointer-events-auto',
           isLabel && 'cursor-default',
           dimmed && 'opacity-60 cursor-not-allowed',
           !isLabel && !dimmed && 'cursor-pointer',
@@ -136,7 +140,7 @@ export const AgentSelector = ({
         <div
           data-testid="agent-selector-pill"
           className={cn(
-            'relative z-10 flex h-full items-center rounded-full px-4 transition-[opacity,background-color,color] duration-150 md:px-3',
+            'relative z-10 flex h-full items-center rounded-full px-4 transition-[opacity,background-color,color] duration-150 motion-reduce:transition-none md:px-3',
             mobileHeaderControlFillClass,
             collapsed ? 'opacity-0' : 'opacity-100',
             !dimmed && isOpen
@@ -167,16 +171,18 @@ export const AgentSelector = ({
           )}
         </div>
 
-        {/* Independent logo-only circle beneath the pill. Crossfading these
-            layers means the moving element never changes width; only opacity
-            and the header wrapper's translate animate. */}
+        {/* Crossfade the fixed-width pill with the circle. When collapsed, only
+            this visible circle accepts taps; the transparent pill lets them
+            through to the project control below it. */}
         <div
           aria-hidden="true"
           data-testid="agent-selector-collapsed-circle"
           className={cn(
-            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 max-md:group-active:bg-muted-foreground/20 md:hidden',
+            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 motion-reduce:transition-none max-md:group-active:bg-muted-foreground/20 md:hidden',
             mobileHeaderControlFillClass,
-            collapsed ? 'opacity-100' : 'opacity-0',
+            collapsed ? 'pointer-events-auto opacity-100' : 'opacity-0',
+            mobileJoined &&
+              'max-md:rounded-l-full max-md:rounded-r-none max-md:bg-transparent max-md:dark:bg-transparent max-md:backdrop-blur-none max-md:group-hover:bg-muted-foreground/10',
           )}
         >
           <Icon className="max-w-none size-[var(--icon-size-default)] text-muted-foreground" />
@@ -215,12 +221,13 @@ export const AgentSelector = ({
       searchPlaceholder={t`Search agents`}
       emptyMessage={t`No agents found`}
       mobileTitle={t`Choose agent`}
+      showDesktopTitle
       mobileSide="top"
       trigger={renderTrigger}
       renderItem={renderAgentItem}
       footerAction={footerAction}
       width={240}
-      maxHeight={340}
+      maxHeight={300}
       side={side}
       align={align}
       open={disabled ? false : open}

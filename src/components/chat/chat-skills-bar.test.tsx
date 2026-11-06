@@ -16,6 +16,9 @@ import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { getClock } from '@/testing-library'
 import type { Skill } from '@/types'
 import { ChatSkillsBar } from './chat-skills-bar'
+// Load the lazy ReorderPanel chunk up front: waitForElement only advances the fake
+// clock, so a cold import() can still be loading when its 2s budget runs out.
+import '@/skills/reorder-panel'
 
 const skill = (id: string, name: string): Skill => ({
   id,

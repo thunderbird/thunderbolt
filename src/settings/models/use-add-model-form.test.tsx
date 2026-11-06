@@ -126,7 +126,8 @@ describe('useAddModelForm', () => {
   })
 
   it('substitutes the typed custom model id on submit when Custom is selected', async () => {
-    const onClose = mock(() => {})
+    const completed = Promise.withResolvers<void>()
+    const onClose = mock(() => completed.resolve())
     const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
       wrapper: createTestProvider(),
     })
@@ -145,7 +146,7 @@ describe('useAddModelForm', () => {
         apiKey: '',
         supportsTools: true,
       })
-      await getClock().runAllAsync()
+      await completed.promise
     })
 
     const created = useChatStore.getState().models.find((candidate) => candidate.name === 'My Custom Model')
@@ -180,6 +181,28 @@ describe('useAddModelForm', () => {
       })
 
       expect(getSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it('does not fetch a catalog when Custom is chosen before a URL is entered', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+    const { result } = renderHook(() => useAddModelForm({ isOpen: true, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+
+    try {
+      act(() => {
+        result.current.onProviderChange('custom')
+      })
+      await act(async () => {
+        getClock().tick(1000)
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.form.getValues('url')).toBe('')
+      expect(getSpy).not.toHaveBeenCalled()
     } finally {
       getSpy.mockRestore()
     }

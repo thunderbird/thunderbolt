@@ -43,12 +43,16 @@ permissions:
 
 jobs:
   find-orphans:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       orphans: ${{ steps.scan.outputs.orphans }}
       dry_run: ${{ steps.scan.outputs.dry_run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ubuntu-26.04 ships without the Pulumi CLI; with no `command` the action only installs it.
+      - name: Install Pulumi CLI
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Identify orphan stacks
         id: scan

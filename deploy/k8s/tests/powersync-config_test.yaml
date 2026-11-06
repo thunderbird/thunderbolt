@@ -28,4 +28,4 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: journeyapps/powersync-service:1.27.0
+          value: journeyapps/powersync-service:1.28.0

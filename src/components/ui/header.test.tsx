@@ -5,6 +5,7 @@
 import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
+import { createProject } from '@/dal/projects'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { agentsSystemTable } from '@/db/tables'
@@ -82,21 +83,31 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
   )
 }
 
+/** Drives the real status subscription without starting a network request. */
+class HeaderTestChat extends Chat<ThunderboltUIMessage> {
+  submit = () => this.setStatus({ status: 'submitted' })
+}
+
 /** Hydrates a session on the canonical `thread-1`, then patches its
  *  `selectedAgent` directly (mirrors `chat-model-picker.test.tsx`, avoiding the
  *  DB write that `setSelectedAgent` performs). Pass `withThread: false` to
  *  simulate an unsaved new chat (no thread row yet). */
 const setupWithAgent = (
   agent: Agent,
-  { withThread = true, isEncrypted = 0 }: { withThread?: boolean; isEncrypted?: 0 | 1 } = {},
+  {
+    withThread = true,
+    isEncrypted = 0,
+    projectId = null,
+  }: { withThread?: boolean; isEncrypted?: 0 | 1; projectId?: string | null } = {},
 ) => {
+  const chatInstance = new HeaderTestChat({ id: 'thread-1' })
   hydrateStore({
     // A real `Chat` (not the plain-object mock) so the AI SDK's `useChat`
     // subscription inside `HeaderAgentSelector` mounts cleanly. It stays in its
     // default `ready` status — the selector only reads `status` to disable
     // itself mid-stream.
-    chatInstance: new Chat<ThunderboltUIMessage>({ id: 'thread-1' }),
-    chatThread: withThread ? createMockChatThread({ agentId: agent.id, isEncrypted }) : null,
+    chatInstance,
+    chatThread: withThread ? createMockChatThread({ agentId: agent.id, isEncrypted, projectId }) : null,
     id: 'thread-1',
     models: [createMockModel()],
     selectedModel: createMockModel(),
@@ -109,9 +120,10 @@ const setupWithAgent = (
       return state
     }
     const nextSessions = new Map(state.sessions)
-    nextSessions.set('thread-1', { ...session, selectedAgent: agent })
+    nextSessions.set('thread-1', { ...session, selectedAgent: agent, projectId })
     return { sessions: nextSessions }
   })
+  return chatInstance
 }
 
 /** Flushes the `useAllAgents` TanStack/PowerSync query so the seeded rows land
@@ -152,7 +164,9 @@ describe('Header', () => {
 
     expect(screen.getByText(customAgent.name)).toBeInTheDocument()
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
-    expect(screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement).toHaveClass('top-2')
+    expect(screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement?.parentElement).toHaveClass(
+      'top-2',
+    )
   })
 
   it('keeps showing the thread agent after the synced list hydrates', async () => {
@@ -190,7 +204,8 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
-    expect(wrapper).toHaveClass('left-1/2', '[translate:-50%_0]')
+    expect(wrapper).toHaveClass('translate-x-1/2')
+    expect(wrapper?.parentElement).toHaveClass('left-1/2', '-translate-x-full')
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-0')
   })
 
@@ -200,11 +215,43 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
-    // `left` stays fixed — only `translate` differs between the two states,
-    // so the dock slide can run entirely on the compositor.
-    expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
-    expect(wrapper).not.toHaveClass('[translate:-50%_0]')
-    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
+    expect(wrapper).toHaveClass('translate-x-0', 'transition-[translate]')
+    expect(wrapper?.parentElement).toHaveClass('translate-x-0', 'transition-[translate]')
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-transparent')
+  })
+
+  it('docks the agent left of the project on first submit without remounting either', async () => {
+    const project = await createProject(getDb(), { name: 'Launch' })
+    const chat = setupWithAgent(customAgent, { withThread: false, projectId: project.id })
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+
+    const trigger = screen.getByTestId('agent-selector-trigger')
+    const projectControl = screen.getByRole('button', { name: 'In project: Launch' })
+    expect(projectControl).toBeVisible()
+    expect(projectControl.closest('.absolute')).toHaveClass('right-2')
+
+    act(() => chat.submit())
+    await flushAgentsQuery()
+
+    expect(useChatStore.getState().sessions.get('thread-1')?.chatThread).toBeNull()
+    expect(screen.getByTestId('agent-selector-trigger')).toBe(trigger)
+    expect(screen.getByRole('button', { name: 'In project: Launch' })).toBe(projectControl)
+    expect(projectControl).toBeVisible()
+    expect(projectControl.closest('.absolute')).toHaveClass('right-2')
+    expect(trigger.closest('button')?.parentElement?.parentElement).toHaveClass(
+      'translate-x-0',
+      'right-[calc(0.5rem+var(--touch-height-lg))]',
+    )
+  })
+
+  it('shows the project control when opening an existing mobile chat', async () => {
+    const project = await createProject(getDb(), { name: 'Launch' })
+    setupWithAgent(customAgent, { projectId: project.id })
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+
+    expect(screen.getByRole('button', { name: 'In project: Launch' }).closest('.absolute')).toHaveClass('right-2')
   })
 
   it('hides the agent selector in minimal mode', () => {

@@ -13,6 +13,7 @@ import { usePasskeyAvailable } from '@/lib/passkey'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Fingerprint } from 'lucide-react'
+import { useId } from 'react'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
@@ -34,6 +35,7 @@ export const WaitlistPage = () => {
   const isVerifying = state.status === 'verifying'
   const email = state.email
   const passkeyAvailable = usePasskeyAvailable()
+  const otpPromptId = useId()
 
   if (state.status === 'checkEmail' || state.status === 'verifying') {
     return (
@@ -59,7 +61,7 @@ export const WaitlistPage = () => {
           </div>
 
           <div className="mb-auto mt-8 flex w-full flex-col items-center gap-4 md:mb-0 md:mt-0">
-            <p className="text-sm text-muted-foreground">
+            <p id={otpPromptId} className="text-sm text-muted-foreground">
               <Trans>If you received a code to log in, enter it here:</Trans>
             </p>
             <InputOTP
@@ -70,6 +72,7 @@ export const WaitlistPage = () => {
               onComplete={actions.handleOtpComplete}
               disabled={isVerifying}
               autoFocus
+              aria-labelledby={otpPromptId}
               autoComplete="one-time-code"
               data-1p-ignore
               data-lpignore="true"

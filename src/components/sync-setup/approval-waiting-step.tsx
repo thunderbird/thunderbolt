@@ -3,11 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useAppName } from '@/lib/branding-selectors'
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Button } from '@/components/ui/button'
 import { Fingerprint, Loader2 } from 'lucide-react'
+import { useState } from 'react'
 
 type ApprovalWaitingStepProps = {
+  fingerprint: string
   error: string | null
   onContinue: () => void
   onUseRecoveryKey: () => void
@@ -18,6 +21,7 @@ type ApprovalWaitingStepProps = {
 }
 
 export const ApprovalWaitingStep = ({
+  fingerprint,
   error,
   onContinue,
   onUseRecoveryKey,
@@ -26,6 +30,17 @@ export const ApprovalWaitingStep = ({
   isPolling,
 }: ApprovalWaitingStepProps) => {
   const appName = useAppName()
+  const { t } = useLingui()
+  const { copy, isCopied } = useCopyToClipboard()
+  const [copyFailed, setCopyFailed] = useState(false)
+  const copyFingerprint = async () => {
+    try {
+      await copy(fingerprint)
+      setCopyFailed(false)
+    } catch {
+      setCopyFailed(true)
+    }
+  }
 
   return (
     <div className="w-full flex flex-col">
@@ -38,6 +53,20 @@ export const ApprovalWaitingStep = ({
             Open {appName} on one of your trusted devices and go to Settings &rarr; Devices to approve this device.
           </Trans>
         </p>
+        <p className="text-sm text-muted-foreground">
+          <Trans>Enter this fingerprint on your trusted device before approving.</Trans>
+        </p>
+        <output aria-label={t`Device fingerprint`} className="block break-all font-mono select-all">
+          {fingerprint}
+        </output>
+        <Button variant="outline" disabled={!fingerprint} onClick={copyFingerprint}>
+          {isCopied ? <Trans>Copied</Trans> : <Trans>Copy fingerprint</Trans>}
+        </Button>
+        {copyFailed && (
+          <p role="alert" className="text-sm text-destructive">
+            <Trans>Couldn't copy. Select the fingerprint to copy it manually.</Trans>
+          </p>
+        )}
         {isPolling && (
           <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -47,7 +76,11 @@ export const ApprovalWaitingStep = ({
       </div>
 
       <div className="pt-5 space-y-4">
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
 
         <Button className="w-full" onClick={onContinue} disabled={isLoading}>
           {isLoading ? (

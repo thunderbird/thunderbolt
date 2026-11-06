@@ -407,7 +407,7 @@ describe('renderReport findings and caps', () => {
       ],
     })
     expect(report).toContain('found 3 → oracle 3 → lint 3 → replay 2 (0 flaky, 1 deferred) → judge 1 (1 deferred)')
-    expect(report).toContain('### Deferred (2), over a cap')
+    expect(report).toContain('### Deferred (2), not replayed or judged')
     expect(report).toContain('- c8-phone/5: **judge** — over the cap of 15 judged findings')
   })
 

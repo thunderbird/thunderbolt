@@ -15,6 +15,19 @@ import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import type { ReactNode } from 'react'
+import { eq } from 'drizzle-orm'
+import 'fake-indexeddb/auto'
+import { createClient } from '@/lib/http'
+import {
+  generateKeyPair,
+  generateMlKemKeyPair,
+  storeKeyPair,
+  clearAllKeys,
+  exportPublicKey,
+  exportMlKemPublicKey,
+} from '@/crypto'
+import { createDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
+import { setCachedSession, clearCachedSession } from '@/lib/session-cache'
 
 const currentDeviceId = uuidv7()
 const pendingDeviceId1 = uuidv7()
@@ -43,10 +56,6 @@ afterAll(() => {
   mock.module('@/db/encryption/config', () => realEncryptionConfig)
 })
 
-mock.module('@/hooks/use-approve-device', () => ({
-  useApproveDevice: () => ({ mutate: mock(), isPending: false }),
-}))
-
 const { PendingDeviceModal } = await import('./pending-device-modal')
 
 const HttpClientWrapper = ({ children }: { children: ReactNode }) => (
@@ -70,7 +79,9 @@ describe('PendingDeviceModal', () => {
     sessionStorage.removeItem(sessionStorageKey)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await clearAllKeys()
+    clearCachedSession()
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
     useLocalSettingsStore.setState({ syncEnabled: false })
@@ -156,6 +167,70 @@ describe('PendingDeviceModal', () => {
         'This will share your encryption key with the device, allowing it to decrypt and sync your data.',
       ),
     ).toBeInTheDocument()
+  })
+
+  it('keeps the opened recipient snapshot when its keys and the pending-device order change', async () => {
+    const db = getDb()
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    await storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
+    setCachedSession({ user: { id: 'user-1' } })
+    const publicKey = await exportPublicKey(ecdh.publicKey)
+    const mlkemPublicKey = exportMlKemPublicKey(mlkem.publicKey)
+    const fingerprint = await createDeviceApprovalFingerprint({
+      userId: 'user-1',
+      deviceId: pendingDeviceId1,
+      ecdhPublicKey: publicKey,
+      mlkemPublicKey,
+    })
+    const requests: string[] = []
+    const httpClient = createClient({
+      prefixUrl: 'http://test-api.local',
+      fetch: async (request) => {
+        requests.push(new URL(request instanceof Request ? request.url : String(request)).pathname)
+        return Response.json({ error: 'Test stops at the envelope boundary' }, { status: 404 })
+      },
+    })
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <HttpClientProvider httpClient={httpClient}>{children}</HttpClientProvider>
+    )
+    await db.insert(devicesTable).values([
+      { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
+      {
+        id: pendingDeviceId1,
+        userId: 'user-1',
+        name: 'Original',
+        trusted: 0,
+        approvalPending: 1,
+        publicKey,
+        mlkemPublicKey,
+      },
+    ])
+    renderWithReactivity(<PendingDeviceModal />, { tables: ['devices'], wrapper: Wrapper })
+    await waitForElement(() => screen.queryByText('New device waiting'))
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await act(async () => {
+      await db
+        .update(devicesTable)
+        .set({ publicKey: 'replaced-ecdh', mlkemPublicKey: 'replaced-mlkem' })
+        .where(eq(devicesTable.id, pendingDeviceId1))
+      await db.insert(devicesTable).values({
+        id: uuidv7(),
+        userId: 'user-1',
+        name: 'Another pending device',
+        trusted: 0,
+        approvalPending: 1,
+        publicKey: 'another',
+        mlkemPublicKey: 'another',
+        createdAt: '2000-01-01T00:00:00Z',
+      })
+      await getClock().runAllAsync()
+    })
+    fireEvent.change(screen.getByLabelText('Device fingerprint'), { target: { value: fingerprint } })
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
+    await waitForElement(() => screen.queryByRole('alert'))
+    expect(requests).toContain('/devices/me/envelope')
+    expect(requests.filter((path) => path === '/devices/me/envelope')).toHaveLength(1)
   })
 
   it('opens deny confirmation dialog on Deny click', async () => {

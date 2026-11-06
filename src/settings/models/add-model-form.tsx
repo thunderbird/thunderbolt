@@ -91,25 +91,25 @@ export const AddModelForm = ({
               <FormLabel>
                 <Trans>Provider</Trans>
               </FormLabel>
-              <FormControl>
-                <Select
-                  onValueChange={(value: Model['provider']) => {
-                    onProviderChange(value)
-                  }}
-                  value={field.value}
-                >
+              <Select
+                onValueChange={(value: Model['provider']) => {
+                  onProviderChange(value)
+                }}
+                value={field.value}
+              >
+                <FormControl>
                   <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
                     <SelectValue placeholder={t`Select provider`} />
                   </SelectTrigger>
-                  <SelectContent>
-                    {providerPickerOrder.map((provider) => (
-                      <SelectItem key={provider} value={provider}>
-                        {getProviderLabel(i18n, provider, appName)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormControl>
+                </FormControl>
+                <SelectContent>
+                  {providerPickerOrder.map((provider) => (
+                    <SelectItem key={provider} value={provider}>
+                      {getProviderLabel(i18n, provider, appName)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}

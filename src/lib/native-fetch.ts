@@ -44,13 +44,18 @@ export const nativeFetch = async (
   const failure = (cause: unknown) => (signal?.aborted ? signal.reason : new TypeError('Failed to fetch', { cause }))
   signal?.addEventListener('abort', abort, { once: true })
 
+  // The plugin stamps the webview Origin (tauri://localhost) on every request, and MCP servers such as
+  // Metabase reject unknown origins. With `unsafe-headers`, an empty Origin makes it send none, like the proxy.
+  const headers = new Headers(init?.headers ?? (target instanceof Request ? target.headers : undefined))
+  headers.set('Origin', '')
+
   const send = async () => {
     try {
       let current = target
       const method = (init?.method ?? (target instanceof Request ? target.method : 'GET')).toUpperCase()
       for (let hop = 0; ; hop++) {
         signal?.throwIfAborted()
-        const response = await fetchImpl(current, { ...init, signal: child.signal, maxRedirections: 0 })
+        const response = await fetchImpl(current, { ...init, headers, signal: child.signal, maxRedirections: 0 })
         if (signal?.aborted) {
           await response.body?.cancel(signal.reason)
           throw signal.reason

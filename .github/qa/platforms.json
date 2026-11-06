@@ -2,7 +2,7 @@
   {
     "id": "desktop",
     "driver": "playwright",
-    "runner": "ubuntu-latest",
+    "runner": "ubuntu-24.04",
     "viewport": "1280x800",
     "mcp": ".github/qa/mcp.json",
     "realAi": true
@@ -10,7 +10,7 @@
   {
     "id": "phone",
     "driver": "playwright",
-    "runner": "ubuntu-latest",
+    "runner": "ubuntu-24.04",
     "viewport": "390x844",
     "mcp": ".github/qa/mcp.json",
     "realAi": true
@@ -28,7 +28,7 @@
   {
     "id": "android",
     "driver": "maestro",
-    "runner": "ubuntu-latest",
+    "runner": "ubuntu-24.04",
     "viewport": "Android phone (API 36)",
     "mcp": ".github/qa/mcp-maestro.json",
     "realAi": true,

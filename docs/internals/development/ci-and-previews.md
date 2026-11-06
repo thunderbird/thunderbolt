@@ -21,7 +21,12 @@ Also part of the same machinery:
 | `previews-shared-deploy.yml`  | Manual, plus Mondays 07:00 UTC                                    |
 | `nightly-images.yml`          | 05:00 UTC                                                         |
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
+| `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |
+
+`image-scan.yml` runs Trivy over the six published `:latest` images and reports HIGH and CRITICAL
+findings that have a fix to code scanning, one category per image. Findings never fail the job. It covers
+what Dependabot's security alerts can't see: the packages inside container images.
 
 Release workflows: [RELEASE.md](../../../RELEASE.md).
 
@@ -30,9 +35,9 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 | Job             | Runs when                                                                      | What it does                                                                          |
 | --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
-| `backend`       | Always                                                                         | Backend type-check, lint, tests (5x) plus the segregated WS suite                     |
+| `backend`       | Always                                                                         | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
 | `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
-| `agent-core`    | `shared/agent-core/**`, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
+| `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
 | `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test                         |
 | `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`        | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
 | `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
@@ -71,16 +76,16 @@ with up to five attempts: they wait on same-process WebSocket close and message 
 that Bun drops or delays under load. Five consecutive non-zero attempts still red the
 build.
 
-## The Bun versions differ on purpose
+## One Bun version everywhere
 
-| Bun version | Jobs                                                   |
-| ----------- | ------------------------------------------------------ |
-| 1.3.14      | `typescript`, `localization`, `agent-core`, `cli`, e2e |
-| 1.3.13      | `backend`, `pr-metrics.yml`                            |
-
-Not drift: on the backend job 1.3.14 caused multi-minute hangs inside PGlite's WASM that
-the per-test timeout could not interrupt, never seen on 1.3.13. Rationale sits by the pin
-in [`ci.yml`](../../../.github/workflows/ci.yml).
+Every `setup-bun` step, every `oven/bun` image in `deploy/docker/` and
+`.thunderbot/Dockerfile.dev`, and the `BUN_VERSION` of both services in
+`deploy/render/public-agent.yaml` pin Bun 1.4.4. Bump them together, along with `BUN_VERSION`
+on the production backend, which is set in the Render dashboard. A `setup-bun` step without
+`bun-version` reads `packageManager`, then `engines.bun`, from `package.json`, and installs the
+latest release when neither is set; the root `package.json` sets neither. A Render service without
+`BUN_VERSION` reads a `.bun-version` file at the repo root, then falls back to Render's default
+Bun for the date it was created.
 
 ## Gates that surprise people
 
@@ -291,6 +296,7 @@ a teardown.
 | `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
 | `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                         |
 | `scripts/lingui-macro-bun-shim.ts`                      | `--preload` on every `eval*` script                  | See below                                                             |
+| `scripts/prune-unreachable-deps.ts`                     | `deploy/docker/backend.Dockerfile`                   | Works around `--production` installing dev-only optional peers        |
 
 Bun has no Babel pass, so a Lingui macro imported under plain `bun run` resolves to a stub
 that throws, and the eval CLIs reach UI modules transitively. Every `eval*` script in

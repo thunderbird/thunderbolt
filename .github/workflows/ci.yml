@@ -56,7 +56,10 @@ jobs:
               - 'crates/**'
             agent-core:
               - 'shared/agent-core/**'
+              - 'shared/reasoning-effort*.ts'
               - 'scripts/agent-core-browser-check.ts'
+              - 'scripts/chrome.ts'
+              - 'scripts/install-chrome.ts'
               - 'vite.config.ts'
               - 'package.json'
               - 'bun.lock'
@@ -67,6 +70,7 @@ jobs:
             cli:
               - 'cli/**'
               - 'shared/agent-core/**'
+              - 'shared/reasoning-effort*.ts'
               - 'shared/cli-device-id.ts'
               - 'shared/defaults/models.ts'
               - 'shared/inference-usage.ts'
@@ -114,11 +118,16 @@ jobs:
             qa:
               - '.github/qa/**'
               - 'scripts/notify-on-failure.ts'
+              - 'scripts/chrome.ts'
+              - 'scripts/install-chrome.ts'
               - 'e2e/helpers.ts'
               - 'shared/tsconfig.base.json'
               - 'shared/defaults/models.ts'
               - 'bunfig.toml'
               - '.github/workflows/qa-weekly.yml'
+              # Decide what the dev servers write when they start, checked by the qa job.
+              - 'vite.config.ts'
+              - 'scripts/copy-powersync-assets.ts'
               - 'package.json'
               - 'bun.lock'
               - '.github/workflows/ci.yml'
@@ -149,7 +158,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -244,7 +253,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -337,7 +346,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -359,7 +368,7 @@ jobs:
         # WebKit needs apt packages the runner image lacks, so --with-deps stays;
         # the timeout makes a slow-mirror stall fail fast instead.
         timeout-minutes: 10
-        run: bunx playwright install --with-deps chromium webkit
+        run: bun run browsers:install --with-deps && bunx playwright install --with-deps webkit
 
       - name: Check production agent-core in browsers
         run: bun run test:agent-core:browser
@@ -375,7 +384,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies (miniapps)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -423,15 +432,17 @@ jobs:
   qa:
     needs: detect-changes
     if: needs.detect-changes.outputs.qa == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      QA_TEST_USER: qa-test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -444,20 +455,55 @@ jobs:
             bun-
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile
+          cd backend && bun install --frozen-lockfile
 
       - name: Type check the QA scripts
         run: bunx tsc -p .github/qa
 
+      # The weekly gate runs a patch's tests as another user, who cannot write to the checkout. With this user the QA
+      # tests run a snapshot test that way; without it they skip that test.
+      - name: Create the user the QA tests run snapshot tests as
+        run: |
+          sudo useradd --create-home "$QA_TEST_USER"
+          # Lets that user reach bun without listing this user's home.
+          sudo chmod o+x "$HOME"
+
       - name: Run QA tests (5x)
         run: bun run test:qa --rerun-each 5
 
-      - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+      - name: Install Chrome for Testing
+        run: bun run browsers:install --with-deps
 
       # The layout probe's static pages; they need no stack.
       - name: Run the layout probe tests
         run: bunx playwright test --config .github/qa/playwright.config.ts --project probe
+
+      # The weekly fix job runs the dev servers as another user, who cannot write to the checkout. A dependency bump
+      # can make a Vite plugin write somewhere new when the config loads or a page is served.
+      - name: Start the dev stack as another user
+        env:
+          QA_BACKEND_USER: qa-dev
+        run: |
+          .github/qa/scripts/stack.sh start dev
+          # `playwright screenshot` takes no executable path, so this loads each page in Chrome for Testing directly.
+          for port in 1424 1425; do
+            bun -e "
+              import { chromium } from '@playwright/test'
+              import { getChromeLaunchOptions } from './scripts/chrome'
+              const browser = await chromium.launch(getChromeLaunchOptions())
+              await (await browser.newPage()).goto(Bun.argv[1])
+              await Bun.sleep(5000)
+              await browser.close()
+            " "http://localhost:$port" || failed=1
+          done
+          .github/qa/scripts/stack.sh stop || failed=1
+          if grep -iE 'EACCES|EPERM|permission denied' "$RUNNER_TEMP/qa-stack.log"; then
+            echo "::error::A dev server could not write a file as another user."
+            exit 1
+          fi
+          [ -z "${failed:-}" ] || { cat "$RUNNER_TEMP/qa-stack.log"; exit 1; }
 
   # cli/ has its own bun.lock but imports selected shared runtime contracts, so its
   # tests and typecheck aren't reached by the `typescript` job. Gate on the `cli`
@@ -473,7 +519,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies (cli)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -657,17 +703,26 @@ jobs:
     # 15min cap = >6x headroom over the worst legitimate run (even with the 5x
     # rerun gate) while killing a starved run ~24x sooner than the 360min default.
     timeout-minutes: 15
+    # Only the binary smoke step uses it: inside a compiled binary PGlite can't find its pglite.data.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Bun
-        # Pinned to 1.3.13 to match main (green). The 1.3.14 bump (a5bbd883) was for
-        # the frontend --isolate work that Option A dropped; on the backend job 1.3.14
-        # correlated with intermittent hard hangs inside PGlite's WASM (the 5s test
-        # timeout couldn't even fire — 94s/10min stalls), never seen on main's 1.3.13.
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.13
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies (backend)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -715,3 +770,35 @@ jobs:
           retry_wait_seconds: 5
           retry_on: error
           command: bun run test:backend:ws
+
+      # Render runs the compiled ./server, whose bundle can fail at boot while every test
+      # (run from source) passes. bun build bakes NODE_ENV in, so it is set for the build too.
+      # The second boot turns tracing on (against a dummy collector): the OTEL packages load only then.
+      # It gets its own port, so a worker of the first boot that is still exiting cannot answer for it.
+      - name: Smoke backend binary
+        working-directory: backend
+        env:
+          NODE_ENV: production
+          BETTER_AUTH_SECRET: ci-smoke-secret
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          WEB_CONCURRENCY: 1
+        run: |
+          bun run build
+          bun -e 'Bun.serve({ port: 4318, fetch: () => new Response() })' &
+          boot() {
+            ./server > server.log 2>&1 &
+            local server_pid=$!
+            for _ in $(seq 30); do
+              if curl -fsS --max-time 2 "http://localhost:$PORT/v1/health"; then
+                kill "$server_pid"
+                return 0
+              fi
+              kill -0 "$server_pid" 2>/dev/null || break
+              sleep 1
+            done
+            cat server.log
+            return 1
+          }
+          PORT=8000 boot
+          PORT=8001 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces boot
+          test "$(grep -cF 'OpenTelemetry traces exporting to' server.log)" -eq 1 || { cat server.log; exit 1; }

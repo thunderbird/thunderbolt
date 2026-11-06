@@ -135,8 +135,8 @@ describe('native platforms', () => {
 
   it('keeps native sessions out of the web legs and the web replay', () => {
     const { legs, verify } = plan()
-    expect(legs.every((leg) => leg.driver === 'playwright' && leg.runner === 'ubuntu-latest')).toBe(true)
-    expect(verify.every((v) => v.runner === 'ubuntu-latest')).toBe(true)
+    expect(legs.every((leg) => leg.driver === 'playwright' && leg.runner === 'ubuntu-24.04')).toBe(true)
+    expect(verify.every((v) => v.runner === 'ubuntu-24.04')).toBe(true)
   })
 
   it('plans no web legs for a native-only dispatch, and one replay leg per native artifact', () => {

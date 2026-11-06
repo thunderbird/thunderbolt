@@ -41,6 +41,7 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   await expect(page.locator('textarea')).toBeVisible()
   await page.getByTestId('model-selector-trigger').click()
   await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await page.keyboard.press('Escape')
   const marker = `blue-heron-${crypto.randomUUID().slice(0, 8)}`
   await sendChatPrompt(page, `Use the Test Echo echo tool with message "${marker}". Quote its result exactly.`)
 
@@ -53,6 +54,8 @@ test('the model calls an MCP tool through the proxy and displays its result', as
     .getByRole('region')
     .getByRole('button', { name: /Test Echo.*echo/i })
     .click()
-  await expect(page.getByText(`MCP result: ${marker}`, { exact: false })).toBeVisible()
+  // The model is asked to quote the result too, so the reply can repeat the marker outside the output panel.
+  await expect(page.getByTestId('object-view-output')).toBeVisible()
+  await expect(page.getByTestId('object-view-output')).toContainText(`MCP result: ${marker}`)
   expect(errors).toHaveLength(0)
 })

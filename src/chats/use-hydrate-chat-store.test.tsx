@@ -523,6 +523,25 @@ describe('useHydrateChatStore', () => {
       expect(messageIds()).toEqual(synced.map((message) => message.id))
     })
 
+    it('marks an empty chat as waiting for its messages until the download lands', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(true)
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [createTestMessage()])
+      await finishDownload()
+
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+
+    it('does not mark a chat that already has messages as waiting', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      await saveMessagesWithContextUpdate(getDb(), threadId, [createTestMessage()])
+      await openDuringDownload(threadId)
+
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+
     it('appends the messages that arrived after the ones the chat opened with', async () => {
       const threadId = await createTestThread(await createTestModel())
       const opened = createTestMessage()
@@ -564,6 +583,7 @@ describe('useHydrateChatStore', () => {
       await finishDownload()
 
       expect(messageIds()).toEqual([typed.id])
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
     })
 
     it.each([
@@ -578,6 +598,7 @@ describe('useHydrateChatStore', () => {
       await finishDownload()
 
       expect(messageIds()).toEqual([])
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
     })
   })
 

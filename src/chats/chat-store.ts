@@ -88,6 +88,8 @@ export type ChatSession = {
     onAcpSessionEvent?: AgentAdapterContext['onAcpSessionEvent']
   }
   compactionStatus?: CompactionStatus
+  /** Opened with no messages while the device was still syncing; the chat shows a loader, not the empty state. */
+  awaitingSyncedMessages?: boolean
   chatThread: ChatThread | null
   connectionStatus: ConnectionStatus
   connectionError: Error | null

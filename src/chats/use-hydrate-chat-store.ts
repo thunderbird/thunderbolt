@@ -30,11 +30,17 @@ import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle, titleSourceText } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
+import type {
+  ChatMessage,
+  Model,
+  SaveMessagesFunction,
+  SaveStreamingMessageFunction,
+  ThunderboltUIMessage,
+} from '@/types'
 import type { Agent } from '@/types/acp'
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useChatStore } from './chat-store'
+import { type ChatSession, useChatStore } from './chat-store'
 import { withChatThreadWrite } from './chat-thread-write'
 import { createChatInstance } from './chat-instance'
 import { resolveSessionAgent } from './resolve-session-agent'
@@ -92,6 +98,22 @@ const trackChatReadyOnce = () => {
 const endsWithEmptyReply = (messages: ThunderboltUIMessage[]): boolean => {
   const last = messages.at(-1)
   return last?.role === 'assistant' && !last.parts?.length
+}
+
+/**
+ * The saved messages that follow the ones the session holds. Null while the chat is
+ * busy, or once it no longer matches the start of the saved list, so nothing the user
+ * did meanwhile is overwritten.
+ */
+const getSyncedTail = (session: ChatSession, saved: ChatMessage[]): ThunderboltUIMessage[] | null => {
+  if (session.stopping || session.compactionStatus === 'compacting' || session.chatInstance.status !== 'ready') {
+    return null
+  }
+  const current = session.chatInstance.messages
+  if (saved.length <= current.length || current.some((message, index) => message.id !== saved[index].id)) {
+    return null
+  }
+  return saved.slice(current.length).map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
 }
 
 /**
@@ -206,31 +228,24 @@ export const useHydrateChatStore = ({
 
   /**
    * A chat opened before its messages finished downloading read only part of them, and
-   * the session keeps that copy. Append what has landed once the sync completes — only
-   * while the chat is idle and still matches the start of the saved list, so nothing the
-   * user did meanwhile is overwritten.
+   * the session keeps that copy. Append what has landed once the sync completes, then
+   * stop showing the chat as waiting.
    */
   const appendMessagesSyncedAfterOpen = async (syncCatchUp: Promise<void>) => {
     await syncCatchUp
     const saved = await getChatMessages(db, id)
     const session = useChatStore.getState().sessions.get(id)
-    if (
-      !session ||
-      session.stopping ||
-      session.compactionStatus === 'compacting' ||
-      session.chatInstance.status !== 'ready'
-    ) {
+    if (!session) {
       return
     }
-    const current = session.chatInstance.messages
-    if (saved.length <= current.length || current.some((message, index) => message.id !== saved[index].id)) {
-      return
+    const synced = getSyncedTail(session, saved)
+    if (synced) {
+      session.chatInstance.messages = [...session.chatInstance.messages, ...synced]
     }
-    const synced = saved.slice(current.length).map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
-    session.chatInstance.messages = [...current, ...synced]
-    if (endsWithEmptyReply(synced)) {
-      useChatStore.getState().updateSession(id, { retriesExhausted: true })
-    }
+    useChatStore.getState().updateSession(id, {
+      awaitingSyncedMessages: false,
+      retriesExhausted: session.retriesExhausted || (synced !== null && endsWithEmptyReply(synced)),
+    })
   }
 
   const hydrateChatStore = async () => {
@@ -341,6 +356,8 @@ export const useHydrateChatStore = ({
       miniAppApprovalQueue: [],
       retryCount: 0,
       retriesExhausted: hydratedTrailingEmptyTurn,
+      // A saved thread always has messages, so none here means they are still downloading.
+      awaitingSyncedMessages: syncCatchUp !== null && initialMessages.length === 0,
       stopping: false,
       // Persisted via `chatThreads.agentId`; resolved above (first available
       // agent when the persisted id no longer matches).

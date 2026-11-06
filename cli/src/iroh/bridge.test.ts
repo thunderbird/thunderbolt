@@ -697,6 +697,19 @@ describe('account trust gate + heartbeat', () => {
 })
 
 describe('startMembershipHeartbeat — 45s cadence', () => {
+  let home: string
+  const prevHome = process.env.THUNDERBOLT_HOME
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'tb-heartbeat-'))
+    process.env.THUNDERBOLT_HOME = home
+  })
+  afterEach(async () => {
+    if (prevHome === undefined) delete process.env.THUNDERBOLT_HOME
+    else process.env.THUNDERBOLT_HOME = prevHome
+    await rm(home, { recursive: true, force: true })
+  })
+
   it('runs on a 45s interval', () => {
     expect(heartbeatIntervalMs).toBe(45_000)
   })

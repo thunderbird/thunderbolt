@@ -2,26 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useId, type ReactNode } from 'react'
+import { useId } from 'react'
 import './spark-chrome.css'
 import { productLinks } from '../../../data/website-product'
 import { useSparkHeaderState } from './use-spark-header-state'
 import { SiteThemeToggle } from '../../site-theme/site-theme-toggle'
 
 const pages = [
+  { label: 'Privacy', href: '/privacy/' },
+  { label: 'Enterprise', href: '/enterprise/' },
   { label: 'Docs', href: '/docs/' },
   { label: 'Blog', href: '/blog/' },
-  { label: 'Enterprise', href: '/enterprise/' },
   { label: 'Contact', href: '/contact/' },
 ] as const
 
 type SparkHeaderProps = {
   currentPage?: (typeof pages)[number]['label']
   as?: 'header' | 'div'
-  children?: ReactNode
 }
 
-export const SparkHeader = ({ currentPage, as: Element = 'header', children }: SparkHeaderProps) => {
+export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeaderProps) => {
   const { isOpen, setIsOpen, navigationRef, triggerRef } = useSparkHeaderState()
   const panelId = useId()
 
@@ -90,11 +90,9 @@ export const SparkHeader = ({ currentPage, as: Element = 'header', children }: S
       </nav>
       <div className="spark-header-actions">
         <SiteThemeToggle />
-        {children ?? (
-          <a className="spark-nav-cta" href={productLinks.download}>
-            Download <span aria-hidden="true">↓</span>
-          </a>
-        )}
+        <a className="spark-nav-cta" href={productLinks.download}>
+          Download <span aria-hidden="true">↓</span>
+        </a>
       </div>
     </Element>
   )

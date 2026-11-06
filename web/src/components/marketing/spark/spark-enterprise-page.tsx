@@ -4,6 +4,7 @@
 
 import { productLinks } from '../../../data/website-product'
 import { SparkBurst } from './spark-burst'
+import { SparkEnterprisePartnership } from './spark-enterprise-partnership'
 import { SparkFooter } from './spark-footer'
 import { SparkHeader } from './spark-header'
 import '@fontsource-variable/lora'
@@ -43,6 +44,7 @@ export const SparkEnterprisePage = () => (
         </div>
         <SparkBurst className="spark-enterprise-burst" />
       </section>
+      <SparkEnterprisePartnership />
       <section className="spark-enterprise-foundations spark-shell" aria-labelledby="enterprise-foundations">
         <div className="spark-section-intro">
           <h2 id="enterprise-foundations">Work smarter, not harder.</h2>

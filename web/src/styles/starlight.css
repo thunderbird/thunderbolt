@@ -57,7 +57,9 @@
   /* Tighter, editorial feel */
   --sl-content-width: 44rem;
   --sl-sidebar-width: 12rem;
-  --sl-nav-height: 88px;
+  --docs-site-header-height: 88px;
+  --docs-toolbar-height: 52px;
+  --sl-nav-height: calc(var(--docs-site-header-height) + var(--docs-toolbar-height));
   --sl-content-pad-x: 0px;
   --sl-mobile-toc-height: 0px;
   --docs-gutter: 48px;
@@ -314,6 +316,8 @@ main h1,
 
 /* Hamburger button — explicit brand colors to override Starlight's [data-theme='light'] rules */
 starlight-menu-button button {
+  align-items: center;
+  justify-content: center;
   background-color: var(--tb-bg);
   color: var(--tb-text);
   border-radius: 8px;
@@ -345,6 +349,10 @@ nav.sidebar ul > li > a[aria-current='page'] {
   box-shadow: none;
 }
 
+.mobile-preferences {
+  border-top: 0;
+}
+
 /* Sidebar group headers — sentence case at a normal sans weight */
 nav.sidebar summary,
 nav.sidebar > ul > li > span.large {
@@ -366,7 +374,7 @@ nav.sidebar ul:not(.top-level) details summary .large {
 /* Right TOC — subtle left-rail + darker weight on active */
 .right-sidebar a,
 .right-sidebar-panel a {
-  border-radius: var(--tb-radius-control);
+  border-radius: 0;
 }
 .right-sidebar a[aria-current='true'],
 .right-sidebar-panel a[aria-current='true'] {
@@ -457,15 +465,6 @@ nav.sidebar ul:not(.top-level) details summary .large {
   transform: translateY(-1px);
 }
 
-/* Mobile "On this page" TOC bar — frosted glass */
-mobile-starlight-toc nav {
-  backdrop-filter: saturate(140%) blur(12px);
-  -webkit-backdrop-filter: saturate(140%) blur(12px);
-}
-#starlight__mobile-toc .toggle {
-  border-radius: var(--tb-radius-control);
-}
-
 /* Pagination prev/next cards — flat to match overall aesthetic */
 .pagination-links a {
   border-radius: var(--tb-radius-control);
@@ -550,6 +549,40 @@ header.header {
 }
 header.header:has(.spark-nav-trigger[aria-expanded='true']) {
   z-index: calc(var(--sl-z-index-navbar) + 1);
+}
+.docs-toolbar {
+  width: var(--docs-shell-width);
+  height: var(--docs-toolbar-height);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.docs-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--spark-muted);
+}
+.docs-breadcrumbs a {
+  color: inherit;
+  text-decoration: none;
+}
+.docs-breadcrumbs a:hover {
+  color: var(--spark-ink);
+}
+.docs-breadcrumbs [aria-current='page'] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-tools {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 .docs-tools site-search button[data-open-modal] {
   width: auto;
@@ -683,35 +716,76 @@ nav.sidebar ul > li > a:hover {
   font-family: var(--tb-font-sans);
   font-size: 16px;
 }
-/* Section navigation belongs to the article rather than a second fixed header. */
-mobile-starlight-toc nav {
+/* Compact section navigation shares the docs toolbar on smaller screens. */
+.docs-contents {
+  position: relative;
+}
+.docs-contents mobile-starlight-toc nav {
   position: static;
   border: 0;
   background: transparent;
-  backdrop-filter: none;
 }
 #starlight__mobile-toc > summary {
-  padding-inline: 0;
-  gap: 16px;
-  height: auto;
-  min-height: 28px;
-  border-bottom: 0;
+  height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+#starlight__mobile-toc > summary:hover,
+#starlight__mobile-toc[open] > summary {
+  background: var(--spark-hover);
 }
 #starlight__mobile-toc .toggle {
   gap: 8px;
-  padding-inline: 0;
+  padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--spark-muted);
+  color: var(--spark-ink);
+  font-size: 13px;
 }
 #starlight__mobile-toc .display-current {
-  color: var(--spark-muted);
-  font-size: 12px;
+  display: none;
 }
 #starlight__mobile-toc .dropdown {
-  border-radius: 0 0 12px 12px;
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-end: 0;
+  width: min(320px, calc(100vw - var(--docs-gutter) * 2));
+  max-height: min(480px, 65dvh);
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--spark-border);
+  border-radius: 12px;
   background: var(--spark-surface);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 14%);
+}
+#starlight__mobile-toc .dropdown a {
+  border: 0;
+  border-radius: 6px;
+  box-shadow: none;
+  background: transparent;
+  padding-block: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--spark-muted);
+}
+#starlight__mobile-toc .dropdown a[aria-current='true'],
+#starlight__mobile-toc .dropdown a:hover {
+  background: var(--spark-hover);
+  color: var(--spark-ink);
+}
+#starlight__mobile-toc .dropdown a[aria-current='true'] {
+  font-weight: 550;
+}
+#starlight__mobile-toc .dropdown a::after {
+  content: none;
+}
+@media (min-width: 72rem) {
+  .docs-contents {
+    display: none;
+  }
 }
 @media (min-width: 50rem) {
   [data-has-sidebar] .main-frame {
@@ -755,16 +829,13 @@ mobile-starlight-toc nav {
     --docs-page-space: 48px;
   }
   .right-sidebar-container {
-    padding-top: 24px;
-  }
-  body:has(.docs-intro) .right-sidebar-container {
     display: none;
   }
 }
 @media (max-width: 900px) {
   :root {
     --docs-gutter: 32px;
-    --sl-nav-height: 84px;
+    --docs-site-header-height: 84px;
     --docs-column-gap: 32px;
   }
 }
@@ -772,15 +843,19 @@ mobile-starlight-toc nav {
   :root {
     --docs-page-space: 40px;
   }
-  header.header .spark-header {
-    grid-template-columns: minmax(0, 1fr) auto;
-    padding-inline-end: 52px;
+  .docs-toolbar {
+    position: relative;
+    padding-inline-end: 44px;
+    gap: 4px;
   }
-  header.header .spark-main-nav {
-    display: none;
+  .docs-contents {
+    position: static;
+  }
+  #starlight__mobile-toc .dropdown {
+    inset-inline-end: 0;
   }
   starlight-menu-button button {
-    top: calc((var(--sl-nav-height) - 44px) / 2);
+    top: calc(var(--docs-site-header-height) + (var(--docs-toolbar-height) - 44px) / 2);
     inset-inline-end: var(--docs-gutter);
     width: 44px;
     height: 44px;
@@ -807,6 +882,9 @@ mobile-starlight-toc nav {
   }
 }
 @media (max-width: 480px) {
+  .docs-toolbar:has(.docs-contents) .docs-breadcrumbs > span {
+    display: none;
+  }
   .sl-markdown-content h2 {
     font-size: 27px;
   }

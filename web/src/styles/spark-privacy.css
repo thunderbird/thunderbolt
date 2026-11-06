@@ -1,0 +1,545 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.privacy-hero {
+  padding-block: 72px 100px;
+  text-align: center;
+}
+.privacy-hero h1 {
+  font:
+    500 clamp(52px, 7vw, 96px)/1.1 'Lora Variable',
+    serif;
+  letter-spacing: -0.05em;
+}
+.privacy-hero h1 span {
+  color: var(--spark-red);
+}
+.privacy-hero > p {
+  max-width: 650px;
+  margin: 32px auto 0;
+  font-size: 18px;
+  color: var(--spark-secondary);
+  text-wrap: balance;
+}
+.privacy-hero .spark-text-link {
+  margin-top: 32px;
+  font-size: 15px;
+}
+.privacy-section-heading {
+  margin-bottom: 40px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 40px;
+}
+.privacy-section-heading h2 {
+  font-size: clamp(32px, 3.8vw, 46px);
+}
+.privacy-section-heading > p {
+  max-width: 360px;
+  color: var(--spark-muted);
+}
+.privacy-path-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.privacy-path {
+  padding: 36px 36px 32px;
+  border: 1px solid var(--spark-border);
+  border-radius: 24px;
+  background: var(--spark-surface);
+  display: flex;
+  flex-direction: column;
+}
+.privacy-path-local {
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--spark-yellow) 10%, var(--spark-surface)),
+    var(--spark-surface) 70%
+  );
+}
+.privacy-path-cloud {
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--spark-red) 6%, var(--spark-surface)),
+    var(--spark-surface) 70%
+  );
+}
+.privacy-path-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--spark-muted);
+  margin-bottom: 18px;
+}
+.privacy-path-heading p {
+  font-size: 13px;
+}
+.privacy-path-symbol {
+  font-size: 22px;
+  line-height: 1;
+  color: var(--spark-secondary);
+}
+.privacy-path h3 {
+  font-size: clamp(29px, 3vw, 38px);
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+}
+.privacy-path > p {
+  color: var(--spark-secondary);
+  font-size: 16px;
+}
+.privacy-path > .privacy-path-detail {
+  margin-top: 16px;
+  color: var(--spark-muted);
+  font-size: 14px;
+}
+.privacy-path > .spark-text-link {
+  margin-top: auto;
+  padding-top: 28px;
+  align-self: flex-start;
+  font-size: 14px;
+}
+.privacy-path-figure {
+  margin: 24px 0;
+}
+.privacy-path-figure figcaption {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--spark-secondary);
+}
+.privacy-path-illustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+}
+.path-boundary {
+  fill: color-mix(in srgb, var(--spark-section) 75%, transparent);
+  stroke: var(--spark-border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+}
+.path-connection {
+  fill: none;
+  stroke: var(--spark-border-strong);
+  stroke-width: 1.5;
+}
+.path-device {
+  fill: var(--spark-surface);
+  stroke: var(--spark-secondary);
+  stroke-width: 1.5;
+}
+.path-device-line,
+.path-model {
+  fill: none;
+  stroke: var(--spark-secondary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.path-screen {
+  fill: var(--spark-section);
+}
+.path-bolt {
+  fill: var(--spark-red);
+}
+.path-model {
+  stroke: var(--spark-red);
+  stroke-width: 2;
+}
+.path-lock-disc {
+  fill: var(--spark-amber-soft);
+}
+.path-lock {
+  fill: none;
+  stroke: var(--spark-ink);
+  stroke-width: 1.4;
+}
+.privacy-partner {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 36px;
+  padding-block: 40px 88px;
+}
+.privacy-tinfoil-logo {
+  display: block;
+  padding: 20px;
+  flex-shrink: 0;
+}
+.privacy-tinfoil-logo img {
+  width: auto;
+  height: 40px;
+  display: block;
+}
+.privacy-tinfoil-logo .partner-logo-dark {
+  display: none;
+}
+:root[data-theme='dark'] .privacy-tinfoil-logo .partner-logo-light {
+  display: none;
+}
+:root[data-theme='dark'] .privacy-tinfoil-logo .partner-logo-dark {
+  display: block;
+}
+.privacy-partner h3 {
+  font-family: var(--tb-font-sans);
+  font-size: 15px;
+  font-weight: 550;
+  margin-bottom: 8px;
+}
+.privacy-partner p {
+  font-size: 14px;
+  color: var(--spark-muted);
+  max-width: 560px;
+}
+.privacy-inline-link {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.privacy-inline-link:hover {
+  color: var(--spark-red);
+}
+.privacy-inline-link span {
+  margin-left: 12px;
+}
+.privacy-training {
+  padding-block: 80px;
+  background: var(--spark-section);
+}
+.privacy-training-layout {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 64px;
+  align-items: center;
+  max-width: 920px;
+}
+.privacy-training-mark {
+  width: 144px;
+  color: var(--spark-yellow);
+  transform: rotate(-8deg);
+}
+.privacy-training-mark svg {
+  width: 100%;
+  display: block;
+}
+.privacy-training h2 {
+  font-size: clamp(36px, 4.2vw, 54px);
+}
+.privacy-training p {
+  max-width: 620px;
+  margin-top: 24px;
+  font-size: 18px;
+  color: var(--spark-secondary);
+}
+.privacy-training .privacy-qualification {
+  font-size: 14px;
+  color: var(--spark-muted);
+  margin-top: 16px;
+}
+.privacy-everyday {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 80px;
+  padding-block: 112px;
+}
+.privacy-everyday-intro > p {
+  max-width: 370px;
+  color: var(--spark-muted);
+  margin-top: 24px;
+}
+.privacy-everyday-intro > .spark-text-link {
+  margin-top: 28px;
+  font-size: 14px;
+}
+.privacy-details details {
+  border-bottom: 1px solid var(--spark-border);
+}
+.privacy-details details:first-child {
+  border-top: 1px solid var(--spark-border);
+}
+.privacy-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-block: 24px;
+  font-size: 17px;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+  line-height: 1.5;
+}
+.privacy-details summary::-webkit-details-marker {
+  display: none;
+}
+.privacy-details summary > span {
+  color: var(--spark-muted);
+  font-size: 24px;
+  font-weight: 350;
+  flex-shrink: 0;
+  transition: transform 160ms;
+}
+.privacy-details details[open] summary > span {
+  transform: rotate(45deg);
+}
+.privacy-details details > div {
+  padding-bottom: 28px;
+}
+.privacy-details p {
+  font-size: 15px;
+  color: var(--spark-secondary);
+}
+.privacy-details p + p {
+  margin-top: 16px;
+}
+.privacy-details p a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.privacy-details p a:hover {
+  color: var(--spark-red);
+}
+.privacy-safety {
+  background: var(--spark-section);
+  padding-block: 96px;
+}
+.privacy-safety-layout {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 80px;
+  align-items: center;
+}
+.privacy-safety-copy > p {
+  margin-top: 24px;
+  color: var(--spark-secondary);
+}
+.privacy-safety-copy .spark-text-link {
+  margin-top: 28px;
+  font-size: 14px;
+}
+.privacy-safety-example {
+  padding: 32px;
+  background: var(--spark-surface);
+  border-radius: 24px;
+  border: 1px solid var(--spark-border);
+}
+.privacy-safety-caption {
+  text-align: center;
+  color: var(--spark-muted);
+  font-size: 13px;
+  margin-bottom: 24px !important;
+}
+.privacy-enclave {
+  border: 1px dashed var(--spark-border-strong);
+  background: var(--spark-section);
+  border-radius: 20px;
+  padding: 28px;
+}
+.privacy-conversation {
+  max-width: 210px;
+  margin-inline: auto;
+  padding: 20px;
+  background: var(--spark-surface);
+  border-radius: 12px;
+  border: 1px solid var(--spark-border);
+}
+.privacy-conversation > span {
+  height: 5px;
+  display: block;
+  background: var(--spark-border-strong);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  width: 80%;
+}
+.privacy-conversation > span:nth-child(2) {
+  width: 100%;
+}
+.privacy-conversation > span:nth-child(3) {
+  width: 60%;
+  margin-bottom: 16px;
+}
+.privacy-conversation p {
+  color: var(--spark-secondary);
+  font-size: 12px;
+}
+.privacy-enclave-checks {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-size: 13px;
+  margin-top: 24px;
+}
+.privacy-enclave-checks > span:nth-child(2) {
+  color: var(--spark-muted);
+}
+.privacy-signal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.privacy-signal > span {
+  color: var(--spark-muted);
+}
+.privacy-signal p {
+  color: var(--spark-muted);
+  font-size: 13px;
+}
+.privacy-signal strong {
+  color: var(--spark-ink);
+  font-weight: 500;
+}
+.privacy-safety-note {
+  font-size: 12px;
+  color: var(--spark-muted);
+  margin-top: 24px !important;
+}
+.privacy-open {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 80px;
+  align-items: center;
+  padding-block: 112px;
+}
+.privacy-open h2 {
+  font-size: clamp(34px, 4vw, 52px);
+}
+.privacy-open p {
+  color: var(--spark-muted);
+  max-width: 480px;
+  margin-top: 24px;
+}
+.privacy-resource-links a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-block: 20px;
+  border-bottom: 1px solid var(--spark-border);
+  font-size: 16px;
+}
+.privacy-resource-links a:hover {
+  color: var(--spark-red);
+}
+@media (max-width: 1000px) {
+  .privacy-path {
+    padding: 28px;
+  }
+  .privacy-partner {
+    grid-template-columns: auto 1fr;
+    gap: 16px 24px;
+  }
+  .privacy-partner > .privacy-inline-link {
+    grid-column: 2;
+  }
+  .privacy-everyday,
+  .privacy-safety-layout,
+  .privacy-open {
+    gap: 40px;
+  }
+  .privacy-safety-example {
+    padding: 24px;
+  }
+  .privacy-enclave {
+    padding: 20px;
+  }
+}
+@media (max-width: 760px) {
+  .privacy-hero {
+    padding-block: 44px 72px;
+  }
+  .privacy-hero h1 {
+    font-size: clamp(44px, 10vw, 72px);
+  }
+  .privacy-hero > p {
+    font-size: 16px;
+    margin-top: 28px;
+  }
+  .privacy-section-heading {
+    display: block;
+    margin-bottom: 28px;
+  }
+  .privacy-section-heading > p {
+    margin-top: 18px;
+    max-width: 440px;
+  }
+  .privacy-path-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .privacy-path {
+    padding: 28px 24px;
+    border-radius: 20px;
+  }
+  .privacy-path h3 {
+    font-size: 34px;
+  }
+  .privacy-path-figure {
+    max-width: 440px;
+    margin-inline: auto;
+  }
+  .privacy-partner {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding-block: 28px 64px;
+  }
+  .privacy-tinfoil-logo {
+    padding: 20px 0;
+    width: fit-content;
+    margin-inline: 20px;
+  }
+  .privacy-partner > .privacy-inline-link {
+    grid-column: auto;
+  }
+  .privacy-training {
+    padding-block: 56px;
+  }
+  .privacy-training-layout {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .privacy-training-mark {
+    width: 82px;
+  }
+  .privacy-training p {
+    font-size: 16px;
+  }
+  .privacy-everyday,
+  .privacy-safety-layout,
+  .privacy-open {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
+  .privacy-everyday,
+  .privacy-open {
+    padding-block: 72px;
+  }
+  .privacy-safety {
+    padding-block: 64px;
+  }
+  .privacy-details summary {
+    font-size: 16px;
+  }
+  .privacy-safety-copy .spark-text-link {
+    line-height: 1.6;
+    gap: 16px;
+  }
+  .privacy-open h2 {
+    font-size: 36px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .privacy-details summary > span {
+    transition: none;
+  }
+}

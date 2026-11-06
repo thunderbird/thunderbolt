@@ -15,6 +15,7 @@ export const SparkFooter = () => (
       <nav aria-label="Footer navigation">
         <a href={productLinks.github}>GitHub</a>
         <a href={productLinks.discord}>Discord</a>
+        <a href="/privacy/">Privacy</a>
         <a href="/enterprise/">For your team</a>
         <a href={productLinks.selfHost}>Self-host</a>
         <a href="/docs/">Docs</a>
@@ -23,7 +24,7 @@ export const SparkFooter = () => (
     </div>
     <div className="spark-footer-bottom">
       <span>From Thunderbird. Part of the Mozilla family.</span>
-      <a href="https://www.thunderbird.net/en-US/privacy/">Privacy</a>
+      <a href="https://www.thunderbird.net/en-US/privacy/">Privacy policy</a>
     </div>
   </footer>
 )

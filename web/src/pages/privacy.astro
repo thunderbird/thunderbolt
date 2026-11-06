@@ -1,0 +1,99 @@
+---
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import MarketingLayout from '../layouts/MarketingLayout.astro';
+import { SparkHeader } from '../components/marketing/spark/spark-header';
+import { SparkFooter } from '../components/marketing/spark/spark-footer';
+import PrivacyPathIllustration from '../components/privacy/PrivacyPathIllustration.astro';
+import '@fontsource-variable/lora';
+import '../components/marketing/spark/spark.css';
+import '../styles/spark-privacy.css';
+
+const safetyArticle = 'https://tinfoil.sh/blog/2026-09-14-safety-without-compromising-privacy';
+---
+<MarketingLayout
+  title="Privacy — A private place for big ideas. | Thunderbolt"
+  description="Two paths to private AI: self-host Thunderbolt with local models, or choose verifiable confidential inference with Tinfoil. Understand how your data is protected."
+  canonical="https://thunderbolt.io/privacy/"
+>
+  <div class="spark-page privacy-page">
+    <a class="spark-skip" href="#privacy-main">Skip to content</a>
+    <SparkHeader currentPage="Privacy" client:load />
+    <main id="privacy-main">
+      <section class="privacy-hero spark-shell">
+        <h1>A private place<br /><span>for big ideas.</span></h1>
+        <p>The unfinished thought. The ambitious plan. The question you haven’t asked anyone yet. You deserve room to explore without giving your privacy away.</p>
+        <a class="spark-text-link" href="#privacy-paths"><span class="spark-text-link-label">Find your path to private AI</span><span aria-hidden="true">↓</span></a>
+      </section>
+
+      <section class="privacy-paths spark-shell" id="privacy-paths" aria-labelledby="privacy-paths-title">
+        <div class="privacy-section-heading">
+          <h2 id="privacy-paths-title">Two paths. Your choice.</h2>
+          <p>Keep the computing under your roof, or choose cloud AI with protection you can verify.</p>
+        </div>
+        <div class="privacy-path-grid">
+          <article class="privacy-path privacy-path-local">
+            <div class="privacy-path-heading"><span class="privacy-path-symbol" aria-hidden="true">⌂</span><p>Self-hosting + local models</p></div>
+            <h3>Keep it close.</h3>
+            <PrivacyPathIllustration kind="local" />
+            <p>Run Thunderbolt on infrastructure you control and connect a model running on your device or your own servers. Your prompts can stay inside your environment.</p>
+            <p class="privacy-path-detail">You decide what runs, where it runs, and who has access. Keep model inference within your environment, and choose which external services to connect.</p>
+            <a class="spark-text-link" href="/docs/self-hosting/"><span class="spark-text-link-label">Build your own setup</span><span aria-hidden="true">↗</span></a>
+          </article>
+          <article class="privacy-path privacy-path-cloud">
+            <div class="privacy-path-heading"><span class="privacy-path-symbol" aria-hidden="true">◇</span><p>Verifiable confidential computing</p></div>
+            <h3>Keep the cloud private.</h3>
+            <PrivacyPathIllustration kind="confidential" />
+            <p>Choose Thunderbolt’s private models powered by Tinfoil. They run inside hardware-protected enclaves, designed to keep your prompts and responses unreadable to Thunderbird and Tinfoil.</p>
+            <p class="privacy-path-detail">Thunderbolt verifies the enclave before sending an encrypted request. The model reads it inside that protected space; our relay carries encrypted data.</p>
+            <a class="spark-text-link" href="/blog/private-models-powered-by-tinfoil/"><span class="spark-text-link-label">Meet our private models</span><span aria-hidden="true">↗</span></a>
+          </article>
+        </div>
+        <div class="privacy-partner">
+          <a class="privacy-tinfoil-logo" href="https://tinfoil.sh/customers#mozilla" aria-label="Our partnership with Tinfoil">
+            <img class="partner-logo-light" src="/images/partners/tinfoil-black.svg" width="190" height="40" alt="Tinfoil" loading="lazy" />
+            <img class="partner-logo-dark" src="/images/partners/tinfoil-white.svg" width="190" height="40" alt="Tinfoil" loading="lazy" />
+          </a>
+          <div><h3>Private models. A shared conviction.</h3><p>We partner with Tinfoil because privacy should be built into how AI runs. Self-hosting teams can also connect their own Tinfoil account—these paths work together, too.</p></div>
+          <a class="privacy-inline-link" href="https://tinfoil.sh/security-and-privacy-faq">How verification works <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+
+      <section class="privacy-training" aria-labelledby="privacy-training-title">
+        <div class="spark-shell privacy-training-layout">
+          <div class="privacy-training-mark" aria-hidden="true"><svg viewBox="0 0 120 120" fill="none"><path d="M60 10 70 22l15-5 4 15 16 4-5 15 12 9-12 10 5 15-16 4-4 16-15-5-10 12-9-12-15 5-4-16-15-4 5-15L10 60l12-9-5-15 15-4 4-15 15 5Z" fill="currentColor"/><rect x="42" y="53" width="36" height="29" rx="5" stroke="var(--spark-graphic-ink)" stroke-width="3"/><path d="M48 53V43a12 12 0 0 1 24 0v10M60 64v7" stroke="var(--spark-graphic-ink)" stroke-width="3" stroke-linecap="round"/></svg></div>
+          <div><h2 id="privacy-training-title">Your thoughts aren’t<br />training material.</h2><p>Thunderbolt doesn’t use your conversations to train AI models. Tinfoil-powered private models don’t use your prompts or responses for training, either.</p><p class="privacy-qualification">If you connect a different model provider, its own retention and training policies apply. Choosing your provider is part of choosing your privacy.</p></div>
+        </div>
+      </section>
+
+      <section class="privacy-everyday spark-shell" aria-labelledby="privacy-everyday-title">
+        <div class="privacy-everyday-intro"><h2 id="privacy-everyday-title">Privacy is in<br />the everyday details.</h2><p>Where things live. What gets shared. What you can change. Here’s how Thunderbolt approaches each.</p><a class="spark-text-link" href="/docs/admin/security-and-privacy/"><span class="spark-text-link-label">Read the technical details</span><span aria-hidden="true">↗</span></a></div>
+        <div class="privacy-details">
+          <details open><summary>Your workspace starts on your device.<span aria-hidden="true">+</span></summary><div><p>Conversations are stored locally first. Uploaded files and provider API keys aren’t included in cross-device sync. An attachment can still be sent to the model you ask to work with it.</p></div></details>
+          <details><summary>Keep synced conversations encrypted.<span aria-hidden="true">+</span></summary><div><p>When you enable sync, sensitive content—including messages and chat titles—is encrypted on your device before upload. Some metadata, such as timestamps and record relationships, stays readable on the server.</p><p>Encrypted sync is a preview feature and hasn’t had a cryptography audit. If your organization enables key escrow, it can decrypt your synced content. <a href="/docs/admin/security-and-privacy/#end-to-end-encryption">See what encryption covers.</a></p></div></details>
+          <details><summary>Connected tools have their own boundaries.<span aria-hidden="true">+</span></summary><div><p>A search service receives your query. A connected tool receives the arguments it needs. An external model or agent receives the conversation it answers. These connections aren’t automatically protected by Tinfoil’s enclave.</p><p>Choose the services you trust, and turn off connections you don’t need. Self-hosting alone doesn’t keep requests to external services local. <a href="/docs/using/connections/">Manage your connections.</a></p></div></details>
+          <details><summary>Know what else is collected.<span aria-hidden="true">+</span></summary><div><p>Private content doesn’t mean zero operational data. Accounts, sign-in sessions, and managed-model usage records help a deployment function. Optional app analytics exclude conversation content and can be turned off in Preferences.</p><p>This website uses Matomo for page-view and link analytics. For the specifics, read our <a href="/docs/admin/security-and-privacy/">data-flow documentation</a> and <a href="https://www.thunderbird.net/en-US/privacy/">privacy policy</a>.</p></div></details>
+        </div>
+      </section>
+
+      <section id="privacy-safety" class="privacy-safety" aria-labelledby="privacy-safety-title">
+        <div class="spark-shell privacy-safety-layout">
+          <div class="privacy-safety-copy"><h2 id="privacy-safety-title">Safer AI.<br />Same right to privacy.</h2><p>Protecting people and protecting their private conversations should move forward together. We believe safety should be transparent, accountable, and built with respect for the person using the technology.</p><p>Our partner Tinfoil shows one way forward: running safeguard models inside trusted execution environments, or TEEs. In Tinfoil Chat, the checks happen within the protected boundary, without exposing conversation content to operators.</p><p>This is how Tinfoil Chat handles safety today. Thunderbolt’s confidential inference connection does not currently include those safeguards.</p><a class="spark-text-link" href={safetyArticle}><span class="spark-text-link-label">Safety Without Compromising on Privacy</span><span aria-hidden="true">↗</span></a></div>
+          <div class="privacy-safety-example">
+            <p class="privacy-safety-caption">Inside Tinfoil Chat’s secure enclave</p>
+            <div class="privacy-enclave"><div class="privacy-conversation"><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span><p>Private conversation</p></div><div class="privacy-enclave-checks"><span>AI model</span><span aria-hidden="true">+</span><span>Safety checks</span></div></div>
+            <div class="privacy-signal"><span aria-hidden="true">↓</span><p>A limited signal can leave.<br /><strong>The conversation stays private.</strong></p></div>
+            <p class="privacy-safety-note">Tinfoil Chat may share a violation flag and conversation ID associated with an account, but not the conversation content or violation category.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="privacy-open spark-shell" aria-labelledby="privacy-open-title">
+        <div><h2 id="privacy-open-title">You shouldn’t have<br />to take our word for it.</h2><p>Open source means you can look closer. Read the code, understand the trade-offs, and choose the setup that feels right for you.</p></div>
+        <div class="privacy-resource-links"><a href="https://github.com/thunderbird/thunderbolt">Explore the source<span aria-hidden="true">↗</span></a><a href="/docs/admin/security-and-privacy/">Follow your data<span aria-hidden="true">↗</span></a><a href="https://www.thunderbird.net/en-US/privacy/">Read the privacy policy<span aria-hidden="true">↗</span></a><a href="/enterprise/">Privacy for your organization<span aria-hidden="true">→</span></a></div>
+      </section>
+    </main>
+    <SparkFooter />
+  </div>
+</MarketingLayout>

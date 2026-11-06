@@ -4,18 +4,23 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import config from 'virtual:starlight/user-config';
 import Search from 'virtual:starlight/components/Search';
+import MobileTableOfContents from 'virtual:starlight/components/MobileTableOfContents';
 import { SparkHeader } from '../marketing/spark/spark-header';
 
+const { entry } = Astro.locals.starlightRoute;
+const isHome = entry.id === 'docs';
 const shouldRenderSearch = config.pagefind ||
   config.components.Search !== '@astrojs/starlight/components/Search.astro';
 ---
 
-<SparkHeader currentPage="Docs" as="div" client:load>
-  <div class="docs-tools print:hidden">
+<SparkHeader currentPage="Docs" as="div" client:load />
+<div class="docs-toolbar print:hidden">
+  <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+    <a href="/docs/" aria-current={isHome ? 'page' : undefined}>Docs</a>
+    {!isHome && <><span aria-hidden="true">/</span><span aria-current="page">{entry.data.title}</span></>}
+  </nav>
+  <div class="docs-tools">
+    {!isHome && <div class="docs-contents"><MobileTableOfContents /></div>}
     {shouldRenderSearch && <Search />}
   </div>
-</SparkHeader>
-
-<style>
-  .docs-tools { display: flex; align-items: center; }
-</style>
+</div>

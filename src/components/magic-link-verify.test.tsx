@@ -160,14 +160,18 @@ describe('MagicLinkVerify', () => {
       expect(screen.getByText('Welcome!')).toBeInTheDocument()
     })
 
-    it('calls signIn.emailOtp with email and otp', async () => {
+    it('calls signIn.emailOtp with the exact email and code, without inventing a challenge header', async () => {
       renderComponent('user@example.com', '123456')
       await waitForStateChange()
 
+      expect(mockSignInEmailOtp).toHaveBeenCalledTimes(1)
       expect(mockSignInEmailOtp).toHaveBeenCalledWith({
         email: 'user@example.com',
         otp: '123456',
+        fetchOptions: expect.objectContaining({ onSuccess: expect.any(Function) }),
       })
+      const call = mockSignInEmailOtp.mock.calls[0][0] as { fetchOptions: { headers?: HeadersInit } }
+      expect(new Headers(call.fetchOptions.headers).has('x-challenge-token')).toBe(false)
     })
 
     it('keeps the client-level headers when sending a challenge token', async () => {

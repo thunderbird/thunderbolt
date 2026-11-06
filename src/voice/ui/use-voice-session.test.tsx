@@ -19,6 +19,7 @@ import { createChatReply } from '@/voice/chat-reply'
 import { createVoiceEngine } from '@/voice/engine/router'
 import { isVoiceModeActive } from '@/voice/voice-mode'
 import { toReplyChat, toVoiceOverlayError, useVoiceSession } from './use-voice-session'
+import { voiceUiReducer } from './use-voice-session'
 import { VoiceModeComposer } from './voice-mode-composer'
 
 const hostedAgent: Agent = {
@@ -219,5 +220,40 @@ describe('useVoiceSession startup', () => {
     } finally {
       consoleError.mockRestore()
     }
+  })
+})
+
+it('models a startup failure even after the session emitted a loading state', () => {
+  const starting = voiceUiReducer({ phase: 'closed' }, { type: 'START' })
+  const loading = voiceUiReducer(starting, { type: 'STATE', state: 'listening' })
+  expect(voiceUiReducer(loading, { type: 'START_FAILED', error: 'microphone unavailable' })).toEqual({
+    phase: 'failed',
+    error: 'microphone unavailable',
+  })
+})
+
+describe('voice UI transitions', () => {
+  it('ignores callbacks after closure or terminal failure and starts a clean retry', () => {
+    const closed = { phase: 'closed' } as const
+    expect(voiceUiReducer(closed, { type: 'STATE', state: 'listening' })).toBe(closed)
+    expect(voiceUiReducer(closed, { type: 'ERROR', error: 'late' })).toBe(closed)
+    const failed = voiceUiReducer({ phase: 'starting' }, { type: 'ERROR', error: 'unavailable' })
+    expect(failed).toEqual({ phase: 'failed', error: 'unavailable' })
+    expect(voiceUiReducer(failed, { type: 'STATE', state: 'listening' })).toBe(failed)
+    expect(voiceUiReducer(failed, { type: 'START' })).toEqual({ phase: 'starting' })
+    expect(voiceUiReducer(failed, { type: 'STOP' })).toEqual(closed)
+  })
+
+  it('keeps a recoverable error visible while the running session changes state', () => {
+    const listening = voiceUiReducer({ phase: 'starting' }, { type: 'STATE', state: 'listening' })
+    expect(listening).toEqual({ phase: 'running', state: 'listening', error: null })
+    const failedTurn = voiceUiReducer(listening, { type: 'ERROR', error: 'network error' })
+    expect(failedTurn).toEqual({ phase: 'running', state: 'listening', error: 'network error' })
+    expect(voiceUiReducer(failedTurn, { type: 'STATE', state: 'thinking' })).toEqual({
+      phase: 'running',
+      state: 'thinking',
+      error: 'network error',
+    })
+    expect(voiceUiReducer(failedTurn, { type: 'STOP' })).toEqual({ phase: 'closed' })
   })
 })

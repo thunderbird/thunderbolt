@@ -50,8 +50,8 @@ import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyAccountSignature, verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
-import type { StepUpAction } from '@/lib/step-up-otp'
-import { burnStepUpCode, requireStepUpCode, sendStepUpCode, stepUpRequiredMessage } from './step-up'
+import { consumeStepUpOtp, type StepUpAction } from '@/lib/step-up-otp'
+import { requireStepUpCode, sendStepUpCode } from './step-up'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import {
@@ -1229,24 +1229,22 @@ export const createEncryptionRoutes = (
         } catch (err) {
           return mapEncryptionError(err, set)
         }
-        const storedMetadata = await getEncryptionMetadata(database, userId)
-        const recoveryChanged =
-          storedMetadata != null &&
-          (storedMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
-            storedMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
-        if (recoveryChanged) {
-          // Session email, never client input — see the step-up note above.
-          const refusal = await requireStepUpCode(database, stepUpAction, sessionUser!.email, body.stepUpOtp)
-          if (refusal) {
-            set.status = refusal.status
-            return refusal.body
-          }
-        }
-
         try {
-          const keyVersion = await database.transaction(async (tx) => {
+          const result = await database.transaction(async (tx) => {
             const txDb: QueryableDatabase = tx
             await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+
+            const metadata = await getEncryptionMetadata(txDb, userId)
+            const recoveryChanged =
+              metadata != null &&
+              (metadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
+                metadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
+            if (recoveryChanged) {
+              const refusal = await requireStepUpCode(txDb, stepUpAction, sessionUser!.email, body.stepUpOtp)
+              if (refusal) {
+                return { refusal }
+              }
+            }
 
             // Verify inside the tx so nonce consumption serializes under the lock
             // (concurrent rotates: the second fails on its own nonce or on coverage
@@ -1302,19 +1300,6 @@ export const createEncryptionRoutes = (
               }
               await setPrimaryKeyId(txDb, userId, body.newPrimaryKey.keyId)
             }
-            // Race guard for the THU-875 gate: the pre-tx compare ran against a
-            // snapshot; if the stored keys moved between that read and this lock
-            // (a concurrent phrase change), an un-stepped-up request must not
-            // slide through on the stale "unchanged" verdict.
-            const txMetadata = await getEncryptionMetadata(txDb, userId)
-            const txRecoveryChanged =
-              txMetadata != null &&
-              (txMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
-                txMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
-            if (txRecoveryChanged && !recoveryChanged) {
-              throw new ForbiddenError(stepUpRequiredMessage[stepUpAction])
-            }
-
             // The org envelope wraps the NEW AK — replaced atomically with the rotation.
             await persistOrgEnvelope(txDb, settings, userId, body.orgEnvelope)
             await replaceEncryptionMetadata(txDb, {
@@ -1333,11 +1318,17 @@ export const createEncryptionRoutes = (
             if (newVersion == null) {
               throw new BadRequestError('Encryption not set up')
             }
-            return newVersion
+            if (recoveryChanged) {
+              await consumeStepUpOtp(txDb, stepUpAction, sessionUser!.email)
+            }
+            return { keyVersion: newVersion, recoveryChanged }
           })
 
-          if (recoveryChanged) {
-            await burnStepUpCode(database, stepUpAction, sessionUser!.email)
+          if (result.refusal) {
+            set.status = result.refusal.status
+            return result.refusal.body
+          }
+          if (result.recoveryChanged) {
             notifyBestEffort(
               'recovery-phrase-changed',
               notifications.sendRecoveryPhraseChanged({
@@ -1348,7 +1339,7 @@ export const createEncryptionRoutes = (
             )
           }
 
-          return { key_version: keyVersion }
+          return { key_version: result.keyVersion }
         } catch (err) {
           return mapEncryptionError(err, set)
         }

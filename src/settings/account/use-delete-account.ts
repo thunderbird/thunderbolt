@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useReducer } from 'react'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { msg } from '@lingui/core/macro'
 import { deleteAccount, postAccountDeletionCode } from '@/api/account'
 import { useHttpClient, type HttpClient } from '@/contexts'
@@ -10,6 +11,7 @@ import { i18n } from '@/i18n'
 import { clearLocalData } from '@/lib/cleanup'
 import { HttpError } from '@/lib/http'
 import { StepUpVerificationError } from '@/lib/step-up'
+import { getCachedSession } from '@/lib/session-cache'
 
 // `msg` at module scope, resolved with `i18n._` in the handlers: a module-scope
 // `t` would freeze these to the boot locale.
@@ -123,52 +125,87 @@ export const useDeleteAccount = (
 ) => {
   const httpClient = useHttpClient()
   const [state, dispatch] = useReducer(reducer, initialState)
+  const operation = useAsyncAttempt()
 
   const openConfirm = () => dispatch({ type: 'OPEN_CONFIRM' })
-  const cancel = () => dispatch({ type: 'CANCEL' })
+  const cancel = () => {
+    operation.cancel()
+    dispatch({ type: 'CANCEL' })
+  }
   const setOtp = (otp: string) => dispatch({ type: 'OTP_CHANGED', payload: otp })
 
   /** Confirm step → email the code and advance to code entry. Also the Resend handler. */
   const requestStepUpCode = async () => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     dispatch({ type: 'START_REQUEST' })
     try {
       await requestCode(httpClient)
-      dispatch({ type: 'CODE_SENT' })
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'CODE_SENT' })
+      }
     } catch (err) {
+      if (!attempt.isCurrent()) {
+        return
+      }
       const failure = requestFailure(err, state.status === 'stepUp')
       if (!failure.throttled) {
         console.error('Failed to send the account deletion code:', err)
       }
       dispatch({ type: 'REQUEST_FAILED', payload: failure })
+    } finally {
+      attempt.finish()
     }
   }
 
   const confirmDeletion = async () => {
-    dispatch({ type: 'START_DELETE' })
-    try {
-      await performDelete(httpClient, { stepUpOtp: state.otp })
-    } catch (err) {
-      const rejected = err instanceof StepUpVerificationError
-      if (!rejected) {
-        console.error('Failed to delete account:', err)
-      }
-      dispatch({
-        type: rejected ? 'CODE_REJECTED' : 'DELETE_FAILED',
-        payload: i18n._(rejected ? codeRejected : deleteFailed),
-      })
+    const attempt = operation.begin()
+    if (!attempt) {
       return
     }
+    const userId = getCachedSession()?.user?.id
+    dispatch({ type: 'START_DELETE' })
     try {
-      await onDeleted()
-    } catch (err) {
-      // The account is already gone server-side, so there is nothing to undo.
-      // Release the dialog anyway: leaving `isBusy` set disables Cancel,
-      // Escape and the backdrop, with no way out but a reload.
-      // Say what actually happened: the account is deleted, only this device
-      // is dirty. Reporting "failed to delete" here would tell the user their
-      // account still exists.
-      console.error('Failed to clear local data after deleting the account:', err)
-      dispatch({ type: 'LOCAL_CLEANUP_FAILED', payload: i18n._(localCleanupFailed) })
+      try {
+        await performDelete(httpClient, { stepUpOtp: state.otp })
+      } catch (err) {
+        if (!attempt.isCurrent()) {
+          return
+        }
+        const rejected = err instanceof StepUpVerificationError
+        if (!rejected) {
+          console.error('Failed to delete account:', err)
+        }
+        dispatch({
+          type: rejected ? 'CODE_REJECTED' : 'DELETE_FAILED',
+          payload: i18n._(rejected ? codeRejected : deleteFailed),
+        })
+        return
+      }
+      // A committed deletion still needs cleanup after unmount, but never wipe a
+      // replacement account that signed in while the old response was pending.
+      if (getCachedSession()?.user?.id !== userId) {
+        return
+      }
+      try {
+        await onDeleted()
+      } catch (err) {
+        if (!attempt.isCurrent()) {
+          return
+        }
+        // The account is already gone server-side, so there is nothing to undo.
+        // Release the dialog anyway: leaving `isBusy` set disables Cancel,
+        // Escape and the backdrop, with no way out but a reload.
+        // Say what actually happened: the account is deleted, only this device
+        // is dirty. Reporting "failed to delete" here would tell the user their
+        // account still exists.
+        console.error('Failed to clear local data after deleting the account:', err)
+        dispatch({ type: 'LOCAL_CLEANUP_FAILED', payload: i18n._(localCleanupFailed) })
+      }
+    } finally {
+      attempt.finish()
     }
   }
 

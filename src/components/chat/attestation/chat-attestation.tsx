@@ -6,10 +6,10 @@ import { AttestationControl } from './attestation-control'
 import { useChatAttestationState } from './use-chat-attestation-state'
 
 export const ChatAttestation = () => {
-  const { target, state, verify } = useChatAttestationState()
+  const { target, state, verify, hour12 } = useChatAttestationState()
   if (!target) {
     return null
   }
 
-  return <AttestationControl key={target.key} target={target} state={state} onVerify={verify} />
+  return <AttestationControl key={target.key} target={target} state={state} onVerify={verify} hour12={hour12} />
 }

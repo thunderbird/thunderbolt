@@ -8,10 +8,12 @@ import { useCurrentChatSession } from '@/chats/chat-store'
 import { attestationStore, idleAttestation } from '@/attestation/store'
 import { resolveAttestationTarget } from '@/attestation/target'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSettings } from '@/hooks/use-settings'
 
 /** Subscribe to the selected transport's local evidence, never a remote agent's model label. */
 export const useChatAttestationState = () => {
   const { selectedAgent, selectedModel } = useCurrentChatSession()
+  const { timeFormat } = useSettings({ time_format: String })
   const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
   const target = resolveAttestationTarget(selectedAgent, selectedModel, cloudUrl)
   const state = useSyncExternalStore(
@@ -33,5 +35,5 @@ export const useChatAttestationState = () => {
     }
   }
 
-  return { target, state, verify }
+  return { target, state, verify, hour12: timeFormat.value === '12h' }
 }

@@ -9,4 +9,5 @@ export type AttestationControlProps = {
   target: AttestationTarget
   state: AttestationState
   onVerify: () => Promise<void>
+  hour12: boolean
 }

@@ -91,6 +91,7 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
           target={attestation.target}
           state={attestation.state}
           onVerify={attestation.verify}
+          hour12={attestation.hour12}
           open={privacyOpen}
           onOpenChange={setPrivacyOpen}
           returnFocusRef={triggerRef}

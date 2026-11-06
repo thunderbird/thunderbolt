@@ -21,7 +21,7 @@ const detailLabels = {
 }
 
 /** Progressive disclosure keeps fingerprints accessible without making the panel an audit log. */
-export const AttestationDetails = ({ evidence }: { evidence: AttestationEvidence }) => {
+export const AttestationDetails = ({ evidence, hour12 }: { evidence: AttestationEvidence; hour12: boolean }) => {
   const { i18n } = useLingui()
   const formatters = useFormatters()
 
@@ -47,7 +47,7 @@ export const AttestationDetails = ({ evidence }: { evidence: AttestationEvidence
             </dt>
             <dd className="mt-1">
               <time dateTime={new Date(evidence.verifiedAt).toISOString()}>
-                {formatters.date(evidence.verifiedAt)} · {formatters.time(evidence.verifiedAt, { hour12: false })}
+                {formatters.date(evidence.verifiedAt)} · {formatters.time(evidence.verifiedAt, { hour12 })}
               </time>
             </dd>
           </div>

@@ -18,6 +18,7 @@ export const AttestationModal = ({
   target,
   state,
   onVerify,
+  hour12,
   open,
   onOpenChange,
   returnFocusRef,
@@ -40,7 +41,7 @@ export const AttestationModal = ({
         <ResponsiveModalHeader className="mb-0">
           <ResponsiveModalTitle>{t`Connection privacy`}</ResponsiveModalTitle>
         </ResponsiveModalHeader>
-        <AttestationPanel target={target} state={state} onVerify={onVerify} />
+        <AttestationPanel target={target} state={state} onVerify={onVerify} hour12={hour12} />
       </ResponsiveModalContentComposable>
     </Dialog>
   )

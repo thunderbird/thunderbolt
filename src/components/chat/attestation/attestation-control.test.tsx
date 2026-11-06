@@ -23,7 +23,7 @@ const verified: AttestationState = {
 
 describe('attestation control', () => {
   it('keeps technical details behind a disclosure and makes the inference boundary explicit', () => {
-    render(<AttestationControl target={target} state={verified} onVerify={async () => {}} />)
+    render(<AttestationControl hour12={false} target={target} state={verified} onVerify={async () => {}} />)
     fireEvent.click(screen.getByRole('button', { name: 'Connection privacy: Connection verified' }))
     expect(screen.getByText('Hardware attestation')).toBeVisible()
     expect(screen.getByText('Signed build provenance')).toBeVisible()
@@ -37,7 +37,7 @@ describe('attestation control', () => {
 
   it('does not verify just by opening the panel; verifies on the explicit action', () => {
     const verify = mock(async () => {})
-    render(<AttestationControl target={target} state={{ status: 'idle' }} onVerify={verify} />)
+    render(<AttestationControl hour12={false} target={target} state={{ status: 'idle' }} onVerify={verify} />)
     fireEvent.click(screen.getByRole('button', { name: 'Connection privacy: Private inference' }))
     expect(verify).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Verify connection' }))
@@ -45,10 +45,17 @@ describe('attestation control', () => {
   })
 
   it('removes success details on failure and offers a retry without raw SDK errors', () => {
-    const view = render(<AttestationControl target={target} state={verified} onVerify={async () => {}} />)
+    const view = render(
+      <AttestationControl hour12={false} target={target} state={verified} onVerify={async () => {}} />,
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Connection privacy: Connection verified' }))
     view.rerender(
-      <AttestationControl target={target} state={{ status: 'failed', reason: 'timeout' }} onVerify={async () => {}} />,
+      <AttestationControl
+        hour12={false}
+        target={target}
+        state={{ status: 'failed', reason: 'timeout' }}
+        onVerify={async () => {}}
+      />,
     )
     expect(screen.queryByText('Hardware attestation')).not.toBeInTheDocument()
     expect(screen.queryByText('release-digest')).not.toBeInTheDocument()
@@ -59,6 +66,7 @@ describe('attestation control', () => {
   it('never displays local evidence for an ACP agent, even if supplied accidentally', () => {
     render(
       <AttestationControl
+        hour12={false}
         target={{ kind: 'agent', key: 'agent:remote', name: 'My agent' }}
         state={verified}
         onVerify={async () => {}}
@@ -75,12 +83,16 @@ describe('attestation control', () => {
     ['timeout', 'Verification timed out.'],
   ] as const)('allows retry after %s and replaces failure with the pending state', (reason, message) => {
     const verify = mock(async () => {})
-    const view = render(<AttestationControl target={target} state={{ status: 'failed', reason }} onVerify={verify} />)
+    const view = render(
+      <AttestationControl hour12={false} target={target} state={{ status: 'failed', reason }} onVerify={verify} />,
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Connection privacy: Verification failed' }))
     expect(screen.getByText(new RegExp(message))).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(verify).toHaveBeenCalledTimes(1)
-    view.rerender(<AttestationControl target={target} state={{ status: 'verifying' }} onVerify={verify} />)
+    view.rerender(
+      <AttestationControl hour12={false} target={target} state={{ status: 'verifying' }} onVerify={verify} />,
+    )
     expect(screen.getByRole('heading', { name: 'Verifying connection…' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
     expect(screen.queryByText('Hardware attestation')).not.toBeInTheDocument()
@@ -89,6 +101,7 @@ describe('attestation control', () => {
   it('never displays a verification result or verify action for an unsupported provider', () => {
     render(
       <AttestationControl
+        hour12={false}
         target={{ kind: 'unsupported', key: 'unsupported:custom' }}
         state={verified}
         onVerify={async () => {}}
@@ -102,7 +115,7 @@ describe('attestation control', () => {
   })
 
   it('returns focus to the persistent trigger when the dialog closes', async () => {
-    render(<AttestationControl target={target} state={verified} onVerify={async () => {}} />)
+    render(<AttestationControl hour12={false} target={target} state={verified} onVerify={async () => {}} />)
     const trigger = screen.getByRole('button', { name: 'Connection privacy: Connection verified' })
     await act(async () => {
       fireEvent.click(trigger)

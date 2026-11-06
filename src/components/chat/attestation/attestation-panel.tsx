@@ -9,7 +9,7 @@ import { AttestationStatusIcon } from './attestation-status-icon'
 import { useAttestationDisplay } from './use-attestation-display'
 import type { AttestationControlProps } from './props'
 
-export const AttestationPanel = ({ target, state, onVerify }: AttestationControlProps) => {
+export const AttestationPanel = ({ target, state, onVerify, hour12 }: AttestationControlProps) => {
   const { status, label, description } = useAttestationDisplay(target, state)
   return (
     <div className="min-h-0 overflow-y-auto space-y-4">
@@ -20,7 +20,9 @@ export const AttestationPanel = ({ target, state, onVerify }: AttestationControl
         </div>
         <p className="text-[length:var(--font-size-sm)] leading-relaxed text-muted-foreground">{description}</p>
       </div>
-      {target.kind === 'local' && state.status === 'verified' && <AttestationDetails evidence={state.evidence} />}
+      {target.kind === 'local' && state.status === 'verified' && (
+        <AttestationDetails evidence={state.evidence} hour12={hour12} />
+      )}
       {target.kind === 'local' && (status === 'idle' || status === 'failed') && (
         <Button type="button" variant="outline" size="sm" onClick={onVerify} className="w-full">
           {status === 'failed' ? <Trans>Try again</Trans> : <Trans>Verify connection</Trans>}

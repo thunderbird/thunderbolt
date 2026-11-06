@@ -15,6 +15,7 @@ const meta = {
   args: {
     target: { kind: 'local', key: 'preview', provider: 'Tinfoil', client: 'system' },
     onVerify: async () => {},
+    hour12: false,
     open: true,
     onOpenChange: () => {},
     returnFocusRef: createRef<HTMLButtonElement>(),

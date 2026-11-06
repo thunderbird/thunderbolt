@@ -10,6 +10,8 @@ test.slow()
 
 test('a file and image remain in the thread and receive a reply', async ({ page }) => {
   await loginViaOidc(page)
+  await page.getByTestId('agent-selector-trigger').click()
+  await page.getByText('Zeus', { exact: true }).click()
   await page.getByTestId('model-selector-trigger').click()
   await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
   await page.keyboard.press('Escape')

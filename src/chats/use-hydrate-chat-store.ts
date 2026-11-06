@@ -128,6 +128,15 @@ const maybePrewarmBuiltInAgent = (agent: Agent, model: Model) => {
   }
 }
 
+/** Include discovery results while their persisted system rows are still arriving. */
+const withDiscoveredAgents = (agents: Agent[]): Agent[] => {
+  const { agentDiscovery } = useChatStore.getState()
+  if (agentDiscovery.status !== 'done') {
+    return agents
+  }
+  return [...agents, ...agentDiscovery.agents.filter((agent) => !agents.some(({ id }) => id === agent.id))]
+}
+
 export const useHydrateChatStore = ({
   id,
   isNew,
@@ -279,7 +288,9 @@ export const useHydrateChatStore = ({
       ])
       const currentSession = useChatStore.getState().sessions.get(id)!
       // Refresh availability without replacing the chat's owning identity.
-      const selectedAgent = resolveSessionAgent(agents, { threadAgentId: currentSession.selectedAgent.id })
+      const selectedAgent = resolveSessionAgent(withDiscoveredAgents(agents), {
+        threadAgentId: currentSession.selectedAgent.id,
+      })
       useChatStore.getState().updateSession(id, { selectedAgent })
 
       // Store the provider's getter (not a snapshot) so each send reads the
@@ -334,10 +345,7 @@ export const useHydrateChatStore = ({
         ? (agentDiscovery.defaultAgent ?? undefined)
         : allAgents.find((agent) => agent.id === discoveredDefaultRowId)
     // A finished discovery's own list covers agents its write added after the read above.
-    const knownAgents =
-      agentDiscovery.status === 'done'
-        ? [...allAgents, ...agentDiscovery.agents.filter((agent) => !allAgents.some(({ id }) => id === agent.id))]
-        : allAgents
+    const knownAgents = withDiscoveredAgents(allAgents)
     const selectedAgent = resolveSessionAgent(knownAgents, {
       threadAgentId: chatThread ? persistedThreadAgentId(chatThread) : undefined,
       lastUsedAgentId: settings.selectedAgent,

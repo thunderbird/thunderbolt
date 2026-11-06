@@ -39,6 +39,8 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   await page.getByRole('button', { name: 'Chats', exact: true }).click()
   await page.getByRole('button', { name: 'New Chat', exact: true }).click()
   await expect(page.locator('textarea')).toBeVisible()
+  await page.getByTestId('agent-selector-trigger').click()
+  await page.getByText('Zeus', { exact: true }).click()
   await page.getByTestId('model-selector-trigger').click()
   await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
   await page.keyboard.press('Escape')

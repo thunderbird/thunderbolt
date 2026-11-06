@@ -463,6 +463,30 @@ describe('useHydrateChatStore', () => {
       expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
     })
 
+    it('keeps a discovery-only agent available when returning to a cached chat', async () => {
+      const hostedAgent = {
+        ...builtInAgent,
+        id: 'discovery-only-agent',
+        type: 'managed-http' as const,
+        transport: 'http' as const,
+        url: '/v1/agent/chat',
+      }
+      useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, [builtInAgent, hostedAgent], {})
+      const threadId = uuidv7()
+      await getDb().insert(chatThreadsTable).values({ id: threadId, agentId: hostedAgent.id, isEncrypted: 0 })
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(getCurrentSession()?.selectedAgent).toEqual(hostedAgent)
+      useChatStore.getState().setCurrentSessionId(uuidv7())
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(getCurrentSession()?.selectedAgent).toEqual(hostedAgent)
+      expect(getCurrentSession()?.selectedAgent.enabled).toBe(1)
+    })
+
     it('keeps a persisted thread with no agent of its own off the discovered default', async () => {
       // Automation runs and threads from before `agent_id` existed have none.
       const threadId = uuidv7()

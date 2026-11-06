@@ -48,6 +48,8 @@ for (const viewport of [
         await expect(selector).toBeFocused()
       }
 
+      await page.getByTestId('agent-selector-trigger').click()
+      await page.getByText('Zeus', { exact: true }).click()
       await selector.click()
       await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
       await expect(

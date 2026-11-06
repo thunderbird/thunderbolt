@@ -48,6 +48,8 @@ test('a chat created on one device appears on another without reloading', async 
     await page.goto('/')
     await secondPage.goto('/')
 
+    await page.getByTestId('agent-selector-trigger').click()
+    await page.getByText('Zeus', { exact: true }).click()
     await page.getByTestId('model-selector-trigger').click()
     await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
     await page.keyboard.press('Escape')

@@ -234,8 +234,8 @@
   background: #b3b7a2;
 }
 .spark-product-view {
-  aspect-ratio: 28 / 17;
-  border-radius: 8px;
+  /* Match the recording's native corners without trimming the app's edges. */
+  border-radius: 1.25% / 2.06%;
   overflow: hidden;
   background: var(--spark-device-shell);
 }
@@ -846,9 +846,6 @@
   .spark-window-chrome i {
     height: 5px;
     width: 5px;
-  }
-  .spark-product-view {
-    border-radius: 6px;
   }
   .spark-phone {
     width: 208px;

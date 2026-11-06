@@ -21,13 +21,7 @@
       "outputWidth": 1920,
       "posterAt": 11.5,
       "output": "videos/marketing/desktop-light.mp4",
-      "poster": "images/marketing/screenshots/desktop-light.webp",
-      "crop": {
-        "x": 20,
-        "y": 12,
-        "width": 1880,
-        "height": 1142
-      }
+      "poster": "images/marketing/screenshots/desktop-light.webp"
     },
     {
       "id": "desktop-dark",
@@ -48,13 +42,7 @@
       "outputWidth": 1920,
       "posterAt": 12.8,
       "output": "videos/marketing/desktop-dark.mp4",
-      "poster": "images/marketing/screenshots/desktop-dark.webp",
-      "crop": {
-        "x": 20,
-        "y": 12,
-        "width": 1880,
-        "height": 1142
-      }
+      "poster": "images/marketing/screenshots/desktop-dark.webp"
     },
     {
       "id": "mobile-light",

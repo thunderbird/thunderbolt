@@ -16,6 +16,7 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
 
   await page.getByTestId('model-selector-trigger').click()
   await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await page.keyboard.press('Escape')
   const composer = page.locator('textarea')
   await composer.fill('Please greet me briefly.')
   await page.evaluate(() => {

@@ -241,6 +241,10 @@ msgstr[0] "Se importó # fila. La aplicación puede tardar un momento en refleja
 msgstr[1] "Se importaron # filas. La aplicación puede tardar un momento en reflejar los nuevos chats."
 msgstr[2] "Se importaron # filas. La aplicación puede tardar un momento en reflejar los nuevos chats."
 
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
 msgstr "{verbPhrase}…"
@@ -434,6 +438,10 @@ msgstr "Añadir servidor"
 #~ msgid "Add skill"
 #~ msgstr ""
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Add summary instructions (optional)"
+msgstr ""
+
 #: src/components/chat/chat-add-menu.tsx
 #: src/skills/suggestion-chip.tsx
 msgid "Add to chat"
@@ -611,6 +619,7 @@ msgstr "Clave de API (opcional)"
 msgid "API Key is required for this provider"
 msgstr "Este proveedor requiere una clave de API"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx
@@ -685,6 +694,10 @@ msgstr "Pregúntame lo que quieras…"
 
 #: admin/screens/agent-access-panel.tsx
 msgid "Assign a group to give its members access to this agent."
+msgstr ""
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Assistant"
 msgstr ""
 
 #: src/components/sync-enable-warning-dialog.tsx
@@ -969,6 +982,11 @@ msgstr "Elige un icono para {label}"
 msgid "Choose an option"
 msgstr "Elige una opción"
 
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Choose effort"
+msgstr ""
+
 #: admin/screens/agent-editor.tsx
 #~ msgid "Choose groups, or leave all unchecked to make this agent available to everyone."
 #~ msgstr ""
@@ -1110,6 +1128,46 @@ msgstr "Comando / argumentos"
 #: src/components/ui/command.tsx
 msgid "Command Palette"
 msgstr "Paleta de comandos"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Command result"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compact now"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacted"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compacting context…"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacting…"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction cancelled"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction failed"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compaction instructions (optional)"
+msgstr ""
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Compaction summary"
+msgstr ""
 
 #: admin/admin-sidebar.tsx
 #~ msgid "Company"
@@ -1284,6 +1342,22 @@ msgstr ""
 msgid "Contact Support"
 msgstr "Contactar con soporte"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Context"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Context compaction is available with supported built-in models."
+#~ msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage is not available."
+msgstr ""
+
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
 msgstr "Ventana de contexto excedida"
@@ -1355,9 +1429,21 @@ msgstr "Copiar URL"
 msgid "Could not bind the pairing code"
 msgstr "No se pudo vincular el código de emparejamiento"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Could not change reasoning effort"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Could not compact context. Please try again."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Could not compact context. Your chat history is safe. Please try again."
+#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -1651,6 +1737,10 @@ msgstr "Los datos se guardan de forma segura en tu dispositivo."
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+#~ msgid "Default"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
@@ -2220,6 +2310,10 @@ msgstr ""
 msgid "External Links"
 msgstr "Enlaces externos"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Extra high"
+msgstr ""
+
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -2499,6 +2593,14 @@ msgstr "Ocultar el QR"
 msgid "Hide QR code for {deviceName}"
 msgstr "Ocultar el código QR de {deviceName}"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "High"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
+#~ msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
 msgstr "Cómo te saluda {appName}"
@@ -2538,6 +2640,10 @@ msgstr "Si tienes acceso, hemos enviado un código de 8 dígitos a <0>{email}</0
 #: src/waitlist/waitlist-page.tsx
 msgid "If you received a code to log in, enter it here:"
 msgstr "Si has recibido un código para iniciar sesión, introdúcelo aquí:"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Image retained"
+msgstr ""
 
 #: src/i18n/unit-labels.ts
 msgid "Imperial"
@@ -2795,6 +2901,7 @@ msgstr "Cargando la vista previa…"
 msgid "Loading this app's pairing identity…"
 msgstr "Cargando la identidad de emparejamiento de esta app…"
 
+#: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 #: src/widgets/connect-integration/widget.tsx
@@ -2830,6 +2937,10 @@ msgstr "Cerrar sesión"
 #: src/components/logout-modal.tsx
 msgid "Logging out…"
 msgstr "Cerrando sesión…"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Low"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
@@ -2883,6 +2994,10 @@ msgstr "Los mapas no se pueden mostrar aquí: WebGL está desactivado o no dispo
 msgid "Maximize"
 msgstr "Maximizar"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Maximum"
+msgstr ""
+
 #: admin/screens/agent-preview.tsx
 #~ msgid "MCP"
 #~ msgstr ""
@@ -2899,6 +3014,10 @@ msgstr "Servidores MCP"
 #: admin/screens/company-mcp-page.tsx
 #~ msgid "MCP servers for the company's Thunderbolt agent."
 #~ msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Medium"
+msgstr ""
 
 #: admin/screens/member-editor.tsx
 msgid "Member"
@@ -2968,6 +3087,10 @@ msgstr ""
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 #~ msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Minimal"
+msgstr ""
+
 #: src/components/window-controls.tsx
 msgid "Minimize"
 msgstr "Minimizar"
@@ -2976,11 +3099,16 @@ msgstr "Minimizar"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "Falta el estado CSRF: reinicia la autorización."
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
 msgid "Model"
 msgstr "Modelo"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
+msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
@@ -2993,6 +3121,14 @@ msgstr "El nombre del modelo es obligatorio."
 
 #: admin/screens/company-model-policy.tsx
 msgid "Model settings"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}. Reasoning effort: {effortName}"
 msgstr ""
 
 #: admin/admin-sidebar.tsx
@@ -3405,6 +3541,10 @@ msgstr ""
 #~ msgid "Nothing to ask about there. Try covering some content."
 #~ msgstr ""
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Nothing to compact yet."
+msgstr ""
+
 #: src/services/revoke-failure.ts
 msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr ""
@@ -3441,6 +3581,10 @@ msgstr "Falló la validación de OAuth"
 msgid "Objects"
 msgstr "Objetos"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Off"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr ""
@@ -3452,6 +3596,10 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "Sin conexión. Los cambios se sincronizarán cuando vuelvas a estar en línea."
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "On"
+msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Onboarding Wizard"
@@ -3749,6 +3897,7 @@ msgstr "La vista previa web solo está disponible en la app de escritorio"
 msgid "Privacy"
 msgstr "Privacidad"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "Privado"
@@ -3819,6 +3968,15 @@ msgstr "Listo para enviar"
 #: src/content-view/context.tsx
 msgid "Reasoning"
 msgstr "Razonamiento"
+
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort: {effortName}"
+msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."
@@ -4045,6 +4203,10 @@ msgstr "¿Restablecer la base de datos local?"
 #~ msgid "Reset preview"
 #~ msgstr ""
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Reset reasoning effort"
+#~ msgstr ""
+
 #: admin/preview-reset-action.tsx
 #~ msgid "Reset sample data"
 #~ msgstr ""
@@ -4069,6 +4231,10 @@ msgstr "Reiniciar para actualizar"
 #: admin/screens/agents-page.tsx
 #~ msgid "Restricted"
 #~ msgstr ""
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Retained messages and tool results"
+msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
@@ -4843,6 +5009,10 @@ msgstr "Se obtuvo una respuesta del modelo correctamente."
 msgid "Suggested"
 msgstr "Sugeridos"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Summary"
+msgstr ""
+
 #: src/settings/models/supports-tools-switch.tsx
 msgid "Supports tools"
 msgstr ""
@@ -5215,6 +5385,10 @@ msgstr ""
 msgid "This model is already configured for this provider."
 msgstr ""
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "This model or agent does not offer context compaction."
+msgstr ""
+
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."
 msgstr "Esta llave de acceso sirve para iniciar sesión, pero no puede desbloquear la sincronización. Puedes seguir aprobando dispositivos nuevos o usar tu frase de recuperación."
@@ -5476,6 +5650,10 @@ msgstr "Demasiadas solicitudes. Inténtalo de nuevo en un momento."
 msgid "Tool input"
 msgstr "Entrada de la herramienta"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Tool result"
+msgstr ""
+
 #: admin/screens/agent-capabilities.tsx
 msgid "Tools"
 msgstr ""
@@ -5693,7 +5871,7 @@ msgstr "Inicia sesión con tu huella, tu cara o el PIN del dispositivo en lugar 
 msgid "User Experience"
 msgstr "Experiencia de usuario"
 
-#: src/components/context-usage-indicator.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
 msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "{usedTokensLabel} de {maxTokensLabel} de la ventana de contexto en uso"
 
@@ -5743,6 +5921,11 @@ msgstr "Ver la guía de instalación"
 msgid "View quote"
 msgstr "Ver la cita"
 
+#: src/components/context-usage/compaction-notice.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "View summary"
+msgstr ""
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View your schedule and upcoming events."
 msgstr "Ver tu agenda y los próximos eventos."
@@ -5764,6 +5947,10 @@ msgstr "Motor de voz"
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Voice mode: {status}"
 msgstr "Modo de voz: {status}"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Wait for the current response to finish before compacting."
+msgstr ""
 
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
@@ -5940,6 +6127,10 @@ msgstr ""
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "wss://example.com/ws or paste an iroh ticket"
 msgstr "wss://example.com/ws o pega un ticket de iroh"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "You"
+msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."

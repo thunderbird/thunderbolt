@@ -193,7 +193,7 @@ list (logged by none). Hence:
   running are queued too, under the same caps. Bun can deliver a frame together with the upgrade. A
   refused socket discards its queue, and a socket closed during the check never dials the upstream.
   The Haystack ACP route (`/v1/haystack/ws`) queues frames during its own bearer check under the
-  same caps and the same `4008`.
+  same caps and the same `4008`, and closes with the same `1013` when that check throws.
 
 `createProxyWebSocket` reads Use Cloud Proxy for each connection. Tauri defaults to direct
 `new WebSocket(url, protocols)` with no app bearer; enabling the setting uses the same carrier,
@@ -213,6 +213,7 @@ and unchanged.
 | `4003` | Reserved for a non-`wss://` target; classified but not emitted today  |
 | `4008` | Pre-connect queue exceeded its message or byte budget                 |
 | `1011` | Upstream connection failed or errored                                 |
+| `1013` | Bearer check threw (for example, database down); the app may retry    |
 
 Otherwise a close code and reason are relayed verbatim, upstream to client and client to upstream,
 except codes a close frame may not carry (`relayCloseCode` in `ws.ts`), on which Bun's

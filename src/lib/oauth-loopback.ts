@@ -99,6 +99,6 @@ export const startOAuthFlowLoopback = async (
   } finally {
     clearTimeout(timeoutId)
     unlisten?.()
-    // No cancel needed — the Rust server shuts itself down after one request
+    // The native listener closes after an accepted callback or its bounded deadline.
   }
 }

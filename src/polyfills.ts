@@ -6,6 +6,7 @@
  * Polyfills that need to run before the rest of the application code.
  *
  * Currently includes:
+ *   • `URL.canParse` (missing on WebKit versions before Safari 17).
  *   • `crypto.randomUUID` (missing on older/embedded WebKit/Gecko engines such as
  *     Firefox Focus or legacy Safari versions.)
  */
@@ -60,3 +61,25 @@
     }
   }
 })()
+
+/** Install URL.canParse on older WebViews, preserving the native implementation when available. */
+export const installUrlCanParsePolyfill = (): void => {
+  if (typeof URL.canParse === 'function') {
+    return
+  }
+
+  Object.defineProperty(URL, 'canParse', {
+    configurable: true,
+    writable: true,
+    value: (url: string | URL, base?: string | URL): boolean => {
+      try {
+        new URL(url, base)
+        return true
+      } catch {
+        return false
+      }
+    },
+  })
+}
+
+installUrlCanParsePolyfill()

@@ -9,7 +9,7 @@ import { bundledEmailLogoUrl } from '@/branding/email-logo'
 import { isPasskeyEnabled, type Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { toPublicBranding } from '@shared/branding'
-import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModelId, defaultModelImageSupport, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { Elysia } from 'elysia'
 
 // Sandboxed and never sniffed: an SVG logo opened directly from the API origin
@@ -92,6 +92,7 @@ export const createConfigRoutes = (settings: Settings, brandingAssets: BrandingA
           version: defaultModelsVersion,
           defaultModelId,
           data: defaultModels,
+          imageSupport: defaultModelImageSupport,
         },
       },
     }))

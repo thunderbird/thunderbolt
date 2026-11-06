@@ -142,6 +142,57 @@ describe('createTranslator — mapping', () => {
     expect(last).toMatchObject({ type: 'tool-output-error', toolCallId: 'tc1', errorText: 'boom' })
   })
 
+  it.each(['completed', 'failed'] as const)('renders an initially %s tool call', (status) => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle(
+      notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search', status, rawOutput: 'result' }),
+    )
+    expect(chunks.filter((chunk) => chunk.type.startsWith('tool-'))).toEqual([
+      { type: 'tool-input-start', toolCallId: 'tc1', toolName: 'search', title: 'search' },
+      { type: 'tool-input-available', toolCallId: 'tc1', toolName: 'search', title: 'search', input: {} },
+      status === 'completed'
+        ? { type: 'tool-output-available', toolCallId: 'tc1', output: 'result' }
+        : { type: 'tool-output-error', toolCallId: 'tc1', errorText: 'result' },
+    ])
+  })
+
+  it.each(['completed', 'failed'] as const)(
+    'retains output supplied before the %s status across compaction',
+    (status) => {
+      const { emit, chunks } = collect()
+      const t = createTranslator(emit)
+      t.start()
+      t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search' }))
+      t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawOutput: 'result' }))
+      t.compaction({ agentId: 'agent', sessionId: 'sess-1', compactionId: 'compact', status: 'completed' })
+      t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status, rawOutput: null }))
+      expect(chunks.find((chunk) => chunk.type.startsWith('tool-output-'))).toEqual(
+        status === 'completed'
+          ? { type: 'tool-output-available', toolCallId: 'tc1', output: 'result' }
+          : { type: 'tool-output-error', toolCallId: 'tc1', errorText: 'result' },
+      )
+    },
+  )
+
+  it('retains, replaces and clears structured content without resetting a terminal status', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    const content = [{ type: 'content' as const, content: { type: 'text' as const, text: 'result' } }]
+    t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search', content }))
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status: 'completed' }))
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', content: [] }))
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status: null, content: null }))
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawOutput: false }))
+    expect(chunks.filter((chunk) => chunk.type === 'tool-output-available').map((chunk) => chunk.output)).toEqual([
+      content,
+      [],
+      [],
+      false,
+    ])
+  })
+
   it('plan / available_commands_update / current_mode_update are ignored', () => {
     const { emit, chunks } = collect()
     const t = createTranslator(emit)

@@ -34,6 +34,7 @@ import type {
   SessionConfigOption,
   SessionNotification,
   ToolCallStatus,
+  ToolCallUpdate,
 } from '@agentclientprotocol/sdk'
 import type { HaystackDocumentMeta, HaystackReferenceMeta } from '@/types'
 import type { AiSdkChunk } from '../types'
@@ -185,10 +186,10 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
   let textPart = 0
   let reasoningPart = 0
   const compactionIds = new Set<string>()
-  // Status the tool call was last seen in. Used so a `completed`/`failed` update
-  // emits the right output chunk even if its raw output sneaks in via a prior
-  // `in_progress` update.
-  const toolStatus = new Map<string, ToolCallStatus>()
+  const toolOutputs = new Map<
+    string,
+    { status: ToolCallStatus; rawOutput: unknown; content: ToolCallUpdate['content'] }
+  >()
   // Tool IDs and zero-based reasoning indices match groupMessageParts' keys.
   const toolStartTimes = new Map<string, number>()
   let reasoningStartTime: number | null = null
@@ -274,6 +275,35 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
     emit({ type: 'reasoning-start', id: reasoningThrottle.id })
   }
 
+  /** ACP tool patches retain omitted/null fields, including results sent before terminal status. */
+  const updateToolOutput = (update: ToolCallUpdate): void => {
+    const previous = toolOutputs.get(update.toolCallId)
+    const state = {
+      status: update.status ?? previous?.status ?? 'pending',
+      rawOutput: update.rawOutput ?? previous?.rawOutput,
+      content: update.content ?? previous?.content,
+    }
+    toolOutputs.set(update.toolCallId, state)
+    if (state.status === 'in_progress' || state.status === 'pending') {
+      return
+    }
+    const output = state.rawOutput ?? state.content ?? {}
+    emit(
+      state.status === 'failed'
+        ? {
+            type: 'tool-output-error',
+            toolCallId: update.toolCallId,
+            errorText: typeof output === 'string' ? output : JSON.stringify(output),
+          }
+        : { type: 'tool-output-available', toolCallId: update.toolCallId, output },
+    )
+    const startedAt = toolStartTimes.get(update.toolCallId)
+    if (startedAt !== undefined) {
+      toolStartTimes.delete(update.toolCallId)
+      emitDuration(update.toolCallId, now() - startedAt)
+    }
+  }
+
   const handle = (notification: SessionNotification): void => {
     const update = notification.update
     // ACP `_meta` lives on the SessionNotification itself, but agents may also
@@ -302,7 +332,6 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
         return
       }
       case 'tool_call': {
-        toolStatus.set(update.toolCallId, update.status ?? 'pending')
         toolStartTimes.set(update.toolCallId, now())
         emit({
           type: 'tool-input-start',
@@ -317,33 +346,11 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
           input: update.rawInput ?? {},
           title: update.title,
         })
+        updateToolOutput(update)
         return
       }
       case 'tool_call_update': {
-        const status = update.status ?? toolStatus.get(update.toolCallId) ?? 'in_progress'
-        toolStatus.set(update.toolCallId, status)
-        if (status === 'in_progress' || status === 'pending') {
-          return
-        }
-        if (status === 'failed') {
-          emit({
-            type: 'tool-output-error',
-            toolCallId: update.toolCallId,
-            errorText: typeof update.rawOutput === 'string' ? update.rawOutput : JSON.stringify(update.rawOutput ?? {}),
-          })
-        } else {
-          // completed
-          emit({
-            type: 'tool-output-available',
-            toolCallId: update.toolCallId,
-            output: update.rawOutput ?? update.content ?? {},
-          })
-        }
-        const startedAt = toolStartTimes.get(update.toolCallId)
-        if (startedAt !== undefined) {
-          toolStartTimes.delete(update.toolCallId)
-          emitDuration(update.toolCallId, now() - startedAt)
-        }
+        updateToolOutput(update)
         return
       }
       case 'current_mode_update': {

@@ -42,7 +42,7 @@
     "better-auth": "^1.7.7",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.2",
-    "elysia": "^1.4.28",
+    "elysia": "^1.4.30",
     "exa-js": "^2.16.0",
     "jose": "^6.2.2",
     "openai": "^6.49.0",

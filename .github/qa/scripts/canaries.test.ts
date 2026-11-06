@@ -12,7 +12,6 @@ import { type Run, runCommand } from './fix'
 let dir: string
 let run: Run
 
-/** Writes `files` (path → content) and commits them as `title`, `date` being the commit date. */
 const commit = async (title: string, files: Record<string, string>, date?: string) => {
   for (const [path, content] of Object.entries(files)) {
     await mkdir(dirname(join(dir, path)), { recursive: true })
@@ -64,15 +63,15 @@ describe('selectCanaries', () => {
 
     const { canaries } = await selectCanaries({ run, ref: 'main', log: (line) => log.push(line) })
 
-    expect(canaries).toMatchObject([{ title: 'fix(settings): settings again', charter: 'c6-settings-data' }])
+    expect(canaries).toMatchObject([{ title: 'fix(settings): settings again', charter: 'c6-settings-data-desktop' }])
     expect(log.map((line) => line.replace(/^(\w+) \w+ /, '$1 '))).toEqual([
-      'pick fix(settings): settings again: c6-settings-data',
-      'skip fix: skills list sorts: c4-skills-projects needs the other kind of AI than c6-settings-data',
-      'skip fix: skills list shows every skill: c4-skills-projects needs the other kind of AI than c6-settings-data',
+      'pick fix(settings): settings again: c6-settings-data-desktop',
+      'skip fix: skills list sorts: c4-skills-projects-desktop needs the other kind of AI than c6-settings-data-desktop',
+      'skip fix: skills list shows every skill: c4-skills-projects-desktop needs the other kind of AI than c6-settings-data-desktop',
       'skip fix(e2e): wait longer: no app code under src/',
       'skip fix: util: no charter explores these paths',
       'skip fix: schema default: sensitive path src/db/schema.ts',
-      'skip fix: theme sticks after a reload (#13): c6-settings-data already has a canary',
+      'skip fix: theme sticks after a reload (#13): c6-settings-data-desktop already has a canary',
       'skip fix(chat): keep the draft (#12): its reversal does not apply to the current tree',
     ])
   })
@@ -90,7 +89,7 @@ describe('selectCanaries', () => {
     const { canaries, patch } = await selectCanaries({ run, ref: 'main', log: (line) => log.push(line) })
     await run(['git', 'apply', '-R'], { stdin: patch })
 
-    expect(canaries.map((c) => c.charter)).toEqual(['c6-settings-data', 'c2-chat-power-user'])
+    expect(canaries.map((c) => c.charter)).toEqual(['c6-settings-data-desktop', 'c2-chat-power-user-desktop'])
     expect(log).toHaveLength(2)
     expect(await readFile(join(dir, 'src/components/ui/mobile-nav.ts'), 'utf8')).toBe('export const nav = 1\n')
     expect(await readFile(join(dir, 'src/settings/theme.ts'), 'utf8')).toBe('export const theme = 1\n')
@@ -142,8 +141,21 @@ describe('selectCanaries with only', () => {
     await commit('feat: sensitive chat sync, not a fix', { 'src/sync/chat.ts': 'export const chat = 1\n' })
     const sha = await head()
     const { canaries, patch } = await selectCanaries({ run, only: [sha], log: () => {} })
-    expect(canaries).toEqual([{ sha, title: 'feat: sensitive chat sync, not a fix', charter: 'c2-chat-power-user' }])
+    expect(canaries).toEqual([
+      { sha, title: 'feat: sensitive chat sync, not a fix', charter: 'c2-chat-power-user-desktop' },
+    ])
     expect(patch).toContain('src/sync/chat.ts')
+  })
+
+  it('sends a keyboard fix to the phone session and a skills fix to a desktop one', async () => {
+    await commit('fix: keyboard covers the input', { 'src/components/keyboard-thing.tsx': 'export const k = 1\n' })
+    const keyboard = await head()
+    await commit('fix: skill x', { 'src/skills/x.ts': 'export const x = 1\n' })
+    const skill = await head()
+    const charterOf = async (sha: string) =>
+      (await selectCanaries({ run, only: [sha], log: () => {} })).canaries[0]?.charter
+    expect(await charterOf(keyboard)).toBe('c2-chat-power-user-phone')
+    expect(await charterOf(skill)).toBe('c4-skills-projects-desktop')
   })
 
   it('throws when the reversal does not apply, the commit is unknown or the picks do not fit', async () => {

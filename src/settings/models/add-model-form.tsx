@@ -15,9 +15,12 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
+import type { ToolSupport } from '@/hooks/use-model-connection-test'
+import { useAppName } from '@/lib/branding-selectors'
 import { ConnectionTestSection } from './connection-test-section'
 import { addableProviders, providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
-import { customProviderLabel, providerLabels } from './model-presentation'
+import { getProviderLabel } from './model-presentation'
+import { SupportsToolsSwitch } from './supports-tools-switch'
 import type { AddModelFormValues } from './use-add-model-form'
 
 type AddModelFormProps = {
@@ -26,11 +29,11 @@ type AddModelFormProps = {
   selectedModelId: string | null
   isLoadingCatalog: boolean
   catalogError: string | null
-  supportsTools: boolean
   isPending: boolean
   isTesting: boolean
   connectionStatus: 'idle' | 'success' | 'error'
   connectionError: string | null
+  toolSupport: ToolSupport | null
   submitError: string | null
   onSubmit: (values: AddModelFormValues) => void
   onCancel: () => void
@@ -47,11 +50,11 @@ export const AddModelForm = ({
   selectedModelId,
   isLoadingCatalog,
   catalogError,
-  supportsTools,
   isPending,
   isTesting,
   connectionStatus,
   connectionError,
+  toolSupport,
   submitError,
   onSubmit,
   onCancel,
@@ -61,18 +64,20 @@ export const AddModelForm = ({
   onTestConnection,
 }: AddModelFormProps) => {
   const { i18n, t } = useLingui()
+  const appName = useAppName()
   const provider = form.watch('provider')
   const apiKey = form.watch('apiKey')
   const url = form.watch('url')
   const model = form.watch('model')
+  const supportsTools = form.watch('supportsTools')
 
   // The user just chose "New Model" / "Add Model" — land ready to pick a
   // provider (the form's first control).
   const providerTriggerRef = useAutofocusOnMount<HTMLButtonElement>()
 
+  // Stays visible when the catalog fails: its "Custom" entry is the manual fallback.
   const showModelSelection =
-    !catalogError &&
-    (providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url)))
+    providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url))
 
   return (
     <Form {...form}>
@@ -85,25 +90,25 @@ export const AddModelForm = ({
               <FormLabel>
                 <Trans>Provider</Trans>
               </FormLabel>
-              <FormControl>
-                <Select
-                  onValueChange={(value: AddModelFormValues['provider']) => {
-                    onProviderChange(value)
-                  }}
-                  value={field.value}
-                >
-                  <SelectTrigger ref={providerTriggerRef} aria-label={t`Provider`} className="w-full rounded-lg">
+              <Select
+                onValueChange={(value: AddModelFormValues['provider']) => {
+                  onProviderChange(value)
+                }}
+                value={field.value}
+              >
+                <FormControl>
+                  <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
                     <SelectValue placeholder={t`Select provider`} />
                   </SelectTrigger>
-                  <SelectContent>
-                    {addableProviders.map((provider) => (
-                      <SelectItem key={provider} value={provider}>
-                        {provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[provider]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormControl>
+                </FormControl>
+                <SelectContent>
+                  {addableProviders.map((provider) => (
+                    <SelectItem key={provider} value={provider}>
+                      {getProviderLabel(i18n, provider, appName)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
@@ -233,13 +238,6 @@ export const AddModelForm = ({
             )}
           />
         )}
-        {!supportsTools && (model || selectedModelId === 'custom') && (
-          <StatusCard
-            icon={<X className="h-4 w-4 text-warning" />}
-            title={t`Model may not be compatible`}
-            description={t`This model does not seem to support tool usage.`}
-          />
-        )}
         <ConnectionTestSection
           provider={provider}
           model={model}
@@ -248,6 +246,12 @@ export const AddModelForm = ({
           onTest={onTestConnection}
           status={connectionStatus}
           error={connectionError}
+          toolSupport={toolSupport}
+        />
+        <SupportsToolsSwitch
+          checked={supportsTools}
+          onCheckedChange={(checked) => form.setValue('supportsTools', checked)}
+          disabled={isTesting}
         />
         {submitError && (
           <StatusCard

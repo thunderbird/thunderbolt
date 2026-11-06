@@ -17,8 +17,9 @@ import { CreateItemProvider } from '@/components/create-item/context'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Agent } from '@/types/acp'
+import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { ChatModelPicker } from './chat-model-picker'
@@ -201,7 +202,22 @@ describe('ChatModelPicker', () => {
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
   })
 
-  it('closes the mobile model drawer before opening creation', async () => {
+  it('opens model creation directly from the embedded header and closes its parent', () => {
+    setupWithAgent(builtInAgent)
+    const close = mock()
+    render(
+      <>
+        <ChatModelPicker embedded onClose={close} />
+        <CreateRequestProbe />
+      </>,
+      { wrapper: TestWrapper },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Add Model' }))
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
+  })
+
+  it('closes the mobile model drawer when opening creation', async () => {
     forceMobileViewport()
     setupWithAgent(builtInAgent)
     render(
@@ -218,8 +234,10 @@ describe('ChatModelPicker', () => {
     fireEvent.click(await screen.findByText('Add Model'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    // The mobile card drawer must be gone before the create surface opens.
-    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
   })
 })

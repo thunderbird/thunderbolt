@@ -67,7 +67,7 @@ export const RecoveryKeyEntryStep = ({ value, error, onChange, onSubmit, isLoadi
               <Trans>{wordCount}/24 words</Trans>
             </span>
             {wordCount === 24 && (
-              <span className="text-green-600">
+              <span className="text-success">
                 <Trans>Ready to submit</Trans>
               </span>
             )}

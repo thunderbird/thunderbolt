@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { Trans } from '@lingui/react/macro'
 import { useEffect, useEffectEvent, useState } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -30,6 +31,7 @@ import { Loader2 } from 'lucide-react'
 const passkeyStep = 6
 
 export const OnboardingDialog = () => {
+  const appName = useAppName()
   const { isMobile } = useIsMobile()
   const db = useDatabase()
   const queryClient = useQueryClient()
@@ -132,7 +134,7 @@ export const OnboardingDialog = () => {
           <Trans>Onboarding Wizard</Trans>
         </DialogTitle>
         <DialogDescription className="sr-only">
-          <Trans>Complete the setup process to get started with Thunderbolt</Trans>
+          <Trans>Complete the setup process to get started with {appName}</Trans>
         </DialogDescription>
         <div
           className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}
@@ -196,7 +198,7 @@ export const OnboardingDialog = () => {
                   isCompleting ? (
                     <Trans>Completing…</Trans>
                   ) : (
-                    <Trans>Start Using Thunderbolt</Trans>
+                    <Trans>Start Using {appName}</Trans>
                   )
                 ) : (
                   <Trans>Continue</Trans>

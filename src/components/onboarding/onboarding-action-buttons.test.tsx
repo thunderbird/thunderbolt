@@ -47,6 +47,12 @@ describe('OnboardingActionButtons', () => {
       const backButton = screen.getAllByRole('button')[0] // Back button (icon only)
       expect(backButton).toBeInTheDocument()
     })
+
+    it('should give the icon-only back button an accessible name', () => {
+      renderComponent()
+
+      expect(screen.getByRole('button', { name: 'Go back' })).toBeInTheDocument()
+    })
   })
 
   describe('User Interactions', () => {

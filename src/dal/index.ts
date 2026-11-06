@@ -35,7 +35,7 @@ export {
 // Chat Threads
 export {
   createChatThread,
-  deleteAllChatThreads,
+  deleteNonProjectChatThreads,
   deleteChatThread,
   getAllChatThreads,
   getChatThread,
@@ -47,7 +47,6 @@ export {
 
 // Chat Messages
 export {
-  deleteChatMessageAndDescendants,
   getChatMessages,
   getLastMessage,
   saveMessagesWithContextUpdate,

@@ -4,14 +4,14 @@ Shared Docker images used by all deployment targets (docker-compose, k8s, Fargat
 
 ## Images
 
-| Dockerfile             | Base                                                     | Purpose                                                |
-| ---------------------- | -------------------------------------------------------- | ------------------------------------------------------ |
-| `backend.Dockerfile`   | `oven/bun:1.3.14`                                        | Bun API server with Drizzle migration entrypoint       |
-| `frontend.Dockerfile`  | `oven/bun:1.3.14` → `nginxinc/nginx-unprivileged:alpine` | Vite SPA build, served by nginx with COEP/COOP headers |
-| `postgres.Dockerfile`  | `postgres:18-alpine`                                     | PostgreSQL with PowerSync replication role init        |
-| `keycloak.Dockerfile`  | `quay.io/keycloak/keycloak:26.7`                         | Keycloak with enterprise realm auto-import             |
-| `powersync.Dockerfile` | `journeyapps/powersync-service:1.27.0`                   | PowerSync with Sync Streams config                     |
-| `marketing.Dockerfile` | `oven/bun:latest` → `nginxinc/nginx-unprivileged:alpine` | Astro site (marketing, blog, docs), served by nginx    |
+| Dockerfile             | Base                                                    | Purpose                                                |
+| ---------------------- | ------------------------------------------------------- | ------------------------------------------------------ |
+| `backend.Dockerfile`   | `oven/bun:1.4.4`                                        | Bun API server, runtime dependencies only              |
+| `frontend.Dockerfile`  | `oven/bun:1.4.4` → `nginxinc/nginx-unprivileged:alpine` | Vite SPA build, served by nginx with COEP/COOP headers |
+| `postgres.Dockerfile`  | `postgres:18-alpine`                                    | PostgreSQL with PowerSync replication role init        |
+| `keycloak.Dockerfile`  | `quay.io/keycloak/keycloak:26.8`                        | Keycloak with enterprise realm auto-import             |
+| `powersync.Dockerfile` | `journeyapps/powersync-service:1.28.0`                  | PowerSync with Sync Streams config                     |
+| `marketing.Dockerfile` | `oven/bun:1.4.4` → `nginxinc/nginx-unprivileged:alpine` | Astro site (marketing, blog, docs), served by nginx    |
 
 ## Building
 
@@ -38,10 +38,7 @@ The frontend Dockerfile accepts build args baked into the static bundle:
 
 ## Backend Entrypoint
 
-`backend-entrypoint.sh` runs Drizzle migrations before starting the server:
-
-1. `bun drizzle-kit migrate` — applies pending migrations to Postgres
-2. `bun run src/index.ts` — starts the Elysia server
+`backend-entrypoint.sh` waits for Postgres, then starts the Elysia server with `bun run src/index.ts`. The server applies pending migrations itself before it accepts traffic (`runMigrations` in `backend/src/db/client.ts`), so the image ships without `drizzle-kit` or other dev dependencies.
 
 The backend runs **interpreted** (not compiled) because Pino's worker thread transport is incompatible with `bun build --compile`.
 

@@ -1,0 +1,31 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Unnamed</title>
+  </head>
+  <body>
+    <!-- A label beside a control names it only through `for` or by wrapping it. -->
+    <label>Consent</label>
+    <input type="checkbox" />
+    <!-- A field's default text is no name, and no text to place the next control by. -->
+    <textarea>Draft</textarea>
+    <button role="switch"></button>
+    <h2>Messages</h2>
+    <!-- Two icon buttons side by side, told apart by their icon. -->
+    <button><svg class="lucide lucide-copy" width="16" height="16"></svg></button>
+    <button><svg class="lucide lucide-trash-2" width="16" height="16"></svg></button>
+    <p>Theme</p>
+    <span aria-hidden="true">*</span>
+    <!-- A generated id, new on every load, says nothing; the text before the button does. -->
+    <button id="generated"></button>
+    <script>
+      document.getElementById('generated').id = `radix-:r${Math.random().toString(36).slice(2)}:`
+    </script>
+    <button id="theme-toggle"></button>
+    <input data-testid="search-field" />
+  </body>
+</html>

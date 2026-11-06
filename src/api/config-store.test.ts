@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   selectAllowCustomAgents,
+  selectBrandLogo,
   selectBuiltInAgentEnabled,
   selectConfigSettled,
   selectDebugTranscriptsEnabled,
@@ -98,6 +99,25 @@ describe('selectAllowCustomAgents', () => {
 
   it('is forbidden only when explicitly false', () => {
     expect(selectAllowCustomAgents({ allowCustomAgents: false })).toBe(false)
+  })
+})
+
+describe('selectBrandLogo', () => {
+  it('is null when the light URL is unset', () => {
+    expect(selectBrandLogo({})).toBeNull()
+    expect(selectBrandLogo({ brandLogoDarkUrl: 'https://example.com/dark.svg' })).toBeNull()
+  })
+
+  it('falls back to the light URL for dark, and carries the alt text', () => {
+    const light = 'https://example.com/logo.svg'
+    expect(selectBrandLogo({ brandLogoUrl: light })).toEqual({ light, dark: light, alt: '' })
+    expect(
+      selectBrandLogo({ brandLogoUrl: light, brandLogoDarkUrl: 'data:image/png;base64,AA==', brandLogoAlt: 'Example' }),
+    ).toEqual({
+      light,
+      dark: 'data:image/png;base64,AA==',
+      alt: 'Example',
+    })
   })
 })
 

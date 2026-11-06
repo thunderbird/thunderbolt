@@ -9,7 +9,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
-  deleteChatMessageAndDescendants,
   getChatMessages,
   getLastMessage,
   saveMessagesWithContextUpdate,
@@ -409,6 +408,93 @@ describe('Chat Messages DAL', () => {
       const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
       expect(thread?.contextSize).toBe(300)
     })
+
+    it('persists a compaction checkpoint and context size without changing billing usage or transcript content', async () => {
+      const db = getDb()
+      const threadId = uuidv7()
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Compacted', isEncrypted: 0 })
+      const checkpoint = {
+        version: 1 as const,
+        summary: 'Decisions',
+        tokensBefore: 9_000,
+        contextTokens: 123,
+        retainedTail: [],
+      }
+      const message: ThunderboltUIMessage = {
+        id: uuidv7(),
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Visible answer' }],
+        metadata: {
+          contextCompaction: checkpoint,
+          contextTokens: 123,
+          usage: { inputTokens: 8900, outputTokens: 100, totalTokens: 9000 },
+        },
+      }
+      await saveMessagesWithContextUpdate(db, threadId, [message])
+      const saved = await getChatMessages(db, threadId)
+      expect(saved[0].content).toBe('Visible answer')
+      expect(saved[0].metadata).toEqual(message.metadata!)
+      expect(
+        (await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get())?.contextSize,
+      ).toBe(123)
+    })
+
+    it.each([undefined, 500])(
+      'preserves current context when patching a historical compaction with contextTokens %p',
+      async (contextTokens) => {
+        const db = getDb()
+        const threadId = uuidv7()
+        await db.insert(chatThreadsTable).values({ id: threadId, title: 'Compacted', isEncrypted: 0 })
+        const compaction = {
+          agentId: 'agent',
+          sessionId: 'session',
+          compactionId: 'compact-1',
+          status: 'in_progress',
+        }
+        const older: ThunderboltUIMessage = {
+          id: uuidv7(),
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Earlier reply' },
+            { type: 'data-acp-compaction', data: compaction },
+          ],
+          metadata: {
+            ...(contextTokens !== undefined ? { contextTokens } : {}),
+            usage: { inputTokens: 800, outputTokens: 50, totalTokens: 850 },
+          },
+        }
+        const latest: ThunderboltUIMessage = {
+          id: uuidv7(),
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Current reply' }],
+          metadata: { contextTokens: 2000 },
+        }
+        await saveMessagesWithContextUpdate(db, threadId, [older, latest])
+
+        const updated: ThunderboltUIMessage = {
+          ...older,
+          parts: [
+            older.parts[0],
+            {
+              type: 'data-acp-compaction',
+              data: { ...compaction, status: 'completed', summary: [{ type: 'text', text: 'Earlier decisions' }] },
+            },
+          ],
+        }
+        await saveMessagesWithContextUpdate(db, threadId, [updated], { updateContext: false })
+
+        const saved = await getChatMessages(db, threadId)
+        expect(saved).toHaveLength(2)
+        expect(saved[0].parts).toEqual(updated.parts)
+        expect(saved[0].metadata).toEqual(older.metadata!)
+        expect(saved[0].parentId).toBeNull()
+        expect(saved[1].parts).toEqual(latest.parts)
+        expect(saved[1].parentId).toBe(older.id)
+        expect(
+          (await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get())?.contextSize,
+        ).toBe(2000)
+      },
+    )
   })
 
   describe('saveStreamingAssistantMessage', () => {
@@ -497,146 +583,6 @@ describe('Chat Messages DAL', () => {
 
       const saved = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, assistantMessageId)).get()
       expect(saved?.content).toBe('Orphan-safe')
-    })
-  })
-
-  describe('cascade delete with parent_id', () => {
-    it('should delete child messages when parent is deleted', async () => {
-      const threadId = uuidv7()
-      const parentMessageId = uuidv7()
-      const childMessageId = uuidv7()
-      const db = getDb()
-
-      await db.insert(chatThreadsTable).values({
-        id: threadId,
-        title: 'Test Thread',
-        isEncrypted: 0,
-      })
-
-      await db.insert(chatMessagesTable).values([
-        {
-          id: parentMessageId,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Parent message',
-          parentId: null,
-        },
-        {
-          id: childMessageId,
-          chatThreadId: threadId,
-          role: 'assistant',
-          content: 'Child message',
-          parentId: parentMessageId,
-        },
-      ])
-
-      // Soft delete parent message and descendants (DAL cascade)
-      await deleteChatMessageAndDescendants(getDb(), parentMessageId)
-
-      // No messages visible (soft-deleted)
-      const messages = await getChatMessages(getDb(), threadId)
-      expect(messages).toHaveLength(0)
-    })
-
-    it('should delete entire chain when root message is deleted', async () => {
-      const threadId = uuidv7()
-      const msg1Id = uuidv7()
-      const msg2Id = uuidv7()
-      const msg3Id = uuidv7()
-      const msg4Id = uuidv7()
-      const db = getDb()
-
-      await db.insert(chatThreadsTable).values({
-        id: threadId,
-        title: 'Test Thread',
-        isEncrypted: 0,
-      })
-
-      // Create a chain: msg1 -> msg2 -> msg3 -> msg4
-      await db.insert(chatMessagesTable).values([
-        {
-          id: msg1Id,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Message 1',
-          parentId: null,
-        },
-        {
-          id: msg2Id,
-          chatThreadId: threadId,
-          role: 'assistant',
-          content: 'Message 2',
-          parentId: msg1Id,
-        },
-        {
-          id: msg3Id,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Message 3',
-          parentId: msg2Id,
-        },
-        {
-          id: msg4Id,
-          chatThreadId: threadId,
-          role: 'assistant',
-          content: 'Message 4',
-          parentId: msg3Id,
-        },
-      ])
-
-      // Soft delete root message and descendants (DAL cascade)
-      await deleteChatMessageAndDescendants(getDb(), msg1Id)
-
-      // No messages visible (soft-deleted)
-      const messages = await getChatMessages(getDb(), threadId)
-      expect(messages).toHaveLength(0)
-    })
-
-    it('should delete only descendant branch when deleting middle message', async () => {
-      const threadId = uuidv7()
-      const msg1Id = uuidv7()
-      const msg2Id = uuidv7()
-      const msg3Id = uuidv7()
-      const db = getDb()
-
-      await db.insert(chatThreadsTable).values({
-        id: threadId,
-        title: 'Test Thread',
-        isEncrypted: 0,
-      })
-
-      // Create chain: msg1 -> msg2 -> msg3
-      await db.insert(chatMessagesTable).values([
-        {
-          id: msg1Id,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Message 1',
-          parentId: null,
-        },
-        {
-          id: msg2Id,
-          chatThreadId: threadId,
-          role: 'assistant',
-          content: 'Message 2',
-          parentId: msg1Id,
-        },
-        {
-          id: msg3Id,
-          chatThreadId: threadId,
-          role: 'user',
-          content: 'Message 3',
-          parentId: msg2Id,
-        },
-      ])
-
-      // Soft delete middle message and its descendants (DAL cascade)
-      await deleteChatMessageAndDescendants(getDb(), msg2Id)
-
-      // Only msg1 visible (msg2 and msg3 soft-deleted)
-      const messages = await getChatMessages(getDb(), threadId)
-      expect(messages).toHaveLength(1)
-      expect(messages[0]?.id).toBe(msg1Id)
     })
   })
 })

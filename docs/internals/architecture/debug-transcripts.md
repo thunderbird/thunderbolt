@@ -1,7 +1,8 @@
 # Debug Transcripts
 
 A **debug transcript** is an opt-in, full-fidelity record of one chat thread that
-a user sends to the Thunderbolt team: every turn's prompt, system prompts,
+a user sends to whoever runs the intake (the Thunderbolt team for most
+deployments): every turn's prompt, system prompts,
 assistant output, tool calls, failures and timings, plus a free-text note.
 
 | Property                           | Detail                                                                |
@@ -22,7 +23,7 @@ telemetry.
 ## Roles: relay and intake
 
 One codebase plays both roles, selected by configuration
-([`settings.ts:113-117`](../../../backend/src/config/settings.ts)). Operator setup,
+([`settings.ts`](../../../backend/src/config/settings.ts), the `debugTranscript*` fields). Operator setup,
 including how to obtain a client key, is in
 [docs/self-hosting/configuration.md](../../self-hosting/configuration.md#debug-transcripts).
 
@@ -41,11 +42,16 @@ including how to obtain a client key, is in
   `{ id }` body is a failure.
 - Both env vars must be set together or `getSettings()` fails validation.
   `debugTranscriptsEnabled` _derives_ from a non-empty URL
-  ([`settings.ts:187-197`](../../../backend/src/config/settings.ts)), ships on
-  `GET /v1/config` ([`config.ts:23`](../../../backend/src/api/config.ts)), and gates
+  (the schema's final `transform` in [`settings.ts`](../../../backend/src/config/settings.ts)), ships on
+  `GET /v1/config` ([`config.ts`](../../../backend/src/api/config.ts)), and gates
   the Share button
   ([`selectDebugTranscriptsEnabled`](../../../src/api/config-store.ts)). No config
   means disabled: standalone has no recipient.
+- The share dialog names the recipient from `debugTranscriptRecipient` in the operator's
+  `BRANDING` (default `Thunderbolt`, not the app name), shipped on `/config` inside
+  `branding` and read through `useDebugTranscriptRecipient`
+  ([`branding-selectors.ts`](../../../src/lib/branding-selectors.ts)), because a
+  deployment that relays to its own intake is not sending to Thunderbolt.
 - Persists nothing, so a failed forward leaves no partial state and the app can
   retry. That is why the split exists, not just multi-tenancy.
 

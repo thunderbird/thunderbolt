@@ -1,0 +1,11 @@
+# Run by `native.sh control` on the calibration build, which pins a button over the lower half of any focused text
+# field (cover.js). A finding's `repro_flow` for the replay is this same text.
+- launchApp
+- extendedWaitUntil:
+    visible: Want early access?
+    timeout: 120000
+- waitForAnimationToEnd
+- tapOn:
+    text: Email
+    retryTapIfNoChange: true
+- waitForAnimationToEnd

@@ -167,6 +167,11 @@ spec:
               value: {{ .Values.backend.env.cliDeviceRegistrationEnabled | quote }}
             - name: THUNDERBOLT_INFERENCE_URL
               value: {{ .Values.backend.env.thunderboltInferenceUrl | default "" | quote }}
+            {{- /* Read nil-safely: absent on an install upgraded with --reuse-values. */}}
+            {{- with .Values.backend.env.branding }}
+            - name: BRANDING
+              value: {{ . | quote }}
+            {{- end }}
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:

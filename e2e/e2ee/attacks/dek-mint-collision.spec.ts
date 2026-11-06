@@ -78,6 +78,7 @@ import {
 import { expect, test } from '../fixtures'
 import { isMintableKeyId } from '@shared/e2ee-types'
 import {
+  approvePendingDevice,
   completeFirstDeviceSetup,
   createE2eeEmail,
   createIsolatedDevice,
@@ -125,10 +126,7 @@ test.describe.serial('A6/A2 — DEK-mint collision', () => {
       const victimDeviceId = await getDeviceId(victim.page)
       await waitForDeviceState(userId, victimDeviceId, (state) => state.approvalPending)
 
-      const notification = page.getByRole('dialog').filter({ hasText: 'New device waiting' })
-      await expect(notification).toBeVisible({ timeout: 30_000 })
-      await notification.getByRole('button', { name: 'Approve' }).click()
-      await page.getByRole('alertdialog').getByRole('button', { name: 'Approve' }).click()
+      await approvePendingDevice(page, victim.page)
       await waitForDeviceState(userId, victimDeviceId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(victim.page)
       await waitForTasksPreference(victim.page, userId)

@@ -9,9 +9,10 @@ import { parseFeatureCollection } from './geojson'
 /**
  * Zod schema for the map widget. `data` carries a GeoJSON FeatureCollection as
  * a JSON string (kept as a string in args — the same pattern as the citation
- * widget's `sources`); the `.refine` rejects anything that isn't a valid
- * FeatureCollection so a malformed tag never renders an empty map. Parsing into
- * the typed collection happens in the component.
+ * widget's `sources`); the `.refine` rejects a payload with no drawable
+ * feature so a malformed tag never renders an empty map. One invalid feature
+ * does not fail the tag — `parseFeatureCollection` drops it and keeps the rest.
+ * Parsing into the typed collection happens in the component.
  */
 export const schema = z.object({
   widget: z.literal('map'),

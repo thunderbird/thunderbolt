@@ -9,6 +9,16 @@ export type ParsedIpAddress =
 type IpRange = { readonly cidr: string; readonly network: bigint; readonly prefixLength: number }
 type ParsedIpv4Address = Extract<ParsedIpAddress, { readonly version: 4 }>
 
+const localIpv4Ranges: readonly IpRange[] = [
+  { cidr: '0.0.0.0/32', network: 0x00000000n, prefixLength: 32 },
+  { cidr: '10.0.0.0/8', network: 0x0a000000n, prefixLength: 8 },
+  { cidr: '100.64.0.0/10', network: 0x64400000n, prefixLength: 10 },
+  { cidr: '127.0.0.0/8', network: 0x7f000000n, prefixLength: 8 },
+  { cidr: '169.254.0.0/16', network: 0xa9fe0000n, prefixLength: 16 },
+  { cidr: '172.16.0.0/12', network: 0xac100000n, prefixLength: 12 },
+  { cidr: '192.168.0.0/16', network: 0xc0a80000n, prefixLength: 16 },
+]
+
 export type EmbeddedIpv4Address = {
   readonly mechanism: 'ipv4-mapped' | 'rfc6052' | 'rfc6145' | '6to4' | 'teredo'
   readonly address: ParsedIpv4Address
@@ -119,6 +129,23 @@ export const parseIpAddress = (address: string): ParsedIpAddress | undefined => 
 const isInCidr = (value: bigint, network: bigint, prefixLength: number, addressBits: number): boolean => {
   const shift = BigInt(addressBits - prefixLength)
   return value >> shift === network >> shift
+}
+
+/** Allow local-network HTTP, including mapped/compatible IPv4 but excluding transition mechanisms. */
+export const isLocalNetworkAddress = (address: ParsedIpAddress): boolean => {
+  if (address.version === 4) {
+    return localIpv4Ranges.some(({ network, prefixLength }) => isInCidr(address.value, network, prefixLength, 32))
+  }
+  if (address.value === 0n || address.value === 1n) {
+    return true
+  }
+  if (isInCidr(address.value, ipv4MappedNetwork, 96, 128) || isInCidr(address.value, 0n, 96, 128)) {
+    return isLocalNetworkAddress({ version: 4, value: address.value & ipv4Mask })
+  }
+  return (
+    isInCidr(address.value, 0xfc000000000000000000000000000000n, 7, 128) ||
+    isInCidr(address.value, 0xfe800000000000000000000000000000n, 10, 128)
+  )
 }
 
 /** Extract IPv4 embedded by an IPv6 mapping or transition mechanism. */

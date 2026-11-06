@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@lingui/core'
+import { getModel } from '@/dal'
+import { modelsTable } from '@/db/schema'
+import { mockProxyFetch } from '@/test-utils/proxy-fetch'
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { http } from '@/lib/http'
-import { i18n } from '@/i18n'
-import { getModel } from '@/dal/models'
-import { modelsTable } from '@/db/tables'
-import { mockProxyFetch } from '@/test-utils/proxy-fetch'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { stubJsonResponse } from '@/test-utils/http'
@@ -51,8 +52,14 @@ describe('Otari form validation', () => {
     const schema = createAddModelFormSchema(i18n)
     for (const provider of addableProviders) {
       expect(
-        schema.safeParse({ provider, name: 'Model', model: 'model', apiKey: 'key', url: 'https://example.com/v1' })
-          .success,
+        schema.safeParse({
+          provider,
+          name: 'Model',
+          model: 'model',
+          apiKey: 'key',
+          url: 'https://example.com/v1',
+          supportsTools: true,
+        }).success,
       ).toBe(true)
     }
     expect(addableProviders).not.toContain('thunderbolt')
@@ -60,7 +67,7 @@ describe('Otari form validation', () => {
 
   it('requires a token and model, and uses the fixed hosted URL', () => {
     const schema = createAddModelFormSchema(i18n)
-    const values = { provider: 'otari', name: 'GPT', model: 'openai:gpt-4o', apiKey: 'tk-user' }
+    const values = { provider: 'otari', name: 'GPT', model: 'openai:gpt-4o', apiKey: 'tk-user', supportsTools: true }
     expect(schema.safeParse(values).success).toBe(true)
     expect(schema.safeParse({ ...values, apiKey: '' }).success).toBe(false)
     expect(schema.safeParse({ ...values, apiKey: undefined }).success).toBe(false)
@@ -68,6 +75,22 @@ describe('Otari form validation', () => {
     expect(schema.safeParse({ ...values, provider: 'thunderbolt' }).success).toBe(false)
   })
 })
+
+/** A provider that answers chat completions but rejects any request carrying tools, as Ollama does. */
+const toollessProxyFetch: FetchFn = Object.assign(
+  async (_input: RequestInfo | URL, init?: RequestInit) =>
+    String(init?.body).includes('"tools"')
+      ? Response.json({ error: { message: 'gemma3:4b does not support tools' } }, { status: 400 })
+      : Response.json({
+          id: 'completion-id',
+          object: 'chat.completion',
+          created: 1,
+          model: 'gemma3:4b',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'test successful' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+        }),
+  { preconnect: async () => true },
+)
 
 describe('useAddModelForm', () => {
   beforeAll(async () => {
@@ -115,7 +138,7 @@ describe('useAddModelForm', () => {
 
       act(() => result.current.onSelectModel('anthropic:claude-sonnet-4-6'))
       expect(result.current.form.getValues('name')).toBe('Claude Sonnet 4 6')
-      expect(result.current.supportsTools).toBe(true)
+      expect(result.current.form.getValues('supportsTools')).toBe(true)
       await act(async () => {
         result.current.onSubmit(result.current.form.getValues())
         await getClock().runAllAsync()
@@ -149,12 +172,13 @@ describe('useAddModelForm', () => {
         model: 'new-chat-model',
         customModel: '',
         url: '',
-        apiKey: 'sk-test',
+        apiKey: '',
+        supportsTools: true,
       })
       await getClock().runAllAsync()
     })
 
-    expect(useChatStore.getState().models.some((model) => model.name === 'New Chat Model')).toBe(true)
+    expect(useChatStore.getState().models.find((model) => model.name === 'New Chat Model')?.toolUsage).toBe(1)
     expect(onMutationStart).toHaveBeenCalledTimes(1)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -178,7 +202,8 @@ describe('useAddModelForm', () => {
           model: 'broken-model',
           customModel: '',
           url: '',
-          apiKey: 'sk-test',
+          apiKey: '',
+          supportsTools: true,
         })
         await getClock().runAllAsync()
       })
@@ -193,7 +218,8 @@ describe('useAddModelForm', () => {
   })
 
   it('substitutes the typed custom model id on submit when Custom is selected', async () => {
-    const onClose = mock(() => {})
+    const completed = Promise.withResolvers<void>()
+    const onClose = mock(() => completed.resolve())
     const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
       wrapper: createTestProvider(),
     })
@@ -209,9 +235,10 @@ describe('useAddModelForm', () => {
         model: 'ignored-model',
         customModel: 'gpt-4-turbo-preview',
         url: '',
-        apiKey: 'sk-test',
+        apiKey: '',
+        supportsTools: true,
       })
-      await getClock().runAllAsync()
+      await completed.promise
     })
 
     const created = useChatStore.getState().models.find((candidate) => candidate.name === 'My Custom Model')
@@ -249,5 +276,88 @@ describe('useAddModelForm', () => {
     } finally {
       getSpy.mockRestore()
     }
+  })
+
+  it('does not fetch a catalog when Custom is chosen before a URL is entered', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+    const { result } = renderHook(() => useAddModelForm({ isOpen: true, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+
+    try {
+      act(() => {
+        result.current.onProviderChange('custom')
+      })
+      await act(async () => {
+        getClock().tick(1000)
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.form.getValues('url')).toBe('')
+      expect(getSpy).not.toHaveBeenCalled()
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it('saves a model that rejects tools with tool usage off after the connection test', async () => {
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider({ proxyFetch: toollessProxyFetch }),
+    })
+
+    act(() => {
+      result.current.onProviderChange('custom')
+      result.current.form.setValue('url', 'https://models.example.com/v1')
+      result.current.form.setValue('model', 'gemma3:4b')
+      result.current.form.setValue('name', 'Gemma')
+    })
+    await act(async () => {
+      await result.current.onTestConnection()
+    })
+
+    expect(result.current.connectionStatus).toBe('success')
+    expect(result.current.toolSupport).toBe('unsupported')
+    expect(result.current.form.getValues('supportsTools')).toBe(false)
+
+    await act(async () => {
+      result.current.onSubmit(result.current.form.getValues())
+      await getClock().runAllAsync()
+    })
+
+    expect(useChatStore.getState().models.find((model) => model.name === 'Gemma')?.toolUsage).toBe(0)
+  })
+
+  it('saves tool usage off when the switch is turned off by hand', async () => {
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+
+    await act(async () => {
+      result.current.onSubmit({
+        provider: 'custom',
+        name: 'Toolless Model',
+        model: 'toolless-model',
+        customModel: '',
+        url: '',
+        apiKey: '',
+        supportsTools: false,
+      })
+      await getClock().runAllAsync()
+    })
+
+    expect(useChatStore.getState().models.find((model) => model.name === 'Toolless Model')?.toolUsage).toBe(0)
+  })
+
+  it('turns tools back on when the provider changes', () => {
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+
+    act(() => {
+      result.current.form.setValue('supportsTools', false)
+      result.current.onProviderChange('custom')
+    })
+
+    expect(result.current.form.getValues('supportsTools')).toBe(true)
   })
 })

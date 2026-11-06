@@ -42,12 +42,15 @@ env:
             - tapOn: Close
       - runFlow:
           when:
-            notVisible: Choose model
+            notVisible: Model and reasoning effort
           commands:
             - tapOn: '${DEFAULT_MODEL}|Opus 5.5'
       - waitForAnimationToEnd
       - tapOn: Opus 5.5
-      - assertNotVisible: Choose model
+      # A pick leaves the sheet open; a tap above it closes it.
+      - tapOn:
+          point: 50%,30%
+      - assertNotVisible: Model and reasoning effort
       - assertVisible: Opus 5.5
 - retry:
     maxRetries: 2

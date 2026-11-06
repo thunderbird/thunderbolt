@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js'
 import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secrets'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -185,42 +184,15 @@ describe('McpOAuthClientProvider', () => {
     })
   })
 
-  describe('clientInformation persistence (DCR client_id, per-AS)', () => {
+  describe('clientInformation (DCR client_id, per-AS)', () => {
     it('returns undefined before registration', async () => {
       expect(await makeProvider(true).clientInformation()).toBeUndefined()
     })
 
-    it('saveClientInformation persists the DCR client_id into the oauth blob', async () => {
-      const provider = makeProvider(true)
-      const full: OAuthClientInformationFull = {
-        client_id: 'dcr-client-1',
-        redirect_uris: [`${origin}/oauth/callback`],
-      }
-      await provider.saveClientInformation(full)
+    it('reads the client_id persisted with a completed authorization', async () => {
+      await setMcpServerCredentials(getDb(), serverId, { type: 'oauth', access_token: 'a1', clientId: 'dcr-client-1' })
 
-      const stored = await getMcpServerCredentials(getDb(), serverId)
-      if (stored?.type !== 'oauth') {
-        throw new Error('expected oauth credentials')
-      }
-      expect(stored.clientId).toBe('dcr-client-1')
-
-      // A fresh provider (post-redirect) reads it back from the db.
-      const reloaded = await makeProvider(true).clientInformation()
-      expect(reloaded?.client_id).toBe('dcr-client-1')
-    })
-
-    it('does not discard existing tokens when persisting client info', async () => {
-      const provider = makeProvider(true)
-      await provider.saveTokens({ access_token: 'keep-me', token_type: 'Bearer', refresh_token: 'r1' })
-      await provider.saveClientInformation({ client_id: 'dcr-2', redirect_uris: [`${origin}/oauth/callback`] })
-
-      const stored = await getMcpServerCredentials(getDb(), serverId)
-      if (stored?.type !== 'oauth') {
-        throw new Error('expected oauth credentials')
-      }
-      expect(stored.access_token).toBe('keep-me')
-      expect(stored.refresh_token).toBe('r1')
-      expect(stored.clientId).toBe('dcr-2')
+      expect((await makeProvider(true).clientInformation())?.client_id).toBe('dcr-client-1')
     })
   })
 

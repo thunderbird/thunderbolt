@@ -25,22 +25,33 @@ Sign in on the new device with the same account. If the setup wizard does not op
 
 ## Approving a device
 
-A pending device shows an "Approve this device" screen and polls for the result, so nothing has to be re-entered once you approve it. There are two ways to clear it:
+A pending device shows an "Approve this device" screen with a fingerprint and polls for the result. Choose one of the available ways to unlock it:
 
-- **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**. The trusted device hands the new one a copy of the account's encryption key, wrapped so that only the new device can open it.
-- **Use the recovery key.** On the pending device, choose **Use my recovery key** and enter the 24 word phrase saved at first setup. This is the path when no other device is available.
+- **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**. Enter the fingerprint from the new device's screen or a separate channel you trust. Approval stops if it does not match; there is no override. The trusted device then wraps the account's encryption key to the verified device keys.
+- **Use the recovery key.** On the pending device, choose **Use my recovery key** and enter the current recovery phrase. This is the path when no other device is available.
+- **Use an available passkey.** If the account has an enrolled passkey that can unlock sync, choose **Unlock with passkey** on the pending device.
 
 **Deny** dismisses the request without revoking anything, and that device can ask again; a pending device can also withdraw its own request. The approving device has to be trusted and not revoked, and cannot be a CLI device or a device that is itself still pending. Revoking is stricter: only a regular app device can do that.
 
+### After a legacy encryption upgrade
+
+Among regular app devices, only the device running the upgrade stays trusted. Save the new recovery phrase it shows; the previous phrase stops working. Other trusted app devices return to pending approval; existing pending or denied requests keep their state. They can unlock through verified approval, the new recovery phrase or a passkey enrolled for sync. CLI and bridge entries are unchanged. Existing encrypted data is preserved.
+
+### Approval limits
+
+Fingerprint verification requires trusted code on both the approving device and the new device. A web host can modify the approving device's checks or the new device's displayed fingerprint and keys. Independently distributed desktop/mobile builds provide the stronger boundary. Older approvers lack the check. A pending client from a release before fingerprint approval shows no fingerprint. Update it before approving it from an updated device. The current recovery phrase or a passkey enrolled for sync remains an alternative where the client supports that unlock method. On an honest deployment, `MIN_APP_VERSION` can require headers declaring the release introducing fingerprint approval or later on every gated API request; a malicious server can ignore that policy. These checks protect future approvals and do not repair an account key exposed by a past approval.
+
 ## The recovery key
 
-At first setup on an account, Thunderbolt generates the account's encryption keys and shows a 24 word recovery phrase that can unlock them. Sync starts once the person confirms they saved it. The phrase is shown **once**; there is no way to view it again later. It is the only way back in if every device on the account is lost or wiped.
+At first setup on an account, Thunderbolt generates the account's encryption keys and shows a 24 word recovery phrase that can unlock them. Sync starts once the person confirms they saved it. The phrase is shown **once**; there is no way to view it again later. Keep it safe so you can unlock sync if every trusted device is lost or wiped.
 
 To replace a lost or exposed phrase, choose **Change Recovery Phrase** under **Settings → Preferences → Data** on a trusted device and enter the code emailed to the account. The old phrase stops working.
 
-> Without it and without a trusted device, synced message content is not recoverable. The server holds ciphertext for that content; ids, timestamps, relationships and device names stay readable. See [Security and privacy](security-and-privacy.md) for the full list.
+> Without a recovery phrase, a trusted device or an available passkey that unlocks sync, the app cannot recover synced message content. The server holds ciphertext for that content; ids, timestamps, relationships and device names stay readable. See [Security and privacy](security-and-privacy.md) for the full list.
 
-The one exception is [organizational key escrow](../self-hosting/configuration.md#organizational-key-escrow): on a deployment that runs it, the operator can decrypt an account's data offline.
+### Organizational key escrow
+
+On a deployment with [organizational key escrow](../self-hosting/configuration.md#organizational-key-escrow) enabled, an operator holding its private key can decrypt an account's data offline.
 
 ## Revoking a device
 

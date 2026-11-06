@@ -7,7 +7,10 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
+import { getChromeLaunchOptions } from './chrome'
 
+/** Rows in the workspace file standing in for a large attachment: 1.2 MB, like a 10,000-row export. */
+const bigTsvRows = 600_000
 const temporaryDist = await mkdtemp(join(tmpdir(), 'thunderbolt-agent-core-'))
 const dist = resolve(process.env.BROWSER_TEST_DIST ?? temporaryDist)
 const server = Bun.serve({
@@ -40,61 +43,65 @@ try {
   const chunkUrl = `/assets/${chunks[0]}`
   const failures: unknown[] = []
 
-  for (const [engineName, engine] of Object.entries({ chromium, webkit })) {
-    for (const removeIteratorHelpers of [false, true]) {
-      const label = `${engineName}: production harness, conversation and OPFS (iterator helpers ${removeIteratorHelpers ? 'absent' : 'native'})`
-      // WebKit's ephemeral contexts reject OPFS; each case needs its own persistent profile.
-      const browser = await engine.launchPersistentContext(
-        join(temporaryDist, `${engineName}-${removeIteratorHelpers}`),
+  const browserCases = Object.entries({ chromium, webkit }).flatMap(([engineName, engine]) =>
+    [false, true].map((removeIteratorHelpers) => ({ engineName, engine, removeIteratorHelpers })),
+  )
+  for (const { engineName, engine, removeIteratorHelpers } of browserCases) {
+    const label = `${engineName}: production harness, conversation and OPFS (iterator helpers ${removeIteratorHelpers ? 'absent' : 'native'})`
+    // WebKit's ephemeral contexts reject OPFS; each case needs its own persistent profile.
+    const browser = await engine.launchPersistentContext(
+      join(temporaryDist, `${engineName}-${removeIteratorHelpers}`),
+      engineName === 'chromium' ? getChromeLaunchOptions() : {},
+    )
+    const timeout = setTimeout(() => {
+      void browser.close()
+    }, 60_000)
+    try {
+      // Shared app chunks can initialize config/auth; keep all network access local to this fixture.
+      await browser.route(
+        (url) => url.origin !== server.url.origin,
+        (route) => route.fulfill({ json: {} }),
       )
-      const timeout = setTimeout(() => {
-        void browser.close()
-      }, 60_000)
-      try {
-        // Shared app chunks can initialize config/auth; keep all network access local to this fixture.
-        await browser.route(
-          (url) => url.origin !== server.url.origin,
-          (route) => route.fulfill({ json: {} }),
-        )
-        const page = await browser.newPage()
-        const errors: string[] = []
-        page.on('pageerror', (error) => errors.push(error.message))
-        if (removeIteratorHelpers) {
-          await page.addInitScript(() => {
-            const iterator = [][Symbol.iterator]()
-            const prototype = Object.getPrototypeOf(Object.getPrototypeOf(iterator))
-            for (const helper of [
-              'map',
-              'filter',
-              'take',
-              'drop',
-              'flatMap',
-              'reduce',
-              'toArray',
-              'forEach',
-              'some',
-              'every',
-              'find',
-            ]) {
-              Reflect.deleteProperty(prototype, helper)
-              if (Reflect.has(iterator, helper)) {
-                throw new Error(`Iterator helper ${helper} still exists`)
-              }
+      const page = await browser.newPage()
+      const errors: string[] = []
+      page.on('pageerror', (error) => errors.push(error.message))
+      if (removeIteratorHelpers) {
+        await page.addInitScript(() => {
+          const iterator = [][Symbol.iterator]()
+          const prototype = Object.getPrototypeOf(Object.getPrototypeOf(iterator))
+          for (const helper of [
+            'map',
+            'filter',
+            'take',
+            'drop',
+            'flatMap',
+            'reduce',
+            'toArray',
+            'forEach',
+            'some',
+            'every',
+            'find',
+          ]) {
+            Reflect.deleteProperty(prototype, helper)
+            if (Reflect.has(iterator, helper)) {
+              throw new Error(`Iterator helper ${helper} still exists`)
             }
-          })
-        }
-        /** Let the shared app entry finish its OPFS create/delete probe before ZenFS scans the root. */
-        const loadHarness = async () => {
-          await Promise.all([
-            page.waitForEvent('console', (message) => message.text().startsWith('[init] step2_initialize_database:')),
-            page.evaluate(async (url) => {
-              await import(url)
-            }, chunkUrl),
-          ])
-        }
-        await page.goto(server.url.href)
-        await loadHarness()
-        const results = await page.evaluate(async (url) => {
+          }
+        })
+      }
+      /** Let the shared app entry finish its OPFS create/delete probe before ZenFS scans the root. */
+      const loadHarness = async () => {
+        await Promise.all([
+          page.waitForEvent('console', (message) => message.text().startsWith('[init] step2_initialize_database:')),
+          page.evaluate(async (url) => {
+            await import(url)
+          }, chunkUrl),
+        ])
+      }
+      await page.goto(server.url.href)
+      await loadHarness()
+      const results = await page.evaluate(
+        async ({ url, bigTsvRows }) => {
           // Import the emitted app chunk, after removing helpers: a source/Bun import misses this regression.
           const core: typeof import('../shared/agent-core/index.ts') = await import(url)
           const backend = await core.mountAgentFs()
@@ -142,47 +149,110 @@ try {
             })
             const first = await harness.prompt('hello first turn')
             const second = await harness.prompt('hello second turn')
-            conversations.push({ providerId, first, second, requests })
+            const checkpoint = await harness.compaction.compact({ instructions: 'Keep the greeting preference' })
+            const resumed = await core.buildAppHarness({
+              model: { ...model, kind: 'openai-compat' },
+              systemPrompt: 'Answer briefly.',
+              thinkingLevel: 'off',
+              threadId: `${providerId}-restored`,
+              compaction: JSON.parse(JSON.stringify(checkpoint)),
+            })
+            const afterCompaction = await resumed.prompt('continue after compaction')
+            conversations.push({ providerId, first, second, afterCompaction, checkpoint, requests })
           }
           const env = new core.BrowserExecutionEnv({ cwd: core.workspaceDirFor('openrouter') })
           const written = await env.writeFile('persist.txt', 'survives reload')
           if (!written.ok) {
             throw written.error
           }
-          return { backend, conversations }
-        }, chunkUrl)
-        assert.equal(results.backend, 'opfs')
-        for (const { first, second, requests } of results.conversations) {
-          for (const response of [first, second]) {
-            assert.equal(response.stopReason, 'stop')
-            assert.deepEqual(response.content, [{ type: 'text', text: 'hello back' }])
+          // Attachments land as TSV, and the shell the model gets can aggregate them by column.
+          // Two files in one call, one over a megabyte, mirror a large and a small attachment sent together.
+          const failures = await core.writeAgentWorkspaceFiles('openrouter', [
+            {
+              path: 'attachments/a/spend.tsv',
+              content:
+                'date\tpayee\tamount\n2024-03-01\tUnited, Inc\t-300.5\n2025-01-09\tHertz, LLC\t-99.5\n2025-02-01\tHilton\t-200',
+            },
+            { path: 'attachments/b/large.tsv', content: `n\n${'0\n'.repeat(bigTsvRows)}` },
+          ])
+          if (failures.length > 0) {
+            throw failures[0].error
           }
-          assert.equal(requests.length, 2)
-          assert.ok(requests[1].includes('hello first turn'))
-          assert.ok(requests[1].includes('hello back'))
-        }
-        await page.reload()
-        await loadHarness()
-        const persisted = await page.evaluate(async (url) => {
-          const core: typeof import('../shared/agent-core/index.ts') = await import(url)
-          const backend = await core.mountAgentFs()
-          const env = new core.BrowserExecutionEnv({ cwd: core.workspaceDirFor('openrouter') })
-          const read = await env.readTextFile('persist.txt')
-          if (!read.ok) {
-            throw read.error
+          const aggregated = await env.exec(
+            `awk -F'\\t' 'NR>1 { total[substr($1, 1, 4)] += $3 } END { for (year in total) print year, total[year] }' attachments/a/spend.tsv | sort`,
+          )
+          if (!aggregated.ok) {
+            throw aggregated.error
           }
-          return { backend, text: read.value }
-        }, chunkUrl)
-        assert.deepEqual(persisted, { backend: 'opfs', text: 'survives reload' })
-        assert.deepEqual(errors, [])
-        console.log(`PASS ${label}`)
-      } catch (error) {
-        console.error(`FAIL ${label}`, error)
-        failures.push(error)
-      } finally {
-        clearTimeout(timeout)
-        await browser.close()
+          const largeLines = await env.exec('wc -l < attachments/b/large.tsv')
+          if (!largeLines.ok) {
+            throw largeLines.error
+          }
+          return {
+            backend,
+            conversations,
+            aggregated: aggregated.value.stdout,
+            largeLines: largeLines.value.stdout.trim(),
+          }
+        },
+        { url: chunkUrl, bigTsvRows },
+      )
+      assert.equal(results.aggregated, '2024 -300.5\n2025 -299.5\n')
+      assert.equal(results.largeLines, String(bigTsvRows + 1))
+      assert.equal(results.backend, 'opfs')
+      const responses = results.conversations.flatMap(({ first, second, afterCompaction }) => [
+        first,
+        second,
+        afterCompaction,
+      ])
+      for (const response of responses) {
+        assert.equal(response.stopReason, 'stop')
+        assert.deepEqual(response.content, [{ type: 'text', text: 'hello back' }])
       }
+      for (const { checkpoint, requests } of results.conversations) {
+        assert.equal(requests.length, 4)
+        assert.ok(requests[1].includes('hello first turn'))
+        assert.ok(requests[1].includes('hello back'))
+        assert.ok(requests[2].includes('Keep the greeting preference'))
+        assert.ok(checkpoint.summary.includes('hello back'))
+        assert.ok(requests[3].includes('hello back'))
+        assert.ok(!requests[3].includes('hello first turn'))
+      }
+      await page.reload()
+      await loadHarness()
+      const persisted = await page.evaluate(async (url) => {
+        const core: typeof import('../shared/agent-core/index.ts') = await import(url)
+        const backend = await core.mountAgentFs()
+        const env = new core.BrowserExecutionEnv({ cwd: core.workspaceDirFor('openrouter') })
+        const read = await env.readTextFile('persist.txt')
+        if (!read.ok) {
+          throw read.error
+        }
+        const attachment = await env.fileInfo('attachments/a/spend.tsv')
+        // Read the large file's bytes straight from OPFS, bypassing ZenFS's view of it.
+        const root = await navigator.storage.getDirectory()
+        const workspace = await root.getDirectoryHandle('workspace')
+        const thread = await workspace.getDirectoryHandle('openrouter')
+        const attachments = await thread.getDirectoryHandle('attachments')
+        const dir = await attachments.getDirectoryHandle('b')
+        const largeHandle = await dir.getFileHandle('large.tsv')
+        const largeBytes = (await largeHandle.getFile()).size
+        return { backend, text: read.value, attachmentPersisted: attachment.ok, largeBytes }
+      }, chunkUrl)
+      assert.deepEqual(persisted, {
+        backend: 'opfs',
+        text: 'survives reload',
+        attachmentPersisted: true,
+        largeBytes: 2 + bigTsvRows * 2,
+      })
+      assert.deepEqual(errors, [])
+      console.log(`PASS ${label}`)
+    } catch (error) {
+      console.error(`FAIL ${label}`, error)
+      failures.push(error)
+    } finally {
+      clearTimeout(timeout)
+      await browser.close()
     }
   }
   assert.equal(failures.length, 0, `${failures.length} browser checks failed`)

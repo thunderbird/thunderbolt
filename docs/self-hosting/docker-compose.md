@@ -73,12 +73,22 @@ EXA_API_KEY=
 
 `EXA_API_KEY` enables web search rather than a chat model, and `FIREWORKS_API_KEY` only serves the [hosted agent](./configuration.md#hosted-agent) when `AGENT_MODEL` names a Fireworks model. The [Configuration](./configuration.md) page lists every provider setting.
 
+## Brand it
+
+To show your own name and colors, set `BRANDING` in `deploy/.env` and restart. Keep the JSON on one line and wrap it in single quotes, or the `#` of a hex color starts a comment:
+
+```bash
+BRANDING='{"appName":"Acme AI","debugTranscriptRecipient":"Acme IT","cssVars":{"light":{"primary":"#4f46e5"}}}'
+```
+
+[Branding](./configuration.md#branding) lists every field. `debugTranscriptRecipient` names your team in the copy users see when they share a debug transcript, and defaults to Thunderbolt.
+
 ## Verify it works
 
 ```bash
 docker compose ps                        # every service up, postgres and keycloak healthy
 curl http://localhost:3000/v1/config     # returns JSON, no sign-in needed
-docker compose logs -f backend           # "Running database migrations", then "Starting server"
+docker compose logs -f backend           # "Database server is ready.", then "Starting server..."
 ```
 
 The `curl` goes through the app's own address, so a JSON reply means the browser-facing service and the API behind it are both answering. Sign in as the demo user and open the same conversation in a second browser window: if it appears there too, sync is working as well.

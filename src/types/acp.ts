@@ -10,6 +10,7 @@
  * the adapter contract consumed by `src/chats/chat-instance.ts` `customFetch`.
  */
 
+import type { ReasoningEffort } from '@shared/reasoning-effort'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
@@ -20,6 +21,8 @@ import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ChatThread, Model, SaveMessagesFunction } from '@/types'
 import type { AgentTransport, AgentType } from '@shared/acp-types'
+import type { CompactionCheckpoint, CompactionStatus } from '@shared/agent-core'
+import type { AcpCompaction, AcpSessionEvent } from '@/acp/compaction'
 
 /** Capabilities advertised by an ACP agent on `initialize`. Stored on the
  *  adapter so the connect logic can branch on `loadSession` and future
@@ -73,6 +76,7 @@ export type AgentAdapterContext = {
   acpSessionId: string | null
   saveMessages: SaveMessagesFunction
   selectedModel: Model
+  reasoningEffort?: ReasoningEffort
   mcpClients: NamedMCPClient[]
   /** Reconnect a dropped MCP client at the `tools()` boundary; returns a fresh
    *  client or null. Supplied by the MCP provider via the chat store. */
@@ -89,6 +93,11 @@ export type AgentAdapterContext = {
    *  persistent harnesses use it to rebuild from the edited transcript without
    *  rebuilding during ordinary transcript growth. */
   regenerationRevision?: number
+  onCompactionStatus?: (status: CompactionStatus) => void
+  /** Restore presentation-only compaction entities before the agent replays patches. */
+  getAcpCompactions?: () => AcpCompaction[]
+  /** True when handled outside the current stream; false lets the translator emit it. */
+  onAcpSessionEvent?: (event: AcpSessionEvent, inPrompt: boolean, replaying?: boolean) => boolean
   /** Resolved instruction bodies for any user skills (`/slug`) referenced in
    *  the prompt. The built-in pipeline injects these as system messages
    *  (`ai/fetch.ts`); ACP agents only receive prompt text, so the adapter folds
@@ -122,7 +131,10 @@ export type AgentAdapterContext = {
  *  session without sending a prompt. Used by `ensureSession` to warm the
  *  connection — creating `session/new` early so the agent emits its
  *  `available_commands_update` before the user's first message. */
-export type EnsureSessionContext = Pick<AgentAdapterContext, 'threadId' | 'acpSessionId' | 'onAcpSessionId'>
+export type EnsureSessionContext = Pick<
+  AgentAdapterContext,
+  'threadId' | 'acpSessionId' | 'onAcpSessionId' | 'getAcpCompactions' | 'onAcpSessionEvent'
+>
 
 /** Runtime adapter wrapping either the built-in pipeline or an ACP transport.
  *  `customFetch` in `chat-instance.ts` delegates to `adapter.fetch` and returns
@@ -135,6 +147,7 @@ export type AgentAdapter = {
    *  built-in adapter, which has no transport lifecycle. */
   closed?: Promise<void>
   fetch: (init: RequestInit, context: AgentAdapterContext) => Promise<Response>
+  compact?: (init: RequestInit, context: AgentAdapterContext, instructions?: string) => Promise<CompactionCheckpoint>
   /** Eagerly resolve the thread's ACP session (no prompt), so the agent emits
    *  its advertised commands before the first send. No-op for the built-in
    *  adapter. Idempotent per thread — reuses the cached session. */

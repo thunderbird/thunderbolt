@@ -83,9 +83,7 @@ export const useModelCatalog = () => {
       const requestKey = catalogRequestKey(request)
       dispatch({ type: 'CATALOG_REQUESTED', requestKey })
       try {
-        // Otari rejects browser preflights, so discovery needs the same proxy as inference.
-        const catalogFetch = request.provider === 'otari' ? getProxyFetch() : undefined
-        dispatch({ type: 'CATALOG_LOADED', requestKey, models: await fetchModelsForProvider(request, catalogFetch) })
+        dispatch({ type: 'CATALOG_LOADED', requestKey, models: await fetchModelsForProvider(request, getProxyFetch) })
       } catch (error) {
         console.error('Failed to fetch models:', error)
         dispatch({ type: 'CATALOG_FAILED', requestKey, error: describeModelFetchError(i18n, error) })

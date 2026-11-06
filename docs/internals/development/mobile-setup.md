@@ -141,14 +141,9 @@ equivalent of the Android clobber.
   `:1420` and the webview fetches from it. iOS simulator and Android emulator usually
   forward `localhost` correctly; a physical device needs `TAURI_DEV_HOST=0.0.0.0` and your
   Mac's LAN IP.
-- **CORS on `api.anthropic.com` in BYO-key mode.** The webview enforces browser CORS on
-  every Tauri target, so BYO-key calls cannot hit a provider directly. They don't:
-  `src/lib/proxy-fetch.ts` routes them through the universal proxy at `/v1/proxy`
-  (`backend/src/proxy/routes.ts`), wrapping provider headers as `X-Proxy-Passthrough-*`,
-  which the proxy strips before calling upstream. The `tauri-plugin-http` direct path is
-  compiled out of every build here: `src-tauri/src/lib.rs` registers it only under the
-  `native_fetch` Cargo feature, which defaults off (`src-tauri/Cargo.toml`) and is passed by
-  no build, so `createProxyFetch` uses the proxy even when `proxy_enabled` is off.
+- **BYO-key provider routing.** All Tauri builds register `tauri-plugin-http`. With **Use Cloud Proxy** off (the default), own-key model and HTTP/SSE MCP requests use native HTTP and bypass webview CORS. With it on, `src/lib/proxy-fetch.ts` routes non-loopback targets through `/v1/proxy`, wrapping provider headers as `X-Proxy-Passthrough-*`. Loopback models, HTTP/SSE MCP servers and external agents always connect directly on desktop and mobile. Anthropic requests include its browser-origin opt-in header because the native plugin adds `Origin` too. Custom loopback models connect directly through `src/lib/fetch.ts`: browser fetch by default, or native HTTP on Tauri when Use Native Fetch is on.
+- **Direct connections** need the final endpoint URL; see [native redirect policy](../architecture/universal-proxy.md#hosted-and-standalone). Native TLS trusts OS certificates as well as bundled public roots.
+- **Cloud Proxy on while signed out** produces backend 401s for non-loopback targets until the user turns it off or signs in.
 
 ## Local desktop builds
 

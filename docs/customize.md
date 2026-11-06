@@ -47,8 +47,9 @@ model of its own, chosen at its end, and ignores what you configure here.
 | Tinfoil               | Required   | Not needed   | Confidential inference in a verified hardware enclave                                 |
 | Custom                | Optional   | Required     | Any OpenAI-compatible endpoint on this machine, or on an address reachable over HTTPS |
 
-The **Custom** form pre-fills `http://localhost:11434/v1`, the usual address of a local Ollama
-install. Leave the key blank if the endpoint does not need one.
+The **Custom** URL field starts empty. Its placeholder shows `http://localhost:11434/v1`, the usual
+address of a local Ollama install. The model list loads once you enter a URL. Leave the key blank if
+the endpoint does not need one.
 
 ### Adding a model
 
@@ -56,6 +57,11 @@ Where the provider publishes a catalog, the model list fills itself in. OpenAI, 
 OpenRouter and Otari need a valid key before their catalog loads, and you can always type the model identifier
 by hand instead. Every provider except the managed Thunderbolt models must pass **Test Connection**
 before the model can be saved.
+
+The connection test also checks whether the model accepts tools. A model that rejects them, such as
+Ollama's `gemma3`, is saved with **Supports tools** turned off, and its chats run without web search,
+integrations or other tools. The switch is on the add and edit forms if the test gets it wrong, and
+running the test again on a saved model updates it.
 
 For **Otari**, enter your Otari API token and select a model from the catalog. Keep
 the full provider-prefixed identifier, such as `openai:gpt-4o`, when entering a model by hand.
@@ -106,9 +112,12 @@ An external agent brings its own commands, which appear in the chat `/` menu alo
 
 **Reaching an agent on your own machine.** The web app cannot connect to `localhost` or a private
 network address. Browser rules force that traffic through the cloud proxy in your Thunderbolt
-backend, and the relay refuses private targets; the desktop switch for the proxy does not lift the
-restriction either, for the reason given under [Preferences](#preferences). Use the peer-to-peer
-ticket instead of a URL.
+backend, which refuses private targets. Desktop and mobile connect directly to external agents
+added with a WebSocket address by default. With Use Cloud Proxy on, external agents need a public
+`wss://` address. Agents on your local network need a `wss://` address with Use Cloud Proxy off.
+Plain `ws://` works only for a local bridge at its default port (`8839`) on the same computer as
+the desktop app. Agents on the same device always connect directly in desktop and mobile.
+For the web app, use a peer-to-peer ticket instead of a private WebSocket address.
 
 More detail, including what each failure message means: [Connections](using/connections.md).
 
@@ -187,13 +196,15 @@ use:
   rejected on import. Run such a server behind the Thunderbolt command-line bridge and connect to it
   peer-to-peer.
 - `https` is required for any public host. Plain `http` is accepted only for `localhost` and private
-  network addresses, which no released build can reach.
+  network addresses. Desktop and mobile always connect directly to loopback servers;
+  private-network servers need Use Cloud Proxy off (the default).
 - Servers and their credentials are device-local. Adding a server on one machine does not add it
   anywhere else, though a data export carries them across on restore.
 - Deleting a server deletes its stored credential with it.
 
-> A `localhost` or private-network `http` URL saves without complaint and then never connects, because
-> the relay refuses those targets. A plain `http` URL on a public host is rejected at save instead.
+> A `localhost` HTTP/SSE MCP server always connects directly in desktop and mobile.
+> Private-network servers need Use Cloud Proxy off. The backend refuses both kinds of address,
+> so the web app cannot reach them. A plain `http` URL on a public host is rejected at save instead.
 
 ## Projects
 
@@ -235,9 +246,11 @@ that region, and you can override any of them individually. Changing the languag
 interface only; the model replies in the language of the conversation.
 
 **Network.** The cloud proxy relays outbound traffic through the Thunderbolt backend. In a browser
-it is always on, because browser security rules leave no alternative. The desktop app offers a
-switch to turn it off, but the direct device-to-provider path it selects is not compiled into
-released builds, so published desktop and mobile builds relay through the backend either way.
+it is always on, because browser security rules leave no alternative. In desktop and mobile,
+**Use Cloud Proxy** is off by default: own-key model and HTTP/SSE MCP requests go directly from
+the device. Turning it on routes non-loopback requests through your Thunderbolt server.
+On desktop and mobile, loopback models, HTTP/SSE MCP servers and external agents always connect
+directly. Custom loopback models also connect directly on web.
 
 **Preview features** are opt-ins that sync to every device on the account, so switching one on in
 one place switches it on everywhere. Today they cover tasks and the custom voice provider.

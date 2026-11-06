@@ -43,6 +43,7 @@ export const ProviderConnectionButton = ({
   const showDisconnect = isConnected && onDisconnect && isHighlighted
   return (
     <Button
+      type="button"
       onClick={isProcessing ? onCancel : isConnected ? onDisconnect : onConnect}
       disabled={disabled || (isProcessing && !canCancel) || (!isProcessing && isConnected && !onDisconnect)}
       variant={isConnected ? 'ghost' : variant}

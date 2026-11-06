@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getOtariBrowserReturn, getOtariBrowserDraft } from '@/lib/otari-browser-auth'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useMutation } from '@tanstack/react-query'
@@ -16,7 +15,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { defaultModels } from '@shared/defaults/models'
 import type { EditModelSubmission } from './edit-model-form'
 import { initialModelsPageState, modelsPageReducer, type ModelPanel } from './page-state'
-import { useAddModelForm } from './use-add-model-form'
+import { useAddProviderModels } from './use-add-provider-models'
 import { modelRequiresServer } from './model-policy'
 
 /** Owns Models page reducer, forms, catalog requests, tests, and DAL mutations. */
@@ -24,10 +23,7 @@ export const useModelsPageState = () => {
   const { t } = useLingui()
   const db = useDatabase()
   const localProviders = useLocalProviders()
-  const [state, dispatch] = useReducer(modelsPageReducer, undefined, () => ({
-    ...initialModelsPageState,
-    panel: getOtariBrowserReturn('models') || getOtariBrowserDraft('models') ? { kind: 'add' as const } : null,
-  }))
+  const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
   const { panel, deleteConfirmId, mutationError } = state
   const isAddPanelOpen = panel?.kind === 'add'
   const activeModelId = panel?.kind === 'detail' || panel?.kind === 'edit' ? panel.modelId : null
@@ -40,10 +36,9 @@ export const useModelsPageState = () => {
   const editingModel = panel?.kind === 'edit' ? activeModel : undefined
   const clearMutationError = useCallback(() => dispatch({ type: 'MUTATION_STARTED' }), [])
   const closeAddPanel = useCallback(() => dispatch({ type: 'PANEL_CHANGED', panel: null }), [])
-  const addForm = useAddModelForm({
+  const addForm = useAddProviderModels({
     isOpen: isAddPanelOpen,
     onClose: closeAddPanel,
-    onMutationStart: clearMutationError,
   })
 
   const failMutation = (message: string) => () => {
@@ -71,7 +66,7 @@ export const useModelsPageState = () => {
   const editMutation = useMutation({
     mutationFn: async (values: EditModelSubmission) => {
       const { id, ...fields } = values
-      await updateModel(db, id, { ...fields, url: fields.url || null })
+      await updateModel(db, id, fields)
     },
     onMutate: clearMutationError,
     onSuccess: async (_result, values) => {

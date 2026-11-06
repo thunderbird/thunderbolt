@@ -9,6 +9,8 @@ import { isRecord } from '@/lib/utils'
 import { eq } from 'drizzle-orm'
 import { getTableConfig, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 import { exportFormat, exportSchemaVersion, exportedTableNames, includedTables, type IncludedTableName } from './export'
+import { providerConnectionsTable } from '@/db/tables'
+import { credentialBinding } from '@/providers/credentials'
 
 type PkSpec = {
   /** Drizzle column reference, used in `WHERE` clauses. */
@@ -86,6 +88,31 @@ export class ImportFormatError extends Error {
 
 const isIncludedTableName = (name: string): name is IncludedTableName =>
   (exportedTableNames as readonly string[]).includes(name)
+
+/** Restore only explicitly entered API keys; OAuth grants always require sign-in on this device. */
+const providerSecretForImport = async (db: AnyDrizzleDatabase, row: Record<string, unknown>, id: string) => {
+  const connection = await db.select().from(providerConnectionsTable).where(eq(providerConnectionsTable.id, id)).get()
+  if (!connection || connection.authMethod !== 'api_key' || !connection.provider) {
+    return null
+  }
+  const binding = credentialBinding({
+    provider: connection.provider,
+    authMethod: connection.authMethod,
+    url: connection.url,
+  })
+  if (row.binding !== binding || typeof row.credentials !== 'string') {
+    throw new ImportFormatError('Provider credentials do not match their connection.')
+  }
+  const credentials: unknown = JSON.parse(row.credentials)
+  if (!isRecord(credentials) || typeof credentials.apiKey !== 'string') {
+    throw new ImportFormatError('Invalid provider API key backup.')
+  }
+  return {
+    id,
+    binding,
+    credentials: JSON.stringify({ apiKey: credentials.apiKey, sessionRevision: crypto.randomUUID() }),
+  }
+}
 
 export type ExportSummary = {
   /** Total row count across every array-valued bucket in `tables`. */
@@ -224,7 +251,11 @@ export const importUserData = async (
   const tableCounts: Partial<Record<IncludedTableName, { upserted: number }>> = {}
 
   await db.transaction(async (tx) => {
-    for (const [tableName, rows] of Object.entries(fileTables)) {
+    // Metadata must be restored before checking credential bindings, regardless of JSON key order.
+    const entries = Object.entries(fileTables).sort(
+      ([a], [b]) => Number(b === 'provider_connections') - Number(a === 'provider_connections'),
+    )
+    for (const [tableName, rows] of entries) {
       if (!isIncludedTableName(tableName)) {
         ignoredTableNames.push(tableName)
         continue
@@ -245,16 +276,22 @@ export const importUserData = async (
         if (typeof pkValue !== 'string') {
           throw new ImportFormatError(`Row in "${tableName}" is missing string primary key "${pkField}".`)
         }
-        const sanitized = sanitizeRowForImport(row, hasUserId, currentUser.id)
+        const sanitized =
+          tableName === 'provider_connection_secrets'
+            ? await providerSecretForImport(tx, row, pkValue)
+            : sanitizeRowForImport(row, hasUserId, currentUser.id)
+        if (!sanitized) {
+          continue
+        }
         const existing = await tx.select({ pk: pkColumn }).from(table).where(eq(pkColumn, pkValue)).get()
         if (existing) {
           await tx.update(table).set(sanitized).where(eq(pkColumn, pkValue))
         } else {
           await tx.insert(table).values(sanitized)
         }
+        const count = tableCounts[tableName]?.upserted ?? 0
+        tableCounts[tableName] = { upserted: count + 1 }
       }
-
-      tableCounts[tableName] = { upserted: rows.length }
     }
   })
 

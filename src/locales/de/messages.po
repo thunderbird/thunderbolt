@@ -224,6 +224,10 @@ msgstr "Eine neue Version ist verfügbar. Zum Installieren die Update-Aufforderu
 #~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
 #~ msgstr "Ein Projekt bündelt Ihre Anweisungen an einem Ort, sodass jeder Chat darin mit demselben Kontext startet."
 
+#: src/settings/connections/provider-connection-form.tsx
+msgid "A sign-in connection already exists for {name}. Open it to manage this account, or use an API key for another connection."
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
 msgstr "Eine URL – oder fügen Sie ein iroh-Ticket Ihrer Bridge ein, um eine Peer-to-Peer-Verbindung herzustellen (eine reine NodeId funktioniert nur, wenn der Peer auffindbar ist)."
@@ -245,9 +249,7 @@ msgstr "Akzeptiert Verbindungen von Ihren Geräten"
 msgid "Access token required"
 msgstr "Zugriffstoken erforderlich"
 
-#: src/settings/connections/ai-provider-detail.tsx
 #: src/settings/connections/integration-detail.tsx
-#: src/settings/connections/otari-provider-detail.tsx
 msgid "Account"
 msgstr "Konto"
 
@@ -286,6 +288,10 @@ msgstr "Hinzufügen & autorisieren"
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 msgstr "Fügen Sie <0>~/.local/bin</0> zu Ihrem PATH hinzu und starten Sie dann Ihre Shell neu:"
+
+#: src/settings/search/index.tsx
+msgid "Add a connection"
+msgstr ""
 
 #: src/components/chat/chat-model-setup.tsx
 #: src/components/onboarding/onboarding-model-step.tsx
@@ -346,6 +352,10 @@ msgstr "MCP-Server hinzufügen"
 msgid "Add Model"
 msgstr "Modell hinzufügen"
 
+#: src/settings/models/add-provider-models.tsx
+msgid "Add models"
+msgstr ""
+
 #: src/settings/passkeys.tsx
 #~ msgid "Add passkey"
 #~ msgstr ""
@@ -375,6 +385,10 @@ msgstr "Ersten Server hinzufügen"
 msgid "Add Your First Task"
 msgstr "Erste Aufgabe hinzufügen"
 
+#: src/settings/models/add-provider-models.tsx
+msgid "Added"
+msgstr ""
+
 #. placeholder {0}: formatters.date(passkey.createdAt)
 #: src/settings/passkeys.tsx
 #~ msgid "Added {0}"
@@ -383,6 +397,7 @@ msgstr "Erste Aufgabe hinzufügen"
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/add-model-form.tsx
+#: src/settings/models/add-provider-models.tsx
 msgid "Adding…"
 msgstr "Wird hinzugefügt…"
 
@@ -487,16 +502,19 @@ msgid "Anything else you'd like to share?"
 msgstr ""
 
 #: src/components/search-provider-setup/search-provider-setup.tsx
+#: src/settings/connections/provider-connection-form.tsx
 #: src/settings/voice.tsx
 msgid "API key"
 msgstr "API-Schlüssel"
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/ai-provider-detail.tsx
 #: src/settings/models/add-model-form.tsx
-#: src/settings/models/edit-model-form.tsx
 msgid "API Key"
 msgstr "API-Schlüssel"
+
+#: src/settings/connections/provider-connection-form.tsx
+msgid "API key (optional)"
+msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 msgid "API Key (Optional)"
@@ -583,7 +601,7 @@ msgid "At this time, synced data is not encrypted. Enabling sync will store your
 msgstr "Synchronisierte Daten sind derzeit nicht verschlüsselt. Wenn Sie die Synchronisierung aktivieren, werden Ihre Daten unverschlüsselt auf unseren Servern gespeichert. Möchten Sie fortfahren?"
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/ai-provider-detail.tsx
+#: src/settings/connections/provider-connection-form.tsx
 msgid "Authorization code"
 msgstr ""
 
@@ -719,9 +737,10 @@ msgstr "Kalender"
 #: src/projects/project-create-form.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
-#: src/settings/connections/tinfoil-impact-dialog.tsx
+#: src/settings/connections/provider-connection-form.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 #: src/settings/encryption/passkey-section.tsx
+#: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
 #: src/settings/preferences.tsx
 #: src/skills/dependents-dialog.tsx
@@ -730,7 +749,6 @@ msgstr "Abbrechen"
 
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/components/provider-connection-button.tsx
-#: src/settings/connections/ai-provider-detail.tsx
 msgid "Cancel connection"
 msgstr ""
 
@@ -845,6 +863,11 @@ msgstr "Ihre Sitzung wird geprüft."
 msgid "Checking…"
 msgstr "Wird geprüft…"
 
+#: src/components/onboarding/onboarding-search-step.tsx
+#: src/settings/models/add-provider-models.tsx
+msgid "Choose a connection"
+msgstr ""
+
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Choose a model"
 msgstr ""
@@ -875,6 +898,10 @@ msgstr "Option auswählen"
 
 #: src/components/server-connection/server-connection-modal.tsx
 msgid "Choose Cloud or Enterprise to connect your account."
+msgstr ""
+
+#: src/settings/models/add-provider-models.tsx
+msgid "Choose from available models"
 msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
@@ -944,8 +971,8 @@ msgid "Clear Local Database?"
 msgstr "Lokale Datenbank löschen?"
 
 #: src/settings/models/edit-model-form.tsx
-msgid "Clear saved API key"
-msgstr "Gespeicherten API-Schlüssel löschen"
+#~ msgid "Clear saved API key"
+#~ msgstr "Gespeicherten API-Schlüssel löschen"
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Clear saved credential"
@@ -1043,6 +1070,10 @@ msgstr "Befehlspalette"
 msgid "Complete {taskItem}"
 msgstr "{taskItem} abschließen"
 
+#: src/settings/connections/provider-connection-form.tsx
+msgid "Complete connection"
+msgstr ""
+
 #: src/tasks/index.tsx
 msgid "Complete new task"
 msgstr "Neue Aufgabe abschließen"
@@ -1081,11 +1112,10 @@ msgid "Confirm this code matches the one in your terminal."
 msgstr "Bestätigen Sie, dass dieser Code mit dem in Ihrem Terminal übereinstimmt."
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/ai-provider-detail.tsx
 msgid "Connect"
 msgstr ""
 
-#: src/settings/connections/ai-provider-detail.tsx
+#: src/settings/connections/provider-connection-form.tsx
 msgid "Connect {name}"
 msgstr ""
 
@@ -1124,6 +1154,15 @@ msgstr "Google verbinden"
 msgid "Connect Microsoft"
 msgstr "Microsoft verbinden"
 
+#: src/settings/connections/connections-list.tsx
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Connect on this device"
+msgstr ""
+
+#: src/settings/search/index.tsx
+msgid "Connect or enable this connection to use search"
+msgstr ""
+
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Connect Otari"
 msgstr ""
@@ -1133,7 +1172,11 @@ msgstr ""
 #~ msgstr ""
 
 #: src/settings/search/index.tsx
-msgid "Connect Otari in Connections and enable web search in your Otari workspace."
+#~ msgid "Connect Otari in Connections and enable web search in your Otari workspace."
+#~ msgstr ""
+
+#: src/settings/models/add-provider-models.tsx
+msgid "Connect this provider on this device to add models."
 msgstr ""
 
 #: src/components/server-connection/server-connection-form.tsx
@@ -1160,13 +1203,17 @@ msgstr ""
 msgid "Connect to your server"
 msgstr ""
 
-#: src/settings/connections/ai-provider-detail.tsx
-msgid "Connect with a paid Tinfoil subscription."
+#: src/settings/connections/provider-connection-form.tsx
+msgid "Connect with"
 msgstr ""
 
+#: src/settings/connections/ai-provider-detail.tsx
+#~ msgid "Connect with a paid Tinfoil subscription."
+#~ msgstr ""
+
 #: src/settings/search/index.tsx
-msgid "Connect with your own API key"
-msgstr ""
+#~ msgid "Connect with your own API key"
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Connect your account"
@@ -1192,9 +1239,8 @@ msgstr "Verbinden Sie Ihre eigenen MCP-Server, um Agenten mehr Tools zu geben."
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/components/sidebar-footer.tsx
-#: src/settings/connections/ai-provider-detail.tsx
 #: src/settings/connections/mcp-server-detail.tsx
-#: src/settings/connections/otari-provider-detail.tsx
+#: src/settings/connections/provider-connection-detail.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected"
 msgstr "Verbunden"
@@ -1237,8 +1283,8 @@ msgid "Connected!"
 msgstr "Verbunden!"
 
 #: src/settings/search/index.tsx
-msgid "Connecting this provider replaces your saved search API key."
-msgstr ""
+#~ msgid "Connecting this provider replaces your saved search API key."
+#~ msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Connecting to {agentName}…"
@@ -1256,6 +1302,8 @@ msgid "Connecting…"
 msgstr "Verbindung wird hergestellt…"
 
 #: src/components/settings/agents/agent-detail.tsx
+#: src/settings/models/add-provider-models.tsx
+#: src/settings/models/model-detail.tsx
 msgid "Connection"
 msgstr "Verbindung"
 
@@ -1265,6 +1313,10 @@ msgstr ""
 
 #: src/lib/otari-browser-auth.ts
 msgid "Connection cancelled. You can connect to Otari whenever you're ready."
+msgstr ""
+
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Connection disabled"
 msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
@@ -1289,6 +1341,10 @@ msgstr "Verbindungsproblem. Prüfen Sie Ihre Internetverbindung und versuchen Si
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Connection successful!"
 msgstr "Verbindung erfolgreich!"
+
+#: src/settings/models/model-detail.tsx
+msgid "Connection unavailable on this device."
+msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -1387,12 +1443,20 @@ msgstr "In die Zwischenablage kopieren"
 msgid "Copy URL"
 msgstr "URL kopieren"
 
+#: src/settings/models/use-add-provider-models.ts
+msgid "Could not add the models. Try again."
+msgstr ""
+
 #: src/components/set-node-id-dialog.tsx
 msgid "Could not bind the pairing code"
 msgstr "Der Kopplungscode konnte nicht gebunden werden"
 
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
+msgstr ""
+
+#: src/providers/use-provider-authorization.ts
+msgid "Could not connect this provider. Please try again."
 msgstr ""
 
 #: src/lib/openrouter-auth.ts
@@ -1457,6 +1521,11 @@ msgstr ""
 msgid "Could not load the provider's model list. Please try again."
 msgstr ""
 
+#: src/settings/models/use-add-provider-models.ts
+#: src/settings/models/use-edit-model-form-state.ts
+msgid "Could not load this connection's models. Try again."
+msgstr ""
+
 #: src/hooks/use-external-link-dialog.ts
 msgid "Could not open link. Please try again or copy the URL."
 msgstr "Link konnte nicht geöffnet werden. Bitte versuchen Sie es erneut oder kopieren Sie die URL."
@@ -1477,6 +1546,10 @@ msgstr "Die Importdatei konnte nicht gelesen werden."
 msgid "Could not render pairing code."
 msgstr "Der Kopplungscode konnte nicht angezeigt werden."
 
+#: src/settings/connections/use-provider-connection-form.ts
+msgid "Could not save the connection. Try again."
+msgstr ""
+
 #: src/components/otari-connection/use-otari-connection-state.ts
 #~ msgid "Could not save the Otari model. Please try again."
 #~ msgstr ""
@@ -1494,8 +1567,12 @@ msgid "Could not save your preference. Please try again."
 msgstr ""
 
 #: src/settings/connections/use-ai-provider-connections.ts
-msgid "Could not update the provider connection. Try again."
+msgid "Could not update the connection. Try again."
 msgstr ""
+
+#: src/settings/connections/use-ai-provider-connections.ts
+#~ msgid "Could not update the provider connection. Try again."
+#~ msgstr ""
 
 #: src/components/otari-connection/use-otari-connection-state.ts
 msgid "Could not verify or save the Otari model. Please try again."
@@ -1713,6 +1790,10 @@ msgstr "Wird erstellt…"
 msgid "Credential (optional)"
 msgstr "Anmeldedaten (optional)"
 
+#: src/settings/connections/provider-connection-form.tsx
+msgid "Credentials stay on this device."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Currency"
 msgstr "Währung"
@@ -1730,6 +1811,7 @@ msgid "Custom — OpenAI-compatible endpoint"
 msgstr "Benutzerdefiniert – OpenAI-kompatibler Endpunkt"
 
 #: src/components/otari-connection/otari-connection.tsx
+#: src/settings/connections/provider-connection-form.tsx
 msgid "Custom URL"
 msgstr ""
 
@@ -1979,6 +2061,13 @@ msgstr "QR-Code zur Gerätekopplung"
 msgid "Devices"
 msgstr "Geräte"
 
+#. placeholder {0}: connection.name
+#. placeholder {0}: provider.name
+#: src/settings/connections/connections-list.tsx
+#: src/settings/search/index.tsx
+msgid "Disable {0}"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Disable {customAgentName}"
 msgstr "{customAgentName} deaktivieren"
@@ -1992,8 +2081,8 @@ msgid "Disable {modelName}"
 msgstr "{modelName} deaktivieren"
 
 #: src/settings/search/index.tsx
-msgid "Disable {name}"
-msgstr ""
+#~ msgid "Disable {name}"
+#~ msgstr ""
 
 #: src/skills/library-row.tsx
 msgid "Disable {skillName}"
@@ -2016,12 +2105,12 @@ msgid "Disable Telemetry"
 msgstr "Telemetrie deaktivieren"
 
 #: src/settings/connections/tinfoil-impact-dialog.tsx
-msgid "Disable Tinfoil"
-msgstr ""
+#~ msgid "Disable Tinfoil"
+#~ msgstr ""
 
 #: src/settings/connections/tinfoil-impact-dialog.tsx
-msgid "Disable Tinfoil?"
-msgstr ""
+#~ msgid "Disable Tinfoil?"
+#~ msgstr ""
 
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/connections/mcp-server-detail.tsx
@@ -2040,26 +2129,32 @@ msgstr "Verwerfen"
 
 #: src/components/provider-connection-button.tsx
 #: src/components/search-provider-setup/search-provider-setup.tsx
-#: src/settings/connections/ai-provider-detail.tsx
 #: src/settings/connections/integration-detail.tsx
-#: src/settings/connections/otari-provider-detail.tsx
 msgid "Disconnect"
 msgstr "Verbindung trennen"
 
-#: src/settings/connections/tinfoil-impact-dialog.tsx
-msgid "Disconnect Tinfoil"
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Disconnect this device"
 msgstr ""
 
 #: src/settings/connections/tinfoil-impact-dialog.tsx
-msgid "Disconnect Tinfoil?"
-msgstr ""
+#~ msgid "Disconnect Tinfoil"
+#~ msgstr ""
+
+#: src/settings/connections/tinfoil-impact-dialog.tsx
+#~ msgid "Disconnect Tinfoil?"
+#~ msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Disconnected"
 msgstr "Getrennt"
 
 #: src/settings/connections/ai-provider-detail.tsx
-msgid "Disconnecting does not cancel your subscription."
+#~ msgid "Disconnecting does not cancel your subscription."
+#~ msgstr ""
+
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Disconnecting keeps your models and connection settings."
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
@@ -2155,6 +2250,10 @@ msgstr "z. B. GPT-4 Turbo"
 msgid "e.g., gpt-4-turbo-preview"
 msgstr "z. B. gpt-4-turbo-preview"
 
+#: src/settings/models/add-provider-models.tsx
+msgid "e.g., llama3.3"
+msgstr ""
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Early Access Login"
 msgstr "Anmeldung für den Early Access"
@@ -2210,6 +2309,11 @@ msgstr "E-Mail"
 msgid "Email address"
 msgstr "E-Mail-Adresse"
 
+#. placeholder {0}: provider.name
+#: src/settings/connections/connections-list.tsx
+msgid "Enable {0}"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Enable {customAgentName}"
 msgstr "{customAgentName} aktivieren"
@@ -2235,8 +2339,8 @@ msgid "Enable cloud sync"
 msgstr "Cloud-Synchronisierung aktivieren"
 
 #: src/settings/search/index.tsx
-msgid "Enable or reconnect Tinfoil in Connections to use this provider."
-msgstr ""
+#~ msgid "Enable or reconnect Tinfoil in Connections to use this provider."
+#~ msgstr ""
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "Enable sync without encryption"
@@ -2249,6 +2353,10 @@ msgstr "Synchronisierung aktivieren?"
 #: src/components/telemetry-required-modal.tsx
 msgid "Enable Telemetry"
 msgstr "Telemetrie aktivieren"
+
+#: src/settings/models/add-provider-models.tsx
+msgid "Enable this connection to add models."
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Enabled"
@@ -2273,6 +2381,10 @@ msgstr "Endpunkt"
 #: src/components/device-approval.tsx
 msgid "Enter a different code"
 msgstr "Anderen Code eingeben"
+
+#: src/settings/models/add-provider-models.tsx
+msgid "Enter a model ID"
+msgstr ""
 
 #: src/components/otari-connection/use-otari-connection-state.ts
 msgid "Enter a valid HTTPS server URL, or an HTTP localhost URL for local development."
@@ -2339,12 +2451,16 @@ msgid "Exa provides search and page content through Tinfoil’s encrypted connec
 msgstr ""
 
 #: src/settings/search/index.tsx
-msgid "Exa search through Tinfoil"
-msgstr ""
+#~ msgid "Exa search through Tinfoil"
+#~ msgstr ""
 
 #: src/settings/search/index.tsx
 #~ msgid "Exa search through your Tinfoil subscription"
 #~ msgstr ""
+
+#: src/components/onboarding/onboarding-search-step.tsx
+msgid "Existing connection"
+msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
@@ -2482,7 +2598,6 @@ msgid "Failed to update the model."
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/ai-provider-detail.tsx
 msgid "Finish connecting in your browser, then paste the authorization code here."
 msgstr ""
 
@@ -2649,6 +2764,14 @@ msgstr "QR-Code für {deviceName} ausblenden"
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
 msgstr "Wie {appName} Sie anspricht"
+
+#: src/settings/connections/provider-connection-form.tsx
+msgid "http://localhost:11434/v1"
+msgstr ""
+
+#: src/settings/connections/provider-connection-form.tsx
+msgid "http://localhost:8099"
+msgstr ""
 
 #: src/components/otari-connection/otari-connection.tsx
 msgid "https://otari.example.com"
@@ -2823,8 +2946,8 @@ msgid "Keep editing"
 msgstr "Weiter bearbeiten"
 
 #: src/settings/models/edit-model-form.tsx
-msgid "Keep saved API key"
-msgstr "Gespeicherten API-Schlüssel behalten"
+#~ msgid "Keep saved API key"
+#~ msgstr "Gespeicherten API-Schlüssel behalten"
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Keep saved credential"
@@ -2917,6 +3040,7 @@ msgid "Loading emoji…"
 msgstr "Emojis werden geladen…"
 
 #: src/components/otari-connection/otari-connection.tsx
+#: src/settings/models/add-provider-models.tsx
 msgid "Loading models…"
 msgstr ""
 
@@ -2972,19 +3096,28 @@ msgstr "Abmeldung…"
 msgid "Mainly clear"
 msgstr "Überwiegend klar"
 
+#: src/settings/models/model-detail.tsx
 #: src/settings/search/index.tsx
 msgid "Manage connection"
+msgstr ""
+
+#: src/settings/models/add-provider-models.tsx
+msgid "Manage connections"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Manage integrations"
 msgstr "Integrationen verwalten"
 
-#: src/settings/connections/otari-provider-detail.tsx
+#: src/settings/connections/provider-connection-detail.tsx
 msgid "Manage models"
 msgstr ""
 
-#: src/settings/connections/ai-provider-detail.tsx
+#: src/settings/models/edit-model-form.tsx
+msgid "Manage provider connection"
+msgstr ""
+
+#: src/settings/connections/provider-connection-detail.tsx
 msgid "Manage subscription"
 msgstr ""
 
@@ -2999,6 +3132,10 @@ msgstr "Karten können hier nicht angezeigt werden – WebGL ist in diesem Brows
 #: src/components/window-controls.tsx
 msgid "Maximize"
 msgstr "Maximieren"
+
+#: src/settings/connections/new-connection-picker.tsx
+msgid "MCP server"
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
@@ -3044,6 +3181,10 @@ msgstr "Fehlender CSRF-State — starten Sie die Autorisierung neu."
 msgid "Model"
 msgstr "Modell"
 
+#: src/settings/models/add-provider-models.tsx
+msgid "Model ID"
+msgstr ""
+
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
 #~ msgstr "Modell ist möglicherweise nicht kompatibel"
@@ -3056,9 +3197,15 @@ msgstr "Ein Modellname ist erforderlich."
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
+#: src/settings/connections/new-connection-picker.tsx
+#: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
 msgid "Models"
 msgstr "Modelle"
+
+#: src/settings/connections/new-connection-picker.tsx
+msgid "Models and search"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Moderate drizzle"
@@ -3118,6 +3265,8 @@ msgstr "Mein Agent"
 #: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
+#: src/settings/connections/provider-connection-detail.tsx
+#: src/settings/connections/provider-connection-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Name"
@@ -3166,6 +3315,7 @@ msgstr "Neuer Chat"
 #~ msgstr "Neuer Chat in diesem Projekt"
 
 #: src/settings/connections/connections-list.tsx
+#: src/settings/connections/index.tsx
 msgid "New Connection"
 msgstr "Neue Verbindung"
 
@@ -3265,6 +3415,10 @@ msgstr "Keine passenden Skills"
 msgid "No matching skills."
 msgstr "Keine passenden Skills."
 
+#: src/settings/models/add-provider-models.tsx
+msgid "No model providers connected."
+msgstr ""
+
 #: src/components/otari-connection/use-otari-connection-state.ts
 #~ msgid "No models are available in this Otari workspace. Add a provider in Otari first."
 #~ msgstr ""
@@ -3283,6 +3437,7 @@ msgstr "Keine Modelle gefunden"
 
 #: src/components/otari-connection/otari-connection.tsx
 #: src/settings/models/add-model-form.tsx
+#: src/settings/models/add-provider-models.tsx
 #: src/settings/models/edit-model-form.tsx
 msgid "No models found."
 msgstr "Keine Modelle gefunden."
@@ -3437,6 +3592,13 @@ msgstr "OneDrive-Zugriff"
 msgid "Only available in private chats."
 msgstr "Nur in privaten Chats verfügbar."
 
+#. placeholder {0}: connection.name
+#. placeholder {0}: existingSignIn.name
+#: src/settings/connections/provider-connection-form.tsx
+#: src/settings/search/index.tsx
+msgid "Open {0}"
+msgstr ""
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
 msgstr "Öffnen Sie {appName} auf einem Ihrer vertrauenswürdigen Geräte und gehen Sie zu Einstellungen → Geräte, um dieses Gerät zu genehmigen."
@@ -3446,8 +3608,8 @@ msgid "Open {modelName}"
 msgstr "{modelName} öffnen"
 
 #: src/settings/search/index.tsx
-msgid "Open {name}"
-msgstr ""
+#~ msgid "Open {name}"
+#~ msgstr ""
 
 #: src/skills/library-row.tsx
 msgid "Open {skillName}"
@@ -3514,6 +3676,10 @@ msgstr ""
 msgid "Open the store to check for updates."
 msgstr "Öffnen Sie den Store, um nach Updates zu suchen."
 
+#: src/settings/search/index.tsx
+msgid "Open Thunderbolt"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Open Thunderbolt CLI"
 msgstr "Thunderbolt CLI öffnen"
@@ -3523,7 +3689,6 @@ msgid "Opening…"
 msgstr "Wird geöffnet…"
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/use-ai-provider-connections.ts
 msgid "OpenRouter"
 msgstr ""
 
@@ -3575,8 +3740,6 @@ msgid "Organize chats with projects."
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/otari-provider-detail.tsx
-#: src/settings/connections/use-ai-provider-connections.ts
 msgid "Otari"
 msgstr ""
 
@@ -3718,8 +3881,8 @@ msgid "Please wait while we verify your link."
 msgstr "Bitte warten Sie, während wir Ihren Link überprüfen."
 
 #: src/settings/connections/tinfoil-impact-dialog.tsx
-msgid "Please wait…"
-msgstr ""
+#~ msgid "Please wait…"
+#~ msgstr ""
 
 #: src/settings/voice.tsx
 msgid "Point at any server exposing /v1/audio/transcriptions and /v1/audio/speech. Its CORS must allow this app’s origin."
@@ -3861,8 +4024,8 @@ msgid "Recents"
 msgstr ""
 
 #: src/settings/connections/ai-provider-detail.tsx
-msgid "Reconnect {name}"
-msgstr ""
+#~ msgid "Reconnect {name}"
+#~ msgstr ""
 
 #: src/hooks/use-sync-setup.ts
 msgid "Recovery failed"
@@ -3877,6 +4040,7 @@ msgid "Refresh keys and retry"
 msgstr ""
 
 #: src/components/otari-connection/otari-connection.tsx
+#: src/settings/models/add-provider-models.tsx
 msgid "Refresh models"
 msgstr ""
 
@@ -4099,9 +4263,17 @@ msgstr "Änderungen speichern"
 msgid "Save Changes"
 msgstr "Änderungen speichern"
 
+#: src/settings/connections/provider-connection-form.tsx
+msgid "Save connection"
+msgstr ""
+
 #: src/settings/connections/index.tsx
 msgid "Save failed"
 msgstr "Speichern fehlgeschlagen"
+
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Save name"
+msgstr ""
 
 #: src/app.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
@@ -4137,6 +4309,7 @@ msgstr "Nach unten scrollen"
 #: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/search-palette.tsx
+#: src/settings/connections/new-connection-picker.tsx
 #: src/settings/search/index.tsx
 msgid "Search"
 msgstr "Suchen"
@@ -4173,6 +4346,10 @@ msgstr "Chats suchen…"
 msgid "Search connections"
 msgstr "Verbindungen suchen"
 
+#: src/settings/models/add-provider-models.tsx
+msgid "Search connections…"
+msgstr ""
+
 #: src/settings/preferences.tsx
 #~ msgid "Search currencies..."
 #~ msgstr ""
@@ -4193,12 +4370,17 @@ msgstr "Nach einem Befehl suchen…"
 msgid "Search locations…"
 msgstr "Orte suchen…"
 
+#: src/settings/models/add-provider-models.tsx
+msgid "Search models"
+msgstr ""
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Search Models"
 msgstr "Modelle suchen"
 
 #: src/components/otari-connection/otari-connection.tsx
 #: src/settings/models/add-model-form.tsx
+#: src/settings/models/add-provider-models.tsx
 #: src/settings/models/edit-model-form.tsx
 msgid "Search models…"
 msgstr "Modelle suchen…"
@@ -4213,7 +4395,11 @@ msgid "Search provider"
 msgstr ""
 
 #: src/lib/tools.ts
-msgid "Search provider changed or was disconnected. Start a new turn to use the current provider."
+#~ msgid "Search provider changed or was disconnected. Start a new turn to use the current provider."
+#~ msgstr ""
+
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Search settings"
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -4226,7 +4412,11 @@ msgid "Search tasks…"
 msgstr "Aufgaben suchen…"
 
 #: src/settings/search/index.tsx
-msgid "Search through your Otari workspace"
+#~ msgid "Search through your Otari workspace"
+#~ msgstr ""
+
+#: src/settings/search/index.tsx
+msgid "Search uses this connection’s API key. Manage its credentials in Connections."
 msgstr ""
 
 #: src/components/ui/combobox.tsx
@@ -4353,6 +4543,7 @@ msgstr "Der Server hat mit Status {status} {statusText} geantwortet"
 
 #: src/settings/connections/mcp-server-detail.tsx
 #: src/settings/connections/mcp-server-form.tsx
+#: src/settings/connections/provider-connection-form.tsx
 msgid "Server URL"
 msgstr "Server-URL"
 
@@ -4481,6 +4672,7 @@ msgstr "Erneut anmelden"
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
+#: src/settings/connections/provider-connection-form.tsx
 msgid "Sign in"
 msgstr "Anmelden"
 
@@ -4516,7 +4708,6 @@ msgid "Sign in to connect Otari."
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/ai-provider-detail.tsx
 msgid "Sign in to connect your account."
 msgstr ""
 
@@ -5094,6 +5285,10 @@ msgstr ""
 msgid "This model doesn't support tools."
 msgstr ""
 
+#: src/settings/models/add-provider-models.tsx
+msgid "This model has already been added."
+msgstr ""
+
 #: src/chats/chat-instance.ts
 msgid "This model no longer matches the conversation’s privacy setting."
 msgstr ""
@@ -5182,12 +5377,12 @@ msgid "This will deny the device access to your encrypted data. The device will 
 msgstr "Damit wird dem Gerät der Zugriff auf Ihre verschlüsselten Daten verweigert. Das Gerät muss die Synchronisierung erneut einrichten."
 
 #: src/settings/connections/tinfoil-impact-dialog.tsx
-msgid "This will disable the models and Exa search provided by this Tinfoil connection. You can enable it again without signing in."
-msgstr ""
+#~ msgid "This will disable the models and Exa search provided by this Tinfoil connection. You can enable it again without signing in."
+#~ msgstr ""
 
 #: src/settings/connections/tinfoil-impact-dialog.tsx
-msgid "This will disconnect your Tinfoil account and disable the models and Exa search provided by this connection. You’ll need to reconnect to use them again."
-msgstr ""
+#~ msgid "This will disconnect your Tinfoil account and disable the models and Exa search provided by this connection. You’ll need to reconnect to use them again."
+#~ msgstr ""
 
 #. placeholder {0}: dialog.project.name
 #: src/projects/project-badge.tsx
@@ -5275,7 +5470,6 @@ msgid "Time Format"
 msgstr "Zeitformat"
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/use-ai-provider-connections.ts
 msgid "Tinfoil"
 msgstr ""
 
@@ -5296,8 +5490,8 @@ msgid "Tinfoil search encryption keys changed. Try again."
 msgstr ""
 
 #: src/integrations/tinfoil-search/connection.ts
-msgid "Tinfoil search is no longer connected or enabled."
-msgstr ""
+#~ msgid "Tinfoil search is no longer connected or enabled."
+#~ msgstr ""
 
 #: src/integrations/tinfoil-search/attested-fetch.ts
 msgid "Tinfoil search refused an unencrypted request."
@@ -5482,6 +5676,10 @@ msgstr "Chat ohne Titel"
 msgid "Up late?"
 msgstr "Noch wach?"
 
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Update credentials"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Update Defaults?"
 msgstr "Standardwerte aktualisieren?"
@@ -5531,7 +5729,6 @@ msgid "Upload file"
 msgstr "Datei hochladen"
 
 #: src/settings/models/add-model-form.tsx
-#: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
 msgid "URL"
 msgstr "URL"
@@ -5542,13 +5739,17 @@ msgstr "URL"
 #~ msgstr "Für benutzerdefinierte Anbieter ist eine URL erforderlich"
 
 #: src/settings/models/use-add-model-form.ts
-#: src/settings/models/use-edit-model-form-state.ts
 msgid "URL is required for this provider"
 msgstr ""
 
+#. placeholder {0}: connection.name
 #: src/settings/search/index.tsx
-msgid "Use {name}"
+msgid "Use {0}"
 msgstr ""
+
+#: src/settings/search/index.tsx
+#~ msgid "Use {name}"
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 #~ msgid "Use a server for sign-in, sync, and cloud features."
@@ -5560,7 +5761,6 @@ msgstr ""
 #~ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/ai-provider-detail.tsx
 msgid "Use an API key instead"
 msgstr ""
 
@@ -5589,7 +5789,6 @@ msgid "Use passkey"
 msgstr "Passkey verwenden"
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/ai-provider-detail.tsx
 msgid "Use sign-in instead"
 msgstr ""
 
@@ -5615,6 +5814,10 @@ msgstr ""
 
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Use this model"
+msgstr ""
+
+#: src/settings/search/index.tsx
+msgid "Use Thunderbolt"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -6004,8 +6207,8 @@ msgid "Your AI assistant will use this name to address you personally."
 msgstr "Ihr KI-Assistent nutzt diesen Namen, um Sie persönlich anzusprechen."
 
 #: src/settings/search/index.tsx
-msgid "Your API key"
-msgstr ""
+#~ msgid "Your API key"
+#~ msgstr ""
 
 #: src/components/search-provider-setup/search-provider-setup.tsx
 msgid "Your API key stays on this device."
@@ -6041,8 +6244,8 @@ msgstr "Ihre Chats und Einstellungen bleiben für das nächste Mal auf diesem Ge
 #~ msgstr "Ihre Chats und Einstellungen bleiben für die Offline-Nutzung auf diesem Gerät."
 
 #: src/settings/connections/ai-provider-detail.tsx
-msgid "Your connection has expired. Reconnect to continue."
-msgstr ""
+#~ msgid "Your connection has expired. Reconnect to continue."
+#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"

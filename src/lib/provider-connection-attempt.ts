@@ -5,6 +5,7 @@
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { TinfoilCredentials } from './tinfoil-auth'
+import { connectionFingerprint, getProviderConnectionRevision } from '@/providers/revision'
 
 type Provider = 'openrouter' | 'tinfoil' | 'otari'
 export type ProviderConnectionAttempt = { provider: Provider; revision: string }
@@ -18,9 +19,15 @@ export const getProviderConnectionAttempt = async (
   db: AnyDrizzleDatabase,
   provider: Provider,
 ): Promise<ProviderConnectionAttempt> => {
+  const revision = await getProviderConnectionRevision(db, `oauth:${provider}`)
+  if (revision) {
+    return { provider, revision }
+  }
   const row = await getIntegrationCredentials(db, provider)
-  // Legacy sessions have no generation; their snapshot still detects disconnects.
-  return { provider, revision: row?.credentials.sessionRevision ?? JSON.stringify(row) }
+  const legacy = row?.credentials.sessionRevision
+    ? { revision: row.credentials.sessionRevision, enabled: row.enabled }
+    : row
+  return { provider, revision: await connectionFingerprint(legacy) }
 }
 
 /** Reject results superseded by another window's disconnect, toggle, or connection. */

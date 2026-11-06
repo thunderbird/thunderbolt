@@ -42,6 +42,7 @@
  * adapter's teardown (agent delete / config edit / sign-out).
  */
 
+import { bindModelProvider } from '@/providers/model-connection'
 import {
   aiFetchStreamingResponse,
   prepareAiRequestConfig,
@@ -358,7 +359,7 @@ export const resolvePiModel = async (
   profile: ModelProfile | null,
   options: TinfoilClientOptions = {},
 ): Promise<ResolvedPiModel | null> => {
-  const model = context.selectedModel
+  const { model, wrapFetch } = await bindModelProvider(context.selectedModel)
   const thinkingLevel = deriveThinkingLevel(profile)
   // Pi strips image blocks from text-only descriptors. Only models known not to
   // read images are text-only: the composer checks an unknown model before an
@@ -440,7 +441,7 @@ export const resolvePiModel = async (
       context.telemetry,
     )
     const evictClient = options.evictUserTinfoilClient ?? evictUserTinfoilClient
-    const fetch: PiModelDescriptor['fetch'] = async (input, init) => {
+    const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       // Long-running agent turns can outlive an access token. Refresh before each
       // encrypted request, not just when building the harness at turn start.
       const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
@@ -457,7 +458,7 @@ export const resolvePiModel = async (
         modelId: model.model,
         baseURL: client.getBaseURL()!,
         apiKey,
-        fetch,
+        fetch: wrapFetch(Object.assign(fetch, { preconnect: async () => false })),
         reasoning: hasExplicitReasoning(profile),
         contextWindow: model.contextWindow ?? undefined,
         supportsImages,
@@ -475,7 +476,7 @@ export const resolvePiModel = async (
         kind: 'anthropic',
         modelId: model.model,
         apiKey: model.apiKey ?? '',
-        fetch: createLiveProxyFetch(context.getProxyFetch),
+        fetch: wrapFetch(createLiveProxyFetch(context.getProxyFetch)),
       },
       thinkingLevel,
     }
@@ -514,7 +515,7 @@ export const resolvePiModel = async (
       modelId: model.model,
       baseURL: connection.baseURL,
       apiKey: connection.apiKey,
-      fetch: connection.fetch,
+      fetch: wrapFetch(connection.fetch),
       reasoning: hasExplicitReasoning(profile),
       contextWindow: model.contextWindow ?? undefined,
       supportsImages,

@@ -833,6 +833,7 @@ for (const [target, model, name] of [
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()).toEqual({
       ...edited,
+      providerConnectionId: null,
       model: target.model,
     })
   })
@@ -862,6 +863,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
+      providerConnectionId: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
   })
@@ -887,6 +889,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...customizedLegacy,
+      providerConnectionId: null,
       model: defaultModelOpus55.model,
     })
   })
@@ -909,6 +912,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
+      providerConnectionId: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
     expect(
@@ -933,6 +937,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
+      providerConnectionId: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
     expect(

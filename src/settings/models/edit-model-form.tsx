@@ -4,6 +4,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { X } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -14,7 +15,6 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { StatusCard } from '@/components/ui/status-card'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
-import { providerRequiresUrl } from './model-policy'
 import { SupportsToolsSwitch } from './supports-tools-switch'
 import { useEditModelFormState, type EditModelSubmission } from './use-edit-model-form-state'
 
@@ -83,60 +83,20 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
             </FormItem>
           )}
         />
-        {providerRequiresUrl(model.provider) && (
-          <FormField
-            control={state.form.control}
-            name="url"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  <Trans>URL</Trans>
-                </FormLabel>
-                <FormControl>
-                  <Input {...field} className="rounded-lg" onChange={(event) => state.changeUrl(event.target.value)} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-        {model.provider !== 'thunderbolt' && !model.oauthProvider && (
-          <FormField
-            control={state.form.control}
-            name="apiKey"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  <Trans>API Key</Trans>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    type="password"
-                    {...field}
-                    onChange={(event) => state.changeApiKey(event.target.value)}
-                    placeholder={model.apiKey ? '••••••••••••••••' : 'sk-...'}
-                    className="rounded-lg"
-                  />
-                </FormControl>
-                {model.apiKey && (
-                  <Button type="button" variant="ghost" className="mt-1" onClick={state.toggleClearApiKey}>
-                    {state.apiKeyEdit.kind === 'clear' ? (
-                      <Trans>Keep saved API key</Trans>
-                    ) : (
-                      <Trans>Clear saved API key</Trans>
-                    )}
-                  </Button>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+        {model.providerConnectionId && (
+          <Link
+            to="/settings/connections"
+            state={{ providerConnectionId: model.providerConnectionId }}
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            <Trans>Manage provider connection</Trans>
+          </Link>
         )}
         <ConnectionTestSection
           provider={model.provider}
           model={state.watchedModel}
-          apiKey={state.effectiveApiKey}
-          hasOAuth={Boolean(model.oauthProvider)}
+          apiKey={undefined}
+          hasOAuth={Boolean(model.providerConnectionId || model.oauthProvider)}
           isTesting={state.connection.isTesting}
           onTest={state.testConnection}
           status={state.connection.status}
@@ -159,7 +119,12 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
         )}
         <FormFooter>
           <ResponsiveModalCancel onClick={onCancel} />
-          <Button type="submit" isLoading={isPending} loadingLabel={t`Saving…`} disabled={state.isSaveDisabled}>
+          <Button
+            type="submit"
+            isLoading={isPending}
+            loadingLabel={t`Saving…`}
+            disabled={isPending || state.isSaveDisabled}
+          >
             <Trans>Save</Trans>
           </Button>
         </FormFooter>

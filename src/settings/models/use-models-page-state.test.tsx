@@ -20,11 +20,7 @@ const MutationHarness = ({ id }: { id: string }) => {
     <>
       <button onClick={() => page.toggleModel(id, false)}>disable</button>
       <button onClick={() => page.toggleModel(id, true)}>enable</button>
-      <button
-        onClick={() => page.submitEdit({ id, name: 'Edited', model: 'new-model', apiKey: 'new-key', toolUsage: 0 })}
-      >
-        edit
-      </button>
+      <button onClick={() => page.submitEdit({ id, name: 'Edited', model: 'new-model', toolUsage: 0 })}>edit</button>
       <button onClick={() => page.requestDelete(id)}>delete</button>
       <button onClick={page.confirmDelete}>confirm</button>
       <button onClick={() => page.resetModel(id)}>reset</button>
@@ -68,14 +64,14 @@ describe('model settings update active chat availability', () => {
     expect(useChatStore.getState().models.map((model) => model.id)).toEqual(['editable'])
   })
 
-  it('refreshes credentials and tool preferences in already open chats', async () => {
+  it('refreshes model and tool preferences without changing provider credentials', async () => {
     renderWithReactivity(<MutationHarness id="editable" />, { tables: ['models'] })
     await click('edit')
     expect(useChatStore.getState().models[0]).toMatchObject({
       id: 'editable',
       name: 'Edited',
       model: 'new-model',
-      apiKey: 'new-key',
+      apiKey: 'old-key',
       toolUsage: 0,
     })
   })

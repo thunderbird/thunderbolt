@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { t } from '@lingui/core/macro'
 import { renderHtmlTool } from '@/artifacts/render-html-tool'
 import type { HttpClient } from '@/contexts'
 import { getIntegrationStatus, getSettings } from '@/dal'
@@ -13,10 +12,8 @@ import { createConfigs as createGoogleConfigs } from '@/integrations/google/tool
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
 import { createConfigs as createWebSearchTools } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
-import { getTinfoilSearchAvailability, getTinfoilSearchConnection } from '@/integrations/tinfoil-search/connection'
-import { getOtariSearchAvailability, getOtariSearchConnection } from '@/integrations/otari-search/connection'
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
-import { createStandaloneWebApi } from '@/integrations/standalone-search/api'
+import { getSearchConnectionApi } from '@/integrations/standalone-search/connection'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
 import { hasServerAuthentication } from '@/lib/provider-mode'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
@@ -26,40 +23,26 @@ import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { tool, type Tool } from 'ai'
 
-/** Construction-time snapshot of the settings and connections that gate which tools are exposed. */
+/** Construction-time snapshot of the settings and connection that gate exposed tools. */
 export type ToolAvailabilityContext = {
-  tinfoilSearchApi?: WebToolApi
-  tinfoilConfigured?: boolean
-  otariSearchApi?: WebToolApi
-  otariConfigured?: boolean
+  searchConnectionId?: string
+  searchApi?: WebToolApi
   settings: { experimentalFeatureTasks: boolean; integrationsProIsEnabled: boolean }
   integrationStatus: Awaited<ReturnType<typeof getIntegrationStatus>>
 }
 
-/** Only contacts a gateway when local settings actually select it for this turn. */
+/** Discover capabilities only for the explicitly selected connection. */
 export const loadConnectedSearchApis = async (
   db: AnyDrizzleDatabase,
-): Promise<Omit<ToolAvailabilityContext, 'settings' | 'integrationStatus'>> => {
-  const tinfoil = await getTinfoilSearchAvailability(db)
-  const otari = await getOtariSearchAvailability(db)
-  const { selection, provider, apiKey } = useSearchProviderStore.getState()
-  const selected = resolveSearchSelection(selection, {
-    custom: Boolean(provider && apiKey),
-    ...tinfoil,
-    ...otari,
-    cloud: false,
-  })
-  return {
-    tinfoilConfigured: tinfoil.tinfoilConfigured,
-    otariConfigured: otari.otariConfigured,
-    ...(selected === 'tinfoil' ? await getTinfoilSearchConnection(db) : {}),
-    ...(selected === 'otari' ? await getOtariSearchConnection(db) : {}),
+): Promise<Pick<ToolAvailabilityContext, 'searchConnectionId' | 'searchApi'>> => {
+  const { selection, connectionId } = useSearchProviderStore.getState()
+  if (selection !== 'connection' || !connectionId) {
+    return {}
   }
+  return { searchConnectionId: connectionId, searchApi: await getSearchConnectionApi(db, connectionId) }
 }
 
-/** Read the settings + integration status that gate tool availability. The hot
- *  send path (`aiFetchStreamingResponse`) already fetches both, so it injects
- *  them to avoid duplicate DB round-trips; other callers let this self-fetch. */
+/** The hot send path injects its already-loaded settings and integration status. */
 const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> => {
   const db = getDb()
   const settings = await getSettings(db, {
@@ -67,101 +50,64 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
     integrations_pro_is_enabled: false,
   })
   const integrationStatus = await getIntegrationStatus(db)
-  return {
-    settings,
-    integrationStatus,
-    ...(await loadConnectedSearchApis(db)),
-  }
+  return { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) }
 }
-
-type ReadTinfoilSearchAvailability = () => ReturnType<typeof getTinfoilSearchAvailability>
 
 export const getAvailableTools = async (
   httpClient: HttpClient,
   sourceCollector?: SourceMetadata[],
   context?: ToolAvailabilityContext,
-  readTinfoilSearchAvailability: ReadTinfoilSearchAvailability = () => getTinfoilSearchAvailability(getDb()),
-  readOtariSearchAvailability: () => ReturnType<typeof getOtariSearchAvailability> = async () =>
-    useSearchProviderStore.getState().otariConnection
-      ? getOtariSearchAvailability(getDb())
-      : { otari: false, otariConfigured: false },
 ): Promise<ToolConfig[]> => {
   const proEnabled = await hasProAccess()
   const {
     settings: { experimentalFeatureTasks, integrationsProIsEnabled },
     integrationStatus,
-    tinfoilSearchApi,
-    tinfoilConfigured,
-    otariSearchApi,
-    otariConfigured,
+    searchApi,
+    searchConnectionId,
   } = context ?? (await loadToolAvailabilityContext())
-
-  // render_html is a core capability, always available regardless of integrations.
   const baseTools: ToolConfig[] = [renderHtmlTool, ...(experimentalFeatureTasks ? Object.values(tasksTools) : [])]
-
-  const { provider, apiKey, selection } = useSearchProviderStore.getState()
+  const { selection, connectionId } = useSearchProviderStore.getState()
   const hasServer = hasServerAuthentication()
-  const shouldIncludeProTools = hasServer && proEnabled && integrationsProIsEnabled
-
   const selected = resolveSearchSelection(selection, {
-    custom: Boolean(provider && apiKey),
-    tinfoil: Boolean(tinfoilSearchApi),
-    tinfoilConfigured,
-    otari: Boolean(otariSearchApi),
-    otariConfigured,
-    cloud: shouldIncludeProTools,
+    connection: Boolean(searchApi && connectionId === searchConnectionId),
+    cloud: hasServer && proEnabled && integrationsProIsEnabled,
   })
-
-  const webApi =
-    selected === 'custom' && provider
-      ? createStandaloneWebApi(apiKey, undefined, provider)
-      : selected === 'tinfoil'
-        ? tinfoilSearchApi
-        : selected === 'otari'
-          ? otariSearchApi
-          : undefined
   if (selected) {
-    const webTools = createWebSearchTools(httpClient, sourceCollector, webApi)
+    const webTools = createWebSearchTools(
+      httpClient,
+      sourceCollector,
+      selected === 'connection' ? searchApi : undefined,
+    )
     baseTools.push(
       ...webTools.map((config) => ({
         ...config,
         execute: async (params: unknown) => {
-          // Construction fixes this turn's API and source registry; execution must still honor live provider changes.
-          const tinfoilAvailability = await readTinfoilSearchAvailability()
-          const otariAvailability = await readOtariSearchAvailability()
           const cloudEnabled =
             selected === 'cloud'
               ? (await getSettings(getDb(), { integrations_pro_is_enabled: false })).integrationsProIsEnabled
-              : shouldIncludeProTools
+              : false
           const current = useSearchProviderStore.getState()
           const currentSelection = resolveSearchSelection(current.selection, {
-            custom: Boolean(current.provider && current.apiKey),
-            ...tinfoilAvailability,
-            ...otariAvailability,
+            connection: Boolean(searchApi && current.connectionId === searchConnectionId),
             cloud: hasServerAuthentication() && proEnabled && cloudEnabled,
           })
-          if (
-            currentSelection !== selected ||
-            (selected === 'custom' && (current.provider !== provider || current.apiKey !== apiKey))
-          ) {
+          if (currentSelection !== selected) {
             throw new Error(
-              t`Search provider changed or was disconnected. Start a new turn to use the current provider.`,
+              'Search provider changed or was disconnected. Start a new turn to use the current provider.',
             )
           }
+          // Connection adapters resolve credentials on every call, enforcing disable, disconnect and rotation.
           return config.execute(params)
         },
       })),
     )
   }
-
   if (hasServer && integrationStatus.googleEnabled) {
     baseTools.push(...createGoogleConfigs(httpClient))
   }
-
   if (hasServer && integrationStatus.microsoftEnabled) {
     baseTools.push(...createMicrosoftConfigs(httpClient))
   }
-
   return baseTools
 }
 

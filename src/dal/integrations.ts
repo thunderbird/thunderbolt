@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { integrationsSecretsTable } from '../db/tables'
 import type { OAuthProvider } from '../lib/auth'
+import { readOAuthCredentials, writeOAuthCredentials } from '@/providers/credentials'
 
 type CredentialProvider = OAuthProvider | 'tinfoil' | 'openrouter' | 'otari'
 
@@ -33,6 +34,12 @@ export const getIntegrationCredentials = async (
   db: AnyDrizzleDatabase,
   provider: CredentialProvider,
 ): Promise<IntegrationRow | null> => {
+  if (provider === 'tinfoil' || provider === 'openrouter' || provider === 'otari') {
+    const connection = await readOAuthCredentials(db, provider)
+    if (connection) {
+      return connection
+    }
+  }
   const row = await db
     .select()
     .from(integrationsSecretsTable)
@@ -62,7 +69,13 @@ export const saveIntegrationCredentials = async (
   provider: CredentialProvider,
   credentials: IntegrationCredentials,
   enabled: boolean,
+  preserveEnabled = false,
 ): Promise<void> => {
+  if (provider === 'tinfoil' || provider === 'openrouter' || provider === 'otari') {
+    if (await writeOAuthCredentials(db, provider, credentials, enabled, preserveEnabled)) {
+      return
+    }
+  }
   const json = JSON.stringify(credentials)
   const existing = await db
     .select()

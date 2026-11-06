@@ -2,34 +2,41 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
+import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useDatabase } from '@/contexts'
-import { getAllModels } from '@/dal/models'
-import { useTinfoilConnection } from '@/hooks/use-tinfoil-connection'
-import { hasConfiguredTinfoilSearch, hasTinfoilSearchConnection } from '@/integrations/tinfoil-search/eligibility'
+import { getProviderConnections } from '@/dal/provider-connections'
+import { getProviderDefinition } from '@/providers/registry'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
-import { hasOtariSearchConnection } from '@/integrations/otari-search/eligibility'
+import { canSupplySearch } from './eligibility'
 
-/** Shares local-provider eligibility between search settings and passive preview routing. */
+/** Shares credential-free connection metadata between onboarding, settings and passive previews. */
 export const useSearchProviderAvailability = () => {
   const db = useDatabase()
-  const custom = useSearchProviderStore(({ provider, apiKey }) => Boolean(provider && apiKey))
-  const otariConnection = useSearchProviderStore((state) => state.otariConnection)
-  const models = usePowerSyncQuery({
-    queryKey: ['models', 'search-providers'],
-    query: toCompilableQuery(getAllModels(db)),
+  const { selection, connectionId, connectionStatus } = useSearchProviderStore()
+  const query = useQuery({
+    queryKey: ['provider-connections', 'search'],
+    query: toCompilableQuery(getProviderConnections(db)),
   })
-  const session = useTinfoilConnection()
-  const oauthAvailable = Boolean(session.data?.enabled && session.data.connected && !session.data.needsReauth)
+  const connections = (query.data ?? []).filter((connection) =>
+    getProviderDefinition(connection.provider).capabilities.includes('search'),
+  )
+  const selectedConnection = connections.find(({ id }) => id === connectionId)
+  const connectionAvailable = Boolean(selectedConnection && canSupplySearch(selectedConnection))
+  const hasSearchProvider = selection === 'connection' && connectionAvailable
+  const hasBuiltInSearch =
+    hasSearchProvider &&
+    (selectedConnection?.provider === 'tinfoil' ||
+      (selectedConnection?.provider === 'otari' &&
+        connectionStatus?.connectionId === connectionId &&
+        connectionStatus.status === 'available'))
   return {
-    custom,
-    otari: hasOtariSearchConnection(models.data ?? [], otariConnection),
-    otariConfigured: Boolean(otariConnection),
-    tinfoil: hasTinfoilSearchConnection(models.data ?? [], oauthAvailable),
-    tinfoilConfigured: hasConfiguredTinfoilSearch(models.data ?? [], Boolean(session.data)),
-    loading: models.isLoading || session.isLoading,
-    // A failed lookup must not be interpreted as permission to fall back to the server.
-    ready: models.isSuccess && session.isSuccess && !models.isFetching && !session.isFetching,
+    connections,
+    selectedConnection,
+    connectionAvailable,
+    hasSearchProvider,
+    hasBuiltInSearch,
+    loading: query.isLoading,
+    ready: query.isSuccess && !query.isFetching,
   }
 }

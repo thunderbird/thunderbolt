@@ -28,6 +28,8 @@ import {
 } from '@/lib/provider-connection-attempt'
 import { useDatabase } from '@/contexts'
 import { isMobile, isTauri } from '@/lib/platform'
+import { getModel } from '@/dal/models'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { useAddModelForm } from '@/settings/models/use-add-model-form'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import { prepareProviderDefaultModel, type OnboardingProvider } from './provider-default-model'
@@ -154,14 +156,18 @@ export const useOnboardingProviderState = (
       controller.signal.throwIfAborted()
       const values = await dependencies.prepareModel(provider, key, getProxyFetch, controller.signal)
       if (!controller.signal.aborted) {
-        await runProviderSetupStage('save', () =>
+        const saved = await runProviderSetupStage('save', () =>
           addForm.saveModel({
             ...values,
             signal: controller.signal,
-            providerAuthorization: currentAuthorization,
+            providerAuthorization: authorization,
             ...(currentAuthorization.tinfoilCredentials ? { oauthProvider: 'tinfoil' } : {}),
           }),
         )
+        const model = await getModel(db, saved.id)
+        if (provider === 'tinfoil' && model?.providerConnectionId) {
+          useSearchProviderStore.getState().configureProviderSearch(model.providerConnectionId, 'available')
+        }
       }
     } catch (error) {
       if (!controller.signal.aborted) {

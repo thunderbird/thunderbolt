@@ -4,10 +4,12 @@
 
 import type { McpServer } from '@/types'
 import type { AddServerMode } from './mcp-server-form'
+import type { ProviderType } from '@/providers/types'
 
 export type ConnectionSelection =
-  | { kind: 'integration' | 'server'; id: string }
-  | { kind: 'provider'; id: 'openrouter' | 'tinfoil' | 'otari' }
+  | { kind: 'integration' | 'server' | 'provider'; id: string }
+  | { kind: 'new'; id: '' }
+  | { kind: 'add-provider'; id: ProviderType }
   | null
 
 export type ConnectionsPageState = {

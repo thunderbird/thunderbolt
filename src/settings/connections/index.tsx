@@ -26,7 +26,6 @@ import { getAuthToken } from '@/lib/auth-token'
 import { deriveOAuthCardDecision } from '@/lib/mcp-auth/auth-decision'
 import { McpOAuthNeedsReauthError } from '@/lib/mcp-auth/ensure-valid-token'
 import { getOAuthState } from '@/lib/oauth-state'
-import { getTinfoilMobileReturn } from '@/lib/tinfoil-mobile-auth'
 import { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import type { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
@@ -36,11 +35,12 @@ import { createProxyFetch } from '@/lib/proxy-fetch'
 import type { StatusState } from '@/components/status-indicator'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { McpServer } from '@/types'
-import { TinfoilImpactDialog } from './tinfoil-impact-dialog'
-import { AiProviderDetail } from './ai-provider-detail'
-import { OtariProviderDetail } from './otari-provider-detail'
-import { getOtariBrowserReturn, getOtariBrowserDraft } from '@/lib/otari-browser-auth'
 import { useAiProviderConnections } from './use-ai-provider-connections'
+import { useProviderAuthorization } from '@/providers/use-provider-authorization'
+import { getProviderDefinition } from '@/providers/registry'
+import { ProviderConnectionDetail } from './provider-connection-detail'
+import { ProviderConnectionForm } from './provider-connection-form'
+import { NewConnectionPicker } from './new-connection-picker'
 import { ConnectionsList } from './connections-list'
 import { IntegrationDetail } from './integration-detail'
 import { McpServerDetail } from './mcp-server-detail'
@@ -102,10 +102,9 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     initialCallback.kind === 'integration',
     (processing) => ({
       ...createConnectionsPageState(processing),
-      selected: getTinfoilMobileReturn('connections')
-        ? { kind: 'provider' as const, id: 'tinfoil' as const }
-        : getOtariBrowserReturn('connections') || getOtariBrowserDraft('connections')
-          ? { kind: 'provider' as const, id: 'otari' as const }
+      selected:
+        location.state && typeof location.state.providerConnectionId === 'string'
+          ? { kind: 'provider' as const, id: location.state.providerConnectionId }
           : null,
     }),
   )
@@ -177,6 +176,8 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
 
   const providerConnections = useAiProviderConnections()
   const aiProviders = providerConnections.providers
+  const providerSaved = (id: string) => dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'provider', id } })
+  const authorization = useProviderAuthorization({ onConnected: providerSaved })
 
   const integrationsController = useIntegrationsController({ db, dispatch })
 
@@ -316,25 +317,42 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
         </DetailPanel>
       )
     }
+    if (selected?.kind === 'new') {
+      return (
+        <DetailPanel title={t`New Connection`} onClose={closePanel}>
+          <NewConnectionPicker
+            onProvider={(id) => dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'add-provider', id } })}
+            onMcp={openAddForm}
+          />
+        </DetailPanel>
+      )
+    }
+    if (selected?.kind === 'add-provider') {
+      return (
+        <DetailPanel title={getProviderDefinition(selected.id).name} onClose={closePanel}>
+          <ProviderConnectionForm
+            key={selected.id}
+            provider={selected.id}
+            existingOAuth={aiProviders.find(
+              (connection) => connection.provider === selected.id && connection.authMethod === 'oauth',
+            )}
+            authorization={authorization}
+            onSaved={providerSaved}
+            onCancel={closePanel}
+          />
+        </DetailPanel>
+      )
+    }
     if (selected?.kind === 'provider') {
       const connection = aiProviders.find((provider) => provider.id === selected.id)
       if (connection) {
-        if (connection.id === 'otari') {
-          return (
-            <OtariProviderDetail
-              connection={connection}
-              pending={providerConnections.pending}
-              error={providerConnections.error}
-              onDisconnect={providerConnections.disconnectOtari}
-              onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
-            />
-          )
-        }
         return (
-          <AiProviderDetail
+          <ProviderConnectionDetail
             key={connection.id}
-            connection={{ ...connection, id: connection.id }}
-            onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
+            connection={connection}
+            controls={providerConnections}
+            authorization={authorization}
+            onClose={closePanel}
           />
         )
       }
@@ -380,10 +398,8 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     return null
   }
 
-  const panel = renderPanel()
-  const panelOpen = panel !== null
-
   const closePanel = () => {
+    authorization.cancel()
     dispatch({ type: 'INTEGRATION_ERROR_CLEARED' })
     if (form.isAddFormOpen) {
       formController.cancel()
@@ -393,6 +409,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   }
 
   const toggleSelection = (next: NonNullable<ConnectionSelection>) => {
+    authorization.cancel()
     // Selecting a row supersedes an open add/edit form (same as the agents page).
     if (form.isAddFormOpen) {
       formController.cancel()
@@ -404,6 +421,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   }
 
   const openAddForm = () => {
+    authorization.cancel()
     dispatch({ type: 'SELECTION_CHANGED', selection: null })
     form.openAddForm()
   }
@@ -416,6 +434,9 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     }
   }
 
+  const panel = renderPanel()
+  const panelOpen = panel !== null
+
   return (
     <div className="relative flex h-full">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -423,7 +444,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           aiProviders={aiProviders}
           areProvidersReady={providerConnections.ready}
           isProviderTogglePending={providerConnections.pending}
-          providerError={providerConnections.error}
+          providerError={providerConnections.error ?? authorization.error}
           onToggleProvider={providerConnections.toggle}
           onSelectProvider={(id) => toggleSelection({ kind: 'provider', id })}
           integrations={integrationsController.integrations}
@@ -431,7 +452,11 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           servers={servers}
           serverStatus={rowStatus}
           activeKey={panelOpen && selected && !form.isAddFormOpen ? `${selected.kind}:${selected.id}` : null}
-          onAdd={openAddForm}
+          onAdd={() => {
+            formController.cancel()
+            dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'new', id: '' } })
+          }}
+          onAddServer={openAddForm}
           onSelectIntegration={(id) => toggleSelection({ kind: 'integration', id })}
           onSelectServer={(id) => toggleSelection({ kind: 'server', id })}
           onToggleIntegration={integrationsController.toggle}
@@ -443,14 +468,6 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       <DetailPanelSurface open={panelOpen} onClose={closePanel}>
         {panel}
       </DetailPanelSurface>
-      <TinfoilImpactDialog
-        action="disable"
-        open={providerConnections.confirmDisable}
-        pending={providerConnections.pending}
-        error={providerConnections.error}
-        onCancel={providerConnections.cancelDisable}
-        onConfirm={providerConnections.disableConfirmed}
-      />
       {shouldClearNavigationState && location.state !== null && <Navigate to="." replace state={null} />}
       <AlertDialog
         open={pendingDelete !== null}

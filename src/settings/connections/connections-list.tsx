@@ -23,8 +23,10 @@ import { PageSearch } from '@/components/ui/page-search'
 import { Switch } from '@/components/ui/switch'
 import type { McpServer } from '@/types'
 import { cleanServerUrl, serverDisplayName, serverMatchesQuery } from './display'
-import { ProviderBrandLogo } from '@/components/provider-brand-logo'
-import type { AiProviderConnection, Integration } from './types'
+import { ProviderConnectionIcon } from './provider-connection-icon'
+import { getProviderDefinition } from '@/providers/registry'
+import type { ProviderConnection } from '@/providers/types'
+import type { Integration } from './types'
 
 /** Shared row shell for both integration and MCP-server rows. */
 const ConnectionRow = ({
@@ -153,9 +155,8 @@ const ServerRow = ({
 }
 
 /**
- * The Connections page list: pre-baked integrations (Thunderbolt, Google,
- * Microsoft) at the top, user-added MCP servers below. Selection opens the
- * slide-in detail panel; the "+" opens the add-MCP-server flow there too.
+ * Lists integrations and named provider connections, followed by MCP servers.
+ * Selection opens details; the create action offers providers and MCP setup.
  */
 export const ConnectionsList = ({
   aiProviders,
@@ -170,6 +171,7 @@ export const ConnectionsList = ({
   serverStatus,
   activeKey,
   onAdd,
+  onAddServer,
   onSelectIntegration,
   onSelectServer,
   onToggleIntegration,
@@ -177,12 +179,12 @@ export const ConnectionsList = ({
   onEditServer,
   onDeleteServer,
 }: {
-  aiProviders: AiProviderConnection[]
+  aiProviders: ProviderConnection[]
   areProvidersReady: boolean
-  onToggleProvider: (id: AiProviderConnection['id'], enabled: boolean) => void
+  onToggleProvider: (id: string, enabled: boolean) => void
   isProviderTogglePending: boolean
   providerError: string | null
-  onSelectProvider: (id: AiProviderConnection['id']) => void
+  onSelectProvider: (id: string) => void
   integrations: Integration[]
   /** True once the async sources behind the integrations' enabled state have
    *  resolved — used to remount the rows so their switches render directly in
@@ -194,6 +196,7 @@ export const ConnectionsList = ({
   /** `integration:<id>` / `server:<id>` of the row whose detail panel is open, or null. */
   activeKey: string | null
   onAdd: () => void
+  onAddServer: () => void
   onSelectIntegration: (id: string) => void
   onSelectServer: (id: string) => void
   onToggleIntegration: (integration: Integration, next: boolean) => void
@@ -213,7 +216,9 @@ export const ConnectionsList = ({
     }
   }, [integrations, servers, query])
 
-  const filteredProviders = aiProviders.filter((provider) => provider.name.toLowerCase().includes(query.toLowerCase()))
+  const filteredProviders = aiProviders.filter((provider) =>
+    `${provider.name} ${getProviderDefinition(provider.provider).name}`.toLowerCase().includes(query.toLowerCase()),
+  )
 
   const nothingMatches =
     filteredProviders.length === 0 && filteredIntegrations.length === 0 && filteredServers.length === 0
@@ -250,19 +255,26 @@ export const ConnectionsList = ({
               />
             ))}
             {filteredProviders.map((provider) => (
-              <IntegrationRow
-                key={`${provider.id}:${areProvidersReady}`}
-                integration={{
-                  name: provider.name,
-                  icon: <ProviderBrandLogo provider={provider.id} className="size-5" />,
-                  isConnected: provider.connected,
-                  isEnabled: provider.enabled,
-                }}
-                isActive={activeKey === `provider:${provider.id}`}
-                onSelect={() => onSelectProvider(provider.id)}
-                onToggleEnabled={(next) => onToggleProvider(provider.id, next)}
-                disabled={!areProvidersReady || isProviderTogglePending}
-              />
+              <li key={`${provider.id}:${areProvidersReady}`}>
+                <ConnectionRow
+                  title={provider.name}
+                  subtitle={
+                    provider.connected ? getProviderDefinition(provider.provider).name : t`Connect on this device`
+                  }
+                  leading={<ProviderConnectionIcon provider={provider.provider} />}
+                  isActive={activeKey === `provider:${provider.id}`}
+                  isDimmed={!provider.enabled || !provider.connected}
+                  onSelect={() => onSelectProvider(provider.id)}
+                  trailing={
+                    <Switch
+                      checked={provider.enabled === 1}
+                      onCheckedChange={(next) => onToggleProvider(provider.id, next)}
+                      disabled={!areProvidersReady || isProviderTogglePending}
+                      aria-label={provider.enabled ? t`Disable ${provider.name}` : t`Enable ${provider.name}`}
+                    />
+                  }
+                />
+              </li>
             ))}
           </ul>
         )}
@@ -295,7 +307,7 @@ export const ConnectionsList = ({
             icon={<Plug className="size-8 text-muted-foreground" aria-hidden="true" />}
             description={t`Connect your own MCP servers to give agents more tools.`}
             action={
-              <Button size="sm" variant="outline" onClick={onAdd}>
+              <Button size="sm" variant="outline" onClick={onAddServer}>
                 <Plus />
                 <Trans>Add your first server</Trans>
               </Button>

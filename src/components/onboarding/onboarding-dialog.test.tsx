@@ -4,7 +4,7 @@
 
 import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { createModel, getSettings, updateSettings } from '@/dal'
-import { saveIntegrationCredentials } from '@/dal/integrations'
+import { saveProviderConnection, saveProviderConnectionInTransaction } from '@/dal/provider-connections'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
@@ -308,25 +308,23 @@ describe('OnboardingDialog', () => {
       expect(screen.queryByText('What should we call you?')).not.toBeNull()
     })
 
-    it.each(['api-key', 'oauth'] as const)(
-      'omits search for an enabled Tinfoil %s connection without relying on selected_model, including Back navigation',
-      async (auth) => {
+    it.each(['api_key', 'oauth'] as const)(
+      'omits search for a Tinfoil %s connection without requiring a model, including Back navigation',
+      async (authMethod) => {
         useLocalSettingsStore.setState({ cloudUrl: '' })
         await reconcileDefaults(getDb())
-        await createModel(
-          getDb(),
-          createMockModel({
-            id: 'tinfoil-own',
+        const id = await getDb().transaction((tx) =>
+          saveProviderConnectionInTransaction(tx, {
             provider: 'tinfoil',
-            isSystem: 0,
-            toolUsage: 1,
-            apiKey: auth === 'api-key' ? 'user-key' : null,
-            oauthProvider: auth === 'oauth' ? 'tinfoil' : null,
+            name: 'Tinfoil',
+            authMethod,
+            credentials:
+              authMethod === 'oauth'
+                ? { access_token: 'token', expires_at: Date.now() + 3_600_000 }
+                : { apiKey: 'key' },
           }),
         )
-        if (auth === 'oauth') {
-          await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'token' }, true)
-        }
+        useSearchProviderStore.getState().configureProviderSearch(id, 'available')
         await updateSettings(getDb(), { onboarding_current_step: '10', selected_model: '' })
         render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
         await flush()
@@ -338,28 +336,23 @@ describe('OnboardingDialog', () => {
         expect(screen.queryByText('Add web search')).toBeNull()
       },
     )
-
     it.each(['available', 'not_configured', 'workspace_disabled', 'unknown'] as const)(
-      'only skips search when Otari advertises it (%s)',
-      async (searchStatus) => {
+      'only skips search when the Otari connection advertises it (%s)',
+      async (status) => {
         useLocalSettingsStore.setState({ cloudUrl: '' })
         await reconcileDefaults(getDb())
-        const connection = { searchStatus, modelId: 'otari', url: 'http://localhost:8099/api/v1' }
-        await createModel(
-          getDb(),
-          createMockModel({
-            id: connection.modelId,
-            provider: 'otari',
-            isSystem: 0,
-            url: connection.url,
-            apiKey: 'otari-key',
-          }),
-        )
-        useSearchProviderStore.getState().configureOtariSearch(connection)
+        const id = await saveProviderConnection(getDb(), {
+          provider: 'otari',
+          name: 'Otari',
+          url: 'http://localhost:8099/api/v1',
+          authMethod: 'api_key',
+          credentials: { apiKey: 'key' },
+        })
+        useSearchProviderStore.getState().configureProviderSearch(id, status)
         await updateSettings(getDb(), { onboarding_current_step: '10', selected_model: '' })
         render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
         await flush()
-        if (searchStatus !== 'available') {
+        if (status !== 'available') {
           expect(screen.getByText('Add web search')).toBeInTheDocument()
           expect(
             screen.getByText('Otari web search isn’t available. Choose a search provider below, or skip for now.'),
@@ -372,78 +365,75 @@ describe('OnboardingDialog', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Back' }))
         await flush()
         expect(screen.getByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
-        expect(screen.queryByText('Add web search')).toBeNull()
       },
     )
-
-    it.each([
-      { enabled: 0, toolUsage: 1 },
-      { enabled: 1, toolUsage: 0 },
-    ])('keeps search setup when Tinfoil cannot supply search (%j)', async (options) => {
+    it('keeps connection-owned search when all its models are disabled', async () => {
       useLocalSettingsStore.setState({ cloudUrl: '' })
       await reconcileDefaults(getDb())
-      await createModel(
-        getDb(),
-        createMockModel({
-          id: 'tinfoil-no-search',
-          provider: 'tinfoil',
-          isSystem: 0,
-          apiKey: null,
-          oauthProvider: 'tinfoil',
-          ...options,
-        }),
-      )
-      await updateSettings(getDb(), { onboarding_current_step: '10' })
-      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
-      await flush()
-      expect(screen.getByRole('heading', { name: 'Add web search' })).toBeInTheDocument()
-    })
-
-    it('skips search for an enabled Tinfoil subscription without requiring a model', async () => {
-      useLocalSettingsStore.setState({ cloudUrl: '' })
-      await reconcileDefaults(getDb())
-      await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'token' }, true)
+      const id = await saveProviderConnection(getDb(), {
+        provider: 'tinfoil',
+        name: 'Tinfoil',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'key' },
+      })
+      await createModel(getDb(), {
+        id: 'disabled',
+        provider: 'tinfoil',
+        name: 'Disabled',
+        model: 'test',
+        providerConnectionId: id,
+        enabled: 0,
+        toolUsage: 0,
+      })
+      useSearchProviderStore.getState().configureProviderSearch(id, 'available')
       await updateSettings(getDb(), { onboarding_current_step: '10' })
       render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
       await flush()
       expect(screen.queryByText('Add web search')).toBeNull()
       expect(screen.getByText('What should we call you?')).toBeInTheDocument()
     })
-
     it.each(['missing', 'disabled', 'reauth'] as const)(
-      'keeps search setup when an OAuth model has a %s account connection',
+      'keeps search setup for a %s Tinfoil connection',
       async (availability) => {
         useLocalSettingsStore.setState({ cloudUrl: '' })
         await reconcileDefaults(getDb())
-        await createModel(
-          getDb(),
-          createMockModel({
-            id: 'tinfoil-no-session',
-            provider: 'tinfoil',
-            isSystem: 0,
-            enabled: 1,
-            toolUsage: 1,
-            apiKey: null,
-            oauthProvider: 'tinfoil',
-          }),
-        )
         if (availability !== 'missing') {
-          await saveIntegrationCredentials(
-            getDb(),
-            'tinfoil',
-            {
-              access_token: 'token',
-              reauth_required: availability === 'reauth',
-            },
-            availability !== 'disabled',
+          await getDb().transaction((tx) =>
+            saveProviderConnectionInTransaction(tx, {
+              provider: 'tinfoil',
+              name: 'Tinfoil',
+              authMethod: 'oauth',
+              enabled: availability !== 'disabled',
+              credentials: { access_token: 'token', reauth_required: availability === 'reauth' },
+            }),
           )
         }
+        useSearchProviderStore.getState().configureProviderSearch('oauth:tinfoil', 'available')
         await updateSettings(getDb(), { onboarding_current_step: '10' })
         render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
         await flush()
         expect(screen.getByRole('heading', { name: 'Add web search' })).toBeInTheDocument()
       },
     )
+    it('allows continuing with an existing named search connection without re-entering its key', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: '' })
+      await reconcileDefaults(getDb())
+      const id = await saveProviderConnection(getDb(), {
+        provider: 'exa',
+        name: 'Work search',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'key' },
+      })
+      useSearchProviderStore.getState().selectSearchConnection(id)
+      await updateSettings(getDb(), { onboarding_current_step: '10' })
+      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+      await flush()
+      expect(screen.getByRole('combobox', { name: 'Existing connection' })).toHaveTextContent('Work search')
+      expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled()
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      await flush()
+      expect(screen.getByText('What should we call you?')).toBeInTheDocument()
+    })
 
     it('can finish onboarding without a model when AI setup is skipped', async () => {
       useLocalSettingsStore.setState({ cloudUrl: 'https://chosen.example.com/v1', localMode: true })

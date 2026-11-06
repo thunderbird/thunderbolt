@@ -4,8 +4,6 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Link } from 'react-router'
-import { ProviderBrandLogo } from '@/components/provider-brand-logo'
-import { IconTile } from '@/components/settings/icon-tile'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import {
   SettingsListBody,
@@ -13,12 +11,13 @@ import {
   SettingsSelectableRow,
   settingsListBodyRowsClass,
 } from '@/components/settings/settings-list'
-import { SearchProviderSetup } from '@/components/search-provider-setup'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { Switch } from '@/components/ui/switch'
-import { isSearchProvider, searchProviders, type SearchProvider } from '@/integrations/standalone-search/providers'
+import { canSupplySearch } from '@/integrations/standalone-search/eligibility'
+import { isSearchProvider } from '@/integrations/standalone-search/providers'
+import { getProviderDefinition } from '@/providers/registry'
 import { ModelProviderIconTile } from '@/settings/models/model-presentation'
 import { SearchProviderIconTile } from './search-provider-icon-tile'
 import { useSearchSettingsState } from './use-search-settings-state'
@@ -26,26 +25,7 @@ import { useSearchSettingsState } from './use-search-settings-state'
 const SearchSettingsPage = () => {
   const { t } = useLingui()
   const page = useSearchSettingsState()
-  const tinfoilName = 'Tinfoil'
-  const rows = [
-    {
-      id: 'tinfoil' as const,
-      name: tinfoilName,
-      subtitle: t`Exa search through Tinfoil`,
-    },
-    {
-      id: 'otari' as const,
-      name: 'Otari',
-      subtitle: t`Search through your Otari workspace`,
-    },
-    ...Object.entries(searchProviders).map(([id, provider]) => ({
-      id: id as SearchProvider,
-      name: provider.name,
-      subtitle:
-        page.available.custom && page.stored.provider === id ? t`Your API key` : t`Connect with your own API key`,
-    })),
-    ...(page.cloudVisible ? [{ id: 'cloud' as const, name: 'Thunderbolt', subtitle: t`Provided by your server` }] : []),
-  ]
+  const active = page.connections.find(({ id }) => id === page.panel)
   const close = () => page.setPanel(null)
   return (
     <div className="relative flex h-full">
@@ -53,102 +33,99 @@ const SearchSettingsPage = () => {
         <SettingsListPane className="gap-6 md:pb-12">
           <PageHeader title={t`Search`} />
           <SettingsListBody className={settingsListBodyRowsClass}>
-            {rows.map(({ id, name, subtitle }) => (
+            {page.connections.map((connection) => (
               <SettingsSelectableRow
-                key={id}
+                key={connection.id}
                 title={
                   <span className="flex items-center gap-2">
-                    <span className="truncate">{name}</span>
-                    {id === 'tinfoil' && <PrivateBadge />}
+                    <span className="truncate">{connection.name}</span>
+                    {connection.provider === 'tinfoil' && <PrivateBadge />}
                   </span>
                 }
-                subtitle={subtitle}
-                ariaLabel={t`Open ${name}`}
-                isSelected={page.panel === id}
-                onSelect={() => page.setPanel(id)}
+                subtitle={
+                  canSupplySearch(connection)
+                    ? getProviderDefinition(connection.provider).name
+                    : t`Connect or enable this connection to use search`
+                }
+                ariaLabel={t`Open ${connection.name}`}
+                isSelected={page.panel === connection.id}
+                onSelect={() => page.setPanel(connection.id)}
                 leading={
-                  isSearchProvider(id) ? (
-                    <SearchProviderIconTile provider={id} />
-                  ) : id === 'tinfoil' || id === 'otari' ? (
-                    <IconTile>
-                      <ProviderBrandLogo provider={id} className="size-5" />
-                    </IconTile>
+                  isSearchProvider(connection.provider) ? (
+                    <SearchProviderIconTile provider={connection.provider} />
                   ) : (
-                    <ModelProviderIconTile
-                      model={{
-                        provider: 'thunderbolt',
-                        isSystem: 1,
-                      }}
-                    />
+                    <ModelProviderIconTile model={{ provider: connection.provider, isSystem: 0 }} />
                   )
                 }
                 trailing={
                   <Switch
                     disabled={page.loading}
-                    checked={page.selected === id}
-                    onCheckedChange={(enabled) => page.toggle(id, enabled)}
-                    aria-label={page.selected === id ? t`Disable ${name}` : t`Use ${name}`}
+                    checked={page.selectedId === connection.id}
+                    onCheckedChange={(enabled) => page.toggle(connection.id, enabled)}
+                    aria-label={
+                      page.selectedId === connection.id ? t`Disable ${connection.name}` : t`Use ${connection.name}`
+                    }
                   />
                 }
               />
             ))}
+            {page.cloudVisible && (
+              <SettingsSelectableRow
+                title="Thunderbolt"
+                subtitle={t`Provided by your server`}
+                ariaLabel={t`Open Thunderbolt`}
+                isSelected={page.panel === 'cloud'}
+                onSelect={() => page.setPanel('cloud')}
+                leading={<ModelProviderIconTile model={{ provider: 'thunderbolt', isSystem: 1 }} />}
+                trailing={
+                  <Switch
+                    disabled={page.loading}
+                    checked={page.selectedId === 'cloud'}
+                    onCheckedChange={(enabled) => page.toggle('cloud', enabled)}
+                    aria-label={t`Use Thunderbolt`}
+                  />
+                }
+              />
+            )}
           </SettingsListBody>
+          <Button variant="outline" asChild>
+            <Link to="/settings/connections">
+              <Trans>Add a connection</Trans>
+            </Link>
+          </Button>
         </SettingsListPane>
       </div>
       <DetailPanelSurface open={page.panel !== null} onClose={close}>
-        {page.panel && isSearchProvider(page.panel) ? (
-          <DetailPanel title={searchProviders[page.panel].name} onClose={close}>
-            {page.available.custom && page.stored.provider !== page.panel && (
-              <p className="mb-4 text-sm text-muted-foreground">
-                <Trans>Connecting this provider replaces your saved search API key.</Trans>
+        {(active || page.panel === 'cloud') && (
+          <DetailPanel title={active?.name ?? 'Thunderbolt'} onClose={close}>
+            <div className="space-y-4 text-sm text-muted-foreground">
+              <p>
+                {active?.provider === 'tinfoil' ? (
+                  <Trans>
+                    Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters. No
+                    separate Exa API key is needed.
+                  </Trans>
+                ) : active?.provider === 'otari' ? (
+                  <Trans>
+                    Search and page content use your Otari connection and your workspace’s web access settings. Manage
+                    your search provider in Otari.
+                  </Trans>
+                ) : active ? (
+                  <Trans>Search uses this connection’s API key. Manage its credentials in Connections.</Trans>
+                ) : (
+                  <Trans>Search and page content are provided by your connected Thunderbolt server.</Trans>
+                )}
               </p>
-            )}
-            <SearchProviderSetup key={page.panel} provider={page.panel} />
+              <Button variant="outline" asChild>
+                <Link to="/settings/connections">
+                  <Trans>Manage connection</Trans>
+                </Link>
+              </Button>
+            </div>
           </DetailPanel>
-        ) : (
-          page.panel && (
-            <DetailPanel
-              title={page.panel === 'tinfoil' ? tinfoilName : page.panel === 'otari' ? 'Otari' : 'Thunderbolt'}
-              onClose={close}
-            >
-              <div className="space-y-4 text-sm text-muted-foreground">
-                <p>
-                  {page.panel === 'tinfoil' ? (
-                    <Trans>
-                      Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters.
-                      No separate Exa API key is needed.
-                    </Trans>
-                  ) : page.panel === 'otari' ? (
-                    <Trans>
-                      Search and page content use your Otari connection and your workspace’s web access settings. Manage
-                      your search provider in Otari.
-                    </Trans>
-                  ) : (
-                    <Trans>Search and page content are provided by your connected Thunderbolt server.</Trans>
-                  )}
-                </p>
-                {page.panel === 'tinfoil' && !page.available.tinfoil && (
-                  <p>
-                    <Trans>Enable or reconnect Tinfoil in Connections to use this provider.</Trans>
-                  </p>
-                )}
-                {page.panel === 'otari' && !page.available.otari && (
-                  <p>
-                    <Trans>Connect Otari in Connections and enable web search in your Otari workspace.</Trans>
-                  </p>
-                )}
-                <Button variant="outline" asChild>
-                  <Link to="/settings/connections">
-                    <Trans>Manage connection</Trans>
-                  </Link>
-                </Button>
-              </div>
-            </DetailPanel>
-          )
         )}
       </DetailPanelSurface>
     </div>
   )
 }
-
 export default SearchSettingsPage

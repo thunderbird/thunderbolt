@@ -138,8 +138,9 @@ capabilities to remote localhost pages; Tauri automatically treats the configure
 `devUrl` as local during development, so no production localhost exception is
 needed. Browser-only standalone installs remain subject to the provider's CORS policy.
 
-The optional search key is device-local and excluded from synced settings. Existing
-Brave configurations remain compatible. Exa and Tavily retrieve page text through
+Search selects a reusable provider connection by ID. Connection metadata syncs; its
+credentials live only in the device-local `provider_connection_secrets` table. Search
+selection contains no keys. Existing Brave configurations remain compatible. Exa and Tavily retrieve page text through
 `/contents` and `/extract` respectively; Brave exposes search only. There is no
 arbitrary device-side page downloader. Extraction responses are capped at 1 MiB
 before JSON parsing, with a 30-second deadline covering headers and body reads.
@@ -160,17 +161,18 @@ Local attachment paths remain usable. This restriction covers citation and previ
 media, not every widget: maps still contact their map tile provider. Older source
 records without this marker retain their prior behavior.
 
-Automatic selection does not fall back to Thunderbolt Cloud after a configured
-Tinfoil connection is disabled, disconnected, or needs reauthentication. Choosing
-Cloud or a custom provider explicitly still switches providers. Each web-tool
-call rechecks local connection availability. If connecting Tinfoil changes the
-automatic selection mid-turn, the old Cloud tool rejects further calls; a new
-turn creates tools for the current provider without mixing citation registries.
+An explicitly selected connection never falls back to another connection or to
+Thunderbolt Cloud when disabled, disconnected, or unavailable. Cloud remains the
+default when no local connection was selected. Every web-tool call checks both the
+current selection and the connection's authorization generation. A turn rejects
+calls after a switch or credential replacement; ordinary OAuth refresh retains
+that generation and the turn's citation registry.
 
-An enabled Tinfoil subscription supplies search independently of whether a model
-is enabled or even configured. An enabled BYOK Tinfoil model can also supply its
-key. This skips the search onboarding step in either direction, and remains
-available after signing into a Thunderbolt server. Each Tinfoil search or page
+Tinfoil OAuth and API-key connections supply search independently of models.
+Onboarding selects Tinfoil search automatically after connecting; Otari is selected
+only after its gateway advertises direct search. Unavailable Otari search shows an
+explanation and keeps the optional search step. Existing named search connections
+can be reused without re-entering credentials. Each Tinfoil search or page
 retrieval opens and closes a short-lived MCP transport using the existing OAuth
 session or API key. On desktop, the attestation SDK verifies the enclave key and
 the public `ehbp` primitives encrypt/decrypt envelopes over native HTTP;
@@ -190,12 +192,32 @@ required. Static-only hosts must provide this relay; desktop connects directly.
 PII and prompt-injection filtering are enabled. Results are sent to the selected
 model provider. No model-side `web_search_options` are injected.
 
-Settings → Search follows the Models list/detail layout. Existing Exa/Brave/Tavily
-settings take precedence in automatic selection; otherwise Tinfoil is eligible.
-Explicit selection and disabling search persist device-locally, and choosing
-Tinfoil preserves a separately saved search key. Disconnecting a provider does
-not silently fall back to another provider. Tool instances recheck selection and
-credentials before use, so a running turn cannot keep using a disconnected key.
+Settings → Search lists named, search-capable connections and links to Connections
+to add or edit credentials. Multiple Exa, Brave, Tavily, Tinfoil, and Otari API-key
+connections can coexist. Selecting one never replaces another connection's key.
+Models reference the same connections, but enabling or removing an individual
+model does not change search access.
+
+### Migrating provider credentials
+
+The migration creates one stable `legacy-model:<model-id>` connection per legacy
+API-key model. It deliberately does not deduplicate by key: two devices can have
+different local keys for the same models, so grouping on one device would silently
+change another device's account mapping. Newly added models reuse an explicit
+connection. Tinfoil OAuth retains its single `oauth:tinfoil` connection.
+
+A device migrates its local key even if another device has already synced the
+model's connection reference. The legacy model URL is retained for this handoff:
+it is the routing identity that this device approved for that key. Existing local
+credentials and disconnect tombstones win over retries. A synced provider, auth
+method, or URL mismatch is never granted the legacy key; the old key remains local
+for recovery. Model IDs, profiles, enabled flags, and chat history are retained.
+
+Legacy standalone search keys move from `thunderbolt-search-provider` into stable
+`legacy-search:<provider>` connections before the old storage entry is removed.
+The ID-only selection lives under `thunderbolt-search-selection`. An interrupted
+migration can retry without duplicating connections or restoring a disconnected
+credential, and explicit None/Cloud or a newer selection remains intact.
 
 ### Otari
 

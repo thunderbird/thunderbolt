@@ -93,5 +93,13 @@ export const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider'
  * @param model - The model to label.
  * @param appName - The deployment's app name, from `useAppName()`.
  */
-export const getProviderDisplay = (i18n: I18n, model: Pick<Model, 'provider' | 'isSystem'>, appName: string): string =>
-  getProviderLabel(i18n, isThunderboltManagedModel(model) ? 'thunderbolt' : model.provider, appName)
+export const getProviderDisplay = (
+  i18n: I18n,
+  model: Pick<Model, 'provider' | 'isSystem' | 'connectionName'>,
+  appName: string,
+): string => {
+  const provider = getProviderLabel(i18n, isThunderboltManagedModel(model) ? 'thunderbolt' : model.provider, appName)
+  return model.connectionName && model.connectionName !== provider && !isThunderboltManagedModel(model)
+    ? `${provider} · ${model.connectionName}`
+    : provider
+}

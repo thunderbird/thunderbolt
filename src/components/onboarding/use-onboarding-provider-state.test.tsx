@@ -4,7 +4,9 @@
 
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { createModel, getAllModels, getAvailableModels, getModel, getSettings } from '@/dal'
+import { createModel, getAllModels, getAvailableModels, getModel, getSettings, updateSettings } from '@/dal'
+import { getProviderCredentials, saveProviderConnection } from '@/dal/provider-connections'
+import { addProviderModels } from '@/providers/models'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
@@ -643,7 +645,8 @@ describe('useOnboardingProviderState', () => {
     expect((await getAvailableModels(getDb()))[0]).toMatchObject({
       provider: 'tinfoil',
       oauthProvider: 'tinfoil',
-      apiKey: null,
+      apiKey: 'mobile-access',
+      providerConnectionId: 'oauth:tinfoil',
     })
     expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe('mobile-access')
   })
@@ -707,7 +710,11 @@ describe('useOnboardingProviderState', () => {
     expect(deps.start).not.toHaveBeenCalled()
     expect(result.current.view).toBe('tinfoil')
     const connectedModel = (await getAvailableModels(getDb()))[0]
-    expect(connectedModel).toMatchObject({ apiKey: null, oauthProvider: 'tinfoil' })
+    expect(connectedModel).toMatchObject({
+      apiKey: 'tinfoil-oauth-key',
+      oauthProvider: 'tinfoil',
+      providerConnectionId: 'oauth:tinfoil',
+    })
     expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toMatchObject({
       access_token: 'tinfoil-oauth-key',
       refresh_token: 'refresh-token',
@@ -750,8 +757,8 @@ describe('useOnboardingProviderState', () => {
       fireEvent.click(disconnect)
       await getClock().runAllAsync()
     })
-    expect(screen.getByRole('button', { name: 'Connect OpenRouter' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    // The separately configured API-key model remains usable after OAuth disconnects.
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
     const disconnected = await getModel(getDb(), openrouter.id)
     expect(await getModel(getDb(), 'manual-openrouter')).toMatchObject({
       apiKey: 'own-key',
@@ -763,4 +770,45 @@ describe('useOnboardingProviderState', () => {
     expect(disconnected?.deletedAt).toBeNull()
     expect((await getModel(getDb(), tinfoil.id))?.oauthProvider).toBe('tinfoil')
   })
+
+  it.each([false, true])(
+    'disconnects only the current account when additional API-key connections exist (OAuth: %s)',
+    async (oauth) => {
+      const first = await saveProviderConnection(getDb(), {
+        provider: 'openrouter',
+        name: 'Personal',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'personal-key' },
+      })
+      const second = await saveProviderConnection(getDb(), {
+        provider: 'openrouter',
+        name: 'Work',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'work-key' },
+      })
+      await addProviderModels(getDb(), first, [{ id: 'personal-model' }])
+      const [selected] = await addProviderModels(getDb(), second, [{ id: 'work-model' }])
+      await updateSettings(getDb(), { selected_model: selected })
+      if (oauth) {
+        await saveProviderConnection(getDb(), {
+          provider: 'openrouter',
+          name: 'Subscription',
+          authMethod: 'oauth',
+          credentials: { access_token: 'oauth-token' },
+          attempt: await getProviderConnectionAttempt(getDb(), 'openrouter'),
+        })
+        await addProviderModels(getDb(), 'oauth:openrouter', [{ id: 'subscription-model' }])
+      }
+      const { result } = renderHook(() => useOnboardingModelState(), { wrapper: createTestProvider() })
+      await act(async () => result.current.disconnectProvider('openrouter'))
+      expect((await getProviderCredentials(getDb(), first))?.apiKey).toBe('personal-key')
+      if (oauth) {
+        expect(await getProviderCredentials(getDb(), 'oauth:openrouter')).toBeNull()
+        expect((await getProviderCredentials(getDb(), second))?.apiKey).toBe('work-key')
+      } else {
+        expect(await getProviderCredentials(getDb(), second)).toBeNull()
+      }
+      expect(await getAllModels(getDb())).toHaveLength(oauth ? 3 : 2)
+    },
+  )
 })

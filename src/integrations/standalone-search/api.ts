@@ -152,14 +152,15 @@ export const testSearchProvider = async (
 
 /** Exposes only capabilities supported by the selected provider; no arbitrary page downloads run on the device. */
 export const createStandaloneWebApi = (
-  apiKey: string,
+  apiKey: string | (() => Promise<string>),
   client: HttpClient = createSearchHttpClient(),
   provider: SearchProvider = 'brave',
 ): WebToolApi => ({
-  search: (params) => searchWeb(provider, apiKey, params, client),
+  search: async (params) => searchWeb(provider, typeof apiKey === 'string' ? apiKey : await apiKey(), params, client),
   ...(provider === 'brave'
     ? {}
     : {
-        fetchContent: (params) => fetchProviderContent(provider, apiKey, params, client),
+        fetchContent: async (params) =>
+          fetchProviderContent(provider, typeof apiKey === 'string' ? apiKey : await apiKey(), params, client),
       }),
 })

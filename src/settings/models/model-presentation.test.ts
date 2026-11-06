@@ -32,4 +32,14 @@ describe('provider labels', () => {
       'custom',
     ])
   })
+
+  it('includes the named account without repeating an identical provider name', () => {
+    expect(getProviderDisplay(i18n, { provider: 'openai', isSystem: 0, connectionName: 'Work' }, 'App')).toBe(
+      'OpenAI · Work',
+    )
+    expect(getProviderDisplay(i18n, { provider: 'otari', isSystem: 0, connectionName: 'Otari' }, 'App')).toBe('Otari')
+    expect(
+      getProviderDisplay(i18n, { provider: 'tinfoil', isSystem: 1, connectionName: 'Hidden transport' }, 'App'),
+    ).toBe('App')
+  })
 })

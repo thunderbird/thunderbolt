@@ -77,6 +77,7 @@ export const isModelAvailable = (
 
 /** Whether a model has the local configuration needed to run on this device. */
 export const isModelReady = (model: Model, cloudUrl = getLocalSetting('cloudUrl')): boolean =>
+  (!model.providerConnectionId || model.connectionReady === true) &&
   model.enabled === 1 &&
   !model.deletedAt &&
   isModelAvailable(model, cloudUrl) &&

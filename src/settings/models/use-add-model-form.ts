@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createModelInTransaction, updateModelInTransaction } from '@/dal/models'
+import { createModelInTransaction } from '@/dal/models'
 import { withTinfoilSessionLock } from '@/lib/tinfoil-session'
-import { saveProviderAuthorization, type ProviderAuthorization } from '@/lib/provider-connection-attempt'
+import { type ProviderAuthorization } from '@/lib/provider-connection-attempt'
+import { saveProviderConnectionInTransaction } from '@/dal/provider-connections'
+import { getProviderDefinition } from '@/providers/registry'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
@@ -165,46 +167,37 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
         db.transaction(async (tx) => {
           // Authorization can be cancelled while this save waits for the session lock or database.
           signal?.throwIfAborted()
-          const candidates =
-            values.providerDefault === 1 || values.oauthProvider
-              ? (await getAllModels(tx)).filter(
-                  (model) =>
-                    (model.oauthProvider ?? null) === (values.oauthProvider ?? null) &&
-                    model.provider === values.provider &&
-                    model.model === values.model &&
-                    (!providerRequiresUrl(values.provider) || model.url === values.url) &&
-                    model.isSystem !== 1,
-                )
-              : []
-          // OAuth rows predate the provenance marker; own-key rows cannot be
-          // inferred safely because users may add the same model with different keys.
-          const previous =
-            candidates.find((model) => model.providerDefault === 1) ??
-            (values.oauthProvider ? candidates[0] : undefined)
+          const providerConnectionId =
+            values.provider === 'thunderbolt'
+              ? null
+              : await saveProviderConnectionInTransaction(tx, {
+                  provider: values.provider,
+                  name: getProviderDefinition(values.provider).name,
+                  url: values.url,
+                  authMethod: providerAuthorization ? 'oauth' : 'api_key',
+                  credentials:
+                    providerAuthorization?.tinfoilCredentials ??
+                    (providerAuthorization ? { access_token: values.apiKey } : { apiKey: values.apiKey ?? '' }),
+                  attempt: providerAuthorization?.attempt,
+                })
+          const previous = providerConnectionId
+            ? (await getAllModels(tx)).find(
+                (model) => model.providerConnectionId === providerConnectionId && model.model === values.model,
+              )
+            : undefined
           const id = previous?.id ?? uuidv7()
-
-          if (providerAuthorization) {
-            await saveProviderAuthorization(tx, providerAuthorization)
-          }
-          const modelData = {
-            id,
-            ...modelValues,
-            apiKey: values.oauthProvider ? null : values.apiKey || null,
-            url: values.url || null,
-            isSystem: 0,
-            enabled: 1,
-            toolUsage: supportsTools ? 1 : 0,
-            contextWindow: values.contextWindow ?? null,
-          }
-          if (previous) {
-            // Reauthorization restores access; it must not reset the user's model configuration.
-            await updateModelInTransaction(tx, id, {
-              apiKey: modelData.apiKey,
-              oauthProvider: values.oauthProvider ?? null,
-              providerDefault: values.providerDefault,
+          if (!previous) {
+            const { apiKey, oauthProvider, providerDefault, url, ...fields } = modelValues
+            await createModelInTransaction(tx, {
+              ...fields,
+              id,
+              providerConnectionId,
+              url: null,
+              isSystem: 0,
+              enabled: 1,
+              toolUsage: supportsTools ? 1 : 0,
+              contextWindow: values.contextWindow ?? null,
             })
-          } else {
-            await createModelInTransaction(tx, modelData)
           }
           signal?.throwIfAborted()
           return { id, created: !previous }
@@ -226,6 +219,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       }
       useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
+      await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
       if (isStandalone) {
         await queryClient.invalidateQueries({ queryKey: ['settings'] })
       }

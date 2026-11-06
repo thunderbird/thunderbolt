@@ -4,7 +4,15 @@
 
 import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { integrationsSecretsTable, modelsSecretsTable, modelsTable, settingsTable } from '../db/tables'
+import {
+  integrationsSecretsTable,
+  modelsSecretsTable,
+  modelsTable,
+  settingsTable,
+  providerConnectionsTable as connections,
+  providerConnectionSecretsTable as secrets,
+} from '../db/tables'
+import { providerCredentialConnected } from '@/providers/credentials'
 import { defaultModelId, hashModel, type SharedModel } from '@shared/defaults/models'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
@@ -17,7 +25,9 @@ import { isModelReady } from '@/settings/models/model-policy'
 const standaloneModelCondition = sql`${modelsTable.provider} != 'thunderbolt' AND (${modelsTable.provider} != 'tinfoil' OR COALESCE(${modelsTable.isSystem}, 0) != 1)`
 
 /** OAuth access is connection state, independent of the user's per-model toggle. */
-const providerConnectionCondition = sql`(${modelsSecretsTable.oauthProvider} IS NULL OR EXISTS (
+const providerConnectionCondition = sql`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL
+  THEN ${connections.provider} = ${modelsTable.provider} AND ${connections.enabled} = 1 AND ${providerCredentialConnected}
+  ELSE (${modelsSecretsTable.oauthProvider} IS NULL OR EXISTS (
   SELECT 1 FROM ${integrationsSecretsTable}
   WHERE ${integrationsSecretsTable.provider} = ${modelsSecretsTable.oauthProvider}
     AND ${integrationsSecretsTable.enabled} = 1
@@ -25,13 +35,25 @@ const providerConnectionCondition = sql`(${modelsSecretsTable.oauthProvider} IS 
       THEN COALESCE(json_extract(${integrationsSecretsTable.credentials}, '$.access_token'), '') != ''
         AND COALESCE(json_extract(${integrationsSecretsTable.credentials}, '$.reauth_required'), 0) = 0
       ELSE 0 END
-))`
+)) END`
 
 /** Select columns: all model columns + apiKey from the local-only secrets table. */
 const modelWithSecretColumns = {
   ...getTableColumns(modelsTable),
-  apiKey: modelsSecretsTable.apiKey,
-  oauthProvider: modelsSecretsTable.oauthProvider,
+  url: sql<
+    string | null
+  >`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN ${connections.url} ELSE ${modelsTable.url} END`,
+  connectionName: sql<string | null>`${connections.name}`.as('connection_name'),
+  connectionReady:
+    sql<boolean>`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN COALESCE(${connections.provider} = ${modelsTable.provider} AND ${connections.enabled} = 1 AND ${providerCredentialConnected}, 0) ELSE 1 END`.mapWith(
+      Boolean,
+    ),
+  apiKey: sql<
+    string | null
+  >`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN CASE WHEN ${connections.enabled} = 1 AND ${providerCredentialConnected} THEN COALESCE(json_extract(${secrets.credentials}, '$.apiKey'), json_extract(${secrets.credentials}, '$.access_token')) END ELSE ${modelsSecretsTable.apiKey} END`,
+  oauthProvider: sql<
+    'tinfoil' | null
+  >`CASE WHEN ${modelsTable.providerConnectionId} IS NOT NULL THEN CASE WHEN ${connections.provider} = 'tinfoil' AND ${connections.authMethod} = 'oauth' THEN 'tinfoil' END ELSE ${modelsSecretsTable.oauthProvider} END`,
   providerDefault: modelsSecretsTable.providerDefault,
   hasLocalCredentialRecord: sql<boolean>`${modelsSecretsTable.modelId} IS NOT NULL`.mapWith(Boolean),
 }
@@ -42,6 +64,8 @@ const selectModelsWithSecrets = (db: AnyDrizzleDatabase) =>
     .select(modelWithSecretColumns)
     .from(modelsTable)
     .leftJoin(modelsSecretsTable, eq(modelsTable.id, modelsSecretsTable.modelId))
+    .leftJoin(connections, eq(modelsTable.providerConnectionId, connections.id))
+    .leftJoin(secrets, eq(connections.id, secrets.id))
 
 /**
  * Gets all models from the database (excluding soft-deleted)
@@ -176,10 +200,18 @@ export const updateModelInTransaction = async (
   updates: Partial<Model>,
 ): Promise<void> => {
   // Don't allow updating defaultHash - it must be preserved for modification tracking
-  const { defaultHash, hasLocalCredentialRecord, apiKey, oauthProvider, providerDefault, ...updateFields } =
-    updates as Partial<Model> & {
-      defaultHash?: string
-    }
+  const {
+    defaultHash,
+    hasLocalCredentialRecord,
+    connectionName,
+    connectionReady,
+    apiKey,
+    oauthProvider,
+    providerDefault,
+    ...updateFields
+  } = updates as Partial<Model> & {
+    defaultHash?: string
+  }
 
   if (Object.keys(updateFields).length > 0) {
     await tx.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
@@ -255,7 +287,15 @@ export const createModel = (db: AnyDrizzleDatabase, data: NewModel): Promise<voi
 
 /** Create within the caller's transaction so provider sessions and models commit together. */
 export const createModelInTransaction = async (tx: ModelTransaction, data: NewModel): Promise<void> => {
-  const { hasLocalCredentialRecord, apiKey, oauthProvider, providerDefault, ...modelData } = data
+  const {
+    hasLocalCredentialRecord,
+    connectionName,
+    connectionReady,
+    apiKey,
+    oauthProvider,
+    providerDefault,
+    ...modelData
+  } = data
   await tx.insert(modelsTable).values(modelData)
   if (apiKey != null || oauthProvider || providerDefault === 1) {
     await tx.insert(modelsSecretsTable).values({ modelId: data.id, apiKey, oauthProvider, providerDefault })

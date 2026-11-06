@@ -21,9 +21,16 @@ import { createDefaultProbe } from '@/hooks/use-model-connection-test'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import { http } from '@/lib/http'
 import { fetch as nativeFetch } from '@/lib/fetch'
-import { useAddModelForm } from '@/settings/models/use-add-model-form'
+import {
+  saveProviderConnection,
+  disconnectProviderConnection,
+  resolveProviderConnection,
+} from '@/dal/provider-connections'
+import { addProviderModels } from '@/providers/models'
+import { getAvailableModels, updateSettings } from '@/dal'
+import { useChatStore } from '@/chats/chat-store'
+import { useQueryClient } from '@tanstack/react-query'
 import type { AvailableModel } from '@/settings/models/model-catalog'
-import { getModelDisplayName } from '@/settings/models/model-display-name'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { loadOtariSearchStatus, type OtariSearchStatus } from '@/integrations/otari-search/capabilities'
 
@@ -32,6 +39,8 @@ type State = {
   isCustomUrl: boolean
   operation: 'connect' | 'models' | 'save' | null
   key: string
+  connectionId: string | null
+  connectionUpdatedAt: string | null
   attempt: ProviderConnectionAttempt | null
   models: AvailableModel[]
   modelsLoaded: boolean
@@ -69,7 +78,7 @@ const beginConnection = async (
 }
 const connectionDependencies = { connect: beginConnection, loadModels: loadOtariModels }
 
-/** Owns cancellation and keeps the issued key in memory until a model is selected. */
+/** Connects Otari independently, then selects an initial model for onboarding. */
 export const useOtariConnectionState = (
   onSaved?: () => void,
   dependencies = connectionDependencies,
@@ -78,6 +87,7 @@ export const useOtariConnectionState = (
   const { t } = useLingui()
   const db = useDatabase()
   const getProxyFetch = useProxyFetchGetter()
+  const queryClient = useQueryClient()
   const [returned] = useState(() => getOtariBrowserReturn(context))
   const [draft] = useState(() => getOtariBrowserDraft(context))
   const initialOrigin = returned?.origin ?? draft?.origin ?? defaultOtariOrigin
@@ -86,6 +96,8 @@ export const useOtariConnectionState = (
     isCustomUrl: initialOrigin !== defaultOtariOrigin,
     operation: returned ? 'connect' : null,
     key: '',
+    connectionId: null,
+    connectionUpdatedAt: null,
     attempt: null,
     models: [],
     modelsLoaded: false,
@@ -94,7 +106,6 @@ export const useOtariConnectionState = (
     error: '',
   })
   const pending = useRef<AbortController | null>(null)
-  const form = useAddModelForm({ isOpen: false, onClose: () => {} })
 
   const loadModels = async (
     origin: string,
@@ -103,13 +114,34 @@ export const useOtariConnectionState = (
     controller: AbortController,
   ) => {
     controller.signal.throwIfAborted()
-    update({ key, attempt, origin, operation: 'models' })
+    const connectionId =
+      state.connectionId ??
+      (await saveProviderConnection(db, {
+        provider: 'otari',
+        name: 'Otari',
+        url: getOtariEndpoints(origin).inference,
+        authMethod: 'oauth',
+        credentials: { access_token: key },
+        attempt,
+        signal: controller.signal,
+      }))
+    const { connection, apiKey } = await resolveProviderConnection(db, connectionId)
+    if (connection.url !== getOtariEndpoints(origin).inference || apiKey !== key) {
+      throw new Error('The provider connection changed. Connect again to load its models.')
+    }
+    controller.signal.throwIfAborted()
+    update({ key, attempt, origin, connectionId, connectionUpdatedAt: connection.updatedAt, operation: 'models' })
     try {
       const [models, searchStatus] = await Promise.all([
         dependencies.loadModels(origin, key, controller.signal),
         loadOtariSearchStatus(getOtariEndpoints(origin).inference, key, controller.signal),
       ])
+      const current = await resolveProviderConnection(db, connectionId)
+      if (current.connection.updatedAt !== connection.updatedAt || current.apiKey !== key) {
+        throw new Error('The provider connection changed while loading models.')
+      }
       controller.signal.throwIfAborted()
+      useSearchProviderStore.getState().configureProviderSearch(connectionId, searchStatus)
       update({
         models,
         modelsLoaded: true,
@@ -215,18 +247,25 @@ export const useOtariConnectionState = (
         AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
       )
       controller.signal.throwIfAborted()
-      const { id } = await form.saveModel({
-        ...connection,
-        providerDefault: 1,
-        providerAuthorization: { attempt: state.attempt },
-        name: getModelDisplayName(state.models.find((model) => model.id === state.selected) ?? { id: state.selected }),
-        supportsTools: tools === 'supported',
-        signal: controller.signal,
-      })
+      if (!state.connectionId || !state.connectionUpdatedAt) {
+        throw new Error('Provider connection is missing')
+      }
+      const [id] = await addProviderModels(
+        db,
+        state.connectionId,
+        [
+          {
+            ...(state.models.find((model) => model.id === state.selected) ?? { id: state.selected }),
+            supports_tools: tools === 'supported',
+          },
+        ],
+        { expectedUpdatedAt: state.connectionUpdatedAt, signal: controller.signal },
+      )
+      await updateSettings(db, { selected_model: id })
+      useChatStore.getState().setModels(await getAvailableModels(db))
+      await queryClient.invalidateQueries({ queryKey: ['models'] })
+      await queryClient.invalidateQueries({ queryKey: ['settings'] })
       controller.signal.throwIfAborted()
-      useSearchProviderStore
-        .getState()
-        .configureOtariSearch({ modelId: id, url: connection.url, searchStatus: state.searchStatus ?? 'unknown' })
       resetConnection()
       onSaved?.()
     } catch {
@@ -245,6 +284,8 @@ export const useOtariConnectionState = (
   const resetConnection = (changes: Partial<State> = {}) =>
     update({
       key: '',
+      connectionId: null,
+      connectionUpdatedAt: null,
       attempt: null,
       models: [],
       modelsLoaded: false,
@@ -256,7 +297,7 @@ export const useOtariConnectionState = (
 
   return {
     ...state,
-    busy: state.operation !== null || form.isPending,
+    busy: state.operation !== null,
     dashboard: state.key ? getOtariEndpoints(state.origin).dashboard : '',
     connect,
     save,
@@ -266,7 +307,12 @@ export const useOtariConnectionState = (
       pending.current = null
       update({ operation: null })
     },
-    reconnect: () => resetConnection(),
+    reconnect: async () => {
+      if (state.connectionId) {
+        await disconnectProviderConnection(db, state.connectionId)
+      }
+      resetConnection()
+    },
     useCustomUrl: () => resetConnection({ isCustomUrl: true, origin: '' }),
     useHosted: () => resetConnection({ isCustomUrl: false, origin: defaultOtariOrigin }),
     setOrigin: (origin: string) => resetConnection({ origin }),

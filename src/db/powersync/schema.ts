@@ -7,8 +7,7 @@ import { DrizzleAppSchema, type DrizzleTableWithPowerSyncOptions } from '@powers
 import * as tables from '../tables'
 
 /**
- * Synced tables supported by this client — type-checked against PowerSyncTableName.
- * Backend tables may ship before their frontend schema in the two-PR rollout.
+ * Synced tables — type-checked against PowerSyncTableName.
  * Keys are snake_case (table names). The driver uses the table's config name, not our keys.
  */
 export const syncedTables = {
@@ -17,6 +16,7 @@ export const syncedTables = {
   chat_messages: tables.chatMessagesTable,
   tasks: tables.tasksTable,
   models: tables.modelsTable,
+  provider_connections: tables.providerConnectionsTable,
   prompts: tables.promptsTable,
   skills: tables.skillsTable,
   triggers: tables.triggersTable,
@@ -24,10 +24,14 @@ export const syncedTables = {
   devices: tables.devicesTable,
   agents: tables.agentsTable,
   projects: tables.projectsTable,
-} satisfies Partial<Record<PowerSyncTableName, unknown>>
+} satisfies Record<PowerSyncTableName, unknown>
 
 /** Local-only tables — created in SQLite but never synced via PowerSync. */
 export const localOnlyTables = {
+  provider_connection_secrets: {
+    tableDefinition: tables.providerConnectionSecretsTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
   models_secrets: {
     tableDefinition: tables.modelsSecretsTable,
     options: { localOnly: true },

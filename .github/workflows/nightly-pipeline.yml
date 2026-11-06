@@ -49,6 +49,7 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       platform: all
+      expected_sha: ${{ github.sha }}
     secrets: inherit
 
   # E2E and release raise separate incidents. A night that skips the release
@@ -69,7 +70,7 @@ jobs:
 
   notify-release:
     needs: [changes, release]
-    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (needs.changes.result == 'failure' || needs.release.result == 'failure' || needs.release.result == 'success') }}
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (needs.changes.result == 'failure' || needs.release.result == 'failure' || (needs.release.result == 'success' && needs.release.outputs.published == 'true')) }}
     permissions:
       actions: read
       contents: read

@@ -239,7 +239,7 @@ describe('PendingDeviceModal', () => {
     await waitForElement(() => screen.queryByRole('alert'))
     expect(requests).toContain('/devices/me/envelope')
     expect(requests.filter((path) => path === '/devices/me/envelope')).toHaveLength(1)
-  })
+  }, 5000)
 
   it('opens deny confirmation dialog on Deny click', async () => {
     const db = getDb()

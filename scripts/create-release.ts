@@ -16,12 +16,15 @@
  *   bun run scripts/create-release.ts --type auto
  *   bun run scripts/create-release.ts --version 1.2.3 --dry-run
  *   bun run scripts/create-release.ts --platform all --push  # Used by CI
+ *
+ * Nightly CI sets RELEASE_EXPECTED_SHA and RELEASE_BRANCH to preserve the tested revision.
+ * GITHUB_OUTPUT receives published=false when a newer branch head makes that nightly stale.
  */
 
 import { execSync } from 'child_process'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { pushRelease, updateReleaseBranch } from './release-git'
+import { pushRelease, updateReleaseBranch, type ReleaseTarget } from './release-git'
 
 type VersionType = 'major' | 'minor' | 'patch' | 'auto'
 
@@ -364,7 +367,7 @@ const tagExists = (tagName: string): boolean => {
 /**
  * Commit and tag the version
  */
-const commitAndTag = (version: string, platform: string, shouldPush: boolean) => {
+const commitAndTag = (version: string, platform: string, shouldPush: boolean, target: ReleaseTarget): boolean => {
   // Determine tag name based on platform
   const tagName = platform === 'all' ? `v${version}` : `v${version}-${platform}-rc`
 
@@ -403,7 +406,9 @@ const commitAndTag = (version: string, platform: string, shouldPush: boolean) =>
 
   if (shouldPush) {
     console.log('\n📤 Pushing to remote...')
-    pushRelease(tagName)
+    if (!pushRelease(tagName, target)) {
+      return false
+    }
     console.log('  ✓ Pushed to remote')
 
     console.log(`\n✅ Tag ${tagName} created and pushed`)
@@ -419,6 +424,21 @@ const commitAndTag = (version: string, platform: string, shouldPush: boolean) =>
     console.log(`   git push origin ${currentBranch}`)
     console.log(`   git push origin ${tagName}`)
     console.log(`\n   Or run the script again with --push flag`)
+  }
+  return shouldPush
+}
+
+/** Expose publication to dependent jobs; a stale nightly must not build or resolve an incident. */
+const reportPublication = (published: boolean) => {
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `published=${published}\n`)
+  }
+  if (!published) {
+    const message = 'Nightly release skipped: the branch advanced beyond the tested revision. No release was published.'
+    console.log(message)
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`)
+    }
   }
 }
 
@@ -465,7 +485,14 @@ const main = () => {
     process.exit(1)
   }
 
-  if (args.push && !args.dryRun) updateReleaseBranch()
+  const target: ReleaseTarget = {
+    branch: process.env.RELEASE_BRANCH || undefined,
+    expectedSha: process.env.RELEASE_EXPECTED_SHA || undefined,
+  }
+  if (args.push && !args.dryRun && !updateReleaseBranch(target)) {
+    reportPublication(false)
+    return
+  }
 
   // Determine new version
   const currentVersion = getCurrentVersion()
@@ -506,7 +533,10 @@ const main = () => {
   updateVersionFiles(newVersion, platform)
 
   // Commit and tag
-  commitAndTag(newVersion, platform, args.push || false)
+  const published = commitAndTag(newVersion, platform, args.push || false, target)
+  if (args.push) {
+    reportPublication(published)
+  }
 }
 
 // Run the script

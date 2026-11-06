@@ -28,8 +28,12 @@ describe('E2E report availability', () => {
   test.each(['missing', 'empty', 'available'] as const)('handles %s reports', (state) => {
     const directory = mkdtempSync(join(tmpdir(), 'thunderbolt-reports-'))
     try {
-      if (state !== 'missing') mkdirSync(join(directory, 'all-blob-reports'))
-      if (state === 'available') writeFileSync(join(directory, 'all-blob-reports/report-1.zip'), '')
+      if (state !== 'missing') {
+        mkdirSync(join(directory, 'all-blob-reports'))
+      }
+      if (state === 'available') {
+        writeFileSync(join(directory, 'all-blob-reports/report-1.zip'), '')
+      }
       const output = join(directory, 'output')
       const summary = join(directory, 'summary')
       writeFileSync(output, '')
@@ -57,7 +61,9 @@ describe.each(['postgres', 'frontend', 'marketing'])('%s Alpine security updates
         '#!/bin/sh\ncount=$(cat "$ATTEMPTS")\ncount=$((count + 1))\necho "$count" > "$ATTEMPTS"\n[ "$count" -ge "$SUCCEED_AT" ]\n',
       )
       writeFileSync(join(directory, 'sleep'), '#!/bin/sh\nexit 0\n')
-      for (const file of ['apk', 'sleep']) chmodSync(join(directory, file), 0o755)
+      for (const file of ['apk', 'sleep']) {
+        chmodSync(join(directory, file), 0o755)
+      }
       const attempts = join(directory, 'attempts')
       writeFileSync(attempts, '0')
       const dockerfile = readFileSync(join(import.meta.dir, `../deploy/docker/${image}.Dockerfile`), 'utf8')

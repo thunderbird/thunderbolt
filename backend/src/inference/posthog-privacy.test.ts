@@ -362,7 +362,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
             expect(response.status).toBe(400)
             expect(events.filter((event) => event.event === '$ai_generation')).toEqual([
               expect.objectContaining({
-                distinct_id: 'test-user',
+                distinct_id: expect.stringMatching(/^[\da-f-]{36}$/),
                 properties: expect.objectContaining({
                   $ai_is_error: true,
                   $ai_http_status: 400,
@@ -372,6 +372,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
               }),
             ])
             expect(JSON.stringify(capturedFetches)).not.toContain(secretPrompt)
+            expect(JSON.stringify(capturedFetches)).not.toContain('test-user')
             expect(
               await testDb.db.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user')),
             ).toHaveLength(0)
@@ -416,10 +417,11 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           })
           const generation = generationEvents.find((event) => event.event === '$ai_generation')
           expect(generation).toMatchObject({
-            distinct_id: 'test-user',
+            distinct_id: expect.stringMatching(/^[\da-f-]{36}$/),
             properties: {
               model_provider: 'anthropic',
               model: 'claude-opus-5-5',
+              $process_person_profile: false,
             },
           })
           expect(generation?.properties).toMatchObject({ $ai_input_tokens: 2, $ai_output_tokens: 3 })
@@ -427,6 +429,9 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           expect(generation?.properties?.$ai_output_choices).toBeNullOrUndefined()
           expect(JSON.stringify(postHogRequests)).not.toContain(secretPrompt)
           expect(JSON.stringify(postHogRequests)).not.toContain('ROUTE_POSTHOG_SECRET_RESPONSE')
+          expect(JSON.stringify(postHogRequests)).not.toContain('test-user')
+          expect(JSON.stringify(postHogRequests)).not.toContain(rows[0].id)
+          expect(generation?.properties).not.toHaveProperty('$ai_trace_id')
           expect(generationEvents.filter((event) => event.event === '$ai_generation')).toHaveLength(1)
         } finally {
           await testDb.cleanup()

@@ -14,6 +14,7 @@ import { clearIdentityScopedMemory } from '@/lib/identity-memory'
 import { clearCachedSession } from '@/lib/session-cache'
 import { handleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 
 type ClearLocalDataOptions = {
   /** Disable PowerSync sync connection (default: true) */
@@ -78,6 +79,7 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
 
     // Reset local settings to defaults (previously these lived in the DB and were deleted with it)
     useLocalSettingsStore.setState(initialLocalSettings)
+    useSearchProviderStore.getState().clearSearchProvider()
     // Same reasoning for the locale mirror: it caches the synced `language` row, so
     // with the database gone it would boot the next identity in this account's
     // language. Tied to the database rather than to `clearAuth` because a caller

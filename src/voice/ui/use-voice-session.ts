@@ -13,6 +13,9 @@ import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDatabase } from '@/contexts'
 import { builtInAgent } from '@/defaults/agents'
 import { getSettings } from '@/dal'
+import { showSignInModalEvent } from '@/hooks/use-credential-events'
+import { hasServerAuthentication } from '@/lib/provider-mode'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ReplyChat } from '@/voice/chat-reply'
 import type { SessionState, VoiceSession } from '@/voice/session'
@@ -99,6 +102,7 @@ export const useVoiceSession = () => {
   const db = useDatabase()
   const [ui, patch] = useReducer((s: VoiceUiState, p: Partial<VoiceUiState>): VoiceUiState => ({ ...s, ...p }), initial)
   const sessionRef = useRef<VoiceSession | null>(null)
+  const pendingStartRef = useRef<symbol | null>(null)
   // Live mic level, updated ~30×/s. A ref (not state) so the waveform can read it
   // in a rAF loop without re-rendering the composer on every frame.
   const levelRef = useRef(0)
@@ -119,6 +123,7 @@ export const useVoiceSession = () => {
   // chat — start again elsewhere and one utterance hits two chats at once.
   useEffect(
     () => () => {
+      pendingStartRef.current = null
       void sessionRef.current?.stop()
       sessionRef.current = null
       setVoiceModeActive(false)
@@ -127,9 +132,11 @@ export const useVoiceSession = () => {
   )
 
   const start = async () => {
-    if (sessionRef.current) {
+    if (sessionRef.current || pendingStartRef.current) {
       return
-    } // already running — never stack a second session
+    } // already starting or running — never stack a second session
+    const request = Symbol()
+    pendingStartRef.current = request
     patch({ active: true, error: null, state: 'idle' })
     // Flag voice as active so the chat send path injects the voice self-context
     // system note (see `voice-mode.ts`); cleared on stop / startup failure.
@@ -148,8 +155,19 @@ export const useVoiceSession = () => {
           import('@/voice/chat-reply'),
           getSettings(db, { experimental_feature_voice: false }),
         ])
+      // Stop/navigation can happen while the lazy runtime or settings are loading.
+      if (pendingStartRef.current !== request) {
+        return
+      }
+      const engine = createVoiceEngine(experimentalFeatureVoice)
+      if (engine.id === 'thunderbolt' && (!getLocalSetting('cloudUrl') || !hasServerAuthentication())) {
+        setVoiceModeActive(false)
+        patch({ active: false })
+        window.dispatchEvent(new CustomEvent(showSignInModalEvent))
+        return
+      }
       const voice = createVoiceSession({
-        engine: createVoiceEngine(experimentalFeatureVoice),
+        engine,
         // The transcript + reply render as normal chat bubbles via sendMessage, so
         // the UI itself only needs the session state.
         reply: createChatReply(toReplyChat(session.chatInstance, session.id)),
@@ -165,6 +183,9 @@ export const useVoiceSession = () => {
       sessionRef.current = voice
       await voice.start()
     } catch (error) {
+      if (pendingStartRef.current !== request) {
+        return
+      }
       // Startup failures are usually getUserMedia (mic blocked / missing / in use)
       // — surface an actionable message instead of a raw DOMException name. Tear
       // the partial session down (its playback ctx already exists) and clear the
@@ -174,15 +195,25 @@ export const useVoiceSession = () => {
       sessionRef.current = null
       setVoiceModeActive(false)
       const { toVoiceErrorMessage } = await import('@/voice/voice-error')
-      patch({ error: toVoiceErrorMessage(error) })
+      if (pendingStartRef.current === request) {
+        patch({ error: toVoiceErrorMessage(error) })
+      }
+    } finally {
+      if (pendingStartRef.current === request) {
+        pendingStartRef.current = null
+      }
     }
   }
 
   const stop = async () => {
-    await sessionRef.current?.stop()
-    sessionRef.current = null
+    pendingStartRef.current = null
     setVoiceModeActive(false)
     patch({ active: false, state: 'idle' })
+    const stopping = sessionRef.current
+    await stopping?.stop()
+    if (sessionRef.current === stopping) {
+      sessionRef.current = null
+    }
   }
 
   return { ...ui, start, stop, levelRef, outputLevelRef }

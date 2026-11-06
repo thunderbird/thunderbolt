@@ -11,6 +11,7 @@ import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/se
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getPlatform } from '@/lib/platform'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
@@ -18,6 +19,8 @@ import {
   buildFetchOptions,
   hydrateSessionFromCache,
   subscribeSessionCachePersist,
+  createAuthClientInstance,
+  standaloneAuthFetch,
 } from './auth-context'
 import type { createAuthClient } from 'better-auth/react'
 
@@ -36,6 +39,22 @@ const fireStorageEvent = (newValue: string | null, oldValue: string | null) => {
 }
 
 const originalDispatch = window.dispatchEvent
+
+describe('standalone authentication', () => {
+  it('starts signed out without hydrating a previous server session', () => {
+    setAuthToken('old-server-token')
+    const client = createAuthClientInstance('')
+    expect(client.$store.atoms.session.get()).toMatchObject({ data: null, isPending: false })
+    clearAuthToken()
+  })
+
+  it('handles session reads locally and rejects sign-in until a server is selected', async () => {
+    expect(await (await standaloneAuthFetch('https://standalone.invalid/v1/api/auth/get-session')).json()).toBeNull()
+    const signIn = await standaloneAuthFetch('https://standalone.invalid/v1/api/auth/sign-in/email-otp')
+    expect(signIn.status).toBe(503)
+    expect(await signIn.json()).toMatchObject({ code: 'SERVER_NOT_CONFIGURED' })
+  })
+})
 
 describe('authRequestHeaders', () => {
   const env = import.meta.env as Record<string, unknown>
@@ -241,6 +260,88 @@ describe('buildFetchOptions onError', () => {
   })
 })
 
+describe('auth client server isolation', () => {
+  const firstServer = 'https://first.example/v1'
+  const nextServer = 'https://next.example/v1'
+  const originalSettings = useLocalSettingsStore.getState()
+
+  beforeEach(() => {
+    clearAuthToken()
+    clearCachedSession()
+    useLocalSettingsStore.setState({ cloudUrl: firstServer, serverHasAuthenticated: false })
+  })
+
+  afterEach(() => {
+    clearAuthToken()
+    clearCachedSession()
+    useLocalSettingsStore.setState(originalSettings)
+  })
+
+  it('does not expose the current token to an obsolete auth client', () => {
+    const options = buildFetchOptions('web')
+    useLocalSettingsStore.setState({ cloudUrl: nextServer })
+    setAuthToken('next-server-token')
+
+    expect(options.auth.token()).toBe('')
+    expect(() => options.onRequest({ headers: new Headers() })).toThrow('The selected server changed')
+  })
+
+  it('rejects stale-tab credentials and callbacks before the settings event is delivered', () => {
+    const options = buildFetchOptions('web')
+    const settings = useLocalSettingsStore.getState()
+    localStorage.setItem('thunderbolt-local-settings', JSON.stringify({ state: { ...settings, cloudUrl: nextServer } }))
+    localStorage.setItem(authTokenKey, JSON.stringify({ token: 'next-token', cloudUrl: nextServer }))
+
+    expect(options.auth.token()).toBe('')
+    expect(() => options.onRequest({ headers: new Headers() })).toThrow('The selected server changed')
+    expect(() =>
+      options.onSuccess({ response: Response.json({}, { headers: { 'set-auth-token': 'old-token' } }) }),
+    ).toThrow('The selected server changed')
+    options.onError({ response: new Response(null, { status: 401 }) })
+    expect(JSON.parse(localStorage.getItem(authTokenKey)!)).toEqual({ token: 'next-token', cloudUrl: nextServer })
+  })
+
+  it('rejects a late sign-in result without replacing the current token', async () => {
+    const client = createAuthClientInstance(firstServer)
+    const response = Promise.withResolvers<Response>()
+    const started = Promise.withResolvers<void>()
+    const request = client.$fetch('/sign-in/email-otp', {
+      method: 'POST',
+      body: { email: 'user@example.com', otp: '123456' },
+      customFetchImpl: async () => {
+        started.resolve()
+        return response.promise
+      },
+    })
+    const failure = request.catch((error: unknown) => error)
+    await started.promise
+    useLocalSettingsStore.setState({ cloudUrl: nextServer })
+    setAuthToken('next-server-token')
+    response.resolve(Response.json({ user: { id: 'old-user' } }, { headers: { 'set-auth-token': 'old-token' } }))
+
+    expect(await failure).toMatchObject({ name: 'AbortError' })
+    expect(getAuthToken()).toBe('next-server-token')
+    expect(getCachedSession()).toBeNull()
+  })
+
+  it.each([401, 426])('ignores a late %s from the previous server', (status) => {
+    const options = buildFetchOptions('web')
+    useLocalSettingsStore.setState({ cloudUrl: nextServer })
+    setAuthToken('next-server-token')
+    const onInvalid = mock(() => {})
+    window.addEventListener('powersync_credentials_invalid', onInvalid)
+    window.addEventListener('app_version_unsupported', onInvalid)
+    try {
+      options.onError({ response: new Response(null, { status }) })
+      expect(getAuthToken()).toBe('next-server-token')
+      expect(onInvalid).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('powersync_credentials_invalid', onInvalid)
+      window.removeEventListener('app_version_unsupported', onInvalid)
+    }
+  })
+})
+
 describe('hydrateSessionFromCache', () => {
   type AtomState = { data: unknown; isPending: boolean }
 
@@ -317,12 +418,13 @@ describe('hydrateSessionFromCache', () => {
 })
 
 describe('subscribeSessionCachePersist', () => {
-  type Listener = (state: { data: unknown }) => void
+  type AtomState = { data: unknown; isPending?: boolean; isRefetching?: boolean; error?: unknown }
+  type Listener = (state: AtomState) => void
 
   const createFakeSubscribableAtom = () => {
     const listeners = new Set<Listener>()
     return {
-      emit: (state: { data: unknown }) => {
+      emit: (state: AtomState) => {
         listeners.forEach((l) => l(state))
       },
       subscribe: (l: Listener) => {
@@ -358,6 +460,22 @@ describe('subscribeSessionCachePersist', () => {
     expect(getCachedSession()).toEqual(payload)
   })
 
+  it('permanently binds the selected server after its first successful session', () => {
+    useLocalSettingsStore.setState({
+      cloudUrl: 'https://chosen.example/v1',
+      localMode: true,
+      serverHasAuthenticated: false,
+    })
+    const atom = createFakeSubscribableAtom()
+    subscribeSessionCachePersist(createFakeClient(atom))
+
+    atom.emit({ data: { user: { id: 'u1' }, session: { id: 's1' } } })
+    clearCachedSession()
+    atom.emit({ data: null })
+
+    expect(useLocalSettingsStore.getState().serverHasAuthenticated).toBe(true)
+  })
+
   it('does not persist when data is null (initial / signed-out state)', () => {
     const atom = createFakeSubscribableAtom()
     subscribeSessionCachePersist(createFakeClient(atom))
@@ -376,6 +494,30 @@ describe('subscribeSessionCachePersist', () => {
     expect(getCachedSession()).toBeNull()
   })
 
+  it.each([null, { user: null, session: null }])(
+    'clears cached authentication after a successful signed-out response: %j',
+    (data) => {
+      const atom = createFakeSubscribableAtom()
+      subscribeSessionCachePersist(createFakeClient(atom))
+      setCachedSession({ user: { id: 'u1' }, session: { expiresAt: new Date(Date.now() + 60_000) } })
+      atom.emit({ data, isPending: false, isRefetching: false, error: null })
+      expect(getCachedSession()).toBeNull()
+    },
+  )
+
+  it.each([
+    { isPending: true, isRefetching: false, error: null },
+    { isPending: false, isRefetching: true, error: null },
+    { isPending: false, isRefetching: false, error: new Error('Offline') },
+  ])('preserves offline authentication during an inconclusive session check: %j', (state) => {
+    const atom = createFakeSubscribableAtom()
+    subscribeSessionCachePersist(createFakeClient(atom))
+    const payload = { user: { id: 'u1' }, session: { expiresAt: new Date(Date.now() + 60_000).toISOString() } }
+    setCachedSession(payload)
+    atom.emit({ data: null, ...state })
+    expect(getCachedSession()).toEqual(payload)
+  })
+
   it('unsubscribe stops further writes to the cache', () => {
     const atom = createFakeSubscribableAtom()
     const unsubscribe = subscribeSessionCachePersist(createFakeClient(atom))
@@ -386,6 +528,22 @@ describe('subscribeSessionCachePersist', () => {
 
     atom.emit({ data: { user: { id: 'u1' }, session: { id: 's1' } } })
     expect(getCachedSession()).toBeNull()
+  })
+
+  it('ignores old session emissions before React cleans up the previous subscription', () => {
+    const settings = useLocalSettingsStore.getState()
+    useLocalSettingsStore.setState({ cloudUrl: 'https://old.example/v1', serverHasAuthenticated: false })
+    const atom = createFakeSubscribableAtom()
+    const unsubscribe = subscribeSessionCachePersist(createFakeClient(atom))
+    useLocalSettingsStore.setState({ cloudUrl: 'https://new.example/v1' })
+    try {
+      atom.emit({ data: { user: { id: 'old-user' }, session: { id: 'old-session' } } })
+      expect(getCachedSession()).toBeNull()
+      expect(useLocalSettingsStore.getState().serverHasAuthenticated).toBe(false)
+    } finally {
+      unsubscribe()
+      useLocalSettingsStore.setState(settings)
+    }
   })
 })
 

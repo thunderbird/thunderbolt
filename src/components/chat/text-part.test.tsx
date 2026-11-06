@@ -5,7 +5,7 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { TextUIPart } from 'ai'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { ExternalLinkDialogProvider } from './markdown-utils'
@@ -111,4 +111,100 @@ describe('streaming widgets', () => {
     rerender(<TextPart messageId="widget" part={{ type: 'text', text: 'Replacement answer', state: 'done' }} />)
     expect(container.textContent).toBe('Replacement answer')
   })
+})
+
+it.each(['', ' [1]'])('makes private-source Markdown images explicit links (citations: %s)', (citation) => {
+  const { container } = render(
+    <ExternalLinkDialogProvider>
+      <TextPart
+        messageId="private-image"
+        part={{ type: 'text', text: `![Source image](https://example.com/tracker.png)${citation}`, state: 'done' }}
+        sources={[
+          {
+            index: 1,
+            url: 'https://example.com/article',
+            title: 'Source',
+            toolName: 'search',
+            allowRemoteImages: false,
+          },
+        ]}
+      />
+    </ExternalLinkDialogProvider>,
+  )
+  expect(container.querySelector('img')).toBeNull()
+  const link = screen.getByRole('link', { name: 'Source image' })
+  expect(link).toHaveAttribute('href', 'https://example.com/tracker.png')
+  fireEvent.click(link)
+  expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+})
+
+it.each(['//example.com/image.png', 'https:example.com/image.png'])(
+  'does not bypass private-source policy with a noncanonical Markdown image %s',
+  (url) => {
+    const { container, getByRole } = render(
+      <ExternalLinkDialogProvider>
+        <TextPart
+          messageId="relative-remote-image"
+          part={{ type: 'text', text: `![Image](${url})`, state: 'done' }}
+          sources={[
+            {
+              index: 1,
+              url: 'https://example.com/article',
+              title: 'Source',
+              toolName: 'search',
+              allowRemoteImages: false,
+            },
+          ]}
+        />
+      </ExternalLinkDialogProvider>,
+    )
+    expect(container.querySelector('img')).toBeNull()
+    expect(getByRole('link')).toHaveAttribute('href', 'https://example.com/image.png')
+  },
+)
+
+it.each([
+  { src: '/attachments/local-image.png', allowRemoteImages: false },
+  { src: 'https://example.com/image.png', allowRemoteImages: undefined },
+])('preserves local attachments and ordinary-message images ($src)', ({ src, allowRemoteImages }) => {
+  const { container } = render(
+    <TextPart
+      messageId="ordinary-image"
+      part={{ type: 'text', text: `![Image](${src})`, state: 'done' }}
+      sources={[
+        { index: 1, url: 'https://example.com/article', title: 'Source', toolName: 'search', allowRemoteImages },
+      ]}
+    />,
+  )
+  expect(container.querySelector('img')).toHaveAttribute('src', src)
+})
+
+it.each([
+  String.raw`\\example.com/image.png`,
+  String.raw`/\example.com/image.png`,
+  '&#92;&#92;example.com/image.png',
+  '&#47;&#9;&#47;example.com/image.png',
+])('keeps escaped Markdown image punctuation on the document origin (%s)', (url) => {
+  const { container } = render(
+    <ExternalLinkDialogProvider>
+      <TextPart
+        messageId="escaped-image"
+        part={{ type: 'text', text: `![Image](<${url}>)`, state: 'done' }}
+        sources={[
+          {
+            index: 1,
+            url: 'https://example.com/article',
+            title: 'Source',
+            toolName: 'search',
+            allowRemoteImages: false,
+          },
+        ]}
+      />
+    </ExternalLinkDialogProvider>,
+  )
+  const image = container.querySelector('img')
+  expect(image).toBeInTheDocument()
+  // The DOM harness starts at about:blank; resolve as a browser-hosted app would.
+  const documentUrl = new URL('https://app.example/chats/new')
+  expect(new URL(image!.getAttribute('src')!, documentUrl).origin).toBe(documentUrl.origin)
 })

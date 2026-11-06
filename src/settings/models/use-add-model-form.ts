@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { createModelInTransaction, updateModelInTransaction } from '@/dal/models'
+import { withTinfoilSessionLock } from '@/lib/tinfoil-session'
+import { saveProviderAuthorization, type ProviderAuthorization } from '@/lib/provider-connection-attempt'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
@@ -15,7 +18,8 @@ import { z } from 'zod'
 import { useChatStore } from '@/chats/chat-store'
 import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
-import { createModel, getAvailableModels } from '@/dal'
+import { getAllModels, getAvailableModels, updateSettings } from '@/dal'
+import { useLocalProviders } from '@/hooks/use-local-providers'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
@@ -101,15 +105,18 @@ export const generateModelName = (modelId: string): string => {
 type UseAddModelFormOptions = {
   isOpen: boolean
   onClose: () => void
+  /** Called only after a model is saved and the available-model list is refreshed. */
+  onSaved?: () => void
   /** Clears page-level mutation feedback when an add attempt begins. */
   onMutationStart?: () => void
 }
 
 /** Owns the reusable add-model form, catalog, connection test, and mutation. */
-export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddModelFormOptions) => {
+export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: UseAddModelFormOptions) => {
   const { i18n } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const isStandalone = useLocalProviders()
   const [state, dispatch] = useReducer(addModelReducer, initialState)
   const { selectedModelId, submitError } = state
   const catalog = useModelCatalog()
@@ -117,7 +124,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     resolver: zodResolver(createAddModelFormSchema(i18n)),
     mode: 'onChange',
     defaultValues: {
-      provider: 'thunderbolt',
+      provider: isStandalone ? 'custom' : 'thunderbolt',
       name: '',
       model: '',
       customModel: '',
@@ -149,30 +156,101 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   }
 
   const addMutation = useMutation({
-    mutationFn: async ({ supportsTools, ...values }: AddModelFormValues) => {
-      await createModel(db, {
-        id: uuidv7(),
-        ...values,
-        apiKey: values.apiKey || null,
-        url: values.url || null,
-        isSystem: 0,
-        enabled: 1,
-        toolUsage: supportsTools ? 1 : 0,
-        contextWindow: null,
-      })
+    mutationFn: async (
+      values: AddModelFormValues &
+        Partial<
+          Pick<
+            Model,
+            | 'contextWindow'
+            | 'vendor'
+            | 'isConfidential'
+            | 'supportsParallelToolCalls'
+            | 'startWithReasoning'
+            | 'oauthProvider'
+            | 'providerDefault'
+          >
+        > & { providerAuthorization?: ProviderAuthorization; signal?: AbortSignal },
+    ) => {
+      const { providerAuthorization, signal, supportsTools = true, ...modelValues } = values
+      const save = () =>
+        db.transaction(async (tx) => {
+          // Authorization can be cancelled while this save waits for the session lock or database.
+          signal?.throwIfAborted()
+          const candidates =
+            values.providerDefault === 1 || values.oauthProvider
+              ? (await getAllModels(tx)).filter(
+                  (model) =>
+                    (model.oauthProvider ?? null) === (values.oauthProvider ?? null) &&
+                    model.provider === values.provider &&
+                    model.model === values.model &&
+                    model.isSystem !== 1,
+                )
+              : []
+          // OAuth rows predate the provenance marker; own-key rows cannot be
+          // inferred safely because users may add the same model with different keys.
+          const previous =
+            candidates.find((model) => model.providerDefault === 1) ??
+            (values.oauthProvider ? candidates[0] : undefined)
+          const id = previous?.id ?? uuidv7()
+
+          if (providerAuthorization) {
+            await saveProviderAuthorization(tx, providerAuthorization)
+          }
+          const modelData = {
+            id,
+            ...modelValues,
+            apiKey: values.oauthProvider ? null : values.apiKey || null,
+            url: values.url || null,
+            isSystem: 0,
+            enabled: 1,
+            toolUsage: supportsTools ? 1 : 0,
+            contextWindow: values.contextWindow ?? null,
+          }
+          if (previous) {
+            // Reauthorization restores access; it must not reset the user's model configuration.
+            await updateModelInTransaction(tx, id, {
+              apiKey: modelData.apiKey,
+              oauthProvider: values.oauthProvider ?? null,
+              providerDefault: values.providerDefault,
+            })
+          } else {
+            await createModelInTransaction(tx, modelData)
+          }
+          signal?.throwIfAborted()
+          return { id, created: !previous }
+        })
+      const { id, created } =
+        providerAuthorization?.attempt.provider === 'tinfoil' ? await withTinfoilSessionLock(save) : await save()
+      if (isStandalone && created) {
+        await updateSettings(db, { selected_model: id })
+      }
       return getAvailableModels(db)
     },
     onMutate: () => {
       onMutationStart?.()
       dispatch({ type: 'MUTATION_STARTED' })
     },
-    onSuccess: async (models) => {
+    onSuccess: async (models, values) => {
+      if (values.signal?.aborted) {
+        return
+      }
       useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
+      if (isStandalone) {
+        await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      }
+      if (values.signal?.aborted) {
+        return
+      }
       close()
+      onSaved?.()
     },
-    onError: (error: unknown) => {
-      console.error('Failed to add the model.', error)
+    onError: (_error, values) => {
+      if (values.signal?.aborted) {
+        return
+      }
+      // Database errors can include bound API keys and OAuth tokens.
+      console.error('Failed to add the model.')
       dispatch({ type: 'MUTATION_FAILED' })
     },
   })
@@ -244,6 +322,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   const modelItems = buildModelItems()
 
   return {
+    allowServerModels: !isStandalone,
     form,
     modelItems,
     selectedModelId,
@@ -256,6 +335,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     toolSupport: connection.toolSupport,
     submitError,
     onSubmit: submit,
+    saveModel: addMutation.mutateAsync,
     onCancel: close,
     onProviderChange: changeProvider,
     onCatalogInvalidated: catalog.invalidateCatalog,

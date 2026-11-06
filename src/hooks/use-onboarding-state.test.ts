@@ -9,7 +9,12 @@ import { eq } from 'drizzle-orm'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { onboardingStepCount, useOnboardingState } from './use-onboarding-state'
+import {
+  getOnboardingSteps,
+  onboardingStepCount,
+  resolveOnboardingStep,
+  useOnboardingState,
+} from './use-onboarding-state'
 
 const mockCountryUnitsResponse = {
   unit: 'metric',
@@ -35,6 +40,46 @@ describe('useOnboardingState', () => {
   beforeEach(async () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
+  })
+
+  describe('standalone flow', () => {
+    it('keeps connected step identities and excludes server-only setup from the standalone path', () => {
+      expect(getOnboardingSteps(false)).toEqual([1, 2, 3, 4, 5, 6, 7])
+      expect(getOnboardingSteps(true)).toEqual([1, 8, 9, 10, 3, 5, 7])
+      expect(getOnboardingSteps(true, true)).toEqual([1, 8, 9, 3, 5, 7])
+      expect(getOnboardingSteps(false, true)).toEqual([1, 2, 3, 4, 5, 6, 7])
+      expect(resolveOnboardingStep(10, true, true)).toBe(3)
+      expect(resolveOnboardingStep(8, false)).toBe(2)
+      expect(resolveOnboardingStep(4, true)).toBe(8)
+    })
+
+    it('offers server selection and permits skipping AI and search setup', async () => {
+      const { result } = renderHook(() => useOnboardingState({ isStandalone: true }), {
+        wrapper: createTestProvider(),
+      })
+      await act(async () => {
+        await result.current.actions.nextStep()
+      })
+      expect(result.current.state.currentStep).toBe(8)
+      await act(async () => {
+        await result.current.actions.skipStep()
+      })
+      expect(result.current.state.currentStep).toBe(9)
+      expect(result.current.state.canSkip).toBe(true)
+      await act(async () => {
+        await result.current.actions.skipStep()
+      })
+      expect(result.current.state.currentStep).toBe(10)
+      expect(result.current.state.canSkip).toBe(true)
+      await act(async () => {
+        await result.current.actions.skipStep()
+      })
+      expect(result.current.state.currentStep).toBe(3)
+      await act(async () => {
+        await result.current.actions.prevStep()
+      })
+      expect(result.current.state.currentStep).toBe(10)
+    })
   })
 
   describe('Initial state', () => {
@@ -73,7 +118,6 @@ describe('useOnboardingState', () => {
       expect(typeof actions.setConnecting).toBe('function')
       expect(typeof actions.setProcessingOAuth).toBe('function')
       expect(typeof actions.setNameValue).toBe('function')
-      expect(typeof actions.setNameValid).toBe('function')
       expect(typeof actions.setSubmittingName).toBe('function')
       expect(typeof actions.setLocationValue).toBe('function')
       expect(typeof actions.setLocationValid).toBe('function')

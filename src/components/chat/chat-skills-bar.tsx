@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Plus } from 'lucide-react'
 import { lazy, Suspense, useReducer } from 'react'
@@ -20,7 +21,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { skillDisplayName, skillMatchesQuery } from '@/skills/display'
 import { chipSurfaceClass, SuggestionChip } from '@/skills/suggestion-chip'
-import { useSkillTelemetry } from '@/skills/telemetry'
+import { trackSkillEvent } from '@/skills/telemetry'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
@@ -106,11 +107,10 @@ export const ChatSkillsBar = ({
   const { skills: library } = useLibrarySkills()
   const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
-  const trackSkillEvent = useSkillTelemetry()
   const { openCreateItem } = useCreateItem()
   // Minimal mode (see `selectMinimalMode`) hides the chips; typed `/skill`
   // text is plain text there.
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   // Hidden too until `/config` answers, so the chips never flash in and out.
   const configLoaded = useConfigStore(selectConfigSettled)
 
@@ -125,7 +125,7 @@ export const ChatSkillsBar = ({
     dispatch({ type: 'MUTATION_STARTED' })
     try {
       await togglePin(skill.id)
-      trackSkillEvent(action === 'pin' ? 'skill_pinned' : 'skill_unpinned', skill.id, {})
+      trackSkillEvent(action === 'pin' ? 'skill_pinned' : 'skill_unpinned', {})
     } catch (error) {
       console.error('togglePin failed:', error)
       // Bound to a local so the catalog placeholder is named `{name}` — a call
@@ -157,7 +157,7 @@ export const ChatSkillsBar = ({
           dispatch({ type: 'MUTATION_STARTED' })
           try {
             await reorderPins(ids)
-            trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
+            trackSkillEvent('skill_reordered', { from_index: move.from, to_index: move.to })
           } catch (error) {
             console.error('reorderPins failed:', error)
             dispatch({ type: 'MUTATION_FAILED', message: t`Couldn't save the new order.` })

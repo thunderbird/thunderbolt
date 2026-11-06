@@ -34,6 +34,7 @@ export type RequestOptions = {
   /** Raw request body (e.g. FormData, Blob) for non-JSON posts. Ignored if `json` is set. */
   body?: BodyInit
   credentials?: RequestCredentials
+  redirect?: RequestRedirect
   signal?: AbortSignal
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 }
@@ -147,6 +148,7 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
       headers,
       body,
       credentials: options.credentials ?? config.credentials,
+      redirect: options.redirect,
       signal,
     })
 
@@ -182,12 +184,16 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
  * request to the app backend returns 401, so the app can prompt the user to re-authenticate,
  * and `device_revoked` on a 403 `DEVICE_DISCONNECTED`, which wipes this device.
  * External-API 401s (e.g. Google/Microsoft OAuth) are ignored — those use the same client but
- * with caller-provided OAuth tokens, and are not signals of an expired app session. */
+ * with caller-provided OAuth tokens, and are not signals of an expired app session.
+ * `isCurrent` retires a client's credential access and error side effects after server selection changes. */
 export const createAuthenticatedClient = (
   prefixUrl: string,
   getToken: () => string | null,
-  config: Pick<HttpClientConfig, 'fetch' | 'credentials'> = {},
+  config: Pick<HttpClientConfig, 'fetch' | 'credentials'> & { isCurrent?: () => boolean } = {},
 ): HttpClient => {
+  if (!prefixUrl) {
+    return createStandaloneClient(config)
+  }
   const backendUrl =
     prefixUrl.startsWith('http://') || prefixUrl.startsWith('https://')
       ? new URL(prefixUrl)
@@ -199,15 +205,18 @@ export const createAuthenticatedClient = (
     hooks: {
       beforeRequest: [
         (request) => {
-          if (!request.headers.has('Authorization')) {
-            const token = getToken()
-            if (token) {
-              request.headers.set('Authorization', `Bearer ${token}`)
-            }
-          }
-          // Inject device identity headers only for app backend requests (not external APIs).
-          // Uses the same prefix guard as the afterResponse 401 handler below.
+          // App credentials belong only to the configured API namespace. External
+          // APIs sharing this client must supply their own authorization explicitly.
           if (isBackendRequest(request.url, backendUrl)) {
+            if (config.isCurrent?.() === false) {
+              throw new DOMException('The selected server changed', 'AbortError')
+            }
+            if (!request.headers.has('Authorization')) {
+              const token = getToken()
+              if (token) {
+                request.headers.set('Authorization', `Bearer ${token}`)
+              }
+            }
             const deviceId = getDeviceId()
             if (deviceId) {
               request.headers.set('X-Device-ID', deviceId)
@@ -229,7 +238,7 @@ export const createAuthenticatedClient = (
           // Only app-backend responses are actionable — external APIs use this same
           // client with caller-provided tokens, so their 401/403/426 are not signals about
           // our app session or app version. Same prefix guard as the beforeRequest hook.
-          if (!isBackendRequest(request.url, backendUrl)) {
+          if (!isBackendRequest(request.url, backendUrl) || config.isCurrent?.() === false) {
             return
           }
           // A 426 from our backend means this build is below the enforced minimum —
@@ -251,7 +260,7 @@ export const createAuthenticatedClient = (
               .clone()
               .json()
               .catch(() => null)) as { code?: string } | null
-            if (body?.code === 'DEVICE_DISCONNECTED') {
+            if (body?.code === 'DEVICE_DISCONNECTED' && config.isCurrent?.() !== false) {
               window.dispatchEvent(
                 new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'device_revoked' } }),
               )
@@ -265,3 +274,19 @@ export const createAuthenticatedClient = (
 
 /** Default client with no config — use for external API calls that don't need auth or prefixUrl. */
 export const http = createClient()
+
+/** Allow external APIs locally while refusing backend-relative calls before a server is selected. */
+export const createStandaloneClient = (config: Pick<HttpClientConfig, 'fetch'> = {}): HttpClient => {
+  const externalClient = createClient(config)
+  const request = (method: keyof HttpClient, url: string, options?: RequestOptions): ResponsePromise => {
+    if (/^https?:\/\//.test(url)) {
+      return externalClient[method](url, options)
+    }
+    return makeResponsePromise(Promise.reject(new Error('Connect to a Thunderbolt server to use this feature')))
+  }
+  return {
+    get: (url, options) => request('get', url, options),
+    post: (url, options) => request('post', url, options),
+    delete: (url, options) => request('delete', url, options),
+  }
+}

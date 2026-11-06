@@ -13,6 +13,7 @@ describe('navigationCommands', () => {
       '/settings/skills',
       '/settings/connections',
       '/settings/models',
+      '/settings/search',
       '/settings/voice',
       '/settings/preferences',
       '/settings/devices',

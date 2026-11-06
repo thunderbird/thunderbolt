@@ -84,17 +84,18 @@ const reducer = (state: State, action: Action): State => {
 
 type UseWaitlistStateOptions = {
   authClient: AuthClient
+  onSuccess?: () => void
 }
 
 /**
  * State hook for the unified waitlist flow.
  * Handles email submission via the waitlist API, then OTP verification for approved users.
- * AuthGate owns the signed-in redirect; post-sign-in work can finish after this page unmounts.
+ * The caller reacts to the authenticated session; post-sign-in work can finish after the form unmounts.
  *
  * Privacy note: The API always returns { success: true } regardless of user status.
  * Approved users receive an OTP email; others receive waitlist status emails.
  */
-export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
+export const useWaitlistState = ({ authClient, onSuccess }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const analytics = useAnonymousPromotionAnalytics()
   const [state, dispatch] = useReducer(reducer, initialState)
@@ -128,11 +129,10 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
       return
     }
 
-    await analytics.captureAnonId(authClient)
-
     dispatch({ type: 'START_VERIFYING' })
 
     try {
+      await analytics.captureAnonymousSession(authClient)
       const result = await signInWithOtp(authClient, {
         email: state.email.trim(),
         otp: value,
@@ -145,11 +145,12 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
       }
 
       const isNewUser = isNewAuthUser(result.data.user)
-      analytics.onPromotionSuccess(result.data.user.id)
+      analytics.onPromotionSuccess()
 
       if (!isNewUser) {
         useWelcomeStore.getState().trigger()
       }
+      onSuccess?.()
     } catch (error) {
       console.error('OTP verification error:', error)
       dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
@@ -159,14 +160,15 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
   const handlePasskeySignIn = async () => {
     // Disable the button before any await, so a double tap can't start a second ceremony.
     dispatch({ type: 'PASSKEY_START' })
-    await analytics.captureAnonId(authClient)
 
     try {
-      const { userId } = await signInWithPasskey(authClient)
+      await analytics.captureAnonymousSession(authClient)
+      await signInWithPasskey(authClient)
 
-      analytics.onPromotionSuccess(userId)
+      analytics.onPromotionSuccess()
 
       useWelcomeStore.getState().trigger()
+      onSuccess?.()
     } catch (error) {
       if (isPasskeyCancellation(error)) {
         dispatch({ type: 'PASSKEY_CANCEL' })

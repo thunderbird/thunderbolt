@@ -178,7 +178,7 @@ export const useSignInFormState = ({
       return
     }
 
-    await analytics.captureAnonId(authClient)
+    await analytics.captureAnonymousSession(authClient)
 
     dispatch({ type: 'START_VERIFYING' })
 
@@ -197,7 +197,7 @@ export const useSignInFormState = ({
       }
 
       if (result.data?.user?.id) {
-        analytics.onPromotionSuccess(result.data.user.id)
+        analytics.onPromotionSuccess()
       }
 
       // Sign-in successful - show success state
@@ -211,12 +211,12 @@ export const useSignInFormState = ({
   const handlePasskeySignIn = async () => {
     // Disable the button before any await, so a double tap can't start a second ceremony.
     dispatch({ type: 'PASSKEY_START' })
-    await analytics.captureAnonId(authClient)
+    await analytics.captureAnonymousSession(authClient)
 
     try {
-      const { userId } = await signInWithPasskey(authClient)
+      await signInWithPasskey(authClient)
 
-      analytics.onPromotionSuccess(userId)
+      analytics.onPromotionSuccess()
 
       dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (error) {

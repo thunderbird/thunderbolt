@@ -18,6 +18,26 @@ const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) =
 
 describe('Config Routes', () => {
   describe('GET /config', () => {
+    it.each(['consumer', 'oidc', 'saml'] as const)(
+      'advertises %s authentication without credentials',
+      async (authMode) => {
+        const { body } = await fetchConfig(
+          createTestSettings({
+            authMode,
+            authAllowAnonymous: true,
+            captchaProvider: 'altcha',
+            oidcClientSecret: 'private-client-secret',
+            altchaSecret: 'private-captcha-secret',
+          }),
+        )
+        expect(body.authMode).toBe(authMode)
+        expect(body.authAllowAnonymous).toBe(true)
+        expect(body.captchaProvider).toBe('altcha')
+        expect(JSON.stringify(body)).not.toContain('private-client-secret')
+        expect(JSON.stringify(body)).not.toContain('private-captcha-secret')
+      },
+    )
+
     it('always reports e2eeEnabled: true (stale-client compatibility shim)', async () => {
       const { body } = await fetchConfig(createTestSettings())
       expect(body.e2eeEnabled).toBe(true)

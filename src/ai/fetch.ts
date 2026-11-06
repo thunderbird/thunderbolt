@@ -46,11 +46,13 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
+import { usesLocalProviders } from '@/lib/provider-mode'
 import { classifyErrorKind, createChatErrorResponse } from '@/lib/error-utils'
 import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
-import type { FetchFn } from '@/lib/proxy-fetch'
+import { createLiveProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
+import { getTinfoilSearchConnection } from '@/integrations/tinfoil-search/connection'
 import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
 import { recordDebugTranscriptRetry, recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
@@ -270,6 +272,9 @@ export const resolveOpenAiCompatConnection = (
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const cloudUrl = getLocalSetting('cloudUrl')
+      if (usesLocalProviders(cloudUrl)) {
+        return null
+      }
       const token = getAuthToken() || 'thunderbolt'
       // See the `thunderbolt` case in createModel for the SSO/token rationale:
       // SSO web has no bearer token (cookie auth), so strip the placeholder
@@ -291,7 +296,11 @@ export const resolveOpenAiCompatConnection = (
     }
     case 'openai':
       return modelConfig.apiKey
-        ? { baseURL: 'https://api.openai.com/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
+        ? {
+            baseURL: 'https://api.openai.com/v1',
+            apiKey: modelConfig.apiKey,
+            fetch: createLiveProxyFetch(getProxyFetch),
+          }
         : null
     case 'custom': {
       if (!modelConfig.url) {
@@ -302,12 +311,16 @@ export const resolveOpenAiCompatConnection = (
       // hosted proxy (and its SSRF checks) on web or with the toggle on.
       const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
       const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
-      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()
+      const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : createLiveProxyFetch(getProxyFetch)
       return { baseURL, apiKey: modelConfig.apiKey ?? '', fetch: providerFetch }
     }
     case 'openrouter':
       return modelConfig.apiKey
-        ? { baseURL: 'https://openrouter.ai/api/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
+        ? {
+            baseURL: 'https://openrouter.ai/api/v1',
+            apiKey: modelConfig.apiKey,
+            fetch: createLiveProxyFetch(getProxyFetch),
+          }
         : null
     default:
       return null
@@ -401,7 +414,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         apiKey: modelConfig.apiKey || '',
         // Native HTTP always sends an Origin, so Anthropic requires this opt-in there too.
         headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
-        fetch: getProxyFetch(),
+        fetch: createLiveProxyFetch(getProxyFetch),
       })
       return anthropic(modelConfig.model)
     }
@@ -550,7 +563,11 @@ export const prepareAiRequestConfig = async ({
   const sourceCollector = webToolBudget?.sourceCollector ?? []
   const toolCallCache: ToolCallCache = new Map()
   const availableTools = supportsTools
-    ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
+    ? await getAvailableTools(httpClient, sourceCollector, {
+        settings,
+        integrationStatus,
+        ...(await getTinfoilSearchConnection(db)),
+      })
     : []
   const appToolset = addSkillTool(
     createToolset(availableTools, toolCallCache, webToolBudget),

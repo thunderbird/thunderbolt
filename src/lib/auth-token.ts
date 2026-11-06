@@ -14,10 +14,28 @@
 import { getActiveLocale } from '@/i18n/active-locale'
 import { appVersionHeader } from '@/lib/app-version'
 import { getDeviceDisplayName } from '@/lib/platform'
+import { getLocalSetting, isCurrentServer, markServerAuthenticated } from '@/stores/local-settings-store'
+import { isRecord } from '@shared/lib/is-record'
 
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
 const userCacheSecretKey = 'thunderbolt_user_cache_secret'
+const authTokenListeners = new Set<() => void>()
+
+/** Subscribes to token changes in this window and other tabs without requiring auth context. */
+export const subscribeAuthToken = (listener: () => void): (() => void) => {
+  authTokenListeners.add(listener)
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === authTokenKey || event.key === null) {
+      listener()
+    }
+  }
+  window.addEventListener('storage', onStorage)
+  return () => {
+    authTokenListeners.delete(listener)
+    window.removeEventListener('storage', onStorage)
+  }
+}
 
 /** Get or create device_id (from localStorage). */
 export const getDeviceId = (): string => {
@@ -29,17 +47,42 @@ export const getDeviceId = (): string => {
   return id
 }
 
-/** Get the current auth token (sync, from localStorage). */
-export const getAuthToken = (): string | null => localStorage.getItem(authTokenKey)
+/** Read credentials only for this window's selected server; legacy bare tokens belong to its existing selection. */
+export const getAuthToken = (): string | null => {
+  const cloudUrl = getLocalSetting('cloudUrl')
+  if (!isCurrentServer(cloudUrl)) {
+    return null
+  }
+  const raw = localStorage.getItem(authTokenKey)
+  if (!raw?.startsWith('{')) {
+    return raw
+  }
+  try {
+    const stored: unknown = JSON.parse(raw)
+    return isRecord(stored) && stored.cloudUrl === cloudUrl && typeof stored.token === 'string' ? stored.token : null
+  } catch {
+    return null
+  }
+}
 
 /** Store the auth token in localStorage. Use clearAuthToken() to remove. */
-export const setAuthToken = (token: string): void => {
-  localStorage.setItem(authTokenKey, token)
+export const setAuthToken = (token: string, cloudUrl = getLocalSetting('cloudUrl')): void => {
+  if (!isCurrentServer(cloudUrl)) {
+    throw new DOMException('The selected server changed', 'AbortError')
+  }
+  if (token) {
+    markServerAuthenticated()
+  }
+  // Keep scope and credential in one atomic write so readers cannot combine a
+  // new server's token with an old window's configuration.
+  localStorage.setItem(authTokenKey, JSON.stringify({ token, cloudUrl }))
+  authTokenListeners.forEach((listener) => listener())
 }
 
 /** Clear the auth token (for sign-out). */
 export const clearAuthToken = (): void => {
   localStorage.removeItem(authTokenKey)
+  authTokenListeners.forEach((listener) => listener())
 }
 
 /** Clear the device ID (for revoked devices — forces a new ID on next login). */

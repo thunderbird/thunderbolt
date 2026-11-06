@@ -80,6 +80,7 @@
         "cmdk": "^1.1.1",
         "css-tree": "^3.2.1",
         "drizzle-orm": "^0.45.2",
+        "ehbp": "^0.4.1",
         "events": "^3.3.0",
         "framer-motion": "^12.23.12",
         "input-otp": "^1.4.2",
@@ -1595,7 +1596,7 @@
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
-    "ehbp": ["ehbp@0.3.0", "", { "dependencies": { "@panva/hpke-noble": "^1.0.3", "hpke": "^1.0.1" } }, "sha512-emLvsu3aeE1LXHvJASMXgJWxw9AuXVLPA4zkyujVwlqlfogBh9Gdd+tPH7nQJw5JfVwfZPU3W2oA5UuihMUIMg=="],
+    "ehbp": ["ehbp@0.4.1", "", { "dependencies": { "@panva/hpke-noble": "^1.0.3", "hpke": "^1.0.1" } }, "sha512-CvffrnnhsG0H2t2kNVjMmkcOW2OZqnRuvPuih4RP/Oy2nMVFYmhvyU23KhCfC+5u07wB95fvOcSY/Z4B9hbmRw=="],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.360", "", {}, "sha512-GkcBt6YYAw9SxFWn+xVar4cLVGlXVuswwtRLBozi2zp0GjXs4ZnOrqV4zbXzg35n7w81hCkyJNYicgXlVHAmBA=="],
 
@@ -3344,6 +3345,8 @@
     "strip-ansi-cjs/ansi-regex": ["ansi-regex@5.0.1", "", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
 
     "tinfoil/@ai-sdk/openai-compatible": ["@ai-sdk/openai-compatible@3.0.14", "", { "dependencies": { "@ai-sdk/provider": "4.0.3", "@ai-sdk/provider-utils": "5.0.12" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-nUl7dBHUDTqcnuWGnEbKMwDDqL94BxRfibLwYv8uWp+kZn8Zqdxy7tUBt4sv2hpHQi+S2P6bUyqW18xmbykErw=="],
+
+    "tinfoil/ehbp": ["ehbp@0.3.0", "", { "dependencies": { "@panva/hpke-noble": "^1.0.3", "hpke": "^1.0.1" } }, "sha512-emLvsu3aeE1LXHvJASMXgJWxw9AuXVLPA4zkyujVwlqlfogBh9Gdd+tPH7nQJw5JfVwfZPU3W2oA5UuihMUIMg=="],
 
     "tinfoil/openai": ["openai@6.48.0", "", { "peerDependencies": { "@aws-sdk/credential-provider-node": ">=3.972.0 <4", "@smithy/hash-node": ">=4.3.0 <5", "@smithy/signature-v4": ">=5.4.0 <6", "ws": "^8.18.0", "zod": "^3.25 || ^4.0" }, "optionalPeers": ["@aws-sdk/credential-provider-node", "@smithy/hash-node", "@smithy/signature-v4", "ws", "zod"] }, "sha512-KhVp+FyV50QrXNextvL9hIU5l6ox5HYuKQjGVk7lIqprgJol90+dQXWONV6S1lRWsKA1bXjrow8RsUT14M1hNA=="],
 

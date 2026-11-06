@@ -42,6 +42,10 @@ type AddModelFormProps = {
   onCatalogInvalidated: () => void
   onSelectModel: (id: string) => void
   onTestConnection: () => void
+  showCancel?: boolean
+  allowServerModels?: boolean
+  showProvider?: boolean
+  showApiKey?: boolean
 }
 
 /** Presentational add-model form; provider and mutation behavior stays in the page controller. */
@@ -63,6 +67,10 @@ export const AddModelForm = ({
   onCatalogInvalidated,
   onSelectModel,
   onTestConnection,
+  showCancel = true,
+  allowServerModels = true,
+  showProvider = true,
+  showApiKey = true,
 }: AddModelFormProps) => {
   const { i18n, t } = useLingui()
   const appName = useAppName()
@@ -83,37 +91,41 @@ export const AddModelForm = ({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-1 flex-col gap-4 pb-2 pt-4">
-        <FormField
-          control={form.control}
-          name="provider"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>
-                <Trans>Provider</Trans>
-              </FormLabel>
-              <Select
-                onValueChange={(value: Model['provider']) => {
-                  onProviderChange(value)
-                }}
-                value={field.value}
-              >
-                <FormControl>
-                  <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
-                    <SelectValue placeholder={t`Select provider`} />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {providerPickerOrder.map((provider) => (
-                    <SelectItem key={provider} value={provider}>
-                      {getProviderLabel(i18n, provider, appName)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {showProvider && (
+          <FormField
+            control={form.control}
+            name="provider"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  <Trans>Provider</Trans>
+                </FormLabel>
+                <Select
+                  onValueChange={(value: Model['provider']) => {
+                    onProviderChange(value)
+                  }}
+                  value={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
+                      <SelectValue placeholder={t`Select provider`} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {providerPickerOrder
+                      .filter((provider) => allowServerModels || provider !== 'thunderbolt')
+                      .map((provider) => (
+                        <SelectItem key={provider} value={provider}>
+                          {getProviderLabel(i18n, provider, appName)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
         {provider === 'custom' && (
           <FormField
             control={form.control}
@@ -123,8 +135,8 @@ export const AddModelForm = ({
                 <FormLabel>
                   <Trans>URL</Trans>
                 </FormLabel>
-                <FormControl>
-                  <div className="relative">
+                <div className="relative">
+                  <FormControl>
                     <Input
                       {...field}
                       placeholder="http://localhost:11434/v1"
@@ -134,18 +146,18 @@ export const AddModelForm = ({
                         onCatalogInvalidated()
                       }}
                     />
-                    {isLoadingCatalog && (
-                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                    )}
-                  </div>
-                </FormControl>
+                  </FormControl>
+                  {isLoadingCatalog && (
+                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                  )}
+                </div>
                 {catalogError && <p className="mt-1 whitespace-pre-line text-sm text-destructive">{catalogError}</p>}
                 <FormMessage />
               </FormItem>
             )}
           />
         )}
-        {provider !== 'thunderbolt' && (
+        {showApiKey && provider !== 'thunderbolt' && (
           <FormField
             control={form.control}
             name="apiKey"
@@ -173,6 +185,16 @@ export const AddModelForm = ({
               </FormItem>
             )}
           />
+        )}
+        {!showApiKey && catalogError && (
+          <div className="flex flex-col items-start gap-2">
+            <p role="alert" className="whitespace-pre-line text-sm text-destructive">
+              {catalogError}
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={onCatalogInvalidated}>
+              <Trans>Retry loading models</Trans>
+            </Button>
+          </div>
         )}
         {showModelSelection && (
           <FormField
@@ -266,7 +288,7 @@ export const AddModelForm = ({
           />
         )}
         <FormFooter>
-          <ResponsiveModalCancel onClick={onCancel} />
+          {showCancel && <ResponsiveModalCancel onClick={onCancel} />}
           <Button
             type="submit"
             isLoading={isPending}

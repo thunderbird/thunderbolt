@@ -13,6 +13,7 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { useAuth } from '@/contexts'
 import Loading from '@/loading'
+import { Button } from '@/components/ui/button'
 
 /**
  * In SSO mode (OIDC or SAML), redirects unauthenticated users to the backend's
@@ -23,6 +24,7 @@ import Loading from '@/loading'
  */
 const SsoRedirect = () => {
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const localMode = useLocalSettingsStore((s) => s.localMode)
   const authClient = useAuth()
   const { data: session, isPending } = authClient.useSession()
   const analytics = useAnonymousPromotionAnalytics()
@@ -38,7 +40,7 @@ const SsoRedirect = () => {
     try {
       // AuthGate already resolved this session on normal entry. Direct visits
       // wait below, so analytics never adds another request before sign-in.
-      await analytics.captureAnonId(authClient, session)
+      await analytics.captureAnonymousSession(authClient, session)
       if (signal.aborted) {
         return
       }
@@ -51,7 +53,7 @@ const SsoRedirect = () => {
           return
         }
         if (token) {
-          setAuthToken(token)
+          setAuthToken(token, cloudUrl)
           window.location.replace('/')
         } else {
           setStatus('error') // timeout
@@ -82,7 +84,7 @@ const SsoRedirect = () => {
         return
       }
 
-      // Persist the anon id to sessionStorage BEFORE the browser navigates away.
+      // Persist only the conversion marker before the browser navigates away.
       analytics.persistForSso()
       window.location.href = data.url
     } catch (err) {
@@ -124,6 +126,11 @@ const SsoRedirect = () => {
         >
           <Trans>Try again</Trans>
         </button>
+        {localMode && (
+          <Button variant="outline" onClick={() => window.location.replace('/')}>
+            <Trans>Continue locally</Trans>
+          </Button>
+        )}
       </div>
     )
   }

@@ -12,6 +12,8 @@
 
 import '@/testing-library'
 
+import { tinfoilSession } from '@/lib/tinfoil-session'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { defaultModels } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -268,6 +270,25 @@ describe('resolvePiModel — image capability', () => {
   })
 })
 
+describe('resolvePiModel — live provider transport', () => {
+  it('keeps a cached Anthropic descriptor on the current proxy transport', async () => {
+    const first = mock(async () => new Response('first server'))
+    const next = mock(async () => new Response('next server'))
+    const transport = { current: Object.assign(first, { preconnect: async () => false }) }
+    const context = {
+      selectedModel: { provider: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'key' } as Model,
+      getProxyFetch: () => transport.current,
+    } as unknown as AgentAdapterContext
+    const resolved = await resolvePiModel({ isKnownAnthropicModel: () => true } as never, context, null)
+    const send = resolved!.descriptor.fetch!
+    expect(await (await send('https://api.anthropic.com/v1/messages')).text()).toBe('first server')
+    transport.current = Object.assign(next, { preconnect: async () => false })
+    expect(await (await send('https://api.anthropic.com/v1/messages')).text()).toBe('next server')
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(next).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('resolvePiModel — managed Anthropic', () => {
   it('routes Thunderbolt Opus through Pi native Messages with its public wire alias', async () => {
     const isKnownAnthropicModel = mock((modelId: string) => modelId === 'claude-opus-5')
@@ -402,6 +423,41 @@ const createHarnessEvents = () => {
 }
 
 describe('resolvePiModel — Tinfoil', () => {
+  it('uses fresh OAuth bearer tokens inside the direct encrypted transport, never the managed proxy', async () => {
+    const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const access = spyOn(tinfoilSession, 'getAccessToken')
+      .mockResolvedValueOnce('initial')
+      .mockResolvedValue('refreshed')
+    const client = createSecureClient(async (_input, init) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer refreshed')
+      expect(JSON.parse(init?.body as string).web_search_options).toBeUndefined()
+      return new Response()
+    })
+    const managed = mock(async () => {
+      throw new Error('must not use managed billing')
+    })
+    try {
+      const model = tinfoilModel({ isSystem: 0, apiKey: null, oauthProvider: 'tinfoil', toolUsage: 1 })
+      const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(model), null, {
+        getTinfoilClient: async () => client,
+        getSystemTinfoilClient: managed,
+      })
+      const descriptor = requireDescriptor(resolved, 'openai-compat')
+      expect(descriptor.apiKey).toBe('initial')
+      await descriptor.fetch('https://enclave.example.com/v1/chat/completions', {
+        headers: { Authorization: 'Bearer initial' },
+        method: 'POST',
+        body: JSON.stringify({ model: 'test-model', messages: [] }),
+      })
+      expect(access).toHaveBeenCalledTimes(2)
+      expect(managed).not.toHaveBeenCalled()
+    } finally {
+      access.mockRestore()
+      useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
+    }
+  })
+
   it('resolves a managed model as a confidential descriptor and records Pi attestation', async () => {
     const client = createSecureClient()
     const getSystemTinfoilClient = mock(async () => client)
@@ -548,6 +604,28 @@ describe('resolvePiModel — Tinfoil', () => {
     })
     await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
     expect(evictUserTinfoilClient).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([0, 1])('keeps Tinfoil search in the visible agent tool loop (%s)', async (toolUsage) => {
+    const original = useLocalSettingsStore.getState().cloudUrl
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    try {
+      const client = createSecureClient(async (_input, init) => {
+        const body = JSON.parse(init?.body as string)
+        expect(body.web_search_options).toBeUndefined()
+        return new Response()
+      })
+      const model = tinfoilModel({ isSystem: 0, apiKey: 'own-key', toolUsage })
+      const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(model), null, {
+        getTinfoilClient: async () => client,
+      })
+      await requireDescriptor(resolved, 'openai-compat').fetch('https://enclave.example.com/v1/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify({ model: 'test', messages: [] }),
+      })
+    } finally {
+      useLocalSettingsStore.setState({ cloudUrl: original })
+    }
   })
 
   it('rejects a BYOK model without an API key', async () => {
@@ -1419,6 +1497,7 @@ it.each([
 
 it('keeps real adapter citation metadata across a below-cap harness rebuild', async () => {
   await setupTestDatabase()
+  setAuthToken('test-session')
   const run = createBudgetAdapter(
     [
       [{ name: 'search', args: { query: 'one', max_results: 10 } }],
@@ -1450,6 +1529,7 @@ it('keeps real adapter citation metadata across a below-cap harness rebuild', as
     expect(JSON.stringify(results[1]!.content)).toContain('[Source 2]')
     expect(run.registrations.size).toBe(0)
   } finally {
+    clearAuthToken()
     run.adapter.disconnect()
     await teardownTestDatabase()
   }

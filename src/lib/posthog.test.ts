@@ -12,17 +12,18 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { PostHog } from 'posthog-js'
 import {
   initPosthog,
+  getAnalyticsUrl,
   resetPosthogClient,
   sanitizeUrl,
   setCapturing,
   shouldCapture,
-  stripApiKeys,
+  stripPrivateAnalyticsProperties,
   trackError,
   trackEvent,
 } from './posthog'
 
 type PosthogOptions = {
-  before_send: (event: PosthogEvent) => PosthogEvent
+  before_send: (event: PosthogEvent) => PosthogEvent | null
   opt_out_capturing_by_default: boolean
 }
 
@@ -101,6 +102,17 @@ afterAll(async () => {
   resetPosthogClient()
 })
 
+describe('analytics destination', () => {
+  it('uses Thunderbolt telemetry when no app server is configured', () => {
+    expect(getAnalyticsUrl('')).toBe('https://api.thunderbolt.io/v1')
+  })
+
+  it('preserves self-hosted analytics and normalizes trailing slashes', () => {
+    expect(getAnalyticsUrl('https://my-server.example/v1///')).toBe('https://my-server.example/v1')
+    expect(getAnalyticsUrl('/v1')).toBe('/v1')
+  })
+})
+
 describe('analytics sanitizeUrl', () => {
   it('replaces dynamic chat IDs with route params for pathnames', () => {
     expect(sanitizeUrl('/chats/123')).toBe('/chats/:chatThreadId')
@@ -113,8 +125,28 @@ describe('analytics sanitizeUrl', () => {
     expect(sanitizeUrl(input)).toBe(expected)
   })
 
+  it.each([
+    ['/projects/private-project-id', '/projects/:projectId'],
+    ['/apps/private-app-id', '/apps/:appId'],
+  ])('removes synced row IDs from %s', (pathname, expected) => {
+    expect(sanitizeUrl(pathname)).toBe(expected)
+    expect(sanitizeUrl(`https://app.test${pathname}/?token=secret#fragment`)).toBe(`https://app.test${expected}`)
+  })
+
   it('removes OAuth callback credentials', () => {
     expect(sanitizeUrl('/oauth/callback?code=authorization-code&state=csrf-state')).toBe('/oauth/callback')
+  })
+
+  it('removes OpenRouter flow nonces and authorization parameters, including trailing slash callbacks', () => {
+    expect(sanitizeUrl('/oauth/openrouter/secret-nonce?code=secret-code&state=secret-state')).toBe(
+      '/oauth/openrouter/:flowId',
+    )
+    expect(sanitizeUrl('/oauth/tinfoil/secret-nonce?code=secret-code&state=secret-state')).toBe(
+      '/oauth/tinfoil/:flowId',
+    )
+    expect(sanitizeUrl('https://app.test/oauth/openrouter/secret-nonce/?code=secret-code#fragment')).toBe(
+      'https://app.test/oauth/openrouter/:flowId',
+    )
   })
 
   it('removes magic-link credentials', () => {
@@ -130,9 +162,14 @@ describe('analytics sanitizeUrl', () => {
     expect(sanitizeUrl('/settings?tab=account#profile')).toBe('/settings')
   })
 
-  it('preserves the fallback behavior for unparseable values', () => {
-    const input = 'http://[invalid-url?token=secret#hash'
-    expect(sanitizeUrl(input)).toBe(input)
+  it('discards unparseable URL values instead of retaining embedded secrets', () => {
+    expect(sanitizeUrl('http://[invalid-url?token=secret#hash')).toBe('/unknown')
+  })
+
+  it('removes embedded URL credentials before normalizing route identifiers', () => {
+    expect(sanitizeUrl('https://private-user:private-password@app.test/chats/private-id?token=secret')).toBe(
+      'https://app.test/chats/:chatThreadId',
+    )
   })
 
   it('returns routes without query parameters unchanged', () => {
@@ -234,6 +271,35 @@ describe('analytics before_send sanitization', () => {
     mockCaptureException.mockReset()
   })
 
+  it('starts a fresh device-only analytics namespace without resetting consent on subsequent boots', async () => {
+    sessionStorage.setItem('thunderbolt_pending_anon_id', 'previous-account-id')
+    sdkOptedOut = true
+    await updateSettings(getDb(), { data_collection: false })
+    await initPosthog(createMockHttpClient('test-key'))
+    const firstOptions = mockPosthogInit.mock.calls[0][1]
+    expect(firstOptions).toMatchObject({
+      persistence_name: 'thunderbolt_device_usage_v1_test-key',
+      person_profiles: 'never',
+      opt_out_capturing_by_default: true,
+      ip: false,
+      save_campaign_params: false,
+      save_referrer: false,
+      advanced_disable_flags: true,
+    })
+    // Consent retains its existing SDK key; changing analytics identity must not create a new opt-in.
+    expect(firstOptions).not.toHaveProperty('consent_persistence_name')
+    expect(mockOptIn).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem('thunderbolt_pending_anon_id')).toBeNull()
+
+    resetPosthogClient()
+    await initPosthog(createMockHttpClient('test-key'))
+    expect(mockPosthogInit.mock.calls[1][1]).toMatchObject({
+      persistence_name: 'thunderbolt_device_usage_v1_test-key',
+      opt_out_capturing_by_default: true,
+    })
+    expect(mockOptIn).not.toHaveBeenCalled()
+  })
+
   it('sanitizes $current_url, url, and $pathname when strings', async () => {
     const mockHttpClient = createMockHttpClient('test-key')
     await initPosthog(mockHttpClient)
@@ -248,7 +314,7 @@ describe('analytics before_send sanitization', () => {
       },
     }
 
-    const result = capturedOptions!.before_send(event)
+    const result = capturedOptions!.before_send(event)!
     expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId')
     expect(result.properties.url).toBe('https://app/chats/:chatThreadId')
     expect(result.properties.$pathname).toBe('/chats/:chatThreadId')
@@ -267,9 +333,57 @@ describe('analytics before_send sanitization', () => {
       },
     }
 
-    const result = capturedOptions!.before_send(event)
+    const result = capturedOptions!.before_send(event)!
     expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId')
     expect(result.properties.$referrer).toBe('https://referrer.test/chats/:chatThreadId')
+  })
+
+  it('removes project and mini-app IDs from page events and SDK session metadata', async () => {
+    await initPosthog(createMockHttpClient())
+    const event: PosthogEvent = {
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://app.test/projects/private-project',
+        $pathname: '/projects/private-project',
+        $session_entry_url: 'https://app.test/apps/private-app',
+        $session_entry_pathname: '/apps/private-app',
+      },
+    }
+    expect(capturedOptions!.before_send(event)?.properties).toEqual({
+      $current_url: 'https://app.test/projects/:projectId',
+      $pathname: '/projects/:projectId',
+      $session_entry_url: 'https://app.test/apps/:appId',
+      $session_entry_pathname: '/apps/:appId',
+    })
+  })
+
+  it('removes callback nonces from SDK session-entry and nested initial person properties', async () => {
+    await initPosthog(createMockHttpClient('test-key'))
+    const callback = 'https://app.test/oauth/openrouter/private-nonce?code=private-code&state=private-state'
+    const event: PosthogEvent = {
+      event: 'app_init_timing',
+      properties: {
+        $session_entry_url: callback,
+        $session_entry_pathname: '/oauth/openrouter/private-nonce',
+        $session_entry_referrer: callback,
+        $set_once: {
+          $initial_current_url: callback,
+          $initial_pathname: '/oauth/openrouter/private-nonce',
+          $initial_referrer: callback,
+        },
+        $set: { $current_url: callback },
+      },
+    }
+    const result = capturedOptions!.before_send(event)!
+    expect(result.properties.$session_entry_url).toBe('https://app.test/oauth/openrouter/:flowId')
+    expect(result.properties.$session_entry_pathname).toBe('/oauth/openrouter/:flowId')
+    expect(result.properties.$set_once).toEqual({
+      $initial_current_url: 'https://app.test/oauth/openrouter/:flowId',
+      $initial_pathname: '/oauth/openrouter/:flowId',
+      $initial_referrer: 'https://app.test/oauth/openrouter/:flowId',
+    })
+    expect(result.properties.$set).toEqual({ $current_url: 'https://app.test/oauth/openrouter/:flowId' })
+    expect(JSON.stringify(result)).not.toContain('private-')
   })
 
   it('ignores non-string URL-like properties', async () => {
@@ -286,37 +400,55 @@ describe('analytics before_send sanitization', () => {
       },
     }
 
-    const result = capturedOptions!.before_send(event)
+    const result = capturedOptions!.before_send(event)!
     expect(result.properties.$current_url).toBe(123)
     expect(result.properties.url).toEqual({ href: '/chats/1' })
     expect(result.properties.$pathname).toBeNull()
   })
 
-  it('removes nested API keys and preserves other properties', () => {
-    const properties: Record<string, unknown> = {
-      model: {
-        id: 'model-1',
-        apiKey: 'secret',
-        nested: [
-          { apiKey: 'another-secret', provider: 'openai' },
-          { apiKey: 'third-secret', provider: 'anthropic' },
-        ],
+  it('removes credentials and account-linked identifiers recursively while preserving metrics and SDK device identity', async () => {
+    await initPosthog(createMockHttpClient())
+    const event: PosthogEvent = {
+      event: 'chat_turn_completed',
+      properties: {
+        distinct_id: 'sdk-random-device',
+        $device_id: 'sdk-random-device',
+        $session_id: 'sdk-random-session',
+        user_id: 'private-user',
+        accountId: 'private-account',
+        $email: 'private@example.com',
+        model_name: 'private-fine-tune-account',
+        model_id: 'private-model',
+        moved_task_id: 'private-task',
+        trace_id: 'private-inference-receipt',
+        nested: [{ api_key: 'private-key', chatId: 'private-chat', skill_id: 'private-skill', count: 2 }],
+        $set: { $user_id: 'private-user', name: 'Private User' },
+        error: 'Private response',
+        total_ms: 100,
       },
-      attempts: 2,
     }
-
-    expect(stripApiKeys(properties)).toBe(true)
-    expect(properties).toEqual({
-      model: {
-        id: 'model-1',
-        nested: [{ provider: 'openai' }, { provider: 'anthropic' }],
-      },
-      attempts: 2,
+    expect(capturedOptions!.before_send(event)?.properties).toEqual({
+      distinct_id: 'sdk-random-device',
+      $device_id: 'sdk-random-device',
+      $session_id: 'sdk-random-session',
+      nested: [{ count: 2 }],
+      $set: {},
+      total_ms: 100,
     })
   })
 
-  it('reports when no API key was present', () => {
-    expect(stripApiKeys({ model_id: 'model-1' })).toBe(false)
+  it('does not forward identity-linking events', async () => {
+    await initPosthog(createMockHttpClient())
+    for (const event of ['$identify', '$create_alias']) {
+      expect(capturedOptions!.before_send({ event, properties: { distinct_id: 'account-id' } })).toBeNull()
+    }
+  })
+
+  it('accepts absent properties and nested primitive arrays', () => {
+    expect(() => stripPrivateAnalyticsProperties(undefined)).not.toThrow()
+    const properties: Record<string, unknown> = { counts: [1, 2, null], nested: [{ apiKey: 'secret', count: 3 }] }
+    stripPrivateAnalyticsProperties(properties)
+    expect(properties).toEqual({ counts: [1, 2, null], nested: [{ count: 3 }] })
   })
 })
 
@@ -339,14 +471,12 @@ describe('trackError test cases', () => {
 
     trackError(error)
 
-    expect(mockCaptureException).toHaveBeenCalledWith('$exception', {
+    expect(mockCaptureException).toHaveBeenCalledWith(error.code, {
       $exception_type: 'DATABASE_INIT_FAILED',
-      $exception_message: 'Failed to initialize database',
-      $exception_stack: 'Error: Database connection failed\n    at initDb (db.ts:10:5)',
     })
   })
 
-  it('includes context data when provided', async () => {
+  it('includes structured diagnostic context without forwarding the raw error', async () => {
     const mockHttpClient = createMockHttpClient('test-key')
     await initPosthog(mockHttpClient)
 
@@ -364,10 +494,8 @@ describe('trackError test cases', () => {
 
     trackError(error, context)
 
-    expect(mockCaptureException).toHaveBeenCalledWith('$exception', {
+    expect(mockCaptureException).toHaveBeenCalledWith(error.code, {
       $exception_type: 'MIGRATION_FAILED',
-      $exception_message: 'Migration step 3 failed',
-      $exception_stack: undefined,
       userId: 'user-123',
       migrationVersion: 'v1.2.3',
       step: 3,
@@ -402,10 +530,8 @@ describe('trackError test cases', () => {
 
     expect(() => trackError(error)).not.toThrow()
 
-    expect(mockCaptureException).toHaveBeenCalledWith('$exception', {
+    expect(mockCaptureException).toHaveBeenCalledWith(error.code, {
       $exception_type: 'TRAY_INIT_FAILED',
-      $exception_message: 'Failed to initialize system tray',
-      $exception_stack: undefined,
     })
   })
 
@@ -420,10 +546,8 @@ describe('trackError test cases', () => {
 
     trackError(error)
 
-    expect(mockCaptureException).toHaveBeenCalledWith('$exception', {
+    expect(mockCaptureException).toHaveBeenCalledWith(error.code, {
       $exception_type: 'APP_DIR_CREATION_FAILED',
-      $exception_message: 'Could not create app directory',
-      $exception_stack: undefined,
     })
   })
 })

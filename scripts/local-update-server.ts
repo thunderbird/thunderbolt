@@ -14,11 +14,11 @@
  *   3. Open the old build and trigger the update
  */
 
-const BUNDLE_DIR = new URL('../src-tauri/target/release/bundle', import.meta.url).pathname
-const PORT = 8888
+const bundleDir = new URL('../src-tauri/target/release/bundle', import.meta.url).pathname
+const port = 8888
 
-const server = Bun.serve({
-  port: PORT,
+Bun.serve({
+  port,
   async fetch(req) {
     const url = new URL(req.url)
     console.log(`${req.method} ${url.pathname}`)
@@ -27,20 +27,20 @@ const server = Bun.serve({
     // It expects a JSON response with the update info, or 204 if no update
     if (url.pathname.startsWith('/update/')) {
       const parts = url.pathname.split('/')
-      const platform = parts[2] // e.g. "darwin-aarch64"
+      // parts[2] is the target triple (e.g. "darwin-aarch64"); unused here.
       const currentVersion = parts[3]
 
       // Find the .tar.gz update bundle and its .sig file
       const glob = new Bun.Glob('macos/*.tar.gz')
-      const bundles = Array.from(glob.scanSync(BUNDLE_DIR))
+      const bundles = Array.from(glob.scanSync(bundleDir))
 
       if (bundles.length === 0) {
-        console.error('No update bundles found in', BUNDLE_DIR + '/macos/')
+        console.error('No update bundles found in', bundleDir + '/macos/')
         return new Response('No bundles found', { status: 500 })
       }
 
       const bundleName = bundles[0]
-      const bundlePath = `${BUNDLE_DIR}/${bundleName}`
+      const bundlePath = `${bundleDir}/${bundleName}`
       const sigPath = `${bundlePath}.sig`
 
       // Read signature
@@ -67,7 +67,7 @@ const server = Bun.serve({
         version: newVersion,
         notes: `Update to ${newVersion}`,
         pub_date: new Date().toISOString(),
-        url: `http://localhost:${PORT}/bundle/${bundleName}`,
+        url: `http://localhost:${port}/bundle/${bundleName}`,
         signature,
       }
 
@@ -82,7 +82,7 @@ const server = Bun.serve({
         console.error(`Path traversal attempt blocked: ${relativePath}`)
         return new Response('Forbidden', { status: 403 })
       }
-      const filePath = `${BUNDLE_DIR}/${relativePath}`
+      const filePath = `${bundleDir}/${relativePath}`
       const file = Bun.file(filePath)
 
       if (!(await file.exists())) {
@@ -100,6 +100,6 @@ const server = Bun.serve({
   },
 })
 
-console.log(`Local update server running at http://localhost:${PORT}`)
-console.log(`Bundle dir: ${BUNDLE_DIR}`)
+console.log(`Local update server running at http://localhost:${port}`)
+console.log(`Bundle dir: ${bundleDir}`)
 console.log(`\nWaiting for update requests...`)

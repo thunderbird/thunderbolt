@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { forwardRef, useImperativeHandle, useState } from 'react'
 import {
   AlertDialog,
@@ -45,14 +46,20 @@ export const TelemetryWarningModal = forwardRef<TelemetryWarningModalRef, Teleme
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Preview Features Will Be Disabled</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Preview Features Will Be Disabled</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Turning off telemetry will disable all preview features. Are you sure you want to continue?
+              <Trans>Turning off telemetry will disable all preview features. Are you sure you want to continue?</Trans>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleClose}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDisableTelemetry}>Disable Telemetry</AlertDialogAction>
+            <AlertDialogCancel onClick={handleClose}>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleDisableTelemetry}>
+              <Trans>Disable Telemetry</Trans>
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

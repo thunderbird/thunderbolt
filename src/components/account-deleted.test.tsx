@@ -5,26 +5,24 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { AccountDeleted } from './account-deleted'
 
-const mockReplace = mock()
-Object.defineProperty(window, 'location', {
-  value: { replace: mockReplace },
-  writable: true,
-})
-
 describe('AccountDeleted', () => {
+  let replaceSpy: ReturnType<typeof spyOn>
+
   beforeAll(async () => {
     await setupTestDatabase()
+    replaceSpy = spyOn(window.location, 'replace').mockImplementation(() => undefined)
   })
 
   afterAll(async () => {
+    replaceSpy.mockRestore()
     await teardownTestDatabase()
   })
 
   beforeEach(() => {
-    mockReplace.mockClear()
+    replaceSpy.mockClear()
   })
 
   const renderComponent = () =>
@@ -54,7 +52,7 @@ describe('AccountDeleted', () => {
     it('calls window.location.replace("/") when clicked', () => {
       renderComponent()
       fireEvent.click(screen.getByRole('button', { name: 'Back to App' }))
-      expect(mockReplace).toHaveBeenCalledWith('/')
+      expect(replaceSpy).toHaveBeenCalledWith('/')
     })
   })
 })

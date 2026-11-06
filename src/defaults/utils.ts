@@ -4,7 +4,7 @@
 
 import { hashPrompt } from './automations'
 import { hashModel } from '@shared/defaults/models'
-import { hashSetting } from './settings'
+import { defaultSettings, hashSetting, shipsWithoutValue } from './settings'
 import type { Model, Prompt, Setting } from '@/types'
 
 /**
@@ -29,12 +29,28 @@ export const isAutomationModified = (prompt: Prompt): boolean => {
   return currentHash !== prompt.defaultHash
 }
 
+const valuelessDefaultKeys = new Set(defaultSettings.filter(shipsWithoutValue).map((s) => s.key))
+
 /**
  * Check if a setting has been modified from its default
+ *
+ * Normally that is a hash comparison against the stamp reconcile wrote when it
+ * seeded the row. Null-valued defaults have no seeded row to stamp — reconcile
+ * deliberately leaves them absent so the first write is an INSERT (see the
+ * null-default branch in `reconcileDefaultsForTable`) — so a row for one of
+ * those keys with no stamp was created by whoever filled it in. A value there
+ * is by definition a departure from the shipped `null`.
+ *
+ * Writes that mean "still a default" (the browser-language and region-unit
+ * seeds) pass `recomputeHash`, so they carry a stamp and fall through to the
+ * comparison below, which correctly reports them unmodified.
  */
 export const isSettingModified = (setting: Setting | undefined): boolean => {
-  if (!setting || !setting.defaultHash) {
+  if (!setting) {
     return false
+  }
+  if (!setting.defaultHash) {
+    return valuelessDefaultKeys.has(setting.key) && setting.value !== null
   }
   const currentHash = hashSetting(setting)
   return currentHash !== setting.defaultHash

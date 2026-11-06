@@ -10,12 +10,128 @@
  * substrings rather than exact colored output.
  */
 
-import type { AgentMessage } from '@earendil-works/pi-agent-core'
+import type { AgentHarnessEvent, AgentMessage } from '@earendil-works/pi-agent-core'
+import type { AssistantMessageEvent } from '@earendil-works/pi-ai'
 import { describe, expect, test } from 'bun:test'
-import { formatToolEnd, formatToolStart, formatTurnError, sanitizeTerminalText } from './render.ts'
+import {
+  attachRenderer,
+  formatToolEnd,
+  formatToolStart,
+  formatTurnError,
+  sanitizeTerminalText,
+  statusLadderMessage,
+  type ToolResultPreview,
+  workingStatusText,
+} from './render.ts'
+import { assistantMessage, assistantUpdate, rendererEvents } from './test-fixtures.ts'
 
 /** A Pi tool result carrying a single text content block. */
-const textResult = (text: string): unknown => ({ content: [{ type: 'text', text }] })
+const textResult = (text: string): ToolResultPreview => ({ content: [{ type: 'text', text }] })
+
+test('status ladder derives working, reasoning, and reassurance from an injected clock', () => {
+  const startedAt = 1_000
+
+  expect(statusLadderMessage(startedAt, startedAt, 'working')).toBe(workingStatusText)
+  expect(statusLadderMessage(startedAt, startedAt + 4_000, 'working')).toContain('4s')
+  expect(statusLadderMessage(startedAt, startedAt + 12_000, 'reasoning')).toContain('Reasoning')
+  expect(statusLadderMessage(startedAt, startedAt + 15_000, 'working')).toContain('~30s')
+})
+
+describe('attachRenderer — prompt status', () => {
+  test('keeps TTY status through protocol starts and clears it before the first model delta', () => {
+    const events = rendererEvents()
+    const stdout: string[] = []
+    const stderr: string[] = []
+    attachRenderer(events.runtime, {
+      stdout: { write: (text) => stdout.push(text) },
+      stderr: { isTTY: true, write: (text) => stderr.push(text) },
+    })
+
+    const message = assistantMessage()
+    events.emit({ type: 'agent_start' })
+    events.emit({ type: 'message_start', message })
+    expect(stderr.join('')).toContain(workingStatusText)
+    expect(stderr.join('')).toContain('(Ctrl+C to interrupt)')
+    expect(stdout).toEqual([])
+
+    const statusWrites = stderr.length
+    const starts: AssistantMessageEvent[] = [
+      { type: 'start', partial: message },
+      { type: 'text_start', contentIndex: 0, partial: message },
+      { type: 'thinking_start', contentIndex: 1, partial: message },
+      { type: 'toolcall_start', contentIndex: 2, partial: message },
+    ]
+    for (const start of starts) events.emit(assistantUpdate(message, start))
+    expect(stderr).toHaveLength(statusWrites)
+
+    events.emit(
+      assistantUpdate(message, { type: 'text_delta', contentIndex: 0, delta: 'answer', partial: message }),
+    )
+    expect(stderr.at(-1)).toContain('\x1b[2K')
+    expect(stdout.join('')).toBe('answer')
+  })
+
+  test('clears TTY status before tool activity is rendered', () => {
+    const events = rendererEvents()
+    const stdout: string[] = []
+    const stderr: string[] = []
+    attachRenderer(events.runtime, {
+      stdout: { write: (text) => stdout.push(text) },
+      stderr: { isTTY: true, write: (text) => stderr.push(text) },
+    })
+    events.emit({ type: 'agent_start' })
+
+    events.emit({ type: 'tool_execution_start', toolCallId: 'tool-1', toolName: 'read', args: { path: 'a.ts' } })
+
+    expect(stderr.at(-1)).toBe('\r\x1b[2K')
+    expect(stdout.join('')).toContain('read')
+  })
+
+  test('does not print status when stderr is redirected', () => {
+    const events = rendererEvents()
+    const stderr: string[] = []
+    attachRenderer(events.runtime, {
+      stdout: { write: () => {} },
+      stderr: { isTTY: false, write: (text) => stderr.push(text) },
+    })
+
+    events.emit({ type: 'agent_start' })
+    events.emit({ type: 'message_start', message: assistantMessage() })
+
+    expect(stderr).toEqual([])
+  })
+
+  test('clears TTY status on completion, abort, and error without a model delta', () => {
+    const terminalEvents: AgentHarnessEvent[] = [
+      { type: 'message_end', message: assistantMessage() },
+      { type: 'agent_end', messages: [] },
+      { type: 'abort', clearedSteer: [], clearedFollowUp: [] },
+      {
+        type: 'turn_end',
+        message: { ...assistantMessage(), stopReason: 'error', errorMessage: '401 unauthorized' },
+        toolResults: [],
+      },
+    ]
+
+    for (const terminalEvent of terminalEvents) {
+      const events = rendererEvents('anthropic-profile')
+      const stderr: string[] = []
+      attachRenderer(events.runtime, {
+        stdout: { write: () => {} },
+        stderr: { isTTY: true, write: (text) => stderr.push(text) },
+      })
+      events.emit({ type: 'agent_start' })
+
+      events.emit(terminalEvent)
+
+      expect(stderr).toContain('\r\x1b[2K')
+      if (terminalEvent.type === 'turn_end') {
+        expect(stderr.join('')).toContain('Provider rejected the credential')
+        expect(stderr.join('')).not.toContain('Session expired')
+      }
+    }
+  })
+})
 
 describe('sanitizeTerminalText — control-sequence stripping', () => {
   test('strips an OSC 52 clipboard-write sequence', () => {
@@ -88,6 +204,14 @@ describe('formatToolStart — argument summary', () => {
     expect(line).toContain('echo hi')
   })
 
+  test('renders a multiline command as one visible header line', () => {
+    const line = formatToolStart('bash', { command: 'echo safe\nFAKE STATUS\tprompt' })
+
+    expect(line).toContain('echo safe\\nFAKE STATUS\\tprompt')
+    expect(line).not.toContain('\n')
+    expect(line).not.toContain('\t')
+  })
+
   test('read/write summarize to the target path', () => {
     expect(formatToolStart('read', { path: 'src/a.ts' })).toContain('src/a.ts')
   })
@@ -107,6 +231,13 @@ describe('formatToolStart — argument summary', () => {
     expect(line).toContain('…')
     expect(line).not.toContain('x'.repeat(500))
   })
+
+  test('terminal width tightens the tool argument summary', () => {
+    const line = formatToolStart('bash', { command: '1234567890'.repeat(8) }, 24)
+
+    expect(line).toContain('…')
+    expect(line.length).toBeLessThanOrEqual(24)
+  })
 })
 
 describe('formatToolEnd — result preview', () => {
@@ -114,6 +245,7 @@ describe('formatToolEnd — result preview', () => {
     const line = formatToolEnd(false, textResult('all good'))
     expect(line).toContain('✓')
     expect(line).toContain('all good')
+    expect(line).toStartWith('  ')
   })
 
   test('an error result shows the fail mark', () => {
@@ -137,7 +269,31 @@ describe('formatToolEnd — result preview', () => {
 describe('formatTurnError — error gate', () => {
   test('an errored turn returns its detail message', () => {
     const message = { stopReason: 'error', errorMessage: 'rate limited' } as unknown as AgentMessage
-    expect(formatTurnError(message)).toContain('rate limited')
+    const line = formatTurnError(message, 'thunderbolt')
+    expect(line).toContain('rate limited')
+    expect(line).toContain('retry the message — it is kept in history (↑)')
+  })
+
+  test('network and auth errors include provider-specific recovery', () => {
+    const network: AgentMessage = {
+      ...assistantMessage(),
+      stopReason: 'error',
+      errorMessage: 'network authentication unreachable',
+    }
+    const expired: AgentMessage = { ...assistantMessage(), stopReason: 'error', errorMessage: 'stored session expired' }
+    const networkError = formatTurnError(network, 'anthropic-profile')
+    const accountError = formatTurnError(expired, 'thunderbolt')
+    const byokError = formatTurnError(expired, 'anthropic-profile')
+
+    expect(networkError).toContain('check your connection — your message is kept in history (↑)')
+    expect(networkError).toContain('network authentication unreachable')
+    expect(accountError).toContain('Session expired')
+    expect(accountError).toContain('run /login to sign in again')
+    expect(byokError).toContain('Provider rejected the credential')
+    expect(byokError).not.toContain('Session expired')
+    expect(byokError).toContain(
+      "set the provider's environment variable, pass --api-key, or repair the profile with thunderbolt config",
+    )
   })
 
   test('an errored turn strips terminal control sequences from provider detail', () => {
@@ -145,7 +301,7 @@ describe('formatTurnError — error gate', () => {
       stopReason: 'error',
       errorMessage: 'upstream\x1b]52;c;cHduZWQ=\x07\x1b[2J failed',
     } as unknown as AgentMessage
-    const line = formatTurnError(message)
+    const line = formatTurnError(message, 'thunderbolt')
 
     expect(line).toContain('upstream failed')
     expect(line).not.toContain('52;')
@@ -154,11 +310,11 @@ describe('formatTurnError — error gate', () => {
 
   test('an errored turn with no message uses a generic detail', () => {
     const message = { stopReason: 'error' } as unknown as AgentMessage
-    expect(formatTurnError(message)).toContain('the request failed')
+    expect(formatTurnError(message, 'thunderbolt')).toContain('the request failed')
   })
 
   test('a non-error turn returns undefined', () => {
     const message = { stopReason: 'endTurn' } as unknown as AgentMessage
-    expect(formatTurnError(message)).toBeUndefined()
+    expect(formatTurnError(message, 'thunderbolt')).toBeUndefined()
   })
 })

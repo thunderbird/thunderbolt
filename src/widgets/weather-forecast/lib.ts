@@ -2,8 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import dayjs from 'dayjs'
+import { msg } from '@lingui/core/macro'
+import type { MessageDescriptor } from '@lingui/core'
 import { z } from 'zod'
+
+import { toDate } from '@/i18n/format'
 
 const WeatherDaySchema = z.object({
   date: z.string(),
@@ -21,161 +24,159 @@ export type WeatherDay = z.infer<typeof WeatherDaySchema>
 export type WeatherForecastData = z.infer<typeof WeatherForecastDataSchema>
 
 export type WeatherMetadata = {
-  description: string
+  /** A descriptor, not a string: the table is built where the locale may not be
+   *  active yet, so the display resolves it with `i18n._()`. */
+  description: MessageDescriptor
   icon: string
 }
 
+/** A bare `YYYY-MM-DD` day carries no time, so treat the forecast as daytime. */
 const isDayTime = (dateString: string): boolean => {
-  try {
-    const date = dayjs(dateString)
-    const hour = dateString.includes('T') ? date.hour() : 12
-    return hour >= 6 && hour < 18
-  } catch {
-    return true
-  }
+  const hour = dateString.includes('T') ? toDate(dateString).getHours() : 12
+  return hour >= 6 && hour < 18
 }
 
 export const getWeatherMetadata = (code: number, dateString: string): WeatherMetadata => {
   const isDay = isDayTime(dateString)
 
-  const weatherMetadata: Record<number, { description: string; dayIcon: string; nightIcon: string }> = {
+  const weatherMetadata: Record<number, { description: MessageDescriptor; dayIcon: string; nightIcon: string }> = {
     0: {
-      description: 'Clear sky',
+      description: msg`Clear sky`,
       dayIcon: '/meteocons/clear-day.svg',
       nightIcon: '/meteocons/clear-night.svg',
     },
     1: {
-      description: 'Mainly clear',
+      description: msg`Mainly clear`,
       dayIcon: '/meteocons/partly-cloudy-day.svg',
       nightIcon: '/meteocons/partly-cloudy-night.svg',
     },
     2: {
-      description: 'Partly cloudy',
+      description: msg`Partly cloudy`,
       dayIcon: '/meteocons/partly-cloudy-day.svg',
       nightIcon: '/meteocons/partly-cloudy-night.svg',
     },
     3: {
-      description: 'Overcast',
+      description: msg`Overcast`,
       dayIcon: '/meteocons/overcast-day.svg',
       nightIcon: '/meteocons/overcast-night.svg',
     },
     45: {
-      description: 'Foggy',
+      description: msg`Foggy`,
       dayIcon: '/meteocons/fog-day.svg',
       nightIcon: '/meteocons/fog-night.svg',
     },
     48: {
-      description: 'Depositing rime fog',
+      description: msg`Depositing rime fog`,
       dayIcon: '/meteocons/fog-day.svg',
       nightIcon: '/meteocons/fog-night.svg',
     },
     51: {
-      description: 'Light drizzle',
+      description: msg`Light drizzle`,
       dayIcon: '/meteocons/partly-cloudy-day-drizzle.svg',
       nightIcon: '/meteocons/partly-cloudy-night-drizzle.svg',
     },
     53: {
-      description: 'Moderate drizzle',
+      description: msg`Moderate drizzle`,
       dayIcon: '/meteocons/partly-cloudy-day-drizzle.svg',
       nightIcon: '/meteocons/partly-cloudy-night-drizzle.svg',
     },
     55: {
-      description: 'Dense drizzle',
+      description: msg`Dense drizzle`,
       dayIcon: '/meteocons/partly-cloudy-day-drizzle.svg',
       nightIcon: '/meteocons/partly-cloudy-night-drizzle.svg',
     },
     56: {
-      description: 'Light freezing drizzle',
+      description: msg`Light freezing drizzle`,
       dayIcon: '/meteocons/partly-cloudy-day-sleet.svg',
       nightIcon: '/meteocons/partly-cloudy-night-sleet.svg',
     },
     57: {
-      description: 'Dense freezing drizzle',
+      description: msg`Dense freezing drizzle`,
       dayIcon: '/meteocons/partly-cloudy-day-sleet.svg',
       nightIcon: '/meteocons/partly-cloudy-night-sleet.svg',
     },
     61: {
-      description: 'Slight rain',
+      description: msg`Slight rain`,
       dayIcon: '/meteocons/partly-cloudy-day-rain.svg',
       nightIcon: '/meteocons/partly-cloudy-night-rain.svg',
     },
     63: {
-      description: 'Moderate rain',
+      description: msg`Moderate rain`,
       dayIcon: '/meteocons/partly-cloudy-day-rain.svg',
       nightIcon: '/meteocons/partly-cloudy-night-rain.svg',
     },
     65: {
-      description: 'Heavy rain',
+      description: msg`Heavy rain`,
       dayIcon: '/meteocons/partly-cloudy-day-rain.svg',
       nightIcon: '/meteocons/partly-cloudy-night-rain.svg',
     },
     66: {
-      description: 'Light freezing rain',
+      description: msg`Light freezing rain`,
       dayIcon: '/meteocons/partly-cloudy-day-rain.svg',
       nightIcon: '/meteocons/partly-cloudy-night-rain.svg',
     },
     67: {
-      description: 'Heavy freezing rain',
+      description: msg`Heavy freezing rain`,
       dayIcon: '/meteocons/partly-cloudy-day-rain.svg',
       nightIcon: '/meteocons/partly-cloudy-night-rain.svg',
     },
     71: {
-      description: 'Slight snow fall',
+      description: msg`Slight snow fall`,
       dayIcon: '/meteocons/partly-cloudy-day-snow.svg',
       nightIcon: '/meteocons/partly-cloudy-night-snow.svg',
     },
     73: {
-      description: 'Moderate snow fall',
+      description: msg`Moderate snow fall`,
       dayIcon: '/meteocons/partly-cloudy-day-snow.svg',
       nightIcon: '/meteocons/partly-cloudy-night-snow.svg',
     },
     75: {
-      description: 'Heavy snow fall',
+      description: msg`Heavy snow fall`,
       dayIcon: '/meteocons/partly-cloudy-day-snow.svg',
       nightIcon: '/meteocons/partly-cloudy-night-snow.svg',
     },
     77: {
-      description: 'Snow grains',
+      description: msg`Snow grains`,
       dayIcon: '/meteocons/partly-cloudy-day-snow.svg',
       nightIcon: '/meteocons/partly-cloudy-night-snow.svg',
     },
     80: {
-      description: 'Slight rain showers',
+      description: msg`Slight rain showers`,
       dayIcon: '/meteocons/partly-cloudy-day-rain.svg',
       nightIcon: '/meteocons/partly-cloudy-night-rain.svg',
     },
     81: {
-      description: 'Moderate rain showers',
+      description: msg`Moderate rain showers`,
       dayIcon: '/meteocons/partly-cloudy-day-rain.svg',
       nightIcon: '/meteocons/partly-cloudy-night-rain.svg',
     },
     82: {
-      description: 'Violent rain showers',
+      description: msg`Violent rain showers`,
       dayIcon: '/meteocons/partly-cloudy-day-rain.svg',
       nightIcon: '/meteocons/partly-cloudy-night-rain.svg',
     },
     85: {
-      description: 'Slight snow showers',
+      description: msg`Slight snow showers`,
       dayIcon: '/meteocons/partly-cloudy-day-snow.svg',
       nightIcon: '/meteocons/partly-cloudy-night-snow.svg',
     },
     86: {
-      description: 'Heavy snow showers',
+      description: msg`Heavy snow showers`,
       dayIcon: '/meteocons/partly-cloudy-day-snow.svg',
       nightIcon: '/meteocons/partly-cloudy-night-snow.svg',
     },
     95: {
-      description: 'Thunderstorm',
+      description: msg`Thunderstorm`,
       dayIcon: '/meteocons/thunderstorms-day.svg',
       nightIcon: '/meteocons/thunderstorms-night.svg',
     },
     96: {
-      description: 'Thunderstorm with slight hail',
+      description: msg`Thunderstorm with slight hail`,
       dayIcon: '/meteocons/thunderstorms-day-rain.svg',
       nightIcon: '/meteocons/thunderstorms-night-rain.svg',
     },
     99: {
-      description: 'Thunderstorm with heavy hail',
+      description: msg`Thunderstorm with heavy hail`,
       dayIcon: '/meteocons/thunderstorms-day-rain.svg',
       nightIcon: '/meteocons/thunderstorms-night-rain.svg',
     },
@@ -184,7 +185,7 @@ export const getWeatherMetadata = (code: number, dateString: string): WeatherMet
   const metadata = weatherMetadata[code]
   if (!metadata) {
     return {
-      description: `Unknown (code ${code})`,
+      description: msg`Unknown (code ${code})`,
       icon: isDay ? '/meteocons/clear-day.svg' : '/meteocons/clear-night.svg',
     }
   }

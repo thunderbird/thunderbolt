@@ -98,6 +98,11 @@ export const updateMcpServer = async (
     .where(eq(mcpServersTable.id, id))
 }
 
+/** Updates only the enabled flag through the MCP DAL boundary. */
+export const updateMcpServerEnabled = async (db: AnyDrizzleDatabase, id: string, enabled: boolean): Promise<void> => {
+  await updateMcpServer(db, id, { enabled: enabled ? 1 : 0 })
+}
+
 /**
  * Updates an MCP server row and (optionally) its on-device credentials in a
  * single transaction. Symmetric to {@link createMcpServerWithCredentials}.

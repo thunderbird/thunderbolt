@@ -19,6 +19,7 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { isMobile as isMobilePlatform, isTauri as isTauriPlatform } from '@/lib/platform'
 import type { McpAuthActionability } from './auth-decision'
 import { cimdClientMetadataAvailable, createMcpOAuthClientProvider } from './oauth-client-provider'
+import { i18n } from '@/i18n'
 import { validateMcpOAuthCallback } from './callback-validation'
 import { startMcpOAuthLoopback } from './mcp-oauth-loopback'
 import { abandonedFlowMs, clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
@@ -244,18 +245,16 @@ const prepareAuthorization = async (
     // cryptic registration failure (mirrors `classifyMcpServerAuth`'s token-only case).
     throw new Error('This server requires a personal access token. Add it as the credential to connect.')
   }
+  // The new client_id rides in the handshake; writing it to the stored credential now would pair it with
+  // the old refresh token if the user abandons the flow, breaking every refresh until remove + re-add.
   const clientInformation = useCimd
     ? { client_id: provider.clientMetadataUrl! }
-    : await (async () => {
-        const full = await register(authorizationServerUrl, {
-          metadata,
-          clientMetadata: provider.clientMetadata,
-          scope,
-          fetchFn,
-        })
-        await provider.saveClientInformation(full)
-        return full
-      })()
+    : await register(authorizationServerUrl, {
+        metadata,
+        clientMetadata: provider.clientMetadata,
+        scope,
+        fetchFn,
+      })
 
   const stateNonce = uuidv4()
   const resource = resourceUrlFromServerUrl(serverUrl)
@@ -457,7 +456,9 @@ export const completeMcpOAuthFlow = async (
     issParameterSupported: issParameterSupported(metadata),
   })
   if (!validation.ok) {
-    throw new Error(validation.reason)
+    // Resolved here rather than carried as a descriptor: this is an async flow and
+    // the snapshot is taken while the user is looking at the screen (see AGENTS.md).
+    throw new Error(i18n._(validation.reason))
   }
 
   if (!handshake.clientInfo || !handshake.codeVerifier || !handshake.redirectUrl || !handshake.serverUrl) {

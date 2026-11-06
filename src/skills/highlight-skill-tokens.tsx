@@ -23,13 +23,13 @@ export type SkillTokenStatus = 'enabled' | 'disabled' | 'unknown'
 export type SkillStatusClassifier = (slug: string) => { status: SkillTokenStatus; skillId?: string }
 
 /**
- * Render the chat input's text with `/slug` tokens highlighted. The `/` is
- * purely a menu trigger, so its glyph is never painted: every token — and
- * the bare trailing `/` that just opened the picker — renders it as a
- * transparent character (width preserved, so caret alignment holds).
+ * Render the chat input's text with `/slug` tokens highlighted. A committed
+ * token renders its `/` as a transparent character (width preserved, so caret
+ * alignment holds).
  * - In-progress (still typing at end of input) → no special color; the token
  *   inherits the surrounding text color so partial input doesn't flicker
- *   between states as the user types.
+ *   between states as the user types. Its `/` is literal text and stays visible:
+ *   the `/` that opens the picker is a zero-width pending sigil, not a slash.
  * - Committed (followed by whitespace) → an inline pill badge (`.skill-token`,
  *   a paint-only background + box-shadow ring that cannot disturb the
  *   textarea's line metrics) showing only the name, tinted by status:
@@ -45,59 +45,48 @@ export type SkillStatusClassifier = (slug: string) => { status: SkillTokenStatus
  * The trailing zero-width space preserves a final newline; without it the
  * overlay collapses and falls one row behind the textarea.
  */
-export const renderHighlightedSkillTokens = (
-  value: string,
-  classify: SkillStatusClassifier,
+type RenderSkillTokensOptions = {
   /** Display-title → slug map so `/Daily Brief` tokens highlight as chips.
    *  The rendered glyphs always mirror the textarea exactly (title or slug,
    *  whatever the text contains) — only the classification uses the slug. */
-  displayNameToSlug?: ReadonlyMap<string, string>,
+  displayNameToSlug?: ReadonlyMap<string, string>
+  /** Opens route-preserving skill creation for an unknown committed token. */
+  onCreateSkill: (slug: string) => void
+}
+
+export const renderHighlightedSkillTokens = (
+  value: string,
+  classify: SkillStatusClassifier,
+  { displayNameToSlug, onCreateSkill }: RenderSkillTokensOptions,
 ): ReactNode[] => {
   const tokens = findSkillTokens(value, displayNameToSlug)
   let key = 0
 
-  // The `/` is purely a menu trigger — it should never render as a visible
-  // glyph. Every token (committed chip or in-progress) hides it, and so does
-  // the bare trailing `/` the user just typed to open the picker (not yet a
-  // token — the grammar needs at least one following char). The character
-  // stays in the flow (transparent, same width) so overlay glyphs and the
-  // textarea's caret positions still mirror exactly.
+  // A committed chip hides its `/`. The character stays in the flow
+  // (transparent, same width) so overlay glyphs and the textarea's caret
+  // positions still mirror exactly.
   const hiddenSlash = () => (
     <span key={key++} className="text-transparent">
       /
     </span>
   )
 
-  /** Push `text`, hiding a trailing menu-trigger `/` (start-of-input or
-   *  after whitespace, at the very end of the value). */
-  const pushPlainText = (parts: ReactNode[], text: string, endsValue: boolean) => {
-    const isTriggerSlash = endsValue && text.endsWith('/') && (text.length === 1 || /\s/.test(text[text.length - 2]))
-    if (!isTriggerSlash) {
-      parts.push(text)
-      return
-    }
-    parts.push(text.slice(0, -1), hiddenSlash())
-  }
-
   if (tokens.length === 0) {
-    const parts: ReactNode[] = []
-    pushPlainText(parts, value, true)
-    parts.push('​')
-    return parts
+    return [value, '​']
   }
 
   const parts: ReactNode[] = []
   let cursor = 0
   for (const { slug, start, end, committed } of tokens) {
     if (start > cursor) {
-      pushPlainText(parts, value.slice(cursor, start), false)
+      parts.push(value.slice(cursor, start))
     }
     const token = value.slice(start, end)
     const { status, skillId } = classify(slug)
     const colorClass = colorClassFor(committed, status)
     const tokenSpan = (
       <span key={key++} className={colorClass}>
-        {hiddenSlash()}
+        {committed && value[start] === '/' ? hiddenSlash() : value[start]}
         {value.slice(start + 1, end)}
       </span>
     )
@@ -124,14 +113,14 @@ export const renderHighlightedSkillTokens = (
           trigger={tokenSpan}
           message={`No skill named ${token}.`}
           actionLabel="Create it"
-          state={{ createSkill: slug }}
+          onAction={() => onCreateSkill(slug)}
         />,
       )
     }
     cursor = end
   }
   if (cursor < value.length) {
-    pushPlainText(parts, value.slice(cursor), true)
+    parts.push(value.slice(cursor))
   }
   parts.push('​')
   return parts
@@ -154,7 +143,7 @@ const colorClassFor = (committed: boolean, status: SkillTokenStatus): string => 
     return 'skill-token text-muted-foreground'
   }
   if (status === 'disabled') {
-    return 'skill-token text-amber-700 dark:text-amber-400'
+    return 'skill-token text-warning'
   }
-  return 'skill-token text-red-600 dark:text-red-400'
+  return 'skill-token text-destructive'
 }

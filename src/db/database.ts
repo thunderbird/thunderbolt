@@ -4,7 +4,7 @@
 
 import type { AnyDrizzleDatabase, DatabaseInterface, InitialSyncOutcome } from './database-interface'
 
-export type DatabaseType = 'wa-sqlite' | 'bun-sqlite' | 'powersync'
+export type DatabaseType = 'bun-sqlite' | 'powersync'
 
 export class Database {
   #database: DatabaseInterface | null = null
@@ -13,16 +13,10 @@ export class Database {
   /**
    * Initialize the database connection.
    * This method is idempotent - it will only initialize once.
-   * @param type - The database type to use ('wa-sqlite', 'bun-sqlite', or 'powersync')
+   * @param type - The database type to use: 'powersync' in the app, 'bun-sqlite' in tests
    * @param path - The path/filename for the database
    */
-  public async initialize({
-    type = 'wa-sqlite',
-    path,
-  }: {
-    type?: DatabaseType
-    path: string
-  }): Promise<AnyDrizzleDatabase> {
+  public async initialize({ type, path }: { type: DatabaseType; path: string }): Promise<AnyDrizzleDatabase> {
     if (this.#initialized && this.#database) {
       return this.#database.db
     }
@@ -30,29 +24,16 @@ export class Database {
     if (type === 'bun-sqlite') {
       const { BunSQLiteDatabase } = await import('./bun-sqlite-database')
       this.#database = new BunSQLiteDatabase()
-    } else if (type === 'powersync') {
+    } else {
       const { PowerSyncDatabaseImpl } = await import('./powersync')
       this.#database = new PowerSyncDatabaseImpl()
-    } else {
-      const { WaSQLiteDatabase } = await import('./wa-sqlite-database')
-      this.#database = new WaSQLiteDatabase()
     }
 
     await this.#database.initialize(path)
 
     this.#initialized = true
 
-    const getDbTypeName = (): string => {
-      switch (type) {
-        case 'bun-sqlite':
-          return 'Bun SQLite'
-        case 'powersync':
-          return 'PowerSync'
-        default:
-          return 'wa-sqlite'
-      }
-    }
-    console.info(`Initialized ${getDbTypeName()} database at ${path}`)
+    console.info(`Initialized ${type === 'bun-sqlite' ? 'Bun SQLite' : 'PowerSync'} database at ${path}`)
 
     return this.#database.db
   }

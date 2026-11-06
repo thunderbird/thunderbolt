@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { type ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
@@ -31,18 +31,31 @@ type SkillTokenPopoverProps = {
   trigger: ReactNode
   /** Headline copy explaining the problem ("Skill is disabled", etc.). */
   message: string
-  /** Action label rendered as a router `Link` ("Enable" / "Create it"). */
+  /** Action label rendered as a link or button ("Enable" / "Create it"). */
   actionLabel: string
-  /** Router state payload to send to `/settings/skills`. */
-  state: { editSkill: string } | { createSkill: string }
-}
+} & (
+  | {
+      /** Router state payload for actions that still need the settings screen. */
+      state: { editSkill: string }
+      onAction?: never
+    }
+  | {
+      /** Route-preserving action such as opening the global create surface. */
+      onAction: () => void
+      state?: never
+    }
+)
 
 const openDelayMs = 120
 const closeDelayMs = 180
 
-export const SkillTokenPopover = ({ trigger, message, actionLabel, state }: SkillTokenPopoverProps) => {
+export const SkillTokenPopover = (props: SkillTokenPopoverProps) => {
+  const { trigger, message, actionLabel } = props
+  const onAction = props.onAction
+  const [open, setOpen] = useState(false)
+
   return (
-    <HoverCard openDelay={openDelayMs} closeDelay={closeDelayMs}>
+    <HoverCard open={open} onOpenChange={setOpen} openDelay={openDelayMs} closeDelay={closeDelayMs}>
       <HoverCardTrigger asChild>
         <span className="pointer-events-auto cursor-help" tabIndex={0}>
           {trigger}
@@ -55,9 +68,26 @@ export const SkillTokenPopover = ({ trigger, message, actionLabel, state }: Skil
         className="flex w-auto max-w-xs flex-col gap-2 p-3 text-[length:var(--font-size-sm)]"
       >
         <p className="text-foreground">{message}</p>
-        <Link to="/settings/skills" state={state} className="underline underline-offset-2 hover:text-foreground">
-          {actionLabel}
-        </Link>
+        {onAction ? (
+          <button
+            type="button"
+            className="cursor-pointer text-left underline underline-offset-2 hover:text-foreground"
+            onClick={() => {
+              setOpen(false)
+              onAction()
+            }}
+          >
+            {actionLabel}
+          </button>
+        ) : (
+          <Link
+            to="/settings/skills"
+            state={props.state}
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            {actionLabel}
+          </Link>
+        )}
       </HoverCardContent>
     </HoverCard>
   )

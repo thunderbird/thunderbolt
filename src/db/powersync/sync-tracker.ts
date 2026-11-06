@@ -4,7 +4,7 @@
 
 import { getPlatform } from '@/lib/platform'
 import { type EventType, trackEvent } from '@/lib/posthog'
-import type { PowerSyncDatabase, SyncStatus } from '@powersync/web'
+import type { PowerSyncDatabase, SyncStatus, WASQLiteVFS } from '@powersync/web'
 import type { PowerSyncDatabaseConfig } from './database'
 
 type SyncEventType = Extract<EventType, `sync_${string}`>
@@ -40,6 +40,9 @@ let unsubscribeStatus: (() => void) | null = null
 /** Cached config for context */
 let cachedConfig: PowerSyncDatabaseConfig | null = null
 
+/** Cached storage (VFS) for context */
+let cachedVfs: WASQLiteVFS | null = null
+
 /** Cached PowerSync instance for context */
 let cachedPowerSync: PowerSyncDatabase | null = null
 
@@ -48,12 +51,13 @@ const getSyncEventContext = (): Record<string, unknown> => {
   return {
     platform: getPlatform(),
     ps_config: cachedConfig ?? 'unknown',
+    ps_vfs: cachedVfs ?? 'unknown',
     ps_connected: status?.connected ?? false,
     ps_connecting: status?.connecting ?? false,
     ps_has_synced: status?.hasSynced ?? false,
     ps_last_synced_at: status?.lastSyncedAt ? new Date(status.lastSyncedAt).toISOString() : null,
-    ps_uploading: status?.dataFlowStatus?.uploading ?? false,
-    ps_downloading: status?.dataFlowStatus?.downloading ?? false,
+    ps_uploading: status?.uploading ?? false,
+    ps_downloading: status?.downloading ?? false,
     uptime_ms: connectedSince ? Date.now() - connectedSince : 0,
   }
 }
@@ -80,11 +84,16 @@ export const getMsSinceLastDownload = (): number | null => {
  * Start listening to PowerSync status changes for diagnostic tracking.
  * Only fires events on connected↔disconnected transitions.
  */
-export const startSyncStatusListener = (powerSync: PowerSyncDatabase, config: PowerSyncDatabaseConfig) => {
+export const startSyncStatusListener = (
+  powerSync: PowerSyncDatabase,
+  config: PowerSyncDatabaseConfig,
+  vfs: WASQLiteVFS | null,
+) => {
   stopSyncStatusListener()
 
   cachedPowerSync = powerSync
   cachedConfig = config
+  cachedVfs = vfs
   connectedSince = Date.now()
   lastDownloadAt = Date.now()
   prevConnected = powerSync.currentStatus?.connected ?? false
@@ -96,7 +105,7 @@ export const startSyncStatusListener = (powerSync: PowerSyncDatabase, config: Po
       const currentConnected = status.connected
 
       // Track download activity timestamps
-      if (status.dataFlowStatus?.downloading) {
+      if (status.downloading) {
         lastDownloadAt = now
       }
 
@@ -122,6 +131,7 @@ export const stopSyncStatusListener = () => {
   unsubscribeStatus = null
   cachedPowerSync = null
   cachedConfig = null
+  cachedVfs = null
   connectedSince = null
   lastDownloadAt = null
   prevConnected = null

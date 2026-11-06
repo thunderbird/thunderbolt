@@ -4,8 +4,9 @@
 
 import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
-import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
-import { createPrompt, createPromptParts, type PromptParams } from './prompt'
+import { widgetRegistry } from '@/widgets'
+import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { assembleBuiltInModelInput, createPrompt, createPromptParts, type PromptParams } from './prompt'
 
 const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile => ({
   modelId: 'test-model',
@@ -37,18 +38,80 @@ const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile 
 const baseParams: PromptParams = {
   modelName: 'Test Model',
   profile: null,
-  modeName: null,
   preferredName: 'Alice',
   location: { name: 'New York', lat: 40.7, lng: -74.0 },
   localization: {
     distanceUnit: 'imperial',
     temperatureUnit: 'f',
-    dateFormat: 'MM/DD/YYYY',
     timeFormat: '12h',
     currency: 'USD',
   },
   integrationStatus: 'READY',
+  hasWebTools: false,
 }
+
+describe('assembleBuiltInModelInput', () => {
+  const sharedHistory = [
+    { role: 'user' as const, content: 'first question' },
+    { role: 'assistant' as const, content: 'first answer' },
+  ]
+
+  test('keeps all system content at the front and ends on the current user turn', () => {
+    const firstPrompt = createPromptParts(baseParams, new Date('2026-07-10T12:00:00Z'))
+    const secondPrompt = createPromptParts(baseParams, new Date('2026-07-10T12:01:00Z'))
+    const fixedVolatileNotes = ['Voice mode is active.', 'Follow project style.', 'Ask responses: concise']
+    const firstUserMessage = { role: 'user' as const, content: 'first follow-up' }
+    const secondUserMessage = { role: 'user' as const, content: 'second follow-up' }
+    const first = assembleBuiltInModelInput(
+      firstPrompt.stablePrompt,
+      [...sharedHistory, firstUserMessage],
+      [firstPrompt.volatilePrompt, ...fixedVolatileNotes],
+    )
+    const second = assembleBuiltInModelInput(
+      secondPrompt.stablePrompt,
+      [...sharedHistory, secondUserMessage],
+      [secondPrompt.volatilePrompt, ...fixedVolatileNotes],
+    )
+    const firstMessages = [{ role: 'system' as const, content: first.system }, ...first.messages]
+
+    expect(firstMessages.map(({ role }) => role)).toEqual(['system', 'user', 'assistant', 'user'])
+    expect(first.system).toContain(firstPrompt.stablePrompt)
+    expect(first.system).toContain(firstPrompt.volatilePrompt)
+    expect(first.system).toContain(fixedVolatileNotes.join('\n\n'))
+    expect(first.system).not.toBe(second.system)
+    expect(first.messages).toEqual([...sharedHistory, firstUserMessage])
+    expect(first.messages.at(-1)).toEqual(firstUserMessage)
+  })
+
+  test('keeps volatile notes in the system prompt for sole-message and empty inputs', () => {
+    const userMessage = { role: 'user' as const, content: 'hello' }
+    const volatileNote = 'Current date/time: now'
+
+    expect(assembleBuiltInModelInput('stable', [userMessage], [volatileNote])).toEqual({
+      system: `stable\n\n${volatileNote}`,
+      messages: [userMessage],
+    })
+    expect(assembleBuiltInModelInput('stable', [], [volatileNote])).toEqual({
+      system: `stable\n\n${volatileNote}`,
+      messages: [],
+    })
+  })
+
+  test('produces one front system block for a two-turn conversation', () => {
+    const currentUserMessage = { role: 'user' as const, content: 'second question' }
+    const input = assembleBuiltInModelInput(
+      'stable',
+      [...sharedHistory, currentUserMessage],
+      ['Current date/time: now', 'Voice mode is active.'],
+    )
+    const messages = [{ role: 'system' as const, content: input.system }, ...input.messages]
+    const firstNonSystemIndex = messages.findIndex(({ role }) => role !== 'system')
+
+    expect(firstNonSystemIndex).toBe(1)
+    expect(messages.slice(firstNonSystemIndex).every(({ role }) => role !== 'system')).toBeTrue()
+    expect(messages.at(-1)).toEqual(currentUserMessage)
+  })
+})
 
 describe('createPrompt', () => {
   test('includes model name', () => {
@@ -94,45 +157,47 @@ describe('createPrompt', () => {
     expect(result).toContain('CUSTOM_LINK_PREVIEWS')
   })
 
-  test('includes chatModeAddendum when modeName is chat', () => {
+  test('includes chatModeAddendum from profile', () => {
     const profile = createStubProfile({ chatModeAddendum: 'CHAT_ADDENDUM' })
-    const result = createPrompt({ ...baseParams, profile, modeName: 'chat', modeSystemPrompt: 'Chat mode active' })
+    const result = createPrompt({ ...baseParams, profile })
     expect(result).toContain('CHAT_ADDENDUM')
   })
 
-  test('includes searchModeAddendum when modeName is search', () => {
-    const profile = createStubProfile({ searchModeAddendum: 'SEARCH_ADDENDUM' })
-    const result = createPrompt({ ...baseParams, profile, modeName: 'search', modeSystemPrompt: 'Search mode' })
-    expect(result).toContain('SEARCH_ADDENDUM')
-  })
-
-  test('includes researchModeAddendum when modeName is research', () => {
-    const profile = createStubProfile({ researchModeAddendum: 'RESEARCH_ADDENDUM' })
-    const result = createPrompt({ ...baseParams, profile, modeName: 'research', modeSystemPrompt: 'Research mode' })
-    expect(result).toContain('RESEARCH_ADDENDUM')
-  })
-
-  test('does not include mode addendum when mode system prompt is absent', () => {
-    const profile = createStubProfile({ chatModeAddendum: 'SHOULD_NOT_APPEAR' })
-    const result = createPrompt({ ...baseParams, profile, modeName: 'chat' })
-    expect(result).not.toContain('SHOULD_NOT_APPEAR')
-  })
-
-  test('includes Active Mode section when modeSystemPrompt is set', () => {
-    const result = createPrompt({ ...baseParams, modeSystemPrompt: 'Mode instructions here' })
-    expect(result).toContain('# Active Mode')
-    expect(result).toContain('Mode instructions here')
-  })
-
-  test('omits Active Mode section when modeSystemPrompt is absent', () => {
+  test('always includes the Conversation Style section with the chat instructions', () => {
     const result = createPrompt(baseParams)
-    expect(result).not.toContain('# Active Mode')
+    expect(result).toContain('# Conversation Style')
+    expect(result).toContain('Make quick decisions')
   })
 
-  test('includes the reuse-before-search gate', () => {
+  test('includes web tool rules in the stable prompt when the web tools are available', () => {
+    const result = createPromptParts({ ...baseParams, hasWebTools: true })
+
+    expect(result.stablePrompt).toContain('Web lookups use the `search` and `fetch_content` tools')
+  })
+
+  test('omits web tool rules from the stable prompt when the web tools are unavailable', () => {
+    const result = createPromptParts({ ...baseParams, hasWebTools: false })
+
+    expect(result.stablePrompt).not.toContain('Web lookups use the `search` and `fetch_content` tools')
+  })
+
+  test('keeps the reuse gate while allowing research reloads in a new user turn', () => {
     const result = createPrompt(baseParams)
-    expect(result).toContain('reuse first, then search')
-    expect(result).toContain("Don't repeat a tool call you already made")
+    expect(result).toContain(
+      'apply only to the turn that produced them; each new user turn starts with a fresh web budget',
+    )
+    expect(result).toContain(
+      'For deeper or continued research needing new sources or dimensions, load the research skill once in the current turn',
+    )
+    expect(result).toContain(
+      'even if its instructions or a previous load remain in history, unless the current user message contains /research',
+    )
+    expect(result).toContain(
+      'This does not apply to acknowledgments, summaries, translations, repeated data, narrow checks, or deeper explanations needing no external sources',
+    )
+    expect(result).toContain(
+      "Except for the research skill reload required above, don't repeat a tool call you already made this conversation with the same inputs—reuse sufficient earlier results",
+    )
   })
 
   test('keeps the time-sensitive re-search carve-out', () => {
@@ -140,15 +205,69 @@ describe('createPrompt', () => {
     expect(result).toContain('time-sensitive that may have changed')
   })
 
-  test('keeps the verify-before-answering directive', () => {
-    const result = createPrompt(baseParams)
-    expect(result).toContain('never state facts without verifying them first')
+  test('limits quick web lookups to one search and conditional fetching', () => {
+    const result = createPrompt({ ...baseParams, hasWebTools: true })
+    expect(result).toContain('run at most one search')
+    expect(result).toContain('Fetch a page only when the snippets are insufficient')
   })
 
-  test('keeps the per-turn timestamp in the suffix (prefix-cache friendly)', () => {
+  test('tool-capable models get the skill listing without instruction bodies', () => {
+    const result = createPrompt({
+      ...baseParams,
+      supportsTools: true,
+      skills: [
+        {
+          name: 'daily-brief',
+          description: 'Use for a daily rundown.',
+          instruction: 'Gather private full instructions here.',
+        },
+      ],
+    })
+
+    expect(result).toContain('## Skills')
+    expect(result).toContain('Use the `skill` tool')
+    expect(result).toContain('- daily-brief: Use for a daily rundown.')
+    expect(result).not.toContain('Gather private full instructions here.')
+  })
+
+  test('non-tool models get the skill catalog and full instruction bodies inline', () => {
+    const result = createPrompt({
+      ...baseParams,
+      supportsTools: false,
+      skills: [
+        {
+          name: 'weather',
+          description: 'Use for weather forecasts.',
+          instruction: 'Emit the weather widget contract.',
+        },
+      ],
+    })
+
+    expect(result).toContain('- weather: Use for weather forecasts.')
+    expect(result).toContain('Full skill instructions:')
+    expect(result).toContain('### weather\nEmit the weather widget contract.')
+    expect(result).not.toContain('Use the `skill` tool')
+  })
+
+  test('does not inject widget instruction bodies into every prompt', () => {
     const result = createPrompt(baseParams)
-    // The timestamp is the only per-turn-volatile field, so it comes after the
-    // whole static instruction block to leave a stable cacheable prefix.
+
+    for (const widget of widgetRegistry) {
+      if ('instructions' in widget.module) {
+        expect(result).not.toContain(widget.module.instructions)
+      }
+    }
+    expect(result).not.toContain('# Widget Components')
+  })
+
+  test('keeps citation tags forbidden after removing widget instruction injection', () => {
+    const result = createPrompt(baseParams)
+
+    expect(result).toContain('Do not emit <widget:citation> tags')
+  })
+
+  test('keeps the per-turn timestamp at the end of the complete stateless prompt', () => {
+    const result = createPrompt(baseParams)
     expect(result.indexOf('Current date/time')).toBeGreaterThan(result.indexOf('# Output Format'))
     expect(result.indexOf('Current date/time')).toBeGreaterThan(result.indexOf('# Tools'))
   })
@@ -165,24 +284,102 @@ describe('createPrompt', () => {
     expect(result.indexOf('User location:')).toBeLessThan(result.indexOf('Current date/time'))
   })
 
-  test('appends the timestamp after the Active Mode block so it stays last', () => {
-    const result = createPrompt({ ...baseParams, modeSystemPrompt: 'Mode instructions' })
-    expect(result.indexOf('# Active Mode')).toBeLessThan(result.indexOf('Current date/time'))
+  test('appends the timestamp after the Conversation Style block so it stays last', () => {
+    const result = createPrompt(baseParams)
+    expect(result.indexOf('# Conversation Style')).toBeLessThan(result.indexOf('Current date/time'))
   })
 
-  test('separates stable instructions from the volatile timestamp', () => {
-    const first = createPromptParts(baseParams, new Date('2026-07-10T12:00:00Z'))
-    const second = createPromptParts(baseParams, new Date('2026-07-10T12:01:00Z'))
+  test('separates stable instructions from the minute-precision timestamp', () => {
+    const first = createPromptParts(baseParams, new Date('2026-07-10T12:00:01Z'))
+    const sameMinute = createPromptParts(baseParams, new Date('2026-07-10T12:00:59Z'))
+    const nextMinute = createPromptParts(baseParams, new Date('2026-07-10T12:01:00Z'))
 
-    expect(first.stablePrompt).toBe(second.stablePrompt)
+    expect(first.stablePrompt).toBe(nextMinute.stablePrompt)
     expect(first.stablePrompt).not.toContain('Current date/time')
-    expect(first.volatilePrompt).not.toBe(second.volatilePrompt)
+    expect(first.volatilePrompt).toBe(sameMinute.volatilePrompt)
+    expect(first.volatilePrompt).not.toBe(nextMinute.volatilePrompt)
     expect(first.fullPrompt).toBe(`${first.stablePrompt}\n\n${first.volatilePrompt}`)
+  })
+
+  test('names the app language as the fallback reply language', () => {
+    expect(createPrompt(baseParams)).toContain('or use English if the conversation has none yet')
+    expect(createPrompt({ ...baseParams, appLanguage: 'ja' })).toContain(
+      'or use Japanese if the conversation has none yet',
+    )
+    // CLDR words this one as either "Brazilian Portuguese" or "Portuguese (Brazil)"
+    // depending on the ICU build, so match the language rather than the phrasing.
+    expect(createPrompt({ ...baseParams, appLanguage: 'pt-BR' })).toMatch(/or use [^\n]*Portuguese[^\n]*if the/)
+  })
+
+  test('makes the reply language sticky against foreign-language content in the thread', () => {
+    const result = createPrompt(baseParams)
+
+    expect(result).toContain('Reply in the language of the conversation.')
+    expect(result).toContain('a search result in another language does not change it')
+    expect(result).toContain('Summarize tool and search results in the reply language')
+    expect(result).toContain('Switch only on a clear signal')
+  })
+
+  test('keeps the date/time line in its original format', () => {
+    // The options as they stood inline before the line moved to a shared helper. Comparing against them,
+    // rather than a literal, pins the format without pinning ICU-dependent CLDR output.
+    const sent = new Date('2026-07-10T12:00:00Z')
+    const original = `Current date/time: ${sent.toLocaleString('en', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    })}`
+    expect(createPromptParts(baseParams, sent).volatilePrompt).toBe(original)
+  })
+
+  test('keeps the Language section byte-identical to its tuned wording', () => {
+    // The eval baseline and the prompt cache are keyed on this exact text, so a change to the shared
+    // helper must show up here. `\u2014` is the shipped dash, escaped to keep it out of the source.
+    const section = createPrompt({ ...baseParams, appLanguage: 'de' }).match(/# Language\n[\s\S]*?(?=\n\n# )/)?.[0]
+    expect(section).toBe(
+      [
+        '# Language',
+        'Reply in the language of the conversation.',
+        '- Once a language is established, stay in it\u2014a quoted error message, a pasted log, code, or a search result in another language does not change it',
+        '- Summarize tool and search results in the reply language rather than quoting them verbatim in the source language',
+        '- When the latest message establishes no language (very short, only code, a URL, or proper nouns only), keep the language already in use, or use German if the conversation has none yet',
+        '- Switch only on a clear signal: a full message written in another language, or an explicit request such as "responde em espanhol"',
+      ].join('\n'),
+    )
+  })
+
+  test('places the language directive with the other output rules', () => {
+    const result = createPrompt(baseParams)
+
+    expect(result.indexOf('# Output Format')).toBeLessThan(result.indexOf('# Language'))
+    expect(result.indexOf('# Language')).toBeLessThan(result.indexOf('# Conversation Style'))
+  })
+
+  test('carries the language directive into the legacy engine assembly', () => {
+    const { stablePrompt, volatilePrompt } = createPromptParts({ ...baseParams, appLanguage: 'ja' })
+    const { system } = assembleBuiltInModelInput(stablePrompt, [], [volatilePrompt])
+
+    expect(system).toContain('# Language')
+    expect(system).toContain('or use Japanese if the conversation has none yet')
+    expect(system.indexOf('# Language')).toBeLessThan(system.indexOf('Current date/time'))
+  })
+
+  test('keeps the injected date in the source locale whatever the app language', () => {
+    const sent = new Date('2026-07-10T12:00:00Z')
+    const english = createPromptParts(baseParams, sent)
+    const japanese = createPromptParts({ ...baseParams, appLanguage: 'ja' }, sent)
+
+    expect(english.volatilePrompt).toContain('July 10, 2026')
+    expect(japanese.volatilePrompt).toBe(english.volatilePrompt)
   })
 
   test('does not include the Pi app harness environment', () => {
     const result = createPromptParts(baseParams)
 
-    expect(result.fullPrompt).not.toContain(APP_HARNESS_ENVIRONMENT_PROMPT)
+    expect(result.fullPrompt).not.toContain(appHarnessEnvironmentPrompt)
   })
 })

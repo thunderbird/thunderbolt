@@ -5,7 +5,7 @@
 import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsSecretsTable, modelsTable, settingsTable } from '../db/tables'
-import { hashModel, type SharedModel } from '@shared/defaults/models'
+import { defaultModelId, hashModel, type SharedModel } from '@shared/defaults/models'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'
@@ -66,7 +66,11 @@ export const getSelectedModelQuery = (db: AnyDrizzleDatabase) => {
       and(eq(settingsTable.key, 'selected_model'), eq(settingsTable.value, modelsTable.id), eq(modelsTable.enabled, 1)),
     )
     .where(and(isNull(modelsTable.deletedAt), or(eq(modelsTable.isSystem, 1), isNotNull(settingsTable.value))))
-    .orderBy(sql`CASE WHEN ${settingsTable.value} IS NOT NULL THEN 0 ELSE 1 END`, modelsTable.name)
+    .orderBy(
+      sql`CASE WHEN ${settingsTable.value} IS NOT NULL THEN 0 ELSE 1 END`,
+      desc(eq(modelsTable.id, defaultModelId)),
+      modelsTable.name,
+    )
     .limit(1)
 
   return query as typeof query & DrizzleQueryWithPromise<Model>
@@ -102,26 +106,13 @@ export const getSelectedModel = async (db: AnyDrizzleDatabase): Promise<Model> =
 }
 
 /**
- * Gets the default model for a chat thread based on the last message in the thread, falling back to the selected_model setting.
- * If any fallback model is disabled, continues to the next fallback option.
+ * Uses the last message's enabled model, falling back to the selected or system default model.
  */
-export const getDefaultModelForThread = async (
-  db: AnyDrizzleDatabase,
-  threadId: string,
-  fallbackModelId?: string,
-): Promise<Model> => {
+export const getDefaultModelForThread = async (db: AnyDrizzleDatabase, threadId: string): Promise<Model> => {
   const lastMessage = await getLastMessage(db, threadId)
 
   if (lastMessage?.modelId) {
     const model = await getModel(db, lastMessage.modelId)
-
-    if (model && model.enabled) {
-      return model
-    }
-  }
-
-  if (fallbackModelId) {
-    const model = await getModel(db, fallbackModelId)
 
     if (model && model.enabled) {
       return model
@@ -145,11 +136,13 @@ export const updateModel = async (db: AnyDrizzleDatabase, id: string, updates: P
 
     // PowerSync exposes local-only tables as SQLite views, which don't support
     // INSERT...ON CONFLICT DO UPDATE. Emulate UPSERT with SELECT-then-INSERT/UPDATE.
-    if (apiKey !== undefined) {
+    if (apiKey === null) {
+      await tx.delete(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id))
+    } else if (apiKey !== undefined) {
       const existing = await tx.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, id)).get()
       if (existing) {
         await tx.update(modelsSecretsTable).set({ apiKey }).where(eq(modelsSecretsTable.modelId, id))
-      } else if (apiKey != null) {
+      } else {
         await tx.insert(modelsSecretsTable).values({ modelId: id, apiKey })
       }
     }

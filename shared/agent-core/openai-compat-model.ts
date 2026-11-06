@@ -4,16 +4,14 @@
 
 /**
  * Builds a Pi-compatible OpenAI-completions model whose HTTP goes through an
- * injected `fetch`. This is the OpenAI-family analogue of
- * {@link buildAnthropicModel}: it serves every provider the app talks to over the
- * OpenAI Chat Completions wire — `openai`, `custom`, `openrouter`, and
- * `thunderbolt` (the backend proxy = openai-compatible against `cloudUrl`).
+ * injected `fetch`. Shared by the app and CLI, this is the OpenAI-family
+ * analogue of {@link buildAnthropicModel}.
  *
  * Unlike the anthropic API, Pi's `openai-completions` provider exposes NO public
  * `client?`/`fetch?` seam: its `stream`/`streamSimple` construct the `openai` SDK
  * client internally via `new OpenAI({ apiKey, baseURL, defaultHeaders })` with no
  * `fetch` override, so the SDK resolves its fetch from `getDefaultFetch()` — the
- * global `fetch`. We therefore inject the app's proxy fetch by SYNCHRONOUSLY
+ * global `fetch`. We therefore inject the caller's fetch by SYNCHRONOUSLY
  * swapping `globalThis.fetch` for the exact window in which Pi constructs that
  * client (see {@link withInjectedFetch}), then restoring it.
  *
@@ -43,37 +41,39 @@
 import {
   type Api,
   type Model,
-  type Models,
+  type MutableModels,
   type ProviderStreams,
   createModels,
   createProvider,
-  envApiKeyAuth,
   hasApi,
 } from '@earendil-works/pi-ai'
 import {
   stream as openaiStream,
   streamSimple as openaiStreamSimple,
 } from '@earendil-works/pi-ai/api/openai-completions'
-import type { AgentFetch } from './anthropic-model.ts'
+import { applyReasoningEffort, reasoningEffortFormat, type ReasoningEffort } from '../reasoning-effort.ts'
+import { boundApiKeyAuth } from './bound-api-key-auth.ts'
+
+/** Fetch shape used by OpenAI's client, which dispatches a serialized URL. */
+export type OpenAiCompatFetch = (input: string | URL, init?: RequestInit) => Promise<Response>
 
 /** The Pi API this provider exclusively serves. */
-const API = 'openai-completions'
+const apiName = 'openai-completions'
 
 /** Context window used when the app model carries none. Only consumed by Pi's
  *  token-budget math (irrelevant to openai-completions, which never caps tokens
  *  unless the caller passes `maxTokens`), so a generous default is harmless. */
-const DEFAULT_CONTEXT_WINDOW = 128_000
+const defaultContextWindow = 128_000
 /** Advisory max-output budget on the synthetic model. openai-completions only
  *  sends `max_completion_tokens` when the caller sets `options.maxTokens` (the
  *  harness does not), so this value never reaches the wire — it exists solely to
  *  satisfy the `Model` shape. */
-const DEFAULT_MAX_TOKENS = 8_192
+const defaultMaxTokens = 8_192
 
 /** Inputs for {@link buildOpenAiCompatModel}. */
 export type BuildOpenAiCompatModelOptions = {
-  /** Pi provider id; must equal the synthetic model's `provider` so the
-   *  `MutableModels` dispatch resolves this provider. Carries the app provider
-   *  name (`openai` | `custom` | `openrouter` | `thunderbolt`). */
+  /** Pi provider id. Must equal the synthetic model's `provider` so
+   * `MutableModels` dispatch resolves this provider. */
   readonly providerId: string
   /** Upstream model id sent on the wire, e.g. `opus-4.8` or `gpt-5`. */
   readonly modelId: string
@@ -82,14 +82,24 @@ export type BuildOpenAiCompatModelOptions = {
   /** Bearer key handed to the OpenAI SDK (may be a placeholder when the injected
    *  fetch supplies auth itself, e.g. thunderbolt SSO). */
   readonly apiKey: string
-  /** Fetch every request is routed through — the provider-specific app fetch
-   *  (proxy fetch, or the SSO-aware fetch for thunderbolt). */
-  readonly fetch: AgentFetch
+  /** Fetch every request is routed through. */
+  readonly fetch: OpenAiCompatFetch
   /** Whether the model should request a reasoning effort. When false, Pi clamps
    *  any thinking level to `off` and sends no `reasoning_effort`. */
   readonly reasoning: boolean
   /** Optional upstream context window for the synthetic model descriptor. */
   readonly contextWindow?: number
+  /** Whether the upstream model accepts image input. When false, the synthetic
+   *  descriptor advertises text-only and Pi strips image blocks before the wire
+   *  (`downgradeUnsupportedImages`), so a vision model would never see the bytes. */
+  readonly supportsImages: boolean
+  /** Provider-specific OpenAI compatibility behavior. */
+  readonly compat?: Model<typeof apiName>['compat']
+  /** Current per-conversation override. Undefined preserves the existing profile behavior. */
+  readonly getReasoningEffort?: () => ReasoningEffort | undefined
+  readonly effortFormat?: 'openai' | 'openrouter' | 'tinfoil'
+  /** Provider-specific mapping from Pi thinking levels to wire efforts. */
+  readonly thinkingLevelMap?: Model<typeof apiName>['thinkingLevelMap']
 }
 
 /**
@@ -99,14 +109,12 @@ export type BuildOpenAiCompatModelOptions = {
  *
  * The window spans Pi's synchronous prefix up to its first `await` (which builds
  * the client and then evaluates the `onPayload` hook). It contains NO `await`, so
- * it is race-free (see the module header). The only app code that can run in it is
- * the *synchronous* prefix of a harness `onPayload`/`onResponse` listener; the
- * built-in harness registers none that issue a fetch there, so nothing observes
- * the swapped global before it is restored.
+ * it is race-free (see the module header). Only the synchronous prefix of a
+ * harness `onPayload`/`onResponse` listener can run before the global is restored.
  */
-const withInjectedFetch = <T>(fetchImpl: AgentFetch, run: () => T): T => {
+const withInjectedFetch = <T>(fetchImpl: OpenAiCompatFetch, run: () => T): T => {
   const original = globalThis.fetch
-  globalThis.fetch = fetchImpl as unknown as typeof globalThis.fetch
+  globalThis.fetch = fetchImpl as typeof globalThis.fetch
   try {
     return run()
   } finally {
@@ -119,27 +127,29 @@ const withInjectedFetch = <T>(fetchImpl: AgentFetch, run: () => T): T => {
  * exclusively serves, surfacing misuse loudly rather than guessing. Mirrors
  * {@link buildAnthropicModel}'s `requireAnthropic`.
  */
-const requireOpenAiCompletions = (model: Model<Api>): Model<typeof API> => {
-  if (!hasApi(model, API)) {
-    throw new Error(`Expected an "${API}" model, got "${model.api}".`)
+const requireOpenAiCompletions = (model: Model<Api>): Model<typeof apiName> => {
+  if (!hasApi(model, apiName)) {
+    throw new Error(`Expected an "${apiName}" model, got "${model.api}".`)
   }
   return model
 }
 
-/** Synthesize the Pi `Model<"openai-completions">` descriptor. The app's models
- *  live outside Pi's built-in catalog (custom URLs, backend-proxied ids), so we
+/** Synthesize the Pi `Model<"openai-completions">` descriptor. These models live
+ *  outside Pi's built-in catalog (custom URLs, backend-proxied ids), so we
  *  build the descriptor directly rather than resolving it. */
-const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof API> => ({
+const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof apiName> => ({
   id: opts.modelId,
   name: opts.modelId,
-  api: API,
+  api: apiName,
   provider: opts.providerId,
   baseUrl: opts.baseURL,
   reasoning: opts.reasoning,
-  input: ['text'],
+  input: opts.supportsImages ? ['text', 'image'] : ['text'],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: opts.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
-  maxTokens: DEFAULT_MAX_TOKENS,
+  contextWindow: opts.contextWindow ?? defaultContextWindow,
+  maxTokens: defaultMaxTokens,
+  compat: opts.compat,
+  thinkingLevelMap: opts.thinkingLevelMap,
 })
 
 /**
@@ -150,19 +160,33 @@ const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof API>
  * @param opts - provider id, model id, base URL, api key, injected fetch, reasoning flag
  * @returns the wired provider collection and the synthetic model
  */
-export const buildOpenAiCompatModel = (opts: BuildOpenAiCompatModelOptions): { models: Models; model: Model<Api> } => {
+export const buildOpenAiCompatModel = (
+  opts: BuildOpenAiCompatModelOptions,
+): { models: MutableModels; model: Model<Api> } => {
   const model = synthesizeModel(opts)
 
   // Inject the api key on every call (Pi's openai client reads `options.apiKey`)
   // and bind the fetch only around client construction via the synchronous swap.
+  const withEffort = (options: Parameters<typeof openaiStream>[2]) => ({
+    ...options,
+    apiKey: opts.apiKey,
+    onPayload: async (payload: unknown, model: Model<Api>) => {
+      const transformed = await options?.onPayload?.(payload, model)
+      return applyReasoningEffort(
+        transformed ?? payload,
+        opts.getReasoningEffort?.(),
+        opts.effortFormat ?? reasoningEffortFormat(opts.providerId),
+      )
+    },
+  })
   const api: ProviderStreams = {
     stream: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        openaiStream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+        openaiStream(requireOpenAiCompletions(resolved), context, withEffort(options)),
       ),
     streamSimple: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        openaiStreamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+        openaiStreamSimple(requireOpenAiCompletions(resolved), context, withEffort(options)),
       ),
   }
 
@@ -172,9 +196,8 @@ export const buildOpenAiCompatModel = (opts: BuildOpenAiCompatModelOptions): { m
       id: opts.providerId,
       name: opts.providerId,
       baseUrl: opts.baseURL,
-      // Advisory only: the real credential rides on the per-call options above.
-      // An empty env list makes resolution a graceful no-op in the browser.
-      auth: { apiKey: envApiKeyAuth(`${opts.providerId} API key`, []) },
+      // Resolve the application-owned key without relying on browser environment variables.
+      auth: { apiKey: boundApiKeyAuth(`${opts.providerId} API key`, opts.apiKey) },
       models: [model],
       api,
     }),

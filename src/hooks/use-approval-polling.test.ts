@@ -7,13 +7,41 @@ import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { HttpError } from '@/lib/http'
+import { DeviceApprovalError } from '@/crypto/errors'
 import { useApprovalPolling } from './use-approval-polling'
 
 const createHTTPError = (status: number) => new HttpError(new Response(null, { status }))
+const createRevokedError = () =>
+  new HttpError(new Response(JSON.stringify({ code: 'DEVICE_DISCONNECTED' }), { status: 403 }))
 
 describe('useApprovalPolling', () => {
   afterEach(() => {
     cleanup()
+  })
+
+  it('reports receiver-verification failure and can still recover on a later poll', async () => {
+    let attempt = 0
+    const onVerificationFailed = mock(() => {})
+    const onApproved = mock(() => {})
+    const checkApproval = async () => {
+      attempt += 1
+      if (attempt === 1) {
+        throw new DeviceApprovalError('recipient-unverified')
+      }
+      return true
+    }
+    renderHook(() =>
+      useApprovalPolling({ enabled: true, checkApproval, onApproved, onVerificationFailed, intervalMs: 50 }),
+    )
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+    expect(onVerificationFailed).toHaveBeenCalledTimes(1)
+    expect(onApproved).not.toHaveBeenCalled()
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+    expect(onApproved).toHaveBeenCalledTimes(1)
   })
 
   it('does not poll when disabled', async () => {
@@ -116,7 +144,7 @@ describe('useApprovalPolling', () => {
   })
 
   it('calls onRevoked and stops polling on 403 error', async () => {
-    const error403 = createHTTPError(403)
+    const error403 = createRevokedError()
     const checkApproval = mock(() => Promise.reject(error403))
     const onApproved = mock(() => {})
     const onRevoked = mock(() => {})
@@ -141,6 +169,23 @@ describe('useApprovalPolling', () => {
     expect(checkApproval.mock.calls.length).toBe(callsBefore)
   })
 
+  it('keeps polling on a 403 without DEVICE_DISCONNECTED (session not yet bound)', async () => {
+    const checkApproval = mock(() => Promise.reject(createHTTPError(403)))
+    const onRevoked = mock(() => {})
+
+    const { result } = renderHook(() =>
+      useApprovalPolling({ enabled: true, checkApproval, onApproved: () => {}, onRevoked, intervalMs: 50 }),
+    )
+
+    await act(async () => {
+      await getClock().tickAsync(200)
+    })
+
+    expect(onRevoked).not.toHaveBeenCalled()
+    expect(result.current.isPolling).toBe(true)
+    expect(checkApproval.mock.calls.length).toBeGreaterThanOrEqual(3)
+  })
+
   it('continues polling on non-403 errors but stops on 403', async () => {
     let callCount = 0
     const checkApproval = mock(() => {
@@ -148,7 +193,7 @@ describe('useApprovalPolling', () => {
       if (callCount <= 2) {
         return Promise.reject(new Error('Network error'))
       }
-      return Promise.reject(createHTTPError(403))
+      return Promise.reject(createRevokedError())
     })
     const onApproved = mock(() => {})
     const onRevoked = mock(() => {})
@@ -186,7 +231,36 @@ describe('useApprovalPolling', () => {
     unmount()
 
     await act(async () => {
-      rejectCheck!(createHTTPError(403))
+      rejectCheck!(createRevokedError())
+    })
+
+    expect(onRevoked).not.toHaveBeenCalled()
+  })
+
+  it('does not call onRevoked when cleanup happens while the 403 body is still being read', async () => {
+    // A body that stays open until the test closes it, so cleanup lands mid-read.
+    let bodyController: ReadableStreamDefaultController<Uint8Array>
+    const slowBody = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        bodyController = controller
+      },
+    })
+    const checkApproval = mock(() => Promise.reject(new HttpError(new Response(slowBody, { status: 403 }))))
+    const onRevoked = mock(() => {})
+
+    const { unmount } = renderHook(() =>
+      useApprovalPolling({ enabled: true, checkApproval, onApproved: () => {}, onRevoked, intervalMs: 50 }),
+    )
+
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+
+    unmount()
+
+    await act(async () => {
+      bodyController!.enqueue(new TextEncoder().encode(JSON.stringify({ code: 'DEVICE_DISCONNECTED' })))
+      bodyController!.close()
     })
 
     expect(onRevoked).not.toHaveBeenCalled()

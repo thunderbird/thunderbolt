@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { BackButton } from '@/components/ui/back-button'
 import {
   ResponsiveModal,
@@ -10,6 +11,7 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
+import { Trans } from '@lingui/react/macro'
 import { useRef, useState } from 'react'
 import { SignInForm } from './sign-in'
 
@@ -24,6 +26,7 @@ type SignInModalProps = {
  * Provides the modal chrome and delegates to SignInForm for all form logic.
  */
 export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps) => {
+  const appName = useAppName()
   const [step, setStep] = useState<'email' | 'otp'>('email')
   const goBackRef = useRef<(() => void) | null>(null)
 
@@ -72,12 +75,14 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
       <ResponsiveModalContent centered className="flex flex-col gap-4">
         <ResponsiveModalHeader className={step === 'email' ? 'text-center' : ''}>
           <ResponsiveModalTitle className={step === 'email' ? 'text-2xl font-semibold' : 'sr-only'}>
-            {step === 'email' ? 'Sign In' : 'Enter your code'}
+            {step === 'email' ? <Trans>Sign In</Trans> : <Trans>Enter your code</Trans>}
           </ResponsiveModalTitle>
           {/* sr-only: Radix dialogs want a description for a11y, but the title
               says everything the sighted user needs. */}
           {step === 'email' && (
-            <ResponsiveModalDescription className="sr-only">Sign in to Thunderbolt</ResponsiveModalDescription>
+            <ResponsiveModalDescription className="sr-only">
+              <Trans>Sign in to {appName}</Trans>
+            </ResponsiveModalDescription>
           )}
         </ResponsiveModalHeader>
         <SignInForm

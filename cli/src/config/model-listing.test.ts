@@ -4,7 +4,7 @@
 
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { describe, expect, test } from 'bun:test'
-import { listModels } from './model-listing.ts'
+import { listModels, validateModelListingBaseUrl } from './model-listing.ts'
 import type { ModelListingFetch } from './model-listing.ts'
 
 /** Derives fallback expectations from Pi's wired catalog so catalog churn does not break behavior tests. */
@@ -14,6 +14,11 @@ const openAiCatalogIds = builtinModels()
   .map(({ id }) => id)
 
 describe('listModels', () => {
+  test('rejects insecure or unpinned built-in descriptor URLs before credentials are used', () => {
+    expect(() => validateModelListingBaseUrl('openai', 'http://provider.example/v1')).toThrow('https')
+    expect(() => validateModelListingBaseUrl('openai', 'https://credential-sink.example/v1')).toThrow(/origin/i)
+  })
+
   test('reads an OpenAI-compatible model list with bearer authentication', async () => {
     const requests: { readonly input: string | URL | Request; readonly init?: RequestInit }[] = []
     const fetchFn: ModelListingFetch = async (input, init) => {
@@ -29,7 +34,7 @@ describe('listModels', () => {
 
     const result = await listModels({ provider: 'openai', apiKey: 'secret-key', fetchFn })
 
-    expect(result).toEqual({ source: 'live', ids: ['gpt-live-a', 'gpt-live-b'] })
+    expect(result).toEqual({ source: 'live', ids: ['gpt-live-a', 'gpt-live-b'], authenticated: true })
     expect(String(requests[0]?.input)).toBe('https://api.openai.com/v1/models')
     expect(new Headers(requests[0]?.init?.headers).get('Authorization')).toBe('Bearer secret-key')
   })
@@ -48,7 +53,7 @@ describe('listModels', () => {
 
     const result = await listModels({ provider: 'anthropic', apiKey: 'anthropic-key', fetchFn })
 
-    expect(result).toEqual({ source: 'live', ids: ['claude-live-a', 'claude-live-b'] })
+    expect(result).toEqual({ source: 'live', ids: ['claude-live-a', 'claude-live-b'], authenticated: true })
     expect(String(requests[0]?.input)).toBe('https://api.anthropic.com/v1/models')
     const headers = new Headers(requests[0]?.init?.headers)
     expect(headers.get('x-api-key')).toBe('anthropic-key')
@@ -71,7 +76,7 @@ describe('listModels', () => {
 
     const result = await listModels({ provider: 'google', apiKey: 'gemini-key', fetchFn })
 
-    expect(result).toEqual({ source: 'live', ids: ['gemini-live-chat'] })
+    expect(result).toEqual({ source: 'live', ids: ['gemini-live-chat'], authenticated: true })
     // The key must ride in the header, never the URL, so it can't land in proxy logs.
     expect(String(requests[0]?.input)).toBe('https://generativelanguage.googleapis.com/v1beta/models')
     expect(new Headers(requests[0]?.init?.headers).get('x-goog-api-key')).toBe('gemini-key')
@@ -92,7 +97,7 @@ describe('listModels', () => {
 
     const result = await listModels({ provider: 'xai', apiKey: 'xai-key', fetchFn })
 
-    expect(result).toEqual({ source: 'live', ids: ['grok-live-a', 'grok-live-b'] })
+    expect(result).toEqual({ source: 'live', ids: ['grok-live-a', 'grok-live-b'], authenticated: true })
     expect(String(requests[0]?.input)).toBe('https://api.x.ai/v1/language-models')
     expect(new Headers(requests[0]?.init?.headers).get('Authorization')).toBe('Bearer xai-key')
   })
@@ -111,7 +116,7 @@ describe('listModels', () => {
       },
     })
 
-    expect(result).toEqual({ source: 'live', ids: ['chat-model'] })
+    expect(result).toEqual({ source: 'live', ids: ['chat-model'], authenticated: true })
     expect(String(requests[0]?.input)).toBe('https://api.together.ai/v1/models')
     expect(new Headers(requests[0]?.init?.headers).get('Authorization')).toBe('Bearer together-key')
   })
@@ -135,10 +140,11 @@ describe('listModels', () => {
     expect(await listModels({ provider: 'openrouter', apiKey: 'key', fetchFn })).toEqual({
       source: 'live',
       ids: ['chat-model'],
+      authenticated: true,
     })
   })
 
-  test('sorts by created descending and limits live suggestions to eight', async () => {
+  test('sorts by created descending without truncating live suggestions', async () => {
     const fetchFn: ModelListingFetch = async () =>
       Response.json({
         data: Array.from({ length: 10 }, (_, index) => ({ id: `model-${index}`, created: index })),
@@ -146,7 +152,19 @@ describe('listModels', () => {
 
     expect(await listModels({ provider: 'groq', apiKey: 'key', fetchFn })).toEqual({
       source: 'live',
-      ids: ['model-9', 'model-8', 'model-7', 'model-6', 'model-5', 'model-4', 'model-3', 'model-2'],
+      ids: [
+        'model-9',
+        'model-8',
+        'model-7',
+        'model-6',
+        'model-5',
+        'model-4',
+        'model-3',
+        'model-2',
+        'model-1',
+        'model-0',
+      ],
+      authenticated: true,
     })
   })
 
@@ -194,33 +212,36 @@ describe('listModels', () => {
     const fireworks = await listModels({ provider: 'fireworks', apiKey: 'key', fetchFn })
 
     expect(zai.source).toBe('catalog')
+    expect(zai.authenticated).toBe(false)
     expect(fireworks.source).toBe('catalog')
+    expect(fireworks.authenticated).toBe(false)
     expect(requestedProviders).toEqual([])
   })
 
-  test('returns catalog models on timeout even when injected fetch ignores abort', async () => {
-    const fetchFn: ModelListingFetch = async () => new Promise<Response>(() => {})
+  test('returns catalog models on timeout', async () => {
+    const fetchFn: ModelListingFetch = async (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true })
+      })
     const result = await listModels({ provider: 'openai', apiKey: 'key', fetchFn, timeoutMs: 1 })
 
     expect(result.source).toBe('catalog')
+    expect(result.authenticated).toBe(false)
     expect(result.ids).toEqual(openAiCatalogIds)
   })
 
-  test('returns catalog models when the response body stalls past the timeout', async () => {
-    // Headers arrive instantly, but the body never resolves — the deadline must
-    // cover the read, or the wizard hangs forever on a stalled connection.
-    class StalledBodyResponse extends Response {
-      override readonly json = (): Promise<unknown> => new Promise<unknown>(() => {})
+  test('combines caller cancellation with the model-listing timeout', async () => {
+    const controller = new AbortController()
+    const cancellation = new Error('setup cancelled')
+    const fetchFn: ModelListingFetch = async (_input, init) => {
+      controller.abort(cancellation)
+      init?.signal?.throwIfAborted()
+      return Response.json({ data: [{ id: 'must-not-be-returned' }] })
     }
-    const result = await listModels({
-      provider: 'openai',
-      apiKey: 'key',
-      fetchFn: async () => new StalledBodyResponse(),
-      timeoutMs: 10,
-    })
 
-    expect(result.source).toBe('catalog')
-    expect(result.ids).toEqual(openAiCatalogIds)
+    await expect(
+      listModels({ provider: 'openai', apiKey: 'key', fetchFn, timeoutMs: 60_000 }, controller.signal),
+    ).rejects.toBe(cancellation)
   })
 
   test('returns catalog models when fetch rejects with a network TypeError', async () => {
@@ -231,6 +252,7 @@ describe('listModels', () => {
     const result = await listModels({ provider: 'openai', apiKey: 'key', fetchFn })
 
     expect(result.source).toBe('catalog')
+    expect(result.authenticated).toBe(false)
     expect(result.ids).toEqual(openAiCatalogIds)
   })
 
@@ -241,6 +263,7 @@ describe('listModels', () => {
     const result = await listModels({ provider: 'openai', apiKey: 'key', fetchFn })
 
     expect(result.source).toBe('catalog')
+    expect(result.authenticated).toBe(false)
     expect(result.ids).toEqual(openAiCatalogIds)
   })
 
@@ -257,8 +280,10 @@ describe('listModels', () => {
     })
 
     expect(unavailable.source).toBe('catalog')
+    expect(unavailable.authenticated).toBe(false)
     expect(unavailable.ids).toEqual(openAiCatalogIds)
     expect(malformed.source).toBe('catalog')
+    expect(malformed.authenticated).toBe(false)
     expect(malformed.ids).toEqual(openAiCatalogIds)
   })
 
@@ -336,8 +361,59 @@ describe('listModels', () => {
       },
     })
 
-    expect(result).toEqual({ source: 'catalog', ids: [] })
+    expect(result).toEqual({ source: 'catalog', ids: [], authenticated: true })
     expect(urls).toEqual(['http://localhost:11434/v1/models'])
     expect(authorizations).toEqual(['Bearer local'])
+  })
+
+  test('refuses to send a compatible API key to a remote cleartext endpoint', async () => {
+    let requests = 0
+
+    await expect(
+      listModels({
+        provider: 'openai-compat',
+        baseUrl: 'http://models.example/v1',
+        apiKey: 'must-not-leak',
+        fetchFn: async () => {
+          requests += 1
+          return Response.json({ data: [] })
+        },
+      }),
+    ).rejects.toThrow('https')
+    expect(requests).toBe(0)
+  })
+
+  test('blocks a cross-origin redirect before the BYOK bearer can reach the target', async () => {
+    const targetAuthorizations: (string | null)[] = []
+    const target = Bun.serve({
+      port: 0,
+      fetch: (request) => {
+        targetAuthorizations.push(request.headers.get('authorization'))
+        return Response.json({ data: [{ id: 'stolen-model' }] })
+      },
+    })
+    const sourceAuthorizations: (string | null)[] = []
+    const source = Bun.serve({
+      port: 0,
+      fetch: (request) => {
+        sourceAuthorizations.push(request.headers.get('authorization'))
+        return Response.redirect(`http://127.0.0.1:${target.port}/models`, 302)
+      },
+    })
+
+    try {
+      const result = await listModels({
+        provider: 'openai-compat',
+        baseUrl: `http://127.0.0.1:${source.port}/v1`,
+        apiKey: 'redirect-secret',
+      })
+
+      expect(result.authenticated).toBe(false)
+      expect(sourceAuthorizations).toEqual(['Bearer redirect-secret'])
+      expect(targetAuthorizations).toEqual([])
+    } finally {
+      source.stop(true)
+      target.stop(true)
+    }
   })
 })

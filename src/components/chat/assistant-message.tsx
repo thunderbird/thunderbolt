@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AcpCompactionNotice } from '@/components/context-usage'
 import { isRenderHtmlPart } from '@/artifacts/render-html-tool'
 import {
   artifactRendersStandalone,
@@ -28,10 +29,13 @@ type AssistantMessageProps = {
   isStreaming: boolean
   isLastMessage?: boolean
   isLastAssistantMessage?: boolean
-  loadingMessage?: string
+  lastAssistantAction?: ReactNode
+  activity?: ReactNode
 }
 
-// Viewport positioning constant - ensures enough space for scrolling user message to top
+// While an answer streams, reserve enough room to keep the preceding user
+// message pinned near the top. Settled answers return to their natural height
+// so short threads do not retain artificial overflow.
 const lastMessageMinHeight = '72dvh'
 
 // Stable empty default so a message without reasoning timings keeps a constant
@@ -55,13 +59,12 @@ export const mountMessageParts = (
   sources?: SourceMetadata[],
   haystackReferences?: HaystackReferenceMeta[],
   mcpTools?: UIMessageMetadata['mcpTools'],
-  loadingMessage?: string,
 ) => {
   const partElements: ReactNode[] = []
 
   if (groupedParts.length === 0 && isStreaming) {
     // isStreaming should always be true because the next part will *replace* this one
-    partElements.push(<SyntheticLoadingPart isStreaming message={loadingMessage} />)
+    partElements.push(<SyntheticLoadingPart isStreaming />)
   }
 
   // Whether the message has a "body" that serves as the answer — a text part, or a
@@ -74,6 +77,10 @@ export const mountMessageParts = (
   })
 
   groupedParts.forEach((part, index) => {
+    if (part.type === 'data-acp-compaction') {
+      partElements.push(<AcpCompactionNotice compaction={part.data} />)
+      return
+    }
     const [partType] = splitPartType(part.type)
     const isLastPart = index === groupedParts.length - 1
 
@@ -97,6 +104,7 @@ export const mountMessageParts = (
         partElements.push(
           <TextPart
             part={part as TextUIPart}
+            isStreaming={isStreaming}
             messageId={messageId}
             sources={sources}
             haystackReferences={haystackReferences}
@@ -119,7 +127,8 @@ export const AssistantMessage = memo(
     isStreaming,
     isLastMessage = false,
     isLastAssistantMessage = false,
-    loadingMessage,
+    lastAssistantAction,
+    activity,
   }: AssistantMessageProps) => {
     // Memoize filtering and grouping to avoid recomputing on every render
     const groupedParts = useMemo(() => groupMessageParts(filterMessageParts(message.parts)), [message.parts])
@@ -149,7 +158,6 @@ export const AssistantMessage = memo(
           sources,
           haystackReferences,
           mcpTools,
-          loadingMessage,
         ),
       [
         groupedParts,
@@ -160,7 +168,6 @@ export const AssistantMessage = memo(
         sources,
         haystackReferences,
         mcpTools,
-        loadingMessage,
       ],
     )
 
@@ -184,13 +191,13 @@ export const AssistantMessage = memo(
       [message.parts],
     )
 
-    const lastPartIsReasoningGroup = useMemo(() => {
+    const lastPartIsActivity = useMemo(() => {
       const lastPart = groupedParts[groupedParts.length - 1]
       if (!lastPart) {
         return false
       }
       const [partType] = splitPartType(lastPart.type)
-      return partType === 'reasoning_group'
+      return partType === 'reasoning_group' || lastPart.type === 'data-acp-compaction'
     }, [groupedParts])
 
     const showCopyOnHover = !isLastAssistantMessage
@@ -199,21 +206,24 @@ export const AssistantMessage = memo(
       <div
         data-message-id={message.id}
         data-quotable-message-id={message.id}
-        className={showCopyOnHover ? 'group' : undefined}
-        style={isLastMessage && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
+        className={showCopyOnHover ? 'group/assistant-message' : undefined}
+        style={isLastMessage && isStreaming && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
       >
-        {partElements.map((partElement, index) => (
-          // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
-          // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
-          <div key={index} className={index === 1 ? '' : animationClasses}>
-            {partElement}
-          </div>
-        ))}
-        {!isStreaming && copyText && (
+        {(groupedParts.length > 0 || !activity) &&
+          partElements.map((partElement, index) => (
+            // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
+            // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
+            <div key={index} className={index === 1 ? '' : animationClasses}>
+              {partElement}
+            </div>
+          ))}
+        {activity}
+        {!isStreaming && (copyText || lastAssistantAction) && (
           <div
-            className={`flex items-center gap-2.5 px-4 ${hasWidgets || lastPartIsReasoningGroup ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:opacity-0 md:group-hover:opacity-100 md:transition-opacity' : ''}`}
+            className={`flex items-center gap-1.5 px-4 ${hasWidgets || lastPartIsActivity ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:pointer-events-none md:opacity-0 md:transition-opacity md:group-hover/assistant-message:pointer-events-auto md:group-hover/assistant-message:opacity-100' : ''}`}
           >
-            <CopyMessageButton text={copyText} />
+            {copyText && <CopyMessageButton text={copyText} />}
+            {lastAssistantAction}
           </div>
         )}
       </div>
@@ -228,7 +238,8 @@ export const AssistantMessage = memo(
       prevProps.isStreaming === nextProps.isStreaming &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
-      prevProps.loadingMessage === nextProps.loadingMessage
+      prevProps.lastAssistantAction === nextProps.lastAssistantAction &&
+      prevProps.activity === nextProps.activity
     )
   },
 )

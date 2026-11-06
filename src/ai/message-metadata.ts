@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { LanguageModelV2Usage } from '@ai-sdk/provider'
+import { appContextToolName } from '@/mini-apps/mini-app-context-note'
 import type { UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 
@@ -31,6 +32,7 @@ export const createMessageMetadata = (
   modelId: string,
   sourceCollector?: SourceMetadata[],
   mcpTools?: UIMessageMetadata['mcpTools'],
+  embeddedSurface?: UIMessageMetadata['embeddedSurface'],
 ) => {
   const startTimes = new Map<string, number>()
   const reasoningStack: string[] = []
@@ -52,6 +54,9 @@ export const createMessageMetadata = (
         const { toolName } = part
         if (!toolName) {
           return base
+        }
+        if (toolName === appContextToolName && embeddedSurface) {
+          return { ...base, embeddedSurface }
         }
         // Scope persisted MCP metadata to the tool actually invoked; built-ins
         // aren't in the map, so they add nothing.

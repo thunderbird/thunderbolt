@@ -5,14 +5,21 @@
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
+import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { mockAuth } from '@/test-utils/mock-auth'
+import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
-  createInferenceRateLimit,
-  createProRateLimit,
+  createAuthPluginIpRateLimit,
+  createIpTierRateLimit,
+  createRateLimitConsumer,
+  createUserTierRateLimit,
+  type AuthPluginIpRateLimitSettings,
   type IpRateLimitSettings,
   type RateLimitSettings,
+  type UserRateLimitTier,
 } from './rate-limit'
 
 /**
@@ -23,12 +30,12 @@ import {
 const createTestApp = (
   database: typeof DbType,
   settings: RateLimitSettings,
-  middleware: (db: typeof DbType, s: RateLimitSettings) => ReturnType<typeof createInferenceRateLimit>,
+  tier: UserRateLimitTier,
   userId?: string,
 ) =>
   new Elysia()
     .derive(() => ({ user: userId ? { id: userId } : null }))
-    .use(middleware(database, settings))
+    .use(createUserTierRateLimit(database, settings, tier))
     .get('/v1/test', () => ({ ok: true }))
 
 /** Helper that creates a test app with IP-based rate limiting (trustedProxy=cloudflare). */
@@ -61,7 +68,7 @@ describe('Rate Limiting', () => {
 
   describe('user-based rate limiting', () => {
     it('should allow requests under the limit for an authenticated user', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-1')
+      const app = createTestApp(database, enabledSettings, 'inference', 'user-1')
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
@@ -69,7 +76,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should return 429 after an authenticated user exceeds the limit', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-2')
+      const app = createTestApp(database, enabledSettings, 'inference', 'user-2')
 
       for (let i = 0; i < 60; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
@@ -83,7 +90,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should set RateLimit headers on successful requests', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-3')
+      const app = createTestApp(database, enabledSettings, 'inference', 'user-3')
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
@@ -93,7 +100,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should set Retry-After header on 429 responses', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-4')
+      const app = createTestApp(database, enabledSettings, 'inference', 'user-4')
 
       for (let i = 0; i < 60; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
@@ -106,7 +113,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should skip rate limiting when no user context is available', async () => {
-      const app = createTestApp(database, enabledSettings, createInferenceRateLimit)
+      const app = createTestApp(database, enabledSettings, 'inference')
 
       for (let i = 0; i < 65; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
@@ -115,8 +122,8 @@ describe('Rate Limiting', () => {
     })
 
     it('should track limits independently per user', async () => {
-      const appA = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-5a')
-      const appB = createTestApp(database, enabledSettings, createInferenceRateLimit, 'user-5b')
+      const appA = createTestApp(database, enabledSettings, 'inference', 'user-5a')
+      const appB = createTestApp(database, enabledSettings, 'inference', 'user-5b')
 
       // Exhaust user A's limit
       for (let i = 0; i < 60; i++) {
@@ -132,9 +139,65 @@ describe('Rate Limiting', () => {
     })
   })
 
+  describe('inference receipt rate limiting', () => {
+    it('allows full receipt and pro throughput independently before rate limiting each bucket', async () => {
+      const userId = 'receipt-pro-shared-user'
+      const receiptApp = createTestApp(database, enabledSettings, 'receipt', userId)
+      const proApp = createTestApp(database, enabledSettings, 'pro', userId)
+
+      for (let i = 0; i < 100; i++) {
+        expect((await receiptApp.handle(new Request('http://localhost/v1/test'))).status).toBe(200)
+        expect((await proApp.handle(new Request('http://localhost/v1/test'))).status).toBe(200)
+      }
+
+      expect((await receiptApp.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
+      expect((await proApp.handle(new Request('http://localhost/v1/test'))).status).toBe(429)
+    })
+
+    it('does not consume the inference request bucket', async () => {
+      const userId = 'receipt-inference-shared-user'
+      const receiptApp = createTestApp(database, enabledSettings, 'receipt', userId)
+      const inferenceApp = createTestApp(database, enabledSettings, 'inference', userId)
+
+      const receiptResponse = await receiptApp.handle(new Request('http://localhost/v1/test'))
+      const inferenceResponse = await inferenceApp.handle(new Request('http://localhost/v1/test'))
+
+      expect(receiptResponse.headers.get('ratelimit-remaining')).toBe('99')
+      expect(inferenceResponse.headers.get('ratelimit-remaining')).toBe('59')
+    })
+
+    it('enforces the authenticated receipt route without rate-limiting a sibling route', async () => {
+      const app = new Elysia()
+        .use(
+          createInferenceUsageReceiptRoutes({
+            auth: mockAuth,
+            database,
+            secret: 'rate-limit-test-secret',
+            rateLimit: createUserTierRateLimit(database, enabledSettings, 'receipt'),
+          }),
+        )
+        .get('/unrelated', () => 'ok')
+      const createReceiptRequest = () =>
+        new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+
+      for (let i = 0; i < 100; i++) {
+        expect((await app.handle(createReceiptRequest())).status).toBe(400)
+      }
+
+      expect((await app.handle(createReceiptRequest())).status).toBe(429)
+      const unrelatedResponse = await app.handle(new Request('http://localhost/unrelated'))
+      expect(unrelatedResponse.status).toBe(200)
+      expect(unrelatedResponse.headers.get('ratelimit-limit')).toBeNull()
+    })
+  })
+
   describe('pro rate limiting', () => {
     it('should allow requests under the pro tier limit', async () => {
-      const app = createTestApp(database, enabledSettings, createProRateLimit, 'pro-user-1')
+      const app = createTestApp(database, enabledSettings, 'pro', 'pro-user-1')
 
       const response = await app.handle(new Request('http://localhost/v1/test'))
 
@@ -144,7 +207,7 @@ describe('Rate Limiting', () => {
     })
 
     it('should return 429 after exceeding the pro tier limit', async () => {
-      const app = createTestApp(database, enabledSettings, createProRateLimit, 'pro-user-2')
+      const app = createTestApp(database, enabledSettings, 'pro', 'pro-user-2')
 
       for (let i = 0; i < 100; i++) {
         await app.handle(new Request('http://localhost/v1/test'))
@@ -158,8 +221,8 @@ describe('Rate Limiting', () => {
     })
 
     it('should track limits independently from inference tier', async () => {
-      const inferenceApp = createTestApp(database, enabledSettings, createInferenceRateLimit, 'shared-user')
-      const proApp = createTestApp(database, enabledSettings, createProRateLimit, 'shared-user')
+      const inferenceApp = createTestApp(database, enabledSettings, 'inference', 'shared-user')
+      const proApp = createTestApp(database, enabledSettings, 'pro', 'shared-user')
 
       // Exhaust inference limit (60 requests)
       for (let i = 0; i < 60; i++) {
@@ -174,10 +237,27 @@ describe('Rate Limiting', () => {
     })
   })
 
+  describe('debug transcript rate limiting', () => {
+    it('allows ten uploads per user each hour', async () => {
+      const app = createTestApp(database, enabledSettings, 'debug-transcript', 'transcript-user')
+
+      for (let index = 0; index < 10; index++) {
+        const response = await app.handle(new Request('http://localhost/v1/test'))
+        expect(response.status).toBe(200)
+      }
+
+      const blockedResponse = await app.handle(new Request('http://localhost/v1/test'))
+
+      expect(blockedResponse.status).toBe(429)
+      expect(blockedResponse.headers.get('ratelimit-limit')).toBe('10')
+      expect(Number(blockedResponse.headers.get('ratelimit-reset'))).toBeGreaterThan(3500)
+    })
+  })
+
   describe('disabled rate limiting', () => {
     it('should not rate limit when disabled', async () => {
       const disabledSettings: RateLimitSettings = { enabled: false }
-      const app = createTestApp(database, disabledSettings, createInferenceRateLimit, 'user-6')
+      const app = createTestApp(database, disabledSettings, 'inference', 'user-6')
 
       for (let i = 0; i < 65; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
@@ -187,7 +267,7 @@ describe('Rate Limiting', () => {
 
     it('should not rate limit pro tier when disabled', async () => {
       const disabledSettings: RateLimitSettings = { enabled: false }
-      const app = createTestApp(database, disabledSettings, createProRateLimit, 'user-disabled-pro')
+      const app = createTestApp(database, disabledSettings, 'pro', 'user-disabled-pro')
 
       for (let i = 0; i < 105; i++) {
         const response = await app.handle(new Request('http://localhost/v1/test'))
@@ -198,6 +278,31 @@ describe('Rate Limiting', () => {
 
   describe('IP-based rate limiting', () => {
     const ipSettings: IpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare' }
+
+    it('returns an empty IP tier plugin when disabled', async () => {
+      const plugin = createIpTierRateLimit(database, { ...ipSettings, enabled: false }, 'debug-transcript-intake')
+      expect(plugin.routes).toHaveLength(0)
+      const app = new Elysia().use(plugin).get('/v1/test', () => ({ ok: true }))
+      const response = await app.handle(requestWithIp('10.4.0.1'))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('ratelimit-limit')).toBeNull()
+      expect(await database.select().from(rateLimits)).toHaveLength(0)
+    })
+
+    it('allows 600 intake requests per IP each hour independently of other IPs', async () => {
+      const app = new Elysia()
+        .use(createIpTierRateLimit(database, ipSettings, 'debug-transcript-intake'))
+        .get('/v1/test', () => ({ ok: true }))
+
+      for (let index = 0; index < 600; index++) {
+        expect((await app.handle(requestWithIp('10.4.0.1'))).status).toBe(200)
+      }
+      const blocked = await app.handle(requestWithIp('10.4.0.1'))
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('ratelimit-limit')).toBe('600')
+      expect(Number(blocked.headers.get('ratelimit-reset'))).toBeGreaterThan(3500)
+      expect((await app.handle(requestWithIp('10.4.0.2'))).status).toBe(200)
+    })
 
     it('should allow requests under the limit for an IP', async () => {
       const app = createIpTestApp(database, ipSettings)
@@ -286,7 +391,7 @@ describe('Rate Limiting', () => {
       const app = new Elysia()
         .derive(() => ({ user: { id: 'shared-ip-user' } }))
         .use(createAuthIpRateLimit(database, ipSettings))
-        .use(createInferenceRateLimit(database, enabledSettings))
+        .use(createUserTierRateLimit(database, enabledSettings, 'inference'))
         .get('/v1/test', () => ({ ok: true }))
 
       // Exhaust IP limit (10 requests)
@@ -377,6 +482,138 @@ describe('Rate Limiting', () => {
 
       const blocked = await app.handle(requestWithIp('10.3.0.5'))
       expect(blocked.status).toBe(429)
+    })
+  })
+  describe('Better Auth mount: anonymous sign-in bucket', () => {
+    const pluginSettings: AuthPluginIpRateLimitSettings = {
+      enabled: true,
+      trustedProxy: 'cloudflare',
+      anonymousSignIn: { max: 40, durationSecs: 120 },
+    }
+
+    /** Mirrors createBetterAuthPlugin: the IP limit wraps a catch-all fetch handler. */
+    const createPluginApp = (settings: AuthPluginIpRateLimitSettings) =>
+      new Elysia()
+        .use(createAuthPluginIpRateLimit(database, settings))
+        .all('/v1/api/auth/*', () => new Response('{}', { headers: { 'content-type': 'application/json' } }), {
+          parse: 'none',
+        })
+
+    const authRequest = (path: string, ip: string, method = 'POST') =>
+      new Request(`http://localhost/v1/api/auth${path}`, { method, headers: { 'cf-connecting-ip': ip } })
+
+    it('applies the configured limit and window to anonymous sign-in', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (let i = 0; i < 40; i++) {
+        expect((await app.handle(authRequest('/sign-in/anonymous', '10.5.0.1'))).status).toBe(200)
+      }
+      const blocked = await app.handle(authRequest('/sign-in/anonymous', '10.5.0.1'))
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('ratelimit-limit')).toBe('40')
+      expect(Number(blocked.headers.get('ratelimit-reset'))).toBeGreaterThan(60)
+    })
+
+    it('keeps OTP send and other auth routes at the fixed 10 per 60s', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (let i = 0; i < 10; i++) {
+        expect((await app.handle(authRequest('/email-otp/send-verification-otp', '10.5.0.2'))).status).toBe(200)
+      }
+      const blocked = await app.handle(authRequest('/email-otp/send-verification-otp', '10.5.0.2'))
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('ratelimit-limit')).toBe('10')
+      expect(Number(blocked.headers.get('ratelimit-reset'))).toBeLessThanOrEqual(60)
+    })
+
+    it('counts anonymous sign-in and other auth routes in separate buckets', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (let i = 0; i < 10; i++) {
+        await app.handle(authRequest('/sign-out', '10.5.0.3'))
+      }
+      expect((await app.handle(authRequest('/sign-out', '10.5.0.3'))).status).toBe(429)
+      expect((await app.handle(authRequest('/sign-in/anonymous', '10.5.0.3'))).status).toBe(200)
+    })
+
+    it('exempts GET get-session from the auth tier while POST and other auth routes still hit it', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (let i = 0; i < 15; i++) {
+        const response = await app.handle(authRequest('/get-session', '10.5.0.8', 'GET'))
+        expect(response.status).toBe(200)
+        expect(response.headers.get('ratelimit-limit')).toBeNull()
+      }
+      for (let i = 0; i < 10; i++) {
+        expect((await app.handle(authRequest('/get-session', '10.5.0.8'))).status).toBe(200)
+      }
+      expect((await app.handle(authRequest('/get-session', '10.5.0.8'))).status).toBe(429)
+      expect((await app.handle(authRequest('/sign-out', '10.5.0.8'))).status).toBe(429)
+      expect((await app.handle(authRequest('/get-session', '10.5.0.8', 'GET'))).status).toBe(200)
+    })
+
+    it('keeps a query string on GET get-session exempt', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      const response = await app.handle(authRequest('/get-session?x=1', '10.5.0.10', 'GET'))
+      expect(response.headers.get('ratelimit-limit')).toBeNull()
+    })
+
+    it('draws GET get-session lookalikes from the fixed auth bucket', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (const path of ['/get-session/', '/get-session-x', '/x/get-session', '/get%2Dsession']) {
+        const response = await app.handle(authRequest(path, '10.5.0.9', 'GET'))
+        expect(response.headers.get('ratelimit-limit')).toBe('10')
+      }
+    })
+
+    it('draws a trailing-slash path from the fixed auth bucket, since Better Auth 404s it', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      const response = await app.handle(authRequest('/sign-in/anonymous/', '10.5.0.6'))
+      expect(response.headers.get('ratelimit-limit')).toBe('10')
+    })
+
+    it('draws a lookalike path from the fixed auth bucket', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      const response = await app.handle(authRequest('/x/sign-in/anonymous', '10.5.0.7'))
+      expect(response.headers.get('ratelimit-limit')).toBe('10')
+    })
+
+    it('does not rate limit when disabled', async () => {
+      const app = createPluginApp({ ...pluginSettings, enabled: false })
+
+      for (let i = 0; i < 45; i++) {
+        expect((await app.handle(authRequest('/sign-in/anonymous', '10.5.0.5'))).status).toBe(200)
+      }
+    })
+  })
+
+  describe('createRateLimitConsumer', () => {
+    it('returns null when rate limiting is disabled', () => {
+      expect(createRateLimitConsumer(database, { enabled: false }, 'debug-transcript-intake')).toBeNull()
+    })
+
+    it('limits each key independently and reports 429 through set', async () => {
+      const consume = createRateLimitConsumer(database, enabledSettings, 'debug-transcript-intake')!
+      const set = {
+        headers: {} as Record<string, string | string[] | number>,
+        status: undefined as number | string | undefined,
+      }
+
+      for (let i = 0; i < 600; i++) {
+        expect(await consume('client:a', set)).toBeUndefined()
+      }
+      expect(await consume('client:a', set)).toEqual({ error: 'Too many requests. Please try again later.' })
+      expect(set.status).toBe(429)
+
+      const other = {
+        headers: {} as Record<string, string | string[] | number>,
+        status: undefined as number | string | undefined,
+      }
+      expect(await consume('client:b', other)).toBeUndefined()
     })
   })
 })

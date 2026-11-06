@@ -5,42 +5,51 @@
 import { DownloadAppBannerDesktop } from '@/components/download-app-banner-desktop'
 import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile'
 import { FloatingHeader } from '@/components/floating-header'
+import { Dialog } from '@/components/ui/dialog'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { SidebarInset } from '@/components/ui/sidebar'
-import { ArtifactSidebarContent } from '@/content-view/artifact-sidebar-content'
+import { ActiveContentView } from '@/content-view/active-content-view'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
 import { useContentView } from '@/content-view/context'
-import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
-import { SidebarWebview } from '@/content-view/sidebar-webview'
-import { Sideview } from '@/content-view/sideview'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { isTauri } from '@/lib/platform'
+import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
+import { edgeSpacing } from '@/lib/constants'
+import { isTauri, isTauriDesktop } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
 import { Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import { PageFallback } from '@/loading'
+import { routeHostsContentView } from './content-view-host'
+import { sharedHeaderHasControls } from './shared-header'
 
+/** The main app shell: sidebar-inset content area, floating header, and the
+ *  resizable content-view panel beside it. */
 export default function Page() {
   const panelRef = usePanelRef()
-  const { state, close, previewHidden } = useContentView()
+  const { pathname } = useLocation()
+  const { state, close } = useContentView()
   const { isMobile } = useIsMobile()
+  const isNativeMobile = useIsNativeMobile()
   const { contentViewWidth } = useSettings({
     content_view_width: Number,
   })
+  const showsSharedHeader = sharedHeaderHasControls({ pathname, isMobile, isDesktopApp: isTauriDesktop() })
   const isOpen = state.type !== null
-  const prevIsOpen = useRef(isOpen)
+  // A route that hosts the view itself (`/apps/`) leaves this aside collapsed.
+  const drawsDesktopPanel = !isMobile && !routeHostsContentView(pathname)
+  const isDesktopPanelOpen = isOpen && drawsDesktopPanel
+  const prevIsDesktopPanelOpen = useRef(isDesktopPanelOpen)
   const lastSavedWidth = useRef<number | null>(null)
 
   useEffect(() => {
     // Only animate on state changes, not on mount
-    if (prevIsOpen.current !== isOpen && panelRef.current) {
-      if (isOpen) {
-        // On mobile: always use 100% width. On desktop: use saved width if above threshold, otherwise use default
+    if (prevIsDesktopPanelOpen.current !== isDesktopPanelOpen && panelRef.current) {
+      if (isDesktopPanelOpen) {
         const savedWidth = contentViewWidth.value
         const hasSavedWidthAboveThreshold = savedWidth && savedWidth >= minimumWidthThreshold
-        const targetWidth = isMobile ? 100 : hasSavedWidthAboveThreshold ? savedWidth : defaultOpenWidth
+        const targetWidth = hasSavedWidthAboveThreshold ? savedWidth : defaultOpenWidth
 
         // Opening: animate from 0 to target width
         requestAnimationFrame(() => {
@@ -55,10 +64,9 @@ export default function Page() {
           }
         })
       } else {
-        // Closing: save current size before animating to 0 (but not on mobile)
+        // Closing: save current size before animating to 0.
         const currentSize = panelRef.current.getSize().asPercentage
-        const shouldSaveWidthOnClose = currentSize > 0 && !isMobile
-        if (shouldSaveWidthOnClose) {
+        if (currentSize > 0) {
           lastSavedWidth.current = currentSize
           contentViewWidth.setValue(currentSize)
         }
@@ -72,8 +80,8 @@ export default function Page() {
         })
       }
     }
-    prevIsOpen.current = isOpen
-  }, [isOpen, isMobile, contentViewWidth])
+    prevIsDesktopPanelOpen.current = isDesktopPanelOpen
+  }, [isDesktopPanelOpen, contentViewWidth])
 
   // Persist width changes as user resizes (but not on mobile)
   const handleResize = ({ asPercentage }: { asPercentage: number }) => {
@@ -90,9 +98,21 @@ export default function Page() {
   return (
     <SidebarInset className="h-full flex flex-col">
       <ResizablePanelGroup orientation="horizontal">
-        <ResizablePanel>
+        {/* 360px is the content floor the create-item container query in
+            index.css derives its 840px breakpoint from (480px
+            --create-panel-min-width + this 360px = 840px) — if this changes,
+            re-derive that literal. */}
+        <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
-            <FloatingHeader />
+            {/* Wherever it has something to show — see `sharedHeaderHasControls`.
+                `/apps/` was chromeless for a while, on the reasoning that a
+                customer's app is the content and a bar above it duplicates the
+                app's own header. That cost the whole shared toolbar:
+                back/forward, the sidebar toggle, and — on frameless
+                Windows/Linux — the only drag region the window had. Putting it
+                back unconditionally then drew an empty bar over the app on web,
+                because everything else in the header is gated on `/chats`. */}
+            {showsSharedHeader && <FloatingHeader />}
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />
@@ -107,8 +127,11 @@ export default function Page() {
                 // it already covers that region, so subtract it. Without this, the
                 // safe-area inset stacks on top of `chat-ui`'s `var(--kb)` and shoves
                 // a bottom-anchored input well above the keyboard (THU-586). At rest
-                // (`--kb` = 0) this is just the full safe-area inset, unchanged.
-                paddingBottom: 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
+                // (`--kb` = 0) this is the full safe-area inset. Native mobile keeps
+                // at least the standard 12px edge spacing when the inset is smaller.
+                paddingBottom: isNativeMobile
+                  ? `max(var(--safe-area-bottom-padding) - var(--kb, 0px), ${edgeSpacing.mobile}px)`
+                  : 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
               }}
             >
               <Suspense fallback={<PageFallback />}>
@@ -117,7 +140,7 @@ export default function Page() {
             </div>
           </div>
         </ResizablePanel>
-        {isOpen && !isMobile && (
+        {isDesktopPanelOpen && (
           <div className="relative h-full flex">
             <ResizableHandle withHandle className="h-full" />
             {/* 
@@ -131,41 +154,45 @@ export default function Page() {
             )}
           </div>
         )}
-        <ResizablePanel
-          panelRef={panelRef}
-          collapsible
-          defaultSize="0%"
-          minSize="0%"
-          collapsedSize="0%"
-          onResize={(panelSize, _id, prevPanelSize) => {
-            if (prevPanelSize && prevPanelSize.asPercentage > 0 && panelSize.asPercentage === 0) {
-              close()
-            }
-            handleResize(panelSize)
-          }}
-          className="overflow-hidden"
-        >
-          <AnimatePresence initial={false}>
-            {isOpen && (
-              <m.div
-                key="sidebar-content"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2, delay: 0.15 }}
-                className="h-full"
-              >
-                {state.type === 'preview' && (
-                  <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />
-                )}
-                {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
-                {state.type === 'sideview' && <Sideview />}
-                {state.type === 'artifact' && <ArtifactSidebarContent data={state.data} onClose={close} />}
-              </m.div>
-            )}
-          </AnimatePresence>
-        </ResizablePanel>
+        {drawsDesktopPanel && (
+          <ResizablePanel
+            panelRef={panelRef}
+            collapsible
+            defaultSize="0%"
+            minSize="0%"
+            collapsedSize="0%"
+            onResize={(panelSize, _id, prevPanelSize) => {
+              if (prevPanelSize && prevPanelSize.asPercentage > 0 && panelSize.asPercentage === 0) {
+                close()
+              }
+              handleResize(panelSize)
+            }}
+            className="overflow-hidden"
+          >
+            <AnimatePresence initial={false}>
+              {isOpen && (
+                <m.div
+                  key="sidebar-content"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2, delay: 0.15 }}
+                  className="h-full"
+                >
+                  <ActiveContentView />
+                </m.div>
+              )}
+            </AnimatePresence>
+          </ResizablePanel>
+        )}
       </ResizablePanelGroup>
+      {isMobile && (
+        <Dialog open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
+          <ResponsiveModalContentComposable className="gap-0 p-0" flush>
+            <ActiveContentView />
+          </ResponsiveModalContentComposable>
+        </Dialog>
+      )}
     </SidebarInset>
   )
 }

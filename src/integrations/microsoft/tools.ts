@@ -9,6 +9,7 @@ import { llmContentCharLimit } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
 import { http, type HttpClient } from '@/lib/http'
 import { z } from 'zod'
+import { microsoftGraphUrl } from './auth'
 
 /**
  * Schemas
@@ -170,7 +171,7 @@ export const listMessages = async (params: ListMessagesParams, httpClient: HttpC
   }
 
   const response = await httpClient
-    .get('https://graph.microsoft.com/v1.0/me/messages', {
+    .get(`${microsoftGraphUrl}/v1.0/me/messages`, {
       searchParams,
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -193,7 +194,7 @@ export const getMessage = async (params: GetMessageParams, httpClient: HttpClien
   const selectParams = params.includeBodyHtml
     ? '$select=subject,body,bodyPreview,from,toRecipients,receivedDateTime'
     : ''
-  const url = new URL(`https://graph.microsoft.com/v1.0/me/messages/${params.id}`)
+  const url = new URL(`${microsoftGraphUrl}/v1.0/me/messages/${params.id}`)
   if (selectParams) {
     url.searchParams.set('$select', selectParams.replace('$select=', ''))
   }
@@ -219,7 +220,7 @@ export const searchOneDrive = async (params: SearchOneDriveParams, httpClient: H
   searchParams.set('$select', 'id,name,size,createdDateTime,lastModifiedDateTime,webUrl,file,folder,parentReference')
 
   const response = await httpClient
-    .get(`https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(params.query)}')`, {
+    .get(`${microsoftGraphUrl}/v1.0/me/drive/root/search(q='${encodeURIComponent(params.query)}')`, {
       searchParams,
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -258,7 +259,7 @@ export const getOneDriveFileContent = async (
   try {
     // Get file metadata
     const fileResponse = await httpClient
-      .get(`https://graph.microsoft.com/v1.0/me/drive/items/${params.file_id}`, {
+      .get(`${microsoftGraphUrl}/v1.0/me/drive/items/${params.file_id}`, {
         searchParams: { $select: 'id,name,file' },
         headers: { Authorization: `Bearer ${accessToken}` },
       })
@@ -270,7 +271,7 @@ export const getOneDriveFileContent = async (
     // Only support text files for now
     if (mimeType.startsWith('text/')) {
       const textContent = await httpClient
-        .get(`https://graph.microsoft.com/v1.0/me/drive/items/${params.file_id}/content`, {
+        .get(`${microsoftGraphUrl}/v1.0/me/drive/items/${params.file_id}/content`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         })
         .text()

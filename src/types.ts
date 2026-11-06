@@ -12,6 +12,10 @@ import type { InferSelectModel } from 'drizzle-orm'
 import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
+import type { CompactionCheckpoint } from '@shared/agent-core'
+import type { AcpCompaction, AcpContextUsage } from '@/acp/compaction'
+import type { DebugTranscriptMessageMetadataV1 } from './debug-transcript/types'
+import type { EmbeddedSurfaceChoice } from './ai/embedded-surface'
 import type { HttpClient } from './contexts'
 import type { AnyDrizzleDatabase } from './db/database-interface'
 import type {
@@ -20,7 +24,7 @@ import type {
   mcpServersTable,
   modelProfilesTable,
   modelsTable,
-  modesTable,
+  projectsTable,
   promptsTable,
   settingsTable,
   skillsTable,
@@ -36,6 +40,8 @@ export type InitData = {
   posthogClient: PostHog | null
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
+  experimentalFeatureVoice: boolean
+  sidebarOpen: boolean
 }
 
 /**
@@ -78,11 +84,17 @@ export type QuoteData = {
 export type ThunderboltUIDataTypes = {
   attachment: AttachmentData
   quote: QuoteData
+  'acp-compaction': AcpCompaction
 }
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDataTypes, UITools>
 
-export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
+export type SaveMessagesFunction = (params: {
+  id: string
+  messages: ThunderboltUIMessage[]
+  /** Historical message edits must not replace the thread's current context size. */
+  updateContext?: boolean
+}) => Promise<void>
 
 /**
  * Persists a single in-flight assistant message during streaming (crash-recovery
@@ -108,13 +120,13 @@ export type ChatMessageRow = InferSelectModel<typeof chatMessagesTable>
 export type ChatThreadRow = InferSelectModel<typeof chatThreadsTable>
 export type Setting = InferSelectModel<typeof settingsTable>
 export type ModelRow = InferSelectModel<typeof modelsTable>
-export type ModeRow = InferSelectModel<typeof modesTable>
 export type TaskRow = InferSelectModel<typeof tasksTable>
 export type McpServerRow = InferSelectModel<typeof mcpServersTable>
 export type PromptRow = InferSelectModel<typeof promptsTable>
 export type SkillRow = InferSelectModel<typeof skillsTable>
 export type TriggerRow = InferSelectModel<typeof triggersTable>
 export type ModelProfileRow = InferSelectModel<typeof modelProfilesTable>
+export type ProjectRow = InferSelectModel<typeof projectsTable>
 
 // Application types - Row types with previously-required fields made non-null
 export type ChatMessage = WithRequired<ChatMessageRow, 'content' | 'role' | 'chatThreadId'>
@@ -141,7 +153,6 @@ export type Model = WithRequired<
  * so `noUnusedLocals` doesn't strip the guard.
  */
 export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey'> => model
-export type Mode = WithRequired<ModeRow, 'name' | 'label' | 'icon' | 'order'>
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
 export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>
@@ -149,6 +160,7 @@ export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>
 export type Skill = WithRequired<SkillRow, 'name' | 'description' | 'instruction' | 'enabled'>
 export type Trigger = WithRequired<TriggerRow, 'triggerType' | 'isEnabled' | 'promptId'>
 export type ModelProfile = WithRequired<ModelProfileRow, 'modelId'>
+export type Project = WithRequired<ProjectRow, 'name'>
 
 /**
  * Query usable with PowerSync's toCompilableQuery and direct await.
@@ -163,7 +175,16 @@ export type AutomationRun = {
 }
 
 export type UIMessageMetadata = {
+  /** Pi context checkpoint; the visible transcript remains intact. */
+  contextCompaction?: CompactionCheckpoint
+  /** Current model context, separate from billable generation usage. */
+  contextTokens?: number
+  acpContextUsage?: AcpContextUsage
+  /** An explicit agent command, sent verbatim without prompt decoration. */
+  acpCommand?: 'compact'
   modelId?: string
+  /** Correlates a persisted turn with its richer session-scoped debug capture. */
+  debugTranscript?: DebugTranscriptMessageMetadataV1
   usage?: LanguageModelV2Usage
   oauthRetry?: boolean
   reasoningTime?: Record<string, number>
@@ -188,6 +209,20 @@ export type UIMessageMetadata = {
    * name + generic icon + no server badge).
    */
   mcpTools?: Record<string, { name: string; url: string; toolName: string }>
+  /**
+   * Which embedded surface this turn's `get_app_context` read. A Mini App and an
+   * artifact answer under that one tool name, so this is how a later send can
+   * supersede a stale Mini App screen read without erasing an artifact read.
+   * Set only on turns that called the tool. Older messages lack it and are left
+   * alone, since they may well be artifact reads.
+   */
+  embeddedSurface?: Exclude<EmbeddedSurfaceChoice, null>
+  /**
+   * Set on a prompt when the user stopped its reply. If the reply had no text
+   * yet, later turns show the model a stop marker after the prompt, so the
+   * model doesn't answer it again.
+   */
+  stoppedByUser?: boolean
 }
 
 /**
@@ -239,19 +274,3 @@ export type AuthProviderBackendConfig = {
 }
 
 // Re-export types from schemas to maintain backward compatibility
-export type { CountryUnitsData, Currency, DateFormat, TemperatureUnit, UnitsOptionsData } from './schemas/api'
-
-export type PreferencesSettings = {
-  locationName: string
-  locationLat: string
-  locationLng: string
-  preferredName: string
-  dataCollection: boolean
-  experimentalFeatureTasks: boolean
-  distanceUnit: string
-  temperatureUnit: string
-  dateFormat: string
-  timeFormat: string
-  currency: string
-  countryName: string | null
-}

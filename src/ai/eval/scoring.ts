@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { toolCallKey } from '@/lib/stable-stringify'
+import { webToolNames } from '@/lib/tools'
 import type { EvalCriteria, EvalResult, EvalScenario, ParsedStream, ToolCallInfo } from './types'
 
 const reviewSiteDomains = [
@@ -25,7 +26,7 @@ export const extractCitations = (text: string): string[] => {
 export const extractLinkPreviewUrls = (text: string): string[] =>
   [...text.matchAll(/url="(https?:\/\/[^"]+)"/g)].map((m) => m[1])
 
-/** Extract all widget tags from the response (weather-forecast, link-preview, connect-integration) */
+/** Extract all widget tags from the response */
 export const extractWidgets = (text: string): string[] => [...text.matchAll(/<widget:([a-z-]+)/g)].map((m) => m[1])
 
 /**
@@ -106,6 +107,10 @@ export const countDuplicateToolCalls = (toolCalls: ToolCallInfo[]): number => {
   }, 0)
 }
 
+/** Select built-in web calls while excluding Pi coding and other app tools. */
+export const getWebToolCalls = (toolCalls: ToolCallInfo[]): ToolCallInfo[] =>
+  toolCalls.filter(({ toolName }) => webToolNames.has(toolName))
+
 /** Score a parsed response against scenario criteria */
 export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durationMs: number): EvalResult => {
   const { criteria } = scenario
@@ -116,12 +121,25 @@ export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durati
   const linkPreviewUrls = extractLinkPreviewUrls(parsed.text)
   const homepageUrls = linkPreviewUrls.filter(isHomepage)
   const reviewSiteUrls = linkPreviewUrls.filter(isReviewSite)
+  const webToolCalls = getWebToolCalls(parsed.toolCalls)
+  const duplicateToolCallCount = countDuplicateToolCalls(webToolCalls)
 
   if (parsed.error) {
     failures.push(`Error: ${parsed.error}`)
   }
 
-  checkCriteria(criteria, parsed, citations, linkPreviewUrls, homepageUrls, reviewSiteUrls, failures)
+  checkCriteria(
+    criteria,
+    parsed,
+    citations,
+    widgets,
+    linkPreviewUrls,
+    homepageUrls,
+    reviewSiteUrls,
+    webToolCalls.length,
+    duplicateToolCallCount,
+    failures,
+  )
 
   return {
     scenario,
@@ -134,9 +152,8 @@ export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durati
     linkPreviewUrls,
     homepageUrls,
     reviewSiteUrls,
-    toolCallCount: parsed.toolCalls.length,
-    duplicateToolCallCount: countDuplicateToolCalls(parsed.toolCalls),
-    retryCount: parsed.retryCount,
+    toolCallCount: webToolCalls.length,
+    duplicateToolCallCount,
     durationMs: Math.round(durationMs),
     error: parsed.error,
   }
@@ -146,9 +163,12 @@ const checkCriteria = (
   criteria: EvalCriteria,
   parsed: ParsedStream,
   citations: string[],
+  widgets: string[],
   linkPreviewUrls: string[],
   homepageUrls: string[],
   reviewSiteUrls: string[],
+  webToolCallCount: number,
+  duplicateToolCallCount: number,
   failures: string[],
 ) => {
   if (criteria.mustProduceOutput && parsed.text.trim().length === 0) {
@@ -163,6 +183,14 @@ const checkCriteria = (
     failures.push('No <widget:link-preview> tags found in response')
   }
 
+  if (criteria.mustUseWidget && !widgets.includes(criteria.mustUseWidget)) {
+    failures.push(`No <widget:${criteria.mustUseWidget}> tag found in response`)
+  }
+
+  if (criteria.mustNotUseWidgets && widgets.length > 0) {
+    failures.push(`Unexpected widget tags found: ${widgets.join(', ')}`)
+  }
+
   if (criteria.noHomepageLinks && homepageUrls.length > 0) {
     failures.push(`Homepage/section URLs found: ${homepageUrls.join(', ')}`)
   }
@@ -175,7 +203,24 @@ const checkCriteria = (
     failures.push(`Too many steps: ${parsed.stepCount} (max: ${criteria.maxSteps})`)
   }
 
-  if (criteria.maxToolCalls !== undefined && parsed.toolCalls.length > criteria.maxToolCalls) {
-    failures.push(`Too many tool calls: ${parsed.toolCalls.length} (max: ${criteria.maxToolCalls})`)
+  if (criteria.minToolCalls !== undefined && webToolCallCount < criteria.minToolCalls) {
+    failures.push(`Too few web tool calls: ${webToolCallCount} (min: ${criteria.minToolCalls})`)
+  }
+
+  if (criteria.maxToolCalls !== undefined && webToolCallCount > criteria.maxToolCalls) {
+    failures.push(`Too many web tool calls: ${webToolCallCount} (max: ${criteria.maxToolCalls})`)
+  }
+
+  if (
+    criteria.expectResearchSkill !== undefined &&
+    (parsed.researchSkillLoaded ?? false) !== criteria.expectResearchSkill
+  ) {
+    failures.push(
+      criteria.expectResearchSkill ? 'Research skill was not loaded' : 'Research skill was loaded when forbidden',
+    )
+  }
+
+  if (criteria.noDuplicateToolCalls && duplicateToolCallCount > 0) {
+    failures.push(`Duplicate web tool calls: ${duplicateToolCallCount}`)
   }
 }

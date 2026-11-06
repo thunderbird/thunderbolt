@@ -10,19 +10,15 @@
  *
  * Engine routing (behind the seam, invisible to the chat layer):
  *
- *   - **Anthropic + OpenAI-wire models** (`anthropic`, plus the OpenAI-compatible
- *     family `openai`/`custom`/`openrouter`/`thunderbolt`) run on the in-browser
- *     Pi {@link AgentHarness} (`shared/agent-core`): a real coding agent
+ *   - **Anthropic, OpenAI-wire, and confidential Tinfoil models** run on the
+ *     in-browser Pi {@link AgentHarness} (`shared/agent-core`): a real coding agent
  *     (bash/read/write/edit over an OPFS-backed ZenFS sandbox) whose LLM HTTP
  *     flows through the app's per-provider fetch (proxy fetch, or the thunderbolt
  *     SSO fetch). Its Pi event stream is translated to the AI SDK v5 UI message
  *     stream by `piHarnessToUiMessageStream`. The engine is `import()`-ed lazily
  *     (see `fetchViaHarness`) so its weight stays off the chat entry chunk.
- *   - **tinfoil** (confidential enclave) and any model id the chosen Pi provider
- *     can't resolve fall back to the legacy `aiFetchStreamingResponse` pipeline.
- *     tinfoil is deferred: its `SecureClient` does attestation/HPKE through a
- *     bespoke async-acquired fetch that doesn't fit Pi's synchronous fetch-swap
- *     cheaply, so routing it to Pi would risk the confidential path.
+ *   - Any non-Tinfoil model id the chosen Pi provider can't resolve falls back
+ *     to the legacy `aiFetchStreamingResponse` pipeline.
  *
  * Each thread keeps a PERSISTENT harness (cached per `threadId` for the life of
  * the adapter), mirroring the ACP path's per-thread session model: the first turn
@@ -46,18 +42,50 @@
  * adapter's teardown (agent delete / config edit / sign-out).
  */
 
+import { piThinkingLevels } from '@shared/reasoning-effort'
 import {
   aiFetchStreamingResponse,
   prepareAiRequestConfig,
+  resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
+import { getKnownImageSupport } from '@/ai/image-support'
+import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
+import type { WebToolBudget } from '@/ai/web-tool-budget'
+import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
+import {
+  appContextToolName,
+  supersededAppContextCallIds,
+  supersededAppContextOutput,
+} from '@/mini-apps/mini-app-context-note'
+import { webToolNames } from '@/lib/tools'
+import { isSsoMode } from '@/lib/auth-mode'
+import { getAuthToken } from '@/lib/auth-token'
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
+import { handleSessionRejected } from '@/lib/session-rejected'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
-import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
-import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
-import { APP_HARNESS_ENVIRONMENT_PROMPT } from '@shared/agent-core/environment-prompt'
-import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
-import { prepareBuiltInConversation } from './built-in-conversation'
+import type { ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
+import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { getPlatform } from '@/lib/platform'
+import type { AppHarness, CompactionCheckpoint, PiModelDescriptor, SeedTurn } from '@shared/agent-core'
+import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
+import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { inferenceModelHeader } from '@shared/inference-usage'
+import type { AgentHarness, AgentHarnessTool, AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
+import { z } from 'zod'
+import type { SecureClient } from 'tinfoil'
+import {
+  evictSystemTinfoilClient,
+  evictUserTinfoilClient,
+  getSystemTinfoilClient,
+  getTinfoilClient,
+  isTinfoilTransportWedgedError,
+} from '@/ai/tinfoil-client'
+import { prepareBuiltInConversation, prepareBuiltInHistory } from './built-in-conversation'
+import { isPiModelCandidate } from './built-in-model-support'
+import { managedAnthropicCatalogId } from '@/ai/managed-model-id'
 
 /** The type of the lazily-imported Pi engine module. A pure type reference — it
  *  resolves the module's shape for the compiler without emitting a runtime
@@ -65,23 +93,30 @@ import { prepareBuiltInConversation } from './built-in-conversation'
  *  {@link fetchViaHarness}, never on the chat entry bundle. */
 type AgentCoreModule = typeof import('@shared/agent-core')
 
+type CurrentHttpClient = { current: AgentAdapterContext['httpClient'] }
+
 /** A thread's live harness plus the workspace it is bound to. Kept in the
  *  per-adapter cache so the conversation (which lives in the harness session) and
  *  its isolated OPFS workspace persist across the thread's turns. */
 type HarnessRecord = {
-  readonly harness: AgentHarness
-  /** The thread's isolated workspace dir ({@link workspaceDirFor}); removed on dispose. */
-  readonly workspaceDir: string
+  readonly harness: AppHarness
   /** Coding tools owned by agent-core; app/MCP tools are replaced every send. */
-  readonly baseTools: AgentTool[]
+  readonly baseTools: AgentHarnessTool<undefined>[]
+  /** Removes the thread's workspace without exposing the harness's private environment. */
+  readonly removeWorkspace: () => Promise<void>
   /** Mutable prompt cell read by the harness's per-turn system-prompt callback. */
   readonly systemPrompt: { current: string }
+  /** Mutable transport cell read by the attached receipt lifecycle. */
+  readonly receiptHttpClient?: CurrentHttpClient
 }
 
 /** A thread's cached build, tagged with the config {@link harnessSignature} it was
  *  built for so a mid-thread config switch is detected and rebuilt. */
 type CachedHarness = {
-  readonly signature: string
+  /** Null after compaction or a failed run: rebuild from the caller's durable transcript. */
+  signature: string | null
+  /** Last user turn represented by this session; other agents can extend the transcript. */
+  lastUserMessageId: string | undefined
   /** The build PROMISE (see {@link HarnessCache}). */
   readonly record: Promise<HarnessRecord>
 }
@@ -94,27 +129,61 @@ type CachedHarness = {
 type HarnessCache = Map<string, CachedHarness>
 
 /** Stable and volatile prompt parts needed by the Pi harness. */
-type AppHarnessSystemPromptConfig = Pick<PreparedAiRequestConfig, 'stableSystemPrompt' | 'volatileSystemPrompt'>
+type AppHarnessSystemPromptConfig = Pick<
+  PreparedAiRequestConfig,
+  'stableSystemPrompt' | 'volatileSystemPrompt' | 'supportsTools'
+>
 
 /** Production injection point — production binds to `aiFetchStreamingResponse`. */
 export type AiFetchStreamingResponseFn = typeof aiFetchStreamingResponse
 
 export type BuiltInAdapterOptions = {
-  /** Inject for tests so we don't touch the AI SDK / DB / settings stack. Also
-   *  the engine for every non-Pi provider (tinfoil/thunderbolt-proxy/openai/…). */
+  /** Inject for tests so we don't touch the AI SDK / DB / settings stack. */
   aiFetch?: AiFetchStreamingResponseFn
   /** Lazy engine loader injection for adapter-level tests. */
   loadAgentCore?: () => Promise<AgentCoreModule>
   /** Shared per-send config preparation injection for adapter-level tests. */
   prepareConfig?: typeof prepareAiRequestConfig
+  /** Attachment/history preparation injection for adapter-level tests. */
+  prepareConversation?: typeof prepareBuiltInConversation
+  /** Attested-client seams for adapter tests. */
+  getSystemTinfoilClient?: typeof getSystemTinfoilClient
+  getTinfoilClient?: typeof getTinfoilClient
+  evictSystemTinfoilClient?: typeof evictSystemTinfoilClient
+  evictUserTinfoilClient?: typeof evictUserTinfoilClient
+  getAuthToken?: typeof getAuthToken
+  isSsoMode?: typeof isSsoMode
 }
 
-/** Providers the in-browser Pi harness can serve. Everything else (tinfoil, plus
- *  any future provider) stays on the legacy pipeline. */
-const piProviders = new Set<Model['provider']>(['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'])
+type TinfoilClientOptions = Pick<
+  BuiltInAdapterOptions,
+  | 'getSystemTinfoilClient'
+  | 'getTinfoilClient'
+  | 'evictSystemTinfoilClient'
+  | 'evictUserTinfoilClient'
+  | 'getAuthToken'
+  | 'isSsoMode'
+>
 
-/** Valid Pi thinking levels, used to validate a profile-supplied effort string. */
-const piThinkingLevels = new Set<ThinkingLevel>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+const piThinkingLevelSchema = z.enum(piThinkingLevels)
+const profileThinkingOptionsSchema = z
+  .object({
+    reasoningEffort: z.string().optional().catch(undefined),
+    effort: z.string().optional().catch(undefined),
+    reasoning_effort: z.string().optional().catch(undefined),
+    reasoning: z
+      .object({ effort: z.string().optional().catch(undefined) })
+      .optional()
+      .catch(undefined),
+    thinking: z
+      .object({
+        type: z.string().optional().catch(undefined),
+        budgetTokens: z.number().optional().catch(undefined),
+      })
+      .optional()
+      .catch(undefined),
+  })
+  .passthrough()
 
 /** Reasoning depth used when a model carries no explicit profile config. Mirrors
  *  the adaptive default the anthropic path has always used, so deriving the level
@@ -142,51 +211,54 @@ const budgetToThinkingLevel = (budget: number): ThinkingLevel => {
 /** Coerce a profile effort string to a Pi level. Maps the explicit "off" signals
  *  ('off'/'none') to `off`, accepts the Pi levels verbatim, and rejects anything
  *  else (returning null so the caller can keep looking / fall back). */
-const effortToThinkingLevel = (value: unknown): ThinkingLevel | null => {
-  if (typeof value !== 'string') {
+const effortToThinkingLevel = (value: string | undefined): ThinkingLevel | null => {
+  if (value === undefined) {
     return null
   }
   if (value === 'none') {
     return 'off'
   }
-  return piThinkingLevels.has(value as ThinkingLevel) ? (value as ThinkingLevel) : null
+  const parsed = piThinkingLevelSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
 }
 
 /** Pull a Pi thinking level out of a profile's `providerOptions`, the only
  *  per-model reasoning signal in the data model (there is no thinking-level
  *  column). Recognizes the OpenAI `reasoningEffort`/`reasoning_effort` strings,
- *  a nested `reasoning.effort`, and the Anthropic-style `thinking` object
+ *  a nested `reasoning.effort`, Anthropic's top-level `effort`, and its `thinking` object
  *  (`{ type: 'disabled' }` → off; `{ budgetTokens }` → bucketed level). Returns
  *  null when no reasoning config is present. */
-const readProfileThinkingLevel = (
-  providerOptions: Record<string, unknown> | null | undefined,
+export const readProfileThinkingLevel = (
+  providerOptions: ModelProfile['providerOptions'] | undefined,
 ): ThinkingLevel | null => {
   if (!providerOptions) {
     return null
   }
-  const direct =
-    effortToThinkingLevel(providerOptions.reasoningEffort) ?? effortToThinkingLevel(providerOptions.reasoning_effort)
+  const parsed = profileThinkingOptionsSchema.safeParse(providerOptions)
+  if (!parsed.success) {
+    return null
+  }
+  const options = parsed.data
+  const direct = effortToThinkingLevel(options.reasoningEffort) ?? effortToThinkingLevel(options.reasoning_effort)
   if (direct) {
     return direct
   }
-  const reasoning = providerOptions.reasoning
-  if (reasoning && typeof reasoning === 'object') {
-    const nested = effortToThinkingLevel((reasoning as { effort?: unknown }).effort)
+  const reasoning = options.reasoning
+  if (reasoning) {
+    const nested = effortToThinkingLevel(reasoning.effort)
     if (nested) {
       return nested
     }
   }
-  const thinking = providerOptions.thinking
-  if (thinking && typeof thinking === 'object') {
-    const { type, budgetTokens } = thinking as { type?: unknown; budgetTokens?: unknown }
-    if (type === 'disabled') {
-      return 'off'
-    }
-    if (typeof budgetTokens === 'number') {
-      return budgetToThinkingLevel(budgetTokens)
-    }
+  const thinking = options.thinking
+  if (thinking?.type === 'disabled') {
+    return 'off'
   }
-  return null
+  const adaptiveEffort = effortToThinkingLevel(options.effort)
+  if (adaptiveEffort) {
+    return adaptiveEffort
+  }
+  return thinking?.budgetTokens === undefined ? null : budgetToThinkingLevel(thinking.budgetTokens)
 }
 
 /** The Pi thinking level for a model: its explicit profile reasoning config, else
@@ -207,10 +279,11 @@ const hasExplicitReasoning = (profile: ModelProfile | null): boolean => {
 
 /** Parse the AI SDK request transcript for Pi-specific content preparation. */
 const parseMessages = (init: RequestInit): ThunderboltUIMessage[] => {
-  if (typeof init.body !== 'string') {
+  const body = z.string().safeParse(init.body)
+  if (!body.success) {
     throw new Error('Built-in adapter expects a string body on init')
   }
-  return (JSON.parse(init.body) as { messages: ThunderboltUIMessage[] }).messages
+  return (JSON.parse(body.data) as { messages: ThunderboltUIMessage[] }).messages
 }
 
 /** A resolved Pi model descriptor plus the thinking level derived from its
@@ -220,19 +293,150 @@ const parseMessages = (init: RequestInit): ThunderboltUIMessage[] => {
 export type ResolvedPiModel = {
   readonly descriptor: PiModelDescriptor
   readonly thinkingLevel: ThinkingLevel
+  /** Attested transport identity used only to invalidate the local harness cache. */
+  readonly tinfoilClient?: SecureClient
+  /** Current receipt transport for the persistent managed harness. */
+  readonly receiptHttpClient?: CurrentHttpClient
+}
+
+/** Time a Tinfoil client acquisition without changing its error behavior. */
+const acquireTinfoilClient = async <Client>(
+  acquire: () => Promise<Client>,
+  telemetry: AgentAdapterContext['telemetry'],
+): Promise<Client> => {
+  telemetry?.startPhase('attestation')
+  try {
+    return await acquire()
+  } finally {
+    telemetry?.endPhase('attestation')
+  }
+}
+
+/** Run one request through an attested client and evict only wedged transports. */
+const fetchTinfoil = async (
+  client: SecureClient,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  evictClient: (client: SecureClient) => void,
+): Promise<Response> => {
+  try {
+    return await client.fetch(input, init)
+  } catch (error) {
+    if (isTinfoilTransportWedgedError(error)) {
+      evictClient(client)
+    }
+    throw error
+  }
 }
 
 /** Resolve the selected model to a Pi descriptor + thinking level, or null to
  *  fall back to legacy. Anthropic ids must exist in Pi's built-in catalog;
  *  OpenAI-wire providers must resolve a connection (api key / url present). The
  *  thinking level is derived from the model's profile for both families. */
-const resolvePiModel = (
+export const resolvePiModel = async (
   agentCore: AgentCoreModule,
   context: AgentAdapterContext,
   profile: ModelProfile | null,
-): ResolvedPiModel | null => {
+  options: TinfoilClientOptions = {},
+): Promise<ResolvedPiModel | null> => {
   const model = context.selectedModel
   const thinkingLevel = deriveThinkingLevel(profile)
+  // Pi strips image blocks from text-only descriptors. Only models known not to
+  // read images are text-only: the composer checks an unknown model before an
+  // image is sent (see use-image-support-check.ts), and an unresolved check sends
+  // the image so the provider's own rejection surfaces instead.
+  const supportsImages = getKnownImageSupport(model) !== 'unsupported'
+  if (model.provider === 'tinfoil') {
+    if (model.isSystem === 1) {
+      const acquireSystemClient = options.getSystemTinfoilClient ?? getSystemTinfoilClient
+      const client = await acquireTinfoilClient(
+        () =>
+          acquireSystemClient({
+            trace_id: context.telemetry?.traceId,
+            engine: 'pi',
+            provider: model.provider,
+            model_id: model.id,
+          }),
+        context.telemetry,
+      )
+      const evictClient = options.evictSystemTinfoilClient ?? evictSystemTinfoilClient
+      const readAuthToken = options.getAuthToken ?? getAuthToken
+      const readSsoMode = options.isSsoMode ?? isSsoMode
+      const receiptHttpClient = { current: context.httpClient }
+      const fetch: PiModelDescriptor['fetch'] = async (input, init) => {
+        const token = readAuthToken()
+        const headers = new Headers(init?.headers)
+        headers.set(inferenceModelHeader, model.model)
+        for (const [key, value] of Object.entries(appVersionHeader())) {
+          headers.set(key, value)
+        }
+        const upstreamInit: RequestInit = { ...init, headers }
+        if (readSsoMode() && !token) {
+          upstreamInit.credentials = 'include'
+          headers.delete('authorization')
+        } else if (token) {
+          headers.set('Authorization', `Bearer ${token}`)
+        }
+        const response = await fetchTinfoil(client, input, upstreamInit, evictClient)
+        handleAppVersionUnsupported(response.status)
+        await handleSessionRejected(response)
+        return response
+      }
+      const receipts = agentCore.createReceiptLifecycle({
+        submit: (usage) => submitInferenceUsageReceipt(usage, receiptHttpClient.current),
+        reportError: (error) => console.error(error),
+      })
+      return {
+        descriptor: {
+          kind: 'confidential',
+          providerId: 'tinfoil',
+          modelId: model.model,
+          vendor: model.vendor,
+          baseURL: client.getBaseURL()!,
+          apiKey: 'thunderbolt-managed',
+          fetch,
+          receipts,
+          reasoning: true,
+          contextWindow: model.contextWindow ?? undefined,
+          supportsImages,
+        },
+        thinkingLevel,
+        tinfoilClient: client,
+        receiptHttpClient,
+      }
+    }
+    if (!model.apiKey) {
+      throw new Error('No API key provided for Tinfoil provider')
+    }
+    const acquireUserClient = options.getTinfoilClient ?? getTinfoilClient
+    const client = await acquireTinfoilClient(
+      () =>
+        acquireUserClient({
+          trace_id: context.telemetry?.traceId,
+          engine: 'pi',
+          provider: model.provider,
+          model_id: model.id,
+        }),
+      context.telemetry,
+    )
+    const evictClient = options.evictUserTinfoilClient ?? evictUserTinfoilClient
+    const fetch: PiModelDescriptor['fetch'] = (input, init) => fetchTinfoil(client, input, init, evictClient)
+    return {
+      descriptor: {
+        kind: 'openai-compat',
+        providerId: 'tinfoil',
+        modelId: model.model,
+        baseURL: client.getBaseURL()!,
+        apiKey: model.apiKey,
+        fetch,
+        reasoning: hasExplicitReasoning(profile),
+        contextWindow: model.contextWindow ?? undefined,
+        supportsImages,
+      },
+      thinkingLevel,
+      tinfoilClient: client,
+    }
+  }
   if (model.provider === 'anthropic') {
     if (!agentCore.isKnownAnthropicModel(model.model)) {
       return null
@@ -242,7 +446,27 @@ const resolvePiModel = (
         kind: 'anthropic',
         modelId: model.model,
         apiKey: model.apiKey ?? '',
+        contextWindow: model.contextWindow ?? undefined,
         fetch: context.getProxyFetch(),
+      },
+      thinkingLevel,
+    }
+  }
+  if (model.provider === 'thunderbolt' && model.vendor === 'anthropic') {
+    const catalogModelId = managedAnthropicCatalogId(model.model)
+    if (!agentCore.isKnownAnthropicModel(catalogModelId)) {
+      return null
+    }
+    const connection = resolveManagedAnthropicConnection(model, context.getProxyFetch)
+    return {
+      descriptor: {
+        kind: 'anthropic',
+        modelId: model.model,
+        catalogModelId,
+        baseURL: connection.baseURL,
+        contextWindow: model.contextWindow ?? undefined,
+        apiKey: connection.apiKey,
+        fetch: connection.fetch,
       },
       thinkingLevel,
     }
@@ -265,9 +489,23 @@ const resolvePiModel = (
       fetch: connection.fetch,
       reasoning: hasExplicitReasoning(profile),
       contextWindow: model.contextWindow ?? undefined,
+      supportsImages,
     },
     thinkingLevel,
   }
+}
+
+const tinfoilClientIds = new WeakMap<SecureClient, string>()
+
+/** Return a short process-local identity for one attested client instance. */
+const tinfoilClientId = (client: SecureClient): string => {
+  const existing = tinfoilClientIds.get(client)
+  if (existing) {
+    return existing
+  }
+  const id = crypto.randomUUID().slice(0, 8)
+  tinfoilClientIds.set(client, id)
+  return id
 }
 
 /** Compact non-cryptographic fingerprint (FNV-1a) of a secret, so the harness
@@ -282,8 +520,10 @@ const hashSecret = (value: string): string => {
 
 /** Fingerprint every input baked into a thread's harness at build time — the
  *  descriptor (provider / model id / api key / base url / reasoning / context
- *  window), thinking level, stable system prompt, and regeneration revision.
- *  When it changes mid-thread (a model, provider, key, mode/system-prompt,
+ *  window), thinking level, stable system prompt, regeneration revision, and
+ *  durable checkpoint. Another device can replace that checkpoint without
+ *  adding a user turn, so the local harness must notice that change too.
+ *  When it changes mid-thread (a model, provider, key, system-prompt,
  *  thinking, or MCP-server switch) the cached harness is stale and
  *  {@link getOrBuildHarness} rebuilds it; an unchanged signature reuses the live
  *  harness. Tools are replaced per send, so live MCP client closures are not
@@ -292,18 +532,31 @@ export const harnessSignature = (
   resolved: ResolvedPiModel,
   stableSystemPrompt: string,
   regenerationRevision = 0,
+  compaction?: CompactionCheckpoint,
 ): string => {
   const d = resolved.descriptor
+  const vendor = d.kind === 'confidential' ? (d.vendor ?? '') : ''
+  const clientId = resolved.tinfoilClient ? tinfoilClientId(resolved.tinfoilClient) : ''
   const model =
     d.kind === 'anthropic'
-      ? `anthropic|${d.modelId}|${hashSecret(d.apiKey)}`
-      : `openai-compat|${d.providerId}|${d.modelId}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}`
-  return `${model}|${resolved.thinkingLevel}|${stableSystemPrompt}|regenerate:${regenerationRevision}`
+      ? `anthropic|${d.modelId}|${d.catalogModelId ?? ''}|${d.baseURL ?? ''}|${d.contextWindow ?? ''}|${hashSecret(d.apiKey)}`
+      : `${d.kind}|${d.providerId}|${d.modelId}|${vendor}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}|${clientId}`
+  return JSON.stringify([model, resolved.thinkingLevel, stableSystemPrompt, regenerationRevision, compaction])
 }
 
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
-const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string =>
-  `${config.stableSystemPrompt}\n\n${APP_HARNESS_ENVIRONMENT_PROMPT}\n\n${config.volatileSystemPrompt}`
+// Unlike assembleBuiltInModelInput, ACP harness deliberately keeps Pi's single-string system prompt shape.
+// Exported so tests can assert the real stable prompt survives into this engine's shape.
+export const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string => {
+  const platform = getPlatform()
+  const environment = platform === 'web' || platform === 'ios' || platform === 'android' ? platform : 'desktop'
+  const clientIdentity = buildClientIdentityBlock({
+    environment,
+    appVersion: import.meta.env.VITE_APP_VERSION,
+  })
+  const environmentBlock = config.supportsTools ? `\n\n${appHarnessEnvironmentPrompt}` : ''
+  return `${config.stableSystemPrompt}\n\n${clientIdentity}${environmentBlock}\n\n${config.volatileSystemPrompt}`
+}
 
 /** Build a thread's harness from the lazily-loaded engine and bind it to the
  *  thread's isolated workspace with resolved model + thinking level. Per-send app
@@ -317,6 +570,7 @@ const buildHarnessRecord = async (
   resolved: ResolvedPiModel,
   history: readonly SeedTurn[],
   config: AppHarnessSystemPromptConfig,
+  compaction?: CompactionCheckpoint,
 ): Promise<HarnessRecord> => {
   const systemPrompt = { current: composeAppHarnessSystemPrompt(config) }
   const harness = await agentCore.buildAppHarness({
@@ -325,12 +579,14 @@ const buildHarnessRecord = async (
     thinkingLevel: resolved.thinkingLevel,
     threadId: context.threadId,
     history,
+    compaction,
   })
   return {
     harness,
-    workspaceDir: agentCore.workspaceDirFor(context.threadId),
     baseTools: harness.getTools(),
+    removeWorkspace: () => agentCore.removeAgentWorkspace(context.threadId),
     systemPrompt,
+    receiptHttpClient: resolved.receiptHttpClient,
   }
 }
 
@@ -339,19 +595,106 @@ const prepareHarnessForSend = async (
   agentCore: AgentCoreModule,
   record: HarnessRecord,
   config: PreparedAiRequestConfig,
+  httpClient: AgentAdapterContext['httpClient'],
 ): Promise<void> => {
   record.systemPrompt.current = composeAppHarnessSystemPrompt(config)
+  if (record.receiptHttpClient) {
+    record.receiptHttpClient.current = httpClient
+  }
   const tools = await agentCore.toPiAgentTools(config.toolset)
   const allTools = [...record.baseTools, ...tools]
-  await record.harness.setTools(
-    allTools,
-    allTools.map((tool) => tool.name),
-  )
+  const activeToolNames = config.model.toolUsage === 0 ? [] : allTools.map((tool) => tool.name)
+  await record.harness.setTools(allTools, activeToolNames)
+}
+
+/** Estimate prompt/schema overhead when restored history has no provider usage yet. */
+const estimateHarnessOverhead = (record: HarnessRecord): number => {
+  const tools = record.harness
+    .getActiveTools()
+    .map(({ name, description, parameters }) => ({ name, description, parameters }))
+  return Math.ceil((record.systemPrompt.current.length + JSON.stringify(tools).length) / 3)
+}
+
+/**
+ * Supersede earlier Mini App `get_app_context` results in what the model sees
+ * this send: the harness half of `supersedeAppContextResults`.
+ *
+ * The persistent harness keeps every earlier result in its own session, so
+ * refreshing the volatile prompt alone leaves a stale description of the screen
+ * beside the current one. The `context` hook rewrites each request without
+ * touching the stored session, and only for the ids the request history marks
+ * as earlier Mini App reads, so a read made during this send still arrives.
+ */
+export const supersedeHarnessAppContext = (message: AgentMessage, callIds: ReadonlySet<string>): AgentMessage =>
+  message.role === 'toolResult' && callIds.has(message.toolCallId)
+    ? { ...message, content: [{ type: 'text', text: supersededAppContextOutput }] }
+    : message
+
+/** Reconcile the turn's live web capacity without overriding independently disabled tools. */
+const installWebToolBudgetFloor = (harness: AgentHarness, webToolBudget?: WebToolBudget): (() => void) => {
+  if (!webToolBudget) {
+    return () => undefined
+  }
+  const eligibleWebTools = harness
+    .getActiveTools()
+    .map(({ name }) => name)
+    .filter((name) => webToolNames.has(name))
+  let floored = false
+  let seenDenials = 0
+  let pending: Promise<undefined> = Promise.resolve(undefined)
+  let steeringMode: ReturnType<AgentHarness['getSteeringMode']> | undefined
+  const restoreSteeringMode = async () => {
+    if (steeringMode !== undefined) {
+      const original = steeringMode
+      steeringMode = undefined
+      await harness.setSteeringMode(original)
+    }
+    return undefined
+  }
+  const removeProviderHook = harness.on('before_provider_request', restoreSteeringMode)
+  const removeResultHook = harness.on('tool_result', () => {
+    const previous = pending
+    pending = (async () => {
+      await previous
+      const active = harness.getActiveTools().map(({ name }) => name)
+      if (!active.length) {
+        return undefined
+      }
+      const { isExhausted, exhaustedAttempts } = webToolBudget.probe
+      if (!isExhausted) {
+        seenDenials = exhaustedAttempts
+      }
+      if (isExhausted && exhaustedAttempts > seenDenials && !floored) {
+        floored = true
+        seenDenials = exhaustedAttempts
+        await harness.setActiveTools(active.filter((name) => !webToolNames.has(name)))
+        await harness.steer(
+          'The web tool budget is exhausted. Complete the requested deliverable using the available evidence and remaining non-web capabilities. Disclose coverage gaps rather than claiming unsupported completeness.',
+        )
+      } else if (!isExhausted && floored && eligibleWebTools.length) {
+        floored = false
+        await harness.setActiveTools([...new Set([...active, ...eligibleWebTools])])
+        // Flush a queued old stop together with its correction, preserving other queued input.
+        steeringMode ??= harness.getSteeringMode()
+        await harness.setSteeringMode('all')
+        await harness.steer(
+          'The research skill expanded this turn’s web budget. This supersedes the earlier budget-exhaustion instruction: web tools are available again. Continue the requested research within the remaining budget, then synthesize the results.',
+        )
+      }
+      return undefined
+    })()
+    return pending
+  })
+  return () => {
+    removeResultHook()
+    removeProviderHook()
+    void restoreSteeringMode()
+  }
 }
 
 /** Return the thread's cached harness, building it on first use and REBUILDING it
- *  when the config {@link harnessSignature} drifts (a mid-thread model / provider /
- *  key / mode / thinking switch). On drift the stale harness is evicted and its run
+ *  when the config {@link harnessSignature} drifts or the transcript's last user
+ *  turn no longer matches. On drift the stale harness is evicted and its run
  *  aborted, but its workspace is KEPT — the rebuild re-seeds history from the
  *  request body and reuses the same `threadId`-keyed workspace, so the conversation
  *  context and the agent's files both survive. Concurrent first-turns share one
@@ -361,11 +704,12 @@ const getOrBuildHarness = (
   cache: HarnessCache,
   threadId: string,
   signature: string,
+  lastUserMessageId: string | undefined,
   build: () => Promise<HarnessRecord>,
-): Promise<HarnessRecord> => {
+): CachedHarness => {
   const cached = cache.get(threadId)
-  if (cached && cached.signature === signature) {
-    return cached.record
+  if (cached && cached.signature === signature && cached.lastUserMessageId === lastUserMessageId) {
+    return cached
   }
   // Config drift (or first turn). On drift, abort the stale harness's run and
   // WAIT for that to settle before building the replacement, so the old and new
@@ -379,14 +723,41 @@ const getOrBuildHarness = (
       cache.delete(threadId)
     }
   })
-  cache.set(threadId, { signature, record })
-  return record
+  const entry = { signature, lastUserMessageId, record }
+  cache.set(threadId, entry)
+  return entry
 }
 
 /** Abort a harness's in-flight run WITHOUT removing its workspace. Used on a
  *  config-drift eviction, where the rebuilt harness reuses the same workspace. */
 const abortHarness = async (record: HarnessRecord): Promise<void> => {
+  record.harness.compaction.abort()
   await record.harness.abort().catch(() => {})
+}
+
+/** Wait for a rebuilt or stopped harness without trapping a cancelled manual compaction behind teardown. */
+const waitForCompactionHarness = async (
+  pending: Promise<HarnessRecord>,
+  signal?: AbortSignal | null,
+): Promise<HarnessRecord> => {
+  const ready = async () => {
+    const record = await pending
+    // Stop closes the UI before Pi flushes its final reply and cancellation marker.
+    await record.harness.waitForIdle()
+    return record
+  }
+  if (!signal) {
+    return ready()
+  }
+  signal.throwIfAborted()
+  const aborted = Promise.withResolvers<never>()
+  const onAbort = () => aborted.reject(signal.reason)
+  signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    return await Promise.race([ready(), aborted.promise])
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
 }
 
 /** Tear down one thread's harness: abort any in-flight run, then remove its
@@ -394,7 +765,7 @@ const abortHarness = async (record: HarnessRecord): Promise<void> => {
  *  (`force`), and a benign idle-abort error is swallowed. */
 const disposeHarness = async (record: HarnessRecord): Promise<void> => {
   await abortHarness(record)
-  await record.harness.env.remove(record.workspaceDir, { recursive: true, force: true })
+  await record.removeWorkspace()
 }
 
 /** Dispose every cached harness and clear the cache. Fire-and-forget so the
@@ -416,71 +787,172 @@ const fetchViaHarness = async (
   fallback: () => Promise<Response>,
   loadAgentCore: () => Promise<AgentCoreModule>,
   prepareConfig: typeof prepareAiRequestConfig,
+  prepareConversation: typeof prepareBuiltInConversation,
+  tinfoilOptions: TinfoilClientOptions,
 ): Promise<Response> => {
+  const debugTraceId = context.debugTranscriptTraceId
   // Sanctioned route-splitting exception (CLAUDE.md "Route-level Code Splitting").
   // The Pi engine (`pi-*`, `zenfs`, `just-bash`, `@anthropic-ai/sdk`, `openai` —
   // several MB) must NOT sit in the chat entry chunk on the critical landing path.
   // This dynamic import keeps it in a separate async chunk that loads only when a
   // built-in Pi agent actually runs; the legacy path's imports stay static.
+  context.telemetry?.startPhase('agent_core_load')
   const agentCore = await loadAgentCore()
+  context.telemetry?.endPhase('agent_core_load')
 
   // Resolve the model to a Pi descriptor; an unknown anthropic id or an
   // unconfigured OpenAI-wire provider falls back to the legacy pipeline so the
   // chat never crashes on a model Pi can't run.
   const config = await prepareConfig({
     modelId: context.selectedModel.id,
-    modeSystemPrompt: context.selectedMode.systemPrompt ?? undefined,
-    modeName: context.selectedMode.name ?? undefined,
     mcpClients: context.mcpClients,
     reconnectClient: context.reconnectClient,
     httpClient: context.httpClient,
+    webToolBudget: context.webToolBudget,
+    // Pulls in the owning project's instructions. They land in the stable
+    // prompt, which `harnessSignature` fingerprints — so editing a project
+    // mid-thread rebuilds the harness on the next send by itself.
+    chatThreadId: context.threadId,
+    telemetry: context.telemetry,
   })
-  const resolved = resolvePiModel(agentCore, context, config.profile)
+  const resolved = await resolvePiModel(agentCore, context, config.profile, tinfoilOptions)
   if (!resolved) {
+    context.telemetry?.setDimensions({ engine: 'legacy' })
     return fallback()
   }
 
-  const { history, prompt } = await prepareBuiltInConversation(parseMessages(init), context.skillInstructions)
+  const messages = parseMessages(init)
+  const supersededCallIds =
+    config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
+  const transformMessage = (message: AgentMessage) => supersedeHarnessAppContext(message, supersededCallIds)
+  const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
+  const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
+  const { history, prompt, files, compaction } = await prepareConversation(messages, skillInstructions, {
+    workspace: config.supportsTools,
+  })
+  if (debugTraceId) {
+    recordDebugTranscriptSystemPrompts(context.threadId, debugTraceId, [
+      composeAppHarnessSystemPrompt(config),
+      ...skillInstructions,
+    ])
+  }
 
   // Build the thread's harness on its first turn (seeding `history`); reuse it on
   // every later turn whose config signature is unchanged, and rebuild it when the
-  // signature drifts (a mid-thread model / provider / key / mode / thinking / MCP switch).
-  const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
-  const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
-    buildHarnessRecord(agentCore, context, resolved, history, config),
+  // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
+  context.telemetry?.startPhase('harness_build')
+  const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision, compaction)
+  const lastUserIndex = messages.findLastIndex((message) => message.role === 'user')
+  const previousUserId = messages.slice(0, lastUserIndex).findLast((message) => message.role === 'user')?.id
+  const cached = getOrBuildHarness(cache, context.threadId, signature, previousUserId, () =>
+    buildHarnessRecord(agentCore, context, resolved, history, config, compaction),
   )
-  await prepareHarnessForSend(agentCore, record, config)
+  const record = await cached.record
+  await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
+  await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+  // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
+  const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
+  for (const { path, error } of failures) {
+    console.error(`Built-in agent: could not save ${path} to the workspace`, error)
+  }
+  const promptText = failures.length
+    ? `${prompt.text}\n\n[Could not save ${failures.map(({ path }) => path).join(', ')} to the workspace. Answer from the preview only, and say the full file could not be read.]`
+    : prompt.text
+  context.telemetry?.endPhase('harness_build')
   const { harness } = record
+  context.telemetry?.setDimensions({ engine: 'pi' })
+  const checkpoint = { current: undefined as CompactionCheckpoint | undefined }
+  const initialCompactionRevision = harness.compaction.revision
 
   return new Response(
     agentCore.piHarnessToUiMessageStream(
       harness,
       async () => {
-        await harness.prompt(prompt.text, { images: prompt.images })
-        await harness.waitForIdle()
+        // A replay has no current-attempt tool history to synthesize from. The live
+        // harness instead reaches the floor through tool_result and keeps its evidence.
+        if (context.webToolBudget?.probe.isExhausted) {
+          throw new Error('Web tool budget exhausted. Retry manually to start a new research attempt.')
+        }
+        const removeBudgetFloor = installWebToolBudgetFloor(harness, context.webToolBudget)
+        const removeContext = harness.on('context', async ({ messages }) => {
+          const prepared = await harness.compaction.prepareRequest(messages, {
+            signal: init.signal ?? undefined,
+            overheadTokens: estimateHarnessOverhead(record),
+            onStatus: (status) => {
+              // Stop may close the UI stream before the checkpoint is published.
+              // Rebuild from saved history next time, including after failed saves.
+              if (status === 'compacted') {
+                cached.signature = null
+              }
+              context.onCompactionStatus?.(status)
+            },
+            transformMessage,
+          })
+          return {
+            messages: prepared.map(transformMessage),
+          }
+        })
+        const removeCheckpoint = harness.subscribe(async (event) => {
+          if (
+            (event.type === 'turn_end' || event.type === 'agent_end') &&
+            harness.compaction.revision !== initialCompactionRevision
+          ) {
+            checkpoint.current = await harness.compaction.checkpoint()
+          }
+        })
+        try {
+          // Stop closes the UI before Pi finishes unwinding. Claim this user turn
+          // now so a compaction of earlier history rebuilds instead of reusing it.
+          cached.lastUserMessageId = messages[lastUserIndex].id
+          await harness.prompt(promptText, { images: prompt.images })
+          await harness.waitForIdle()
+        } catch (error) {
+          // An exceptional failure may leave only part of its turn in the session.
+          cached.signature = null
+          throw error
+        } finally {
+          removeBudgetFloor()
+          removeContext()
+          removeCheckpoint()
+        }
       },
       {
         initial: { modelId: context.selectedModel.id },
         toolCall: (toolName) => {
+          if (toolName === appContextToolName && config.embeddedSurface) {
+            return { modelId: context.selectedModel.id, embeddedSurface: config.embeddedSurface }
+          }
           const owner = config.mcpToolsMetadata?.[toolName]
           return owner
             ? { modelId: context.selectedModel.id, mcpTools: { [toolName]: owner } }
             : { modelId: context.selectedModel.id }
         },
-        settled: () => ({
-          modelId: context.selectedModel.id,
-          ...(config.sourceCollector.length > 0 ? { sources: [...config.sourceCollector] } : {}),
-        }),
+        settled: (): UIMessageMetadata => {
+          const messageMetadata: UIMessageMetadata = { modelId: context.selectedModel.id }
+          if (checkpoint.current) {
+            messageMetadata.contextCompaction = checkpoint.current
+            messageMetadata.contextTokens = checkpoint.current.contextTokens
+          }
+          if (config.sourceCollector.length > 0) {
+            messageMetadata.sources = [...config.sourceCollector]
+          }
+          return messageMetadata
+        },
       },
+      // Stop: the AI SDK aborts this signal and nothing else. The harness runs
+      // in-browser, so unless it sees the signal the loop keeps calling the
+      // model and executing tools after the user pressed the button.
+      init.signal ?? undefined,
     ),
     { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
   )
 }
 
 /**
- * Build the built-in agent's {@link AgentAdapter}. Its `fetch` routes Anthropic
- * models to the in-browser Pi harness and every other provider to the legacy
- * `aiFetchStreamingResponse` pipeline (overridable via `options.aiFetch`).
+ * Build the built-in agent's {@link AgentAdapter}. Its `fetch` routes
+ * Pi-serviceable providers to the in-browser harness and every other model to
+ * the legacy `aiFetchStreamingResponse` pipeline (overridable
+ * via `options.aiFetch`).
  *
  * @param agent - the built-in `Agent` row this adapter represents
  * @param options - test/override seam for the legacy fetch engine
@@ -490,6 +962,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   const aiFetch = options.aiFetch ?? aiFetchStreamingResponse
   const loadAgentCore = options.loadAgentCore ?? (() => import('@shared/agent-core'))
   const prepareConfig = options.prepareConfig ?? prepareAiRequestConfig
+  const prepareConversation = options.prepareConversation ?? prepareBuiltInConversation
 
   // Per-thread harness cache, scoped to this adapter instance. The adapter is
   // itself cached per-agent (`adapter-cache.ts`), so a thread's harness survives
@@ -501,36 +974,89 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     aiFetch({
       init,
       modelId: context.selectedModel.id,
-      modeSystemPrompt: context.selectedMode.systemPrompt ?? undefined,
-      modeName: context.selectedMode.name ?? undefined,
+      reasoningEffort: context.reasoningEffort,
       mcpClients: context.mcpClients,
       reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,
       getProxyFetch: context.getProxyFetch,
+      turnBudget: context.turnBudget,
+      webToolBudget: context.webToolBudget,
+      telemetry: context.telemetry,
+      debugTranscript:
+        context.debugTranscriptTraceId === undefined
+          ? undefined
+          : { threadId: context.threadId, traceId: context.debugTranscriptTraceId },
     })
 
-  // Route tool-capable Pi-serviceable models (anthropic + the OpenAI-wire family)
-  // to the in-browser Pi harness; everything else (tinfoil, or a no-tools model
-  // the harness can't honor since it always activates coding tools) stays on the
-  // legacy pipeline. fetchViaHarness itself falls back when a candidate model
-  // turns out to be unresolvable (unknown id / missing api key or url).
-  const isPiCandidate = (model: Model): boolean => piProviders.has(model.provider) && model.toolUsage !== 0
-  const fetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> =>
-    isPiCandidate(context.selectedModel)
-      ? fetchViaHarness(
-          init,
-          context,
-          harnessCache,
-          () => fetchViaLegacyPipeline(init, context),
-          loadAgentCore,
-          prepareConfig,
-        )
-      : fetchViaLegacyPipeline(init, context)
+  // Route Pi-serviceable models to the in-browser harness. Tinfoil always takes
+  // this route; other providers still fall back when their id/config is unusable.
+  const fetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+    if (isPiModelCandidate(context.selectedModel)) {
+      return fetchViaHarness(
+        init,
+        context,
+        harnessCache,
+        () => fetchViaLegacyPipeline(init, context),
+        loadAgentCore,
+        prepareConfig,
+        prepareConversation,
+        options,
+      )
+    }
+    context.telemetry?.setDimensions({ engine: 'legacy' })
+    return fetchViaLegacyPipeline(init, context)
+  }
+
+  const compactContext: NonNullable<AgentAdapter['compact']> = async (init, context, instructions) => {
+    if (!isPiModelCandidate(context.selectedModel)) {
+      throw new Error('This model does not support context compaction')
+    }
+    const agentCore = await loadAgentCore()
+    const config = await prepareConfig({
+      modelId: context.selectedModel.id,
+      mcpClients: context.mcpClients,
+      reconnectClient: context.reconnectClient,
+      httpClient: context.httpClient,
+      chatThreadId: context.threadId,
+    })
+    const resolved = await resolvePiModel(agentCore, context, config.profile, options)
+    if (!resolved) {
+      throw new Error('This model does not support context compaction')
+    }
+    const messages = parseMessages(init)
+    const supersededCallIds =
+      config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
+    const { history, files, compaction } = await prepareBuiltInHistory(messages, { workspace: config.supportsTools })
+    const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision, compaction)
+    const lastUserId = messages.findLast((message) => message.role === 'user')?.id
+    const cached = getOrBuildHarness(harnessCache, context.threadId, signature, lastUserId, () =>
+      buildHarnessRecord(agentCore, context, resolved, history, config, compaction),
+    )
+    const record = await waitForCompactionHarness(cached.record, init.signal)
+    await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
+    await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+    const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
+    for (const { path, error } of failures) {
+      console.error(`Built-in agent: could not save ${path} to the workspace`, error)
+    }
+    // The caller still has to save the returned checkpoint. Rebuild on the next
+    // operation from that caller's durable history, whether the save succeeds
+    // or fails. Keep the record owned by the cache for disconnect cleanup.
+    cached.signature = null
+    return record.harness.compaction.compact({
+      instructions,
+      signal: init.signal ?? undefined,
+      onStatus: context.onCompactionStatus,
+      overheadTokens: estimateHarnessOverhead(record),
+      transformMessage: (message) => supersedeHarnessAppContext(message, supersededCallIds),
+    })
+  }
 
   return {
     agent,
     capabilities: null,
     fetch,
+    compact: compactContext,
     // No ACP wire to warm. Each thread's harness IS persistent, so disconnect
     // disposes every cached harness and removes its isolated workspace.
     ensureSession: async () => {},

@@ -56,10 +56,14 @@ describe('README provider tables mirror defaults.ts', () => {
   test('the Environment table lists every provider credential variable exactly (no missing, no extra)', async () => {
     const readme = await readFile(readmePath, 'utf8')
     const variableLists = tableRows(readmeSection(readme, '### Environment')).map((cells) => codeSpans(cells[0] ?? ''))
-    // CLI-level variables (THUNDERBOLT_*) and NO_COLOR are documented in the same
-    // table but are not provider credentials, so they are excluded from parity.
+    // CLI-level variables (THUNDERBOLT_*) and the terminal-capability ones sit in
+    // the same table but are not provider credentials, so they are excluded from
+    // parity. Keep this list in sync with the non-provider rows of that table —
+    // adding a row the filter does not know about makes it read as a provider and
+    // fails this test with a confusing diff.
+    const nonProviderVariables = new Set(['NO_COLOR', 'COLORTERM'])
     const providerRows = variableLists.filter(
-      (names) => !names.every((name) => name.startsWith('THUNDERBOLT_') || name === 'NO_COLOR'),
+      (names) => !names.every((name) => name.startsWith('THUNDERBOLT_') || nonProviderVariables.has(name)),
     )
 
     expect(providerRows).toEqual(Object.values(builtinProviderEnvVars).map((names) => [...names]))

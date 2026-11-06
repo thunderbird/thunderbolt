@@ -16,7 +16,7 @@
  * Logger is passed in by dependency injection (see createApp/AppDeps) so tests
  * can substitute a recorder fake without touching module mocks. This avoids
  * the test-pollution pattern global Pino mocks would produce — see
- * docs/development/testing.md.
+ * docs/internals/development/testing.md.
  */
 
 import { trace } from '@opentelemetry/api'

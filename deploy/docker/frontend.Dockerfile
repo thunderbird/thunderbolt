@@ -1,5 +1,15 @@
 # Stage 1: Build frontend static files
-FROM oven/bun:latest AS build
+# Pinned to CI's Bun (see ci.yml `bun-version`) so the deploy build runs the
+# same validated runtime. Bun implements the node:fs globSync API that
+# @lingui/cli/api needs (Node >=22.19 equivalent), verified by building this
+# image; bump this tag and CI together.
+#
+# --platform=$BUILDPLATFORM: this stage only produces a platform-independent
+# static bundle (HTML/CSS/JS), so it runs natively on the build host instead
+# of under QEMU emulation for the target platform — faster, and sidesteps any
+# arch-specific quirks in bun's/rollup's native build tooling. Only the final
+# nginx stage below is built per target platform.
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS build
 
 WORKDIR /app
 
@@ -12,21 +22,36 @@ RUN bun install --frozen-lockfile
 COPY src ./src
 COPY public ./public
 COPY index.html ./
-COPY vite.config.ts tsconfig.json tsconfig.node.json ./
+# lingui.config.ts is load-bearing: @lingui/vite-plugin resolves it at build
+# time to locate and compile the .po catalogs (THU-806).
+COPY vite.config.ts lingui.config.ts tsconfig.json tsconfig.node.json ./
+# vite.config.ts imports it to copy the PowerSync worker assets into public/.
+COPY scripts/copy-powersync-assets.ts ./scripts/
 COPY components.json ./
 COPY .storybook ./.storybook
 
 # Build args — baked into the static bundle at build time
 ARG VITE_THUNDERBOLT_CLOUD_URL="/v1"
 ARG VITE_AUTH_MODE="sso"
+# Organizational key escrow. Empty = no escrow (the default). It must be baked
+# in HERE, not set at runtime: the client wraps the account key to it during
+# setup, so the value has to exist in the static bundle before
+# ORG_ESCROW_ENABLED is switched on server-side — see
+# docs/self-hosting/configuration.md#organizational-key-escrow.
+ARG VITE_ORG_ESCROW_PUBLIC_KEY=""
 ENV VITE_THUNDERBOLT_CLOUD_URL=$VITE_THUNDERBOLT_CLOUD_URL
 ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
+ENV VITE_ORG_ESCROW_PUBLIC_KEY=$VITE_ORG_ESCROW_PUBLIC_KEY
 
 RUN bunx vite build && \
     find dist -name '*.map' -delete
 
 # Stage 2: Serve with nginx
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
+
+# The base image can lag Alpine's security fixes; take them at build time (nightly-images.yml rebuilds daily).
+USER root
+RUN apk upgrade --no-cache
 
 # Backend upstream — resolved at container start via the official nginx
 # image's `envsubst` entrypoint over /etc/nginx/templates/*.template.
@@ -44,6 +69,9 @@ COPY deploy/config/nginx.conf.template /etc/nginx/templates/default.conf.templat
 COPY deploy/config/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+# Keep the final-stage user explicit for Semgrep's container check.
+USER nginx
+
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

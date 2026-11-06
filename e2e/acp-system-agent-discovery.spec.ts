@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { collectPageErrors, loginViaOidc } from './helpers'
 
 /**
  * E2E for backend-driven system agent discovery.
  *
- * On bootstrap (`useBootstrapSystemAgents` in `src/app.tsx`) the app calls
- * `GET {cloudUrl}/agents` once the user has a non-anonymous session. We
+ * On bootstrap (`useBootstrapSystemAgents` in
+ * `src/hooks/use-bootstrap-system-agents.ts`) the app calls
+ * `GET {cloudUrl}/agents` once there is a session, anonymous or not. We
  * intercept that call with a synthetic Haystack entry and verify that:
  *
  * 1. The row materialises in `/settings/agents` with the system provenance line.
@@ -65,7 +66,7 @@ test.describe('ACP system agent discovery', () => {
     // The detail panel for a system agent is read-only: no ⋯ management menu
     // (which is where Remove lives for custom agents).
     await systemRow.getByRole('button', { name: 'Open RAG Chat' }).click()
-    await expect(page.getByRole('button', { name: 'Close details' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Close(?: details)?$/ })).toBeVisible()
     await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0)
 
     expect(errors).toHaveLength(0)

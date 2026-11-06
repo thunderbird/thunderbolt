@@ -2,13 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+
 /**
  * Result of validating an MCP server URL. `reason` explains why an invalid URL
  * was rejected so the UI can surface actionable guidance.
  */
-export type McpUrlValidation = { ok: true } | { ok: false; reason: string }
+export type McpUrlValidation = { ok: true } | { ok: false; reason: MessageDescriptor }
 
-const httpsRequiredReason = 'Use https:// (http is only allowed for localhost or a local network)'
+const httpsRequiredReason = msg`Use https:// (http is only allowed for localhost or a local network)`
 
 /** Parses a dotted-quad IPv4 string into its four octets, or null if malformed. */
 const parseIpv4Octets = (host: string): [number, number, number, number] | null => {
@@ -91,13 +94,13 @@ const isLocalOrPrivateHost = (rawHost: string): boolean => {
 export const validateMcpServerUrl = (url: string): McpUrlValidation => {
   const parsed = URL.canParse(url) ? new URL(url) : null
   if (!parsed) {
-    return { ok: false, reason: 'Enter a valid URL' }
+    return { ok: false, reason: msg`Enter a valid URL` }
   }
   if (parsed.protocol === 'https:') {
     return { ok: true }
   }
   if (parsed.protocol !== 'http:') {
-    return { ok: false, reason: 'Use an http:// or https:// URL' }
+    return { ok: false, reason: msg`Use an http:// or https:// URL` }
   }
   if (isLocalOrPrivateHost(parsed.hostname)) {
     return { ok: true }

@@ -2,12 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createMockChatInstance, createMockUseChat, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
+import { builtInAgent } from '@/defaults/agents'
+import {
+  createMockChatInstance,
+  createMockChatThread,
+  createMockUseChat,
+  hydrateStore,
+  resetStore,
+} from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { getClock } from '@/testing-library'
 import type { ThunderboltUIMessage } from '@/types'
+import type { Agent } from '@/types/acp'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { useChatStore } from './chat-store'
 import { useChatAutomation } from './use-chat-automation'
 
 describe('useChatAutomation', () => {
@@ -61,6 +70,81 @@ describe('useChatAutomation', () => {
 
     expect(mockChatInstance.regenerate).toHaveBeenCalled()
   })
+
+  // THU-791 regression: Stop drops the aborted turn's empty shell, leaving the
+  // user message trailing — the exact shape this hook auto-runs. The session's
+  // `stopping` flag (lifted only by the next explicit send) must suppress it,
+  // or Stop restarts the very turn it cancelled.
+  it('should not auto-run a stopped turn (trailing user message with the session stopping)', async () => {
+    const messages: ThunderboltUIMessage[] = [
+      {
+        id: 'msg-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      },
+    ]
+    const mockChatInstance = createMockChatInstance(messages, 'ready')
+    const mockUseChat = createMockUseChat(mockChatInstance)
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+    act(() => {
+      useChatStore.getState().updateSession('thread-1', { stopping: true })
+    })
+
+    renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
+      wrapper: createQueryTestWrapper(),
+    })
+
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
+  })
+
+  it.each([{ stoppedByUser: true }, { acpCommand: 'compact' as const }])(
+    'should not auto-run a stopped prompt or native command after reload (%p)',
+    async (metadata) => {
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: 'msg-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Write a long essay' }],
+          metadata,
+        },
+      ]
+      const mockChatInstance = createMockChatInstance(messages, 'ready')
+      const mockUseChat = createMockUseChat(mockChatInstance)
+
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: null,
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+
+      renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
+        wrapper: createQueryTestWrapper(),
+      })
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
+    },
+  )
 
   it('should not trigger if status is not ready', async () => {
     const messages: ThunderboltUIMessage[] = [
@@ -318,5 +402,82 @@ describe('useChatAutomation', () => {
     })
 
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
+  })
+
+  describe('private chats', () => {
+    const hostedAgent: Agent = {
+      ...builtInAgent,
+      id: 'hosted-agent',
+      name: 'Assistant',
+      type: 'managed-http',
+      transport: 'http',
+      url: '/v1/agent/chat',
+    }
+
+    /** An automation thread: private (copied from a confidential model), ending
+     *  on the seeded user prompt, resolved to `agent`. */
+    const setupPrivateAutomationThread = (agent: Agent) => {
+      const messages: ThunderboltUIMessage[] = [{ id: 'msg-1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] }]
+      const mockChatInstance = createMockChatInstance(messages, 'ready')
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread({ isEncrypted: 1, wasTriggeredByAutomation: 1 }),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { selectedAgent: agent })
+      })
+      return mockChatInstance
+    }
+
+    it('refuses to send a private chat to a non-built-in agent, and logs why', async () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      const mockChatInstance = setupPrivateAutomationThread(hostedAgent)
+
+      renderHook(() => useChatAutomation({ useChat: createMockUseChat(mockChatInstance) }), {
+        wrapper: createQueryTestWrapper(),
+      })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      // A dependency change that leaves the block in place must not log again.
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { selectedAgent: { ...hostedAgent } })
+      })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Not auto-running private chat'))
+      warn.mockRestore()
+    })
+
+    it('sends once the chat is switched to the built-in agent', async () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      const mockChatInstance = setupPrivateAutomationThread(hostedAgent)
+
+      renderHook(() => useChatAutomation({ useChat: createMockUseChat(mockChatInstance) }), {
+        wrapper: createQueryTestWrapper(),
+      })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { selectedAgent: builtInAgent })
+      })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(mockChatInstance.regenerate).toHaveBeenCalledTimes(1)
+      warn.mockRestore()
+    })
   })
 })

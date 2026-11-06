@@ -51,6 +51,15 @@ describe('AgentDetail — system agents', () => {
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
     expect(screen.queryByRole('switch')).not.toBeInTheDocument()
   })
+
+  it('labels the hosted agent instead of showing its server-relative path as the endpoint', () => {
+    renderDetail(
+      customAgent({ isSystem: 1, userId: null, type: 'managed-http', transport: 'http', url: '/v1/agent/chat' }),
+    )
+
+    expect(screen.getByText("Your deployment's server")).toBeInTheDocument()
+    expect(screen.queryByText('/v1/agent/chat')).not.toBeInTheDocument()
+  })
 })
 
 describe('AgentDetail — custom agents', () => {
@@ -140,12 +149,12 @@ describe('AgentDetail — custom agents', () => {
     await act(async () => {
       fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0 })
     })
-    const removeItem = await waitForElement(() => screen.queryByRole('menuitem', { name: /remove agent/i }))
+    const removeItem = await waitForElement(() => screen.queryByRole('menuitem', { name: /delete agent/i }))
     await act(async () => {
       fireEvent.click(removeItem)
       await getClock().runAllAsync()
     })
-    const confirmButton = await waitForElement(() => screen.queryByRole('button', { name: 'Remove agent' }))
+    const confirmButton = await waitForElement(() => screen.queryByRole('button', { name: 'Delete agent' }))
     await act(async () => {
       fireEvent.click(confirmButton)
     })

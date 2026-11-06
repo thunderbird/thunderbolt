@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Slot } from '@radix-ui/react-slot'
 import { type VariantProps, cva } from 'class-variance-authority'
 import { PanelLeft } from 'lucide-react'
@@ -9,7 +10,6 @@ import { PanelLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
-import { MobileSidebar } from '@/components/ui/mobile-sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
@@ -28,8 +28,23 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
+
+// Below this width the desktop layout has no room for the expanded sidebar:
+// the sidebar is pinned to the collapsed icon rail and the toggle buttons
+// hide. Only reachable in the Tauri desktop app (force-desktop layout with a
+// 600px min window width) — on web, widths below 768px use the mobile drawer.
+const forceCollapseBreakpoint = 700
+const forceCollapseMql = () => window.matchMedia(`(max-width: ${forceCollapseBreakpoint - 1}px)`)
+const subscribeForceCollapse = (callback: () => void) => {
+  const mediaQuery = forceCollapseMql()
+  mediaQuery.addEventListener('change', callback)
+  return () => mediaQuery.removeEventListener('change', callback)
+}
+const getForceCollapseSnapshot = () => forceCollapseMql().matches
 
 const sidebarCookieName = 'sidebar_state'
 const sidebarCookieMaxAge = 60 * 60 * 24 * 7
@@ -47,7 +62,15 @@ type SidebarContextProps = {
   setOpen: (open: boolean) => void
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
+  /** Closes the mobile drawer and resolves once that request completes or is
+   *  cancelled (immediately when it isn't open). */
+  closeMobileSidebar: () => Promise<void>
+  /** Internal: resolves callers when a mobile close completes or is cancelled. */
+  notifyMobileSidebarCloseSettled: () => void
   isMobile: boolean
+  /** True when the window is too narrow for the expanded sidebar (< 700px in
+   *  the desktop layout): the sidebar is pinned collapsed and toggles hide. */
+  forceCollapsed: boolean
   toggleSidebar: () => void
   //* new properties for sidebar resizing
   width: string
@@ -98,10 +121,15 @@ const SidebarProvider = forwardRef<
     //* new state for tracking is dragging rail
     const [isDraggingRail, setIsDraggingRail] = useState(false)
 
+    const isNarrow = useSyncExternalStore(subscribeForceCollapse, getForceCollapseSnapshot)
+    const forceCollapsed = isNarrow && !isMobile
+
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
+    // The stored preference survives a forced collapse, so widening the
+    // window past the threshold restores the previous state.
     const [_open, _setOpen] = useState(defaultOpen)
-    const open = openProp ?? _open
+    const open = !forceCollapsed && (openProp ?? _open)
     const setOpen = useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
         const openState = typeof value === 'function' ? value(open) : value
@@ -119,20 +147,41 @@ const SidebarProvider = forwardRef<
 
     const { triggerImpact } = useHaptics()
 
-    // Helper to toggle the sidebar.
+    // Resolvers awaiting the mobile drawer's close lifecycle.
+    const mobileCloseResolversRef = useRef<Array<() => void>>([])
+
+    const notifyMobileSidebarCloseSettled = useCallback(() => {
+      const resolvers = mobileCloseResolversRef.current
+      mobileCloseResolversRef.current = []
+      resolvers.forEach((resolve) => resolve())
+    }, [])
+
+    const closeMobileSidebar = useCallback((): Promise<void> => {
+      if (!isMobile || !openMobile) {
+        return Promise.resolve()
+      }
+
+      return new Promise((resolve) => {
+        mobileCloseResolversRef.current.push(resolve)
+        setOpenMobile(false)
+      })
+    }, [isMobile, openMobile])
+
+    // Helper to toggle the sidebar. No-op while the collapse is forced so the
+    // keyboard shortcut can't expand a sidebar the window can't fit.
     const toggleSidebar = useCallback(() => {
       if (isMobile) {
         triggerImpact('light')
         setOpenMobile((open) => !open)
-      } else {
+      } else if (!forceCollapsed) {
         setOpen((open) => !open)
       }
-    }, [isMobile, setOpen, triggerImpact])
+    }, [isMobile, forceCollapsed, setOpen, triggerImpact])
 
     // Adds a keyboard shortcut to toggle the sidebar.
     useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === sidebarKeyboardShortcut && (event.metaKey || event.ctrlKey)) {
+        if (event.key.toLowerCase() === sidebarKeyboardShortcut && (event.metaKey || event.ctrlKey)) {
           event.preventDefault()
           toggleSidebar()
         }
@@ -154,6 +203,9 @@ const SidebarProvider = forwardRef<
         isMobile,
         openMobile,
         setOpenMobile,
+        closeMobileSidebar,
+        notifyMobileSidebarCloseSettled,
+        forceCollapsed,
         toggleSidebar,
         //* new context for sidebar resizing
         width,
@@ -170,6 +222,9 @@ const SidebarProvider = forwardRef<
         openMobile,
         //* remove setOpenMobile from dependencies because setOpenMobile are state setters created by useState
         // setOpenMobile,
+        closeMobileSidebar,
+        notifyMobileSidebarCloseSettled,
+        forceCollapsed,
         toggleSidebar,
         //* add width to dependencies
         width,
@@ -217,8 +272,6 @@ const Sidebar = forwardRef<
   const {
     isMobile,
     state,
-    openMobile,
-    setOpenMobile,
     //* new property for tracking is dragging rail
     isDraggingRail,
   } = useSidebar()
@@ -226,7 +279,10 @@ const Sidebar = forwardRef<
   if (collapsible === 'none') {
     return (
       <div
-        className={cn('flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground', className)}
+        className={cn(
+          'flex h-full w-(--sidebar-width) flex-col bg-sidebar/80 text-sidebar-foreground backdrop-blur-lg',
+          className,
+        )}
         ref={ref}
         {...props}
       >
@@ -237,9 +293,16 @@ const Sidebar = forwardRef<
 
   if (isMobile) {
     return (
-      <MobileSidebar open={openMobile} onOpenChange={setOpenMobile} side={side} className={className} {...props}>
+      <div
+        ref={ref}
+        className={cn('flex h-full w-full flex-col', className)}
+        data-sidebar="sidebar"
+        data-slot="sidebar-content"
+        data-mobile="true"
+        {...props}
+      >
         {children}
-      </MobileSidebar>
+      </div>
     )
   }
 
@@ -285,7 +348,7 @@ const Sidebar = forwardRef<
       >
         <div
           data-sidebar="sidebar"
-          className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
+          className="flex h-full w-full flex-col bg-sidebar/80 backdrop-blur-lg group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
         >
           {children}
         </div>
@@ -313,7 +376,9 @@ const SidebarTrigger = forwardRef<ElementRef<typeof Button>, ComponentProps<type
         {...props}
       >
         <PanelLeft />
-        <span className="sr-only">Toggle Sidebar</span>
+        <span className="sr-only">
+          <Trans>Toggle Sidebar</Trans>
+        </span>
       </Button>
     )
   },
@@ -329,6 +394,7 @@ const SidebarRail = forwardRef<
     maxResizeWidth?: string
   }
 >(({ className, enableDrag = true, direction = 'right', maxResizeWidth = maxSidebarWidth, ...props }, ref) => {
+  const { t } = useLingui()
   const { toggleSidebar, setWidth, state, width, setIsDraggingRail } = useSidebar()
 
   const { dragRef, handleMouseDown } = useSidebarResize({
@@ -353,13 +419,13 @@ const SidebarRail = forwardRef<
       //* updated ref to use combinedRef
       ref={combinedRef}
       data-sidebar="rail"
-      aria-label="Toggle Sidebar"
+      aria-label={t`Toggle Sidebar`}
       tabIndex={-1}
       // onClick={toggleSidebar}
       //* replace onClick with onMouseDown
       // @ts-ignore
       onMouseDown={handleMouseDown}
-      title="Toggle Sidebar"
+      title={t`Toggle Sidebar`}
       className={cn(
         'absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex',
         'in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize',
@@ -572,7 +638,11 @@ const SidebarMenuButton = forwardRef<
         data-sidebar="menu-button"
         data-size={size}
         data-active={isActive}
-        className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+        className={cn(
+          sidebarMenuButtonVariants({ variant, size }),
+          state === 'collapsed' && !isMobile && '[&>svg]:text-muted-foreground',
+          className,
+        )}
         onClick={handleClick}
         {...props}
       />

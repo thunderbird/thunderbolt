@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isSafeRelativePath } from '@/lib/safe-relative-path'
+
 const storageKey = 'device_approval_return'
 
 /**
@@ -26,5 +28,5 @@ export const saveDeviceApprovalReturn = (returnUrl: string): void => {
 export const takeDeviceApprovalReturn = (): string | null => {
   const value = localStorage.getItem(storageKey)
   localStorage.removeItem(storageKey)
-  return value?.startsWith('/') && !value.startsWith('//') ? value : null
+  return isSafeRelativePath(value) ? value : null
 }

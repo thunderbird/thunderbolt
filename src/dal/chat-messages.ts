@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { isInsertConflictError } from '../lib/sqlite-errors'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
-import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
+import { convertUIMessageToDbChatMessage } from '../lib/utils'
 import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
@@ -55,7 +55,7 @@ export const getLastMessage = async (db: AnyDrizzleDatabase, threadId: string): 
  * insert time. Re-saving the same id (streaming partials, then the `onFinish`
  * complete save) must never restructure the tree. Recomputing the parent from
  * `getLastMessage` would return the row being written and make the message its
- * own parent — corrupting the tree and hanging the descendant BFS on delete.
+ * own parent, corrupting the tree.
  */
 const updateMutableMessageColumns = async (db: AnyDrizzleDatabase, msg: ChatMessage): Promise<void> => {
   await db
@@ -73,6 +73,7 @@ const updateMutableMessageColumns = async (db: AnyDrizzleDatabase, msg: ChatMess
  * Saves messages to a chat thread and updates context size if available
  * @param threadId - The ID of the chat thread
  * @param messages - Array of UI messages to save
+ * @param options - Set updateContext to false when editing historical messages
  * @returns The saved database messages
  * @throws Error if thread is not found
  */
@@ -80,6 +81,7 @@ export const saveMessagesWithContextUpdate = async (
   db: AnyDrizzleDatabase,
   threadId: string,
   messages: ThunderboltUIMessage[],
+  { updateContext = true }: { updateContext?: boolean } = {},
 ): Promise<ChatMessage[]> => {
   // Verify thread exists
   const thread = await getChatThread(db, threadId)
@@ -121,8 +123,9 @@ export const saveMessagesWithContextUpdate = async (
     const latestMessage = messages[messages.length - 1]
     const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
 
-    if (metadata?.usage?.totalTokens) {
-      await updateChatThread(tx, threadId, { contextSize: metadata.usage.totalTokens })
+    const contextSize = metadata?.contextTokens ?? metadata?.usage?.totalTokens
+    if (updateContext && contextSize !== undefined) {
+      await updateChatThread(tx, threadId, { contextSize })
     }
   })
 
@@ -195,45 +198,4 @@ export const updateMessage = async (
   message: Partial<ChatMessage>,
 ): Promise<void> => {
   await db.update(chatMessagesTable).set(message).where(eq(chatMessagesTable.id, messageId))
-}
-
-/**
- * Collect message id and all descendant ids (children, grandchildren, etc.) that are not yet soft-deleted.
- * Uses iterative BFS to avoid stack overflow and N+1 query issues with deep message trees.
- */
-const getMessageAndDescendantIds = async (db: AnyDrizzleDatabase, messageId: string): Promise<string[]> => {
-  const allIds: string[] = []
-  let parentIds: string[] = [messageId]
-
-  while (parentIds.length > 0) {
-    allIds.push(...parentIds)
-    const children = (await db
-      .select({ id: chatMessagesTable.id })
-      .from(chatMessagesTable)
-      .where(and(inArray(chatMessagesTable.parentId, parentIds), isNull(chatMessagesTable.deletedAt)))) as {
-      id: string
-    }[]
-
-    parentIds = children.map((c) => c.id)
-  }
-
-  return allIds
-}
-
-/**
- * Soft deletes a chat message and all its descendants (children, grandchildren, etc.).
- * Sets deletedAt and clears nullable columns. Only updates records not already soft-deleted.
- * Cascade is handled in the DAL; parent_id is a logical reference only.
- */
-export const deleteChatMessageAndDescendants = async (db: AnyDrizzleDatabase, messageId: string): Promise<void> => {
-  const idsToSoftDelete = await getMessageAndDescendantIds(db, messageId)
-  if (idsToSoftDelete.length === 0) {
-    return
-  }
-
-  const deletedAt = nowIso()
-  await db
-    .update(chatMessagesTable)
-    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
-    .where(and(inArray(chatMessagesTable.id, idsToSoftDelete), isNull(chatMessagesTable.deletedAt)))
 }

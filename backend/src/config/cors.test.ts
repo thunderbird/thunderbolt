@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList } from '@/config/settings'
-import cors from '@elysiajs/cors'
 import { Elysia } from 'elysia'
 
 /**
@@ -12,14 +12,14 @@ import { Elysia } from 'elysia'
  * Verifies that the actual HTTP headers are set correctly for various origins.
  */
 describe('CORS integration', () => {
-  const createTestApp = (corsOrigins: string[]) =>
+  const createTestApp = (corsOrigins: string[], corsAllowCredentials = true) =>
     new Elysia()
       .use(
-        cors({
-          origin: corsOrigins,
-          credentials: true,
-          methods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
-          allowedHeaders: 'Content-Type,Authorization',
+        createCorsMiddleware({
+          corsOrigins: corsOrigins.join(','),
+          corsAllowCredentials,
+          corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+          corsExposeHeaders: '',
         }),
       )
       .get('/test', () => ({ ok: true }))
@@ -40,6 +40,7 @@ describe('CORS integration', () => {
 
       expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com')
       expect(res.headers.get('access-control-allow-credentials')).toBe('true')
+      expect(res.headers.get('timing-allow-origin')).toBe('https://app.example.com')
     })
 
     it('should allow tauri://localhost', async () => {
@@ -75,6 +76,7 @@ describe('CORS integration', () => {
       )
 
       expect(res.headers.get('access-control-allow-origin')).toBeNull()
+      expect(res.headers.get('timing-allow-origin')).toBeNull()
     })
 
     it('should reject unknown origins', async () => {
@@ -101,6 +103,24 @@ describe('CORS integration', () => {
       )
 
       expect(res.headers.get('access-control-allow-origin')).toBeNull()
+      expect(res.headers.get('timing-allow-origin')).toBeNull()
+    })
+
+    it('should expose timing for preflight from an allowed origin', async () => {
+      const app = createTestApp(origins)
+      const res = await app.handle(
+        new Request('http://localhost/test', {
+          method: 'OPTIONS',
+          headers: {
+            Origin: 'https://app.example.com',
+            'Access-Control-Request-Method': 'DELETE',
+          },
+        }),
+      )
+
+      expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com')
+      expect(res.headers.get('access-control-max-age')).toBe('600')
+      expect(res.headers.get('timing-allow-origin')).toBe('https://app.example.com')
     })
   })
 
@@ -130,5 +150,32 @@ describe('CORS integration', () => {
 
       expect(res.headers.get('access-control-allow-origin')).toBeNull()
     })
+  })
+
+  it('echoes the request origin for credentialed wildcard access', async () => {
+    const app = createTestApp(['*'])
+    const res = await app.handle(
+      new Request('http://localhost/test', {
+        headers: { Origin: 'https://app.example.com' },
+      }),
+    )
+
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com')
+    expect(res.headers.get('access-control-allow-credentials')).toBe('true')
+    expect(res.headers.get('timing-allow-origin')).toBe('https://app.example.com')
+    expect(res.headers.get('vary')).toContain('Origin')
+  })
+
+  it('uses wildcard access when credentials are disabled', async () => {
+    const app = createTestApp(['*'], false)
+    const res = await app.handle(
+      new Request('http://localhost/test', {
+        headers: { Origin: 'https://app.example.com' },
+      }),
+    )
+
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+    expect(res.headers.get('access-control-allow-credentials')).toBeNull()
+    expect(res.headers.get('timing-allow-origin')).toBe('*')
   })
 })

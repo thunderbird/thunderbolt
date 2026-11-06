@@ -2,18 +2,116 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { maxAgentSteps } from '@/hosted-agent/limits'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import {
   clearSettingsCache,
   getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
+  getPasskeyAndroidOriginsList,
   getSettings,
   isOAuthRedirectUriAllowed,
   isOriginAllowed,
+  getPasskeyRpName,
 } from './settings'
 
 describe('Config Settings', () => {
+  describe('Anthropic base URL', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.ANTHROPIC_BASE_URL
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.ANTHROPIC_BASE_URL
+      } else {
+        process.env.ANTHROPIC_BASE_URL = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it('keeps the Anthropic endpoint when the override is unset', () => {
+      delete process.env.ANTHROPIC_BASE_URL
+      expect(getSettings().anthropicBaseUrl).toBe('https://api.anthropic.com')
+    })
+
+    it('honours ANTHROPIC_BASE_URL', () => {
+      process.env.ANTHROPIC_BASE_URL = 'http://localhost:9878'
+      expect(getSettings().anthropicBaseUrl).toBe('http://localhost:9878')
+    })
+  })
+
+  describe('Google base URL', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.GOOGLE_BASE_URL
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.GOOGLE_BASE_URL
+      } else {
+        process.env.GOOGLE_BASE_URL = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it('keeps the Google token host when the override is unset', () => {
+      delete process.env.GOOGLE_BASE_URL
+      expect(getSettings().googleBaseUrl).toBe('https://oauth2.googleapis.com')
+    })
+
+    it('honours a loopback GOOGLE_BASE_URL', () => {
+      process.env.GOOGLE_BASE_URL = 'http://localhost:9880/'
+      expect(getSettings().googleBaseUrl).toBe('http://localhost:9880')
+    })
+
+    it('ignores a GOOGLE_BASE_URL on any other host', () => {
+      process.env.GOOGLE_BASE_URL = 'https://evil.example'
+      expect(getSettings().googleBaseUrl).toBe('https://oauth2.googleapis.com')
+    })
+  })
+
+  describe('Microsoft base URL', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.MICROSOFT_BASE_URL
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.MICROSOFT_BASE_URL
+      } else {
+        process.env.MICROSOFT_BASE_URL = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it('keeps the Microsoft token host when the override is unset', () => {
+      delete process.env.MICROSOFT_BASE_URL
+      expect(getSettings().microsoftBaseUrl).toBe('https://login.microsoftonline.com')
+    })
+
+    it('honours a loopback MICROSOFT_BASE_URL', () => {
+      process.env.MICROSOFT_BASE_URL = 'http://127.0.0.1:9881/'
+      expect(getSettings().microsoftBaseUrl).toBe('http://127.0.0.1:9881')
+    })
+
+    it('ignores a MICROSOFT_BASE_URL on any other host', () => {
+      process.env.MICROSOFT_BASE_URL = 'https://evil.example'
+      expect(getSettings().microsoftBaseUrl).toBe('https://login.microsoftonline.com')
+    })
+  })
+
   describe('getCorsOriginsList', () => {
     it('should split comma-separated origins', () => {
       const settings = { corsOrigins: 'http://localhost:3000,https://example.com,https://app.example.com' }
@@ -51,8 +149,20 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('getPasskeyAndroidOriginsList', () => {
+    it('splits, trims, and drops empty entries', () => {
+      const settings = { passkeyAndroidOrigins: ' android:apk-key-hash:aaa ,,android:apk-key-hash:bbb, ' }
+
+      expect(getPasskeyAndroidOriginsList(settings)).toEqual(['android:apk-key-hash:aaa', 'android:apk-key-hash:bbb'])
+    })
+
+    it('is empty when unset', () => {
+      expect(getPasskeyAndroidOriginsList({ passkeyAndroidOrigins: '' })).toEqual([])
+    })
+  })
+
   describe('CORS default security', () => {
-    const corsEnvKeys = ['CORS_ORIGINS'] as const
+    const corsEnvKeys = ['CORS_ORIGINS', 'CORS_EXPOSE_HEADERS'] as const
 
     let savedEnv: Partial<Record<string, string | undefined>>
 
@@ -97,6 +207,24 @@ describe('Config Settings', () => {
       const settings = getSettings()
 
       expect(isOriginAllowed('http://localhost:1420', settings)).toBe(true)
+    })
+
+    it('should expose proxy timing, server timing, and inference receipts to cross-origin clients by default', () => {
+      delete process.env.CORS_EXPOSE_HEADERS
+      const settings = getSettings()
+
+      expect(settings.corsExposeHeaders.split(',')).toContain('X-Proxy-Timing')
+      expect(settings.corsExposeHeaders.split(',')).toContain('Server-Timing')
+      expect(settings.corsExposeHeaders.split(',')).toContain('X-Inference-Usage-Receipt')
+      expect(settings.corsExposeHeaders.split(',')).not.toContain('Timing-Allow-Origin')
+    })
+
+    it('should keep the manual CORS expose headers override in sync with runtime defaults', () => {
+      delete process.env.CORS_EXPOSE_HEADERS
+      const envExample = readFileSync(new URL('../../.env.example', import.meta.url), 'utf8')
+      const documentedValue = envExample.match(/^# CORS_EXPOSE_HEADERS=(.+)$/m)?.[1]
+
+      expect(documentedValue?.split(',')).toEqual(getSettings().corsExposeHeaders.split(','))
     })
 
     it('should not match non-Tauri origins by default', () => {
@@ -183,6 +311,90 @@ describe('Config Settings', () => {
   })
 
   describe('Settings validation and defaults', () => {
+    it('loads the Resend monitoring API key and defaults to empty when unset', () => {
+      const originalValue = process.env.RESEND_MONITORING_API_KEY
+      try {
+        delete process.env.RESEND_MONITORING_API_KEY
+        clearSettingsCache()
+        expect(getSettings().resendMonitoringApiKey).toBe('')
+
+        process.env.RESEND_MONITORING_API_KEY = 'test-resend-monitoring-key'
+        clearSettingsCache()
+        expect(getSettings().resendMonitoringApiKey).toBe('test-resend-monitoring-key')
+      } finally {
+        if (originalValue === undefined) {
+          delete process.env.RESEND_MONITORING_API_KEY
+        } else {
+          process.env.RESEND_MONITORING_API_KEY = originalValue
+        }
+        clearSettingsCache()
+      }
+    })
+
+    it('keeps CLI device registration disabled unless explicitly enabled', () => {
+      const originalValue = process.env.CLI_DEVICE_REGISTRATION_ENABLED
+      try {
+        delete process.env.CLI_DEVICE_REGISTRATION_ENABLED
+        clearSettingsCache()
+        expect(getSettings().cliDeviceRegistrationEnabled).toBe(false)
+
+        process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'true'
+        clearSettingsCache()
+        expect(getSettings().cliDeviceRegistrationEnabled).toBe(true)
+      } finally {
+        if (originalValue === undefined) {
+          delete process.env.CLI_DEVICE_REGISTRATION_ENABLED
+        } else {
+          process.env.CLI_DEVICE_REGISTRATION_ENABLED = originalValue
+        }
+        clearSettingsCache()
+      }
+    })
+
+    describe('passkey Relying Party ID', () => {
+      const keys = ['APP_URL', 'PASSKEY_ENABLED', 'PASSKEY_RP_ID'] as const
+      const withEnv = (env: Partial<Record<(typeof keys)[number], string>>, run: () => void) => {
+        const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+        try {
+          for (const key of keys) {
+            delete process.env[key]
+          }
+          Object.assign(process.env, env)
+          clearSettingsCache()
+          run()
+        } finally {
+          for (const key of keys) {
+            if (saved[key] === undefined) {
+              delete process.env[key]
+            } else {
+              process.env[key] = saved[key]
+            }
+          }
+          clearSettingsCache()
+        }
+      }
+
+      it('never parses APP_URL while passkeys are off', () => {
+        withEnv({ APP_URL: 'app.example.com' }, () => {
+          expect(getSettings().passkeyRpId).toBe('')
+        })
+      })
+
+      it("derives the RP ID from APP_URL's hostname when passkeys are on", () => {
+        withEnv({ APP_URL: 'https://app.example.com', PASSKEY_ENABLED: 'true' }, () => {
+          expect(getSettings().passkeyRpId).toBe('app.example.com')
+        })
+      })
+
+      it('refuses an RP ID WebAuthn would reject', () => {
+        for (const appUrl of ['http://192.168.1.10:1420', 'app.example.com']) {
+          withEnv({ APP_URL: appUrl, PASSKEY_ENABLED: 'true' }, () => {
+            expect(() => getSettings()).toThrow()
+          })
+        }
+      })
+    })
+
     it('should have valid default values in schema', () => {
       // Test that the schema itself has sensible defaults
       // This tests the schema definition without env var manipulation
@@ -272,7 +484,20 @@ describe('Config Settings', () => {
   })
 
   describe('Rate limiting settings', () => {
-    const rateLimitEnvKeys = ['RATE_LIMIT_ENABLED', 'TRUSTED_PROXY'] as const
+    const rateLimitEnvKeys = [
+      'RATE_LIMIT_ENABLED',
+      'TRUSTED_PROXY',
+      'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
+      'ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS',
+      'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX',
+      'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS',
+      'CAPTCHA_PROVIDER',
+      'ALTCHA_SECRET',
+      'ALTCHA_DIFFICULTY',
+      'ALTCHA_TTL_SECS',
+      'AUTH_ALLOW_ANONYMOUS',
+      'ANONYMOUS_USER_IDLE_DAYS',
+    ] as const
 
     let savedEnv: Partial<Record<string, string>>
 
@@ -343,6 +568,157 @@ describe('Config Settings', () => {
       process.env.TRUSTED_PROXY = 'nginx'
       expect(() => getSettings()).toThrow()
     })
+
+    it('should default the anonymous sign-in limit to 10 per 60 seconds and the captcha to none', () => {
+      delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX
+      delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS
+      delete process.env.CAPTCHA_PROVIDER
+      const settings = getSettings()
+      expect(settings.anonymousSignInRateLimitMax).toBe(10)
+      expect(settings.anonymousSignInRateLimitWindowSecs).toBe(60)
+      expect(settings.captchaProvider).toBe('none')
+    })
+
+    it('should treat empty anonymous sign-in limit and captcha env vars as unset', () => {
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = ''
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS = ''
+      process.env.CAPTCHA_PROVIDER = ''
+      const settings = getSettings()
+      expect(settings.anonymousSignInRateLimitMax).toBe(10)
+      expect(settings.anonymousSignInRateLimitWindowSecs).toBe(60)
+      expect(settings.captchaProvider).toBe('none')
+    })
+
+    it('should read the anonymous sign-in limit and captcha provider from env', () => {
+      delete process.env.AUTH_ALLOW_ANONYMOUS
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '200'
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS = '30'
+      process.env.CAPTCHA_PROVIDER = 'NONE'
+      const settings = getSettings()
+      expect(settings.anonymousSignInRateLimitMax).toBe(200)
+      expect(settings.anonymousSignInRateLimitWindowSecs).toBe(30)
+      expect(settings.captchaProvider).toBe('none')
+    })
+
+    it.each([
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', '11'],
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', '59'],
+    ])('should reject %s=%s with anonymous auth on and no captcha', (key, value) => {
+      process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+      delete process.env.CAPTCHA_PROVIDER
+      process.env[key] = value
+      expect(() => getSettings()).toThrow(
+        'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set',
+      )
+    })
+
+    it('should allow a raised anonymous sign-in limit when anonymous auth is off', () => {
+      delete process.env.AUTH_ALLOW_ANONYMOUS
+      delete process.env.CAPTCHA_PROVIDER
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '200'
+      expect(getSettings().anonymousSignInRateLimitMax).toBe(200)
+    })
+
+    it('should allow the default auth limit with anonymous auth on and no captcha', () => {
+      process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+      delete process.env.CAPTCHA_PROVIDER
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '10'
+      expect(getSettings().anonymousSignInRateLimitMax).toBe(10)
+    })
+
+    it.each([
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', '11'],
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', '59'],
+    ])('should allow %s=%s with anonymous auth on and altcha', (key, value) => {
+      process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+      process.env.CAPTCHA_PROVIDER = 'altcha'
+      process.env.ALTCHA_SECRET = 'a'.repeat(32)
+      process.env[key] = value
+      expect(getSettings().captchaProvider).toBe('altcha')
+    })
+
+    it('should default the deployment-wide anonymous sign-in budget to 2000 per hour', () => {
+      delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX
+      delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS
+      const settings = getSettings()
+      expect(settings.anonymousSignInGlobalRateLimitMax).toBe(2000)
+      expect(settings.anonymousSignInGlobalRateLimitWindowSecs).toBe(3600)
+    })
+
+    it('should read the deployment-wide anonymous sign-in budget from env', () => {
+      process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX = '500'
+      process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS = '1800'
+      const settings = getSettings()
+      expect(settings.anonymousSignInGlobalRateLimitMax).toBe(500)
+      expect(settings.anonymousSignInGlobalRateLimitWindowSecs).toBe(1800)
+    })
+
+    it('should refuse an ALTCHA difficulty below the 50000 floor and accept the floor itself', () => {
+      process.env.ALTCHA_DIFFICULTY = '49999'
+      expect(() => getSettings()).toThrow()
+      clearSettingsCache()
+      process.env.ALTCHA_DIFFICULTY = '50000'
+      expect(getSettings().altchaDifficulty).toBe(50_000)
+    })
+
+    it('should default the ALTCHA difficulty and TTL', () => {
+      delete process.env.ALTCHA_DIFFICULTY
+      delete process.env.ALTCHA_TTL_SECS
+      const settings = getSettings()
+      expect(settings.altchaDifficulty).toBe(100_000)
+      expect(settings.altchaTtlSecs).toBe(600)
+    })
+
+    it('should default ANONYMOUS_USER_IDLE_DAYS to 30, accept 0 and refuse garbage', () => {
+      delete process.env.ANONYMOUS_USER_IDLE_DAYS
+      expect(getSettings().anonymousUserIdleDays).toBe(30)
+      clearSettingsCache()
+      process.env.ANONYMOUS_USER_IDLE_DAYS = '0'
+      expect(getSettings().anonymousUserIdleDays).toBe(0)
+      for (const value of ['-1', '1.5', 'thirty']) {
+        clearSettingsCache()
+        process.env.ANONYMOUS_USER_IDLE_DAYS = value
+        expect(() => getSettings()).toThrow()
+      }
+    })
+
+    it('should read the altcha settings from env', () => {
+      process.env.CAPTCHA_PROVIDER = 'ALTCHA'
+      process.env.ALTCHA_SECRET = 'a'.repeat(32)
+      process.env.ALTCHA_DIFFICULTY = '50000'
+      process.env.ALTCHA_TTL_SECS = '120'
+      const settings = getSettings()
+      expect(settings.captchaProvider).toBe('altcha')
+      expect(settings.altchaSecret).toBe('a'.repeat(32))
+      expect(settings.altchaDifficulty).toBe(50_000)
+      expect(settings.altchaTtlSecs).toBe(120)
+    })
+
+    it.each([
+      ['unset', undefined],
+      ['shorter than 32 characters', 'a'.repeat(31)],
+    ])('should reject CAPTCHA_PROVIDER=altcha with ALTCHA_SECRET %s', (_label, secret) => {
+      process.env.CAPTCHA_PROVIDER = 'altcha'
+      if (secret === undefined) {
+        delete process.env.ALTCHA_SECRET
+      } else {
+        process.env.ALTCHA_SECRET = secret
+      }
+      expect(() => getSettings()).toThrow('ALTCHA_SECRET must be at least 32 characters when CAPTCHA_PROVIDER=altcha')
+    })
+
+    it.each([
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', '0'],
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', 'abc'],
+      ['CAPTCHA_PROVIDER', 'turnstile'],
+      ['ALTCHA_DIFFICULTY', '0'],
+      ['ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX', '0'],
+      ['ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS', 'abc'],
+      ['ALTCHA_TTL_SECS', 'abc'],
+    ])('should reject %s=%s', (key, value) => {
+      process.env[key] = value
+      expect(() => getSettings()).toThrow()
+    })
   })
 
   describe('isOriginAllowed', () => {
@@ -405,39 +781,36 @@ describe('Config Settings', () => {
     })
   })
 
-  describe('E2EE settings', () => {
+  describe('SAML IdP-initiated login setting', () => {
     let savedEnv: string | undefined
 
     beforeEach(() => {
+      savedEnv = process.env.SAML_ALLOW_IDP_INITIATED
       clearSettingsCache()
-      savedEnv = process.env.E2EE_ENABLED
     })
 
     afterEach(() => {
       if (savedEnv !== undefined) {
-        process.env.E2EE_ENABLED = savedEnv
+        process.env.SAML_ALLOW_IDP_INITIATED = savedEnv
       } else {
-        delete process.env.E2EE_ENABLED
+        delete process.env.SAML_ALLOW_IDP_INITIATED
       }
       clearSettingsCache()
     })
 
-    it('should default e2eeEnabled to false when env var is unset', () => {
-      delete process.env.E2EE_ENABLED
-      const settings = getSettings()
-      expect(settings.e2eeEnabled).toBe(false)
+    it('stays off when the env var is unset', () => {
+      delete process.env.SAML_ALLOW_IDP_INITIATED
+      expect(getSettings().samlAllowIdpInitiated).toBe(false)
     })
 
-    it('should enable E2EE when E2EE_ENABLED is "true"', () => {
-      process.env.E2EE_ENABLED = 'true'
-      const settings = getSettings()
-      expect(settings.e2eeEnabled).toBe(true)
+    it('turns on only for "true"', () => {
+      process.env.SAML_ALLOW_IDP_INITIATED = 'true'
+      expect(getSettings().samlAllowIdpInitiated).toBe(true)
     })
 
-    it('should keep E2EE disabled for any value other than "true"', () => {
-      process.env.E2EE_ENABLED = 'false'
-      const settings = getSettings()
-      expect(settings.e2eeEnabled).toBe(false)
+    it.each(['TRUE', '1', 'yes', 'false'])('stays off for "%s"', (value) => {
+      process.env.SAML_ALLOW_IDP_INITIATED = value
+      expect(getSettings().samlAllowIdpInitiated).toBe(false)
     })
   })
 
@@ -491,6 +864,177 @@ describe('Config Settings', () => {
     it('rejects malformed numeric values like "0,2,0"', () => {
       process.env.MIN_APP_VERSION = '0,2,0'
       expect(() => getSettings()).toThrow(/MIN_APP_VERSION must be empty or a semver string/)
+    })
+  })
+
+  describe('brand logo settings', () => {
+    const envKeys = ['BRAND_LOGO_URL', 'BRAND_LOGO_DARK_URL', 'BRAND_LOGO_ALT']
+    const savedEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]))
+
+    beforeEach(() => {
+      clearSettingsCache()
+      envKeys.forEach((key) => delete process.env[key])
+    })
+
+    afterEach(() => {
+      envKeys.forEach((key) =>
+        savedEnv[key] === undefined ? delete process.env[key] : (process.env[key] = savedEnv[key]),
+      )
+      clearSettingsCache()
+    })
+
+    it('defaults to empty', () => {
+      const { brandLogoUrl, brandLogoDarkUrl, brandLogoAlt } = getSettings()
+      expect([brandLogoUrl, brandLogoDarkUrl, brandLogoAlt]).toEqual(['', '', ''])
+    })
+
+    it('accepts an https URL and a data:image URL', () => {
+      process.env.BRAND_LOGO_URL = 'https://example.com/logo.svg'
+      process.env.BRAND_LOGO_DARK_URL = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4='
+      expect(getSettings()).toMatchObject({
+        brandLogoUrl: process.env.BRAND_LOGO_URL,
+        brandLogoDarkUrl: process.env.BRAND_LOGO_DARK_URL,
+      })
+    })
+
+    it('trims whitespace, so a blank value is empty', () => {
+      process.env.BRAND_LOGO_URL = '   '
+      process.env.BRAND_LOGO_DARK_URL = '  https://example.com/logo.svg'
+      expect(getSettings()).toMatchObject({ brandLogoUrl: '', brandLogoDarkUrl: 'https://example.com/logo.svg' })
+    })
+
+    it('falls back to empty when the alt text is only whitespace', () => {
+      process.env.BRAND_LOGO_ALT = '   '
+      expect(getSettings().brandLogoAlt).toBe('')
+    })
+
+    it.each([
+      'javascript:alert(1)',
+      'http://example.com/logo.svg',
+      'data:text/html,<script>',
+      '//cdn.example/logo.svg',
+      'https://%',
+    ])('rejects %s', (value) => {
+      process.env.BRAND_LOGO_DARK_URL = value
+      expect(() => getSettings()).toThrow(/BRAND_LOGO_DARK_URL must be empty, an https: URL or a data:image\/ URL/)
+    })
+  })
+
+  describe('branding settings', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = process.env.BRANDING
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.BRANDING = savedEnv
+      } else {
+        delete process.env.BRANDING
+      }
+      clearSettingsCache()
+    })
+
+    it('is undefined when BRANDING is unset or blank', () => {
+      delete process.env.BRANDING
+      expect(getSettings().branding).toBeUndefined()
+
+      clearSettingsCache()
+      process.env.BRANDING = '   '
+      expect(getSettings().branding).toBeUndefined()
+    })
+
+    it('parses a valid config and trims the app name', () => {
+      process.env.BRANDING = JSON.stringify({
+        appName: '  Acme AI ',
+        debugTranscriptRecipient: 'Acme Support',
+        defaultThemeMode: 'dark',
+        cssVars: {
+          theme: { radius: '0px', 'font-sans': 'DM Sans, sans-serif' },
+          light: { primary: 'oklch(0.6489 0.237 26.97)', 'brand-gradient-start': '#7c3aed', 'shadow-offset-x': '4px' },
+          dark: { background: '#000' },
+        },
+      })
+      expect(getSettings().branding).toEqual({
+        appName: 'Acme AI',
+        debugTranscriptRecipient: 'Acme Support',
+        defaultThemeMode: 'dark',
+        cssVars: {
+          theme: { radius: '0px', 'font-sans': 'DM Sans, sans-serif' },
+          light: { primary: 'oklch(0.6489 0.237 26.97)', 'brand-gradient-start': '#7c3aed', 'shadow-offset-x': '4px' },
+          dark: { background: '#000' },
+        },
+      })
+    })
+
+    it('rejects malformed JSON at startup', () => {
+      process.env.BRANDING = '{appName:'
+      expect(() => getSettings()).toThrow(/BRANDING must be valid JSON/)
+    })
+
+    it('rejects unsafe colors at startup', () => {
+      process.env.BRANDING = JSON.stringify({ cssVars: { light: { brand: 'red;}body{' } } })
+      expect(() => getSettings()).toThrow(
+        /cssVars\.light\.brand: must be a hex, rgb\(\), hsl\(\), oklch\(\) or oklab\(\) color/,
+      )
+    })
+
+    it('reports every problem at once', () => {
+      process.env.BRANDING = JSON.stringify({ favicon: 'x', cssVars: { light: { cards: '#fff' } } })
+      expect(() => getSettings()).toThrow(/favicon: unknown key[\s\S]*cssVars\.light\.cards: unknown token/)
+    })
+  })
+
+  describe('getPasskeyRpName', () => {
+    it('prefers PASSKEY_RP_NAME, then the branding app name, then Thunderbolt', () => {
+      expect(getPasskeyRpName({ passkeyRpName: 'Acme Passkeys', branding: { appName: 'Acme AI' } })).toBe(
+        'Acme Passkeys',
+      )
+      expect(getPasskeyRpName({ passkeyRpName: '', branding: { appName: 'Acme AI' } })).toBe('Acme AI')
+      expect(getPasskeyRpName({ passkeyRpName: '', branding: undefined })).toBe('Thunderbolt')
+    })
+  })
+
+  describe('org escrow settings', () => {
+    const savedEnv: Record<string, string | undefined> = {}
+    const envKeys = ['ORG_ESCROW_ENABLED']
+
+    beforeEach(() => {
+      clearSettingsCache()
+      for (const key of envKeys) {
+        savedEnv[key] = process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      for (const key of envKeys) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('defaults to disabled', () => {
+      delete process.env.ORG_ESCROW_ENABLED
+      expect(getSettings().orgEscrowEnabled).toBe(false)
+    })
+
+    it('enables escrow when the flag is set', () => {
+      process.env.ORG_ESCROW_ENABLED = 'true'
+      expect(getSettings().orgEscrowEnabled).toBe(true)
+    })
+
+    // THU-866: the server holds no escrow key material, so there is no key env var
+    // to validate at boot and none to get wrong. The wrap target lives only in the
+    // client build; a malformed pin fails there, at the first AK mint.
+    it('boots with escrow enabled and no escrow key configured', () => {
+      process.env.ORG_ESCROW_ENABLED = 'true'
+      expect(() => getSettings()).not.toThrow()
     })
   })
 
@@ -560,6 +1104,73 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('inference quota settings', () => {
+    const quotaEnvKeys = [
+      'INFERENCE_QUOTA_ANONYMOUS_5H_CENTS',
+      'INFERENCE_QUOTA_ANONYMOUS_7D_CENTS',
+      'INFERENCE_QUOTA_REGISTERED_5H_CENTS',
+      'INFERENCE_QUOTA_REGISTERED_7D_CENTS',
+    ] as const
+
+    let savedEnv: Partial<Record<(typeof quotaEnvKeys)[number], string>>
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = {}
+      for (const key of quotaEnvKeys) {
+        if (process.env[key] !== undefined) {
+          savedEnv[key] = process.env[key]
+        }
+        delete process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      for (const key of quotaEnvKeys) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('uses the documented anonymous and registered defaults', () => {
+      const settings = getSettings()
+
+      expect(settings.inferenceQuotaAnonymousFiveHourCents).toBe(10)
+      expect(settings.inferenceQuotaAnonymousSevenDayCents).toBe(60)
+      expect(settings.inferenceQuotaRegisteredFiveHourCents).toBe(1_500)
+      expect(settings.inferenceQuotaRegisteredSevenDayCents).toBe(7_500)
+    })
+
+    it('coerces positive integer-cent overrides', () => {
+      process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS = '11'
+      process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS = '61'
+      process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS = '1501'
+      process.env.INFERENCE_QUOTA_REGISTERED_7D_CENTS = '7501'
+
+      const settings = getSettings()
+
+      expect(settings.inferenceQuotaAnonymousFiveHourCents).toBe(11)
+      expect(settings.inferenceQuotaAnonymousSevenDayCents).toBe(61)
+      expect(settings.inferenceQuotaRegisteredFiveHourCents).toBe(1_501)
+      expect(settings.inferenceQuotaRegisteredSevenDayCents).toBe(7_501)
+    })
+
+    it.each(quotaEnvKeys.map((key) => [key] as const))(
+      'rejects zero, negative, fractional, and nonnumeric %s',
+      (key) => {
+        for (const invalid of ['0', '-1', '1.5', 'invalid']) {
+          process.env[key] = invalid
+          clearSettingsCache()
+          expect(() => getSettings()).toThrow()
+        }
+      },
+    )
+  })
+
   describe('PowerSync settings', () => {
     const powersyncEnvKeys = [
       'POWERSYNC_URL',
@@ -601,7 +1212,8 @@ describe('Config Settings', () => {
       expect(settings.powersyncUrl).toBe('')
       expect(settings.powersyncJwtKid).toBe('')
       expect(settings.powersyncJwtSecret).toBe('')
-      expect(settings.powersyncTokenExpirySeconds).toBe(3600)
+      // Bounds how long a device can keep reconnecting to the sync stream.
+      expect(settings.powersyncTokenExpirySeconds).toBe(300)
     })
 
     it('should use localhost defaults when NODE_ENV=development', () => {
@@ -636,8 +1248,8 @@ describe('Config Settings', () => {
 
       const settings = getSettings()
 
+      // toBe compares with Object.is, so the string '1800' would fail here.
       expect(settings.powersyncTokenExpirySeconds).toBe(1800)
-      expect(typeof settings.powersyncTokenExpirySeconds).toBe('number')
     })
 
     it('should reject zero token expiry', () => {
@@ -722,5 +1334,175 @@ describe('Config Settings', () => {
     it('rejects empty string', () => {
       expect(isOAuthRedirectUriAllowed('', settings)).toBe(false)
     })
+  })
+})
+
+describe('debug transcript settings', () => {
+  const envKeys = [
+    'DEBUG_TRANSCRIPT_UPSTREAM_URL',
+    'DEBUG_TRANSCRIPT_UPSTREAM_KEY',
+    'DEBUG_TRANSCRIPT_INTAKE_ENABLED',
+  ] as const
+  let savedEnv: Record<string, string | undefined>
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]))
+    clearSettingsCache()
+  })
+  afterEach(() => {
+    for (const key of envKeys) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = savedEnv[key]
+      }
+    }
+    clearSettingsCache()
+  })
+  /** Parse an isolated upstream configuration through the public settings accessor. */
+  const parseWithEnv = (env: Record<string, string>) => {
+    for (const key of envKeys) {
+      delete process.env[key]
+    }
+    Object.assign(process.env, env)
+    clearSettingsCache()
+    return getSettings()
+  }
+  it('derives debugTranscriptsEnabled from the upstream pair', () => {
+    const off = parseWithEnv({})
+    expect(off.debugTranscriptsEnabled).toBe(false)
+
+    const on = parseWithEnv({
+      DEBUG_TRANSCRIPT_UPSTREAM_URL: 'https://api.example.test',
+      DEBUG_TRANSCRIPT_UPSTREAM_KEY: 'k',
+    })
+    expect(on.debugTranscriptsEnabled).toBe(true)
+    expect(on.debugTranscriptUpstreamUrl).toBe('https://api.example.test')
+  })
+
+  it('rejects an upstream url without a key and vice versa', () => {
+    expect(() => parseWithEnv({ DEBUG_TRANSCRIPT_UPSTREAM_URL: 'https://api.example.test' })).toThrow(
+      /debugTranscriptUpstreamKey/,
+    )
+    expect(() => parseWithEnv({ DEBUG_TRANSCRIPT_UPSTREAM_KEY: 'k' })).toThrow(/debugTranscriptUpstreamUrl/)
+  })
+
+  it('reads the intake flag', () => {
+    expect(parseWithEnv({ DEBUG_TRANSCRIPT_INTAKE_ENABLED: 'true' }).debugTranscriptIntakeEnabled).toBe(true)
+  })
+})
+
+describe('Hosted agent settings', () => {
+  const envKeys = [
+    'AGENT_ENABLED',
+    'AGENT_MODEL',
+    'AGENT_MAX_STEPS',
+    'AGENT_FIREWORKS_SERVICE_TIER',
+    'AGENT_SYSTEM_PROMPT',
+    'AGENT_MCP_SERVERS',
+    'AGENT_NAME',
+    'AGENT_DESCRIPTION',
+    'AGENT_ICON',
+    'AGENT_TIMEZONE',
+    'ALLOW_ANONYMOUS_AGENT_DISCOVERY',
+  ]
+  const saved: Record<string, string | undefined> = {}
+
+  beforeEach(() => {
+    for (const key of envKeys) {
+      saved[key] = process.env[key]
+      delete process.env[key]
+    }
+    clearSettingsCache()
+  })
+
+  afterEach(() => {
+    for (const key of envKeys) {
+      if (saved[key] === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = saved[key]
+      }
+    }
+    clearSettingsCache()
+  })
+
+  it('defaults off or empty when the env vars are unset', () => {
+    const settings = getSettings()
+    expect(settings.agentEnabled).toBe(false)
+    expect(settings.agentModel).toBe('')
+    expect(settings.agentMaxSteps).toBe(8)
+    expect(settings.agentSystemPrompt).toBe('')
+    expect(settings.agentMcpServers).toBe('')
+    expect(settings.agentName).toBe('Assistant')
+    expect(settings.agentDescription).toBe('')
+    expect(settings.agentIcon).toBe('')
+    expect(settings.agentTimezone).toBe('UTC')
+    expect(settings.allowAnonymousAgentDiscovery).toBe(false)
+  })
+
+  it('reads every env var when set', () => {
+    process.env.AGENT_ENABLED = 'true'
+    process.env.AGENT_MODEL = 'test-model'
+    process.env.AGENT_MAX_STEPS = '3'
+    process.env.AGENT_SYSTEM_PROMPT = 'test-system-prompt'
+    process.env.AGENT_MCP_SERVERS = '[{"url":"https://mcp.example.test"}]'
+    process.env.AGENT_NAME = 'test-name'
+    process.env.AGENT_DESCRIPTION = 'test-description'
+    process.env.AGENT_ICON = 'test-icon'
+    process.env.AGENT_TIMEZONE = 'Europe/Amsterdam'
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    const settings = getSettings()
+    expect(settings.agentEnabled).toBe(true)
+    expect(settings.agentModel).toBe('test-model')
+    expect(settings.agentMaxSteps).toBe(3)
+    expect(settings.agentSystemPrompt).toBe('test-system-prompt')
+    expect(settings.agentMcpServers).toBe('[{"url":"https://mcp.example.test"}]')
+    expect(settings.agentName).toBe('test-name')
+    expect(settings.agentDescription).toBe('test-description')
+    expect(settings.agentIcon).toBe('test-icon')
+    expect(settings.agentTimezone).toBe('Europe/Amsterdam')
+    expect(settings.allowAnonymousAgentDiscovery).toBe(true)
+  })
+
+  it('accepts a UTC offset as AGENT_TIMEZONE', () => {
+    process.env.AGENT_TIMEZONE = '+01:00'
+    expect(getSettings().agentTimezone).toBe('+01:00')
+  })
+
+  it('refuses to start on an AGENT_TIMEZONE that is neither an IANA zone nor a UTC offset', () => {
+    process.env.AGENT_TIMEZONE = 'Mars/Olympus_Mons'
+    expect(() => getSettings()).toThrow('AGENT_TIMEZONE must be an IANA time zone or a UTC offset')
+  })
+
+  it('treats an empty AGENT_MAX_STEPS as unset', () => {
+    process.env.AGENT_MAX_STEPS = ''
+    expect(getSettings().agentMaxSteps).toBe(8)
+  })
+
+  it('accepts AGENT_MAX_STEPS up to one step per tool call a reply may make, plus the answer', () => {
+    process.env.AGENT_MAX_STEPS = String(maxAgentSteps)
+    expect(getSettings().agentMaxSteps).toBe(maxAgentSteps)
+  })
+
+  it('defaults AGENT_FIREWORKS_SERVICE_TIER to standard, including when empty', () => {
+    expect(getSettings().agentFireworksServiceTier).toBe('standard')
+    process.env.AGENT_FIREWORKS_SERVICE_TIER = ''
+    clearSettingsCache()
+    expect(getSettings().agentFireworksServiceTier).toBe('standard')
+  })
+
+  it('accepts priority as AGENT_FIREWORKS_SERVICE_TIER', () => {
+    process.env.AGENT_FIREWORKS_SERVICE_TIER = 'priority'
+    expect(getSettings().agentFireworksServiceTier).toBe('priority')
+  })
+
+  it('refuses to start on an unknown AGENT_FIREWORKS_SERVICE_TIER', () => {
+    process.env.AGENT_FIREWORKS_SERVICE_TIER = 'priorty'
+    expect(() => getSettings()).toThrow(/agentFireworksServiceTier/)
+  })
+
+  it('refuses to start on an AGENT_MAX_STEPS past that', () => {
+    process.env.AGENT_MAX_STEPS = String(maxAgentSteps + 1)
+    expect(() => getSettings()).toThrow(`AGENT_MAX_STEPS must be at most ${maxAgentSteps}`)
   })
 })

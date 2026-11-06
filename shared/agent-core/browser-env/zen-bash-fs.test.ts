@@ -14,7 +14,7 @@ import { Bash } from 'just-bash'
 import { mountInMemoryFs } from './mount.ts'
 import { ZenBashFileSystem } from './zen-bash-fs.ts'
 
-const JAIL = '/workspace/t1'
+const jail = '/workspace/t1'
 
 beforeAll(async () => {
   await mountInMemoryFs()
@@ -26,7 +26,7 @@ beforeAll(async () => {
   await fsp.writeFile('/etc/passwd', 'root')
 })
 
-const fs = new ZenBashFileSystem(JAIL)
+const fs = new ZenBashFileSystem(jail)
 
 describe('ZenBashFileSystem jail', () => {
   it('reads files inside the workspace (absolute and relative)', async () => {
@@ -89,7 +89,7 @@ describe('ZenBashFileSystem jail', () => {
     await fsp.writeFile('/workspace/sibling/secret', 'TOPSECRET')
     await fsp.mkdir('/workspace/t1/deep', { recursive: true })
 
-    const bash = new Bash({ fs, cwd: JAIL, defenseInDepth: false })
+    const bash = new Bash({ fs, cwd: jail, defenseInDepth: false })
     const result = await bash.exec('ln -s ../sibling deep/x && mv deep/x x && cat x/secret', {})
 
     expect(result.stdout).not.toContain('TOPSECRET')

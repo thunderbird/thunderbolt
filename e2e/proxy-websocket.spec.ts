@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { collectPageErrors, loginViaOidc } from './helpers'
 
 const cloudUrl = 'http://localhost:8000/v1'
@@ -31,9 +31,7 @@ const targetWsUrl = 'wss://upstream.example.com/realtime/socket'
  * a real browser, after a real auth flow, with the actual frontend code path
  * in play (no test-only fakes substituted into module graph).
  */
-test('createProxyWebSocket: target URL travels as tbproxy.target.<base64url> on /proxy/ws', async ({
-  page,
-}) => {
+test('createProxyWebSocket: target URL travels as tbproxy.target.<base64url> on /proxy/ws', async ({ page }) => {
   const errors = collectPageErrors(page)
 
   await loginViaOidc(page)
@@ -47,7 +45,9 @@ test('createProxyWebSocket: target URL travels as tbproxy.target.<base64url> on 
       const b64UrlEncode = (text: string): string => {
         const utf8 = new TextEncoder().encode(text)
         let binary = ''
-        for (const byte of utf8) binary += String.fromCharCode(byte)
+        for (const byte of utf8) {
+          binary += String.fromCharCode(byte)
+        }
         const b64 = btoa(binary)
         return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
       }

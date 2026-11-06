@@ -53,7 +53,7 @@ export const includedTables = Object.fromEntries(
 
 /**
  * Backup envelope produced by {@link exportUserData}. See
- * `docs/architecture/export-format.md` for the spec consumed by THU-597.
+ * `docs/internals/architecture/export-format.md` for the spec consumed by THU-597.
  *
  * `tables` is keyed by the precise included-table union (auto-derived from
  * the PowerSync schema minus {@link excludedFromExport}), so the importer

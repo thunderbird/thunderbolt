@@ -15,7 +15,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'Pill toggle. OFF is a neutral filled track with an outline; ON sweeps the brand amber→raspberry gradient (the switch is where the gradient token originated). Geometry never changes between states — only color.',
+          'Pill toggle. OFF is a neutral filled track with an outline; ON uses a muted amber→raspberry brand gradient. Geometry never changes between states — only color.',
       },
     },
   },

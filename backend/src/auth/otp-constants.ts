@@ -10,3 +10,6 @@ export const otpExpiryMs = otpExpirySeconds * 1000
 
 /** HTTP header name for challenge token session binding. */
 export const challengeTokenHeader = 'x-challenge-token'
+
+/** Only ever issued when NODE_ENV === 'test'; the Playwright consumer-mode pair relies on this code. */
+export const testSignInOtp = '12345678'

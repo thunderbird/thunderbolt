@@ -2,14 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import type { Agent } from '@/types/acp'
+import { SettingsSectionLabel } from '@/components/settings/settings-list'
 import { AgentRow } from './agent-row'
-
-const SectionLabel = ({ children }: { children: string }) => (
-  <h2 className="text-[length:var(--font-size-xs)] font-medium uppercase tracking-wide text-muted-foreground">
-    {children}
-  </h2>
-)
 
 type AgentListProps = {
   /** Unified list from `useAllAgents` (built-in first, then system, then customs). */
@@ -49,11 +45,15 @@ export const AgentList = ({ agents, selectedId, onOpenAgent }: AgentListProps) =
   return (
     <div className="flex flex-col gap-6" data-testid="agent-list">
       <section className="flex flex-col gap-2" data-testid="agent-section-yours">
-        <SectionLabel>Your agents</SectionLabel>
+        <SettingsSectionLabel>
+          <Trans>Your agents</Trans>
+        </SettingsSectionLabel>
         <div className="flex flex-col gap-4">{rows(yourAgents)}</div>
       </section>
       <section className="flex flex-col gap-2" data-testid="agent-section-system">
-        <SectionLabel>System agents</SectionLabel>
+        <SettingsSectionLabel>
+          <Trans>System agents</Trans>
+        </SettingsSectionLabel>
         <div className="flex flex-col gap-4">{rows(systemAgents)}</div>
       </section>
     </div>

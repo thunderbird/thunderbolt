@@ -8,7 +8,7 @@
  * We exercise the protocol surface end-to-end without an actual websocket:
  *  - `send` callback collects outbound JSON-RPC frames into an array.
  *  - `fetchFn` is injected per backend/docs/testing.md to mock the upstream
- *    (no `mock.module` — see docs/development/testing.md).
+ *    (no `mock.module` — see docs/internals/development/testing.md).
  *
  * Coverage focus:
  *  - 2-step Deepset flow (POST /search_sessions, then POST /chat-stream).

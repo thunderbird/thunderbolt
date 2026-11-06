@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull, or } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { devicesTable } from '@/db/tables'
 import type { DrizzleQueryWithPromise } from '@/types'
@@ -18,7 +18,7 @@ export type Device = {
   lastSeen: string | null
   createdAt: string | null
   revokedAt: string | null
-  deviceType: 'normal' | 'bridge' | null
+  deviceType: 'normal' | 'bridge' | 'cli' | null
   nodeId: string | null
   nodeIdAttestedAt: string | null
 }
@@ -39,14 +39,19 @@ export const getAllDevices = (db: AnyDrizzleDatabase) => {
   return query as typeof query & DrizzleQueryWithPromise<Device>
 }
 
-/**
- * Gets untrusted, non-revoked devices (pending approval) synced via PowerSync.
- */
+/** Gets untrusted, non-revoked devices awaiting approval. */
 export const getPendingDevices = (db: AnyDrizzleDatabase) => {
   const query = db
     .select()
     .from(devicesTable)
-    .where(and(eq(devicesTable.trusted, 0), eq(devicesTable.approvalPending, 1), isNull(devicesTable.revokedAt)))
+    .where(
+      and(
+        eq(devicesTable.trusted, 0),
+        eq(devicesTable.approvalPending, 1),
+        isNull(devicesTable.revokedAt),
+        or(isNull(devicesTable.deviceType), eq(devicesTable.deviceType, 'normal')),
+      ),
+    )
     .orderBy(desc(devicesTable.createdAt))
   return query as typeof query & DrizzleQueryWithPromise<Device>
 }

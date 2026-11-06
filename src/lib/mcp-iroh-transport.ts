@@ -25,6 +25,7 @@ import { irohAlpnFor } from '@shared/iroh'
 import { dialIrohBridge, irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { createNdjsonDecoder, encodeNdjsonFrame } from '@/acp/iroh/ndjson'
 import type { IrohClientLoader, IrohConnectionLike } from '@/acp/iroh/types'
+import { TransportTerminationError } from '@/acp/termination'
 import type { HttpClient } from '@/lib/http'
 import { ensureSelfEnrollment } from '@/lib/iroh-enrollment'
 
@@ -102,7 +103,8 @@ export const createMcpIrohTransport = (options: McpIrohTransportOptions): Transp
       }
       teardown(null)
     } catch (err) {
-      teardown(err instanceof Error ? err : new Error(String(err)))
+      const cause = err instanceof Error ? err : new Error(String(err))
+      teardown(new TransportTerminationError('stream-error', cause.message, { cause }))
     }
   }
 
@@ -130,7 +132,14 @@ export const createMcpIrohTransport = (options: McpIrohTransportOptions): Transp
     async send(message) {
       // The SDK installs callbacks and calls `start()` before any `send()`, so a
       // missing connection here is a programming error, not a runtime branch.
-      await connection!.send(encodeNdjsonFrame(message))
+      try {
+        await connection!.send(encodeNdjsonFrame(message))
+      } catch (err) {
+        const cause = err instanceof Error ? err : new Error(String(err))
+        const error = new TransportTerminationError('stream-error', cause.message, { cause })
+        teardown(error)
+        throw error
+      }
     },
     async close() {
       teardown(null)

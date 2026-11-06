@@ -17,7 +17,7 @@ import { createTestDb } from './db'
 /** Deterministic DNS resolver for e2e tests. Resolves `private.test` to a
  *  private address (so SSRF blocks fire) and everything else to a public IP.
  *  Injected as a `createApp` dep — replaces the `mock.module('node:dns')`
- *  pattern, which leaks across test files (see docs/development/testing.md). */
+ *  pattern, which leaks across test files (see docs/internals/development/testing.md). */
 export const e2eDnsLookup: DnsLookup = (host) => {
   if (host === 'private.test') {
     return Promise.resolve([{ address: '192.168.1.1', family: 4 }])
@@ -80,7 +80,7 @@ export const createTestApp = async (
 
   // Per-test capture: each createTestApp run gets its own auth instance with a
   // captured `sendSignInEmail`. This is dependency injection (not `mock.module`)
-  // so it never leaks to other test files (see docs/development/testing.md).
+  // so it never leaks to other test files (see docs/internals/development/testing.md).
   const captureSignInEmail = mock((_args: { email: string; otp: string; verifyUrl: string }) => Promise.resolve())
   const auth = createAuth(db, { sendSignInEmail: captureSignInEmail })
   const app = await createApp({
@@ -147,6 +147,20 @@ export const createTestApp = async (
     cleanup: cleanupDb,
   }
 }
+
+/**
+ * Resolve once the server answers a ping sent now. A server takes frames in order and, in this
+ * process, calls its message handler for each before the pong reaches the client, so by then the
+ * handler has run up to its first `await` for every frame sent before the ping. Work after that
+ * `await` may still be pending. Use it instead of a sleep to know a frame has been received.
+ */
+export const pingRoundTrip = (ws: WebSocket): Promise<void> =>
+  new Promise((resolve) => {
+    // Bun's client WebSocket at runtime; the DOM typings this workspace loads omit its `ping()`.
+    const bunClient = ws as WebSocket & Pick<Bun.WebSocket, 'ping'>
+    bunClient.addEventListener('pong', () => resolve(), { once: true })
+    bunClient.ping()
+  })
 
 /** Build the Authorization header for a test request. */
 export const authHeaders = (bearerToken: string): Record<string, string> => ({

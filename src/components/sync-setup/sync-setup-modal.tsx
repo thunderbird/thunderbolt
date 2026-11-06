@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ResponsiveModal, ResponsiveModalContent } from '@/components/ui/responsive-modal'
+import { Trans } from '@lingui/react/macro'
+import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
 import { Button } from '@/components/ui/button'
 import { useSyncSetup } from '@/hooks/use-sync-setup'
 import { useApprovalPolling } from '@/hooks/use-approval-polling'
@@ -12,11 +13,13 @@ import { useHttpClient } from '@/contexts'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
+import { PasskeyEnrollStep } from './passkey-enroll-step'
+import { usePasskeyAvailable } from '@/lib/passkey'
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { IconCircle } from '@/components/onboarding/icon-circle'
-import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
+import { useYieldToMigration } from '@/hooks/use-yield-to-migration'
 import { ArrowLeft, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
-import { useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 type SyncSetupModalProps = {
   open: boolean
@@ -28,10 +31,15 @@ type SyncSetupModalProps = {
  * Multi-step wizard for sync/encryption setup.
  *
  * Flow: intro → detecting (auto) → (first-device-setup → recovery-key-display | approval-waiting)
+ * → passkey-enroll (optional, only while the account has no passkey slot)
  */
 export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
   const setup = useSyncSetup()
   const httpClient = useHttpClient()
+  const passkeyAvailable = usePasskeyAvailable()
+  // The passkey step is offered once per account: only while no slot exists yet.
+  const shouldOfferPasskey = (passkeySlotCredentialId: string | null) => passkeyAvailable && !passkeySlotCredentialId
+  const canUnlockWithPasskey = passkeyAvailable && !!setup.passkeySlotCredentialId
   const hasCompletedRef = useRef(false)
 
   // Reset wizard state when modal opens (not on close — avoids step flash during close animation)
@@ -42,30 +50,69 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   }
   prevOpen.current = open
 
+  // Closing mid-enrollment would hide its result, success or failure.
+  const [isPasskeyEnrolling, setIsPasskeyEnrolling] = useState(false)
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
-  const canDismiss = !isRecoveryKeyStep && !setup.isLoading
+  const canDismiss = !isRecoveryKeyStep && !setup.isLoading && !isPasskeyEnrolling
 
-  const completeAndClose = () => {
+  // Stable identity so the yield listener isn't torn down and re-added every render.
+  const completeAndClose = useCallback(() => {
     if (hasCompletedRef.current) {
       return
     }
     hasCompletedRef.current = true
     onComplete()
     onOpenChange(false)
-  }
+  }, [onComplete, onOpenChange])
 
-  const showSuccess = () => {
+  // Only one recovery-phrase surface at a time: if the init-time migration lands
+  // while this wizard is open, the wizard steps aside instead of stacking under
+  // the migration dialog. It COMPLETES rather than merely closing — the migration
+  // provisioned this device's keys, which is exactly what the wizard was opened
+  // to do, so cancelling here would drop the user's request to enable sync and
+  // flip the toggle back off. See `useYieldToMigration`.
+  useYieldToMigration({
+    open,
+    isShowingOwnRecoveryKey: isRecoveryKeyStep,
+    onYield: completeAndClose,
+  })
+
+  // Callers acting right after detection pass the slot they just detected; the
+  // others run in a later render, where state already holds it.
+  const showSuccess = (passkeySlotCredentialId = setup.passkeySlotCredentialId) => {
+    if (shouldOfferPasskey(passkeySlotCredentialId)) {
+      setup.goToPasskeyEnroll('complete')
+      return
+    }
     setup.completeSetup()
   }
 
   const handleFirstDeviceDone = () => {
+    if (shouldOfferPasskey(setup.passkeySlotCredentialId)) {
+      setup.goToPasskeyEnroll('close')
+      return
+    }
     completeAndClose()
   }
 
+  const handlePasskeyStepDone = () => {
+    if (setup.afterPasskey === 'close') {
+      completeAndClose()
+      return
+    }
+    setup.completeSetup()
+  }
+
+  const handleUnlockWithPasskey = async () => {
+    if (await setup.unlockWithPasskey()) {
+      setup.completeSetup()
+    }
+  }
+
   const handleContinueIntro = async () => {
-    const result = await setup.continueIntro()
-    if (result === 'already-trusted') {
-      showSuccess()
+    const { outcome, passkeySlotCredentialId } = await setup.continueIntro()
+    if (outcome === 'already-trusted') {
+      showSuccess(passkeySlotCredentialId)
     }
   }
 
@@ -81,8 +128,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   }
 
   const handleRevoked = () => {
+    // The HttpClient has already turned the 403 into the revocation reset; just get out of its way.
     onOpenChange(false)
-    window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
   }
 
   const handleDenied = () => {
@@ -100,11 +147,15 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   }
 
   const { isPolling } = useApprovalPolling({
-    enabled: setup.step === 'approval-waiting',
+    // Paused while a passkey unlock (or a manual check) is in flight, so no new poll
+    // starts staging keys alongside it. A check already in flight still finishes;
+    // it can only stage the same account's keys.
+    enabled: setup.step === 'approval-waiting' && !setup.isLoading,
     checkApproval: () => checkApprovalAndUnwrap(httpClient),
-    onApproved: showSuccess,
+    onApproved: () => showSuccess(),
     onRevoked: handleRevoked,
     onDenied: handleDenied,
+    onVerificationFailed: setup.approvalVerificationFailed,
   })
 
   const handleRecoveryKeySubmit = async () => {
@@ -119,7 +170,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
       open={open}
       onOpenChange={(isOpen) => {
         if (!isOpen && canDismiss) {
-          if (setup.step === 'setup-complete') {
+          // The device already holds the keys on both steps, so dismissing finishes setup.
+          if (setup.step === 'setup-complete' || setup.step === 'passkey-enroll') {
             completeAndClose()
           } else {
             handleClose()
@@ -139,6 +191,9 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         }
       }}
     >
+      <ResponsiveModalTitle className="sr-only">
+        <Trans>Set up encrypted sync</Trans>
+      </ResponsiveModalTitle>
       {setup.step === 'recovery-key-entry' && (
         <button
           type="button"
@@ -146,7 +201,9 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
           className="absolute left-4 top-4 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ArrowLeft className="size-[var(--icon-size-default)]" />
-          <span className="sr-only">Go back</span>
+          <span className="sr-only">
+            <Trans>Go back</Trans>
+          </span>
         </button>
       )}
 
@@ -171,12 +228,18 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 
         {setup.step === 'approval-waiting' && (
           <ApprovalWaitingStep
+            fingerprint={setup.approvalFingerprint}
             error={setup.approvalError}
             onContinue={handleApprovalContinue}
             onUseRecoveryKey={setup.goToRecoveryKeyEntry}
+            onUnlockWithPasskey={canUnlockWithPasskey ? handleUnlockWithPasskey : undefined}
             isLoading={setup.isLoading}
             isPolling={isPolling}
           />
+        )}
+
+        {setup.step === 'passkey-enroll' && (
+          <PasskeyEnrollStep unlocksSync onDone={handlePasskeyStepDone} onBusyChange={setIsPasskeyEnrolling} />
         )}
 
         {setup.step === 'recovery-key-entry' && (
@@ -207,10 +270,14 @@ const IntroStep = ({ onContinue, isLoading }: { onContinue: () => void; isLoadin
       <IconCircle>
         <ShieldCheck className="w-8 h-8 text-primary" />
       </IconCircle>
-      <h2 className="text-2xl font-bold">Set up sync</h2>
+      <h2 className="text-2xl font-bold">
+        <Trans>Set up sync</Trans>
+      </h2>
       <p className="text-muted-foreground">
-        Keep your data in sync across all your devices. Everything is encrypted end-to-end. Only your devices can read
-        your data.
+        <Trans>
+          Keep your data in sync across all your devices. Everything is encrypted end-to-end. Only your devices can read
+          your data.
+        </Trans>
       </p>
     </div>
 
@@ -219,10 +286,10 @@ const IntroStep = ({ onContinue, isLoading }: { onContinue: () => void; isLoadin
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Setting up…
+            <Trans>Setting up…</Trans>
           </>
         ) : (
-          'Continue'
+          <Trans>Continue</Trans>
         )}
       </Button>
     </div>
@@ -245,16 +312,24 @@ const DetectingStep = ({ isLoading, error, onRetry }: DetectingStepProps) => (
       {isLoading && (
         <>
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-          <h2 className="text-2xl font-bold">Setting up encryption…</h2>
-          <p className="text-muted-foreground">Registering this device and detecting your account status.</p>
+          <h2 className="text-2xl font-bold">
+            <Trans>Setting up encryption…</Trans>
+          </h2>
+          <p className="text-muted-foreground">
+            <Trans>Registering this device and detecting your account status.</Trans>
+          </p>
         </>
       )}
       {error && (
         <>
-          <h2 className="text-2xl font-bold">Something went wrong</h2>
+          <h2 className="text-2xl font-bold">
+            <Trans>Something went wrong</Trans>
+          </h2>
           <p className="text-sm text-destructive">{error}</p>
           <div className="pt-2">
-            <Button onClick={onRetry}>Try again</Button>
+            <Button onClick={onRetry}>
+              <Trans>Try again</Trans>
+            </Button>
           </div>
         </>
       )}
@@ -278,14 +353,20 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
       <IconCircle>
         <Lock className="w-8 h-8 text-primary" />
       </IconCircle>
-      <h2 className="text-2xl font-bold">First device setup</h2>
+      <h2 className="text-2xl font-bold">
+        <Trans>First device setup</Trans>
+      </h2>
       <p className="text-muted-foreground">
-        This is the first device on your account. We&apos;ll create an encryption key to protect your data and give you
-        a recovery key to keep safe.
+        <Trans>
+          This is the first device on your account. We&apos;ll create an encryption key to protect your data and give
+          you a recovery key to keep safe.
+        </Trans>
       </p>
-      <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
-        Please store your recovery key somewhere safe. You&apos;ll need it to access your data if you ever lose all your
-        devices.
+      <p className="text-sm font-medium text-warning">
+        <Trans>
+          Please store your recovery key somewhere safe. You&apos;ll need it to access your data if you ever lose all
+          your devices.
+        </Trans>
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
@@ -295,10 +376,10 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Generating keys…
+            <Trans>Generating keys…</Trans>
           </>
         ) : (
-          'Continue'
+          <Trans>Continue</Trans>
         )}
       </Button>
     </div>
@@ -315,15 +396,19 @@ const DeniedStep = ({ onRetry }: { onRetry: () => void }) => (
       <IconCircle>
         <ShieldAlert className="w-8 h-8 text-destructive" />
       </IconCircle>
-      <h2 className="text-2xl font-bold">Request denied</h2>
+      <h2 className="text-2xl font-bold">
+        <Trans>Request denied</Trans>
+      </h2>
       <p className="text-muted-foreground">
-        Your request to sync this device was denied by another device. You can try again or close this dialog.
+        <Trans>
+          Your request to sync this device was denied by another device. You can try again or close this dialog.
+        </Trans>
       </p>
     </div>
 
     <div className="pt-5">
       <Button className="w-full" onClick={onRetry}>
-        Try again
+        <Trans>Try again</Trans>
       </Button>
     </div>
   </div>
@@ -337,15 +422,17 @@ const SetupCompleteStep = ({ onDone }: { onDone: () => void }) => (
   <div className="w-full flex flex-col">
     <div className="text-center space-y-4">
       <GradientCircleCheck className="mx-auto h-12 w-12" />
-      <h2 className="text-2xl font-bold">You&apos;re all set!</h2>
+      <h2 className="text-2xl font-bold">
+        <Trans>You&apos;re all set!</Trans>
+      </h2>
       <p className="text-muted-foreground">
-        This device has been approved and sync is now enabled across your devices.
+        <Trans>This device has been approved and sync is now enabled across your devices.</Trans>
       </p>
     </div>
 
     <div className="pt-5">
       <Button className="w-full" onClick={onDone}>
-        Done
+        <Trans>Done</Trans>
       </Button>
     </div>
   </div>

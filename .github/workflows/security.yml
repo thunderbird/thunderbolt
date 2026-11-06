@@ -69,8 +69,12 @@ jobs:
       # Post findings as a PR comment using curl + jq (no Node.js needed in Alpine).
       # Security: semgrep output is read from files and escaped by jq — never
       # interpolated through ${{ }} or shell expansion — preventing injection.
+      # Skip on fork PRs: the `pull_request` trigger gives fork runs a read-only
+      # GITHUB_TOKEN, so the comments API call 403s and fails the job. The scan
+      # itself and the SARIF upload still run; only the convenience comment is
+      # skipped. Same-repo PRs are unaffected.
       - name: Post Semgrep results as PR comment
-        if: always() && github.event_name == 'pull_request' && hashFiles('semgrep.json') != ''
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('semgrep.json') != ''
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

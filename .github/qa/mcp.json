@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83",
+        "--headless",
+        "--isolated",
+        "--browser",
+        "chromium",
+        "--executable-path",
+        "${THUNDERBOLT_CHROME_EXECUTABLE}",
+        "--viewport-size",
+        "${QA_MCP_VIEWPORT:-1280x800}",
+        "--console-level",
+        "error",
+        "--init-script",
+        ".github/qa/layout-probe.js",
+        "--file-paths",
+        "absolute",
+        "--image-responses",
+        "allow",
+        "--snapshot-mode",
+        "none",
+        "--output-dir",
+        "${QA_OUT:-qa-out}/${QA_CHARTER:-session}/mcp"
+      ]
+    }
+  }
+}

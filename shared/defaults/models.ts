@@ -63,18 +63,18 @@ export const hashModel = (model: SharedModel): string => {
  */
 
 /**
- * Opus 4.8 reuses the row id originally assigned to Sonnet 4.5 (and inherited by 4.7).
- * Reconciliation upgrades unmodified rows in place; edited rows survive.
+ * This default keeps a stable row identity so persisted model references remain valid.
+ * Generic defaults reconciliation upgrades unmodified rows in place.
  */
-export const defaultModelOpus48: SharedModel = {
+export const defaultModelOpus55: SharedModel = {
   id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-  name: 'Opus 4.8',
+  name: 'Opus 5.5',
   provider: 'thunderbolt',
-  model: 'opus-4.8',
+  model: 'opus-5-5',
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
-  contextWindow: 200000,
+  contextWindow: 1_000_000,
   toolUsage: 1,
   startWithReasoning: 0,
   supportsParallelToolCalls: 1,
@@ -86,29 +86,15 @@ export const defaultModelOpus48: SharedModel = {
   userId: null,
 }
 
-/**
- * Flash ships under a fresh id — not the retired V4 Pro id. Reusing Pro's id
- * would flip `isConfidential` 1 → 0 on threads that were created encrypted
- * (`isEncrypted` mirrors the model's `isConfidential` at creation), stranding
- * them because the model picker and send guard both enforce
- * `isEncrypted === isConfidential`. The retired Pro row is instead
- * soft-deleted by `cleanupRemovedDefaults`, so encrypted threads bound to it
- * surface as "model retired" rather than broken chats.
- *
- * The reconciler's `frozenFields: ['isConfidential', 'provider']` guard
- * enforces the same invariant from the OTA side — an OTA payload that ships
- * an existing id with `isConfidential` flipped is silently ignored on those
- * two columns. New values for either field must ship under a fresh id.
- */
-export const defaultModelDeepseekV4Flash: SharedModel = {
-  id: '019f227e-d640-727d-ba12-d51bd7d0a3d6',
-  name: 'DeepSeek V4 Flash',
-  provider: 'thunderbolt',
-  model: 'deepseek-v4-flash',
+export const defaultModelDeepSeekV41Flash: SharedModel = {
+  id: '01a06dd7-67ee-75be-b957-2b746271c49d',
+  name: 'DeepSeek V4.1 Flash',
+  provider: 'tinfoil',
+  model: 'deepseek-v4-1-flash',
   isSystem: 1,
   enabled: 1,
-  isConfidential: 0,
-  contextWindow: 131072,
+  isConfidential: 1,
+  contextWindow: 1_048_576,
   toolUsage: 1,
   startWithReasoning: 0,
   supportsParallelToolCalls: 0,
@@ -116,15 +102,19 @@ export const defaultModelDeepseekV4Flash: SharedModel = {
   url: null,
   defaultHash: null,
   vendor: 'deepseek',
-  description: 'Fast DeepSeek reasoning',
+  description: 'Fast, low-cost confidential chat with image support',
   userId: null,
 }
 
-export const defaultModelGlm52: SharedModel = {
+export const defaultModelId = defaultModelDeepSeekV41Flash.id
+
+export const defaultModelGlm53: SharedModel = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
-  name: 'GLM 5.2',
+  name: 'GLM 5.3',
+  // `provider` is the internal transport. The UI presents system-managed
+  // Tinfoil models as Thunderbolt so infrastructure does not leak into branding.
   provider: 'tinfoil',
-  model: 'glm-5-2',
+  model: 'glm-5-3',
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,
@@ -136,7 +126,7 @@ export const defaultModelGlm52: SharedModel = {
   url: null,
   defaultHash: null,
   vendor: 'zhipu',
-  description: 'Confidential chat via Tinfoil',
+  description: 'Confidential chat via Thunderbolt',
   userId: null,
 }
 
@@ -145,26 +135,87 @@ export const defaultModelGlm52: SharedModel = {
  * "Provided" group of the model picker. Reorder freely — but bump
  * `defaultModelsVersion` when you do.
  *
- * Retired between V1 and V2: `defaultModelDeepseekV4Pro` (superseded by
- * Flash under a fresh id) and `defaultModelKimiK26` (dropped). Their rows are
- * soft-deleted by `cleanupRemovedDefaults` on next reconcile; unedited copies
- * disappear cleanly, user-edited copies survive but point at retired ids and
- * will surface upstream errors when used.
+ * `cleanupRemovedDefaults` soft-deletes unedited copies of models absent
+ * from this list. User-edited copies survive but may reference unavailable
+ * upstream models and return errors when used.
+ * The backend accepts `glm-5-2`, `deepseek-v4-flash` and `glm-5-3-flash` for older clients.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
-  defaultModelOpus48,
-  defaultModelDeepseekV4Flash,
-  defaultModelGlm52,
+  defaultModelOpus55,
+  defaultModelDeepSeekV41Flash,
+  defaultModelGlm53,
 ] as const
+
+/** Whether a model reads image attachments. */
+export type ImageSupport = 'supported' | 'unsupported'
+
+/** The model fields that decide image support. The row id is excluded on purpose:
+ *  editing a row's URL or model slug points it at a different model. */
+export type ImageSupportModel = Pick<SharedModel, 'provider' | 'model' | 'url' | 'vendor'>
+
+/** A models lineup with its image-support declarations, keyed by row id: the
+ *  bundled defaults, or a newer set the backend ships in `/v1/config`. */
+export type ImageSupportLineup = {
+  data: ReadonlyArray<ImageSupportModel & Pick<SharedModel, 'id'>>
+  imageSupport: Readonly<Record<string, ImageSupport>>
+}
+
+/**
+ * Image support of every shipped default, keyed by default id. Declared rather
+ * than detected because the CLI can't detect it; the app uses it to skip
+ * detection. The backend ships it beside the rows in `/v1/config`, picked by
+ * `defaultModelsVersion` like them, so changing an entry needs a version bump.
+ * `models.test.ts` fails if a default ships without an entry.
+ */
+export const defaultModelImageSupport: Readonly<Record<string, ImageSupport>> = {
+  [defaultModelOpus55.id]: 'supported',
+  [defaultModelDeepSeekV41Flash.id]: 'supported',
+  [defaultModelGlm53.id]: 'unsupported',
+}
+
+/** Vendors whose Thunderbolt-hosted models all accept images. */
+const imageCapableManagedVendors: ReadonlySet<string> = new Set(['anthropic', 'openai', 'google'])
+
+/**
+ * Image support known without asking anyone: the lineup's declarations (applied to
+ * any row on the same provider and model slug), every Claude model on the native
+ * Anthropic provider, and Thunderbolt-hosted models from vision vendors. A lineup
+ * row without a declaration falls through to the other rules. Everything else
+ * needs detection, which only the app can do.
+ */
+export const staticImageSupport = (model: ImageSupportModel, lineup: ImageSupportLineup): ImageSupport | undefined => {
+  const shipped = lineup.data.find(
+    (candidate) => candidate.provider === model.provider && candidate.model === model.model,
+  )
+  const declared = shipped && lineup.imageSupport[shipped.id]
+  if (declared) {
+    return declared
+  }
+  if (model.provider === 'anthropic') {
+    return 'supported'
+  }
+  if (model.provider === 'thunderbolt' && model.vendor && imageCapableManagedVendors.has(model.vendor)) {
+    return 'supported'
+  }
+  return undefined
+}
+
+/**
+ * Whether to send images to a model when support can't be detected and a blocked
+ * image can't be explained, as in the CLI: only to models known to read them.
+ * The app detects the rest instead, and strips only models known not to.
+ */
+export const isKnownToReadImages = (model: ImageSupportModel, lineup: ImageSupportLineup): boolean =>
+  staticImageSupport(model, lineup) === 'supported'
 
 /**
  * Monotonic version of the shipped defaults. Bump every time `defaultModels`
  * changes in any way. The reconciler uses this as the ordering signal to
- * decide which device's defaults win in a multi-device sync group (THU-637):
+ * decide which device's defaults win in a multi-device sync group:
  * a device only overwrites existing rows when its picked defaults version is
  * strictly newer than the highest ever applied on this account.
  *
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 2
+export const defaultModelsVersion = 11

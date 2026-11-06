@@ -2,25 +2,45 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
+import { useState, type ReactNode } from 'react'
+
 import { AgentSelector } from '@/components/ui/agent-selector'
-import { Button } from '@/components/ui/button'
+import { ProjectBadge } from '@/projects/project-badge'
+import { useCreateItem } from '@/components/create-item/context'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
+import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { isEmbedded } from '@/lib/embed'
 import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
+import { useResolvedTheme } from '@/lib/theme-provider'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
-import { ArrowLeft, ArrowRight, Menu, MessageCirclePlus } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
-import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { exposesPrivateThread } from '@/chats/private-thread'
+import {
+  selectAllowCustomAgents,
+  selectBrandLogo,
+  selectConfigSettled,
+  selectMinimalMode,
+  useConfigStore,
+} from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
 import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
+
+/** Marks an element as part of the Tauri desktop window's drag surface (empty
+ *  on web/mobile where no custom title bar exists). */
+type TauriDragProps = { 'data-tauri-drag-region'?: boolean }
 
 /** Subscribes to the active chat instance's status to disable the agent
  *  selector while a reply is streaming. Pulled into its own component so
@@ -33,6 +53,14 @@ type HeaderAgentSelectorProps = {
   /** Omitted when the deployment forbids custom agents — the selector then hides
    *  its "Add Agent" footer. */
   onAddAgent?: () => void
+  /** Mobile-only presentation. When set, the selector renders inside its own
+   *  absolutely positioned wrapper: centered as a labeled pill on an empty new
+   *  chat, and docked beside the project as a circular icon button once the thread
+   *  exists (or a send is in flight). Both states share one element, so the
+   *  submit transition animates instead of remounting. */
+  mobile?: { hasThread: boolean; dragProps: TauriDragProps }
+  /** Mobile project control that shares a capsule with the docked agent picker. */
+  projectControl?: (joined: boolean) => ReactNode
 }
 
 const HeaderAgentSelector = ({
@@ -41,18 +69,82 @@ const HeaderAgentSelector = ({
   agents,
   onSelect,
   onAddAgent,
+  mobile,
+  projectControl,
 }: HeaderAgentSelectorProps) => {
   const { status } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
-  const disabled = status === 'streaming' || status === 'submitted'
+  const isReplying = status === 'streaming' || status === 'submitted'
+  // `status` flips to `submitted` synchronously on send, so the transition starts
+  // the moment the user submits — before the thread row lands in the store.
+  // Existing chats mount with `hasThread` already true, so they render docked
+  // in place with no transition (CSS transitions don't run on first paint).
+  const collapsed = mobile !== undefined && (mobile.hasThread || isReplying)
 
-  return (
+  const selector = (
     <AgentSelector
       selectedAgent={selectedAgent}
       agents={agents}
       onSelect={onSelect}
       onAddAgent={onAddAgent}
-      disabled={disabled}
+      disabled={isReplying}
+      collapsed={collapsed}
+      mobileJoined={collapsed && !!projectControl}
     />
+  )
+
+  if (!mobile) {
+    return selector
+  }
+
+  return (
+    <>
+      {projectControl && (
+        <div
+          aria-hidden="true"
+          className={cn(
+            'pointer-events-none absolute top-2 right-2 h-[var(--touch-height-lg)] w-[calc(var(--touch-height-lg)*2)] overflow-hidden rounded-full transition-[clip-path] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            mobileHeaderControlFillClass,
+            // Clip a fixed-size surface; animating width would cause layout on every frame.
+            collapsed
+              ? '[clip-path:inset(0_0_0_0_round_var(--touch-height-lg))]'
+              : '[clip-path:inset(0_0_0_50%_round_var(--touch-height-lg))]',
+          )}
+        >
+          <div
+            className={cn(
+              'absolute right-[var(--touch-height-lg)] inset-y-3 border-l border-border/50 transition-opacity duration-300 motion-reduce:transition-none',
+              collapsed ? 'opacity-100' : 'opacity-0',
+            )}
+          />
+        </div>
+      )}
+      {projectControl && (
+        <div {...mobile.dragProps} className="absolute top-2 right-2 z-10">
+          {projectControl(collapsed)}
+        </div>
+      )}
+      {/* Keep the first-send slide translate-only: layout/custom-property animations
+          compete with mounting the message list. The outer rail moves by its own
+          width and the inner trigger by its own half-width. Percentage endpoints
+          stay unchanged on resize, so resizing does not start another transition. */}
+      <div
+        {...mobile.dragProps}
+        className={cn(
+          'pointer-events-none absolute top-2 left-1/2 z-20 flex justify-end transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+          projectControl ? 'right-[calc(0.5rem+var(--touch-height-lg))]' : 'right-2',
+          collapsed ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        <div
+          className={cn(
+            'flex w-max shrink-0 items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            collapsed ? 'translate-x-0' : 'translate-x-1/2',
+          )}
+        >
+          {selector}
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -84,7 +176,9 @@ const HistoryNavButtons = () => {
         onClick={() => void navigate(-1)}
       >
         <ArrowLeft className="size-[var(--icon-size-default)]" />
-        <span className="sr-only">Go back</span>
+        <span className="sr-only">
+          <Trans>Go back</Trans>
+        </span>
       </Button>
       <Button
         variant="ghost"
@@ -94,7 +188,9 @@ const HistoryNavButtons = () => {
         onClick={() => void navigate(1)}
       >
         <ArrowRight className="size-[var(--icon-size-default)]" />
-        <span className="sr-only">Go forward</span>
+        <span className="sr-only">
+          <Trans>Go forward</Trans>
+        </span>
       </Button>
     </div>
   )
@@ -105,24 +201,30 @@ const HistoryNavButtons = () => {
  * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
-  const { toggleSidebar, state: sidebarState } = useSidebar()
+  const { t } = useLingui()
+  const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
-  // Tauri desktop hides the OS title bar; the header row itself doubles as
-  // the drag surface — including when the viewport is narrow enough to fall
-  // into the mobile-style layout. `<WindowControls />` renders its Win/Linux
-  // buttons inline on the right (self-nulls on macOS/web).
+  // Both desktop apps hide the native title bar (macOS overlays it with traffic
+  // lights; Windows/Linux are frameless), so the header row doubles as the drag
+  // surface — including when the viewport is narrow enough to fall into the
+  // mobile-style layout.
   const isDragRegionEnabled = isTauriDesktop()
-  const dragProps = isDragRegionEnabled ? { 'data-tauri-drag-region': true } : {}
+  const dragProps: TauriDragProps = isDragRegionEnabled ? { 'data-tauri-drag-region': true } : {}
   // The macOS traffic lights (ending at ~x=68) are wider than the collapsed
   // 48px icon rail, so nudge the header content right of the overhang with
   // some breathing room so the agent selector pill doesn't crowd the buttons.
   const needsTrafficLightClearance = isMacDesktop() && !isMobile && sidebarState === 'collapsed'
-  const navigate = useNavigate()
+  const { openCreateItem } = useCreateItem()
   const location = useLocation()
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const configSettled = useConfigStore(selectConfigSettled)
+  // Derived outside the store selector: it returns a fresh object, which zustand would see as a changed snapshot every render.
+  const brandLogo = selectBrandLogo(useConfigStore((state) => state.config))
+  const resolvedTheme = useResolvedTheme()
 
-  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId } = useChatStore(
+  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread } = useChatStore(
     useShallow((state) => {
       const session = state.sessions.get(state.currentSessionId ?? '')
 
@@ -131,6 +233,7 @@ export const Header = () => {
         selectedAgent: session?.selectedAgent,
         setSelectedAgent: state.setSelectedAgent,
         chatThreadId: session?.id,
+        chatThread: session?.chatThread,
       }
     }),
   )
@@ -141,23 +244,78 @@ export const Header = () => {
   // loading and the list is empty. Fall back to built-in only when the thread
   // has no agent.
   const effectiveAgent = selectedAgent ?? builtInAgent
-
-  const isChatRoute = location.pathname.startsWith('/chats')
-  const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
-
-  const handleAddAgent = () => {
-    navigate('/settings/agents')
+  const hasThread = chatThread != null
+  // A switch that would send a private chat off the device waits here for the
+  // user to confirm it. Guarded in this handler rather than in `setSelectedAgent`
+  // so the store action stays a plain write. The agent outlives `open` so the
+  // dialog keeps its name through the close animation.
+  const [privateSwitch, setPrivateSwitch] = useState<{ agent: Agent; threadId: string; open: boolean } | null>(null)
+  const agentName = privateSwitch?.agent.name ?? ''
+  // The header outlives chat navigation, so a prompt raised in one chat closes
+  // when the user moves to another: its confirm must never land on the chat now
+  // shown. Adjusted during render, React's pattern for state that follows a prop.
+  if (privateSwitch?.open && privateSwitch.threadId !== chatThreadId) {
+    setPrivateSwitch({ ...privateSwitch, open: false })
   }
 
-  const handleNewChat = () => {
-    navigate('/chats/new')
+  const isChatRoute = location.pathname.startsWith('/chats')
+  // Wait for `/config` so a first visit never flashes the pill before minimal mode is known.
+  const showAgentSelector =
+    isChatRoute && chatInstance !== undefined && allAgents.length > 0 && configSettled && !minimalMode
+
+  // The operator's logo takes the selector's place for direct visitors. Inside a native app's WebView the app's own chrome carries the branding.
+  const showBrandLogo = minimalMode && brandLogo !== null && !isEmbedded()
+  // Centered against the header on both layouts, so it never competes with the left-hand controls
+  // (traffic lights, expand toggle, history arrows). Mobile rows sit at the top (`items-start` header).
+  const brandLogoImage = showBrandLogo && (
+    <div
+      className={cn(
+        'pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center',
+        isMobile ? 'top-2 h-[var(--touch-height-lg)]' : 'inset-y-0',
+      )}
+    >
+      <img
+        src={resolvedTheme === 'dark' ? brandLogo.dark : brandLogo.light}
+        alt={brandLogo.alt || effectiveAgent.name}
+        draggable={false}
+        className="h-6 w-auto max-w-full object-contain"
+      />
+    </div>
+  )
+
+  const handleAddAgent = () => {
+    openCreateItem({ kind: 'agent' })
+  }
+
+  const switchAgent = (threadId: string | undefined, agent: Agent) => {
+    if (threadId) {
+      setSelectedAgent(threadId, agent).catch(console.error)
+    }
   }
 
   const handleAgentSelect = (agent: Agent) => {
-    if (chatThreadId) {
-      setSelectedAgent(chatThreadId, agent).catch(console.error)
+    if (chatThreadId && agent.id !== effectiveAgent.id && exposesPrivateThread(chatThread, agent)) {
+      setPrivateSwitch({ agent, threadId: chatThreadId, open: true })
+      return
     }
+    switchAgent(chatThreadId, agent)
   }
+
+  const privateSwitchDialog = (
+    <ConfirmActionDialog
+      open={privateSwitch?.open ?? false}
+      title={t`Send this private chat to ${agentName}?`}
+      description={t`This conversation will be sent to ${agentName} unencrypted and will no longer be private.`}
+      confirmLabel={t`Switch Agent`}
+      onConfirm={() => {
+        if (privateSwitch) {
+          switchAgent(privateSwitch.threadId, privateSwitch.agent)
+        }
+        setPrivateSwitch((current) => current && { ...current, open: false })
+      }}
+      onCancel={() => setPrivateSwitch((current) => current && { ...current, open: false })}
+    />
+  )
 
   const agentSelector = showAgentSelector && chatInstance && (
     <HeaderAgentSelector
@@ -166,48 +324,60 @@ export const Header = () => {
       agents={allAgents}
       onSelect={handleAgentSelect}
       onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
+      projectControl={
+        isChatRoute
+          ? (joined) => (
+              <ProjectBadge
+                chatThreadId={chatThreadId ?? null}
+                iconOnly
+                className={cn(
+                  'max-md:bg-transparent max-md:dark:bg-transparent max-md:backdrop-blur-none max-md:hover:bg-muted-foreground/10',
+                  joined && 'max-md:rounded-l-none max-md:rounded-r-full',
+                )}
+              />
+            )
+          : undefined
+      }
+      mobile={isMobile ? { hasThread, dragProps } : undefined}
     />
   )
 
-  // Mobile: 3-column layout. Center holds the agent selector.
+  // Mobile: sidebar toggle on the left; the agent selector positions itself
+  // (centered pill on an empty new chat, top-right circle once the chat has
+  // content — see HeaderAgentSelector).
   if (isMobile) {
-    const showNewChatButton = isChatRoute && location.pathname !== '/chats/new'
-
     return (
       <header
         {...dragProps}
-        className="relative flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
+        className="relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
       >
         <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'pl-20')}>
-          {/* In the mobile layout the sidebar opens as an overlay on top of the
-              content, so the toggle reads as a menu (burger) rather than a
-              panel collapse. On macOS the button sits right of the traffic
-              lights via the pl-20 above. */}
-          <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={toggleSidebar}>
-            <Menu strokeWidth={1.5} className="size-[var(--icon-size-default)]" />
-            <span className="sr-only">Toggle Sidebar</span>
+          {/* The same panel glyph as the desktop toggle, so one icon means
+              "sidebar" across both layouts even though mobile opens it as an
+              overlay. On macOS the button sits right of the traffic lights via
+              the pl-20 above. It wears the same muted circle as the overlay's
+              own header controls (close X, ⋯), filled at rest so the tap target
+              is visible without hover. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(mutedIconButtonClass, mobileHeaderControlFillClass)}
+            onClick={toggleSidebar}
+          >
+            <PanelLeftRounded className="size-[var(--icon-size-default)]" />
+            <span className="sr-only">
+              <Trans>Toggle Sidebar</Trans>
+            </span>
           </Button>
         </div>
 
-        {/* Absolutely centered so the macOS traffic-light clearance on the
-            left column can't push it off-center — flex sizing counts that
-            padding as part of the column's outer width, so symmetric flex-1
-            columns alone don't keep the middle truly centered. */}
-        <div
-          {...dragProps}
-          className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-2"
-        >
-          {agentSelector}
-        </div>
+        {agentSelector}
+        {brandLogoImage}
+        {privateSwitchDialog}
 
-        <div {...dragProps} className="flex flex-1 items-center gap-1 justify-end">
-          {showNewChatButton && (
-            <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={handleNewChat}>
-              <MessageCirclePlus className="size-[var(--icon-size-default)]" />
-              <span className="sr-only">New Chat</span>
-            </Button>
-          )}
-        </div>
+        {/* Empty right column — keeps the header row a drag surface on the
+            Tauri desktop app. */}
+        <div {...dragProps} className="flex flex-1 items-center" />
       </header>
     )
   }
@@ -217,11 +387,12 @@ export const Header = () => {
   // right of the arrows in the app). Theme and sync/account controls live in
   // the sidebar footer, so the right side stays empty (it remains a drag
   // surface on the Tauri desktop app).
-  // On the Tauri desktop app the expand toggle lives here while the sidebar is
-  // collapsed to a rail — just right of the macOS traffic lights, the same
-  // spot the collapse toggle occupies in the expanded sidebar's strip. On web
-  // the toggle stays inside the sidebar itself.
-  const showSidebarToggle = isTauriDesktop() && sidebarState === 'collapsed'
+  // On macOS the expand toggle lives here while the sidebar is collapsed to a
+  // rail — just right of the traffic lights, the same spot the collapse toggle
+  // occupies in the expanded sidebar's strip. On web and the Windows/Linux apps
+  // the toggle stays inside the sidebar itself. Hidden while the collapse is
+  // forced by a narrow window — expanding is a no-op there.
+  const showSidebarToggle = isMacDesktop() && sidebarState === 'collapsed' && !forceCollapsed
 
   return (
     <header
@@ -232,12 +403,19 @@ export const Header = () => {
         {showSidebarToggle && (
           <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={toggleSidebar}>
             <PanelLeftRounded className="size-[var(--icon-size-default)]" />
-            <span className="sr-only">Expand Sidebar</span>
+            <span className="sr-only">
+              <Trans>Expand Sidebar</Trans>
+            </span>
           </Button>
         )}
         {isTauriDesktop() && <HistoryNavButtons />}
         {agentSelector}
+        {/* Desktop keeps the project name beside the selector; mobile has an
+            independently positioned icon-only control. */}
+        {isChatRoute && <ProjectBadge chatThreadId={chatThreadId ?? null} />}
       </div>
+      {brandLogoImage}
+      {privateSwitchDialog}
     </header>
   )
 }

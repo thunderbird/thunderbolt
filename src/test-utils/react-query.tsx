@@ -4,6 +4,7 @@
 
 import { DatabaseProvider } from '@/contexts/database-context'
 import { HttpClientProvider } from '@/contexts/http-client-context'
+import type { HttpClient } from '@/lib/http'
 import { getDb, isDbRegistered } from '@/db/database'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
@@ -29,6 +30,8 @@ export const createQueryTestWrapper = (options?: {
   /** Override the proxy fetch so hooks that fetch through the universal proxy
    *  can assert on a mocked response. Defaults to a no-op empty `Response`. */
   proxyFetch?: FetchFn
+  /** Override the HTTP client so a test can record or answer backend calls. */
+  httpClient?: HttpClient
 }) => {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -41,7 +44,7 @@ export const createQueryTestWrapper = (options?: {
     },
   })
 
-  const mockHttpClient = createMockHttpClient()
+  const mockHttpClient = options?.httpClient ?? createMockHttpClient()
   const proxyFetch = options?.proxyFetch ?? mockProxyFetch
 
   const Wrapper = ({ children }: { children: ReactNode }) => {

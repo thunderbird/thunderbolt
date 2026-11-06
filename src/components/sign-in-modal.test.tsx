@@ -15,51 +15,7 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-// Mock InputOTP to avoid timer issues in tests
-// The input-otp library uses internal timers that conflict with fake timers
-mock.module('@/components/ui/input-otp', () => ({
-  InputOTP: ({
-    children,
-    value,
-    onChange,
-    onComplete,
-    disabled,
-    maxLength,
-  }: {
-    children: ReactNode
-    value?: string
-    onChange?: (value: string) => void
-    onComplete?: (value: string) => void
-    disabled?: boolean
-    maxLength?: number
-  }) => {
-    return (
-      <div data-testid="mock-otp-input" data-disabled={disabled} data-max-length={maxLength}>
-        <input
-          type="text"
-          value={value || ''}
-          onChange={(e) => {
-            const newValue = e.target.value.slice(0, maxLength || 8)
-            onChange?.(newValue)
-            if (newValue.length === (maxLength || 8)) {
-              onComplete?.(newValue)
-            }
-          }}
-          disabled={disabled}
-          data-testid="otp-input"
-        />
-        {children}
-      </div>
-    )
-  },
-  InputOTPGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  InputOTPSlot: ({ index }: { index: number }) => <div data-slot-index={index} />,
-  InputOTPSeparator: () => <span>-</span>,
-}))
-
-// Import after mock
 import { SignInModal } from './sign-in-modal'
-import { type ReactNode } from 'react'
 
 const challengeToken = 'test-challenge-token'
 const waitlistResponse = { success: true, challengeToken }
@@ -222,8 +178,12 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(mockFetchSpy).toHaveBeenCalledTimes(1)
-      const request = mockFetchSpy.mock.calls[0][0] as Request
+      // The AuthProvider's startup session check shares the spy.
+      const requests = mockFetchSpy.mock.calls
+        .map((call) => call[0] as Request)
+        .filter((request) => !request.url.includes('api/auth/get-session'))
+      expect(requests).toHaveLength(1)
+      const [request] = requests
       expect(request.url).toContain('waitlist/join')
       const body = await request.clone().json()
       expect(body).toEqual({ email: 'test@example.com' })
@@ -249,7 +209,7 @@ describe('SignInModal', () => {
         await getClock().tickAsync(0)
       })
 
-      expect(screen.getByText('Sending...')).toBeInTheDocument()
+      expect(screen.getByText('Sending…')).toBeInTheDocument()
       expect(input).toBeDisabled()
 
       // Resolve to clean up
@@ -374,7 +334,7 @@ describe('SignInModal', () => {
 
       // Should show OTP input prompt
       expect(screen.getByText('Or enter the 8-digit code')).toBeInTheDocument()
-      expect(screen.getByTestId('mock-otp-input')).toBeInTheDocument()
+      expect(screen.getByRole('textbox')).toBeInTheDocument()
     })
 
     it('shows success state after successful OTP verification', async () => {
@@ -389,8 +349,8 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      // Get the mocked OTP input and enter code
-      const otpInput = screen.getByTestId('otp-input')
+      // Enter the code
+      const otpInput = screen.getByRole('textbox')
       fireEvent.change(otpInput, { target: { value: '12345678' } })
 
       await act(async () => {
@@ -418,8 +378,8 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      // Get the mocked OTP input and enter code
-      const otpInput = screen.getByTestId('otp-input')
+      // Enter the code
+      const otpInput = screen.getByRole('textbox')
       fireEvent.change(otpInput, { target: { value: '12345678' } })
 
       await act(async () => {
@@ -442,21 +402,26 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      // Get the mocked OTP input and enter code
-      const otpInput = screen.getByTestId('otp-input')
+      // Enter the code
+      const otpInput = screen.getByRole('textbox')
       fireEvent.change(otpInput, { target: { value: '12345678' } })
 
       await act(async () => {
         await getClock().tickAsync(100)
       })
 
-      expect(mockSignInEmailOtp).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        otp: '12345678',
-        fetchOptions: {
-          headers: { 'x-challenge-token': challengeToken },
-        },
-      })
+      // Per-key: the call must carry the client-level headers too (Better Auth
+      // replaces rather than merges them, and a missing X-App-Version means a
+      // fail-closed 426 from the version gate).
+      const call = mockSignInEmailOtp.mock.calls[0][0] as {
+        email: string
+        otp: string
+        fetchOptions: { headers: Record<string, string> }
+      }
+      expect(call.email).toBe('test@example.com')
+      expect(call.otp).toBe('12345678')
+      expect(call.fetchOptions.headers['x-challenge-token']).toBe(challengeToken)
+      expect(call.fetchOptions.headers).toHaveProperty('X-Client-Platform')
     })
   })
 
@@ -473,7 +438,7 @@ describe('SignInModal', () => {
       })
 
       expect(screen.getByText('Or enter the 8-digit code')).toBeInTheDocument()
-      expect(screen.getByTestId('mock-otp-input')).toBeInTheDocument()
+      expect(screen.getByRole('textbox')).toBeInTheDocument()
 
       const backButton = screen.getByRole('button', { name: 'Go back' })
       fireEvent.click(backButton)

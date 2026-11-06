@@ -8,36 +8,47 @@ import type { HttpClient } from '@/contexts'
 import { getSettings, hasCurrentDefaultsVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
+import { startKeyRequestResponder } from '@/db/encryption'
+import { ensureSessionBound, ensureV2Encryption, refreshAK, stageKeyring } from '@/services/encryption'
+import { fetchEncryptionMetadata } from '@/api/encryption'
+import { getKeyPair } from '@/crypto'
+import { dispatchE2eeProvisioningSettled } from '@/hooks/use-e2ee-ready'
+import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key'
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
+import { getPowerSyncInstance } from '@/db/powersync/sync-state'
+import { createSearchIndex } from '@/search/fts-setup'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
-import { beginInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
+import { beginInitRun, getInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
 import { pickModelsDefaults } from '@/lib/pick-defaults'
 import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
+import { withTimeout } from '@/lib/timeout'
+import { normalizeBackendUrl } from '@/lib/url-utils'
 import { runDataMigrations } from '@/lib/data-migrations'
 import { reconcileDefaults, versionMarkerKeys, type VersionMarkerKey } from '@/lib/reconcile-defaults'
-import { defaultModesVersion } from '@/defaults/modes'
 import { defaultSettingsVersion } from '@/defaults/settings'
 import { defaultSkillsVersion } from '@/defaults/skills'
 import { defaultTasksVersion } from '@/defaults/tasks'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
-import type { HandleError, HandleResult } from '@/types/handle-errors'
+import type { HandleResult } from '@/types/handle-errors'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
 import { sql } from 'drizzle-orm'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { afterPaint } from '@/lib/after-paint'
+import { observeDbReadiness, reportDbDiagnostic } from './db-diagnostic'
 
 /**
  * Wider outcome type reported in the `app_init_timing` PostHog event. Callers
  * of `waitForInitialSync` see the primitive `InitialSyncOutcome`; the init
  * orchestration additionally reports `'skipped_returning'` when the
- * returning-boot fast path bypassed the wait (THU-677).
+ * returning-boot fast path bypassed the wait.
  */
 export type InitTimingSyncOutcome = InitialSyncOutcome | 'skipped_returning'
 
@@ -82,12 +93,45 @@ const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleD
   }
 
   const databaseType = await getDatabaseType()
-  const dbPath = await getDatabasePath(databaseType, appDirPath)
+  const dbPath = await getDatabasePath(appDirPath)
 
   const database = new Database()
   const db = await database.initialize({ type: databaseType, path: dbPath })
   setDatabase(database)
   return { db, database }
+}
+
+/**
+ * Ceiling for the first database query. Generous: the work behind it is a WASM
+ * compile plus a storage open, which is sub-second on a warm profile but can be
+ * seconds on a cold one, so this is a stuck-detector rather than a perf budget.
+ */
+export const dbReadyTimeoutMs = 30_000
+
+export type DatabaseReadyResult =
+  | { outcome: 'ready' }
+  | { outcome: 'timed_out' }
+  | { outcome: 'failed'; error: unknown }
+
+/**
+ * Resolve the database's first query with a bound, so a database that never
+ * opens reports instead of hanging. Never rejects: a query failure is returned
+ * as `{ outcome: 'failed', error }` so the caller can surface the original
+ * error (stack trace included) on the error screen and in tracking.
+ */
+export const waitForDatabaseReady = async (
+  db: Pick<AnyDrizzleDatabase, 'get'>,
+  timeoutMs: number = dbReadyTimeoutMs,
+): Promise<DatabaseReadyResult> => {
+  const firstQuery = (async (): Promise<DatabaseReadyResult> => {
+    try {
+      await db.get(sql`select 1`)
+      return { outcome: 'ready' }
+    } catch (error) {
+      return { outcome: 'failed', error }
+    }
+  })()
+  return (await withTimeout(firstQuery, timeoutMs, 'waitForDatabaseReady')) ?? { outcome: 'timed_out' }
 }
 
 type TrayInitResult = { tray: TrayIcon | undefined; window: Window | undefined }
@@ -101,13 +145,48 @@ const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | nul
   return result.success ? result.data : null
 }
 
+/**
+ * WS6 — run the idempotent v1→v2 migrator/follower check once at init, on the
+ * main thread (the only place with an authenticated client). Fire-and-forget:
+ * it must never block or fail boot. On a successful seamless migration it
+ * surfaces the NEW recovery phrase through the global dialog; every other
+ * outcome (`followed`/`already-v2`/`awaiting-approval`/`not-applicable`) needs
+ * no init-time UI — awaiting-approval is handled by the sync-setup wizard.
+ *
+ * Gated on a pre-existing device key pair so it only runs for returning devices
+ * (the seamless migrate/follow cases); brand-new devices set up through the
+ * sync wizard, which drives `ensureV2Encryption` itself.
+ */
+export const runEncryptionInit = async (client: HttpClient): Promise<void> => {
+  try {
+    const keyPair = await getKeyPair()
+    if (!keyPair) {
+      return
+    }
+    const result = await ensureV2Encryption(client)
+    if (result.outcome === 'migrated') {
+      dispatchMigrationRecoveryKey(result.recoveryKey)
+    }
+  } catch (error) {
+    console.warn('[init] E2EE migration/follow check failed:', error)
+  } finally {
+    // In `finally`, and unconditionally: "settled" means this device's
+    // encryption state is now decided, which is equally true of the no-keypair
+    // return and of a failure. A settings page mounted while this was still
+    // running read `false` and, before `useE2eeReady` became a query, kept it
+    // forever.
+    dispatchE2eeProvisioningSettled()
+  }
+}
+
 const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+  const initRun = getInitRun()
   const startedAt = performance.now()
   try {
     return await fn()
   } finally {
     const durationMs = performance.now() - startedAt
-    recordInitStep(label, durationMs)
+    recordInitStep(label, durationMs, initRun)
     console.info(`[init] ${label}: ${Math.round(durationMs)}ms`)
   }
 }
@@ -134,7 +213,13 @@ const initializePostHogSafely = async (httpClient: HttpClient): Promise<PostHog 
   }
 }
 
-const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
+type CoreInitialization = {
+  initData: InitData
+  timing: Record<string, unknown>
+  startedAt: number
+}
+
+const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<CoreInitialization>> => {
   beginInitRun()
   const totalStartedAt = performance.now()
   console.info('[init] start')
@@ -168,6 +253,40 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     trackError(storageError, { initialization_step: 'storage_check' })
     return { success: false, error: storageError }
   }
+
+  const cloudUrl = normalizeBackendUrl(getLocalSetting('cloudUrl'))
+  // Step 6: HTTP client initialization (use provided client or create one)
+  let client: HttpClient
+
+  if (httpClient) {
+    client = httpClient
+  } else {
+    try {
+      client = await time('step6_create_http_client', async () =>
+        createAuthenticatedClient(cloudUrl, getAuthToken, {
+          credentials: isSsoMode() ? 'include' : undefined,
+        }),
+      )
+    } catch (error) {
+      console.error('Failed to initialize HTTP client:', error)
+      const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
+      trackError(httpClientError, { initialization_step: 'http_client' })
+      return {
+        success: false,
+        error: httpClientError,
+      }
+    }
+  }
+
+  // Binding can run alongside local storage setup. Sync credentials require it,
+  // so starting only after the initial-sync wait creates a startup dependency cycle.
+  const sessionBinding = time('step6a_bind_session', async () => {
+    try {
+      await ensureSessionBound(client)
+    } catch (error) {
+      console.warn('[init] session binding failed:', error)
+    }
+  })
 
   // Step 1: App directory creation
   let appDirPath: string
@@ -203,8 +322,56 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 2b: Trivial first query. PowerSync defers its heavy ready gate (WASM
   // compile, OPFS open, schema replace) to the first query — absorb it here so
   // step4 measures only the reconcile work itself.
-  await time('step2b_db_ready', async () => {
-    await db.get(sql`select 1`)
+  //
+  // Bounded on purpose. This is where a locked or unusable local database
+  // actually surfaces, and `createAppDir` cannot catch it first: on web it just
+  // returns the virtual path 'app-data' without touching OPFS, and the step0_5
+  // probe only opens IndexedDB. An unbounded await here renders the loading
+  // spinner forever, which looks identical to a slow network and hides the one
+  // remedy that works — clearing the local database, which the error screen
+  // offers. Reported as DATABASE_INIT_FAILED so the user gets that affordance.
+  observeDbReadiness()
+  reportDbDiagnostic('query', 'pending')
+  const dbReady = await time('step2b_db_ready', () => waitForDatabaseReady(db))
+  reportDbDiagnostic(
+    'query',
+    dbReady.outcome === 'failed' ? 'rejected' : dbReady.outcome,
+    dbReady.outcome === 'failed' && dbReady.error instanceof Error ? dbReady.error : undefined,
+  )
+  if (dbReady.outcome !== 'ready') {
+    console.error('Database did not become ready:', dbReady)
+    const dbReadyError = createHandleError(
+      'DATABASE_INIT_FAILED',
+      dbReady.outcome === 'timed_out'
+        ? `Database did not become ready within ${dbReadyTimeoutMs / 1000}s`
+        : 'Database failed its first query',
+      dbReady.outcome === 'failed' ? dbReady.error : undefined,
+    )
+    trackError(dbReadyError, { initialization_step: 'db_ready', outcome: dbReady.outcome })
+    return { success: false, error: dbReadyError }
+  }
+
+  // Step 2d: Build the unified full-text search index. Idempotent —
+  // rebuilds only when missing or the schema version bumped. Runs against the
+  // raw SQLite handle, which only PowerSync exposes; other backends (e.g.
+  // bun-sqlite in tests) return null here and skip it. Non-critical: a failed
+  // build must never block boot, so it logs and continues.
+  const powerSyncInstance = getPowerSyncInstance()
+  if (powerSyncInstance) {
+    try {
+      await time('step2d_build_search_index', () => createSearchIndex(powerSyncInstance))
+    } catch (error) {
+      console.warn('[init] Failed to build search index:', error)
+    }
+  }
+
+  // Complete binding before trust requests or the mounted session observer run.
+  // If this attempt fails, that observer can retry after the local app mounts.
+  await sessionBinding
+  startKeyRequestResponder({
+    stageKeyring: () => stageKeyring(client),
+    refreshAK: () => refreshAK(client),
+    fetchMetadata: () => fetchEncryptionMetadata(client),
   })
 
   // Read the persisted `/config` cache once, up front. `pickModelsDefaults`
@@ -217,7 +384,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // Step 2c: Returning-boot detection via `hasCurrentDefaultsVersions`.
   // Every `defaults_version.*` marker must exist AND meet-or-exceed the
   // version reconcile would pick this boot — that's the bundled version
-  // for modes/tasks/skills/settings and the OTA-or-bundle picked version
+  // for tasks/skills/settings and the OTA-or-bundle picked version
   // for models. This is stricter than a "marker exists" probe on purpose:
   // a client upgrade that bumped any bundled version OR a fresh OTA
   // payload needs the fresh-await path so reconcile can apply it. Nothing
@@ -231,7 +398,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // (see `everyBundleRowAtTarget` in `reconcileDefaultsForTable`).
   const defaultsTargets: Record<VersionMarkerKey, number> = {
     [versionMarkerKeys.models]: modelsDefaults.version,
-    [versionMarkerKeys.modes]: defaultModesVersion,
     [versionMarkerKeys.tasks]: defaultTasksVersion,
     [versionMarkerKeys.skills]: defaultSkillsVersion,
     [versionMarkerKeys.settings]: defaultSettingsVersion,
@@ -240,8 +406,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     hasCurrentDefaultsVersions(db, defaultsTargets),
   )
 
-  // Step 3: Wait for PowerSync initial sync — only on fresh boots when sync is
-  // enabled AND we already applied the current bundle versions. Returning
+  // Step 3: Wait for PowerSync initial sync only when sync is
+  // enabled and the current bundle versions have not been applied. Returning
   // boots on sync-enabled, up-to-date devices kick off the sync fire-and-
   // forget so the engine still warms up and background updates land as they
   // arrive, then feed `initialSyncCompleted: false` to reconcile so the
@@ -288,127 +454,141 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // initialization — each migration retries on the next launch.
   await time('step4b_run_data_migrations', () => runDataMigrations(db))
 
-  // Step 5: Get cloud url and experimental feature tasks
-  const cloudUrl = getLocalSetting('cloudUrl')
-  const { experimentalFeatureTasks } = await time('step5_get_settings', () =>
+  // Include the sidebar preference so mounting the layout doesn't add another
+  // database round trip before the chat can start hydrating.
+  const { experimentalFeatureTasks, experimentalFeatureVoice, sidebarState } = await time('step5_get_settings', () =>
     getSettings(db, {
       experimental_feature_tasks: false,
+      experimental_feature_voice: false,
+      sidebar_state: true,
     }),
   )
 
-  // Step 6: HTTP client initialization (use provided client or create one)
-  let client: HttpClient
+  // Run the migration/follower check after local data preparation. Session binding
+  // and the key responder already started before the initial-sync gate.
+  runEncryptionInit(client).catch((error) => {
+    console.warn('[init] runEncryptionInit failed:', error)
+  })
 
-  if (httpClient) {
-    client = httpClient
-  } else {
-    try {
-      client = await time('step6_create_http_client', async () =>
-        createAuthenticatedClient(cloudUrl, getAuthToken, {
-          credentials: isSsoMode() ? 'include' : undefined,
-        }),
-      )
-    } catch (error) {
-      console.error('Failed to initialize HTTP client:', error)
-      const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
-      trackError(httpClientError, { initialization_step: 'http_client' })
-      return {
-        success: false,
-        error: httpClientError,
-      }
-    }
-  }
-
-  // Steps 7 + 8: Tray and PostHog initialization (non-critical, independent
-  // of each other) — run in parallel; each wrapper swallows its own failure.
-  const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
+  // Native close-to-tray handling must be ready before content. Web returns immediately.
+  const tray = await initializeTraySafely()
 
   const initTotalMs = Math.round(performance.now() - totalStartedAt)
   console.info(`[init] complete (total ${initTotalMs}ms)`)
 
-  // Report the full startup timeline to PostHog. This must run after step 8 —
-  // the PostHog client only exists from there on; if the user opted out of data
-  // collection, trackEvent no-ops.
+  // Snapshot blocking work before analytics attaches so its completion cannot
+  // move the core-ready milestone.
   const initTimingPayload = {
     ...getInitTimingPayload(),
-    init_total_ms: initTotalMs,
+    init_core_ms: initTotalMs,
     initial_sync_outcome: initialSyncOutcome,
     init_path: canSkipSyncWait ? ('returning' as const) : ('fresh' as const),
     sync_enabled: getLocalSetting('syncEnabled'),
     platform: getPlatform(),
   }
-  trackEvent('app_init_timing', initTimingPayload)
+  performance.mark('thunderbolt:core-ready')
 
   return {
     success: true,
     data: {
-      db,
-      cloudUrl,
-      experimentalFeatureTasks,
-      posthogClient,
-      httpClient: client,
-      ...tray,
+      startedAt: totalStartedAt,
+      timing: initTimingPayload,
+      initData: {
+        db,
+        cloudUrl,
+        experimentalFeatureTasks,
+        experimentalFeatureVoice,
+        sidebarOpen: sidebarState,
+        posthogClient: null,
+        httpClient: client,
+        ...tray,
+      },
     },
   }
 }
 
-/**
- * Hook for managing app initialization
- * @param httpClient - Optional HTTP client (primarily for testing)
- */
+/** Opens the local app once native window handling is ready, then attaches analytics. */
 export const useAppInitialization = (httpClient?: HttpClient) => {
-  const [initData, setInitData] = useState<InitData>()
-  const [initError, setInitError] = useState<HandleError>()
-  const [isInitializing, setIsInitializing] = useState(true)
+  // No result means loading; completed runs contain either data or an error.
+  const [state, setState] = useState<HandleResult<InitData>>()
+  const run = useRef(0)
+  const cancelAnalytics = useRef<(() => void) | undefined>(undefined)
+
+  const cancelInitialization = useCallback(() => {
+    ++run.current
+    cancelAnalytics.current?.()
+  }, [])
 
   const initialize = useCallback(async () => {
-    setIsInitializing(true)
+    cancelInitialization()
+    const currentRun = run.current
+    const isCurrent = () => run.current === currentRun
+    setState(undefined)
     try {
       const result = await executeInitializationSteps(httpClient)
-
-      if (result.success) {
-        setInitData(result.data)
-        setInitError(undefined)
-      } else {
-        setInitError(result.error)
+      if (!isCurrent()) {
+        return
       }
+      if (!result.success) {
+        setState(result)
+        return
+      }
+      const core = result.data
+      setState({ success: true, data: core.initData })
+      cancelAnalytics.current = afterPaint(async () => {
+        const posthogClient = await initializePostHogSafely(core.initData.httpClient)
+        if (!isCurrent()) {
+          return
+        }
+        setState((previous) =>
+          previous?.success ? { success: true, data: { ...previous.data, posthogClient } } : previous,
+        )
+        trackEvent('app_init_timing', {
+          ...core.timing,
+          ...getInitTimingPayload(),
+          init_total_ms: Math.round(performance.now() - core.startedAt),
+        })
+      })
     } catch (error) {
-      // Any unhandled rejection from an unguarded init step (e.g. PowerSync's
-      // deferred storage open) must surface as an error screen rather than
-      // leaving the app stuck on the loading spinner forever. Tracked like the
-      // per-step failures so an unexpected throw stays observable.
+      if (!isCurrent()) {
+        return
+      }
       console.error('Failed to initialize app:', error)
-      const unknownError = createHandleError('UNKNOWN_ERROR', 'Failed to initialize app', error)
-      trackError(unknownError, { initialization_step: 'uncaught' })
-      setInitError(unknownError)
-    } finally {
-      setIsInitializing(false)
+      const initError = createHandleError('UNKNOWN_ERROR', 'Failed to initialize app', error)
+      trackError(initError, { initialization_step: 'uncaught' })
+      setState({ success: false, error: initError })
     }
-  }, [httpClient])
-
-  const retry = useCallback(async () => {
-    await initialize()
-  }, [initialize])
+  }, [httpClient, cancelInitialization])
 
   const clearDatabase = useCallback(async () => {
-    setIsInitializing(true)
+    cancelInitialization()
+    const currentRun = run.current
+    setState(undefined)
     try {
       await resetAppDir()
-      await initialize()
-    } finally {
-      setIsInitializing(false)
+      if (run.current === currentRun) {
+        await initialize()
+      }
+    } catch (error) {
+      if (run.current === currentRun) {
+        setState({
+          success: false,
+          error: createHandleError('DATABASE_INIT_FAILED', 'Failed to clear database', error),
+        })
+      }
     }
-  }, [initialize])
+  }, [initialize, cancelInitialization])
 
   useEffect(() => {
-    initialize()
-  }, [initialize])
+    void initialize()
+    return cancelInitialization
+  }, [initialize, cancelInitialization])
 
   return {
-    initData,
-    initError,
-    isInitializing,
-    retry,
+    initData: state?.success ? state.data : undefined,
+    initError: state && !state.success ? state.error : undefined,
+    isInitializing: state === undefined,
+    retry: initialize,
     clearDatabase,
   }
 }

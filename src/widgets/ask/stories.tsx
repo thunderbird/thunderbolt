@@ -60,6 +60,17 @@ const noDesignatedAnswer: AskData = {
   ],
 }
 
+const preferenceAnswers: AskData = {
+  mode: 'choices',
+  prompt: 'Which of these newsletters would you like to keep receiving?',
+  options: [
+    { id: 'product', text: 'Product updates' },
+    { id: 'security', text: 'Security advisories' },
+    { id: 'community', text: 'Community digest' },
+    { id: 'events', text: 'Events & webinars' },
+  ],
+}
+
 /** One designated answer — radio-style, revealed on submit. */
 export const SingleAnswer: Story = { args: singleAnswer }
 
@@ -68,3 +79,6 @@ export const MultipleAnswers: Story = { args: multipleAnswers }
 
 /** No designated answer — an open prompt where the choice itself is the action. */
 export const NoDesignatedAnswer: Story = { args: noDesignatedAnswer }
+
+/** No designated answer, multi-select — a preference/opinion question. */
+export const PreferenceMultiSelect: Story = { args: preferenceAnswers }

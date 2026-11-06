@@ -17,6 +17,14 @@ const globalTeardown = async () => {
     await new Promise<void>((resolve) => samlServer.close(() => resolve()))
     console.log('Mock SAML IdP stopped')
   }
+  const fakeProvider = (globalThis as Record<string, unknown>).__fakeProvider as Server | undefined
+  if (fakeProvider) {
+    await new Promise<void>((resolve) => fakeProvider.close(() => resolve()))
+  }
+  const fakeMcpServer = (globalThis as typeof globalThis & { __fakeMcpServer?: Server }).__fakeMcpServer
+  if (fakeMcpServer) {
+    await new Promise<void>((resolve) => fakeMcpServer.close(() => resolve()))
+  }
 }
 
 export default globalTeardown

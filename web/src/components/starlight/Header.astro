@@ -8,6 +8,7 @@
  */
 import config from 'virtual:starlight/user-config';
 import Search from 'virtual:starlight/components/Search';
+import ThemeSelect from 'virtual:starlight/components/ThemeSelect';
 
 const shouldRenderSearch =
 	config.pagefind ||
@@ -27,6 +28,10 @@ const shouldRenderSearch =
 	<nav class="nav-links">
 		<a href="/blog" class="nav-link">Blog</a>
 		<a href="/docs" class="nav-link active">Docs</a>
+		<div class="theme-slot print:hidden">
+			<ThemeSelect />
+		</div>
+
 		<a
 			href="https://github.com/thunderbird/thunderbolt"
 			class="nav-link github-link"
@@ -42,6 +47,11 @@ const shouldRenderSearch =
 </div>
 
 <style>
+	.theme-slot {
+		display: flex;
+		align-items: center;
+	}
+
 	.tb-header {
 		display: flex;
 		align-items: center;

@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Check, Lightbulb, Sparkles, X } from 'lucide-react'
 import { useReducer, useRef } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { evaluateAnswer, optionLetter, type AskData, type AskOption } from './lib'
+import { evaluateAnswer, isGradedMode, isMultiSelectMode, optionLetter, type AskData, type AskOption } from './lib'
 
 export type AskSubmission = {
   selectedIds: string[]
@@ -55,17 +56,18 @@ const getOptionStatus = ({
 const statusStyles: Record<OptionStatus, string> = {
   idle: 'border-border bg-card hover:bg-accent hover:border-border',
   selected: 'border-primary bg-accent ring-1 ring-primary',
-  correct: 'border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/30',
-  incorrect: 'border-red-500/60 bg-red-50 dark:bg-red-950/30',
-  missed: 'border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/15',
+  correct: 'border-success/60 bg-success/10',
+  incorrect: 'border-destructive/60 bg-destructive/10',
+  missed: 'border-success/40 bg-success/5',
 }
 
 const badgeStyles: Record<OptionStatus, string> = {
   idle: 'border-border text-muted-foreground',
   selected: 'border-primary bg-primary text-primary-foreground',
-  correct: 'border-emerald-500 bg-emerald-500 text-white',
-  incorrect: 'border-red-500 bg-red-500 text-white',
-  missed: 'border-emerald-500 text-emerald-600 dark:text-emerald-400',
+  correct: 'border-success bg-success text-success-foreground',
+  // White like the destructive button; destructive-foreground is dark.
+  incorrect: 'border-destructive bg-destructive text-white',
+  missed: 'border-success text-success',
 }
 
 type AskUiState = { selected: Set<string>; submitted: boolean }
@@ -98,6 +100,7 @@ export const Ask = ({
   initialSubmitted,
   onSubmit,
 }: AskProps) => {
+  const { t } = useLingui()
   const [state, dispatch] = useReducer(askUiReducer, undefined, () => ({
     selected: new Set(initialSelectedIds),
     submitted: initialSubmitted ?? false,
@@ -108,8 +111,11 @@ export const Ask = ({
   // This is a side-effect latch, not UI state, so it lives outside the reducer.
   const committedRef = useRef(initialSubmitted ?? false)
 
-  const isGraded = mode === 'single' || mode === 'multiple'
-  const isMultiple = mode === 'multiple'
+  const isGraded = isGradedMode(mode)
+  const isMultiple = isMultiSelectMode(mode)
+  // `choice` (ungraded, single) commits the instant an option is clicked; every
+  // other mode toggles selection and waits for the Submit button.
+  const commitsOnClick = !isGraded && !isMultiple
 
   const commit = (ids: Set<string>) => {
     if (committedRef.current) {
@@ -127,15 +133,14 @@ export const Ask = ({
     if (state.submitted) {
       return
     }
-    if (!isGraded) {
-      // `choice` mode: selecting an option commits the choice immediately.
+    if (commitsOnClick) {
       commit(new Set([id]))
       return
     }
     dispatch({ type: 'OPTION_TOGGLED', id, isMultiple })
   }
 
-  const label = isGraded ? (isMultiple ? 'Select all that apply' : 'Choose one') : 'Your call'
+  const label = isMultiple ? t`Select all that apply` : isGraded ? t`Choose one` : t`Your call`
 
   return (
     <div className="my-4 w-full">
@@ -193,14 +198,14 @@ export const Ask = ({
             })}
           </div>
 
-          {isGraded && !state.submitted && (
+          {!commitsOnClick && !state.submitted && (
             <Button
               size="default"
               disabled={state.selected.size === 0}
               onClick={() => commit(state.selected)}
               className="w-full md:w-auto md:self-end"
             >
-              Submit
+              <Trans>Submit</Trans>
             </Button>
           )}
 
@@ -208,16 +213,20 @@ export const Ask = ({
             <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 p-3 text-[length:var(--font-size-sm)]">
               <Lightbulb className="mt-0.5 size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" />
               <div className="flex flex-col gap-1">
-                <span className="font-medium">Answer</span>
+                <span className="font-medium">
+                  <Trans>Answer</Trans>
+                </span>
                 <span className="text-foreground/80">{explanation}</span>
               </div>
             </div>
           )}
 
-          {state.submitted && mode === 'choice' && (
+          {state.submitted && !isGraded && (
             <div className="flex items-center gap-2 text-[length:var(--font-size-sm)] text-muted-foreground">
               <Lightbulb className="size-[var(--icon-size-sm)] shrink-0" />
-              <span>Got it, working on that next.</span>
+              <span>
+                <Trans>Got it, working on that next.</Trans>
+              </span>
             </div>
           )}
         </div>

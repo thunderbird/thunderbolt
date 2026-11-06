@@ -179,4 +179,28 @@ describe('MemoizedMarkdown — LaTeX', () => {
     expect(container.querySelector('.katex')).toBeNull()
     expect(container.textContent).toContain('and more text follows.')
   })
+
+  // Everything above tests that remark-math found the delimiters, and passes as
+  // long as *some* `.katex` element appears. A KaTeX upgrade that rendered the
+  // wrong expression — or dropped the superscript — would slip straight through.
+  // These two read the output instead: KaTeX round-trips the source into its
+  // MathML `annotation`, which is the one part of its DOM that is a contract
+  // rather than a styling detail, so asserting on it survives the internal class
+  // renames that KaTeX ships between major lines.
+  it('renders the expression itself, not just a KaTeX wrapper', async () => {
+    const { container } = renderMarkdown('The variable $a^3$ matters.')
+    await flushLazyLoad()
+    const annotation = container.querySelector('.katex-mathml annotation[encoding="application/x-tex"]')
+    expect(annotation?.textContent).toBe('a^3')
+    // `a` raised to `3`, not two glyphs sitting next to each other.
+    expect(container.querySelector('.katex-mathml msup')?.textContent).toBe('a3')
+  })
+
+  it('renders block math as display style', async () => {
+    const { container } = renderMarkdown('$$E = mc^2$$')
+    await flushLazyLoad()
+    const annotation = container.querySelector('.katex-mathml annotation[encoding="application/x-tex"]')
+    expect(annotation?.textContent).toBe('E = mc^2')
+    expect(container.querySelector('.katex-mathml math')?.getAttribute('display')).toBe('block')
+  })
 })

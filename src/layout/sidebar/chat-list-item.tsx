@@ -2,23 +2,81 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { chatTitleLabel } from '@/lib/title-generator'
+
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
+import { ResponsiveActionMenu } from '@/components/ui/responsive-action-menu'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
+import { SidebarMenuButton } from '@/components/ui/sidebar'
+import { useLongPress } from '@/hooks/use-long-press'
+import { useDraggable } from '@dnd-kit/core'
+import { chatDragId, type ChatDragData } from '@/projects/chat-drop'
 import { cn } from '@/lib/utils'
-import { Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
-import { memo, useState, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
+import { FolderInput, Loader2, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { memo, useReducer, useRef, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
-import { AnimatePresence, m } from 'framer-motion'
 import { RenameChatDialog } from './rename-chat-dialog'
+import { MiniAppChatBadge } from '@/mini-apps/mini-app-chat-badge'
 
 /** `useChat` is injectable so tests exercise the real component without a global
  *  `mock.module('@ai-sdk/react')` (which leaks across files under `--randomize`). */
 type ChatListItemComponentProps = ChatListItemProps & {
   useChat?: typeof useChat_default
+}
+
+type ChatItemMenu = 'dropdown' | 'context' | 'mobile'
+
+type ChatListItemState = {
+  renameDialogOpen: boolean
+  openMenu: ChatItemMenu | null
+  optimisticTitle: string | null
+  observedTitle: string | null
+}
+
+type ChatListItemAction =
+  | { type: 'MENU_CHANGED'; menu: ChatItemMenu; open: boolean }
+  | { type: 'RENAME_DIALOG_CHANGED'; open: boolean }
+  | { type: 'RENAMED'; title: string }
+  | { type: 'THREAD_TITLE_CHANGED'; title: string | null }
+
+const createChatListItemState = (title: string | null): ChatListItemState => ({
+  renameDialogOpen: false,
+  openMenu: null,
+  optimisticTitle: null,
+  observedTitle: title,
+})
+
+const chatListItemReducer = (state: ChatListItemState, action: ChatListItemAction): ChatListItemState => {
+  switch (action.type) {
+    case 'MENU_CHANGED':
+      return {
+        ...state,
+        openMenu: action.open ? action.menu : state.openMenu === action.menu ? null : state.openMenu,
+      }
+    case 'RENAME_DIALOG_CHANGED':
+      return { ...state, renameDialogOpen: action.open }
+    case 'RENAMED':
+      return { ...state, optimisticTitle: action.title }
+    case 'THREAD_TITLE_CHANGED':
+      return { ...state, observedTitle: action.title, optimisticTitle: null }
+  }
+}
+
+/** Centralizes a chat row's menu, rename, and optimistic-title state. */
+const useChatListItemState = (threadTitle: string | null) => {
+  const [state, dispatch] = useReducer(chatListItemReducer, threadTitle, createChatListItemState)
+
+  if (threadTitle !== state.observedTitle) {
+    dispatch({ type: 'THREAD_TITLE_CHANGED', title: threadTitle })
+  }
+
+  return [state, dispatch] as const
 }
 
 type MenuItemComponent = ComponentType<{
@@ -28,17 +86,20 @@ type MenuItemComponent = ComponentType<{
   children?: ReactNode
 }>
 
-/** The same Rename/Delete actions back both the right-click context menu and
- *  the `⋯` dropdown — only the Radix item primitive differs. */
+/** The same Rename/Delete actions back the context menu and desktop `⋯`
+ *  dropdown — only the Radix item primitive differs. */
 const ChatItemActions = ({
   Item,
   onRename,
+  onMove,
   onDelete,
   deleteLabel,
   isDeletePending,
 }: {
   Item: MenuItemComponent
   onRename: () => void
+  /** Absent where chats cannot be moved into projects (minimal mode). */
+  onMove?: () => void
   onDelete: () => void
   deleteLabel: ReactNode
   isDeletePending: boolean
@@ -46,8 +107,14 @@ const ChatItemActions = ({
   <>
     <Item onClick={onRename} className="cursor-pointer">
       <Pencil className="size-4 mr-2" />
-      Rename
+      <Trans>Rename</Trans>
     </Item>
+    {onMove && (
+      <Item onClick={onMove} className="cursor-pointer">
+        <FolderInput className="size-4 mr-2" />
+        <Trans>Move</Trans>
+      </Item>
+    )}
     <Item onClick={onDelete} disabled={isDeletePending} className="cursor-pointer">
       {deleteLabel}
     </Item>
@@ -58,73 +125,83 @@ export const ChatListItem = memo(
   ({
     thread,
     isActive,
-    isCollapsed,
     isMobile,
     deleteChatMutation,
     threadIdRef,
     deleteChatDialogRef,
     onChatClick,
     onRename,
+    onMoveToProject,
     useChat = useChat_default,
   }: ChatListItemComponentProps) => {
+    const { i18n, t } = useLingui()
+    // Minimal mode has no projects to move a chat into or drag it onto.
+    const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
     const chatInstance = useChatStore((state) => state.sessions.get(thread.id)?.chatInstance)
 
     const { status } = useChat(
       chatInstance ? { chat: chatInstance, experimental_throttle: statusOnlyThrottleMs } : undefined,
     )
-    const [renameDialogOpen, setRenameDialogOpen] = useState(false)
-    // One value for both action surfaces — they're mutually exclusive (Radix
-    // closes one before the other opens), and the row highlight just needs
-    // "is any menu open".
-    const [openMenu, setOpenMenu] = useState<'dropdown' | 'context' | null>(null)
-    const [optimisticTitle, setOptimisticTitle] = useState<string | null>(null)
-    const [prevTitle, setPrevTitle] = useState(thread.title)
+    const [{ renameDialogOpen, openMenu, optimisticTitle }, dispatch] = useChatListItemState(thread.title)
+    const isOpeningDialogRef = useRef(false)
+    const longPressFiredRef = useRef(false)
+    const mobileLongPressHandlers = useLongPress(() => {
+      longPressFiredRef.current = true
+      dispatch({ type: 'MENU_CHANGED', menu: 'mobile', open: true })
+    })
 
-    if (thread.title !== prevTitle) {
-      setPrevTitle(thread.title)
-      if (optimisticTitle !== null && thread.title === optimisticTitle) {
-        setOptimisticTitle(null)
-      }
-    }
+    const {
+      attributes: dragAttributes,
+      listeners: dragListeners,
+      setNodeRef: setDragRef,
+      isDragging,
+    } = useDraggable({
+      id: chatDragId(thread.id),
+      disabled: minimalMode,
+      // Carried on the drag so the sidebar can render a preview and decide
+      // whether "Remove from project" applies, with no extra query.
+      data: { title: thread.title, projectId: thread.projectId ?? null } satisfies ChatDragData,
+    })
 
-    const displayTitle = optimisticTitle ?? thread.title
+    const displayTitle = optimisticTitle ?? chatTitleLabel(i18n, thread.title)
 
     const handleRename = (title: string) => {
-      setOptimisticTitle(title)
+      dispatch({ type: 'RENAMED', title })
       onRename(thread.id, title)
     }
 
-    if (isCollapsed) {
-      return (
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            onClick={() => onChatClick(thread.id)}
-            isActive={isActive}
-            className="cursor-pointer"
-            tooltip={thread.title ?? undefined}
-          >
-            {status === 'streaming' ? (
-              <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
-            ) : (
-              <MessageCircle className="size-[var(--icon-size-default)] shrink-0" />
-            )}
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      )
-    }
+    const showSpinner = status === 'streaming'
+    const streamingIcon = (
+      <Loader2 aria-hidden className="size-[var(--icon-size-default)] shrink-0 animate-spin text-muted-foreground" />
+    )
 
-    const startRename = () => setRenameDialogOpen(true)
+    const startRename = () => {
+      isOpeningDialogRef.current = true
+      dispatch({ type: 'RENAME_DIALOG_CHANGED', open: true })
+    }
+    // The picker is owned by the sidebar: one dialog for the whole list rather
+    // than one per row, and it needs the database context that a row does not.
+    const startMove = () => {
+      isOpeningDialogRef.current = true
+      onMoveToProject(thread.id, thread.projectId ?? null)
+    }
     const startDelete = () => {
+      isOpeningDialogRef.current = true
       threadIdRef.current = thread.id
       deleteChatDialogRef.current?.open()
     }
 
-    const deleteLabel = deleteChatMutation.isPending ? (
+    const deleteIcon = deleteChatMutation.isPending ? (
       <Loader2 className="size-4 animate-spin" />
+    ) : (
+      <Trash2 className="size-4" />
+    )
+    const deleteLabel = deleteChatMutation.isPending ? (
+      deleteIcon
     ) : (
       <>
         <Trash2 className="size-4 mr-2" />
-        Delete
+        <Trans>Delete</Trans>
       </>
     )
 
@@ -132,86 +209,172 @@ export const ChatListItem = memo(
     // A close event may arrive after the *other* menu already claimed the
     // slot (opening one dismisses the other), so only the current owner may
     // clear it.
-    const handleMenuOpenChange = (menu: 'dropdown' | 'context') => (open: boolean) =>
-      setOpenMenu((current) => (open ? menu : current === menu ? null : current))
+    const handleMenuOpenChange = (menu: ChatItemMenu) => (open: boolean) =>
+      dispatch({ type: 'MENU_CHANGED', menu, open })
+    // A closing menu normally restores focus to its trigger after the newly
+    // opened rename surface has focused its input, which would hide the keyboard.
+    const handleMenuCloseAutoFocus = (event: Event) => {
+      if (!isOpeningDialogRef.current) {
+        return
+      }
+      event.preventDefault()
+      isOpeningDialogRef.current = false
+    }
+
+    const renameDialog = (
+      <RenameChatDialog
+        open={renameDialogOpen}
+        title={thread.title}
+        onOpenChange={(open) => dispatch({ type: 'RENAME_DIALOG_CHANGED', open })}
+        onRename={handleRename}
+      />
+    )
+
+    if (isMobile) {
+      const trigger = (
+        <SidebarMenuButton
+          {...mobileLongPressHandlers}
+          data-long-press=""
+          onClick={() => {
+            if (longPressFiredRef.current) {
+              longPressFiredRef.current = false
+              return
+            }
+            onChatClick(thread.id, thread.miniAppId)
+          }}
+          isActive={isActive}
+          className={cn(
+            'flex cursor-pointer items-center gap-2',
+            anyMenuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
+          )}
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {showSpinner && streamingIcon}
+            {thread.miniAppId && <MiniAppChatBadge appId={thread.miniAppId} />}
+            <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
+          </div>
+        </SidebarMenuButton>
+      )
+
+      return (
+        <>
+          <ResponsiveActionMenu
+            open={openMenu === 'mobile'}
+            onOpenChange={handleMenuOpenChange('mobile')}
+            trigger={trigger}
+            title={displayTitle ?? t`Chat actions`}
+            openOnTriggerClickMobile={false}
+            actions={[
+              {
+                label: t`Rename`,
+                icon: <Pencil className="size-4" />,
+                onSelect: startRename,
+              },
+              ...(minimalMode
+                ? []
+                : [
+                    {
+                      label: t`Move`,
+                      icon: <FolderInput className="size-4" />,
+                      onSelect: startMove,
+                    },
+                  ]),
+              {
+                label: t`Delete`,
+                icon: deleteIcon,
+                onSelect: startDelete,
+                disabled: deleteChatMutation.isPending,
+              },
+            ]}
+          />
+          {renameDialog}
+        </>
+      )
+    }
 
     return (
       <>
         <DropdownMenu open={openMenu === 'dropdown'} onOpenChange={handleMenuOpenChange('dropdown')}>
           <ContextMenu onOpenChange={handleMenuOpenChange('context')}>
-            <SidebarMenuItem className="group/item">
+            {/* The list `li` is provided by the virtualized row wrapper in
+                chat-list.tsx; this div carries the group classes the menu
+                button's hover/action styles key off. */}
+            <div
+              data-sidebar="menu-item"
+              // Draggable so the chat can be dropped onto a project row. The
+              // sensor in `ChatSidebarContent` requires 8px of movement before a
+              // drag starts, so ordinary clicks, the context menu, and the mobile
+              // long-press all keep working.
+              ref={setDragRef}
+              {...dragListeners}
+              {...dragAttributes}
+              className={cn('group/menu-item group/item relative', isDragging && 'opacity-50')}
+            >
               <ContextMenuTrigger asChild>
                 <SidebarMenuButton
-                  onClick={() => onChatClick(thread.id)}
+                  onClick={() => onChatClick(thread.id, thread.miniAppId)}
                   isActive={isActive}
                   className={cn(
-                    'cursor-pointer flex items-center gap-2',
+                    'cursor-pointer flex items-center gap-2 pr-9 group-hover/item:bg-sidebar-accent group-hover/item:text-sidebar-accent-foreground',
                     // Radix puts data-state on the triggers, not this button, so
                     // the open-state highlight is driven by our own state.
                     anyMenuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
                   )}
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <AnimatePresence>
-                      {status === 'streaming' && (
-                        <m.div
-                          key={`${thread.id}-loading`}
-                          initial={{ opacity: 0, width: 0 }}
-                          animate={{ opacity: 1, width: 'auto' }}
-                          exit={{ opacity: 0, width: 0 }}
-                          className="flex-shrink-0"
-                        >
-                          <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
-                        </m.div>
-                      )}
-                    </AnimatePresence>
+                    {showSpinner && streamingIcon}
+                    {thread.miniAppId && <MiniAppChatBadge appId={thread.miniAppId} />}
                     <span className="truncate flex-1 min-w-0">{displayTitle}</span>
                   </div>
-                  <DropdownMenuTrigger asChild>
-                    <MoreHorizontal
-                      className={cn(
-                        'shrink-0 size-4',
-                        !isMobile && !anyMenuOpen && 'opacity-0 group-hover/item:opacity-100 transition-opacity',
-                      )}
-                    />
-                  </DropdownMenuTrigger>
                 </SidebarMenuButton>
               </ContextMenuTrigger>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t`More`}
+                  className={cn(
+                    mutedIconButtonClass,
+                    'absolute right-0 top-1/2 -translate-y-1/2 bg-transparent hover:bg-transparent dark:hover:bg-transparent active:bg-transparent data-[state=open]:bg-transparent transition-opacity',
+                    !anyMenuOpen && 'opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100',
+                  )}
+                >
+                  <MoreVertical />
+                </Button>
+              </DropdownMenuTrigger>
 
               {/* Right-click / touch long-press: a true context menu at the
                   cursor position. */}
-              <ContextMenuContent className="min-w-56">
+              <ContextMenuContent className="min-w-56" onCloseAutoFocus={handleMenuCloseAutoFocus}>
                 <ChatItemActions
                   Item={ContextMenuItem}
                   onRename={startRename}
+                  onMove={minimalMode ? undefined : startMove}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
                   isDeletePending={deleteChatMutation.isPending}
                 />
               </ContextMenuContent>
 
-              {/* The trigger is the vertically-centered dots icon; the negative
-                  alignOffset walks the menu back up so its top edge lines up with
-                  the row's top edge (row is 32px on desktop, 44px on mobile;
-                  icon is 16px). */}
-              <DropdownMenuContent side="right" align="start" alignOffset={isMobile ? -14 : -8} className="min-w-56">
+              <DropdownMenuContent
+                side="right"
+                align="start"
+                className="min-w-56"
+                onCloseAutoFocus={handleMenuCloseAutoFocus}
+              >
                 <ChatItemActions
                   Item={DropdownMenuItem}
                   onRename={startRename}
+                  onMove={minimalMode ? undefined : startMove}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
                   isDeletePending={deleteChatMutation.isPending}
                 />
               </DropdownMenuContent>
-            </SidebarMenuItem>
+            </div>
           </ContextMenu>
         </DropdownMenu>
-        <RenameChatDialog
-          open={renameDialogOpen}
-          title={thread.title}
-          onOpenChange={setRenameDialogOpen}
-          onRename={handleRename}
-        />
+        {renameDialog}
       </>
     )
   },

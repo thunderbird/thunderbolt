@@ -8,6 +8,12 @@
  * error throwing on non-2xx, prefixUrl, and beforeRequest hooks.
  */
 
+// Imported from the leaf module rather than `@/i18n` so this client keeps out of
+// Lingui's dependency graph (the barrel pulls in @lingui/core and the catalog
+// loader map).
+import { getActiveLocale } from '@/i18n/active-locale'
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getDeviceId } from '@/lib/auth-token'
 import { getDeviceDisplayName } from '@/lib/platform'
 
@@ -25,6 +31,8 @@ export type RequestOptions = {
   searchParams?: Record<string, string | number | boolean | undefined> | URLSearchParams
   timeout?: number
   json?: unknown
+  /** Raw request body (e.g. FormData, Blob) for non-JSON posts. Ignored if `json` is set. */
+  body?: BodyInit
   credentials?: RequestCredentials
   signal?: AbortSignal
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -83,6 +91,17 @@ const resolveUrl = (url: string, prefixUrl?: string): string => {
   return `${base}${url}`
 }
 
+/** Match a request against the configured backend origin and path prefix. */
+export const isBackendRequest = (requestUrl: string, backendUrl: URL): boolean => {
+  const request = new URL(requestUrl)
+  const backendPath = backendUrl.pathname.replace(/\/+$/, '')
+
+  return (
+    request.origin === backendUrl.origin &&
+    (backendPath === '' || request.pathname === backendPath || request.pathname.startsWith(`${backendPath}/`))
+  )
+}
+
 const makeResponsePromise = (promise: Promise<Response>): ResponsePromise => {
   const rp = promise as ResponsePromise
   rp.json = <T>(): Promise<T> => promise.then((res) => res.json())
@@ -100,16 +119,27 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
     if (options.json !== undefined) {
       headers.set('Content-Type', 'application/json')
       body = JSON.stringify(options.json)
+    } else if (options.body !== undefined) {
+      // Raw body (FormData/Blob/…) — leave Content-Type to the caller/browser
+      // (e.g. FormData needs the auto-generated multipart boundary).
+      body = options.body
     }
 
     const fetchFn = options.fetch ?? config.fetch ?? globalThis.fetch
 
+    // Honor `timeout` even when the caller also passes a `signal` — compose the
+    // two so an aborted turn AND an elapsed timeout both cancel the request.
+    // (Without this, a slow/hung server on a request that carries a signal would
+    // never time out, e.g. a voice STT/TTS turn stuck indefinitely.)
     let signal = options.signal
     let timeoutId: ReturnType<typeof setTimeout> | undefined
-    if (options.timeout && !signal) {
+    if (options.timeout) {
       const controller = new AbortController()
-      signal = controller.signal
-      timeoutId = setTimeout(() => controller.abort(), options.timeout)
+      timeoutId = setTimeout(
+        () => controller.abort(new DOMException('Request timed out', 'TimeoutError')),
+        options.timeout,
+      )
+      signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal
     }
 
     const req = new Request(fullUrl, {
@@ -149,7 +179,8 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
 /** Create an authenticated client that attaches a Bearer token from localStorage on each request.
  * Skips setting the token if the caller already provided an Authorization header.
  * Dispatches `powersync_credentials_invalid` (reason: `session_expired`) when an authenticated
- * request to the app backend returns 401, so the app can prompt the user to re-authenticate.
+ * request to the app backend returns 401, so the app can prompt the user to re-authenticate,
+ * and `device_revoked` on a 403 `DEVICE_DISCONNECTED`, which wipes this device.
  * External-API 401s (e.g. Google/Microsoft OAuth) are ignored — those use the same client but
  * with caller-provided OAuth tokens, and are not signals of an expired app session. */
 export const createAuthenticatedClient = (
@@ -157,9 +188,12 @@ export const createAuthenticatedClient = (
   getToken: () => string | null,
   config: Pick<HttpClientConfig, 'fetch' | 'credentials'> = {},
 ): HttpClient => {
-  const normalizedPrefix = prefixUrl.endsWith('/') ? prefixUrl : `${prefixUrl}/`
+  const backendUrl =
+    prefixUrl.startsWith('http://') || prefixUrl.startsWith('https://')
+      ? new URL(prefixUrl)
+      : new URL(prefixUrl, window.location.href)
   return createClient({
-    prefixUrl,
+    prefixUrl: backendUrl.href,
     fetch: config.fetch,
     credentials: config.credentials,
     hooks: {
@@ -173,31 +207,56 @@ export const createAuthenticatedClient = (
           }
           // Inject device identity headers only for app backend requests (not external APIs).
           // Uses the same prefix guard as the afterResponse 401 handler below.
-          if (request.url === prefixUrl || request.url.startsWith(normalizedPrefix)) {
+          if (isBackendRequest(request.url, backendUrl)) {
             const deviceId = getDeviceId()
             if (deviceId) {
               request.headers.set('X-Device-ID', deviceId)
               request.headers.set('X-Device-Name', getDeviceDisplayName())
             }
-            if (import.meta.env.VITE_APP_VERSION) {
-              request.headers.set('X-App-Version', import.meta.env.VITE_APP_VERSION)
+            for (const [key, value] of Object.entries(appVersionHeader())) {
+              request.headers.set(key, value)
             }
+            // A single resolved tag, not a preference list — the client has already
+            // negotiated, so the backend forwards rather than re-negotiates.
+            request.headers.set('X-App-Language', getActiveLocale())
           }
         },
       ],
       afterResponse: [
         // Event name + reason kept in sync with src/db/powersync/connector.ts. Importing from there
         // would create a cycle (connector → sync-tracker → posthog → http).
-        (request, response) => {
-          if (response.status !== 401 || !request.headers.has('Authorization')) {
+        async (request, response) => {
+          // Only app-backend responses are actionable — external APIs use this same
+          // client with caller-provided tokens, so their 401/403/426 are not signals about
+          // our app session or app version. Same prefix guard as the beforeRequest hook.
+          if (!isBackendRequest(request.url, backendUrl)) {
             return
           }
-          if (request.url !== prefixUrl && !request.url.startsWith(normalizedPrefix)) {
+          // A 426 from our backend means this build is below the enforced minimum —
+          // status-only (the body stream belongs to the caller).
+          if (response.status === 426) {
+            handleAppVersionUnsupported(response.status)
             return
           }
-          window.dispatchEvent(
-            new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
-          )
+          if (response.status === 401 && request.headers.has('Authorization')) {
+            window.dispatchEvent(
+              new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
+            )
+            return
+          }
+          // A revoked device: its sessions are gone, so this is the only way it learns.
+          // Cloned so the caller still owns the body.
+          if (response.status === 403) {
+            const body = (await response
+              .clone()
+              .json()
+              .catch(() => null)) as { code?: string } | null
+            if (body?.code === 'DEVICE_DISCONNECTED') {
+              window.dispatchEvent(
+                new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'device_revoked' } }),
+              )
+            }
+          }
         },
       ],
     },

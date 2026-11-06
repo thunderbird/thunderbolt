@@ -10,12 +10,55 @@ import { ErrorMessage } from './error-message'
 afterEach(cleanup)
 
 describe('ErrorMessage', () => {
+  describe('cause-specific errors', () => {
+    const cases = [
+      {
+        kind: 'attestation',
+        message: "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment.",
+      },
+      {
+        kind: 'timeout',
+        message: 'The AI provider took too long to respond. Try again.',
+      },
+      {
+        kind: 'provider',
+        message: 'The AI provider is having trouble right now. Try again in a moment.',
+      },
+      {
+        kind: 'network',
+        message: 'Connection problem. Check your internet and try again.',
+      },
+      {
+        kind: 'connection-lost',
+        message:
+          'The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed.',
+      },
+      {
+        kind: 'tools-unsupported',
+        message: "This model doesn't support tools.",
+      },
+    ] as const
+
+    for (const { kind, message } of cases) {
+      it(`shows ${kind} guidance with Retry`, () => {
+        const onRetry = mock(() => {})
+        const error = new Error(JSON.stringify({ error: 'Request failed', kind }))
+
+        render(<ErrorMessage retryCount={maxRetries} retriesExhausted={true} error={error} onRetry={onRetry} />)
+
+        expect(screen.getByText(message)).toBeTruthy()
+        expect(screen.getByText('Retry')).toBeTruthy()
+      })
+    }
+  })
+
   describe('rate limit errors', () => {
-    it('should show rate limit message for JSON 429 status', () => {
+    it('keeps the generic rate-limit copy for an unrelated JSON 429', () => {
       const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))
       render(<ErrorMessage retryCount={0} retriesExhausted={false} error={error} />)
 
       expect(screen.getByText('Too many requests. Please try again in a moment.')).toBeTruthy()
+      expect(screen.queryByText('AI usage limit reached')).toBeNull()
     })
 
     it('should show rate limit message for JSON 429 statusCode', () => {
@@ -31,6 +74,47 @@ describe('ErrorMessage', () => {
 
       expect(screen.getByText('Too many requests. Please try again in a moment.')).toBeTruthy()
     })
+
+    const quotaCases = [
+      {
+        label: 'direct pi-ai 5-hour quota error',
+        error: new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}'),
+        message: "You've reached your AI usage limit for the current 5-hour window. Try again later.",
+      },
+      {
+        label: 'serialized SecureClient 7-day quota error',
+        error: new Error(
+          JSON.stringify({
+            error: JSON.stringify({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '7d' } }),
+            status: 429,
+            isRetryable: true,
+            kind: 'rate-limit',
+          }),
+        ),
+        message: "You've reached your AI usage limit for the current 7-day window. Try again later.",
+      },
+    ]
+
+    for (const { label, error, message } of quotaCases) {
+      it(`shows personalized copy without retry controls for a ${label}`, () => {
+        const onRetry = mock(() => {})
+        render(<ErrorMessage retryCount={1} retriesExhausted={false} error={error} onRetry={onRetry} />)
+
+        const title = screen.getByText('AI usage limit reached')
+        const body = screen.getByText(message)
+
+        for (const element of [title, body]) {
+          expect(element).toHaveClass('text-foreground')
+          expect(element).not.toHaveClass('text-warning-foreground')
+          expect(element).not.toHaveClass('text-warning/90')
+          expect(element).not.toHaveClass('text-warning/80')
+        }
+        expect(screen.queryByText('Too many requests. Please try again in a moment.')).toBeNull()
+        expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull()
+        expect(screen.queryByText('Retry')).toBeNull()
+        expect(screen.queryByText(/Retrying/)).toBeNull()
+      })
+    }
 
     it('should not show retry button or spinner for rate limit errors', () => {
       const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))
@@ -50,17 +134,57 @@ describe('ErrorMessage', () => {
     })
   })
 
+  describe('hosted agent run in progress', () => {
+    // How the managed-http adapter serializes the endpoint's 429.
+    const runInProgress = new Error(
+      JSON.stringify({ error: JSON.stringify({ error: { code: 'AGENT_RUN_IN_PROGRESS' } }), status: 429 }),
+    )
+
+    it('says the agent is still answering while the delayed retry is pending, not a rate limit', () => {
+      render(<ErrorMessage retryCount={1} retriesExhausted={false} error={runInProgress} />)
+
+      expect(
+        screen.getByText(`The agent is still finishing your previous message. Trying again (1/${maxRetries})…`),
+      ).toBeTruthy()
+      expect(screen.queryByText('Too many requests. Please try again in a moment.')).toBeNull()
+    })
+
+    it('offers Retry with its own copy once the retries are spent', () => {
+      const onRetry = mock(() => {})
+      render(<ErrorMessage retryCount={maxRetries} retriesExhausted={true} error={runInProgress} onRetry={onRetry} />)
+
+      expect(
+        screen.getByText('The agent is still finishing your previous message. Try again in a minute.'),
+      ).toBeTruthy()
+      fireEvent.click(screen.getByText('Retry'))
+      expect(onRetry).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('names oversized project and skill instructions when the hosted agent refuses them', () => {
+    const tooLarge = new Error(
+      JSON.stringify({ error: JSON.stringify({ error: { code: 'AGENT_INSTRUCTIONS_TOO_LARGE' } }), status: 400 }),
+    )
+    render(<ErrorMessage retryCount={0} retriesExhausted={true} error={tooLarge} />)
+
+    expect(
+      screen.getByText(
+        "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again.",
+      ),
+    ).toBeTruthy()
+  })
+
   describe('auto-retry in progress', () => {
     it('should show retry spinner when retryCount > 0 and retries not exhausted', () => {
       render(<ErrorMessage retryCount={1} retriesExhausted={false} />)
 
-      expect(screen.getByText(`Something went wrong. Retrying (1/${maxRetries})...`)).toBeTruthy()
+      expect(screen.getByText(`Something went wrong. Retrying (1/${maxRetries})…`)).toBeTruthy()
     })
 
     it('should update retry count display', () => {
       render(<ErrorMessage retryCount={2} retriesExhausted={false} />)
 
-      expect(screen.getByText(`Something went wrong. Retrying (2/${maxRetries})...`)).toBeTruthy()
+      expect(screen.getByText(`Something went wrong. Retrying (2/${maxRetries})…`)).toBeTruthy()
     })
 
     it('should not show retry spinner when retries are exhausted', () => {
@@ -114,6 +238,59 @@ describe('ErrorMessage', () => {
     })
   })
 
+  describe('tools unsupported', () => {
+    const toolsError = new Error(
+      '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}',
+    )
+
+    it('offers to turn tools off in place of a Retry that would fail the same way', () => {
+      const onTurnOffTools = mock(() => {})
+      render(
+        <ErrorMessage
+          retryCount={0}
+          retriesExhausted={true}
+          error={toolsError}
+          onRetry={mock(() => {})}
+          onTurnOffTools={onTurnOffTools}
+        />,
+      )
+
+      fireEvent.click(screen.getByText('Turn off tools and retry'))
+
+      expect(screen.getByText("This model doesn't support tools.")).toBeTruthy()
+      expect(screen.queryByText('Retry')).toBeNull()
+      expect(onTurnOffTools).toHaveBeenCalledTimes(1)
+    })
+
+    it('disables the button while tools are being turned off', () => {
+      render(
+        <ErrorMessage
+          retryCount={0}
+          retriesExhausted={true}
+          error={toolsError}
+          onTurnOffTools={mock(() => {})}
+          isTurningOffTools
+        />,
+      )
+
+      expect(screen.getByRole('button', { name: 'Turn off tools and retry' }).hasAttribute('disabled')).toBe(true)
+    })
+
+    it('keeps Retry and shows no button without a handler, as for an external agent', () => {
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} error={toolsError} onRetry={mock(() => {})} />)
+
+      expect(screen.queryByText('Turn off tools and retry')).toBeNull()
+      expect(screen.getByText('Retry')).toBeTruthy()
+    })
+
+    it('shows no button for other errors', () => {
+      const error = new Error(JSON.stringify({ error: 'Server error', status: 500 }))
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} error={error} onTurnOffTools={mock(() => {})} />)
+
+      expect(screen.queryByText('Turn off tools and retry')).toBeNull()
+    })
+  })
+
   describe('delivery exhausted', () => {
     it('shows the unreadable-file guidance', () => {
       render(<ErrorMessage retryCount={0} retriesExhausted={true} deliveryExhausted={true} />)
@@ -153,7 +330,7 @@ describe('ErrorMessage', () => {
       const error = new Error('Network timeout')
       render(<ErrorMessage retryCount={1} retriesExhausted={false} error={error} />)
 
-      expect(screen.getByText(`Something went wrong. Retrying (1/${maxRetries})...`)).toBeTruthy()
+      expect(screen.getByText(`Something went wrong. Retrying (1/${maxRetries})…`)).toBeTruthy()
     })
   })
 })

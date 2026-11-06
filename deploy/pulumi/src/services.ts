@@ -23,7 +23,6 @@ type Secrets = {
   powersyncDbPassword: pulumi.Output<string>
   anthropicApiKey: pulumi.Output<string>
   fireworksApiKey: pulumi.Output<string>
-  mistralApiKey: pulumi.Output<string>
   thunderboltInferenceApiKey: pulumi.Output<string>
   exaApiKey: pulumi.Output<string>
   tinfoilApiKey: pulumi.Output<string>
@@ -63,6 +62,14 @@ type ServiceArgs = {
   thunderboltInferenceUrl?: pulumi.Input<string>
   /** URL for the Tinfoil confidential-inference enclave (env: TINFOIL_ENCLAVE_URL). Optional. */
   tinfoilEnclaveUrl?: pulumi.Input<string>
+  /** Minimum compatible app semver enforced before CLI device registration is enabled. */
+  minAppVersion: string
+  /** Enables server-owned CLI device registration after compatible app clients ship. */
+  cliDeviceRegistrationEnabled: boolean
+  /** Lets a personal access token reach the confidential (Tinfoil) routes. */
+  confidentialApiKeysEnabled: boolean
+  /** Operator branding JSON (env: BRANDING). Empty ships the default look. */
+  branding: string
   /**
    * When true, backend runs behind a proxy whose X-Forwarded-* headers we trust
    * for client IP extraction (Cloudflare edge for preview stacks).
@@ -386,9 +393,6 @@ export const createServices = (args: ServiceArgs) => {
     fireworksApiKey: new aws.secretsmanager.Secret(`${name}-fireworks-api-key`, {
       tags: { Name: `${name}-fireworks-api-key` },
     }),
-    mistralApiKey: new aws.secretsmanager.Secret(`${name}-mistral-api-key`, {
-      tags: { Name: `${name}-mistral-api-key` },
-    }),
     thunderboltInferenceApiKey: new aws.secretsmanager.Secret(`${name}-tb-inference-api-key`, {
       tags: { Name: `${name}-tb-inference-api-key` },
     }),
@@ -424,10 +428,6 @@ export const createServices = (args: ServiceArgs) => {
     secretId: backendSecrets.fireworksApiKey.id,
     secretString: args.secrets.fireworksApiKey,
   })
-  new aws.secretsmanager.SecretVersion(`${name}-mistral-api-key-version`, {
-    secretId: backendSecrets.mistralApiKey.id,
-    secretString: args.secrets.mistralApiKey,
-  })
   new aws.secretsmanager.SecretVersion(`${name}-tb-inference-api-key-version`, {
     secretId: backendSecrets.thunderboltInferenceApiKey.id,
     secretString: args.secrets.thunderboltInferenceApiKey,
@@ -457,7 +457,6 @@ export const createServices = (args: ServiceArgs) => {
           backendSecrets.powersyncDbPassword.arn,
           backendSecrets.anthropicApiKey.arn,
           backendSecrets.fireworksApiKey.arn,
-          backendSecrets.mistralApiKey.arn,
           backendSecrets.thunderboltInferenceApiKey.arn,
           backendSecrets.exaApiKey.arn,
           backendSecrets.tinfoilApiKey.arn,
@@ -503,8 +502,13 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'POWERSYNC_URL', value: args.publicUrls.powersync },
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
+          { name: 'MIN_APP_VERSION', value: args.minAppVersion },
+          { name: 'CLI_DEVICE_REGISTRATION_ENABLED', value: args.cliDeviceRegistrationEnabled ? 'true' : 'false' },
+          { name: 'CONFIDENTIAL_API_KEYS_ENABLED', value: args.confidentialApiKeysEnabled ? 'true' : 'false' },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
+          // Omitted when empty so the backend applies its own defaults.
+          ...(args.branding ? [{ name: 'BRANDING', value: args.branding }] : []),
           // Cloudflare terminates TLS for preview stacks — trust its CF-Connecting-IP
           // header for rate limiting. Enterprise stacks leave this unset (direct socket IP).
           { name: 'TRUSTED_PROXY', value: args.behindCloudflareProxy ? 'cloudflare' : '' },
@@ -516,7 +520,6 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'POWERSYNC_JWT_SECRET', valueFrom: backendSecrets.powersyncJwtSecret.arn },
           { name: 'ANTHROPIC_API_KEY', valueFrom: backendSecrets.anthropicApiKey.arn },
           { name: 'FIREWORKS_API_KEY', valueFrom: backendSecrets.fireworksApiKey.arn },
-          { name: 'MISTRAL_API_KEY', valueFrom: backendSecrets.mistralApiKey.arn },
           { name: 'THUNDERBOLT_INFERENCE_API_KEY', valueFrom: backendSecrets.thunderboltInferenceApiKey.arn },
           { name: 'EXA_API_KEY', valueFrom: backendSecrets.exaApiKey.arn },
           { name: 'TINFOIL_API_KEY', valueFrom: backendSecrets.tinfoilApiKey.arn },
@@ -559,7 +562,7 @@ export const createServices = (args: ServiceArgs) => {
         name: 'frontend',
         image: args.images.frontend,
         essential: true,
-        portMappings: [{ containerPort: 80 }],
+        portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('frontend'),
         ...(repositoryCredentials && { repositoryCredentials }),
       },
@@ -577,7 +580,7 @@ export const createServices = (args: ServiceArgs) => {
     },
     serviceRegistries: { registryArn: args.discoveryServices['frontend'].arn },
     loadBalancers: [
-      { targetGroupArn: args.targetGroups.frontend.arn, containerName: 'frontend', containerPort: 80 },
+      { targetGroupArn: args.targetGroups.frontend.arn, containerName: 'frontend', containerPort: 8080 },
     ],
   }, { dependsOn: [args.albListener] })
 
@@ -595,7 +598,7 @@ export const createServices = (args: ServiceArgs) => {
         name: 'marketing',
         image: args.images.marketing,
         essential: true,
-        portMappings: [{ containerPort: 80 }],
+        portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('marketing'),
         ...(repositoryCredentials && { repositoryCredentials }),
       },
@@ -613,7 +616,7 @@ export const createServices = (args: ServiceArgs) => {
     },
     serviceRegistries: { registryArn: args.discoveryServices['marketing'].arn },
     loadBalancers: [
-      { targetGroupArn: args.targetGroups.marketing.arn, containerName: 'marketing', containerPort: 80 },
+      { targetGroupArn: args.targetGroups.marketing.arn, containerName: 'marketing', containerPort: 8080 },
     ],
   }, { dependsOn: [args.albListener] })
 

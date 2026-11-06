@@ -2,13 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
+import { defaultChatTitle } from '@/lib/constants'
+
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatMessagesTable, chatThreadsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type ChatThread, type Model } from '@/types'
 import { getModel } from './models'
 import type { DrizzleQueryWithPromise } from '@/types'
+import { getChatActivityQuery } from './chat-activity-query'
+
+/**
+ * Where a chat came from.
+ *
+ * Both are set at creation and never by the chat itself. A chat belongs to at
+ * most one of them in practice, but they aren't modelled as a union: a chat
+ * started from a Mini App while a project is open legitimately has both, and
+ * collapsing them would force the UI to pick a winner at write time.
+ */
+export type ChatThreadOrigin = {
+  /** Owning project, when the chat was started from one. */
+  projectId?: string | null
+  /**
+   * Mini App the chat was started from. Kept even after the app is
+   * deregistered — see the column comment in `src/db/tables.ts`.
+   */
+  miniAppId?: string | null
+}
 
 /**
  * Checks if a chat thread ID exists as a soft-deleted record.
@@ -24,14 +45,10 @@ export const isChatThreadDeleted = async (db: AnyDrizzleDatabase, id: string): P
 }
 
 /**
- * Gets all chat threads ordered by creation date (excluding soft-deleted)
+ * Gets live chats ordered by latest message activity, with creation as the floor.
  */
 export const getAllChatThreads = (db: AnyDrizzleDatabase) => {
-  const query = db
-    .select()
-    .from(chatThreadsTable)
-    .where(isNull(chatThreadsTable.deletedAt))
-    .orderBy(desc(chatThreadsTable.id))
+  const query = getChatActivityQuery(db)
   return query as typeof query & DrizzleQueryWithPromise<ChatThread>
 }
 
@@ -58,12 +75,11 @@ export const getChatThread = async (db: AnyDrizzleDatabase, id: string): Promise
  */
 export const createChatThread = async (
   db: AnyDrizzleDatabase,
-  data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'> & {
-    agentId?: string | null
-  },
+  data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'> &
+    ChatThreadOrigin & { agentId?: string | null; isEncrypted?: 0 | 1 },
   model: Model,
 ): Promise<void> => {
-  await db.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
+  await db.insert(chatThreadsTable).values({ ...data, isEncrypted: data.isEncrypted ?? model.isConfidential })
 }
 
 /**
@@ -77,10 +93,7 @@ export const updateChatThread = async (
   db: AnyDrizzleDatabase,
   id: string,
   data: Partial<
-    Pick<
-      ChatThread,
-      'acpSessionId' | 'agentId' | 'contextSize' | 'modeId' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'
-    >
+    Pick<ChatThread, 'acpSessionId' | 'agentId' | 'contextSize' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'>
   >,
 ): Promise<void> => {
   await db.update(chatThreadsTable).set(data).where(eq(chatThreadsTable.id, id))
@@ -106,12 +119,26 @@ export const clearAcpSessionIdsForAgent = async (db: AnyDrizzleDatabase, agentId
  * Pass `agentId` so the thread row stores the user's currently-selected agent
  * on creation. Existing threads are returned untouched — caller is responsible
  * for any subsequent updates via `updateChatThread`.
+ *
+ * `isEncrypted` (the "private chat" flag, which locks the thread to models of
+ * the same confidentiality) defaults to the model's `isConfidential`. Pass 0
+ * for a chat whose content leaves the device unencrypted regardless of model,
+ * as the hosted agent's does.
+ *
+ * Origin fields are grouped rather than trailing positionally: they are all
+ * optional and all nullable, so `(db, id, model, null, projectId)` gave no
+ * clue at the call site which null was which.
  */
 export const getOrCreateChatThread = async (
   db: AnyDrizzleDatabase,
   id: string,
   modelId: string,
-  agentId: string | null = null,
+  {
+    agentId = null,
+    projectId = null,
+    miniAppId = null,
+    isEncrypted,
+  }: ChatThreadOrigin & { agentId?: string | null; isEncrypted?: 0 | 1 } = {},
 ): Promise<ChatThread> => {
   const thread = await getChatThread(db, id)
 
@@ -128,11 +155,14 @@ export const getOrCreateChatThread = async (
     db,
     {
       id,
-      title: 'New Chat',
+      title: defaultChatTitle,
       contextSize: null,
       triggeredBy: null,
       wasTriggeredByAutomation: 0,
       agentId,
+      projectId,
+      miniAppId,
+      isEncrypted,
     },
     model,
   )
@@ -173,21 +203,30 @@ export const deleteChatThread = async (db: AnyDrizzleDatabase, id: string): Prom
 }
 
 /**
- * Soft deletes all chat threads (sets deletedAt datetime)
- * Also soft-deletes all associated messages
+ * Soft deletes chats outside projects and their associated messages.
+ * Project chats, messages, and artifacts are preserved.
  * Scrubs all nullable columns for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
-export const deleteAllChatThreads = async (db: AnyDrizzleDatabase): Promise<void> => {
+export const deleteNonProjectChatThreads = async (db: AnyDrizzleDatabase): Promise<void> => {
   const deletedAt = nowIso()
+  const target = sql`${chatThreadsTable.projectId} IS NULL AND ${chatThreadsTable.deletedAt} IS NULL`
   await db.transaction(async (tx) => {
     await tx
       .update(chatMessagesTable)
       .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
-      .where(isNull(chatMessagesTable.deletedAt))
+      .where(
+        and(
+          isNull(chatMessagesTable.deletedAt),
+          inArray(
+            chatMessagesTable.chatThreadId,
+            tx.select({ id: chatThreadsTable.id }).from(chatThreadsTable).where(target),
+          ),
+        ),
+      )
     await tx
       .update(chatThreadsTable)
       .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
-      .where(isNull(chatThreadsTable.deletedAt))
+      .where(target)
   })
 }

@@ -127,7 +127,10 @@ describe('ensureSelfEnrollment', () => {
       })
 
       expect(post).toHaveBeenCalledTimes(1)
-      expect(warn).toHaveBeenCalledTimes(1)
+      // The rejected own-row lookup warns on both calls; the failed enrollment warns once.
+      const warnedMessages = warn.mock.calls.map(([message]) => String(message))
+      expect(warnedMessages.filter((message) => message.includes('own-device lookup failed'))).toHaveLength(2)
+      expect(warnedMessages.filter((message) => message.includes('enrollment failed'))).toHaveLength(1)
     } finally {
       warn.mockRestore()
     }

@@ -4,6 +4,7 @@
 
 import { maxRetries } from '@/chats/chat-instance'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn } from 'storybook/test'
 import { ErrorMessage } from './error-message'
 
 const meta = {
@@ -84,6 +85,41 @@ export const RetriesExhaustedNoRetryHandler: Story = {
     docs: {
       description: {
         story: 'Red banner without Retry button when no onRetry handler is provided.',
+      },
+    },
+  },
+}
+
+export const ConnectionLost: Story = {
+  args: {
+    retryCount: 0,
+    retriesExhausted: true,
+    error: new Error(JSON.stringify({ error: 'relay dropped', kind: 'connection-lost' })),
+    onRetry: () => {
+      console.log('Retry clicked')
+    },
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Interrupted-turn warning that makes the duplicate-action risk explicit before manual Retry.',
+      },
+    },
+  },
+}
+
+export const ToolsUnsupported: Story = {
+  args: {
+    retryCount: 0,
+    retriesExhausted: true,
+    error: new Error('400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'),
+    onRetry: fn(),
+    onTurnOffTools: fn(),
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'A model that rejected the turn because it carried tools, with a one-click way to turn them off.',
       },
     },
   },

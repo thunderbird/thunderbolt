@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { relations } from 'drizzle-orm'
-import { pgTable, text, timestamp, boolean, integer, index } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, boolean, integer, index, uniqueIndex } from 'drizzle-orm/pg-core'
 
 import type { User as SharedUser } from '@shared/types/auth'
 
@@ -100,9 +100,9 @@ export const ssoProvider = pgTable('sso_provider', {
 
 /**
  * Backs the Better Auth `deviceAuthorization` plugin (RFC 8628). One row per in-flight
- * device grant: created on /device/code, claimed + approved at /device/approve, consumed
- * on /device/token. Column JS keys must match the plugin's field names (`deviceCode`,
- * `userCode`, …); SQL names are snake_case. `userId` is null until the user approves.
+ * device grant: created on /device/code, claimed at GET /device, approved at /device/approve,
+ * consumed on /device/token. Column JS keys must match the plugin's field names (`deviceCode`,
+ * `userCode`, …); SQL names are snake_case. `userId` is null until the user claims the code.
  */
 export const deviceCode = pgTable(
   'device_code',
@@ -119,8 +119,8 @@ export const deviceCode = pgTable(
     scope: text('scope'),
   },
   (table) => [
-    index('device_code_deviceCode_idx').on(table.deviceCode),
-    index('device_code_userCode_idx').on(table.userCode),
+    uniqueIndex('device_code_deviceCode_uidx').on(table.deviceCode),
+    uniqueIndex('device_code_userCode_uidx').on(table.userCode),
   ],
 )
 
@@ -161,6 +161,39 @@ export const apikey = pgTable(
     metadata: text('metadata'),
   },
   (table) => [index('apikey_key_idx').on(table.key), index('apikey_referenceId_idx').on(table.referenceId)],
+)
+
+/**
+ * Backs the `@better-auth/passkey` plugin. One row per WebAuthn credential:
+ * `credentialID` is the authenticator's credential id, `publicKey` the COSE public
+ * key (base64), `counter` the signature counter, `aaguid` identifies the
+ * authenticator/provider model.
+ * Column JS keys mirror the plugin's field names; SQL names are snake_case.
+ */
+export const passkey = pgTable(
+  'passkey',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    publicKey: text('public_key').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    credentialID: text('credential_id').notNull(),
+    counter: integer('counter').notNull(),
+    deviceType: text('device_type').notNull(),
+    backedUp: boolean('backed_up').notNull(),
+    transports: text('transports'),
+    createdAt: timestamp('created_at'),
+    aaguid: text('aaguid'),
+  },
+  // One passkey per account (it doubles as the account's single E2EE passkey
+  // slot), and credential ids unique across accounts — the slot is found by its
+  // credential id.
+  (table) => [
+    uniqueIndex('passkey_userId_idx').on(table.userId),
+    uniqueIndex('passkey_credentialID_idx').on(table.credentialID),
+  ],
 )
 
 export const userRelations = relations(user, ({ many }) => ({

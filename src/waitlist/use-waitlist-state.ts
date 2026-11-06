@@ -2,15 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isNewAuthUser, onSignInSuccess } from '@/components/sign-in/use-sign-in-form-state'
+import { isNewAuthUser } from '@/lib/returning-user-onboarding'
+import { signInWithOtp } from '@/lib/sign-in-with-otp'
 import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
 import { useHttpClient } from '@/contexts'
-import { challengeTokenHeader, otpLength } from '@/lib/constants'
+import { i18n } from '@/i18n'
+import { msg } from '@lingui/core/macro'
+import { otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
+import { isPasskeyCancellation, signInWithPasskey } from '@/lib/passkey'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
+
+const joinFailed = msg`Something went wrong. Please try again.`
+const verifyFailed = msg`Verification failed. Please try again.`
+const passkeyFailed = msg`Couldn't sign in with your passkey. Please try again or use your email.`
 
 type WaitlistStatus = 'idle' | 'joining' | 'checkEmail' | 'verifying' | 'error'
 
@@ -20,6 +28,7 @@ type State = {
   challengeToken: string
   status: WaitlistStatus
   errorMessage: string
+  passkeyPending: boolean
 }
 
 type Action =
@@ -31,6 +40,9 @@ type Action =
   | { type: 'START_VERIFYING' }
   | { type: 'VERIFY_ERROR'; payload: string }
   | { type: 'RESET' }
+  | { type: 'PASSKEY_START' }
+  | { type: 'PASSKEY_ERROR'; payload: string }
+  | { type: 'PASSKEY_CANCEL' }
 
 const initialState: State = {
   email: '',
@@ -38,6 +50,7 @@ const initialState: State = {
   challengeToken: '',
   status: 'idle',
   errorMessage: '',
+  passkeyPending: false,
 }
 
 const reducer = (state: State, action: Action): State => {
@@ -58,6 +71,12 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, status: 'checkEmail', otp: '', errorMessage: action.payload }
     case 'RESET':
       return initialState
+    case 'PASSKEY_START':
+      return { ...state, status: 'idle', passkeyPending: true, errorMessage: '' }
+    case 'PASSKEY_ERROR':
+      return { ...state, status: 'error', passkeyPending: false, errorMessage: action.payload }
+    case 'PASSKEY_CANCEL':
+      return { ...state, status: 'idle', passkeyPending: false, errorMessage: '' }
     default:
       return state
   }
@@ -65,20 +84,19 @@ const reducer = (state: State, action: Action): State => {
 
 type UseWaitlistStateOptions = {
   authClient: AuthClient
-  onVerified?: () => void
 }
 
 /**
  * State hook for the unified waitlist flow.
  * Handles email submission via the waitlist API, then OTP verification for approved users.
+ * AuthGate owns the signed-in redirect; post-sign-in work can finish after this page unmounts.
  *
  * Privacy note: The API always returns { success: true } regardless of user status.
  * Approved users receive an OTP email; others receive waitlist status emails.
  */
-export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOptions) => {
+export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const analytics = useAnonymousPromotionAnalytics()
-  const { data: session } = authClient.useSession()
   const [state, dispatch] = useReducer(reducer, initialState)
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
@@ -101,7 +119,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       dispatch({ type: 'JOIN_SUCCESS', payload: challengeToken ?? '' })
     } catch (error) {
       console.error('Waitlist join error:', error)
-      dispatch({ type: 'JOIN_ERROR', payload: 'Something went wrong. Please try again.' })
+      dispatch({ type: 'JOIN_ERROR', payload: i18n._(joinFailed) })
     }
   }
 
@@ -112,37 +130,50 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
 
     await analytics.captureAnonId(authClient)
 
-    // Snapshot BEFORE the sign-in mutation — after it resolves, the session has flipped
-    // to the new identity and `isAnonymous` no longer reflects the pre-promotion state.
-    const wasAnonymous = session?.user?.isAnonymous === true
-
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      const result = await authClient.signIn.emailOtp({
+      const result = await signInWithOtp(authClient, {
         email: state.email.trim(),
         otp: value,
-        fetchOptions: {
-          headers: { [challengeTokenHeader]: state.challengeToken },
-        },
+        challengeToken: state.challengeToken,
       })
 
       if (result.error) {
-        dispatch({ type: 'VERIFY_ERROR', payload: getOtpErrorMessage(result.error, 'code') })
+        dispatch({ type: 'VERIFY_ERROR', payload: i18n._(getOtpErrorMessage(result.error, 'code')) })
         return
       }
 
       const isNewUser = isNewAuthUser(result.data.user)
-      await onSignInSuccess(isNewUser, wasAnonymous)
       analytics.onPromotionSuccess(result.data.user.id)
 
       if (!isNewUser) {
         useWelcomeStore.getState().trigger()
       }
-      onVerified?.()
     } catch (error) {
       console.error('OTP verification error:', error)
-      dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
+      dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
+    }
+  }
+
+  const handlePasskeySignIn = async () => {
+    // Disable the button before any await, so a double tap can't start a second ceremony.
+    dispatch({ type: 'PASSKEY_START' })
+    await analytics.captureAnonId(authClient)
+
+    try {
+      const { userId } = await signInWithPasskey(authClient)
+
+      analytics.onPromotionSuccess(userId)
+
+      useWelcomeStore.getState().trigger()
+    } catch (error) {
+      if (isPasskeyCancellation(error)) {
+        dispatch({ type: 'PASSKEY_CANCEL' })
+        return
+      }
+      console.error('Passkey sign-in error:', error)
+      dispatch({ type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
     }
   }
 
@@ -156,6 +187,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
     actions: {
       handleSubmit,
       handleOtpComplete,
+      handlePasskeySignIn,
       setEmail,
       setOtp,
       reset,

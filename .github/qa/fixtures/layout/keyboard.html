@@ -1,0 +1,38 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Keyboard</title>
+  </head>
+  <body>
+    <!-- Pinned to the bottom, so a 300 px keyboard hides it. Its wrapper lets clicks through and the field takes them
+         back, like a composer floating over the page. -->
+    <div style="pointer-events: none">
+      <input placeholder="Name" style="position: fixed; bottom: 40px; left: 0; width: 200px; pointer-events: auto" />
+    </div>
+    <!-- The onboarding dialog's footer, under the keyboard. Its 10 px of scroll cannot lift Continue above the
+         keyboard. Continue is disabled the way ui/button.tsx disables, with pointer-events: none on itself. -->
+    <div
+      role="dialog"
+      aria-label="Onboarding"
+      style="position: fixed; bottom: 0; left: 300px; width: 300px; height: 200px; overflow: auto"
+    >
+      <div style="height: 170px"></div>
+      <button disabled style="pointer-events: none; height: 40px">Continue</button>
+    </div>
+    <!-- A location popover on top of the onboarding dialog. Its list scrolls far enough to lift its last button above
+         the keyboard. -->
+    <div
+      role="dialog"
+      aria-label="Locations"
+      style="position: fixed; top: 0; left: 700px; width: 300px; height: 50vh; overflow: auto"
+    >
+      <div style="height: 2000px"></div>
+      <button>Show more</button>
+    </div>
+    <script src="fake-keyboard.js"></script>
+  </body>
+</html>

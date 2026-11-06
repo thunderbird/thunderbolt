@@ -2,10 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { createContext, useContext, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { Search } from 'lucide-react'
-import { Button } from './button'
+import { Button, mutedIconButtonClass } from './button'
+import { useMobileForegroundPortalTarget } from './mobile-foreground-portal'
+import { mobileHeaderControlFillClass } from './modal-styles'
 import { SearchInput, type SearchInputProps } from './search-input'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
 type PageSearchContextValue = {
@@ -38,7 +43,7 @@ type PageSearchProps = {
  * Usage:
  *   <PageSearch onSearch={handleSearch}>
  *     <PageSearch.Button />
- *     <PageSearch.Input placeholder="Search..." />
+ *     <PageSearch.Input placeholder="Search…" />
  *   </PageSearch>
  */
 export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
@@ -50,7 +55,10 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
     const next = !open
     setOpen(next)
     if (next) {
-      requestAnimationFrame(() => inputRef.current?.focus())
+      // Focus synchronously inside the tap's event handler — the input is
+      // already in the DOM (just collapsed), and staying within the user
+      // gesture is what lets the mobile keyboard open immediately.
+      inputRef.current?.focus()
     } else {
       setSearchValue('')
       onSearch('')
@@ -63,13 +71,43 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
 }
 
 const PageSearchButton = () => {
+  const { t } = useLingui()
   const { open, toggle } = usePageSearchContext()
+  const { isMobile } = useIsMobile()
+  const portalTarget = useMobileForegroundPortalTarget()
+
+  if (isMobile) {
+    if (!portalTarget) {
+      return null
+    }
+
+    // Mobile: a top-right circular header control, matching the sidebar
+    // toggle / modal close family and moving with the foreground shell.
+    return createPortal(
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={t`Search`}
+        className={cn(
+          mutedIconButtonClass,
+          mobileHeaderControlFillClass,
+          'fixed right-2 z-30',
+          open && 'bg-muted text-foreground',
+        )}
+        style={{ top: 'var(--header-control-top)' }}
+        onClick={toggle}
+      >
+        <Search />
+      </Button>,
+      portalTarget,
+    )
+  }
 
   return (
     <Button
       variant="ghost"
       size="icon"
-      aria-label="Search"
+      aria-label={t`Search`}
       className={cn('rounded-lg hover:bg-accent', open && 'bg-accent')}
       onClick={toggle}
     >
@@ -89,6 +127,7 @@ const PageSearchInput = ({
   onSearch,
   placeholder,
   wrapperClassName,
+  className,
   ...searchInputProps
 }: PageSearchInputProps) => {
   const { open, inputRef, searchValue, setSearchValue } = usePageSearchContext()
@@ -101,7 +140,7 @@ const PageSearchInput = ({
     <div
       className={cn(
         'transition-all duration-300 ease-in-out flex-shrink-0',
-        open ? 'max-h-14 opacity-100' : 'max-h-0 opacity-0 overflow-hidden',
+        open ? 'max-h-16 pb-2 opacity-100' : 'max-h-0 pb-0 opacity-0 overflow-hidden',
         wrapperClassName,
       )}
     >
@@ -109,7 +148,7 @@ const PageSearchInput = ({
         ref={inputRef}
         inputSize="lg"
         showIcon
-        className="rounded-full"
+        className={cn('rounded-xl bg-card', className)}
         placeholder={placeholder}
         value={searchValue}
         onChange={handleChange}

@@ -3,17 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelOpus48 } from '@shared/defaults/models'
+import { defaultModelOpus55 } from '@shared/defaults/models'
 
-export const defaultModelProfileOpus48: ModelProfile = {
-  modelId: defaultModelOpus48.id,
-  temperature: 0.2,
+export const defaultModelProfileOpus55: ModelProfile = {
+  modelId: defaultModelOpus55.id,
+  temperature: null,
   maxSteps: 20,
   maxAttempts: 2,
   nudgeThreshold: 6,
   useSystemMessageModeDeveloper: 0,
   providerOptions: null,
-  toolsOverride: null,
+  toolsOverride: `- For a narrow current-fact lookup, use an official source for the requested value and the fact's own date or observation time; fetch a page if that evidence is missing. If a volatile value still has no observation time, attribute it to the source, label any publication date as such (or say "source undated"), and state "observation time unavailable; not a live quote". Never substitute today's date or call that value current; if the requested fact itself is missing, state the gap instead of filling it from memory.`,
   linkPreviewsOverride: null,
   chatModeAddendum: null,
   searchModeAddendum: null,

@@ -3,6 +3,5 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export { Component, DocumentResultWidget } from './widget'
-export { instructions } from './instructions'
 export { parse, schema } from './schema'
 export type { CacheData, DocumentResultWidget as DocumentResultWidgetType } from './schema'

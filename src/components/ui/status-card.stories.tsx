@@ -34,13 +34,18 @@ export const Default: Story = {
 
 export const WithIconTitle: Story = {
   args: {
-    title: (
-      <>
-        <CheckCircle2 className="size-5 text-success" />
-        Connected
-      </>
-    ),
+    icon: <CheckCircle2 className="size-5 text-success" />,
+    title: 'Connected',
     description: 'Your account is synced across 3 devices.',
+  },
+}
+
+export const WithBody: Story = {
+  args: {
+    icon: <CheckCircle2 className="size-5 text-success" />,
+    title: 'Connected',
+    description: 'Your account is ready to use.',
+    children: <button className="mt-3 text-sm font-medium text-primary">View tools</button>,
   },
 }
 

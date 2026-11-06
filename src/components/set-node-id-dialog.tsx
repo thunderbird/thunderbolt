@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -32,6 +33,7 @@ type Status = { kind: 'idle' } | { kind: 'scanning' } | { kind: 'error'; message
  * pairing code or scanning one from an uploaded QR image. Default export for lazy loading.
  */
 const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending }: SetNodeIdDialogProps) => {
+  const { t } = useLingui()
   const [text, setText] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -43,7 +45,7 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
       setText(decoded)
       setStatus({ kind: 'idle' })
     } catch (err) {
-      setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Could not read QR code' })
+      setStatus({ kind: 'error', message: err instanceof Error ? err.message : t`Could not read QR code` })
     }
   }
 
@@ -53,10 +55,10 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
       try {
         await onConfirm(nodeId)
       } catch (err) {
-        setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Could not bind the pairing code' })
+        setStatus({ kind: 'error', message: err instanceof Error ? err.message : t`Could not bind the pairing code` })
       }
     } catch (err) {
-      setStatus({ kind: 'error', message: err instanceof Error ? err.message : 'Invalid pairing code' })
+      setStatus({ kind: 'error', message: err instanceof Error ? err.message : t`Invalid pairing code` })
     }
   }
 
@@ -66,9 +68,11 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Pair {deviceName}</DialogTitle>
+          <DialogTitle>
+            <Trans>Pair {deviceName}</Trans>
+          </DialogTitle>
           <DialogDescription>
-            Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity.
+            <Trans>Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity.</Trans>
           </DialogDescription>
         </DialogHeader>
 
@@ -104,7 +108,7 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
             onClick={() => fileInputRef.current?.click()}
           >
             {scanning ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Upload className="size-4 mr-1" />}
-            Scan from image
+            <Trans>Scan from image</Trans>
           </Button>
 
           {status.kind === 'error' && (
@@ -114,11 +118,11 @@ const SetNodeIdDialog = ({ open, onOpenChange, deviceName, onConfirm, isPending 
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
+            <Trans>Cancel</Trans>
           </Button>
           <Button onClick={() => void handleSave()} disabled={isPending || scanning || text.trim().length === 0}>
             {isPending ? <Loader2 className="size-4 mr-1 animate-spin" /> : null}
-            Save
+            <Trans>Save</Trans>
           </Button>
         </DialogFooter>
       </DialogContent>

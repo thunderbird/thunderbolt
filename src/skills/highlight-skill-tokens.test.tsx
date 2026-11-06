@@ -21,8 +21,12 @@ const classify: SkillStatusClassifier = (slug) => {
   return { status: 'unknown' }
 }
 
+const noopCreateSkill = () => {}
+
 const renderTokens = (text: string) =>
-  render(<MemoryRouter>{renderHighlightedSkillTokens(text, classify)}</MemoryRouter>)
+  render(
+    <MemoryRouter>{renderHighlightedSkillTokens(text, classify, { onCreateSkill: noopCreateSkill })}</MemoryRouter>,
+  )
 
 describe('renderHighlightedSkillTokens', () => {
   it('renders plain text unchanged when no tokens are present', () => {
@@ -42,15 +46,15 @@ describe('renderHighlightedSkillTokens', () => {
     const { container } = renderTokens('please /task-triage me')
     const span = container.querySelector('.skill-token')
     expect(span?.textContent).toBe('/task-triage')
-    expect(span?.className).toContain('text-amber-700')
-    expect(container.querySelector('.text-red-600')).toBeNull()
+    expect(span?.className).toContain('text-warning')
+    expect(container.querySelector('.text-destructive')).toBeNull()
   })
 
   it('paints a committed unknown token as a red badge', () => {
     const { container } = renderTokens('hi /no-such-skill there')
     const span = container.querySelector('.skill-token')
     expect(span?.textContent).toBe('/no-such-skill')
-    expect(span?.className).toContain('text-red-600')
+    expect(span?.className).toContain('text-destructive')
   })
 
   it('leaves an in-progress (end-of-input, no trailing space) token unbadged even when the slug resolves', () => {
@@ -73,8 +77,8 @@ describe('renderHighlightedSkillTokens', () => {
     expect(badges).toHaveLength(3)
     const classes = [...badges].map((b) => b.className)
     expect(classes.some((c) => c.includes('text-muted-foreground'))).toBe(true)
-    expect(classes.some((c) => c.includes('text-amber-700'))).toBe(true)
-    expect(classes.some((c) => c.includes('text-red-600'))).toBe(true)
+    expect(classes.some((c) => c.includes('text-warning'))).toBe(true)
+    expect(classes.some((c) => c.includes('text-destructive'))).toBe(true)
   })
 
   it('wraps a committed unknown token in a popover trigger so the user gets a tooltip', () => {
@@ -91,22 +95,14 @@ describe('renderHighlightedSkillTokens', () => {
     expect(hidden?.textContent).toBe('/')
   })
 
-  it('hides the slash of an in-progress token — the trigger is never visible while typing', () => {
-    const { container } = renderTokens('hello /partial')
-    const hidden = container.querySelector('.text-transparent')
-    expect(hidden?.textContent).toBe('/')
-  })
-
-  it('hides a bare trailing "/" (just opened the picker, not yet a token)', () => {
-    const { container } = renderTokens('hello /')
-    const hidden = container.querySelector('.text-transparent')
-    expect(hidden?.textContent).toBe('/')
-  })
-
-  it('hides a "/" typed as the very first character', () => {
-    const { container } = renderTokens('/')
-    const hidden = container.querySelector('.text-transparent')
-    expect(hidden?.textContent).toBe('/')
+  it.each([
+    ['an in-progress token', '/con'],
+    ['a bare trailing slash', 'hello /'],
+    ['a slash as the first character', '/'],
+  ])('paints a literal "/" for %s, so a restored sigil never reads as a blank', (_, text) => {
+    const { container } = renderTokens(text)
+    expect(container.querySelector('.text-transparent')).toBeNull()
+    expect(container.textContent).toContain(text)
   })
 
   it('keeps mid-text slashes visible (fractions, paths)', () => {
@@ -115,7 +111,7 @@ describe('renderHighlightedSkillTokens', () => {
   })
 
   it('returns an array ending with a zero-width space to preserve trailing newlines', () => {
-    const nodes = renderHighlightedSkillTokens('hello\n', classify)
+    const nodes = renderHighlightedSkillTokens('hello\n', classify, { onCreateSkill: noopCreateSkill })
     expect(nodes[nodes.length - 1]).toBe('​')
   })
 })

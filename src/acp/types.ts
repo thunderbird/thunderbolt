@@ -13,22 +13,21 @@
  */
 
 import type { Stream } from '@agentclientprotocol/sdk'
+import type { AcpCompaction } from './compaction'
 
 /** Bidirectional ACP message stream + a lifecycle hook the adapter calls to
  *  tear the transport down (closes the WebSocket). */
 export type AcpTransport = {
   stream: Stream
   close: () => void
-  /** Resolves when the transport closes cleanly; REJECTS when it closes
-   *  terminally (a non-reconnectable close code or exhausted reconnects) so the
-   *  handshake can race against it and fail loudly instead of hanging on a
-   *  pending `initialize`. Optional so simpler fake transports (tests) can omit
-   *  it — the adapter only races when it's present. */
+  /** Resolves when the transport closes cleanly; rejects with a
+   *  `TransportTerminationError` when the connection dies. Optional so simpler
+   *  fake transports can omit it. */
   closed?: Promise<void>
 }
 
-/** Inputs to `openTransport(...)`. WebSocket honours the proxy toggle (native
- *  socket vs subprotocol tunnel); `iroh` dials a peer bridge over an n0 relay. */
+/** Inputs to `openTransport(...)`. Remote WebSockets follow Use Cloud Proxy on
+ *  Tauri (loopback always direct) and always proxy on web; `iroh` uses an n0 relay. */
 export type OpenTransportOptions = {
   url: string
   transport: 'websocket' | 'iroh'
@@ -70,6 +69,7 @@ export type AiSdkChunk =
     }
   | { type: 'tool-output-error'; toolCallId: string; errorText: string }
   | { type: 'message-metadata'; messageMetadata: Record<string, unknown> }
+  | { type: 'data-acp-compaction'; id: string; data: AcpCompaction }
   | { type: 'finish-step' }
   | { type: 'finish' }
   | { type: 'error'; errorText: string }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isWidgetSkillId } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import type { DependentsAction } from './dependents-dialog'
 
@@ -46,12 +47,6 @@ export type SkillsViewState = {
   slugError: string | null
   /** Generic save-failure message shown near the form's submit button. */
   submitError: string | null
-  /**
-   * Optional initial name for the create form — set when a "create it" deep
-   * link arrives from the chat composer's broken-reference alert. `null`
-   * for an empty form. Cleared on submit / leave.
-   */
-  createInitialName: string | null
 }
 
 export const initialSkillsViewState: SkillsViewState = {
@@ -65,27 +60,27 @@ export const initialSkillsViewState: SkillsViewState = {
   pendingDependents: null,
   slugError: null,
   submitError: null,
-  createInitialName: null,
 }
+
+/** Resolve an edit request without exposing widget rendering contracts to forms. */
+const modeForSkillEdit = (id: string): Mode => (isWidgetSkillId(id) ? 'detail' : 'edit')
 
 /**
  * Action type for the SkillsView state machine. Each action describes a
  * user-meaningful event (a click, a confirm, a successful mutation) — the
  * reducer maps it to the minimal state delta and any compound transitions
- * (e.g. `JUMP_TO_DEPENDENT` clears the dialog, sets active, sets mode,
- * and on mobile slides the panel in, all in one dispatch).
+ * (e.g. `SUBMIT_SUCCESS` clears form state, sets active, and returns to
+ * detail mode, all in one dispatch).
  */
 export type SkillsViewAction =
   /** User selected a skill in the list while in `detail` mode. */
   | { type: 'SELECT_SKILL'; id: string }
-  /** User opened the create form. Side effect: panel slides in on mobile.
-   * `initialName` pre-fills the form when arriving from a "create it" deep
-   * link out of the chat composer. */
-  | { type: 'START_CREATE'; initialName?: string }
-  /** User opened the edit form for a specific skill. */
+  /** User opened the create form. Side effect: panel slides in on mobile. */
+  | { type: 'START_CREATE' }
+  /** User requested editing a skill. Widget contracts stay in read-only detail. */
   | { type: 'START_EDIT'; id: string }
   /** Leave the form (confirmed) and apply the parked intent. */
-  | { type: 'PERFORM_LEAVE'; leave: LeaveIntent; isMobile: boolean }
+  | { type: 'PERFORM_LEAVE'; leave: LeaveIntent }
   /** User asked to leave but the form is dirty — park the intent for the
    *  discard-changes dialog. */
   | { type: 'REQUEST_LEAVE'; leave: LeaveIntent }
@@ -99,14 +94,12 @@ export type SkillsViewAction =
   | { type: 'CLOSE_DELETE' }
   /** Close the dependents confirm dialog (cancelled or confirmed). */
   | { type: 'CLOSE_DEPENDENTS' }
-  /** User clicked a row in the dependents dialog — jump to edit that skill. */
-  | { type: 'JUMP_TO_DEPENDENT'; id: string }
   /** Form reports its dirty state changed. */
-  | { type: 'SET_DIRTY'; dirty: boolean }
+  | { type: 'DIRTY_CHANGED'; dirty: boolean }
   /** Form submit succeeded — return to detail mode on the (possibly new) skill. */
   | { type: 'SUBMIT_SUCCESS'; activeId: string }
   /** Inline slug error from the form's local validator or the DAL. */
-  | { type: 'SET_SLUG_ERROR'; message: string }
+  | { type: 'SLUG_REJECTED'; message: string }
   /** User edited the slug — clear any stale uniqueness error. */
   | { type: 'CLEAR_SLUG_ERROR' }
   /** Form submit hit an unexpected persistence failure — keep the form open
@@ -127,33 +120,32 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         slugError: null,
         submitError: null,
         panelView: 'panel',
-        createInitialName: action.initialName ?? null,
-        // Bump the reset signal so SkillForm remounts with the new initial
-        // values when the user clicks "Create it" twice for different slugs.
+        // Bump the reset signal so SkillForm remounts with a blank form.
         resetSignal: state.resetSignal + 1,
       }
 
     case 'START_EDIT':
-      return { ...state, mode: 'edit', activeId: action.id, slugError: null, submitError: null, panelView: 'panel' }
+      return {
+        ...state,
+        mode: modeForSkillEdit(action.id),
+        activeId: action.id,
+        slugError: null,
+        submitError: null,
+        panelView: 'panel',
+      }
 
     case 'PERFORM_LEAVE': {
       const { leave } = action
       const nextActiveId = leave.type === 'select' || leave.type === 'edit' ? leave.id : state.activeId
-      // `edit`/`create` land in a fresh form on the target; `cancel`/`select`
-      // land in detail.
-      const nextMode: Mode = leave.type === 'edit' || leave.type === 'create' ? leave.type : 'detail'
+      // Editable `edit` targets and `create` land in fresh forms. Widget edit
+      // targets, `cancel`, and `select` land in detail.
+      const nextMode: Mode =
+        leave.type === 'edit' ? modeForSkillEdit(leave.id) : leave.type === 'create' ? 'create' : 'detail'
       // `edit`/`create` need the panel open — they can be triggered from a
-      // list-row action while panelView is still 'list'. On mobile a `cancel`
-      // drops the user back to the list. Driving this here (not in the form's
-      // onCancel) means the panel stays visible while the discard-confirmation
-      // dialog is open — if the user picks "Keep editing" the form remains
-      // accessible.
-      const nextPanelView =
-        leave.type === 'edit' || leave.type === 'create'
-          ? 'panel'
-          : action.isMobile && leave.type === 'cancel'
-            ? 'list'
-            : state.panelView
+      // list-row action while panelView is still 'list'. Cancel returns to the
+      // selected item's detail view on both mobile and desktop; closing the
+      // detail view is a separate action.
+      const nextPanelView = leave.type === 'edit' || leave.type === 'create' ? 'panel' : state.panelView
       return {
         ...state,
         activeId: nextActiveId,
@@ -164,7 +156,6 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         submitError: null,
         pendingLeave: null,
         panelView: nextPanelView,
-        createInitialName: null,
       }
     }
 
@@ -179,10 +170,8 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
       return { ...state, activeId: action.skill.id, pendingDelete: action.skill }
 
     case 'OPEN_DEPENDENTS':
-      // Opening the dependents dialog from inside an edit session can later
-      // trigger JUMP_TO_DEPENDENT, which starts a fresh edit on another skill.
-      // Reset `isDirty` and `slugError` now so the inherited edit-session state
-      // doesn't bleed into the new form.
+      // Opening from an edit session can later jump to another skill. Reset
+      // form state so it does not bleed into the next detail or edit surface.
       return {
         ...state,
         activeId: action.payload.skill.id,
@@ -198,28 +187,7 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
     case 'CLOSE_DEPENDENTS':
       return { ...state, pendingDependents: null }
 
-    case 'JUMP_TO_DEPENDENT':
-      // Fresh edit session on a different skill: clear `isDirty` and
-      // the form errors so a stale dirty flag from the prior form doesn't trigger
-      // a spurious discard-changes dialog on the new (untouched) form.
-      // SkillForm remounts via its `key` change, so the values themselves are
-      // already clean — this resets the parent's tracking state to match.
-      return {
-        ...state,
-        activeId: action.id,
-        mode: 'edit',
-        pendingDependents: null,
-        isDirty: false,
-        slugError: null,
-        submitError: null,
-        // The dependents dialog can be opened from a list-row action while
-        // panelView is still 'list'; opening the panel here gives the edit
-        // form a surface to render on (full-screen overlay on mobile, the
-        // right-hand slide-in on desktop).
-        panelView: 'panel',
-      }
-
-    case 'SET_DIRTY':
+    case 'DIRTY_CHANGED':
       return { ...state, isDirty: action.dirty }
 
     case 'SUBMIT_SUCCESS':
@@ -231,10 +199,9 @@ export const skillsViewReducer = (state: SkillsViewState, action: SkillsViewActi
         resetSignal: state.resetSignal + 1,
         slugError: null,
         submitError: null,
-        createInitialName: null,
       }
 
-    case 'SET_SLUG_ERROR':
+    case 'SLUG_REJECTED':
       return { ...state, slugError: action.message, submitError: null }
 
     case 'CLEAR_SLUG_ERROR':

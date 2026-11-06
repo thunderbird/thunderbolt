@@ -5,6 +5,7 @@
 import { useAuth, useHttpClient } from '@/contexts'
 import { useSettings } from '@/hooks/use-settings'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { usePasskeyAvailable } from '@/lib/passkey'
 import { isLocalhostUrl } from '@/lib/utils'
 import { type ReactNode, type RefObject, useCallback, useEffect } from 'react'
 import { SignInEmailStep } from './sign-in-email-step'
@@ -83,6 +84,7 @@ export const SignInForm = ({
   const { preferredName } = useSettings({ preferred_name: '' })
   const isLocalhost = isLocalhostUrl(cloudUrl)
   const displayName = preferredName.value as string
+  const passkeyAvailable = usePasskeyAvailable()
 
   const { state, isValidEmail, actions } = useSignInFormState({
     authClient,
@@ -155,6 +157,9 @@ export const SignInForm = ({
         onSubmit={actions.handleSubmit}
         onEmailChange={actions.setEmail}
         variant={variant}
+        passkeyAvailable={passkeyAvailable}
+        passkeyPending={state.passkeyPending}
+        onPasskeySignIn={actions.handlePasskeySignIn}
       />
     </div>
   )

@@ -33,22 +33,12 @@ on:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
-      nightly:
-        description: 'Is this a nightly build?'
-        required: false
-        default: false
-        type: boolean
   workflow_dispatch:
     inputs:
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
-      nightly:
-        description: 'Is this a nightly build?'
-        required: false
-        default: false
-        type: boolean
 
 concurrency:
   group: cli-release-${{ inputs.version }}
@@ -58,34 +48,8 @@ permissions:
   contents: write
 
 jobs:
-  ensure-release:
-    name: Ensure Draft Release
-    runs-on: ubuntu-24.04
-    steps:
-      # For a regular release the draft already exists (version-bump created it).
-      # For a nightly it is created by the desktop workflow's draft job, which
-      # runs in parallel — create it here if we win the race, confirm it if we
-      # lose. Either way the build matrix can upload afterwards.
-      - name: Ensure the shared draft release exists
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          VERSION: ${{ inputs.version }}
-          NIGHTLY: ${{ inputs.nightly }}
-        run: |
-          if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
-            exit 0
-          fi
-          FLAGS="--draft"
-          [ "$NIGHTLY" = "true" ] && FLAGS="$FLAGS --prerelease"
-          gh release create "v${VERSION}" --repo "$REPO" $FLAGS \
-            --title "Release v${VERSION}" \
-            --notes "Release assets are uploaded by CI." \
-            || gh release view "v${VERSION}" --repo "$REPO"
-
   build:
     name: Build ${{ matrix.target }}
-    needs: ensure-release
     strategy:
       fail-fast: false
       matrix:
@@ -106,17 +70,35 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies (cli)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.bun/install/cache
+            node_modules
             cli/node_modules
-          key: cli-bun-${{ matrix.os }}-${{ hashFiles('cli/bun.lock') }}
+          key: cli-bun-${{ matrix.os }}-${{ hashFiles('bun.lock', 'cli/bun.lock') }}
           restore-keys: |
             cli-bun-${{ matrix.os }}-
+
+      # Shared CLI imports need root packages, not root lifecycle scripts.
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install CLI dependencies
+        run: cd cli && bun install --frozen-lockfile
+
+      # Shared agent core resolves these from root while CLI code resolves them from cli/.
+      - name: Check shared CLI dependency versions
+        run: bun -e 'for (const name of ["@earendil-works/pi-ai", "openai"]) { const root = (await Bun.file(`node_modules/${name}/package.json`).json()).version; const cli = (await Bun.file(`cli/node_modules/${name}/package.json`).json()).version; if (root !== cli) throw new Error(`${name} root ${root} != CLI ${cli}`) }'
+
+      - name: Type check CLI
+        run: cd cli && bun run typecheck
+
+      - name: Run CLI tests (including real Tinfoil fixture)
+        run: cd cli && bun run test
 
       - name: Build CLI binary
         env:
@@ -132,13 +114,18 @@ jobs:
             exit 1
           fi
           cd cli
-          bun install --frozen-lockfile
           bun build --compile --minify \
             --target="bun-${{ matrix.target }}" \
             --define "process.env.THUNDERBOLT_BUILD_CLOUD_URL=\"$THUNDERBOLT_BUILD_CLOUD_URL\"" \
             --define "process.env.THUNDERBOLT_BUILD_APP_URL=\"$THUNDERBOLT_BUILD_APP_URL\"" \
             src/index.ts \
             --outfile "dist/thunderbolt-cli-${{ matrix.target }}"
+
+      - name: Smoke CLI binary
+        run: |
+          cd cli
+          ./dist/thunderbolt-cli-${{ matrix.target }} --version
+          ./dist/thunderbolt-cli-${{ matrix.target }} --help >/dev/null
 
       # Upload as a workflow artifact rather than straight to the Release, so a
       # failed leg can never leave a partial set of binaries on the release with

@@ -9,6 +9,7 @@ spec:
     app: marketing
   ports:
     - port: {{ .Values.marketing.service.port }}
+      targetPort: 8080
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -28,16 +29,17 @@ spec:
       {{- include "thunderbolt.podAnnotations" (dict "component" .Values.marketing "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
+      {{- include "thunderbolt.nodeSelector" . | nindent 6 }}
       containers:
         - name: marketing
           image: "{{ .Values.marketing.image.repository }}:{{ .Values.marketing.image.tag }}"
           imagePullPolicy: {{ .Values.marketing.image.pullPolicy }}
           ports:
-            - containerPort: 80
+            - containerPort: 8080
           {{- include "thunderbolt.resources" .Values.marketing.resources | nindent 10 }}
           readinessProbe:
             httpGet:
               path: /
-              port: 80
+              port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5

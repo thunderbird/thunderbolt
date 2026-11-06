@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { chatTitleLabel } from '@/lib/title-generator'
+
+import { Trans, useLingui } from '@lingui/react/macro'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
+import { selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { SidebarFooter } from '@/components/sidebar-footer'
 import {
   SidebarContent,
@@ -17,37 +21,102 @@ import {
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
 import { CheckSquare, MessageCirclePlus } from 'lucide-react'
-import type { MouseEvent, RefObject } from 'react'
+import { lazy, Suspense, type RefObject } from 'react'
 import { useLocation } from 'react-router'
+import {
+  DndContext,
+  DragOverlay,
+  MeasuringStrategy,
+  PointerSensor,
+  type DragEndEvent,
+  type DragStartEvent,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { MessageCircle } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { useProjectsState } from '@/dal/projects'
+import { useMiniApps } from '@/mini-apps/use-mini-apps'
+import { miniAppPath } from '@/mini-apps/use-chat-destination'
+import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
+import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
+import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
 import { ChatList } from './chat-list'
 import { SidebarNavToggle } from './nav-toggle'
-import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
+import { SidebarHeaderActions } from './sidebar-header-actions'
 import type { ChatThread, SidebarSection } from './types'
+
+const ProjectTree = lazy(async () => {
+  const module = await import('./project-tree')
+  return { default: module.ProjectTree }
+})
 
 type ChatSidebarContentProps = {
   isMobile: boolean
   isCollapsed: boolean
   chatThreads: ChatThread[]
   currentChatThreadId?: string
-  searchQuery: string
-  debouncedSearchQuery: string
-  showSearch: boolean
-  searchInputRef: RefObject<HTMLInputElement | null>
   deleteAllChatsMutation: DeleteAllChatsMutationType
   deleteChatMutation: DeleteChatMutationType
   deleteAllChatsDialogRef: RefObject<DeleteAllChatsDialogRef | null>
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   threadIdRef: RefObject<string | null>
   showTasks: boolean
+  showMiniApps: boolean
   activeSection: SidebarSection
   onSectionChange: (section: SidebarSection) => void
   onCreateNewChat: () => void
   onTasksClick: () => void
-  onChatClick: (threadId: string) => void
+  onMiniAppClick: (appId: string) => void
+  onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
-  onSearchClick: (e?: MouseEvent) => void
-  onSearchQueryChange: (value: string) => void
+  onSearchClick: () => void
+}
+
+type TasksMenuItemProps = {
+  isActive: boolean
+  onClick: () => void
+}
+
+const TasksMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
+  const { t } = useLingui()
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton onClick={onClick} tooltip={t`Tasks`} className="cursor-pointer" isActive={isActive}>
+        <CheckSquare className="size-[var(--icon-size-default)]" />
+        <span>
+          <Trans>Tasks</Trans>
+        </span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
+}
+
+/**
+ * One entry per registered Mini App. Rendered straight from the registry so
+ * onboarding a customer app is a config entry, not a sidebar change.
+ */
+const MiniAppMenuItems = ({ pathname, onClick }: { pathname: string; onClick: (appId: string) => void }) => {
+  const { apps } = useMiniApps()
+  return (
+    <>
+      {apps.map((app) => (
+        <SidebarMenuItem key={app.id}>
+          <SidebarMenuButton
+            onClick={() => onClick(app.id)}
+            tooltip={app.description}
+            className="cursor-pointer"
+            isActive={pathname === miniAppPath(app.id)}
+          >
+            <app.icon className="size-[var(--icon-size-default)]" />
+            <span>{app.name}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+    </>
+  )
 }
 
 export const ChatSidebarContent = ({
@@ -55,95 +124,223 @@ export const ChatSidebarContent = ({
   isCollapsed,
   chatThreads,
   currentChatThreadId,
-  searchQuery,
-  debouncedSearchQuery,
-  showSearch,
-  searchInputRef,
   deleteAllChatsMutation,
   deleteChatMutation,
   deleteAllChatsDialogRef,
   deleteChatDialogRef,
   threadIdRef,
   showTasks,
+  showMiniApps,
   activeSection,
   onSectionChange,
   onCreateNewChat,
   onTasksClick,
+  onMiniAppClick,
   onChatClick,
   onRename,
   onSearchClick,
-  onSearchQueryChange,
 }: ChatSidebarContentProps) => {
+  const { i18n, t } = useLingui()
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
+  const moveChatToProject = useMoveChatToProject()
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const configLoaded = useConfigStore(selectConfigSettled)
+  // Projects wait for `/config` like the section toggle, so they never paint and vanish.
+  const showProjects = configLoaded && !minimalMode
+  const { projects, isLoading: projectsLoading } = useProjectsState()
+  const projectIds = new Set(projects.map((project) => project.id))
+  const sharedScrollRef = useRef<HTMLDivElement>(null)
+  // The chat whose project is being picked from a row's action menu. One dialog
+  // for the whole list — a per-row instance would mount hundreds of them, and the
+  // rows are virtualized anyway.
+  const [moveTarget, setMoveTarget] = useState<{ chatThreadId: string; projectId: string | null } | null>(null)
+  // The dragged chat, or null when nothing is in flight. Holds the whole payload
+  // (not just a boolean) so the drop rows can hide the unassign target for a chat
+  // that has no project, and the overlay can show the chat's title.
+  const [draggingChat, setDraggingChat] = useState<ChatDragData | null>(null)
 
-  return (
-    <SidebarContent className="flex flex-col h-full overflow-hidden">
-      <SidebarHeader
-        onToggle={toggleSidebar}
-        navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
-      />
+  // 8px before a drag starts, so a chat row's click, context menu, and mobile
+  // long-press all still fire (same constraint the tasks list uses).
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-      {/* Collapsed: pb-0 so SidebarContent's gap-2 alone spaces the divider
-          below; pt-2 gives the nav toggle the same 8px above as the rail's
-          p-2 leaves on its sides. */}
-      <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pt-2 pb-0')}>
-        <SidebarGroupContent className="flex flex-col gap-2">
-          {isCollapsed && <SidebarNavToggle vertical activeSection={activeSection} onSectionChange={onSectionChange} />}
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={onCreateNewChat}
-                tooltip="New Chat"
-                className="cursor-pointer"
-                isActive={location.pathname === '/chats/new'}
-              >
-                <MessageCirclePlus className="size-[var(--icon-size-default)]" />
-                <span>New Chat</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            {showTasks && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={onTasksClick}
-                  tooltip="Tasks"
-                  className="cursor-pointer"
-                  isActive={location.pathname.startsWith('/tasks')}
-                >
-                  <CheckSquare className="size-[var(--icon-size-default)]" />
-                  <span>Tasks</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-          </SidebarMenu>
-        </SidebarGroupContent>
-      </SidebarGroup>
-      {isCollapsed && chatThreads.length > 0 && <RailDivider />}
+  // Minimal mode has no Settings section to switch to (see `selectMinimalMode`),
+  // so the toggle's slots stay empty. They also stay empty until `/config`
+  // answers, rather than showing a control that then disappears.
+  const sectionControl = (vertical = false) =>
+    showProjects ? (
+      <SidebarNavToggle vertical={vertical} activeSection={activeSection} onSectionChange={onSectionChange} />
+    ) : null
 
-      <ChatList
+  const headerControls = !isCollapsed ? (
+    <SidebarHeaderActions onSearchClick={onSearchClick}>{sectionControl()}</SidebarHeaderActions>
+  ) : (
+    sectionControl()
+  )
+
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    setDraggingChat((active.data.current as ChatDragData | undefined) ?? { title: null, projectId: null })
+  }
+
+  /**
+   * Shared by the drop handler and the menu.
+   *
+   * dnd-kit ignores the promise this returns, so a rejected write would leave the
+   * chat where it was with nothing said about it. There is no notification surface
+   * in the sidebar, so the failure is logged with its target — the same treatment
+   * `chat-instance.ts` gives its own fire-and-forget writes.
+   */
+  const runMove = async (chatThreadId: string, projectId: string | null) => {
+    try {
+      await moveChatToProject({ chatThreadId, projectId })
+    } catch (error) {
+      console.error('Moving a chat into a project failed', { chatThreadId, projectId, error })
+    }
+  }
+
+  const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+    setDraggingChat(null)
+    const drop = resolveChatDrop(active.id, over?.id ?? null)
+    if (!drop) {
+      return
+    }
+    await runMove(drop.chatThreadId, drop.projectId)
+  }
+
+  const projectTree = showProjects ? (
+    <Suspense fallback={null}>
+      <ProjectTree
         chatThreads={chatThreads}
         currentChatThreadId={currentChatThreadId}
         isCollapsed={isCollapsed}
         isMobile={isMobile}
-        debouncedSearchQuery={debouncedSearchQuery}
-        deleteAllChatsMutation={deleteAllChatsMutation}
         deleteChatMutation={deleteChatMutation}
-        deleteAllChatsDialogRef={deleteAllChatsDialogRef}
         deleteChatDialogRef={deleteChatDialogRef}
         threadIdRef={threadIdRef}
-        searchQuery={searchQuery}
-        showSearch={showSearch}
-        searchInputRef={searchInputRef}
         onChatClick={onChatClick}
         onRename={onRename}
-        onSearchClick={onSearchClick}
-        onSearchQueryChange={onSearchQueryChange}
+        onMoveToProject={(chatThreadId, projectId) => setMoveTarget({ chatThreadId, projectId })}
+        isDragging={draggingChat !== null}
+        draggingFromProjectId={draggingChat?.projectId ?? null}
       />
+    </Suspense>
+  ) : null
 
-      <SidebarFooter
-        className="flex-shrink-0"
-        navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
-      />
-    </SidebarContent>
+  return (
+    <DndContext
+      // Keep targets aligned when drag-only controls such as "Remove from project"
+      // appear or the shared sidebar viewport scrolls.
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragCancel={() => setDraggingChat(null)}
+      onDragEnd={handleDragEnd}
+    >
+      <SidebarContent className="relative flex h-full flex-col gap-0 overflow-hidden md:gap-2">
+        <SidebarHeader onToggle={toggleSidebar} navToggle={headerControls} />
+        <div
+          ref={sharedScrollRef}
+          data-slot="sidebar-navigation-scroll"
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide touch-pan-y [overflow-anchor:none]"
+        >
+          <div
+            className={cn(
+              'flex flex-col gap-2 pb-2',
+              isMobile && 'pb-[calc(var(--touch-height-lg)+0.5rem+var(--mobile-sidebar-footer-inset))]',
+            )}
+          >
+            {!isMobile && (
+              <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pt-2 pb-0')}>
+                <SidebarGroupContent className="flex flex-col gap-2">
+                  {isCollapsed && (
+                    <SidebarHeaderActions vertical onSearchClick={onSearchClick}>
+                      {sectionControl(true)}
+                    </SidebarHeaderActions>
+                  )}
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        onClick={onCreateNewChat}
+                        tooltip={t`New Chat`}
+                        className="cursor-pointer"
+                        isActive={location.pathname === '/chats/new'}
+                      >
+                        <MessageCirclePlus className="size-[var(--icon-size-default)]" />
+                        <span>
+                          <Trans>New Chat</Trans>
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    {showTasks && (
+                      <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
+                    )}
+                    {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
+                  </SidebarMenu>
+                  {/* Drop targets for dragging a chat into a project. */}
+                  {projectTree}
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
+            <ChatList
+              scrollRef={sharedScrollRef}
+              chatThreads={
+                showProjects
+                  ? chatThreads.filter(
+                      (thread) => !thread.projectId || (!projectsLoading && !projectIds.has(thread.projectId)),
+                    )
+                  : chatThreads
+              }
+              currentChatThreadId={currentChatThreadId}
+              isCollapsed={isCollapsed}
+              isMobile={isMobile}
+              deleteAllChatsMutation={deleteAllChatsMutation}
+              deleteChatMutation={deleteChatMutation}
+              deleteAllChatsDialogRef={deleteAllChatsDialogRef}
+              deleteChatDialogRef={deleteChatDialogRef}
+              threadIdRef={threadIdRef}
+              mobileNavToggle={headerControls}
+              mobileSecondaryNavigation={
+                <SidebarMenu className="mt-2 flex-shrink-0">
+                  {showProjects && <SidebarMenuItem>{projectTree}</SidebarMenuItem>}
+                  {showTasks && (
+                    <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
+                  )}
+                  {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
+                </SidebarMenu>
+              }
+              onChatClick={onChatClick}
+              onRename={onRename}
+              onMoveToProject={(chatThreadId, projectId) => setMoveTarget({ chatThreadId, projectId })}
+            />
+          </div>
+        </div>
+        <SidebarFooter className="flex-shrink-0 max-md:absolute max-md:inset-x-0 max-md:bottom-0 md:-mt-2" />
+      </SidebarContent>
+      {/* A chip rather than a clone of the row: the chat list is virtualized, so
+          the original node can unmount mid-drag and a cloned row would vanish. */}
+      <DragOverlay dropAnimation={null}>
+        {draggingChat && (
+          <div className="pointer-events-none flex max-w-[15rem] items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-lg">
+            <MessageCircle className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="truncate text-[length:var(--font-size-sm)]">
+              {chatTitleLabel(i18n, draggingChat.title)}
+            </span>
+          </div>
+        )}
+      </DragOverlay>
+
+      {moveTarget && !minimalMode && (
+        <MoveChatToProjectDialog
+          open
+          currentProjectId={moveTarget.projectId}
+          onOpenChange={(open) => !open && setMoveTarget(null)}
+          onSelect={(projectId) => {
+            const { chatThreadId } = moveTarget
+            setMoveTarget(null)
+            void runMove(chatThreadId, projectId)
+          }}
+        />
+      )}
+    </DndContext>
   )
 }

@@ -183,6 +183,104 @@
       "when": 1784819243043,
       "tag": "0025_reapply_cli_auth_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786716166665,
+      "tag": "0026_aberrant_roxanne_simpson",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1787672217848,
+      "tag": "0027_organic_wildside",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1787672371406,
+      "tag": "0028_seed-inference-prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788715305638,
+      "tag": "0029_seed-glm-5-3-prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789155227424,
+      "tag": "0030_debug_transcripts",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789756474964,
+      "tag": "0031_e2ee_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791300854097,
+      "tag": "0032_chat_threads_mini_app_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791320445791,
+      "tag": "0033_seed-fireworks-prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791414043381,
+      "tag": "0034_seed-tinfoil-deepseek-v4-1-flash-price",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791466400765,
+      "tag": "0035_seed-anthropic-claude-opus-5-5-price",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791482944983,
+      "tag": "0036_solved_captcha_challenges",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791975667825,
+      "tag": "0037_fireworks-cache-read-prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792004142532,
+      "tag": "0038_passkey",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792431652652,
+      "tag": "0039_device_code_unique_codes",
+      "breakpoints": true
     }
   ]
 }

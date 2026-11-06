@@ -58,7 +58,7 @@ prompt: "Read the git log and diff for this branch. Draft a PR description with 
 Test Plan, and Changes sections. Output markdown only."
 
 [Agent 2 - Test Suite Runner] model: "sonnet", run_in_background: true
-prompt: "Run `bun test` and `cd backend && bun test`. Report pass/fail summary."
+prompt: "Run `bun run test` and `bun run test:backend`. Report pass/fail summary."
 ```
 
 Use the drafter's output for the PR body. Confirm tests pass before creating.

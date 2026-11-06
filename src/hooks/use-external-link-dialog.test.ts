@@ -4,7 +4,7 @@
 
 import { renderHook, act } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
-import { useExternalLinkDialog } from './use-external-link-dialog'
+import { openFailedMessage, unsafeUrlMessage, useExternalLinkDialog } from './use-external-link-dialog'
 
 describe('useExternalLinkDialog', () => {
   describe('initial state', () => {
@@ -44,6 +44,23 @@ describe('useExternalLinkDialog', () => {
       })
 
       expect(result.current.pendingUrl).toBe('https://second.com')
+      expect(result.current.openError).toBe(null)
+    })
+
+    it('should seed openError when opened with one, and clear it when reopened without', () => {
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      act(() => {
+        result.current.openDialog('https://example.com', openFailedMessage)
+      })
+
+      expect(result.current.dialogOpen).toBe(true)
+      expect(result.current.openError).toBe(openFailedMessage)
+
+      act(() => {
+        result.current.openDialog('https://example.com')
+      })
+
       expect(result.current.openError).toBe(null)
     })
   })
@@ -127,7 +144,98 @@ describe('useExternalLinkDialog', () => {
       expect(mockWindowOpen).not.toHaveBeenCalled()
       expect(result.current.dialogOpen).toBe(true)
       expect(result.current.pendingUrl).toBe('javascript:alert(1)')
-      expect(result.current.openError).toBe('Could not open link. Please try again or copy the URL.')
+      expect(result.current.openError).toBe(unsafeUrlMessage)
+
+      window.open = originalOpen
+    })
+  })
+
+  describe('openExternally (the `browser` preference — no confirmation)', () => {
+    it('should open the URL immediately without showing the dialog', async () => {
+      const originalOpen = window.open
+      const mockWindowOpen = mock(() => ({}) as Window)
+      window.open = mockWindowOpen as typeof window.open
+
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      await act(async () => {
+        await result.current.openExternally('https://example.com')
+      })
+
+      expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
+      expect(result.current.dialogOpen).toBe(false)
+      expect(result.current.openError).toBeNull()
+
+      window.open = originalOpen
+    })
+
+    it('should not open an unsafe URL, and should surface the dialog explaining why', async () => {
+      const originalOpen = window.open
+      const mockWindowOpen = mock(() => ({}) as Window)
+      window.open = mockWindowOpen as typeof window.open
+
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      await act(async () => {
+        await result.current.openExternally('javascript:alert(1)')
+      })
+
+      expect(mockWindowOpen).not.toHaveBeenCalled()
+      expect(result.current.dialogOpen).toBe(true)
+      expect(result.current.pendingUrl).toBe('javascript:alert(1)')
+      expect(result.current.openError).toBe(unsafeUrlMessage)
+
+      window.open = originalOpen
+    })
+
+    it('should fall back to the dialog with an error when the opener throws', async () => {
+      // Throwing is the only observable failure on web: noopener makes window.open
+      // return null even on success, so the return value can't be used as a signal.
+      const originalOpen = window.open
+      window.open = mock(() => {
+        throw new Error('popup blocked')
+      }) as unknown as typeof window.open
+
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      await act(async () => {
+        await result.current.openExternally('https://example.com')
+      })
+
+      expect(result.current.dialogOpen).toBe(true)
+      expect(result.current.pendingUrl).toBe('https://example.com')
+      expect(result.current.openError).toBe(openFailedMessage)
+
+      window.open = originalOpen
+    })
+
+    it('should let the user retry from the fallback dialog via handleConfirm', async () => {
+      const originalOpen = window.open
+      let shouldFail = true
+      const mockWindowOpen = mock(() => {
+        if (shouldFail) {
+          throw new Error('popup blocked')
+        }
+        return {} as Window
+      })
+      window.open = mockWindowOpen as unknown as typeof window.open
+
+      const { result } = renderHook(() => useExternalLinkDialog())
+
+      await act(async () => {
+        await result.current.openExternally('https://example.com')
+      })
+
+      expect(result.current.openError).toBe(openFailedMessage)
+
+      shouldFail = false
+      await act(async () => {
+        await result.current.handleConfirm()
+      })
+
+      expect(result.current.dialogOpen).toBe(false)
+      expect(result.current.openError).toBeNull()
+      expect(mockWindowOpen).toHaveBeenLastCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
 
       window.open = originalOpen
     })
@@ -164,7 +272,7 @@ describe('useExternalLinkDialog', () => {
       expect(action).not.toHaveBeenCalled()
       expect(result.current.dialogOpen).toBe(true)
       expect(result.current.pendingUrl).toBe('javascript:alert(1)')
-      expect(result.current.openError).toBe('Could not open link. Please try again or copy the URL.')
+      expect(result.current.openError).toBe(unsafeUrlMessage)
     })
 
     it('should do nothing when pendingUrl is empty', () => {

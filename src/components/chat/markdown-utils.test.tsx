@@ -3,12 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { ContentViewProvider } from '@/content-view/context'
+import { ContentViewProvider, useContentView } from '@/content-view/context'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { CitationMap, CitationSource } from '@/types/citation'
 import { CitationPopoverProvider } from './citation-popover'
@@ -17,6 +18,8 @@ import {
   citationMarkdownComponents,
   ExternalLinkDialogProvider,
   markdownComponents,
+  markdownUrlTransform,
+  useOpenExternalLink,
 } from './markdown-utils'
 
 beforeAll(async () => {
@@ -211,6 +214,16 @@ describe('markdownComponents', () => {
 })
 
 describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => {
+  // The store is a module singleton and suites run --randomize in one process, so
+  // pin the behavior these tests assume rather than relying on the default surviving.
+  beforeEach(() => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'ask')
+  })
+
+  afterEach(() => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'ask')
+  })
+
   test('renders only one dialog instance; clicking a link shows that URL in the shared dialog', () => {
     const markdown = '[first](https://a.com) [second](https://b.com) [third](https://c.com)'
     const { container, getByRole, getByText } = render(
@@ -263,6 +276,193 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
     fireEvent.click(screen.getByRole('button', { name: 'Open Link' }))
     expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
     window.open = originalOpen
+  })
+})
+
+describe('SafeLink contact and unsupported links', () => {
+  const renderMarkdown = (markdown: string) =>
+    render(
+      <ExternalLinkDialogProvider>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={markdownUrlTransform}>
+          {markdown}
+        </ReactMarkdown>
+      </ExternalLinkDialogProvider>,
+    )
+
+  test('a bare email renders a mailto anchor with no target', () => {
+    const { container } = renderMarkdown('Write to help@example.com today')
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('href')).toBe('mailto:help@example.com')
+    expect(link?.hasAttribute('target')).toBe(false)
+  })
+
+  test('a tel link renders an anchor with no target and opens no dialog', () => {
+    const { container } = renderMarkdown('[call](tel:+15551234567)')
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('href')).toBe('tel:+15551234567')
+    expect(link?.hasAttribute('target')).toBe(false)
+    fireEvent.click(link!)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  test('a javascript link renders as plain text', () => {
+    const { container } = renderMarkdown('[click](javascript:alert(1))')
+    expect(container.querySelector('a')).toBeNull()
+    expect(container.textContent).toContain('click')
+  })
+
+  test('no anchor carries a node attribute', () => {
+    const { container } = renderMarkdown('help@example.com and [site](https://example.com)')
+    container.querySelectorAll('a').forEach((a) => expect(a.hasAttribute('node')).toBe(false))
+  })
+
+  test('an https link keeps its target and opens the dialog', () => {
+    const { container } = renderMarkdown('[site](https://example.com)')
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('target')).toBe('_blank')
+    fireEvent.click(link!)
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+  })
+})
+
+describe('ExternalLinkDialogProvider — externalLinkBehavior routing', () => {
+  const renderLink = (
+    url = 'https://example.com',
+    {
+      withContentView = true,
+      isDesktopPlatform,
+    }: { withContentView?: boolean; isDesktopPlatform?: () => boolean } = {},
+  ) => {
+    const markdown = `[link](${url})`
+    const content = (
+      <ExternalLinkDialogProvider isDesktopPlatform={isDesktopPlatform}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {markdown}
+        </ReactMarkdown>
+      </ExternalLinkDialogProvider>
+    )
+    const view = render(
+      withContentView ? (
+        <ContentViewProvider>
+          {content}
+          <PreviewProbe />
+        </ContentViewProvider>
+      ) : (
+        content
+      ),
+    )
+    const link = view.container.querySelector('a[href]')
+    if (!link) {
+      throw new Error('expected link')
+    }
+    return link
+  }
+
+  /**
+   * Reports what the content view is showing. The side panel itself is rendered by
+   * the layout, not by ContentViewProvider, so the provider's state is what tells us
+   * a link was routed to the sidebar.
+   */
+  const PreviewProbe = () => {
+    const { state } = useContentView()
+    return <div data-testid="preview-state">{state.type === 'preview' ? state.data.url : 'none'}</div>
+  }
+
+  /** Renders a bare consumer of the exported hook, bypassing SafeLink's own href filtering. */
+  const renderHookConsumer = (url: string) => {
+    const Consumer = () => {
+      const openExternalLink = useOpenExternalLink()
+      return <button onClick={() => openExternalLink(url)}>open</button>
+    }
+    render(
+      <ContentViewProvider>
+        <ExternalLinkDialogProvider>
+          <Consumer />
+        </ExternalLinkDialogProvider>
+      </ContentViewProvider>,
+    )
+    return screen.getByRole('button', { name: 'open' })
+  }
+
+  const stubWindowOpen = () => {
+    const spy = mock(() => ({}) as Window)
+    window.open = spy as typeof window.open
+    return spy
+  }
+
+  const originalOpen = window.open
+
+  afterEach(() => {
+    window.open = originalOpen
+    cleanup()
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'ask')
+  })
+
+  test('ask: shows the confirmation dialog and does not open anything', () => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'ask')
+    const windowOpen = stubWindowOpen()
+
+    fireEvent.click(renderLink())
+
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(windowOpen).not.toHaveBeenCalled()
+  })
+
+  test('browser: opens immediately with no dialog', async () => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'browser')
+    const windowOpen = stubWindowOpen()
+
+    fireEvent.click(renderLink())
+    // openExternally is async; let the microtask that opens the URL flush.
+    await act(async () => {})
+
+    expect(windowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  test('sidebar on web: degrades to the dialog because there is no side panel', () => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'sidebar')
+    const windowOpen = stubWindowOpen()
+
+    fireEvent.click(renderLink())
+
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(windowOpen).not.toHaveBeenCalled()
+  })
+
+  test('sidebar without ContentViewProvider: degrades to the dialog', () => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'sidebar')
+
+    fireEvent.click(renderLink('https://example.com', { withContentView: false }))
+
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+  })
+
+  test('sidebar on desktop: renders in the side panel, with no dialog and no external open', () => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'sidebar')
+    const windowOpen = stubWindowOpen()
+
+    fireEvent.click(renderLink('https://example.com', { isDesktopPlatform: () => true }))
+
+    // The side panel is the only thing that should have happened.
+    expect(screen.getByTestId('preview-state')).toHaveTextContent('https://example.com')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(windowOpen).not.toHaveBeenCalled()
+  })
+
+  test('browser with an unsafe URL: the provider refuses it and explains why', async () => {
+    // Reached through the exported hook rather than SafeLink, which filters unsafe
+    // hrefs before the provider sees them — this is the guard that backstops a
+    // consumer that forgets to validate.
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'browser')
+    const windowOpen = stubWindowOpen()
+
+    fireEvent.click(renderHookConsumer('javascript:alert(1)'))
+    await act(async () => {})
+
+    expect(windowOpen).not.toHaveBeenCalled()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(screen.getByText('This link uses an address the app cannot open.')).toBeInTheDocument()
   })
 })
 

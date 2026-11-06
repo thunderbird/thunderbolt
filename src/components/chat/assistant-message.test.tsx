@@ -3,10 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { GroupedUIPart, ReasoningGroupUIPart } from '@/lib/assistant-message'
-import { render, screen } from '@testing-library/react'
+import type { ThunderboltUIMessage } from '@/types'
 import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { mountMessageParts } from './assistant-message'
+import { act, cleanup, render, screen } from '@testing-library/react'
+import { getClock } from '@/testing-library'
+import { ContentViewProvider } from '@/content-view/context'
+import { AssistantMessage, mountMessageParts } from './assistant-message'
 
 const createReasoningPart = (text: string): ReasoningUIPart =>
   ({
@@ -51,23 +54,6 @@ describe('mountMessageParts', () => {
       expect(result).toHaveLength(1)
       // Check that it's the synthetic loading component by checking the result structure
       expect(result[0]).toBeDefined()
-    })
-
-    it('threads the mode-aware loading message into the synthetic loading part', () => {
-      const result = mountMessageParts(
-        [],
-        true,
-        testMessageId,
-        testReasoningTime,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        'Searching the web…',
-      )
-
-      render(<>{result[0]}</>)
-      expect(screen.getByTestId('loading-status')).toHaveTextContent('Searching the web…')
     })
   })
 
@@ -269,4 +255,64 @@ describe('mountMessageParts', () => {
       expect(result).toHaveLength(1)
     })
   })
+})
+
+describe('AssistantMessage actions', () => {
+  it('renders the last-assistant action beside the copy button', () => {
+    const message: ThunderboltUIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Response' }],
+    }
+
+    render(
+      <AssistantMessage
+        message={message}
+        isStreaming={false}
+        isLastAssistantMessage
+        lastAssistantAction={<button type="button">Share transcript</button>}
+      />,
+    )
+
+    const copyButton = screen.getByRole('button', { name: 'Copy message' })
+    const shareButton = screen.getByRole('button', { name: 'Share transcript' })
+    expect(copyButton.parentElement).toBe(shareButton.parentElement)
+
+    cleanup()
+  })
+})
+
+it('passes message streaming lifecycle to the real text renderer', () => {
+  const text = 'Full response. '.repeat(100)
+  const parts: GroupedUIPart[] = [{ type: 'text', text, state: 'streaming' }]
+  const { container, rerender } = render(<>{mountMessageParts(parts, true, 'stream', {})}</>)
+  expect(container.textContent).toBe('')
+  act(() => getClock().tick(48))
+  expect(container.textContent!.length).toBeGreaterThan(0)
+  expect(container.textContent!.length).toBeLessThan(text.length)
+  rerender(<>{mountMessageParts(parts, false, 'stream', {})}</>)
+  expect(container.textContent).toBe(text.trim())
+})
+
+it('renders an ACP compaction row between the surrounding assistant text', () => {
+  const message: ThunderboltUIMessage = {
+    id: 'remote',
+    role: 'assistant',
+    parts: [
+      { type: 'text', text: 'Before compaction' },
+      {
+        type: 'data-acp-compaction',
+        id: 'event',
+        data: { agentId: 'agent', sessionId: 's', compactionId: 'c', status: 'completed' },
+      },
+      { type: 'text', text: 'After compaction' },
+    ],
+  }
+  const { container } = render(
+    <ContentViewProvider>
+      <AssistantMessage message={message} isStreaming={false} />
+    </ContentViewProvider>,
+  )
+  expect(container.textContent).toContain('Before compactionCompactedAfter compaction')
+  cleanup()
 })

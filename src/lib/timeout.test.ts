@@ -4,8 +4,8 @@
 
 import { getClock } from '@/testing-library'
 import { act } from '@testing-library/react'
-import { describe, expect, it } from 'bun:test'
-import { withTimeout } from './timeout'
+import { describe, expect, it, mock } from 'bun:test'
+import { withDeadline, withTimeout } from './timeout'
 
 describe('withTimeout', () => {
   it('should resolve with promise value when promise resolves before timeout', async () => {
@@ -45,5 +45,35 @@ describe('withTimeout', () => {
 
     const result = await resultPromise
     expect(result).toBeUndefined()
+  })
+})
+
+describe('withDeadline', () => {
+  it('rejects with an error created when the deadline fires', async () => {
+    const createError = mock(() => new Error('deadline exceeded'))
+    const resultPromise = withDeadline(new Promise<never>(() => {}), 100, createError)
+    const errorPromise = resultPromise.then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+
+    expect(createError).not.toHaveBeenCalled()
+    await act(async () => {
+      await getClock().tickAsync(100)
+    })
+
+    await expect(errorPromise).resolves.toMatchObject({ message: 'deadline exceeded' })
+    expect(createError).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not create the deadline error when the source promise settles first', async () => {
+    const createError = mock(() => new Error('deadline exceeded'))
+
+    await expect(withDeadline(Promise.resolve('ok'), 100, createError)).resolves.toBe('ok')
+    await act(async () => {
+      await getClock().tickAsync(100)
+    })
+
+    expect(createError).not.toHaveBeenCalled()
   })
 })

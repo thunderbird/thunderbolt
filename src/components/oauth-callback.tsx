@@ -4,6 +4,7 @@
 
 import { isMcpOAuthCallback } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getOAuthState } from '@/lib/oauth-state'
+import { isSafeRelativePath } from '@/lib/safe-relative-path'
 import Loading from '@/loading'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
@@ -66,19 +67,19 @@ export default function OAuthCallback() {
         // pending), independent of the shared return-context slot — so a
         // concurrent integrations flow can't misroute it to the wrong page.
         if (isMcpOAuthCallback({ code, state, error: oauthError })) {
-          navigate('/settings/mcp-servers', { state: { oauth: oauthPayload } })
+          navigate('/settings/connections', { state: { oauth: oauthPayload } })
           return
         }
 
         const oauthState = await getOAuthState()
         const returnContext = oauthState.returnContext
 
-        if (returnContext?.startsWith('/') && !returnContext.startsWith('//')) {
+        if (isSafeRelativePath(returnContext)) {
           navigate(returnContext, { state: { oauth: oauthPayload } })
         } else if (returnContext === 'onboarding') {
           navigate('/chats/new', { state: { oauth: oauthPayload } })
         } else {
-          navigate('/settings/integrations', { state: { oauth: oauthPayload } })
+          navigate('/settings/connections', { state: { oauth: oauthPayload } })
         }
       }, 500)
 

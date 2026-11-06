@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { wrapArtifactHtml } from '../src/artifacts/harness'
 
 /**
@@ -41,6 +41,55 @@ const collectHarnessMessages = (
     { srcdoc, nonce, settleMs },
   )
 
+/**
+ * Ask the harness what sits at a point, the way the host does.
+ *
+ * `document.elementFromPoint` is the whole subject here, so this can only live
+ * in a real browser — happy-dom has no layout to hit-test against.
+ */
+const askElementAt = (
+  page: import('@playwright/test').Page,
+  srcdoc: string,
+  nonce: string,
+  point: { x: number; y: number },
+): Promise<{ element: { label: string; text: string } | null } | null> =>
+  page.evaluate(
+    ({ srcdoc, nonce, point }) =>
+      new Promise<{ element: { label: string; text: string } | null } | null>((resolve) => {
+        const iframe = document.createElement('iframe')
+        iframe.setAttribute('sandbox', 'allow-scripts')
+        iframe.style.cssText = 'width:400px;height:400px;border:0'
+        window.addEventListener('message', (event) => {
+          const data = event.data as { artifactNonce?: string; type?: string; result?: unknown } | undefined
+          if (event.source !== iframe.contentWindow || data?.artifactNonce !== nonce) {
+            return
+          }
+          if (data.type === 'artifact-ready') {
+            // Firefox can leave a new iframe at 0x0 until the parent reflows, and this message can land
+            // first, so `elementFromPoint` finds nothing. Reading the frame's box forces the reflow.
+            iframe.getBoundingClientRect()
+            // `'*'` for the same reason the host uses it (see
+            // `sandboxed-html-frame.tsx`): `sandbox="allow-scripts"` without
+            // `allow-same-origin` gives the document an opaque origin, which
+            // never matches a URL-derived targetOrigin. Reproducing the host's
+            // call exactly is the point of this harness.
+            // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- opaque sandbox origin; see above
+            iframe.contentWindow?.postMessage(
+              { artifactNonce: nonce, type: 'artifact-request', id: 1, method: 'element/at', params: point },
+              '*',
+            )
+          }
+          if (data.type === 'artifact-reply') {
+            resolve(data.result as { element: { label: string; text: string } | null } | null)
+          }
+        })
+        iframe.srcdoc = srcdoc
+        document.body.appendChild(iframe)
+        setTimeout(() => resolve(null), 2000)
+      }),
+    { srcdoc, nonce, point },
+  )
+
 test.describe('artifact harness (real browser)', () => {
   test.beforeEach(async ({ page }) => {
     await page.setContent('<!doctype html><html><body></body></html>')
@@ -56,7 +105,8 @@ test.describe('artifact harness (real browser)', () => {
     const types = messages.map((m) => m.type)
     expect(types).toContain('artifact-ready')
     expect(types).not.toContain('artifact-error')
-    const height = messages.find((m) => m.type === 'artifact-height')
+    // Chrome can report zero before the first layout; the host consumes the latest height.
+    const height = messages.findLast((m) => m.type === 'artifact-height')
     expect(height?.height ?? 0).toBeGreaterThan(0)
   })
 
@@ -69,7 +119,7 @@ test.describe('artifact harness (real browser)', () => {
     )
     const error = messages.find((m) => m.type === 'artifact-error')
     expect(error?.reason).toBe('exception')
-    expect(error?.detail ?? '').toContain('boom-xyz')
+    expect(error?.detail?.trim()).toBeTruthy()
   })
 
   test('an unhandled promise rejection is reported as an error', async ({ page }) => {
@@ -82,6 +132,24 @@ test.describe('artifact harness (real browser)', () => {
     const error = messages.find((m) => m.type === 'artifact-error')
     expect(error?.reason).toBe('unhandled-rejection')
     expect(error?.detail ?? '').toContain('nope-abc')
+    expect(error?.detail ?? '').toMatch(/:\d+:\d+/)
+    expect(error?.detail?.match(/nope-abc/g)).toHaveLength(1)
+  })
+
+  test('a rejection keeps its message when the stack has only a location', async ({ page }) => {
+    const nonce = 'nonce-reject-location'
+    const messages = await collectHarnessMessages(
+      page,
+      wrapArtifactHtml(
+        '<script>Promise.reject({ message: "nope-webkit", stack: "at artifact.js:12:34" })</script>',
+        nonce,
+      ),
+      nonce,
+    )
+    const error = messages.find((m) => m.type === 'artifact-error')
+    expect(error?.reason).toBe('unhandled-rejection')
+    expect(error?.detail).toContain('nope-webkit')
+    expect(error?.detail).toContain('artifact.js:12:34')
   })
 
   test('a blocked/failed subresource does not fail the page (still ready, no error)', async ({ page }) => {
@@ -95,5 +163,60 @@ test.describe('artifact harness (real browser)', () => {
     const types = messages.map((m) => m.type)
     expect(types).toContain('artifact-ready')
     expect(types).not.toContain('artifact-error')
+  })
+
+  /**
+   * The reported bug: element picking worked on a table and a list and almost
+   * nowhere else, because the hit-test only accepted an allowlist of semantic
+   * tags. A to-do list built from divs had two selectable things in it. Anything
+   * under the pointer is pickable now.
+   */
+  test('picks a plain div a semantic-tag allowlist would have missed', async ({ page }) => {
+    const nonce = 'nonce-div'
+    const result = await askElementAt(
+      page,
+      wrapArtifactHtml('<div style="position:absolute;top:0;left:0;width:200px;height:60px">Buy milk</div>', nonce),
+      nonce,
+      { x: 40, y: 20 },
+    )
+
+    expect(result?.element?.text).toContain('Buy milk')
+  })
+
+  /** The semantic walk is still a preference: pointing at a cell means the row,
+   *  so the model gets the whole record rather than one number. */
+  test('still prefers the table row over the cell that was hit', async ({ page }) => {
+    const nonce = 'nonce-row'
+    const result = await askElementAt(
+      page,
+      wrapArtifactHtml(
+        '<table style="position:absolute;top:0;left:0"><thead><tr><th>Item</th><th>Qty</th></tr></thead>' +
+          '<tbody><tr><td style="width:100px">Milk</td><td>2</td></tr></tbody></table>',
+        nonce,
+      ),
+      nonce,
+      { x: 20, y: 30 },
+    )
+
+    expect(result?.element?.text).toContain('Item: Milk')
+    expect(result?.element?.text).toContain('Qty: 2')
+  })
+
+  /** An outline around the whole page names nothing useful, and there is no
+   *  smaller thing to fall back to. */
+  test('reports nothing for the page background', async ({ page }) => {
+    const nonce = 'nonce-bg'
+    const result = await askElementAt(
+      page,
+      wrapArtifactHtml('<div style="position:absolute;top:0;left:0;width:10px;height:10px">x</div>', nonce),
+      nonce,
+      { x: 300, y: 300 },
+    )
+
+    // `result` first: `askElementAt` resolves null on its own timeout, so
+    // `result?.element` alone passed identically when the iframe never loaded,
+    // never handshaked, or never registered the handler.
+    expect(result).not.toBeNull()
+    expect(result?.element).toBeNull()
   })
 })

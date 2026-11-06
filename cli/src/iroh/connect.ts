@@ -105,16 +105,18 @@ export const refusalError = (received: number, failure: unknown, reason: string 
 export const runIrohConnect = async (config: ConnectConfig): Promise<void> => {
   const { endpoint, connection } = await dial(config.target, config.protocol)
 
-  let received = 0
-  let failure: unknown = null
-  try {
-    received =
-      config.command.length > 0
-        ? await bridgeLocalCommand(connection, config.command)
-        : await bridgeProcessStdio(connection)
-  } catch (err) {
-    failure = err
+  const bridge = async () => {
+    try {
+      const received =
+        config.command.length > 0
+          ? await bridgeLocalCommand(connection, config.command)
+          : await bridgeProcessStdio(connection)
+      return { received, failure: null }
+    } catch (failure) {
+      return { received: 0, failure }
+    }
   }
+  const { received, failure } = await bridge()
 
   // Capture the peer's close reason before tearing down our endpoint, which
   // would otherwise overwrite it with our own local close.

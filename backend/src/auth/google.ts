@@ -9,8 +9,6 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
-const googleTokenUrl = 'https://oauth2.googleapis.com/token'
-
 /**
  * Google OAuth confidential client proxy — keeps the client secret server-side
  * so the Tauri frontend doesn't need to embed it.
@@ -61,7 +59,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
         })
 
         try {
-          const response = await fetchFn(googleTokenUrl, {
+          const response = await fetchFn(`${settings.googleBaseUrl}/token`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
@@ -132,7 +130,7 @@ export const createGoogleAuthRoutes = (auth: Auth, fetchFn: typeof fetch = globa
         })
 
         try {
-          const response = await fetchFn(googleTokenUrl, {
+          const response = await fetchFn(`${settings.googleBaseUrl}/token`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',

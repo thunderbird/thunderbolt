@@ -105,6 +105,7 @@ describe('requestPermission bridge', () => {
     }
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: mock(async () => adapter) as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -197,6 +198,21 @@ describe('requestPermission bridge', () => {
     useChatStore.getState().resolvePendingPermission(sessionId, {
       outcome: { outcome: 'cancelled' },
     })
+    expect(useChatStore.getState().sessions.get(sessionId)!.pendingPermission).toBeNull()
+  })
+
+  it('cancels an outstanding permission when its agent generation terminates', async () => {
+    const requestPermission = await getRemoteRequestPermission()
+    const request: RequestPermissionRequest = {
+      sessionId: 'remote',
+      options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+      toolCall: { toolCallId: 't', title: 'do thing', status: 'pending' },
+    } as RequestPermissionRequest
+    const response = requestPermission(request)
+
+    useChatStore.getState().cancelPendingPermissionsForAgent(remoteAgent.id)
+
+    await expect(response).resolves.toEqual({ outcome: { outcome: 'cancelled' } })
     expect(useChatStore.getState().sessions.get(sessionId)!.pendingPermission).toBeNull()
   })
 })

@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Allows passkey registration and authentication."
+permissions = ["allow-register", "allow-authenticate"]

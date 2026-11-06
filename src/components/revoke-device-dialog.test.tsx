@@ -46,9 +46,41 @@ describe('RevokeDeviceDialog', () => {
     expect(screen.getByText('Revoke this device?')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync.',
+        'The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working.',
       ),
     ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument()
+  })
+
+  it('does not warn that revoking changes the recovery phrase', () => {
+    // Revocation re-anchors the recovery slot to the same phrase-derived public
+    // keys, so it is a silent operation for the user.
+    render(<RevokeDeviceDialog open onOpenChange={() => {}} onConfirm={() => {}} isPending={false} variant="trusted" />)
+
+    const description = screen.getByText(/will be signed out/)
+    expect(description.textContent).not.toContain('new recovery phrase')
+    expect(description.textContent).toContain('recovery phrase keeps working')
+  })
+
+  it('does not promise a wipe of a device that never reconnects', () => {
+    // Only a device the revocation reaches clears itself, so promising more would
+    // mislead someone revoking a lost or stolen device.
+    render(<RevokeDeviceDialog open onOpenChange={() => {}} onConfirm={() => {}} isPending={false} variant="trusted" />)
+
+    const description = screen.getByText(/will be signed out/)
+    expect(description.textContent).toContain('a device that never comes back online keeps what is already on it')
+  })
+
+  it('renders CLI-specific revoke wording without sync claims', () => {
+    render(
+      <RevokeDeviceDialog open={true} onOpenChange={() => {}} onConfirm={() => {}} isPending={false} variant="cli" />,
+    )
+
+    expect(screen.getByText('Revoke this CLI?')).toBeInTheDocument()
+    expect(
+      screen.getByText('The CLI will be signed out and must sign in again before it can use your Thunderbolt account.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/local data|next sync/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument()
   })
 

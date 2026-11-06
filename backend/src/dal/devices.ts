@@ -3,26 +3,48 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType, QueryableDatabase } from '@/db/client'
-import { devicesTable } from '@/db/schema'
-import { and, count, eq, isNotNull, isNull, or } from 'drizzle-orm'
+import { devicesTable, encryptionMetadataTable, envelopesTable, wrappedKeysTable } from '@/db/schema'
+import { cliDeviceIdPrefix, isCliDeviceId } from '@shared/cli-device-id'
+import { and, count, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { createHash } from 'crypto'
+
+export { cliDeviceIdPrefix, isCliDeviceId }
 
 /** Deterministic device id for a bridge, derived from (userId, nodeId). Keying the row on this
  * makes re-registration of the same bridge an idempotent upsert on (userId, nodeId) without a
  * dedicated unique constraint, and guarantees one account can never collide with another's id. */
 export const bridgeDeviceIdPrefix = 'bridge-'
+export const maxActiveDevicesPerUser = 10
+
+/** Hold the per-account transaction lock while re-reading, counting, and mutating active devices. */
+export const withUserDeviceRegistrationLock = async <Result>(
+  database: Pick<typeof DbType, 'execute'>,
+  userId: string,
+  operation: () => Promise<Result>,
+): Promise<Result> => {
+  await database.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+  return operation()
+}
+
+/** Return whether a device is a trusted, account-owned app or bridge device. */
+export const isTrustedAppDevice = (
+  device: { userId: string; deviceType: 'normal' | 'bridge' | 'cli'; trusted: boolean } | null,
+  userId: string,
+): boolean => device !== null && device.userId === userId && device.deviceType !== 'cli' && device.trusted
 
 export const bridgeDeviceId = (userId: string, nodeId: string) =>
   `${bridgeDeviceIdPrefix}${createHash('sha256').update(`${userId}:${nodeId}`).digest('hex')}`
 
-/** Get a device by ID. Returns userId, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
+/** Get a device by ID. Returns userId, name, trusted, approvalPending, publicKey, and revokedAt, or null if not found. */
 export const getDeviceById = async (database: QueryableDatabase, deviceId: string) =>
   database
     .select({
       userId: devicesTable.userId,
+      name: devicesTable.name,
       trusted: devicesTable.trusted,
       approvalPending: devicesTable.approvalPending,
       publicKey: devicesTable.publicKey,
+      mlkemPublicKey: devicesTable.mlkemPublicKey,
       revokedAt: devicesTable.revokedAt,
       deviceType: devicesTable.deviceType,
     })
@@ -31,47 +53,124 @@ export const getDeviceById = async (database: QueryableDatabase, deviceId: strin
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Upsert a device: insert new or update lastSeen/name for existing. Only updates if userId matches.
- * When `trusted` is passed (E2EE disabled), new devices are inserted as trusted and existing devices are upgraded.
- * `appVersion`, when provided, is persisted on insert and refreshed on update so operators can see
- * which client version each device is running. */
-export const upsertDevice = async (
-  database: typeof DbType,
+/**
+ * How stale `lastSeen` may get before a sync token request rewrites it. Every write to a device row
+ * adds a version to PowerSync's parameter history (the row feeds `active_device_account`), which
+ * PowerSync's Postgres storage never compacts, so a write per token refresh slows every checkpoint.
+ */
+export const deviceLastSeenRefreshMs = 60 * 60 * 1000
+
+/**
+ * Records a sync token request on the device's own row: sets `lastSeen`, `name` and, when given,
+ * `appVersion`, but only when `name` or `appVersion` changed or `lastSeen` is older than
+ * {@link deviceLastSeenRefreshMs}. Returns the updated rows, empty when nothing needed writing.
+ */
+export const touchDevice = (
+  database: QueryableDatabase,
+  device: { id: string; userId: string; name: string; appVersion?: string },
+  now = new Date(),
+) =>
+  database
+    .update(devicesTable)
+    .set({ lastSeen: now, name: device.name, ...(device.appVersion ? { appVersion: device.appVersion } : {}) })
+    .where(
+      and(
+        eq(devicesTable.id, device.id),
+        eq(devicesTable.userId, device.userId),
+        or(
+          isNull(devicesTable.lastSeen),
+          lt(devicesTable.lastSeen, new Date(now.getTime() - deviceLastSeenRefreshMs)),
+          sql`${devicesTable.name} IS DISTINCT FROM ${device.name}`,
+          ...(device.appVersion ? [sql`${devicesTable.appVersion} IS DISTINCT FROM ${device.appVersion}`] : []),
+        ),
+      ),
+    )
+    .returning()
+
+/** Create or touch a server-owned CLI device without converting collisions or reviving tombstones. */
+export const upsertCliDevice = async (
+  database: QueryableDatabase,
   device: {
     id: string
     userId: string
     name: string
     lastSeen: Date
     createdAt: Date
-    trusted?: boolean
-    appVersion?: string
+    appVersion: string
   },
-) =>
-  database
+) => {
+  const serverOwnedFields = {
+    name: device.name,
+    lastSeen: device.lastSeen,
+    deviceType: 'cli' as const,
+    trusted: true,
+    approvalPending: false,
+    publicKey: null,
+    mlkemPublicKey: null,
+    nodeId: null,
+    nodeIdAttestedAt: null,
+    appVersion: device.appVersion,
+  }
+
+  return database
     .insert(devicesTable)
-    .values({ ...device, trusted: device.trusted ?? false })
+    .values({
+      id: device.id,
+      userId: device.userId,
+      createdAt: device.createdAt,
+      ...serverOwnedFields,
+    })
     .onConflictDoUpdate({
       target: devicesTable.id,
-      set: {
-        lastSeen: device.lastSeen,
-        name: device.name,
-        ...(device.trusted ? { trusted: true, approvalPending: false } : {}),
-        ...(device.appVersion ? { appVersion: device.appVersion } : {}),
-      },
-      setWhere: eq(devicesTable.userId, device.userId),
+      set: serverOwnedFields,
+      setWhere: and(
+        eq(devicesTable.userId, device.userId),
+        eq(devicesTable.deviceType, 'cli'),
+        isNull(devicesTable.revokedAt),
+      ),
     })
     .returning()
+}
 
 /** Revoke a device for a specific user. Sets revokedAt timestamp and clears approval state.
  * Also clears the iroh P2P binding (node_id/node_id_attested_at) so the revoked endpoint
  * identity stops syncing and a bridge operator's allowlist entry for it goes stale.
  * Only matches non-revoked devices so re-revoking is a no-op. */
-export const revokeDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
+export const revokeDevice = async (database: QueryableDatabase, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
     .set({ revokedAt: new Date(), trusted: false, approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
     .returning()
+
+/** Must run inside the caller's migration transaction so envelope removal and sibling demotion roll back together. */
+export const requireMigrationSiblingApproval = async (
+  database: QueryableDatabase,
+  userId: string,
+  callerDeviceId: string,
+): Promise<void> => {
+  const regularSiblings = and(
+    eq(devicesTable.userId, userId),
+    ne(devicesTable.id, callerDeviceId),
+    eq(devicesTable.deviceType, 'normal'),
+    isNull(devicesTable.revokedAt),
+  )
+  await database
+    .delete(envelopesTable)
+    .where(
+      and(
+        eq(envelopesTable.userId, userId),
+        inArray(
+          envelopesTable.deviceId,
+          database.select({ id: devicesTable.id }).from(devicesTable).where(regularSiblings),
+        ),
+      ),
+    )
+  await database
+    .update(devicesTable)
+    .set({ trusted: false, approvalPending: true, nodeId: null, nodeIdAttestedAt: null })
+    .where(and(regularSiblings, eq(devicesTable.trusted, true)))
+}
 
 /** Mark a device as trusted and clear pending state. Called when an envelope is stored for the device.
  * Excludes revoked devices to prevent zombie state from a concurrent revoke transaction.
@@ -80,7 +179,7 @@ export const revokeDevice = async (database: typeof DbType, deviceId: string, us
  * trusted (Finding E).
  * Returns updated rows so callers can detect the 0-row case (concurrent revoke or deny commits
  * between the in-tx target read and this UPDATE). */
-export const markDeviceTrusted = async (database: typeof DbType, deviceId: string, userId: string) =>
+export const markDeviceTrusted = async (database: QueryableDatabase, deviceId: string, userId: string) =>
   database
     .update(devicesTable)
     .set({ trusted: true, approvalPending: false })
@@ -90,6 +189,7 @@ export const markDeviceTrusted = async (database: typeof DbType, deviceId: strin
         eq(devicesTable.userId, userId),
         eq(devicesTable.approvalPending, true),
         isNull(devicesTable.revokedAt),
+        ne(devicesTable.deviceType, 'cli'),
       ),
     )
     .returning()
@@ -108,11 +208,31 @@ export const countActiveDevices = async (database: QueryableDatabase, userId: st
  * (node_id/node_id_attested_at) so a denied device stops being dialable — mirroring
  * revokeDevice. The trusted=false guard prevents a TOCTOU race from revoking a
  * concurrently-approved device. */
-export const denyDevice = async (database: typeof DbType, deviceId: string, userId: string) =>
+export const denyDevice = async (
+  database: typeof DbType,
+  deviceId: string,
+  userId: string,
+  /**
+   * Compare-and-swap guard: only clear the pending flag if the row still carries
+   * this `lastSeen`. `registerDevice` stamps a fresh `lastSeen` on every
+   * (re)registration and returns it, so a cancel issued for an EARLIER request
+   * matches nothing and becomes a no-op instead of destroying the newer one.
+   * Omit to clear unconditionally (an approver denying someone else's device).
+   */
+  expectedLastSeen?: Date,
+) =>
   database
     .update(devicesTable)
     .set({ approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
-    .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), eq(devicesTable.trusted, false)))
+    .where(
+      and(
+        eq(devicesTable.id, deviceId),
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.trusted, false),
+        ne(devicesTable.deviceType, 'cli'),
+        ...(expectedLastSeen ? [eq(devicesTable.lastSeen, expectedLastSeen)] : []),
+      ),
+    )
     .returning()
 
 /**
@@ -131,6 +251,7 @@ export const setDeviceNodeId = async (database: typeof DbType, deviceId: string,
         eq(devicesTable.id, deviceId),
         eq(devicesTable.userId, userId),
         isNull(devicesTable.revokedAt),
+        ne(devicesTable.deviceType, 'cli'),
         or(eq(devicesTable.trusted, true), eq(devicesTable.approvalPending, true)),
       ),
     )
@@ -141,7 +262,7 @@ export const setDeviceNodeId = async (database: typeof DbType, deviceId: string,
  * non-revoked device that has bound one. Scoped to `userId`, so it never returns another
  * account's rows. A headless bridge fetches this (bearer-auth) to auto-allow same-account
  * peers without embedding PowerSync or holding the E2EE Content Key. Denied/pending devices
- * are excluded (only `trusted` rows), as are revoked ones and rows with a null node_id.
+ * are excluded (only `trusted` rows), as are revoked ones, CLI rows, and rows with a null node_id.
  */
 export const getTrustedNodeIds = async (database: typeof DbType, userId: string) =>
   database
@@ -153,8 +274,108 @@ export const getTrustedNodeIds = async (database: typeof DbType, userId: string)
         eq(devicesTable.trusted, true),
         isNull(devicesTable.revokedAt),
         isNotNull(devicesTable.nodeId),
+        ne(devicesTable.deviceType, 'cli'),
       ),
     )
+
+/**
+ * List envelope-capable recipients for AK rotation: trusted,
+ * non-revoked, and holding both hybrid public keys. Rotation coverage validation
+ * requires the caller to supply a new-AK envelope for
+ * exactly this set (a missing one locks a device out; an extra one hands the new
+ * AK to a revoked/pending device).
+ *
+ * The public-key predicate is load-bearing, not a nicety. An envelope is
+ * `wrapAK(ak, ecdhPublicKey, mlkemPublicKey)` — with either key null the client
+ * CANNOT construct one, so demanding coverage for such a device is a requirement
+ * that can never be satisfied and every rotation fails with a 400.
+ * Bridges are exactly that case: `registerBridge` inserts them trusted and
+ * non-revoked with no public keys at all. A not-yet-migrated v1 device that has
+ * never published v2 keys is the other.
+ *
+ * Relaxing coverage here cannot leak the AK — it only stops requiring envelopes
+ * for devices that are incapable of receiving one. Such a device gets its
+ * envelope the normal way (approval or recovery) once it publishes keys.
+ */
+export const listEnvelopeCapableDevices = async (database: QueryableDatabase, userId: string) =>
+  database
+    .select({
+      id: devicesTable.id,
+      publicKey: devicesTable.publicKey,
+      mlkemPublicKey: devicesTable.mlkemPublicKey,
+      // LEFT join: the attestation travels with the keys so a rotating device can
+      // verify the recipient before wrapping. Null for a device whose envelope
+      // predates the column, which fails closed on the rotating client. Its
+      // locally derived verification key is independent of server metadata;
+      // the backend's approval-time signature check only protects honest-server races.
+      attestation: envelopesTable.attestation,
+    })
+    .from(devicesTable)
+    .leftJoin(envelopesTable, eq(envelopesTable.deviceId, devicesTable.id))
+    .where(
+      and(
+        eq(devicesTable.userId, userId),
+        eq(devicesTable.trusted, true),
+        isNull(devicesTable.revokedAt),
+        isNotNull(devicesTable.publicKey),
+        isNotNull(devicesTable.mlkemPublicKey),
+      ),
+    )
+
+/**
+ * Ids only, derived from {@link listEnvelopeCapableDevices} so the coverage
+ * validator and the endpoint clients build envelopes from can never disagree
+ * about which devices must be covered.
+ */
+export const listEnvelopeCapableDeviceIds = async (database: QueryableDatabase, userId: string) =>
+  (await listEnvelopeCapableDevices(database, userId)).map((row) => row.id)
+
+/**
+ * Revoked devices that were never cryptographically locked out (THU-887): ones
+ * revoked AFTER the account's last AK rotation, so the AK they still hold is
+ * the live one. Cutting server access and replacing the AK are two operations
+ * and the second can fail; this is what makes an outstanding rotation an
+ * observable account fact rather than an invisible half-state.
+ *
+ * THE PRIMARY-DEK MINT IS THE LOCKOUT CLOCK. Revocation's forward-secrecy bite
+ * is not the AK rotation alone — a revoked device keeps the DEKs it already
+ * cached, so it can still read future writes sealed under the SAME primary DEK.
+ * What actually locks it out is minting a NEW primary DEK it never had. So the
+ * clock is the `created_at` of the CURRENT primary DEK row (the one
+ * `encryption_metadata.primary_key_id` points at): a device revoked after that
+ * mint is still awaiting lockout, because no newer mint has locked it out.
+ *
+ * `MAX(updated_at)` over the keyring was WRONG here: every AK rotation re-wraps
+ * every row and bumps `updated_at`, including a recovery-phrase change, which
+ * rotates the AK but mints NO new primary DEK. That cleared this list while the
+ * revoked device could still read future writes under the unchanged primary —
+ * "Finish securing" reported done when it was not.
+ *
+ * Returns ids the SERVER derived, so a revocation that failed on one device is
+ * visible to every other one. An account with no keyring / no primary row
+ * (pre-E2EE) yields nothing: the scalar subquery is then NULL and the
+ * comparison is false.
+ */
+export const listDevicesAwaitingLockout = async (database: QueryableDatabase, userId: string): Promise<string[]> => {
+  const rows = await database
+    .select({ id: devicesTable.id })
+    .from(devicesTable)
+    .where(
+      and(
+        eq(devicesTable.userId, userId),
+        isNotNull(devicesTable.revokedAt),
+        sql`${devicesTable.revokedAt} > (
+          SELECT ${wrappedKeysTable.createdAt}
+          FROM ${wrappedKeysTable}
+          JOIN ${encryptionMetadataTable}
+            ON ${encryptionMetadataTable.userId} = ${wrappedKeysTable.userId}
+           AND ${encryptionMetadataTable.primaryKeyId} = ${wrappedKeysTable.keyId}
+          WHERE ${wrappedKeysTable.userId} = ${userId}
+        )`,
+      ),
+    )
+  return rows.map((row) => row.id)
+}
 
 /**
  * Register (or idempotently re-register) a BRIDGE device on the caller's account.
@@ -215,7 +436,7 @@ export const deleteRevokedBridgeDevice = async (database: QueryableDatabase, dev
  * Inserts as untrusted (default); on conflict updates publicKey and lastSeen.
  */
 export const registerDevice = async (
-  database: typeof DbType,
+  database: QueryableDatabase,
   device: { id: string; userId: string; name: string; publicKey: string; mlkemPublicKey: string },
 ) =>
   database
@@ -246,6 +467,10 @@ export const registerDevice = async (
         nodeIdAttestedAt: null,
         lastSeen: new Date(),
       },
-      setWhere: eq(devicesTable.userId, device.userId),
+      setWhere: and(
+        eq(devicesTable.userId, device.userId),
+        ne(devicesTable.deviceType, 'cli'),
+        isNull(devicesTable.revokedAt),
+      ),
     })
     .returning()

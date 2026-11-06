@@ -9,6 +9,8 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import packageJson from '../../package.json' with { type: 'json' }
+import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
 
 describe('buildSystemPrompt', () => {
@@ -22,6 +24,12 @@ describe('buildSystemPrompt', () => {
 
   test('always interpolates the working directory', () => {
     expect(buildSystemPrompt({ cwd: '/home/me/project' })).toContain('Working directory: /home/me/project')
+  })
+
+  test('identifies the CLI client and its app version', () => {
+    expect(buildSystemPrompt({ cwd: '/work' })).toContain(
+      `Client environment: cli\nApp version: ${packageJson.version}`,
+    )
   })
 
   test('describes bash only when shell execution is enabled', () => {
@@ -47,5 +55,20 @@ describe('buildSystemPrompt', () => {
     expect(ladder.slice(curl)).toMatch(/last resort/i)
     expect(ladder.slice(curl)).toMatch(/permission/i)
     expect(prompt).not.toMatch(/no web access/i)
+  })
+
+  test('lists available skills without full instruction bodies', () => {
+    const skills: SkillDefinition[] = [
+      {
+        name: 'daily-brief',
+        description: 'Build a concise daily rundown.',
+        instruction: 'Gather current weather and calendar details.',
+      },
+    ]
+    const prompt = buildSystemPrompt({ cwd: '/work', skills })
+
+    expect(prompt).toContain('- skill')
+    expect(prompt).toContain('- daily-brief: Build a concise daily rundown.')
+    expect(prompt).not.toContain('Gather current weather')
   })
 })

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { deriveFaviconUrl, isSafeUrl } from './url-utils'
+import { deriveFaviconUrl, isContactUrl, isSafeUrl, normalizeBackendUrl, resolveAbsoluteBackendUrl } from './url-utils'
 
 describe('isSafeUrl', () => {
   it('accepts http URLs', () => {
@@ -27,6 +27,16 @@ describe('isSafeUrl', () => {
   })
 })
 
+describe('isContactUrl', () => {
+  it('accepts mailto: and tel: only', () => {
+    expect(isContactUrl('mailto:help@example.com')).toBe(true)
+    expect(isContactUrl('tel:+15551234567')).toBe(true)
+    expect(isContactUrl('https://example.com')).toBe(false)
+    expect(isContactUrl('javascript:alert(1)')).toBe(false)
+    expect(isContactUrl('help@example.com')).toBe(false)
+  })
+})
+
 describe('deriveFaviconUrl', () => {
   it('derives /favicon.ico from a HTTPS page URL origin', () => {
     expect(deriveFaviconUrl('https://example.com/article/123')).toBe('https://example.com/favicon.ico')
@@ -38,5 +48,48 @@ describe('deriveFaviconUrl', () => {
 
   it('returns null for invalid URLs', () => {
     expect(deriveFaviconUrl('not a url')).toBeNull()
+  })
+})
+
+describe('normalizeBackendUrl', () => {
+  it('removes only trailing slashes from relative and absolute backend URLs', () => {
+    expect(normalizeBackendUrl('/v1')).toBe('/v1')
+    expect(normalizeBackendUrl('/v1/')).toBe('/v1')
+    expect(normalizeBackendUrl('/v1///')).toBe('/v1')
+    expect(normalizeBackendUrl('https://api.example.test/v1')).toBe('https://api.example.test/v1')
+    expect(normalizeBackendUrl('https://api.example.test/v1///')).toBe('https://api.example.test/v1')
+    expect(normalizeBackendUrl('https://api.example.test/v1//agents')).toBe('https://api.example.test/v1//agents')
+  })
+})
+
+describe('resolveAbsoluteBackendUrl', () => {
+  it('resolves a same-origin relative path against the page origin', () => {
+    expect(resolveAbsoluteBackendUrl('/v1', 'https://app.example.com')).toBe('https://app.example.com/v1')
+  })
+
+  it('leaves an already-absolute URL unchanged (local dev, cross-origin preview stacks)', () => {
+    expect(resolveAbsoluteBackendUrl('http://localhost:8000/v1', 'https://ignored.example.com')).toBe(
+      'http://localhost:8000/v1',
+    )
+    expect(
+      resolveAbsoluteBackendUrl('https://api-pr-123.preview.thunderbolt.io/v1', 'https://ignored.example.com'),
+    ).toBe('https://api-pr-123.preview.thunderbolt.io/v1')
+  })
+
+  it('strips every trailing slash, not just the last one', () => {
+    expect(resolveAbsoluteBackendUrl('/v1//', 'https://app.example.com')).toBe('https://app.example.com/v1')
+  })
+
+  it('defaults to the page origin, which is the only form the app itself uses', () => {
+    const previousHref = window.location.href
+    window.location.href = 'https://app.example.com/settings/models'
+    try {
+      expect(resolveAbsoluteBackendUrl('/v1')).toBe('https://app.example.com/v1')
+      // Resolves against the origin, not the current route, so the same
+      // setting points at one backend wherever the user happens to be.
+      expect(resolveAbsoluteBackendUrl('v1')).toBe('https://app.example.com/v1')
+    } finally {
+      window.location.href = previousHref
+    }
   })
 })

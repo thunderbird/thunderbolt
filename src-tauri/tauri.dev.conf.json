@@ -2,32 +2,19 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Thunderbolt Dev",
   "identifier": "net.thunderbird.thunderbolt.dev",
-  "app": {
-    "windows": [
-      {
-        "title": "Thunderbolt Dev",
-        "width": 1400,
-        "height": 1000,
-        "minHeight": 600,
-        "minWidth": 600,
-        "visible": false,
-        "transparent": true,
-        "windowEffects": {
-          "effects": ["hudWindow"],
-          "state": "followsWindowActiveState"
-        },
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "trafficLightPosition": { "x": 16, "y": 26 }
-      }
-    ]
-  },
   "plugins": {
     "deep-link": {
       "mobile": []
     },
     "updater": {
       "endpoints": []
+    }
+  },
+  "app": {
+    "security": {
+      "csp": {
+        "frame-src": "'self' https: http://localhost:5190 http://localhost:5174 http://localhost:5180"
+      }
     }
   }
 }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -12,7 +13,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
+import { isMacDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import type { ReactNode } from 'react'
@@ -20,7 +21,7 @@ import type { ReactNode } from 'react'
 type SidebarHeaderProps = {
   onToggle: () => void
   /** Chats/Settings pill, right-aligned in the desktop header while expanded.
-   *  (Mobile renders no header; its pill lives in the footer instead.) */
+   *  Mobile renders the pill in the sidebar content instead. */
   navToggle?: ReactNode
 }
 
@@ -30,15 +31,17 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
 
   // On mobile, always treat the sidebar as expanded when it's open
   const isExpanded = isMobile || state === 'expanded'
-  // Tauri desktop hides the OS title bar; the sidebar's top drag strip carries
-  // the traffic lights (macOS) and, while expanded, the collapse toggle.
-  const showChromeStrip = isTauriDesktop() && !isMobile
-  // Mobile-width desktop app: the overlay drawer slides over the content, so
-  // its first row (New Chat) would sit directly under the OS window controls.
-  // A bare drag strip — same height as the content header, no controls —
-  // pushes the list clear of them, the same clearance idea as the content
-  // header's traffic-light padding.
-  const showMobileChromeSpacer = isTauriDesktop() && isMobile
+  // macOS overlays the OS title bar; the sidebar's top drag strip carries the
+  // traffic lights and, while expanded, the collapse toggle. Windows/Linux are
+  // frameless too but follow the web sidebar layout (toggle inside the sidebar);
+  // their window controls sit top-right instead (see WindowControls).
+  const showChromeStrip = isMacDesktop() && !isMobile
+  // Mobile-width macOS app: the overlay drawer slides over the content, so its
+  // first row (New Chat) would sit directly under the traffic lights. A bare
+  // drag strip — same height as the content header, no controls — pushes the
+  // list clear of them, the same clearance idea as the content header's
+  // traffic-light padding.
+  const showMobileChromeSpacer = isMacDesktop() && isMobile
 
   return (
     <>
@@ -61,7 +64,9 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
             onClick={onToggle}
           >
             <PanelLeftRounded className="size-[var(--icon-size-default)]" />
-            <span className="sr-only">Collapse Sidebar</span>
+            <span className="sr-only">
+              <Trans>Collapse Sidebar</Trans>
+            </span>
           </Button>
           {navToggle && (
             <div data-tauri-drag-region className="flex flex-1 items-center justify-end">
@@ -92,8 +97,7 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
       )}
       {showMobileChromeSpacer && <div data-tauri-drag-region className="h-[var(--touch-height-xl)] flex-shrink-0" />}
       {/* Mobile renders no header strip at all: the overlay sidebar closes by
-          tapping outside (no toggle) and the theme/sync/account controls live
-          in the footer row, so the list gets the vertical space instead. */}
+          tapping outside, and its section toggle lives in the content. */}
       {!showChromeStrip && !isMobile && (
         <div className="h-[var(--touch-height-xl)] relative flex items-center justify-between px-2 flex-shrink-0">
           {/* Desktop web right-aligns the nav pill opposite the toggle,
@@ -112,7 +116,9 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
                       className="cursor-pointer size-8 justify-center text-muted-foreground"
                     >
                       <PanelLeftRounded className="size-[var(--icon-size-default)]" />
-                      <span className="sr-only">Toggle Sidebar</span>
+                      <span className="sr-only">
+                        <Trans>Toggle Sidebar</Trans>
+                      </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>

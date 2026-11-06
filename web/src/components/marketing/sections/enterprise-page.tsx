@@ -573,8 +573,8 @@ const QuoteSection = () => (
             &ldquo;Organizations are recognizing that AI is too important to outsource.&rdquo;
           </p>
           <p className="mt-6 font-['Mozilla_Text',sans-serif] text-[19px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
-            <span className="hidden md:inline">Ryan Sipes, CEO, MZLA Technologies</span>
-            <span className="md:hidden">Ryan Sipes,<br />CEO, MZLA Technologies</span>
+            <span className="hidden md:inline">Ryan Sipes, CEO, Thunderbird Technologies Corporation</span>
+            <span className="md:hidden">Ryan Sipes,<br />CEO, Thunderbird Technologies Corporation</span>
           </p>
         </div>
       </div>
@@ -667,21 +667,8 @@ export const EnterprisePage = () => {
   return (
   <div className="relative min-h-screen overflow-x-hidden bg-[#f9fafb]">
     <BackgroundGrid />
-    <Header
-      banner={
-        <a
-          href="/blog/mozilla-introduces-thunderbolt"
-          className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#8b5cf6] from-20% via-[#ea580c] via-60% to-[#fbbf24] px-4 py-2.5 text-sm font-semibold text-white"
-        >
-          <span>
-            Thunderbolt is here! <span className="text-white/80">&mdash; Read the announcement</span>
-          </span>
-          <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
-        </a>
-      }
-      action={<StarCountBadge />}
-    />
-    <main className="relative pt-[144px]">
+    <Header action={<StarCountBadge />} />
+    <main className="relative pt-[104px]">
       <Hero />
       <FeatureCards />
       <CompromiseSection />

@@ -9,6 +9,16 @@ export type ParsedIpAddress =
 type IpRange = { readonly cidr: string; readonly network: bigint; readonly prefixLength: number }
 type ParsedIpv4Address = Extract<ParsedIpAddress, { readonly version: 4 }>
 
+const localIpv4Ranges: readonly IpRange[] = [
+  { cidr: '0.0.0.0/32', network: 0x00000000n, prefixLength: 32 },
+  { cidr: '10.0.0.0/8', network: 0x0a000000n, prefixLength: 8 },
+  { cidr: '100.64.0.0/10', network: 0x64400000n, prefixLength: 10 },
+  { cidr: '127.0.0.0/8', network: 0x7f000000n, prefixLength: 8 },
+  { cidr: '169.254.0.0/16', network: 0xa9fe0000n, prefixLength: 16 },
+  { cidr: '172.16.0.0/12', network: 0xac100000n, prefixLength: 12 },
+  { cidr: '192.168.0.0/16', network: 0xc0a80000n, prefixLength: 16 },
+]
+
 export type EmbeddedIpv4Address = {
   readonly mechanism: 'ipv4-mapped' | 'rfc6052' | 'rfc6145' | '6to4' | 'teredo'
   readonly address: ParsedIpv4Address
@@ -55,9 +65,13 @@ const teredoNetwork = 0x20010000000000000000000000000000n
 /** Parse canonical dotted-decimal IPv4 into a 32-bit integer. */
 const parseIpv4 = (address: string): bigint | undefined => {
   const parts = address.split('.')
-  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return undefined
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) {
+    return undefined
+  }
   const bytes = parts.map(Number)
-  if (bytes.some((byte) => byte > 255)) return undefined
+  if (bytes.some((byte) => byte > 255)) {
+    return undefined
+  }
   return bytes.reduce((value, byte) => (value << 8n) | BigInt(byte), 0n)
 }
 
@@ -65,34 +79,48 @@ const parseIpv4 = (address: string): bigint | undefined => {
 const parseIpv6 = (address: string): bigint | undefined => {
   const hasOpeningBracket = address.startsWith('[')
   const hasClosingBracket = address.endsWith(']')
-  if (hasOpeningBracket !== hasClosingBracket) return undefined
+  if (hasOpeningBracket !== hasClosingBracket) {
+    return undefined
+  }
   const unwrappedAddress = hasOpeningBracket ? address.slice(1, -1) : address
   const normalizedAddress = unwrappedAddress.split('%')[0]
-  if (normalizedAddress === undefined || !normalizedAddress.includes(':')) return undefined
+  if (normalizedAddress === undefined || !normalizedAddress.includes(':')) {
+    return undefined
+  }
   const dottedTail = normalizedAddress.match(/(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/)?.[1]
   const ipv4Tail = dottedTail ? parseIpv4(dottedTail) : undefined
-  if (dottedTail && ipv4Tail === undefined) return undefined
+  if (dottedTail && ipv4Tail === undefined) {
+    return undefined
+  }
   const expandedAddress =
     dottedTail && ipv4Tail !== undefined
       ? normalizedAddress.replace(dottedTail, `${(ipv4Tail >> 16n).toString(16)}:${(ipv4Tail & 0xffffn).toString(16)}`)
       : normalizedAddress
-  if ((expandedAddress.match(/::/g) ?? []).length > 1) return undefined
+  if ((expandedAddress.match(/::/g) ?? []).length > 1) {
+    return undefined
+  }
 
   const [left = '', right] = expandedAddress.split('::')
   const leftGroups = left ? left.split(':') : []
   const rightGroups = right ? right.split(':') : []
   const missingGroups = 8 - leftGroups.length - rightGroups.length
-  if ((right === undefined && missingGroups !== 0) || (right !== undefined && missingGroups < 1)) return undefined
+  if ((right === undefined && missingGroups !== 0) || (right !== undefined && missingGroups < 1)) {
+    return undefined
+  }
 
   const groups = [...leftGroups, ...Array.from({ length: missingGroups }, () => '0'), ...rightGroups]
-  if (groups.length !== 8 || groups.some((group) => !/^[\da-f]{1,4}$/i.test(group))) return undefined
+  if (groups.length !== 8 || groups.some((group) => !/^[\da-f]{1,4}$/i.test(group))) {
+    return undefined
+  }
   return groups.reduce((value, group) => (value << 16n) | BigInt(`0x${group}`), 0n)
 }
 
 /** Parse an IP literal while leaving domain names unresolved. */
 export const parseIpAddress = (address: string): ParsedIpAddress | undefined => {
   const ipv4 = parseIpv4(address)
-  if (ipv4 !== undefined) return { version: 4, value: ipv4 }
+  if (ipv4 !== undefined) {
+    return { version: 4, value: ipv4 }
+  }
   const ipv6 = parseIpv6(address)
   return ipv6 === undefined ? undefined : { version: 6, value: ipv6 }
 }
@@ -103,11 +131,32 @@ const isInCidr = (value: bigint, network: bigint, prefixLength: number, addressB
   return value >> shift === network >> shift
 }
 
+/** Allow local-network HTTP, including mapped/compatible IPv4 but excluding transition mechanisms. */
+export const isLocalNetworkAddress = (address: ParsedIpAddress): boolean => {
+  if (address.version === 4) {
+    return localIpv4Ranges.some(({ network, prefixLength }) => isInCidr(address.value, network, prefixLength, 32))
+  }
+  if (address.value === 0n || address.value === 1n) {
+    return true
+  }
+  if (isInCidr(address.value, ipv4MappedNetwork, 96, 128) || isInCidr(address.value, 0n, 96, 128)) {
+    return isLocalNetworkAddress({ version: 4, value: address.value & ipv4Mask })
+  }
+  return (
+    isInCidr(address.value, 0xfc000000000000000000000000000000n, 7, 128) ||
+    isInCidr(address.value, 0xfe800000000000000000000000000000n, 10, 128)
+  )
+}
+
 /** Extract IPv4 embedded by an IPv6 mapping or transition mechanism. */
 export const extractEmbeddedIpv4Address = (address: ParsedIpAddress): EmbeddedIpv4Address | undefined => {
-  if (address.version === 4) return undefined
+  if (address.version === 4) {
+    return undefined
+  }
   const ipv6Value = address.value
-  if (typeof ipv6Value !== 'bigint') return undefined
+  if (typeof ipv6Value !== 'bigint') {
+    return undefined
+  }
   if (isInCidr(ipv6Value, ipv4MappedNetwork, 96, 128)) {
     return { mechanism: 'ipv4-mapped', address: { version: 4, value: ipv6Value & ipv4Mask } }
   }
@@ -133,10 +182,16 @@ export const isPrivateOrInternalAddress = (address: ParsedIpAddress): boolean =>
   }
 
   const embeddedIpv4 = extractEmbeddedIpv4Address(address)
-  if (embeddedIpv4?.mechanism === 'ipv4-mapped') return isPrivateOrInternalAddress(embeddedIpv4.address)
-  if (embeddedIpv4 && isPrivateOrInternalAddress(embeddedIpv4.address)) return true
+  if (embeddedIpv4?.mechanism === 'ipv4-mapped') {
+    return isPrivateOrInternalAddress(embeddedIpv4.address)
+  }
+  if (embeddedIpv4 && isPrivateOrInternalAddress(embeddedIpv4.address)) {
+    return true
+  }
 
   const isGlobalUnicast = isInCidr(address.value, 0x20000000000000000000000000000000n, 3, 128)
-  if (!isGlobalUnicast) return true
+  if (!isGlobalUnicast) {
+    return true
+  }
   return blockedIpv6Ranges.some(({ network, prefixLength }) => isInCidr(address.value, network, prefixLength, 128))
 }

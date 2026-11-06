@@ -2,11 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * Branch coverage for `resolveModel`: built-in provider catalog lookup and
- * credentials, explicit key forwarding, plus openai-compat input guards.
- */
-
 import {
   type Context,
   type ProviderStreams,
@@ -17,9 +12,7 @@ import {
 } from '@earendil-works/pi-ai'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { describe, expect, test } from 'bun:test'
-import { resolveModel } from './model.ts'
-import { configureNativeWebSearch } from './model.ts'
-import { builtinProviders } from './types.ts'
+import { buildBuiltinProfileModel, configureNativeWebSearch } from './model.ts'
 import type { BuiltinProvider } from './types.ts'
 
 /** First catalog model for a provider — read from Pi's wired catalog rather
@@ -30,10 +23,6 @@ const firstCatalogModel = (provider: BuiltinProvider) => {
   if (!model) throw new Error(`Pi catalog has no models for ${provider}`)
   return model
 }
-
-const knownAnthropicId = firstCatalogModel('anthropic').id
-
-const emptyEnv: Readonly<Record<string, string | undefined>> = {}
 
 describe('configureNativeWebSearch', () => {
   test('adds Anthropic server-side web search beside local tools', () => {
@@ -72,178 +61,231 @@ describe('configureNativeWebSearch', () => {
   })
 })
 
-/** Builds a one-model OpenAI catalog whose stream options are observable. */
-const capturingBuiltinModels = () => {
-  const model = firstCatalogModel('openai')
-  const calls: { readonly fn: 'stream' | 'streamSimple'; readonly options: Record<string, unknown> }[] = []
-  /** Creates an already-ended stream so Pi's lazy delegate can drain it. */
+const capturingProfileSource = (builtinProvider: BuiltinProvider, probeUrl?: (baseUrl: string) => string) => {
+  const sourceModel = firstCatalogModel(builtinProvider)
+  const sourceProvider = builtinModels().getProvider(builtinProvider)
+  if (!sourceProvider?.baseUrl) throw new Error(`Pi catalog has no base URL for ${builtinProvider}`)
+  const baseUrl = sourceProvider.baseUrl
+  const calls: {
+    readonly fn: 'stream' | 'streamSimple'
+    readonly provider: string
+    readonly apiKey: string | undefined
+  }[] = []
+  const capturedFetches: (typeof globalThis.fetch)[] = []
+  const requests: Promise<Response>[] = []
   const inertStream = () => {
     const stream = createAssistantMessageEventStream()
     stream.end()
     return stream
   }
   const streams: ProviderStreams = {
-    stream: (_model, _context, options) => {
-      calls.push({ fn: 'stream', options: { ...options } })
+    stream: (model, _context, options) => {
+      capturedFetches.push(globalThis.fetch)
+      if (probeUrl) requests.push(globalThis.fetch(probeUrl(baseUrl)))
+      calls.push({ fn: 'stream', provider: model.provider, apiKey: options?.apiKey })
       return inertStream()
     },
-    streamSimple: (_model, _context, options) => {
-      calls.push({ fn: 'streamSimple', options: { ...options } })
+    streamSimple: (model, _context, options) => {
+      capturedFetches.push(globalThis.fetch)
+      if (probeUrl) requests.push(globalThis.fetch(probeUrl(baseUrl)))
+      calls.push({ fn: 'streamSimple', provider: model.provider, apiKey: options?.apiKey })
       return inertStream()
     },
   }
-  const models = createModels({
-    authContext: {
-      env: async (name) => (name === 'OPENAI_API_KEY' ? 'env-key' : undefined),
-      fileExists: async () => false,
-    },
-  })
+  const models = createModels()
   models.setProvider(
     createProvider({
-      id: 'openai',
-      auth: { apiKey: envApiKeyAuth('OpenAI API key', ['OPENAI_API_KEY']) },
-      models: [model],
+      id: builtinProvider,
+      baseUrl: sourceProvider.baseUrl,
+      auth: { apiKey: envApiKeyAuth(`${builtinProvider} key`, []) },
+      models: [sourceModel],
       api: streams,
     }),
   )
-  return { models, model, calls }
+  return { models, sourceModel, calls, capturedFetches, requests, baseUrl }
 }
 
-describe('resolveModel — openai-compat branch', () => {
-  test('throws when --base-url is missing', () => {
-    expect(() => resolveModel({ model: 'llama3.3', provider: 'openai-compat', apiKey: 'local' })).toThrow(/--base-url/)
-  })
+describe('buildBuiltinProfileModel', () => {
+  test('requires and honors an explicit API for unknown mixed-protocol Fireworks models', () => {
+    const source = builtinModels()
+    const fireworksModels = source.getModels('fireworks')
+    const anthropic = fireworksModels.find(({ api }) => api === 'anthropic-messages')
+    const openai = fireworksModels.find(({ api }) => api === 'openai-completions')
+    if (!anthropic || !openai) throw new Error('Fireworks fixture must expose both protocols')
 
-  test('throws when the api key is missing even with a base URL', () => {
+    const known = buildBuiltinProfileModel(
+      {
+        profileId: 'fireworks-known',
+        provider: 'fireworks',
+        modelId: anthropic.id,
+        apiKey: 'key',
+      },
+      source,
+    ).model
+    expect(known.api).toBe(anthropic.api)
+    expect(known.baseUrl).toBe(anthropic.baseUrl)
+    const knownWithStaleApi = buildBuiltinProfileModel(
+      {
+        profileId: 'fireworks-known-stale',
+        provider: 'fireworks',
+        modelId: anthropic.id,
+        apiKey: 'key',
+        modelApi: 'openai-completions',
+      },
+      source,
+    ).model
+    expect(knownWithStaleApi).toMatchObject({ api: anthropic.api, baseUrl: anthropic.baseUrl })
     expect(() =>
-      resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: 'http://localhost:11434/v1' }),
-    ).toThrow(/requires an API key/)
+      buildBuiltinProfileModel(
+        {
+          profileId: 'fireworks-unknown',
+          provider: 'fireworks',
+          modelId: 'future-fireworks-model',
+          apiKey: 'key',
+        },
+        source,
+      ),
+    ).toThrow(/API format/i)
+
+    for (const modelApi of ['anthropic-messages', 'openai-completions'] as const) {
+      const built = buildBuiltinProfileModel(
+        {
+          profileId: `fireworks-${modelApi}`,
+          provider: 'fireworks',
+          modelId: 'future-fireworks-model',
+          apiKey: 'key',
+          modelApi,
+        },
+        source,
+      )
+      const template = modelApi === 'anthropic-messages' ? anthropic : openai
+      expect(built.model).toMatchObject({
+        id: 'future-fireworks-model',
+        api: modelApi,
+        baseUrl: template.baseUrl,
+      })
+    }
   })
 
-  test('missing custom key error points non-TTY users to guided setup', () => {
-    expect(() =>
-      resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: 'http://localhost:11434/v1' }),
-    ).toThrow(/THUNDERBOLT_OPENAI_COMPAT_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/)
-  })
-
-  test('missing custom key stays actionable when the base URL is also missing', () => {
-    expect(() => resolveModel({ model: 'llama3.3', provider: 'openai-compat' })).toThrow(
-      /THUNDERBOLT_OPENAI_COMPAT_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/,
+  test('captures the common origin-bound fetch for a built-in BYOK provider', async () => {
+    const source = capturingProfileSource('openai', () => 'https://redirect-target.example/stolen')
+    const cloned = buildBuiltinProfileModel(
+      {
+        profileId: 'openai-profile',
+        provider: 'openai',
+        modelId: source.sourceModel.id,
+        apiKey: 'provider-key',
+      },
+      source.models,
     )
+
+    cloned.provider.stream(cloned.model, { messages: [] }, {})
+
+    expect(source.capturedFetches[0]).toBe(globalThis.fetch)
+    await expect(source.requests[0]).rejects.toThrow('origin')
   })
 
-  test('rejects an empty-string base URL (falsy guard, not just undefined)', () => {
-    expect(() => resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: '', apiKey: 'local' })).toThrow(
-      /--base-url/,
+  test('does not add the Thunderbolt app version header to a BYOK provider request', async () => {
+    const requests: Request[] = []
+    const source = capturingProfileSource('openai', (baseUrl) => `${baseUrl}/models`)
+    const cloned = buildBuiltinProfileModel(
+      {
+        profileId: 'openai-profile',
+        provider: 'openai',
+        modelId: source.sourceModel.id,
+        apiKey: 'provider-key',
+        fetchFn: async (input, init) => {
+          requests.push(input instanceof Request ? new Request(input, init) : new Request(String(input), init))
+          return Response.json({ data: [] })
+        },
+      },
+      source.models,
     )
+
+    cloned.provider.stream(cloned.model, { messages: [] }, {})
+    await source.requests[0]
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.headers.has('x-app-version')).toBe(false)
   })
 
-  test('rejects an empty-string api key', () => {
-    expect(() =>
-      resolveModel({ model: 'llama3.3', provider: 'openai-compat', baseUrl: 'http://localhost:11434/v1', apiKey: '' }),
-    ).toThrow(/requires an API key/)
+  test('clones provider ownership while keeping the public model id and metadata', () => {
+    const source = capturingProfileSource('openai')
+    const cloned = buildBuiltinProfileModel(
+      {
+        profileId: 'openai-work',
+        provider: 'openai',
+        modelId: source.sourceModel.id,
+        apiKey: 'work-key',
+      },
+      source.models,
+    )
+
+    expect(cloned.model).toEqual({ ...source.sourceModel, provider: 'openai-work' })
+    expect(cloned.provider.id).toBe('openai-work')
+    expect(cloned.provider.getModels()).toEqual([cloned.model])
+    expect(JSON.stringify(cloned.model)).not.toContain('work-key')
   })
 
-  test('resolves a synthetic model carrying the upstream id and base URL', () => {
-    const { models, model } = resolveModel({
-      model: 'llama3.3',
-      provider: 'openai-compat',
-      baseUrl: 'http://localhost:11434/v1',
-      apiKey: 'local',
+  test('adapts a newly listed upstream model that is absent from the bundled Pi catalog', () => {
+    const source = capturingProfileSource('openai')
+
+    const cloned = buildBuiltinProfileModel(
+      {
+        profileId: 'openai-work',
+        provider: 'openai',
+        modelId: 'future-openai-model',
+        apiKey: 'work-key',
+      },
+      source.models,
+    )
+
+    expect(cloned.model).toMatchObject({
+      id: 'future-openai-model',
+      name: 'future-openai-model',
+      provider: 'openai-work',
     })
-    expect(model.id).toBe('llama3.3')
-    expect(model.provider).toBe('openai-compat')
-    expect(model.baseUrl).toBe('http://localhost:11434/v1')
-    // The model is registered in the returned collection under its provider.
-    expect(models.getModel('openai-compat', 'llama3.3')?.id).toBe('llama3.3')
   })
 
-  test('the resolved model descriptor does not embed the secret key', () => {
-    const { model } = resolveModel({
-      model: 'llama3.3',
-      provider: 'openai-compat',
-      baseUrl: 'http://localhost:11434/v1',
-      apiKey: 'super-secret-key',
-    })
-    expect(JSON.stringify(model)).not.toContain('super-secret-key')
-  })
-})
-
-describe('resolveModel — built-in providers', () => {
-  test('defaults to anthropic when no provider is given and resolves a known id', () => {
-    const { model } = resolveModel({ model: knownAnthropicId, apiKey: 'explicit-key' })
-    expect(model.id).toBe(knownAnthropicId)
-    expect(model.provider).toBe('anthropic')
-  })
-
-  test('resolves catalog models for every curated provider', () => {
-    for (const provider of builtinProviders) {
-      const modelId = firstCatalogModel(provider).id
-      expect(resolveModel({ model: modelId, provider, apiKey: 'explicit-key' }).model.provider).toBe(provider)
-    }
-  })
-
-  test('unknown-model error includes valid ids read from that provider catalog', () => {
-    const validIds = builtinModels()
-      .getModels('google')
-      .slice(0, 3)
-      .map((model) => model.id)
-    expect(() => resolveModel({ model: 'gemini-does-not-exist', provider: 'google', apiKey: 'key' })).toThrow(
-      new RegExp(validIds.join('|')),
+  test('injects the selected key in both provider stream paths', () => {
+    const source = capturingProfileSource('openai')
+    const cloned = buildBuiltinProfileModel(
+      {
+        profileId: 'openai-work',
+        provider: 'openai',
+        modelId: source.sourceModel.id,
+        apiKey: 'work-key',
+      },
+      source.models,
     )
-  })
+    const context: Context = { messages: [] }
 
-  test('missing-key error names provider env variable and --api-key', () => {
-    expect(() =>
-      resolveModel({ model: firstCatalogModel('google').id, provider: 'google' }, { builtinModels, env: emptyEnv }),
-    ).toThrow(/GEMINI_API_KEY.*--api-key|--api-key.*GEMINI_API_KEY/)
-  })
+    cloned.provider.stream(cloned.model, context, { apiKey: 'caller-key' })
+    cloned.provider.streamSimple(cloned.model, context, { apiKey: 'caller-key' })
 
-  test('missing built-in key error points non-TTY users to guided setup', () => {
-    expect(() =>
-      resolveModel({ model: firstCatalogModel('google').id, provider: 'google' }, { builtinModels, env: emptyEnv }),
-    ).toThrow(/GEMINI_API_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/)
-  })
-
-  test('missing built-in credentials stay actionable when the model id is also invalid', () => {
-    expect(() =>
-      resolveModel({ model: 'not-a-google-model', provider: 'google' }, { builtinModels, env: emptyEnv }),
-    ).toThrow(/GEMINI_API_KEY.*--api-key.*run `thunderbolt` in a terminal for guided setup/)
-  })
-
-  test('explicit key overrides provider env auth in both Models stream paths', async () => {
-    const capture = capturingBuiltinModels()
-    const { models, model } = resolveModel(
-      { model: capture.model.id, provider: 'openai', apiKey: 'flag-key' },
-      { builtinModels: () => capture.models, env: { OPENAI_API_KEY: 'env-key' } },
-    )
-
-    const emptyContext: Context = { messages: [] }
-    for await (const _event of models.streamSimple(model, emptyContext)) {
-      // Inert test stream emits no events.
-    }
-    for await (const _event of models.stream(model, emptyContext)) {
-      // Inert test stream emits no events.
-    }
-
-    expect(capture.calls).toEqual([
-      { fn: 'streamSimple', options: expect.objectContaining({ apiKey: 'flag-key' }) },
-      { fn: 'stream', options: expect.objectContaining({ apiKey: 'flag-key' }) },
+    expect(source.calls).toEqual([
+      { fn: 'stream', provider: 'openai', apiKey: 'work-key' },
+      { fn: 'streamSimple', provider: 'openai', apiKey: 'work-key' },
     ])
   })
 
-  test('explicit key does not become model descriptor data', () => {
-    const { model } = resolveModel({ model: knownAnthropicId, provider: 'anthropic', apiKey: 'super-secret' })
-    expect(JSON.stringify(model)).not.toContain('super-secret')
-  })
+  test('preserves Anthropic and OpenAI native web-search behavior after profile cloning', () => {
+    for (const builtinProvider of ['anthropic', 'openai'] as const) {
+      const source = capturingProfileSource(builtinProvider)
+      const cloned = buildBuiltinProfileModel(
+        {
+          profileId: `${builtinProvider}-work`,
+          provider: builtinProvider,
+          modelId: source.sourceModel.id,
+          apiKey: 'work-key',
+        },
+        source.models,
+      )
+      const configured = configureNativeWebSearch(cloned.model, { tools: [] })
 
-  test('without an explicit key, Pi resolves the provider environment variable', async () => {
-    const capture = capturingBuiltinModels()
-    const { models, model } = resolveModel(
-      { model: capture.model.id, provider: 'openai' },
-      { builtinModels: () => capture.models, env: { OPENAI_API_KEY: 'env-key' } },
-    )
-
-    expect((await models.getAuth(model))?.auth.apiKey).toBe('env-key')
+      expect(configured).toMatchObject({
+        tools: builtinProvider === 'anthropic' ? [{ name: 'web_search' }] : [{ type: 'web_search' }],
+      })
+    }
   })
 })

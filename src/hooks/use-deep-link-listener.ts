@@ -4,6 +4,7 @@
 
 import { isMcpOAuthCallback, type OAuthCallbackParams } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getOAuthState, type ReturnContext } from '@/lib/oauth-state'
+import { isSafeRelativePath } from '@/lib/safe-relative-path'
 import { isTauri } from '@/lib/platform'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { useEffect } from 'react'
@@ -49,10 +50,10 @@ export const determineNavigationTarget = (
   isMcpCallback: (callback: OAuthCallbackParams) => boolean = isMcpOAuthCallback,
 ): NavigateTarget => {
   if (isMcpCallback(oauth)) {
-    return { path: '/settings/mcp-servers', oauth }
+    return { path: '/settings/connections', oauth }
   }
 
-  if (oauthReturnContext?.startsWith('/') && !oauthReturnContext.startsWith('//')) {
+  if (isSafeRelativePath(oauthReturnContext)) {
     return { path: oauthReturnContext, oauth }
   }
 
@@ -60,12 +61,9 @@ export const determineNavigationTarget = (
     return { path: '/chats/new', oauth }
   }
 
-  if (oauthReturnContext === 'integrations') {
-    return { path: '/settings/integrations', oauth }
-  }
-
-  // Default to integrations page
-  return { path: '/settings/integrations', oauth }
+  // Everything else (including the 'integrations' context) lands on the
+  // connections page — integrations live there.
+  return { path: '/settings/connections', oauth }
 }
 
 /**

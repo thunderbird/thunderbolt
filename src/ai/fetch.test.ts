@@ -2,13 +2,104 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { createWebToolBudget } from '@/ai/web-tool-budget'
+import { createModel as insertModel } from '@/dal/models'
+import { updateSettings } from '@/dal/settings'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { createClient } from '@/lib/http'
+
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
+import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
+import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
-import type { FetchFn } from '@/lib/proxy-fetch'
-import type { Model } from '@/types'
+import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
+import { createProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
+import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import { useConfigStore } from '@/api/config-store'
+import type { Model, Skill } from '@/types'
 import type { Tool } from 'ai'
-import { mergeMcpTools, resolveOpenAiCompatConnection, sanitizeToolPrefix } from './fetch'
+import { createMCPClient } from '@ai-sdk/mcp'
+import { StreamableHTTPClientTransport, StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { ErrorEvent } from 'eventsource'
+import { SSEClientTransport, SseError } from '@modelcontextprotocol/sdk/client/sse.js'
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
+import {
+  beginDebugTranscriptTurn,
+  clearDebugTranscriptRecorder,
+  getDebugTranscriptNotes,
+  recordDebugTranscriptSystemPrompts,
+  setDebugTranscriptCaptureEnabled,
+} from '@/debug-transcript/recorder'
+import {
+  addSkillTool,
+  buildVolatileSystemNotes,
+  createModel,
+  mergeMcpTools,
+  prepareAiRequestConfig,
+  recordLegacyEmptyResponseRetry,
+  resolveManagedAnthropicConnection,
+  resolveOpenAiCompatConnection,
+  selectPromptSkillDefinitions,
+  withAppVersionHeader,
+} from './fetch'
+
+/** Capturing fetch (same shape as `stubProxyFetch`): records the last
+ *  (input, init) and returns an empty 200 so the wrapped fetch can be driven
+ *  without a real network. */
+const capturingFetch = () => {
+  let received: { input: RequestInfo | URL; init?: RequestInit } | null = null
+  const fn: FetchFn = Object.assign(
+    ((input: RequestInfo | URL, init?: RequestInit) => {
+      received = { input, init }
+      return Promise.resolve(new Response())
+    }) as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+    { preconnect: () => Promise.resolve(false) },
+  )
+  return { fn, received: () => received }
+}
+
+describe('legacy empty-response retry capture', () => {
+  it('records the completed attempt and advances prompt capture to the next attempt', () => {
+    clearDebugTranscriptRecorder()
+    setDebugTranscriptCaptureEnabled(true)
+    beginDebugTranscriptTurn({
+      threadId: 'thread-retry',
+      traceId: 'trace-retry',
+      engine: 'legacy',
+      model: { id: 'model-1', name: 'Test model', provider: 'test' },
+      agentId: 'built-in',
+    })
+
+    try {
+      recordLegacyEmptyResponseRetry(undefined, { threadId: 'thread-retry', traceId: 'trace-retry' }, 1)
+      recordDebugTranscriptSystemPrompts('thread-retry', 'trace-retry', ['Retry system prompt'])
+
+      expect(getDebugTranscriptNotes('thread-retry')[0]).toMatchObject({
+        failures: [{ attempt: 1, retryReasons: ['empty-response'] }],
+        systemPrompts: [{ text: 'Retry system prompt', attempt: 2 }],
+      })
+    } finally {
+      setDebugTranscriptCaptureEnabled(false)
+      clearDebugTranscriptRecorder()
+    }
+  })
+
+  it('keeps the PostHog empty-response vocabulary unchanged', () => {
+    const recordRetry = mock(() => {})
+
+    recordLegacyEmptyResponseRetry({ recordRetry }, undefined, 1)
+
+    expect(recordRetry).toHaveBeenCalledWith({
+      layer: 'empty_response',
+      reason: 'empty_response',
+      attempt: 2,
+    })
+  })
+})
 
 /** Mirror the `MCPClientError` the SDK throws after a transport drop. The
  *  runtime instance `name` is `'MCPClientError'` (the `AI_MCPClientError`
@@ -30,28 +121,172 @@ const named = (name: string, tools: () => Promise<Record<string, Tool>>): NamedM
   client: { tools, close: () => {} } as unknown as MCPClient,
 })
 
-describe('sanitizeToolPrefix', () => {
-  const cases: Array<[string | null | undefined, string]> = [
-    ['Render', 'render'],
-    ['render.com', 'render_com'],
-    ['My Server', 'my_server'],
-    ['api.github.com', 'api_github_com'],
-    ['  spaced  ', 'spaced'],
-    ['UPPER_snake', 'upper_snake'],
-    ['weird!!!name', 'weird_name'],
-    ['---', 'mcp'],
-    ['', 'mcp'],
-    [null, 'mcp'],
-    [undefined, 'mcp'],
-    ['localhost-3000', 'localhost_3000'],
+describe('addSkillTool', () => {
+  const skills = [
+    {
+      name: 'weather',
+      description: 'Use for weather forecasts.',
+      instruction: 'Emit the weather widget contract.',
+    },
+    { name: 'search', description: 'Search', instruction: 'Search instructions' },
+    { name: 'research', description: 'Research', instruction: 'Research instructions' },
   ]
 
-  it.each(cases)('sanitizes %p → %p', (input, expected) => {
-    expect(sanitizeToolPrefix(input)).toBe(expected)
+  it('registers the skill tool only for tool-capable models', () => {
+    expect(Object.keys(addSkillTool({}, skills, true))).toEqual(['skill'])
+    expect(addSkillTool({}, skills, false)).toEqual({})
+  })
+
+  it.each([
+    ['auto', true, 30],
+    ['auto', false, 5],
+    ['search', true, 12],
+    ['research', true, 30],
+  ] as const)('promotes only permitted research loads (%s, enabled=%s)', async (intent, enabled, finalCap) => {
+    const budget = createWebToolBudget(intent, enabled)
+    const tools = addSkillTool({}, skills, true, budget)
+    const options = { toolCallId: 'load', messages: [] }
+    for (const name of ['weather', 'search']) {
+      await tools.skill.execute!({ name }, options)
+      expect(budget.cap).toBe(budget.initialCap)
+      expect(budget.promoted).toBe(false)
+    }
+    const result = tools.skill.execute!({ name: ' /research ' }, options)
+    expect(budget.cap).toBe(finalCap)
+    expect(await result).toBe('Research instructions')
+    await tools.skill.execute!({ name: 'research' }, options)
+    expect(budget.cap).toBe(finalCap)
+    expect(budget.intent).toBe(intent)
+  })
+
+  it('loads skills without a web budget', async () => {
+    const tools = addSkillTool({}, skills, true)
+    expect(await tools.skill.execute!({ name: 'research' }, { toolCallId: 'load', messages: [] })).toBe(
+      'Research instructions',
+    )
+  })
+})
+
+describe('selectPromptSkillDefinitions', () => {
+  const storedSkills: Skill[] = [
+    { ...defaultSkillWeather, instruction: 'WIDGET_CONTRACT_BODY' },
+    { ...defaultSkillResearch, instruction: 'TASK_SKILL_BODY' },
+    {
+      ...defaultSkillResearch,
+      id: 'user-authored-skill',
+      name: 'user-authored',
+      label: 'User Authored',
+      instruction: 'USER_AUTHORED_SKILL_BODY',
+    },
+  ]
+
+  /** Build a prompt with only skill capability varying between cases. */
+  const createSkillPrompt = (supportsTools: boolean) =>
+    createPrompt({
+      modelName: 'Test Model',
+      profile: null,
+      preferredName: '',
+      location: {},
+      localization: {
+        distanceUnit: 'imperial',
+        temperatureUnit: 'f',
+        timeFormat: '12h',
+        currency: 'USD',
+      },
+      integrationStatus: 'READY',
+      hasWebTools: false,
+      skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
+      supportsTools,
+    })
+
+  it('inlines only widget rendering contracts for non-tool models', () => {
+    const prompt = createSkillPrompt(false)
+
+    expect(prompt).toContain('### weather\nWIDGET_CONTRACT_BODY')
+    expect(prompt).not.toContain('TASK_SKILL_BODY')
+    expect(prompt).not.toContain('USER_AUTHORED_SKILL_BODY')
+    expect(prompt).not.toContain('- research:')
+    expect(prompt).not.toContain('- user-authored:')
+  })
+
+  it('keeps the full skill listing for tool-capable models', () => {
+    const prompt = createSkillPrompt(true)
+
+    expect(prompt).toContain('Use the `skill` tool')
+    expect(prompt).toContain('- weather:')
+    expect(prompt).toContain('- research:')
+    expect(prompt).toContain('- user-authored:')
+    expect(prompt).not.toContain('WIDGET_CONTRACT_BODY')
+    expect(prompt).not.toContain('TASK_SKILL_BODY')
+    expect(prompt).not.toContain('USER_AUTHORED_SKILL_BODY')
+  })
+
+  it.each([
+    [false, ['weather', 'research', 'user-authored']],
+    [true, ['weather']],
+  ])('minimalMode %s keeps these skills in the selection: %j', (minimalMode, expected) => {
+    useConfigStore.setState({ config: { minimalMode } })
+
+    expect(selectPromptSkillDefinitions(storedSkills, true).map(({ name }) => name)).toEqual(expected)
+    expect(selectPromptSkillDefinitions(storedSkills, false).map(({ name }) => name)).toEqual(['weather'])
+  })
+
+  it('keeps every enabled skill in the slash-token resolution map', () => {
+    const skills = selectEnabledSkillDefinitions(storedSkills)
+    const instructionBySlug = new Map(skills.map(({ name, instruction }) => [name, instruction]))
+
+    expect(resolveSkillTokenInstructions('/research /user-authored', instructionBySlug)).toEqual([
+      'TASK_SKILL_BODY',
+      'USER_AUTHORED_SKILL_BODY',
+    ])
+  })
+})
+
+describe('buildVolatileSystemNotes', () => {
+  it('wires volatile notes into the front system block', () => {
+    const volatileSystemPrompt = 'Current date/time: Friday, July 10, 2026 at 9:00 AM GMT-3'
+    const currentUserMessage = { role: 'user' as const, content: 'What changed?' }
+
+    const notes = buildVolatileSystemNotes({
+      volatileSystemPrompt,
+      voiceNotes: ['Voice mode is active.'],
+      skillSystemMessages: ['Follow project style.'],
+      askResponsesNote: 'Ask responses: concise',
+    })
+
+    expect(notes[0]).toBe(volatileSystemPrompt)
+    expect(notes).toEqual([
+      volatileSystemPrompt,
+      'Voice mode is active.',
+      'Follow project style.',
+      'Ask responses: concise',
+    ])
+    const input = assembleBuiltInModelInput(
+      'stable prompt',
+      [
+        { role: 'user', content: 'Earlier question' },
+        { role: 'assistant', content: 'Earlier answer' },
+        currentUserMessage,
+      ],
+      notes,
+    )
+
+    const messages = [{ role: 'system' as const, content: input.system }, ...input.messages]
+
+    expect(input.system).toBe(`stable prompt\n\n${notes.join('\n\n')}`)
+    expect(messages.slice(1).every(({ role }) => role !== 'system')).toBeTrue()
+    expect(input.messages.at(-1)).toEqual(currentUserMessage)
   })
 })
 
 describe('mergeMcpTools', () => {
+  beforeEach(() => {
+    spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    mock.restore()
+  })
+
   it('prefixes each tool with its sanitized server name', async () => {
     const render = named('render', async () => ({ list_services: tool('ls'), get_service: tool('gs') }))
 
@@ -118,66 +353,183 @@ describe('mergeMcpTools', () => {
     expect(summary).toBe('- render (1 tool)')
   })
 
-  it('reconnects once and retries when tools() throws a closed-connection error', async () => {
-    let calls = 0
+  it.each([
+    closedError(),
+    closedError('Attempted to send a request from a closed client'),
+    new StreamableHTTPError(404, 'Error POSTing to endpoint: expired session'),
+    closedError('MCP SSE Transport Error: 404 Not Found'),
+    new SseError(503, 'Service unavailable', new ErrorEvent('error', { code: 503 })),
+    new StreamableHTTPError(401, 'Error POSTing to endpoint: expired token'),
+    new UnauthorizedError(),
+    Object.assign(new Error('Unauthorized'), { name: 'UnauthorizedError' }),
+    Object.assign(new Error('Expired token'), { code: 401 }),
+    new TypeError('Failed to fetch'),
+    new TypeError('Load failed'),
+    new TypeError('NetworkError when attempting to fetch resource.'),
+  ])('skips discovery failure %p, preserves other tools, and recovers for the next send', async (error) => {
     const dropped = named('render', async () => {
-      calls++
-      throw closedError()
+      throw error
     })
-    const fresh = { tools: async () => ({ alpha: tool('fresh') }), close: () => {} } as unknown as MCPClient
-    const reconnect = mock(async () => fresh)
-
-    const { toolset } = await mergeMcpTools({}, [dropped], reconnect)
-
-    expect(reconnect).toHaveBeenCalledTimes(1)
-    expect(reconnect).toHaveBeenCalledWith(dropped.client)
-    expect(calls).toBe(1)
-    expect(toolset.render_alpha).toEqual(tool('fresh'))
-  })
-
-  it('skips the dropped server but still merges the others when reconnect fails (non-blocking)', async () => {
-    const dropped = named('render', async () => {
-      throw closedError('Attempted to send a request from a closed client')
-    })
+    const fresh = named('render', async () => ({ alpha: tool('fresh') }))
     const healthy = named('github', async () => ({ beta: tool('b') }))
-    const reconnect = mock(async () => null)
+    const reconnect = mock(async () => fresh.client)
+    const builtIn = tool('app')
 
-    const { toolset, summary } = await mergeMcpTools({}, [dropped, healthy], reconnect)
+    const result = await mergeMcpTools({ app: builtIn }, [dropped, healthy], reconnect)
 
+    expect(result.toolset).toEqual({ app: builtIn, github_beta: tool('b') })
+    expect(result.summary).toBe('- github (1 tool)')
+    expect(Object.keys(result.mcpTools!)).toEqual(['github_beta'])
     expect(reconnect).toHaveBeenCalledTimes(1)
-    expect(Object.keys(toolset)).toEqual(['github_beta'])
-    // The dropped server contributes nothing to the summary.
-    expect(summary).toBe('- github (1 tool)')
+    expect(reconnect).toHaveBeenCalledWith(dropped.client, error)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render'), error)
+
+    const next = await mergeMcpTools({}, [fresh, healthy], reconnect)
+    expect(next.toolset).toEqual({ render_alpha: tool('fresh'), github_beta: tool('b') })
   })
 
-  it('skips the server when the fresh client also fails after reconnect', async () => {
+  it.each([
+    { type: 'sse', body: 'Expired session', status: 404, errorName: 'Error' },
+    { type: 'http', body: '{', status: 200, errorName: 'SyntaxError' },
+    { type: 'http', body: '{"unexpected":true}', status: 200, errorName: 'ZodError' },
+  ])('skips real $type transport failure ($errorName)', async ({ type, body, status, errorName }) => {
+    const options = {
+      fetch: async () => new Response(body, { status, headers: { 'content-type': 'application/json' } }),
+    }
+    const transport =
+      type === 'sse'
+        ? new SSEClientTransport(new URL('https://mcp.test/sse'), {
+            ...options,
+            eventSourceInit: {
+              fetch: async () =>
+                new Response(
+                  new ReadableStream({
+                    start(controller) {
+                      controller.enqueue(new TextEncoder().encode('event: endpoint\ndata: /messages\n\n'))
+                    },
+                  }),
+                  { headers: { 'content-type': 'text/event-stream' } },
+                ),
+            },
+          })
+        : new StreamableHTTPClientTransport(new URL('https://mcp.test/mcp'), options)
+    const errors: Error[] = []
+    transport.onerror = (error) => {
+      errors.push(error)
+    }
+    await transport.start()
     const dropped = named('render', async () => {
-      throw closedError()
+      await transport.send({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+      return {}
     })
-    const stillBroken = {
-      tools: async () => {
-        throw closedError()
+    const reconnect = mock(async () => null)
+    try {
+      const result = await mergeMcpTools(
+        { app: tool('app') },
+        [dropped, named('github', async () => ({ beta: tool('b') }))],
+        reconnect,
+      )
+      expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+      expect(errors[0].name).toBe(errorName)
+      expect(reconnect).toHaveBeenCalledWith(dropped.client, errors[0])
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render'), errors[0])
+    } finally {
+      await transport.close()
+    }
+  })
+
+  it('finishes the send while real SDK recovery waits for an initialization response after HTTP 202', async () => {
+    const accepted = Promise.withResolvers<void>()
+    const transport = new StreamableHTTPClientTransport(new URL('https://mcp.test/mcp'), {
+      fetch: async () => {
+        accepted.resolve()
+        return new Response(null, { status: 202 })
       },
-      close: () => {},
-    } as unknown as MCPClient
-    const healthy = named('github', async () => ({ beta: tool('b') }))
-    const reconnect = mock(async () => stillBroken)
-
-    const { toolset } = await mergeMcpTools({}, [dropped, healthy], reconnect)
-
-    expect(reconnect).toHaveBeenCalledTimes(1)
-    expect(Object.keys(toolset)).toEqual(['github_beta'])
+    })
+    const recovery = createMCPClient({ transport })
+    // Closing the transport in cleanup rejects the still-pending initialization.
+    const settledRecovery = recovery.catch((error: unknown) => {
+      expect(error).toMatchObject({ name: 'MCPClientError' })
+      return null
+    })
+    const reconnect = mock(() => settledRecovery)
+    try {
+      await accepted.promise
+      const result = await mergeMcpTools(
+        { app: tool('app') },
+        [
+          named('render', async () => {
+            throw closedError()
+          }),
+          named('github', async () => ({ beta: tool('b') })),
+        ],
+        reconnect,
+      )
+      expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+      expect(reconnect).toHaveBeenCalledTimes(1)
+    } finally {
+      await transport.close()
+      await settledRecovery
+    }
   })
 
-  it('does not reconnect and propagates non-closed errors', async () => {
-    const boom = new Error('boom — capability missing')
-    const broken = named('render', async () => {
-      throw boom
+  it('keeps healthy MCP tools when a native plugin request fails with a string', async () => {
+    const fetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      getProxyEnabled: () => false,
+      tauriFetch: async () => {
+        throw 'connection refused'
+      },
+    })
+    const dropped = named('down', async () => {
+      await fetch('http://localhost:8080/mcp')
+      return {}
     })
     const reconnect = mock(async () => null)
+    const result = await mergeMcpTools({}, [dropped, named('healthy', async () => ({ beta: tool('b') }))], reconnect)
+    expect(result.toolset).toEqual({ healthy_beta: tool('b') })
+    expect(reconnect).toHaveBeenCalledWith(
+      dropped.client,
+      expect.objectContaining({ name: 'TypeError', message: 'Failed to fetch' }),
+    )
+  })
 
-    await expect(mergeMcpTools({}, [broken], reconnect)).rejects.toThrow('boom — capability missing')
+  it('keeps app and other server tools when recovery fails', async () => {
+    const dropped = named('render', async () => {
+      throw closedError()
+    })
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+    const reconnect = mock(async () => null)
+    const result = await mergeMcpTools({ app: tool('app') }, [dropped, healthy], reconnect)
+    expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+    expect(reconnect).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([new Error('boom — capability missing'), new TypeError('Cannot read properties of undefined'), null])(
+    'propagates programming errors %p without reconnecting',
+    async (boom) => {
+      const broken = named('render', async () => {
+        throw boom
+      })
+      const reconnect = mock(async () => null)
+
+      await expect(mergeMcpTools({}, [broken], reconnect)).rejects.toBe(boom)
+      expect(reconnect).not.toHaveBeenCalled()
+    },
+  )
+
+  it('does not treat application tool merging errors as discovery failures', async () => {
+    const error = new SyntaxError('Application processing failed')
+    const broken = named('render', async () => ({
+      get alpha(): Tool {
+        throw error
+      },
+    }))
+    const reconnect = mock(async () => null)
+    await expect(mergeMcpTools({}, [broken], reconnect)).rejects.toBe(error)
     expect(reconnect).not.toHaveBeenCalled()
+    expect(console.warn).not.toHaveBeenCalled()
   })
 
   it('returns an undefined summary when no MCP tools were added', async () => {
@@ -300,5 +652,221 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
     expect(
       resolveOpenAiCompatConnection(customModel('http://localhost:1234', 'sk-abc'), () => stubProxyFetch)?.apiKey,
     ).toBe('sk-abc')
+  })
+})
+
+describe('createModel', () => {
+  it('opts Anthropic own-key requests into browser-origin access', async () => {
+    const calls: Array<{ url: string; headers: Headers }> = []
+    const providerFetch: FetchFn = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init)
+        calls.push({ url: request.url, headers: request.headers })
+        return Response.json({
+          id: 'msg_test',
+          type: 'message',
+          role: 'assistant',
+          model: 'claude-test',
+          content: [{ type: 'text', text: 'Hello' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        })
+      },
+      { preconnect: async () => false },
+    )
+    const model = await createModel(
+      { provider: 'anthropic', model: 'claude-test', apiKey: 'own-key' } as Model,
+      () => providerFetch,
+    )
+
+    await model.doGenerate({ prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }] })
+
+    expect(calls[0].url).toBe('https://api.anthropic.com/v1/messages')
+    expect(calls[0].headers.get('x-api-key')).toBe('own-key')
+    expect(calls[0].headers.get('anthropic-dangerous-direct-browser-access')).toBe('true')
+  })
+
+  it('has no legacy Tinfoil provider path', async () => {
+    const model = { provider: 'tinfoil' } as Model
+
+    await expect(createModel(model, () => stubProxyFetch)).rejects.toThrow('Unsupported provider: tinfoil')
+  })
+})
+
+describe('resolveManagedAnthropicConnection', () => {
+  it.each(['anthropic-sdk', 'ai-sdk'] as const)(
+    'targets the native backend route for %s and replaces the SDK key with app authentication',
+    async (client) => {
+      const originalToken = getAuthToken()
+      const transport = capturingFetch()
+      setAuthToken('session-token')
+
+      try {
+        const model = { provider: 'thunderbolt' } as Model
+        const connection = resolveManagedAnthropicConnection(model, () => stubProxyFetch, client, transport.fn)
+        const requestUrl = client === 'ai-sdk' ? `${connection.baseURL}/messages` : `${connection.baseURL}/v1/messages`
+        await connection.fetch(requestUrl, {
+          headers: {
+            'x-api-key': connection.apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+        })
+
+        const headers = new Headers(transport.received()?.init?.headers)
+        expect(transport.received()?.input).toBe(requestUrl)
+        expect(new URL(requestUrl).pathname).toBe('/v1/chat/v1/messages')
+        expect(headers.get('x-api-key')).toBeNull()
+        expect(headers.get('authorization')).toBe('Bearer session-token')
+        expect(headers.get('anthropic-version')).toBe('2023-06-01')
+      } finally {
+        if (originalToken) {
+          setAuthToken(originalToken)
+        } else {
+          clearAuthToken()
+        }
+      }
+    },
+  )
+})
+
+// The `thunderbolt` provider fetch POSTs directly to our backend, bypassing the
+// proxy, so it must self-identify the build.
+describe('withAppVersionHeader', () => {
+  const env = import.meta.env as Record<string, unknown>
+  let savedVersion: unknown
+
+  beforeEach(() => {
+    savedVersion = env.VITE_APP_VERSION
+  })
+
+  afterEach(() => {
+    if (savedVersion === undefined) {
+      delete env.VITE_APP_VERSION
+    } else {
+      env.VITE_APP_VERSION = savedVersion
+    }
+  })
+
+  it('adds X-App-Version to the outgoing request without clobbering caller headers', async () => {
+    env.VITE_APP_VERSION = '1.2.3'
+    const base = capturingFetch()
+
+    await withAppVersionHeader(base.fn)('https://cloud.example.com/v1/chat/completions', {
+      headers: { Authorization: 'Bearer session-token' },
+    })
+
+    const headers = new Headers(base.received()?.init?.headers)
+    expect(headers.get('X-App-Version')).toBe('1.2.3')
+    expect(headers.get('Authorization')).toBe('Bearer session-token')
+  })
+
+  it('omits X-App-Version when VITE_APP_VERSION is unset', async () => {
+    delete env.VITE_APP_VERSION
+    const base = capturingFetch()
+
+    await withAppVersionHeader(base.fn)('https://cloud.example.com/v1/chat/completions')
+
+    expect(new Headers(base.received()?.init?.headers).has('X-App-Version')).toBe(false)
+  })
+
+  it('forwards preconnect from the base fetch', () => {
+    const base = capturingFetch()
+    expect(withAppVersionHeader(base.fn).preconnect).toBe(base.fn.preconnect)
+  })
+
+  it('raises the upgrade blocker on a 426 and still returns the response', async () => {
+    // This hop targets our backend, so it is subject to the version gate and
+    // must surface it — otherwise the model call just fails silently.
+    const events: CustomEvent[] = []
+    const listener = (event: Event) => events.push(event as CustomEvent)
+    window.addEventListener(appVersionUnsupported, listener)
+    const gated: FetchFn = Object.assign(
+      async () => new Response(JSON.stringify({ code: 'APP_VERSION_UNSUPPORTED' }), { status: 426 }),
+      { preconnect: () => Promise.resolve(false) },
+    )
+
+    const response = await withAppVersionHeader(gated)('https://cloud.example.com/v1/chat/completions')
+
+    expect(events).toHaveLength(1)
+    expect(response.status).toBe(426)
+    window.removeEventListener(appVersionUnsupported, listener)
+    resetAppVersionBlockedForTesting()
+  })
+
+  it('does not raise the blocker on a successful response', async () => {
+    const events: CustomEvent[] = []
+    const listener = (event: Event) => events.push(event as CustomEvent)
+    window.addEventListener(appVersionUnsupported, listener)
+    const base = capturingFetch()
+
+    await withAppVersionHeader(base.fn)('https://cloud.example.com/v1/chat/completions')
+
+    expect(events).toHaveLength(0)
+    window.removeEventListener(appVersionUnsupported, listener)
+  })
+})
+
+describe('logical-turn citation registry', () => {
+  it('keeps cached source labels and metadata across rebuilt toolsets and starts fresh for a new turn', async () => {
+    await setupTestDatabase()
+    try {
+      await insertModel(getDb(), {
+        id: 'source-model',
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'Test',
+        toolUsage: 1,
+      })
+      await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+      const requests: string[] = []
+      const httpClient = createClient({
+        prefixUrl: 'https://backend.test',
+        fetch: async (input) => {
+          const query = new URL(input instanceof Request ? input.url : String(input)).searchParams.get('q')!
+          requests.push(query)
+          return Response.json({
+            results: [
+              { pageUrl: `https://source.test/${query}`, title: query, faviconUrl: null, previewImageUrl: null },
+            ],
+          })
+        },
+      })
+      const budget = createWebToolBudget('search')
+      const prepare = (webToolBudget = budget) =>
+        prepareAiRequestConfig({ modelId: 'source-model', httpClient, webToolBudget })
+      const first = await prepare()
+      const firstResult = await first.toolset.search!.execute!(
+        { query: 'one', max_results: 10 },
+        { toolCallId: 'first', messages: [] },
+      )
+      const retry = await prepare()
+      const cached = await retry.toolset.search!.execute!(
+        { query: 'one', max_results: 10 },
+        { toolCallId: 'retry', messages: [] },
+      )
+      expect(requests).toEqual(['one'])
+      expect(cached).toEqual(firstResult)
+      expect(retry.sourceCollector).toEqual(first.sourceCollector)
+      const next = await retry.toolset.search!.execute!(
+        { query: 'two', max_results: 10 },
+        { toolCallId: 'next', messages: [] },
+      )
+      expect(next).toMatchObject([{ sourceIndex: 2, pageUrl: 'https://source.test/two' }])
+      expect(retry.sourceCollector).toMatchObject([
+        { index: 1, url: 'https://source.test/one', title: 'one', toolName: 'search' },
+        { index: 2, url: 'https://source.test/two', title: 'two', toolName: 'search' },
+      ])
+      const fresh = await prepare(createWebToolBudget('search'))
+      expect(fresh.sourceCollector).toEqual([])
+      const freshResult = await fresh.toolset.search!.execute!(
+        { query: 'one', max_results: 10 },
+        { toolCallId: 'fresh', messages: [] },
+      )
+      expect(freshResult).toMatchObject([{ sourceIndex: 1 }])
+      expect(requests).toEqual(['one', 'two', 'one'])
+    } finally {
+      await teardownTestDatabase()
+    }
   })
 })

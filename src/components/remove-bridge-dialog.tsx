@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,21 +21,33 @@ type RemoveBridgeDialogProps = {
   isPending: boolean
 }
 
-export const RemoveBridgeDialog = ({ open, onOpenChange, onConfirm, isPending }: RemoveBridgeDialogProps) => (
-  <AlertDialog open={open} onOpenChange={onOpenChange}>
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Remove this bridge?</AlertDialogTitle>
-        <AlertDialogDescription>
-          This permanently removes the revoked bridge registration. The bridge can register again afterward.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-        <AlertDialogAction onClick={onConfirm} disabled={isPending}>
-          {isPending ? 'Removing…' : 'Remove'}
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-)
+/** Confirms permanent removal of a revoked bridge device — the one frontend flow
+ *  that hard-deletes (a sanctioned device-removal exception to soft-delete). */
+export const RemoveBridgeDialog = ({ open, onOpenChange, onConfirm, isPending }: RemoveBridgeDialogProps) => {
+  const { t } = useLingui()
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            <Trans>Remove this bridge?</Trans>
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            <Trans>
+              This permanently removes the revoked bridge registration. The bridge can register again afterward.
+            </Trans>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>
+            <Trans>Cancel</Trans>
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} disabled={isPending}>
+            {isPending ? t`Removing…` : t`Remove`}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}

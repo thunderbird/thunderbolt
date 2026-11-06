@@ -4,8 +4,8 @@
 
 import '@/testing-library'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { render } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { CitationBadge } from './citation-badge'
 import { CitationPopoverProvider } from './citation-popover'
@@ -13,6 +13,7 @@ import { ContentViewProvider } from '@/content-view/context'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import type { CitationSource } from '@/types/citation'
 import { type ReactElement } from 'react'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -20,6 +21,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await teardownTestDatabase()
+})
+
+afterEach(() => {
+  cleanup()
+  restoreViewport()
 })
 
 // Standalone mode (no provider) — CitationBadge owns its Popover/Sheet
@@ -121,5 +127,22 @@ describe('CitationBadge', () => {
     const { container } = renderStandalone(<CitationBadge sources={sources} />)
 
     expect(container.querySelector('button')?.textContent).toContain('First Site')
+  })
+
+  it('opens mobile sources in the canonical bottom drawer', () => {
+    forceMobileViewport()
+    const sources: CitationSource[] = [
+      { id: '1', title: 'First Article', url: 'https://a.com', siteName: 'Site A', isPrimary: true },
+      { id: '2', title: 'Second Article', url: 'https://b.com', siteName: 'Site B' },
+    ]
+    renderStandalone(<CitationBadge sources={sources} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /View 2 sources/ }))
+
+    const drawer = screen.getByText('2 sources').closest('[data-slot="drawer-content"]')
+    expect(drawer).toHaveAttribute('data-swipe-direction', 'down')
+    expect(drawer).toHaveClass('w-full', 'data-[swipe-direction=down]:rounded-t-3xl')
+    expect(drawer?.querySelector('.overscroll-contain')).toBeInTheDocument()
+    expect(document.querySelector('[data-slot="sheet-content"]')).not.toBeInTheDocument()
   })
 })

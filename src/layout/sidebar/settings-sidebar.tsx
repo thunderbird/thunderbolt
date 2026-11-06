@@ -13,41 +13,52 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { Bot, Cpu, Plug, Server, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import { useSettings } from '@/hooks/use-settings'
+import { cn } from '@/lib/utils'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
+import { AudioLines, Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
 import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
+import { SidebarHeaderActions } from './sidebar-header-actions'
 import type { SidebarSection } from './types'
 
 type NavItem = {
   path: string
-  label: string
+  label: MessageDescriptor
   icon: LucideIcon
   /** Match sub-routes too (e.g. /settings/models/:id). Default: exact match. */
   matchPrefix?: boolean
 }
 
-const navGroups: { label: string; items: NavItem[] }[] = [
+/** `id` carries the React key, since the label is now a descriptor rather than
+ *  a string the reconciler can compare. */
+const navGroups: { id: string; label: MessageDescriptor; items: NavItem[] }[] = [
   {
-    label: 'Agents',
-    items: [{ path: '/settings/agents', label: 'All agents', icon: Bot }],
+    id: 'agents',
+    label: msg`Agents`,
+    items: [{ path: '/settings/agents', label: msg`All agents`, icon: Bot }],
   },
   {
-    label: 'What agents use',
+    id: 'what-agents-use',
+    label: msg`What agents use`,
     items: [
-      { path: '/settings/skills', label: 'Skills', icon: Zap },
-      { path: '/settings/models', label: 'Models', icon: Cpu, matchPrefix: true },
-      { path: '/settings/integrations', label: 'Integrations', icon: Plug },
-      { path: '/settings/mcp-servers', label: 'MCP servers', icon: Server },
+      { path: '/settings/skills', label: msg`Skills`, icon: Zap },
+      { path: '/settings/connections', label: msg`Connections`, icon: Plug },
+      { path: '/settings/models', label: msg`Models`, icon: Cpu, matchPrefix: true },
+      { path: '/settings/voice', label: msg`Voice`, icon: AudioLines },
     ],
   },
   {
-    label: 'Settings',
+    id: 'settings',
+    label: msg`Settings`,
     items: [
-      { path: '/settings/preferences', label: 'Preferences', icon: SlidersHorizontal },
-      { path: '/settings/devices', label: 'Devices', icon: Smartphone },
+      { path: '/settings/preferences', label: msg`Preferences`, icon: SlidersHorizontal },
+      { path: '/settings/devices', label: msg`Devices`, icon: Smartphone },
     ],
   },
 ]
@@ -56,59 +67,81 @@ type SettingsSidebarContentProps = {
   isCollapsed: boolean
   onSectionChange: (section: SidebarSection) => void
   onSettingsNavigate: (path: string) => void
+  onSearchClick?: () => void
 }
 
 export const SettingsSidebarContent = ({
   isCollapsed,
   onSectionChange,
   onSettingsNavigate,
+  onSearchClick,
 }: SettingsSidebarContentProps) => {
-  const { toggleSidebar } = useSidebar()
+  const { i18n } = useLingui()
+  const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
+  const { experimentalFeatureVoice } = useSettings({ experimental_feature_voice: false })
 
   const isItemActive = ({ path, matchPrefix }: NavItem) =>
     matchPrefix ? location.pathname.startsWith(path) : location.pathname === path
 
+  // Voice settings only exist to configure a custom (non-Thunderbolt) provider,
+  // which is gated behind the experimental flag — hide the nav item otherwise.
+  const groups = experimentalFeatureVoice.value
+    ? navGroups
+    : navGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.path !== '/settings/voice') }))
+
+  const headerControls = (
+    <SidebarHeaderActions onSearchClick={onSearchClick}>
+      <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />
+    </SidebarHeaderActions>
+  )
+
   return (
     <SidebarContent className="flex flex-col h-full">
-      <SidebarHeader
-        onToggle={toggleSidebar}
-        navToggle={<SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />}
-      />
+      <SidebarHeader onToggle={toggleSidebar} navToggle={headerControls} />
 
       {isCollapsed && (
-        // pb-0: the next group's own top padding provides the 8px gap,
-        // matching the toggle→New Chat spacing on the chats rail. pt-2 gives
-        // the toggle the same 8px above as the rail leaves on its sides.
         <SidebarGroup className="pt-2 pb-0">
           <SidebarGroupContent>
-            <SidebarNavToggle vertical activeSection="settings" onSectionChange={onSectionChange} />
+            <SidebarHeaderActions vertical onSearchClick={onSearchClick}>
+              <SidebarNavToggle vertical activeSection="settings" onSectionChange={onSectionChange} />
+            </SidebarHeaderActions>
           </SidebarGroupContent>
         </SidebarGroup>
       )}
 
-      {navGroups.map((group, index) => (
-        <Fragment key={group.label}>
+      {groups.map((group, index) => (
+        <Fragment key={group.id}>
           {/* Collapsed rail: the group labels are hidden, so a hairline
               divider takes over as the section boundary. */}
           {index > 0 && isCollapsed && <RailDivider />}
           {/* Collapsed: SidebarContent's gap-2 alone spaces the groups and
               their dividers, so the groups' own vertical padding would double
               it. The last group keeps its bottom padding against the footer. */}
-          <SidebarGroup className={isCollapsed ? (index === navGroups.length - 1 ? 'pt-0' : 'py-0') : undefined}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroup
+            className={cn(
+              isCollapsed ? (index === groups.length - 1 ? 'pt-0' : 'py-0') : undefined,
+              isMobile && index === 0 && 'pt-[calc(var(--header-safe-area-top)+0.5rem)]',
+            )}
+          >
+            {isMobile && index === 0 && (
+              <div className="flex h-[var(--touch-height-lg)] items-center">{headerControls}</div>
+            )}
+            <SidebarGroupLabel className={isMobile && index === 0 ? 'mt-1' : undefined}>
+              {i18n._(group.label)}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
                       onClick={() => onSettingsNavigate(item.path)}
-                      tooltip={item.label}
+                      tooltip={i18n._(item.label)}
                       className="cursor-pointer"
                       isActive={isItemActive(item)}
                     >
                       <item.icon className="size-4" />
-                      <span>{item.label}</span>
+                      <span>{i18n._(item.label)}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -120,7 +153,7 @@ export const SettingsSidebarContent = ({
 
       <div className="flex-1" />
 
-      <SidebarFooter navToggle={<SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />} />
+      <SidebarFooter />
     </SidebarContent>
   )
 }

@@ -41,8 +41,12 @@ const fakeEnv = (script: {
   const env = {
     exec: async (command: string, options: Record<string, unknown>) => {
       calls.push({ command, options })
-      if (script.emit?.stdout !== undefined) (options.onStdout as (c: string) => void)(script.emit.stdout)
-      if (script.emit?.stderr !== undefined) (options.onStderr as (c: string) => void)(script.emit.stderr)
+      if (script.emit?.stdout !== undefined) {
+        ;(options.onStdout as (c: string) => void)(script.emit.stdout)
+      }
+      if (script.emit?.stderr !== undefined) {
+        ;(options.onStderr as (c: string) => void)(script.emit.stderr)
+      }
       return script.result
     },
   } as unknown as BrowserExecutionEnv
@@ -94,22 +98,22 @@ describe('createBashOperations', () => {
   })
 })
 
-const DIR = '/optest'
+const dir = '/optest'
 
 describe('file operation adapters (real in-memory ZenFS)', () => {
   beforeAll(async () => {
     await mountInMemoryFs()
-    await fsp.mkdir(DIR, { recursive: true })
-    await fsp.writeFile(`${DIR}/seed.txt`, 'seed-content')
+    await fsp.mkdir(dir, { recursive: true })
+    await fsp.writeFile(`${dir}/seed.txt`, 'seed-content')
   })
 
   afterAll(async () => {
-    await fsp.rm(DIR, { recursive: true, force: true })
+    await fsp.rm(dir, { recursive: true, force: true })
   })
 
   it('readFile returns a Node Buffer (not a bare Uint8Array)', async () => {
     const ops = createReadOperations()
-    const buf = await ops.readFile(`${DIR}/seed.txt`)
+    const buf = await ops.readFile(`${dir}/seed.txt`)
     // The operation contract is typed in terms of Buffer; ZenFS hands back a
     // Uint8Array, so the Buffer.from wrap is load-bearing for callers doing
     // Buffer-only ops (.toString('utf8'), slicing).
@@ -119,24 +123,24 @@ describe('file operation adapters (real in-memory ZenFS)', () => {
 
   it('access resolves for an existing file and rejects (ENOENT) for a missing one', async () => {
     const ops = createReadOperations()
-    await expect(ops.access(`${DIR}/seed.txt`)).resolves.toBeUndefined()
+    await expect(ops.access(`${dir}/seed.txt`)).resolves.toBeUndefined()
     // The edit tool branches on this rejection to distinguish edit vs create.
-    await expect(ops.access(`${DIR}/missing.txt`)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(ops.access(`${dir}/missing.txt`)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('write mkdir creates nested dirs recursively; the file is then visible to the read adapter (shared mount)', async () => {
     const writeOps = createWriteOperations()
-    await writeOps.mkdir(`${DIR}/deep/nested`)
-    await writeOps.writeFile(`${DIR}/deep/nested/out.txt`, 'written')
+    await writeOps.mkdir(`${dir}/deep/nested`)
+    await writeOps.writeFile(`${dir}/deep/nested/out.txt`, 'written')
     // Read back through a SEPARATE adapter to prove both target the one ZenFS
     // singleton, not via raw fsp (which would prove nothing about the adapters).
     const readOps = createReadOperations()
-    expect((await readOps.readFile(`${DIR}/deep/nested/out.txt`)).toString('utf8')).toBe('written')
+    expect((await readOps.readFile(`${dir}/deep/nested/out.txt`)).toString('utf8')).toBe('written')
   })
 
   it('edit writeFile overwrites in place and readFile reads the new content back as a Buffer', async () => {
     const ops = createEditOperations()
-    const target = `${DIR}/edit-target.txt`
+    const target = `${dir}/edit-target.txt`
     await ops.writeFile(target, 'v1')
     await ops.writeFile(target, 'v2-overwritten')
     const buf = await ops.readFile(target)
@@ -146,6 +150,6 @@ describe('file operation adapters (real in-memory ZenFS)', () => {
 
   it('edit access rejects for a missing file (the create-vs-edit signal)', async () => {
     const ops = createEditOperations()
-    await expect(ops.access(`${DIR}/never-existed.txt`)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(ops.access(`${dir}/never-existed.txt`)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 })

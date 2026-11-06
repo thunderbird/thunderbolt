@@ -58,7 +58,7 @@ describe('OnboardingLocationStep', () => {
       expect(
         screen.getByText('This helps us personalize your experience with local settings and features.'),
       ).toBeInTheDocument()
-      expect(screen.getByText('Select location...')).toBeInTheDocument()
+      expect(screen.getByText('Select location…')).toBeInTheDocument()
     })
 
     it('should render MapPin icon', async () => {
@@ -78,7 +78,7 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       // Get the trigger button by its text content
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       expect(triggerButton).toBeInTheDocument()
       fireEvent.click(triggerButton!)
 
@@ -97,7 +97,7 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       // Get the trigger button by its text content
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       expect(triggerButton).toBeInTheDocument()
       // The real hook behavior may vary - just check that the attribute exists
       expect(triggerButton?.getAttribute('aria-expanded')).toBeTruthy()
@@ -109,25 +109,31 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
       // The component exposes a trigger button and search input
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       const searchInput = screen.getByPlaceholderText(/Search locations/i)
       expect(triggerButton).toBeInTheDocument()
       expect(searchInput).toBeInTheDocument()
       expect(triggerButton?.getAttribute('aria-expanded')).toBeTruthy()
     })
 
+    it('gives the location combobox an accessible name', async () => {
+      await renderComponent()
+
+      expect(screen.getByText('Select location…').closest('button')).toHaveAccessibleName('Location')
+    })
+
     it('should maintain accessibility during interactions', async () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       fireEvent.click(triggerButton!)
 
       await waitFor(() => {
@@ -143,10 +149,10 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
 
       // Rapid clicks should not cause issues
       fireEvent.click(triggerButton!)
@@ -163,10 +169,10 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       expect(triggerButton).toBeInTheDocument()
       // LocationSearchCombobox is wrapped in FormControl, so aria-invalid is set to "false" (no errors)
       expect(triggerButton?.getAttribute('aria-invalid')).toBe('false')
@@ -212,10 +218,10 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       expect(triggerButton).toBeInTheDocument()
       expect(triggerButton?.getAttribute('role')).toBe('combobox')
     })
@@ -224,10 +230,10 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')!
+      const triggerButton = screen.getByText('Select location…').closest('button')!
       fireEvent.click(triggerButton)
 
       // Wait for state updates and verify button is still in document
@@ -242,12 +248,12 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       expect(triggerButton).toBeInTheDocument()
-      expect(triggerButton?.textContent).toContain('Select location...')
+      expect(triggerButton?.textContent).toContain('Select location…')
     })
 
     it('should call onFormDirtyChange when provided', async () => {
@@ -270,12 +276,12 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       expect(triggerButton).toBeInTheDocument()
-      expect(triggerButton?.textContent).toContain('Select location...')
+      expect(triggerButton?.textContent).toContain('Select location…')
     })
   })
 
@@ -287,7 +293,7 @@ describe('OnboardingLocationStep', () => {
         expect(screen.getByText('Where are you located?')).toBeInTheDocument()
       })
 
-      expect(screen.getByText('Select location...')).toBeInTheDocument()
+      expect(screen.getByText('Select location…')).toBeInTheDocument()
     })
   })
 
@@ -305,7 +311,7 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        const triggerButton = screen.getByText('Select location...').closest('button')
+        const triggerButton = screen.getByText('Select location…').closest('button')
         expect(triggerButton).toBeInTheDocument()
       })
     })
@@ -314,12 +320,12 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       expect(triggerButton).toBeInTheDocument()
-      expect(triggerButton?.textContent).toContain('Select location...')
+      expect(triggerButton?.textContent).toContain('Select location…')
     })
   })
 
@@ -337,7 +343,7 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
       const form = document.querySelector('form')!
@@ -357,11 +363,11 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
       const searchInput = screen.getByPlaceholderText(/Search locations/i)
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
 
       expect(searchInput).toBeInTheDocument()
       expect(triggerButton).toBeInTheDocument()
@@ -395,10 +401,10 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       fireEvent.click(triggerButton!)
 
       await waitFor(() => {
@@ -410,10 +416,10 @@ describe('OnboardingLocationStep', () => {
       await renderComponent()
 
       await waitFor(() => {
-        expect(screen.getByText('Select location...')).toBeInTheDocument()
+        expect(screen.getByText('Select location…')).toBeInTheDocument()
       })
 
-      const triggerButton = screen.getByText('Select location...').closest('button')
+      const triggerButton = screen.getByText('Select location…').closest('button')
       fireEvent.click(triggerButton!)
 
       await waitFor(() => {

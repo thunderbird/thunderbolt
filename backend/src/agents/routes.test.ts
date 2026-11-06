@@ -18,6 +18,7 @@ import { clearSettingsCache } from '@/config/settings'
 import type { RemoteAgentDescriptor } from '@shared/acp-types'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
+import { createHostedAgentProvider } from '@/hosted-agent/provider'
 import { registerAgentProvider, resetAgentProvidersForTesting } from './discovery'
 import { createAgentsRoutes } from './routes'
 
@@ -56,7 +57,7 @@ const customDescriptor: RemoteAgentDescriptor = {
 
 describe('GET /agents', () => {
   /** Env-var keys this suite mutates. Saved + restored to avoid cross-file leakage. */
-  const envKeys = ['ENABLED_AGENTS', 'ALLOW_CUSTOM_AGENTS'] as const
+  const envKeys = ['ENABLED_AGENTS', 'ALLOW_CUSTOM_AGENTS', 'ALLOW_ANONYMOUS_AGENT_DISCOVERY', 'AGENT_ENABLED'] as const
   let savedEnv: Partial<Record<(typeof envKeys)[number], string | undefined>>
 
   beforeEach(() => {
@@ -96,6 +97,102 @@ describe('GET /agents', () => {
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body).toEqual({ error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' })
+  })
+
+  it('returns only anonymous-safe agents to anonymous users when anonymous discovery is allowed', async () => {
+    const safe: RemoteAgentDescriptor = { ...customDescriptor, id: 'safe', anonymousSafe: true }
+    registerAgentProvider({ id: 'mixed', list: () => [haystackDescriptor, safe] })
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    clearSettingsCache()
+
+    const app = buildApp(buildAuth({ id: 'anon-1', isAnonymous: true }))
+    const res = await app.handle(new Request('http://localhost/agents'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.agents).toEqual([safe])
+  })
+
+  it('still applies ENABLED_AGENTS to anonymous discovery', async () => {
+    const safe: RemoteAgentDescriptor = { ...customDescriptor, id: 'safe', anonymousSafe: true }
+    registerAgentProvider({ id: 'mixed', list: () => [safe] })
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    process.env.ENABLED_AGENTS = 'other'
+    clearSettingsCache()
+
+    const app = buildApp(buildAuth({ id: 'anon-1', isAnonymous: true }))
+    const res = await app.handle(new Request('http://localhost/agents'))
+    expect((await res.json()).agents).toEqual([])
+  })
+
+  it('does not narrow the list for authenticated users when anonymous discovery is allowed', async () => {
+    registerAgentProvider({ id: 'haystack', list: () => [haystackDescriptor] })
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    clearSettingsCache()
+
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await app.handle(new Request('http://localhost/agents'))
+    expect((await res.json()).agents).toEqual([haystackDescriptor])
+  })
+
+  it('lists the hosted agent for registered and anonymous users when AGENT_ENABLED is set', async () => {
+    registerAgentProvider(createHostedAgentProvider())
+    process.env.AGENT_ENABLED = 'true'
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    clearSettingsCache()
+
+    for (const isAnonymous of [false, true]) {
+      const app = buildApp(buildAuth({ id: 'user-1', isAnonymous }))
+      const res = await app.handle(new Request('http://localhost/agents'))
+      const body = await res.json()
+      expect(body.agents).toHaveLength(1)
+      expect(body.agents[0]).toMatchObject({ id: 'hosted-agent', type: 'managed-http', url: '/v1/agent/chat' })
+    }
+  })
+
+  describe('defaultAgentId', () => {
+    const fetchDiscovery = async (user: { id: string; isAnonymous: boolean }) => {
+      const app = buildApp(buildAuth(user))
+      return (await app.handle(new Request('http://localhost/agents'))).json()
+    }
+
+    beforeEach(() => {
+      registerAgentProvider(createHostedAgentProvider())
+    })
+
+    it('names the hosted agent when it is enabled and visible', async () => {
+      process.env.AGENT_ENABLED = 'true'
+      clearSettingsCache()
+      const body = await fetchDiscovery({ id: 'user-1', isAnonymous: false })
+      expect(body.defaultAgentId).toBe('hosted-agent')
+    })
+
+    it('is omitted when the hosted agent is disabled', async () => {
+      const body = await fetchDiscovery({ id: 'user-1', isAnonymous: false })
+      expect('defaultAgentId' in body).toBe(false)
+    })
+
+    it('is omitted when another provider reuses the hosted agent id and AGENT_ENABLED is off', async () => {
+      registerAgentProvider({ id: 'haystack', list: () => [{ ...haystackDescriptor, id: 'hosted-agent' }] })
+      const body = await fetchDiscovery({ id: 'user-1', isAnonymous: false })
+      expect(body.agents).toHaveLength(1)
+      expect('defaultAgentId' in body).toBe(false)
+    })
+
+    it('is omitted when ENABLED_AGENTS excludes the hosted agent', async () => {
+      process.env.AGENT_ENABLED = 'true'
+      process.env.ENABLED_AGENTS = 'other'
+      clearSettingsCache()
+      const body = await fetchDiscovery({ id: 'user-1', isAnonymous: false })
+      expect('defaultAgentId' in body).toBe(false)
+    })
+
+    it('is given to anonymous callers only when anonymous discovery is allowed', async () => {
+      process.env.AGENT_ENABLED = 'true'
+      process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+      clearSettingsCache()
+      const body = await fetchDiscovery({ id: 'anon-1', isAnonymous: true })
+      expect(body.defaultAgentId).toBe('hosted-agent')
+    })
   })
 
   it('returns 200 with the discovery envelope for an authenticated regular user', async () => {

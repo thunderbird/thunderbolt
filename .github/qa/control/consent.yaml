@@ -1,0 +1,20 @@
+# Run by `verify.ts` at the end of the sign-in step, past the privacy and Connect Google steps of a fresh onboarding
+# install. verify.ts adds the flow's next text to the `when` as `notVisible`.
+- extendedWaitUntil:
+    visible: Onboarding Wizard
+    timeout: 120000
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: I agree to the Privacy Policy.*
+    commands:
+      - tapOn: I agree to the Privacy Policy.*
+      - tapOn: Continue
+      - extendedWaitUntil:
+          visible: Connect Google
+          timeout: 30000
+      - tapOn: Skip
+      - extendedWaitUntil:
+          visible: What should we call you?
+          timeout: 30000
+      - waitForAnimationToEnd

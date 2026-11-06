@@ -4,14 +4,218 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
+  type ChatErrorKind,
+  classifyErrorKind,
   createHandleError,
+  getChatErrorKind,
+  getErrorName,
   getErrorRetryable,
   getErrorStatusCode,
+  getInferenceQuotaWindow,
+  isAgentInstructionsTooLargeError,
+  isAgentRunInProgressError,
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
+  isToolSupportRejectionError,
 } from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
+
+describe('classifyErrorKind', () => {
+  const cases: { label: string; error: unknown; expected: ChatErrorKind }[] = [
+    {
+      label: 'wrapped Tinfoil attestation fetch failures',
+      error: Object.assign(new Error('Tinfoil attestation failed: TypeError: Failed to fetch'), {
+        name: 'TinfoilAttestationError',
+        cause: new TypeError('Failed to fetch'),
+      }),
+      expected: 'attestation',
+    },
+    {
+      label: 'Tinfoil attestation deadline errors',
+      error: Object.assign(new Error('Attestation timed out'), { name: 'TinfoilAttestationTimeoutError' }),
+      expected: 'timeout',
+    },
+    {
+      label: 'Tinfoil key configuration transport errors',
+      error: Object.assign(new Error('Key configuration mismatch'), { name: 'KeyConfigMismatchError' }),
+      expected: 'provider',
+    },
+    {
+      label: 'Tinfoil protocol transport errors',
+      error: Object.assign(new Error('Protocol failed'), { name: 'ProtocolError' }),
+      expected: 'provider',
+    },
+    {
+      label: 'Tinfoil decryption transport errors',
+      error: Object.assign(new Error('Decryption failed'), { name: 'DecryptionError' }),
+      expected: 'provider',
+    },
+    {
+      label: 'HTTP 429 responses',
+      error: { statusCode: 429, message: 'Too many requests' },
+      expected: 'rate-limit',
+    },
+    {
+      label: 'HTTP 500 responses',
+      error: { status: 500, message: 'Internal Server Error' },
+      expected: 'provider',
+    },
+    {
+      label: 'HTTP 502 responses',
+      error: { response: { status: 502 }, message: 'Bad Gateway' },
+      expected: 'provider',
+    },
+    {
+      label: 'HTTP 408 responses',
+      error: { status: 408, message: 'Request Timeout' },
+      expected: 'timeout',
+    },
+    {
+      label: 'Tinfoil 504 upstream timeout responses',
+      error: { statusCode: 504, responseBody: 'tinfoil upstream timeout' },
+      expected: 'timeout',
+    },
+    {
+      label: 'Tinfoil upstream idle timeout stream errors',
+      error: new Error('tinfoil upstream idle timeout'),
+      expected: 'timeout',
+    },
+    {
+      label: 'bare non-attestation Chrome fetch failures',
+      error: new TypeError('Failed to fetch'),
+      expected: 'network',
+    },
+    {
+      label: 'Safari fetch failures',
+      error: new TypeError('Load failed'),
+      expected: 'network',
+    },
+    {
+      label: 'Firefox fetch failures',
+      error: new TypeError('NetworkError when attempting to fetch resource.'),
+      expected: 'network',
+    },
+  ]
+
+  for (const { label, error, expected } of cases) {
+    it(`classifies ${label}`, () => {
+      expect(classifyErrorKind(error)).toBe(expected)
+    })
+  }
+
+  it('returns undefined for unknown errors', () => {
+    expect(classifyErrorKind(new Error('Unknown failure'))).toBeUndefined()
+    expect(classifyErrorKind(null)).toBeUndefined()
+  })
+})
+
+describe('getChatErrorKind', () => {
+  it('uses the kind carried by a serialized stream error', () => {
+    const error = new Error(JSON.stringify({ error: 'Bad Gateway', status: 502, kind: 'timeout' }))
+
+    expect(getChatErrorKind(error)).toBe('timeout')
+  })
+
+  it('preserves a serialized ACP connection-lost kind', () => {
+    const error = new Error(JSON.stringify({ error: 'relay dropped', kind: 'connection-lost' }))
+
+    expect(getChatErrorKind(error)).toBe('connection-lost')
+  })
+
+  it('classifies kind-less legacy payloads from their status and message', () => {
+    expect(getChatErrorKind(new Error(JSON.stringify({ error: 'Bad Gateway', status: 502 })))).toBe('provider')
+    expect(getChatErrorKind(new Error(JSON.stringify({ error: 'tinfoil upstream timeout', statusCode: 504 })))).toBe(
+      'timeout',
+    )
+  })
+
+  it('classifies serialized content rejections for telemetry', () => {
+    const errors = [
+      new Error('400: invalid file content'),
+      new Error(JSON.stringify({ error: 'Bad Request', status: 400 })),
+      new Error('openai (422): unsupported file part'),
+    ]
+
+    for (const error of errors) {
+      const kind = getChatErrorKind(error)
+      expect(kind).toBe('provider')
+      expect(kind ?? error.name).toBe('provider')
+    }
+  })
+
+  it('classifies raw browser network errors', () => {
+    expect(getChatErrorKind(new TypeError('Failed to fetch'))).toBe('network')
+  })
+
+  it('returns undefined for unknown, null, and missing errors', () => {
+    expect(getChatErrorKind(new Error('Unknown failure'))).toBeUndefined()
+    expect(getChatErrorKind(null)).toBeUndefined()
+    expect(getChatErrorKind()).toBeUndefined()
+  })
+
+  it('classifies pi-ai errors from embedded HTTP statuses', () => {
+    expect(getChatErrorKind(new Error("404: model 'llama3' not found"))).toBeUndefined()
+    expect(getChatErrorKind(new Error('anthropic (429): rate limited'))).toBe('rate-limit')
+    expect(getChatErrorKind(new Error('openai (500): Internal Server Error'))).toBe('provider')
+    expect(getChatErrorKind(new Error('openai (408): Request Timeout'))).toBe('timeout')
+    expect(getChatErrorKind(new Error('Something went wrong'))).toBeUndefined()
+  })
+})
+
+describe('getErrorName', () => {
+  it('returns string names from error-like values', () => {
+    expect(getErrorName(new TypeError('failed'))).toBe('TypeError')
+    expect(getErrorName({ name: 'SdkError' })).toBe('SdkError')
+  })
+
+  it('returns undefined when no string name exists', () => {
+    expect(getErrorName({ name: 42 })).toBeUndefined()
+    expect(getErrorName(null)).toBeUndefined()
+  })
+})
+
+describe('getInferenceQuotaWindow', () => {
+  it('extracts the 5-hour window from a direct pi-ai flattened quota error', () => {
+    const error = new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}')
+
+    expect(getInferenceQuotaWindow(error)).toBe('5h')
+  })
+
+  it('extracts the 7-day window from a serialized SecureClient quota error', () => {
+    const error = new Error(
+      JSON.stringify({
+        error: JSON.stringify({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '7d' } }),
+        status: 429,
+        isRetryable: true,
+        kind: 'rate-limit',
+      }),
+    )
+
+    expect(getInferenceQuotaWindow(error)).toBe('7d')
+  })
+
+  it('rejects values that are not known quota errors with valid windows', () => {
+    const errors = [
+      new Error('429 {"code":"RATE_LIMITED","window":"5h"}'),
+      new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"30d"}'),
+      new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED"}'),
+      new Error('429 {invalid json}'),
+      new Error(JSON.stringify({ error: 'Rate limited', status: 429 })),
+      new Error(
+        JSON.stringify({
+          error: JSON.stringify({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '5h' } }),
+          status: 500,
+        }),
+      ),
+      new Error('Error 429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}'),
+    ]
+
+    for (const error of errors) {
+      expect(getInferenceQuotaWindow(error)).toBeUndefined()
+    }
+  })
+})
 
 describe('isRateLimitError', () => {
   it('detects 429 from JSON response body (DefaultChatTransport path)', () => {
@@ -63,6 +267,22 @@ describe('isRateLimitError', () => {
   it('detects 429 via status field (aiFetchStreamingResponse path)', () => {
     const error = new Error(JSON.stringify({ error: 'Rate limited', status: 429 }))
     expect(isRateLimitError(error)).toBe(true)
+  })
+
+  it('detects pi-ai flattened 429 statuses', () => {
+    expect(isRateLimitError(new Error('429: Rate limit exceeded'))).toBe(true)
+    expect(isRateLimitError(new Error('anthropic (429): Please retry later'))).toBe(true)
+  })
+
+  it('detects a pi-ai flattened 429 followed by a JSON body', () => {
+    const error = new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}')
+
+    expect(isRateLimitError(error)).toBe(true)
+    expect(classifyErrorKind(error)).toBe('rate-limit')
+  })
+
+  it('does not match a pi-ai flattened 500 status', () => {
+    expect(isRateLimitError(new Error('openai (500): Internal Server Error'))).toBe(false)
   })
 
   it('does not match status 429 in non-JSON string', () => {
@@ -224,18 +444,95 @@ describe('getErrorStatusCode', () => {
     expect(getErrorStatusCode(new Error('Bad Request'))).toBeUndefined()
   })
 
+  it('reads pi-ai embedded HTTP status formats', () => {
+    expect(getErrorStatusCode(new Error("404: model 'llama3' not found"))).toBe(404)
+    expect(getErrorStatusCode(new Error('anthropic (429): rate limited'))).toBe(429)
+    expect(getErrorStatusCode(new Error('openai (500): Internal Server Error'))).toBe(500)
+    expect(getErrorStatusCode(new Error('openai (408): Request Timeout'))).toBe(408)
+  })
+
+  it('reads a pi-ai status followed by a JSON body', () => {
+    expect(getErrorStatusCode(new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}'))).toBe(429)
+    expect(getErrorStatusCode(new Error('503 [{"code":"INFERENCE_PRICE_UNAVAILABLE"}]'))).toBe(503)
+  })
+
+  it('only reads anchored HTTP error statuses followed by valid JSON containers', () => {
+    const messages = [
+      'Error 429 {"code":"INFERENCE_QUOTA_EXCEEDED"}',
+      '429 quota exceeded',
+      '429 {invalid json}',
+      '429 "quota exceeded"',
+      '429{"code":"INFERENCE_QUOTA_EXCEEDED"}',
+      '4290 {"code":"INFERENCE_QUOTA_EXCEEDED"}',
+      '399 {"code":"REDIRECT"}',
+      '600 [{"code":"INVALID_STATUS"}]',
+    ]
+
+    for (const message of messages) {
+      expect(getErrorStatusCode(new Error(message))).toBeUndefined()
+    }
+  })
+
+  it('ignores unanchored three-digit numbers', () => {
+    expect(getErrorStatusCode(new Error('Error 500 happened'))).toBeUndefined()
+    expect(getErrorStatusCode(new Error('retried 404 times'))).toBeUndefined()
+  })
+
+  it('ignores embedded codes outside the HTTP error range', () => {
+    expect(getErrorStatusCode(new Error('399: Redirect'))).toBeUndefined()
+    expect(getErrorStatusCode(new Error('openai (600): Invalid'))).toBeUndefined()
+  })
+
+  it('is undefined for plain text without a status', () => {
+    expect(getErrorStatusCode(new Error('Something went wrong'))).toBeUndefined()
+  })
+
   it('is undefined for null', () => {
     expect(getErrorStatusCode(null)).toBeUndefined()
   })
 })
 
 describe('isContentRejectionError', () => {
+  const toolErrorBody =
+    '{"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}'
+
+  it.each([
+    `400: ${toolErrorBody}`,
+    `400 ${toolErrorBody}`,
+    `openai (400): ${toolErrorBody}`,
+    `400: {"error":${toolErrorBody}}`,
+    JSON.stringify({ error: toolErrorBody, status: 400 }),
+    JSON.stringify({ error: JSON.stringify({ error: JSON.parse(toolErrorBody) }), statusCode: 400 }),
+  ])('keeps structured tool validation out of remediation and retries: %s', (message) => {
+    const error = new Error(message)
+
+    expect(isContentRejectionError(error)).toBe(false)
+    expect(getErrorRetryable(error)).toBe(false)
+    expect(getChatErrorKind(error)).toBe('provider')
+  })
+
+  it.each([
+    '400: {"message":"invalid file content","param":"messages"}',
+    '400: {"message":"file called tools is invalid"}',
+    '400: {"message":"file rejected; \\"param\\":\\"tools\\" appeared in its text"}',
+    '400: {"param":"tools",invalid json}',
+    '400: {"param":["tools"]}',
+    '400: null',
+  ])('does not infer a tool validation failure from file text or malformed fields: %s', (message) => {
+    expect(isContentRejectionError(new Error(message))).toBe(true)
+  })
+
   it('detects the file-part rejection 400 (e.g. content.str)', () => {
     expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(true)
   })
 
   it('detects a 422 (the tag minted for a file-part UnsupportedFunctionalityError)', () => {
     expect(isContentRejectionError(new Error(JSON.stringify({ error: 'x', statusCode: 422 })))).toBe(true)
+  })
+
+  it('detects pi-ai 400 and 422 errors for attachment remediation', () => {
+    expect(isContentRejectionError(new Error('400: invalid file content'))).toBe(true)
+    expect(isContentRejectionError(new Error('openai (422): unsupported file part'))).toBe(true)
   })
 
   it('does NOT treat auth (401/403) as a content rejection', () => {
@@ -271,6 +568,25 @@ describe('getErrorRetryable', () => {
     expect(getErrorRetryable(new Error('Network timeout'))).toBeUndefined()
     expect(getErrorRetryable(null)).toBeUndefined()
   })
+
+  it('does not retry deterministic pi-ai 4xx errors', () => {
+    expect(getErrorRetryable(new Error("404: model 'llama3' not found"))).toBe(false)
+  })
+
+  it('leaves transient pi-ai statuses retryable', () => {
+    expect(getErrorRetryable(new Error('anthropic (429): rate limited'))).toBeUndefined()
+    expect(getErrorRetryable(new Error('openai (500): Internal Server Error'))).toBeUndefined()
+    expect(getErrorRetryable(new Error('openai (408): Request Timeout'))).toBeUndefined()
+  })
+
+  it('leaves flattened pi-ai 409 conflicts retryable', () => {
+    expect(getErrorRetryable(new Error('409: Conflict'))).toBeUndefined()
+    expect(getErrorRetryable(new Error('anthropic (409): Conflict'))).toBeUndefined()
+  })
+
+  it('is undefined for pi-ai text without an embedded status', () => {
+    expect(getErrorRetryable(new Error('Something went wrong'))).toBeUndefined()
+  })
 })
 
 describe('isContextOverflowError', () => {
@@ -290,6 +606,16 @@ describe('isContextOverflowError', () => {
     expect(isContextOverflowError(new Error("This model's maximum context length is 128000 tokens"))).toBe(true)
   })
 
+  it('recognizes exhausted compaction so the chat does not retry the same oversized input', () => {
+    expect(
+      isContextOverflowError(
+        new Error(
+          'Context length still exceeds the model window after compaction. Reduce the input or choose a larger model.',
+        ),
+      ),
+    ).toBe(true)
+  })
+
   it('does not match a content rejection', () => {
     const error = new Error(JSON.stringify({ error: 'content.str: Input should be a valid string', status: 400 }))
     expect(isContextOverflowError(error)).toBe(false)
@@ -301,5 +627,133 @@ describe('isContextOverflowError', () => {
 
   it('returns false for null', () => {
     expect(isContextOverflowError(null)).toBe(false)
+  })
+})
+
+describe('hosted agent refusals', () => {
+  /** A refusal as the managed-http adapter serializes the endpoint's coded response. */
+  const agentError = (code: string, status: number) =>
+    new Error(JSON.stringify({ error: JSON.stringify({ error: { code } }), status }))
+
+  it('reads a stream error part for an upstream 429 as a plain rate limit, not a run in progress or a spending cap', () => {
+    const error = new Error(JSON.stringify({ error: 'Too many requests', status: 429 }))
+    expect(isRateLimitError(error)).toBe(true)
+    expect(isAgentRunInProgressError(error)).toBe(false)
+    expect(getInferenceQuotaWindow(error)).toBeUndefined()
+  })
+
+  it('recognizes oversized instructions only on the coded 400', () => {
+    expect(isAgentInstructionsTooLargeError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 400))).toBe(true)
+    expect(isAgentInstructionsTooLargeError(agentError('AGENT_FILES_UNSUPPORTED', 400))).toBe(false)
+    expect(isAgentInstructionsTooLargeError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 429))).toBe(false)
+    expect(isAgentInstructionsTooLargeError(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(
+      false,
+    )
+    expect(isAgentInstructionsTooLargeError(null)).toBe(false)
+  })
+
+  it('keeps oversized instructions out of attachment remediation', () => {
+    expect(isContentRejectionError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 400))).toBe(false)
+    expect(isContentRejectionError(agentError('AGENT_FILES_UNSUPPORTED', 400))).toBe(true)
+  })
+
+  it('recognizes a run in progress only on the coded 429', () => {
+    expect(isAgentRunInProgressError(agentError('AGENT_RUN_IN_PROGRESS', 429))).toBe(true)
+    expect(isAgentRunInProgressError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 429))).toBe(false)
+    expect(isAgentRunInProgressError(agentError('AGENT_RUN_IN_PROGRESS', 400))).toBe(false)
+  })
+})
+
+describe('tool-support rejections', () => {
+  const ollamaBody = '{"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'
+  const vllmBody =
+    '{"object":"error","message":"\\"auto\\" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set","code":400}'
+  const openRouterBody = '{"error":{"message":"No endpoints found that support tool use.","code":404}}'
+
+  it.each([
+    [
+      'serialized envelope with its kind',
+      JSON.stringify({ error: ollamaBody, status: 400, kind: 'tools-unsupported' }),
+    ],
+    ['legacy JSON without a kind', JSON.stringify({ error: ollamaBody, status: 400 })],
+    ['Pi Ollama 400', `400: ${ollamaBody}`],
+    ['Pi vLLM 400 with escaped quotes', `400: ${vllmBody}`],
+    ['Pi OpenRouter 404', `404: ${openRouterBody}`],
+    ['Pi llama.cpp 500', '500: tools param requires --jinja flag'],
+    ['prefixed Pi error', `openai (400): ${ollamaBody}`],
+  ])('recognizes a %s', (_label, message) => {
+    const error = new Error(message)
+
+    expect(getChatErrorKind(error)).toBe('tools-unsupported')
+    expect(isToolSupportRejectionError(error)).toBe(true)
+    expect(isContentRejectionError(error)).toBe(false)
+  })
+
+  it.each([
+    ['Ollama', '400: {"error":{"message":"gemma3:4b does not support tools"}}'],
+    ['DeepSeek', '400: {"error":{"message":"deepseek-reasoner does not support Function Calling"}}'],
+    [
+      'OpenAI',
+      `400: {"error":{"message":"Unsupported parameter: 'tools' is not supported with this model.","param":"tools","code":"unsupported_parameter"}}`,
+    ],
+    ['Groq', '400: {"error":{"message":"tool calling is not supported with this model"}}'],
+    ['Gemini', '400: {"error":{"message":"Function calling is not enabled for models/gemma-3-27b-it"}}'],
+    [
+      'Gemini, combined tools',
+      '400: {"error":{"message":"Tool use with function calling is unsupported by the model."}}',
+    ],
+    ['AI SDK client-side refusal', `{"error":"'tools' functionality not supported.","isRetryable":false}`],
+    ['contracted', '400: {"error":{"message":"This model doesn\'t support tool calling"}}'],
+    ['plural subject', '400: {"error":{"message":"Do not support tools for this model; tools are not supported"}}'],
+    ['standalone tool use', '400: {"error":{"message":"tool use is not supported by this deployment"}}'],
+  ])('recognizes the %s wording', (_provider, message) => {
+    expect(getChatErrorKind(new Error(message))).toBe('tools-unsupported')
+  })
+
+  it.each([
+    [
+      'an unsupported parallel_tool_calls option',
+      `400: {"error":{"message":"Unsupported parameter: 'parallel_tool_calls' is not supported with this model."}}`,
+    ],
+    ['a refused forced tool call', `400: {"error":{"message":"tool_choice 'required' is not supported"}}`],
+    [
+      'a failed tool call (Groq)',
+      '400: {"error":{"code":"tool_use_failed","message":"Failed to call a function. Please adjust your prompt."}}',
+    ],
+    [
+      'an invalid tool schema',
+      `400: {"error":{"message":"Invalid schema for function 'search': 'additionalProperties' is required"}}`,
+    ],
+    ['an unrelated unsupported input', '400: {"error":{"message":"Image input is not supported for this model"}}'],
+    ['a tool count limit', '400: {"error":{"message":"maximum number of items is 128","param":"tools"}}'],
+    ['one named tool', '400: {"error":{"message":"the code_interpreter tool is not supported with this model"}}'],
+    ['a refused tool_choice value in prose', '400: {"error":{"message":"this model does not support tool choice"}}'],
+  ])('does not treat %s as a tool-support rejection', (_label, message) => {
+    expect(isToolSupportRejectionError(new Error(message))).toBe(false)
+  })
+
+  it('classifies a raw provider error before its status code', () => {
+    expect(classifyErrorKind({ statusCode: 500, responseBody: 'tools param requires --jinja flag' })).toBe(
+      'tools-unsupported',
+    )
+    expect(classifyErrorKind({ statusCode: 404, responseBody: openRouterBody })).toBe('tools-unsupported')
+  })
+
+  it('keeps a rate limit a rate limit even when its body mentions tools', () => {
+    expect(classifyErrorKind({ statusCode: 429, responseBody: 'tools are not supported on the free tier' })).toBe(
+      'rate-limit',
+    )
+  })
+
+  it('leaves invalid tool definitions and other rejections alone', () => {
+    const toolParameterError = new Error(
+      '400: {"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}',
+    )
+    const fileRejection = new Error('400: invalid file content')
+
+    expect(isToolSupportRejectionError(toolParameterError)).toBe(false)
+    expect(getChatErrorKind(toolParameterError)).toBe('provider')
+    expect(isToolSupportRejectionError(fileRejection)).toBe(false)
+    expect(isContentRejectionError(fileRejection)).toBe(true)
   })
 })

@@ -5,18 +5,21 @@
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { m, useReducedMotion } from 'framer-motion'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { MessageCircle, Settings, type LucideIcon } from 'lucide-react'
 import type { SidebarSection } from './types'
 
 type SectionDefinition = {
   id: SidebarSection
-  label: string
+  label: MessageDescriptor
   icon: LucideIcon
 }
 
 const sections: SectionDefinition[] = [
-  { id: 'chats', label: 'Chats', icon: MessageCircle },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'chats', label: msg`Chats`, icon: MessageCircle },
+  { id: 'settings', label: msg`Settings`, icon: Settings },
 ]
 
 /** Near-critically-damped spring so the thumb glides to its slot without overshoot. */
@@ -41,6 +44,7 @@ type SidebarNavToggleProps = {
  * keeps its `layoutId` and animates across the collapse/expand transition.
  */
 export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: SidebarNavToggleProps) => {
+  const { i18n, t } = useLingui()
   const { triggerSelection } = useHaptics()
   const reducedMotion = useReducedMotion()
 
@@ -58,7 +62,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
       <button
         key={id}
         type="button"
-        aria-label={label}
+        aria-label={i18n._(label)}
         aria-current={isActive ? 'page' : undefined}
         onClick={() => handleSelect(id)}
         className={cn(
@@ -67,7 +71,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
           // rail) stay comfortable to hit and mobile meets --min-touch-height.
           'relative flex cursor-pointer items-center justify-center rounded-xl outline-hidden ring-sidebar-ring transition-colors focus-visible:ring-2 after:absolute after:inset-x-0 after:-inset-y-1 after:content-[""]',
           vertical ? 'size-8' : 'h-full aspect-square',
-          isActive ? 'text-sidebar-accent-foreground' : 'text-muted-foreground hover:text-sidebar-foreground',
+          'text-muted-foreground hover:text-sidebar-foreground',
         )}
       >
         {isActive && (
@@ -84,32 +88,28 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
         {/* z-10 keeps both icons above the sliding thumb: the thumb mounts
             inside the newly-active segment, and when that segment is a later
             DOM sibling it would otherwise paint over the other icon mid-slide. */}
-        <Icon className="relative z-10 size-[var(--icon-size-default)]" />
+        <Icon className={cn('relative z-10 size-[var(--icon-size-default)]', vertical && 'text-muted-foreground')} />
       </button>
     )
   }
 
   if (vertical) {
-    // Segments match the rail's 32px square buttons (size-8) so the active
-    // thumb reads as the same control as the rail items below. -mt-2 cancels
-    // the group's top padding; mb-2 pads the space below to match the 16px
-    // above the pill (header row + gap).
     return (
-      <nav aria-label="Sidebar sections" className="-mt-2 mb-2 flex justify-center">
+      <nav aria-label={t`Sidebar sections`} className="flex justify-center">
         <div className="flex w-fit flex-col items-center">{sections.map(renderSegment)}</div>
       </nav>
     )
   }
 
   return (
-    <nav aria-label="Sidebar sections">
-      {/* Same height as the footer's New Chat / theme / account controls so
+    <nav aria-label={t`Sidebar sections`}>
+      {/* Same height as the footer's New Chat and account controls so
           the row reads as one line. Mobile is full-bleed so the thumb's
-          diameter matches those controls exactly (44px); desktop keeps a 2px
+          diameter matches those controls exactly; desktop keeps a 2px
           inset for a more compact thumb in the header. Square segments +
-          gap-0.5 mirror the ChatActions search/clear-all pair, so both icon
+          gap-0.5 keep the section controls compact, so both icon
           duos sit the same distance apart. */}
-      <div className="flex h-[var(--touch-height-default)] w-fit items-center gap-0.5 md:p-0.5">
+      <div className="flex h-[var(--touch-height-lg)] w-fit items-center gap-0.5 md:h-[var(--touch-height-default)] md:p-0.5">
         {sections.map(renderSegment)}
       </div>
     </nav>

@@ -68,7 +68,7 @@ check "cmake" \
 
 check "sccache" \
   "sccache --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
-  "install with: cargo install sccache (speeds up Rust rebuilds; configured in src-tauri/.cargo/config.toml)"
+  "optional Rust build cache; make setup installs it when Cargo is available"
 
 check "container runtime (docker or podman)" \
   "if command -v podman-compose > /dev/null 2>&1 && podman info >/dev/null 2>&1; then echo \"podman \$(podman --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), running\"; elif docker info >/dev/null 2>&1; then echo \"docker \$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), running\"; else exit 1; fi" \
@@ -97,7 +97,7 @@ check "render" \
 if [ "$(uname -s)" = "Linux" ]; then
   check "Tauri Linux deps (webkit2gtk-4.1)" \
     "pkg-config --exists webkit2gtk-4.1 && echo present" \
-    "install with: sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev (or equivalent for your distro: https://v2.tauri.app/start/prerequisites/#linux)"
+    "install with: sudo apt install pkg-config libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev (or equivalent for your distro: https://v2.tauri.app/start/prerequisites/#linux)"
 fi
 
 # Mobile dev prerequisites — checked but flagged optional (only needed for `tauri:dev:ios` / `tauri:dev:android`).

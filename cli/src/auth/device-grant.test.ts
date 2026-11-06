@@ -10,7 +10,13 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { DeviceGrantError, pollForToken, type DeviceCodeResponse, type TokenPollResult } from './device-grant.ts'
+import {
+  DeviceGrantError,
+  pollForToken,
+  systemClock,
+  type DeviceCodeResponse,
+  type TokenPollResult,
+} from './device-grant.ts'
 
 const code: DeviceCodeResponse = {
   deviceCode: 'dev-code',
@@ -111,5 +117,36 @@ describe('pollForToken', () => {
     expect(err).toBeInstanceOf(DeviceGrantError)
     expect((err as DeviceGrantError).reason).toBe('expired_token')
     expect(calls.count).toBe(2)
+  })
+
+  it('aborts a pending poll sleep without polling or retaining an abort listener', async () => {
+    let releaseSleep: (() => void) | undefined
+    const controller = new AbortController()
+    const transport = scriptedTransport([{ kind: 'pending' }])
+    const clock = {
+      now: () => 0,
+      sleep: (_ms: number, signal?: AbortSignal) =>
+        new Promise<void>((resolve, reject) => {
+          releaseSleep = resolve
+          signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+        }),
+    }
+
+    const pending = pollForToken(code, transport.transport, clock, controller.signal)
+    await Promise.resolve()
+    controller.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(transport.calls.count).toBe(1)
+    releaseSleep?.()
+  })
+
+  it('clears the real system timer when cancellation interrupts a long poll interval', async () => {
+    const controller = new AbortController()
+    const cancellableSleep: (ms: number, signal: AbortSignal) => Promise<void> = systemClock.sleep
+    const pending = cancellableSleep(5_000, controller.signal)
+    controller.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

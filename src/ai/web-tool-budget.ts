@@ -1,0 +1,140 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import type { SourceMetadata } from '@/types/source'
+import { toolCallKey } from '@/lib/stable-stringify'
+
+export type WebToolIntent = 'auto' | 'search' | 'research'
+
+export const webToolCaps: Record<WebToolIntent, number> = {
+  auto: 5,
+  search: 12,
+  research: 30,
+}
+
+export type WebToolBudgetProbe = {
+  readonly isExhausted: boolean
+  readonly exhaustedAttempts: number
+}
+
+export type WebToolBudget = {
+  readonly initialCap: number
+  readonly cap: number
+  readonly consumed: number
+  readonly promoted: boolean
+  promote: (intent: WebToolIntent) => void
+  execute: (toolName: string, input: unknown, run: () => Promise<unknown>) => Promise<unknown>
+  probe: WebToolBudgetProbe
+  intent: WebToolIntent
+  /** Citation labels and cached web results must share the logical turn's lifetime. */
+  readonly sourceCollector: SourceMetadata[]
+}
+
+export type BudgetExhaustedResult = {
+  status: 'budget_exhausted'
+  message: string
+}
+
+/** Resolve the run/lab option once per budget; browsers have no such environment setting. */
+export const resolveWebBudgetPromotion = (value: string | undefined): boolean => {
+  if (value !== undefined && !['on', 'off'].includes(value)) {
+    throw new Error('WEB_BUDGET_PROMOTION must be on or off')
+  }
+  return value !== 'off'
+}
+
+/** Create one combined per-turn budget for search and page-fetch calls. */
+export const createWebToolBudget = (
+  intent: WebToolIntent,
+  promotionEnabled = resolveWebBudgetPromotion(
+    typeof process === 'undefined' ? undefined : process.env.WEB_BUDGET_PROMOTION,
+  ),
+  exhaustedMessage?: string,
+): WebToolBudget => {
+  let cap = webToolCaps[intent]
+  let consumed = 0
+  let exhaustedAttempts = 0
+  const dedupe = new Map<string, Promise<unknown>>()
+
+  const tryConsume = (): boolean => {
+    if (consumed >= cap) {
+      exhaustedAttempts++
+      return false
+    }
+    consumed++
+    return true
+  }
+
+  return {
+    intent,
+    initialCap: webToolCaps[intent],
+    get cap() {
+      return cap
+    },
+    get consumed() {
+      return consumed
+    },
+    get promoted() {
+      return cap !== webToolCaps[intent]
+    },
+    promote: (nextIntent) => {
+      if (promotionEnabled && intent === 'auto' && nextIntent === 'research') {
+        cap = webToolCaps[nextIntent]
+      }
+    },
+    sourceCollector: [],
+    execute: (toolName, input, run) => {
+      const key = normalizeWebToolKey(toolName, input)
+      const cached = dedupe.get(key)
+      if (cached) {
+        return cached
+      }
+      if (!tryConsume()) {
+        return Promise.resolve(budgetExhaustedResult(exhaustedMessage))
+      }
+      const result = run()
+      dedupe.set(key, result)
+      result.catch(() => dedupe.delete(key))
+      return result
+    },
+    probe: {
+      get isExhausted() {
+        return consumed >= cap
+      },
+      get exhaustedAttempts() {
+        return exhaustedAttempts
+      },
+    },
+  }
+}
+
+const normalizeSearchQuery = (query: string): string => query.trim().toLowerCase().replace(/\s+/g, ' ')
+
+const normalizeUrl = (value: string): string => {
+  const trimmed = value.trim()
+  try {
+    const url = new URL(trimmed)
+    const pathname = url.pathname === '/' ? '' : url.pathname
+    return `${url.protocol}//${url.host.toLowerCase()}${pathname}${url.search}${url.hash}`
+  } catch {
+    return trimmed
+  }
+}
+
+/** Build the normalized per-turn dedupe key for a built-in web tool call. */
+export const normalizeWebToolKey = (toolName: string, input: unknown): string => {
+  const params = input as Record<string, unknown>
+  if (toolName === 'search') {
+    return toolCallKey(toolName, { ...params, query: normalizeSearchQuery(params.query as string) })
+  }
+  return toolCallKey(toolName, { ...params, url: normalizeUrl(params.url as string) })
+}
+
+/** Return the structured result used when a turn's web-tool budget is spent. */
+export const budgetExhaustedResult = (
+  message = 'Per-turn web tool budget reached. Answer now from the results already gathered.',
+): BudgetExhaustedResult => ({
+  status: 'budget_exhausted',
+  message,
+})

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { collectPageErrors, loginViaOidc } from './helpers'
 
 const cloudUrl = 'http://localhost:8000/v1'
@@ -28,9 +28,7 @@ const targetUrl = 'https://upstream.example.com/api/v1/things'
  * format. Same blueprint as the auth specs — `loginViaOidc` to load the app
  * shell, then drive a probe inside `page.evaluate`.
  */
-test('GET via /v1/proxy carries X-Proxy-Target-Url and unwraps passthrough response headers', async ({
-  page,
-}) => {
+test('GET via /v1/proxy carries X-Proxy-Target-Url and unwraps passthrough response headers', async ({ page }) => {
   const errors = collectPageErrors(page)
 
   let proxyHits = 0

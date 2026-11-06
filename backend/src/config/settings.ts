@@ -2,11 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { maxAgentSteps } from '@/hosted-agent/limits'
+import type { PublicMiniApp } from '@shared/mini-app-registry'
+import { parseBranding, resolveAppName, type Branding } from '@shared/branding'
 import { z } from 'zod'
+import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import { httpUrlMessage, isHttpUrl, loopbackOrigin } from '@shared/url'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
 })
+const defaultAnonymousSignInRateLimitMax = 10
+const defaultAnonymousSignInRateLimitWindowSecs = 60
+
+/**
+ * Derive a WebAuthn Relying Party ID (a bare hostname) from the app URL. The RP ID
+ * must equal the web origin's host (or a parent of it), so the app's own URL is the
+ * correct default for every deployment — dev, prod, and self-hosted alike.
+ */
+const rpIdFromAppUrl = (appUrl: string): string => (URL.canParse(appUrl) ? new URL(appUrl).hostname : '')
+
+/** WebAuthn forbids IP addresses as a Relying Party ID; it must be a domain name. */
+const isIpLiteral = (host: string): boolean => /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith('[')
+
+const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,X-Passkey-Challenge,${inferenceUsageReceiptHeader}`
 
 /** Default PAT lifetime (90 days, in seconds) — exported so test fixtures can't drift from the schema default. */
 export const defaultApiKeyExpirySeconds = 90 * 24 * 60 * 60
@@ -14,12 +33,78 @@ export const defaultApiKeyExpirySeconds = 90 * 24 * 60 * 60
 /**
  * Settings schema for environment variables validation
  */
+/**
+ * Whether `Intl` accepts `value` as a time zone: an IANA name, or a UTC offset such as `+01:00`.
+ * Asks `DateTimeFormat` rather than `Intl.supportedValuesOf('timeZone')`, whose list omits aliases
+ * such as `UTC` on some engines.
+ */
+const isTimeZone = (value: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// SVG data URLs are allowed: an SVG loaded in an image context cannot run script or fetch.
+const isBrandLogoUrl = (value: string) =>
+  value === '' || value.startsWith('data:image/') || (URL.canParse(value) && new URL(value).protocol === 'https:')
+
+/** Optional logo URL: empty, an `https:` URL, or a `data:image/` URL. */
+const brandLogoUrlField = (envName: string) =>
+  z
+    .string()
+    .trim()
+    .default('')
+    .refine(isBrandLogoUrl, { message: `${envName} must be empty, an https: URL or a data:image/ URL` })
+
+const parseJson = (text: string): { ok: true; value: unknown } | { ok: false } => {
+  try {
+    return { ok: true, value: JSON.parse(text) }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/**
+ * `BRANDING`: empty means no branding; anything else must be valid JSON that
+ * `parseBranding` (shared with the client) accepts. Every problem is reported
+ * at once, so a pasted theme is fixed in one pass.
+ */
+const brandingField = z
+  .string()
+  .trim()
+  .transform((value, ctx): Branding | undefined => {
+    if (!value) {
+      return undefined
+    }
+    const json = parseJson(value)
+    if (!json.ok) {
+      // The usual cause: unquoted in a .env file, where the first hex color's '#' starts a comment.
+      ctx.addIssue({
+        code: 'custom',
+        message: "BRANDING must be valid JSON (in a .env file, wrap the value in single quotes: BRANDING='{...}')",
+      })
+      return z.NEVER
+    }
+    const result = parseBranding(json.value)
+    if (!result.ok) {
+      ctx.addIssue({ code: 'custom', message: `BRANDING is invalid:\n  ${result.errors.join('\n  ')}` })
+      return z.NEVER
+    }
+    return result.branding
+  })
+  // Keeps the key optional on `Settings`, so hand-built settings objects needn't list it.
+  .optional()
+
 const settingsSchema = z
   .object({
     // API Keys
     fireworksApiKey: z.string().default(''),
-    mistralApiKey: z.string().default(''),
     anthropicApiKey: z.string().default(''),
+    anthropicBaseUrl: z.string().default('https://api.anthropic.com'),
+    resendMonitoringApiKey: z.string().default(''),
     exaApiKey: z.string().default(''),
     tinfoilApiKey: z.string().default(''),
     // Include the `/v1` API prefix — Tinfoil's OpenAI-compatible endpoints live
@@ -32,8 +117,10 @@ const settingsSchema = z
     // OAuth Settings
     googleClientId: z.string().trim().default(''),
     googleClientSecret: z.string().trim().default(''),
+    googleBaseUrl: z.string().default('https://oauth2.googleapis.com'),
     microsoftClientId: z.string().trim().default(''),
     microsoftClientSecret: z.string().trim().default(''),
+    microsoftBaseUrl: z.string().default('https://login.microsoftonline.com'),
 
     // OIDC Settings (enterprise self-hosted)
     authMode: z.enum(['consumer', 'oidc', 'saml']).default('consumer'),
@@ -41,6 +128,8 @@ const settingsSchema = z
     // is NOT registered so /v1/api/auth/sign-in/anonymous returns 404. Defense-in-depth
     // against a malicious client bypassing the frontend gate via direct curl.
     authAllowAnonymous: z.boolean().default(false),
+    // Anonymous users idle this many days are hard-deleted by an hourly sweep; 0 keeps them forever.
+    anonymousUserIdleDays: z.coerce.number().int().nonnegative().default(30),
     oidcClientId: z.string().default(''),
     oidcClientSecret: z.string().default(''),
     oidcIssuer: z.string().default(''),
@@ -55,6 +144,7 @@ const settingsSchema = z
     samlEntityId: z.string().default(''),
     samlIdpIssuer: z.string().default(''),
     samlCert: z.string().default(''),
+    samlAllowIdpInitiated: z.boolean().default(false),
     betterAuthUrl: z.string().default('http://localhost:8000'),
     betterAuthSecret: z.string().min(1),
 
@@ -88,9 +178,44 @@ const settingsSchema = z
 
     // PowerSync settings
     powersyncUrl: z.string().default(''),
+    powersyncInternalUrl: z.string().default(''),
     powersyncJwtKid: z.string().default(''),
     powersyncJwtSecret: z.string().default(''),
-    powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
+    // PowerSync verifies this JWT locally (signature + expiry) and never calls back to us. Revocation
+    // cuts the stream through the sync rules; this only bounds how long a device can keep
+    // reconnecting — keep it short.
+    powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(300),
+
+    /**
+     * The Mini App registry, as JSON, keyed by app id:
+     *
+     * ```
+     * { "order-book": { "name": "Order Book", "description": "…",
+     *   "icon": "table", "url": "https://…", "origin": "https://…", "secret": "…" } }
+     * ```
+     *
+     * One config, not two. An earlier cut kept presentation in a hardcoded
+     * frontend array and only the audience here, which meant two lists of the
+     * same apps that could disagree — and the failure was silent: an app the
+     * backend didn't know about rendered fine and then couldn't authenticate.
+     * The frontend now reads this over `GET /mini-apps`, minus the secret.
+     *
+     * `origin` becomes the `aud` of the identity token we mint, so it has to be
+     * operator-declared — a client that could name its own audience could mint a
+     * token for any app.
+     *
+     * Secrets are per app rather than one shared key: with a single symmetric
+     * secret, any Mini App could forge a token for any other. Asymmetric keys
+     * plus a JWKS endpoint are the upgrade once apps are built by third parties
+     * and secret distribution stops being a deploy-time detail.
+     */
+    miniApps: z.string().default(''),
+    /**
+     * Lifetime of a Mini App identity token. Short by intent — the guest asks
+     * for a new one as it nears expiry, so the blast radius of a leaked token is
+     * minutes rather than the length of a session.
+     */
+    miniAppTokenExpirySeconds: z.coerce.number().int().positive().default(300),
 
     // CORS settings — comma-separated list of exact origins.
     // `corsAllowHeaders` is no longer consumed by any production mount: both
@@ -102,14 +227,47 @@ const settingsSchema = z
     corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
     corsAllowHeaders: z.string().default(''),
     // Protocol-required: frontend proxy-fetch.ts unwrap needs these visible cross-origin (cors does not echo expose-headers).
-    corsExposeHeaders: z
-      .string()
-      .default(
-        'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate',
-      ),
+    // X-Proxy-Final-Url also tells the client a 401 came from an upstream, not our session gate.
+    corsExposeHeaders: z.string().default(defaultCorsExposeHeaders),
 
-    // E2E encryption — when true, devices must complete the trust flow before syncing
-    e2eeEnabled: z.boolean().default(false),
+    // Org escrow (THU-804 POC) — operator-controlled AK recipient. When enabled, every
+    // AK create/change (setup / rotate / upgrade) must include an org envelope, and the
+    // server rejects the write without one. That is the whole of the server's role:
+    // the escrow public key lives only in the client build (`VITE_ORG_ESCROW_PUBLIC_KEY`,
+    // THU-866), so the server never holds escrow key material and cannot steer the wrap
+    // target. Recovery runs offline via scripts/org-escrow-decrypt.ts with the
+    // operator-held private key.
+    orgEscrowEnabled: z.boolean().default(false),
+
+    // Passkey (WebAuthn) sign-in and passkey sync unlock. Off unless PASSKEY_ENABLED,
+    // and never in SSO modes (see `isPasskeyEnabled`). The Relying Party ID derives
+    // from APP_URL's hostname unless PASSKEY_RP_ID overrides it (e.g. an apex to
+    // share passkeys across subdomains). It is permanent per deployment: changing it
+    // — including by changing APP_URL — orphans every registered credential.
+    passkeyEnabled: z.boolean().default(false),
+    passkeyRpId: z.string().trim().default(''),
+    // Empty = the branding app name (see getPasskeyRpName).
+    passkeyRpName: z.string().trim().default(''),
+    // Comma-separated `android:apk-key-hash:<base64url sha256 of the signing cert>`
+    // origins: Android puts that, not a web origin, in the passkey's clientDataJSON.
+    passkeyAndroidOrigins: z.string().default(''),
+
+    // Intake role: mounts POST /v1/debug-transcripts/intake. Thunderbolt production only.
+    debugTranscriptIntakeEnabled: z.boolean().default(false),
+    // Relay role: where this deployment forwards user transcripts, and its client key.
+    // Both set = the share feature is enabled for this deployment's users.
+    debugTranscriptUpstreamUrl: z.string().trim().default(''),
+    debugTranscriptUpstreamKey: z.string().trim().default(''),
+    // Rollout order: docs/self-hosting/configuration.md#command-line-client-rollout.
+    // Kill switch for the server-owned CLI device row.
+    cliDeviceRegistrationEnabled: z.boolean().default(false),
+
+    // Whether a personal access token may reach the confidential (Tinfoil) routes.
+    // Off by default: confidential inference is the only managed tier a PAT cannot
+    // buy without an operator saying so, and a PAT is longer-lived than a session.
+    // Attestation and HPKE are the caller's, not ours, so nothing here weakens the
+    // confidentiality boundary — see backend/docs/pat-lifecycle.md.
+    confidentialApiKeysEnabled: z.boolean().default(false),
 
     // Minimum app version clients must run. Empty string disables enforcement.
     // Surfaced to the frontend via GET /config; clients below this hard-block until they update.
@@ -127,6 +285,38 @@ const settingsSchema = z
 
     // Rate limiting
     rateLimitEnabled: z.boolean().default(true),
+    // Per-IP limit on anonymous sign-in, enforced only by our DB-backed limiter (fixed window,
+    // keyed on the TRUSTED_PROXY-resolved IP); Better Auth skips this path.
+    // Raising it requires a captcha: see docs/self-hosting/configuration.md#anonymous-sign-in.
+    anonymousSignInRateLimitMax: z.coerce.number().int().positive().default(defaultAnonymousSignInRateLimitMax),
+    anonymousSignInRateLimitWindowSecs: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(defaultAnonymousSignInRateLimitWindowSecs),
+    // Deployment-wide anonymous sign-in budget: one constant-key bucket shared by every IP, so
+    // a raised per-IP limit cannot mint unbounded accounts. It bounds worst-case anonymous
+    // inference spend at this many accounts times the per-account quota, per window.
+    anonymousSignInGlobalRateLimitMax: z.coerce.number().int().positive().default(2000),
+    anonymousSignInGlobalRateLimitWindowSecs: z.coerce.number().int().positive().default(3600),
+    // Each value maps to a provider in createCaptchaProvider (backend/src/auth/captcha.ts).
+    captchaProvider: z.enum(['none', 'altcha']).default('none'),
+    // ALTCHA_* settings apply only when CAPTCHA_PROVIDER=altcha.
+    // HMAC key signing ALTCHA challenges; required (32+ characters) when the provider is altcha.
+    altchaSecret: z.string().default(''),
+    // ALTCHA maxnumber: a client tries maxnumber/2 SHA-256 hashes on average, so this trades
+    // bot cost against how long a low-end phone spins before sign-in. The 100000 default solves
+    // in about 80 ms (median, single thread) in Bun on Apple silicon; phones are slower.
+    // The floor is a sanity bound, not the control: a native solver needs only milliseconds at
+    // any sane difficulty, so the global anonymous sign-in budget is what caps a scripted run.
+    altchaDifficulty: z.coerce.number().int().min(50_000).default(100_000),
+    altchaTtlSecs: z.coerce.number().int().positive().default(600),
+
+    // Managed inference rolling quotas (integer cents)
+    inferenceQuotaAnonymousFiveHourCents: z.coerce.number().int().positive().default(10),
+    inferenceQuotaAnonymousSevenDayCents: z.coerce.number().int().positive().default(60),
+    inferenceQuotaRegisteredFiveHourCents: z.coerce.number().int().positive().default(1500),
+    inferenceQuotaRegisteredSevenDayCents: z.coerce.number().int().positive().default(7500),
 
     // Trusted proxy (controls which proxy headers are trusted for IP extraction)
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
@@ -142,6 +332,20 @@ const settingsSchema = z
     // list (not just disabled) — for deployments that ship only their own agents (e.g. Deepset).
     // Surfaced to the UI via GET /config as `builtInAgentEnabled`.
     disableBuiltInAgent: z.boolean().default(false),
+    // When true, the app shows a chat-only shell for public deployments: no Settings, Projects,
+    // skill chips, account control or agent menu.
+    // Surfaced to the UI via GET /config as `minimalMode`.
+    minimalMode: z.boolean().default(false),
+    // Operator logo shown in the minimal-mode header for direct visitors (hidden under ?embed=app), for
+    // light and dark themes. Each is an `https:` URL or a `data:image/` URL; anything else fails
+    // boot so a typo cannot inject a script URL. `brandLogoAlt` is its accessible name.
+    // Surfaced to the UI via GET /config as `brandLogoUrl`, `brandLogoDarkUrl` and `brandLogoAlt`.
+    brandLogoUrl: brandLogoUrlField('BRAND_LOGO_URL'),
+    brandLogoDarkUrl: brandLogoUrlField('BRAND_LOGO_DARK_URL'),
+    brandLogoAlt: z.string().trim().default(''),
+    // Operator branding (app name, theme tokens, fonts, logo, links, transcript recipient). Surfaced
+    // to the UI via GET /config as `branding`; see docs/self-hosting/configuration.md#branding.
+    branding: brandingField,
     // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).
     haystackBaseUrl: z.string().default(''),
     haystackApiKey: z.string().default(''),
@@ -150,8 +354,46 @@ const settingsSchema = z
     // JSON array of pipeline descriptors: [{id, name, pipelineName, pipelineId, description?, icon?}].
     // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
     haystackPipelines: z.string().default(''),
+
+    // Hosted agent settings (see `@/hosted-agent/routes`). Name, description, icon and anonymous discovery
+    // feed `GET /agents` (see `@/hosted-agent/provider`).
+    agentEnabled: z.boolean().default(false),
+    agentModel: z.string().default(''),
+    // Most model steps per run, each tool round trip being one more. Without tools every run is a single step. At most
+    // `maxAgentSteps`, the most a reply can take under its tool-call budget.
+    agentMaxSteps: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(maxAgentSteps, { message: `AGENT_MAX_STEPS must be at most ${maxAgentSteps}` })
+      .default(8),
+    // Fireworks serving tier for the hosted agent. `priority` is less likely to be load-shed and costs more.
+    agentFireworksServiceTier: z.enum(['standard', 'priority']).default('standard'),
+    agentSystemPrompt: z.string().default(''),
+    // JSON array of MCP servers whose read-only tools the hosted agent may call, parsed by `parseAgentMcpServers`
+    // (`@/hosted-agent/mcp`) when the agent mounts, so a malformed value fails the boot.
+    agentMcpServers: z.string().default(''),
+    agentName: z.string().default('Assistant'),
+    agentDescription: z.string().default(''),
+    agentIcon: z.string().default(''),
+    // IANA zone for the date line in the agent's system prompt. The server runs in UTC; an event deployment sets
+    // the venue's zone. Checked at startup so a typo fails the boot instead of every request.
+    agentTimezone: z
+      .string()
+      .default('UTC')
+      .refine(isTimeZone, { message: 'AGENT_TIMEZONE must be an IANA time zone or a UTC offset' }),
+    // When true, anonymous sessions may call `GET /agents` and see only anonymous-safe agents.
+    allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
+    if (data.passkeyEnabled && (!data.passkeyRpId || isIpLiteral(data.passkeyRpId))) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'PASSKEY_ENABLED needs a domain-name Relying Party ID: set APP_URL to an absolute https URL on a domain, or set PASSKEY_RP_ID',
+        path: ['passkeyRpId'],
+      })
+    }
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
       ctx.addIssue({
         code: 'too_small',
@@ -163,29 +405,175 @@ const settingsSchema = z
         input: '[REDACTED]',
       })
     }
+    if (data.captchaProvider === 'altcha' && data.altchaSecret.length < 32) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'ALTCHA_SECRET must be at least 32 characters when CAPTCHA_PROVIDER=altcha',
+        path: ['altchaSecret'],
+      })
+    }
+    const anonymousSignInLimitRaised =
+      data.anonymousSignInRateLimitMax > defaultAnonymousSignInRateLimitMax ||
+      data.anonymousSignInRateLimitWindowSecs < defaultAnonymousSignInRateLimitWindowSecs
+    if (data.authAllowAnonymous && data.captchaProvider === 'none' && anonymousSignInLimitRaised) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set. Set CAPTCHA_PROVIDER=altcha and build the app with VITE_CAPTCHA_PROVIDER=altcha, or keep the defaults (see docs/self-hosting/configuration.md#anonymous-sign-in).',
+        path: ['captchaProvider'],
+      })
+    }
+    const hasUpstreamUrl = data.debugTranscriptUpstreamUrl !== ''
+    const hasUpstreamKey = data.debugTranscriptUpstreamKey !== ''
+    if (hasUpstreamUrl !== hasUpstreamKey) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'debugTranscriptUpstreamUrl and debugTranscriptUpstreamKey must be set together',
+        path: [hasUpstreamUrl ? 'debugTranscriptUpstreamKey' : 'debugTranscriptUpstreamUrl'],
+      })
+    }
   })
+  .transform((data) => ({ ...data, debugTranscriptsEnabled: data.debugTranscriptUpstreamUrl !== '' }))
 
 export type Settings = z.infer<typeof settingsSchema>
+
+/** One registered Mini App, as the backend holds it. */
+export type MiniAppConfig = {
+  name: string
+  description: string
+  /** Icon key the frontend maps to a component; unknown keys fall back. */
+  icon: string
+  /**
+   * Exact origin the frame posts from, and the token's `aud`. Separate from
+   * `url` on purpose: a redirect can move `url`, and the value we validate
+   * against must be the one an operator declared.
+   */
+  origin: string
+  /** Full URL loaded into the frame. Defaults to `origin`. */
+  url: string
+  /** HS256 signing secret, unique to this app. Never leaves the backend. */
+  secret: string
+}
+
+/** What the frontend is allowed to see — everything but the secret. */
+export type { PublicMiniApp }
+
+/** The shared http(s) rule, as this end's zod field. */
+const httpUrlField = z.string().refine(isHttpUrl, { message: httpUrlMessage })
+
+/**
+ * Normalised to a serialized origin, because that is what the browser reports
+ * in `event.origin` — never with a path, never with a trailing slash. The
+ * bridge compares the two with `===`, so an operator writing
+ * `https://app.example.com/` used to produce an app that loaded and then
+ * silently ignored every message it sent.
+ */
+const originField = httpUrlField.transform((value) => new URL(value).origin)
+
+const miniAppEntrySchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().default(''),
+    icon: z.string().default(''),
+    origin: originField,
+    url: httpUrlField.optional(),
+    // Matches the 32-character floor the rest of the codebase holds signing
+    // secrets to; this one signs identity tokens apps trust.
+    secret: z.string().min(32),
+  })
+  // `url` is almost always the origin; making operators repeat it is a
+  // second place for the two to disagree.
+  .transform((app) => ({ ...app, url: app.url ?? app.origin }))
+
+/**
+ * Parse `miniApps`, dropping anything malformed rather than throwing.
+ *
+ * Validated per entry, which is what the promise below actually requires: a
+ * typo in one app shouldn't take down token minting for the others. Parsing the
+ * whole record in one go meant exactly that — a single bad entry produced an
+ * empty registry and every app vanished at once.
+ *
+ * A dropped entry fails closed: that app simply can't get a token, which
+ * surfaces as a clear 404 rather than a token signed with `undefined`. Each one
+ * is logged, because an app quietly missing from the sidebar is otherwise a
+ * long afternoon.
+ *
+ * A `Map`, not a plain object, because the only thing that ever looks an app up
+ * is `POST /mini-apps/:appId/token` with an id straight off the URL. Indexing an
+ * object literal with that made `/mini-apps/toString/token` (or `constructor`,
+ * `valueOf`, `hasOwnProperty`) resolve to an inherited function — truthy, so the
+ * 404 guard never fired and the route fell through to signing a token whose
+ * `aud` and secret were both `undefined`. A `Map` only ever returns what was
+ * `set` on it, so the whole class of bug is gone rather than guarded against.
+ */
+export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Map<string, MiniAppConfig> => {
+  if (!settings.miniApps) {
+    return new Map()
+  }
+  // `JSON.parse` throws on malformed input, so it can't go straight into
+  // `safeParse` — a stray comma in an env var would take the process down.
+  let container: unknown
+  try {
+    container = JSON.parse(settings.miniApps)
+  } catch {
+    console.error('[mini-apps] MINI_APPS is not valid JSON; no apps registered')
+    return new Map()
+  }
+  if (typeof container !== 'object' || container === null || Array.isArray(container)) {
+    console.error('[mini-apps] MINI_APPS must be an object keyed by app id; no apps registered')
+    return new Map()
+  }
+
+  const entries = Object.entries(container).flatMap(([id, raw]) => {
+    const app = miniAppEntrySchema.safeParse(raw)
+    if (!app.success) {
+      const why = app.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; ')
+      console.error(`[mini-apps] Dropping "${id}" — ${why}`)
+      return []
+    }
+    return [[id, app.data] as const]
+  })
+  return new Map(entries)
+}
+
+/**
+ * The registry as the frontend receives it, with secrets stripped.
+ *
+ * Takes an already-parsed registry rather than `Settings`, so a route can parse
+ * once at construction and answer from that. Deriving it from `Settings` per
+ * call re-ran `JSON.parse` and the per-entry validation on every request — and
+ * re-emitted the "Dropping <id>" log each time, which on an unauthenticated
+ * route means any caller can drive the log volume.
+ */
+export const toPublicMiniApps = (apps: ReadonlyMap<string, MiniAppConfig>): PublicMiniApp[] =>
+  [...apps].map(([id, { secret: _secret, ...app }]) => ({ id, ...app }))
 
 /**
  * Parse and validate environment variables into settings
  */
 const parseSettings = (): Settings => {
   const isDevelopment = process.env.NODE_ENV === 'development'
+  const appUrl = process.env.APP_URL || 'http://localhost:1420'
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
-    mistralApiKey: process.env.MISTRAL_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+    anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
+    resendMonitoringApiKey: process.env.RESEND_MONITORING_API_KEY || '',
     exaApiKey: process.env.EXA_API_KEY || '',
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
     tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh/v1',
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    // Only a loopback override (a QA stack's fake provider) is honoured, so the client secret never leaves for
+    // another host.
+    googleBaseUrl: loopbackOrigin(process.env.GOOGLE_BASE_URL) ?? 'https://oauth2.googleapis.com',
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+    microsoftBaseUrl: loopbackOrigin(process.env.MICROSOFT_BASE_URL) ?? 'https://login.microsoftonline.com',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
     authAllowAnonymous: process.env.AUTH_ALLOW_ANONYMOUS === 'true',
+    anonymousUserIdleDays: process.env.ANONYMOUS_USER_IDLE_DAYS || undefined,
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',
@@ -194,6 +582,7 @@ const parseSettings = (): Settings => {
     samlEntityId: process.env.SAML_ENTITY_ID || '',
     samlIdpIssuer: process.env.SAML_IDP_ISSUER || '',
     samlCert: process.env.SAML_CERT || '',
+    samlAllowIdpInitiated: process.env.SAML_ALLOW_IDP_INITIATED === 'true',
     betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,
     deviceAuthExpiresIn: process.env.DEVICE_AUTH_EXPIRES_IN || '30m',
@@ -201,7 +590,7 @@ const parseSettings = (): Settings => {
     apiKeyDefaultExpiresInSeconds: process.env.API_KEY_DEFAULT_EXPIRES_IN,
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
-    appUrl: process.env.APP_URL || 'http://localhost:1420',
+    appUrl,
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
@@ -210,29 +599,103 @@ const parseSettings = (): Settings => {
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
     powersyncUrl: process.env.POWERSYNC_URL || (isDevelopment ? 'http://localhost:8080' : ''),
+    /*
+     * The dev fallback is the starter template, and only the starter template.
+     *
+     * It used to register two apps that live outside this repo, on ports a fresh
+     * checkout has nothing running on — so `bun dev` gave you a sidebar of apps
+     * that could not load, and it disagreed with the `MINI_APPS` line in
+     * `.env.example`. Two defaults for one setting is the same "two lists that
+     * can disagree" problem this field's own docs are about, and the loser was
+     * whoever hadn't copied the example file.
+     */
+    miniApps:
+      process.env.MINI_APPS ||
+      (isDevelopment
+        ? JSON.stringify({
+            'order-book': {
+              name: 'Order Book',
+              description: 'Template starter app — orders with a changeable status.',
+              icon: 'table',
+              origin: 'http://localhost:5190',
+              secret: 'order-book-template-dev-secret-xx',
+            },
+          })
+        : ''),
+    // Handed to the schema raw, so its `z.coerce.number().int().positive()`
+    // rejects a typo loudly at boot — `Number(...) || 300` turned
+    // `MINI_APP_TOKEN_EXPIRY_SECONDS=5m` into NaN and then silently into the
+    // default. The unset case is covered by the schema's own `.default(300)`,
+    // which is why nothing is substituted here. (Its neighbour
+    // `powersyncTokenExpirySeconds` passes `|| '3600'` instead and so never
+    // reaches its schema default; this is the shape to copy, not that one.)
+    miniAppTokenExpirySeconds: process.env.MINI_APP_TOKEN_EXPIRY_SECONDS,
+    // Server-side probe target. `POWERSYNC_URL` is browser-facing, so on a
+    // cluster it points at the public ingress and is not the best address for
+    // this pod to dial. Set this to the in-cluster service URL to keep
+    // `/v1/health/powersync` on the internal network; it falls back to the
+    // public URL so single-host deployments need no extra setting.
+    powersyncInternalUrl: process.env.POWERSYNC_INTERNAL_URL || '',
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),
-    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
+    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '300',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
-    corsExposeHeaders:
-      process.env.CORS_EXPOSE_HEADERS ||
-      'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate',
-    e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
+    orgEscrowEnabled: process.env.ORG_ESCROW_ENABLED === 'true',
+    passkeyEnabled: process.env.PASSKEY_ENABLED === 'true',
+    // Derived only when passkeys are on, so an APP_URL that isn't a full URL can
+    // never break a deployment that doesn't use them.
+    passkeyRpId: process.env.PASSKEY_RP_ID || (process.env.PASSKEY_ENABLED === 'true' ? rpIdFromAppUrl(appUrl) : ''),
+    passkeyRpName: process.env.PASSKEY_RP_NAME || '',
+    passkeyAndroidOrigins: process.env.PASSKEY_ANDROID_ORIGINS || '',
+    debugTranscriptIntakeEnabled: process.env.DEBUG_TRANSCRIPT_INTAKE_ENABLED === 'true',
+    debugTranscriptUpstreamUrl: process.env.DEBUG_TRANSCRIPT_UPSTREAM_URL || '',
+    debugTranscriptUpstreamKey: process.env.DEBUG_TRANSCRIPT_UPSTREAM_KEY || '',
+    cliDeviceRegistrationEnabled: process.env.CLI_DEVICE_REGISTRATION_ENABLED === 'true',
+    confidentialApiKeysEnabled: process.env.CONFIDENTIAL_API_KEYS_ENABLED === 'true',
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+    anonymousSignInRateLimitMax: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX || undefined,
+    anonymousSignInRateLimitWindowSecs: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS || undefined,
+    anonymousSignInGlobalRateLimitMax: process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX || undefined,
+    anonymousSignInGlobalRateLimitWindowSecs: process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS || undefined,
+    captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase(),
+    altchaSecret: process.env.ALTCHA_SECRET || '',
+    altchaDifficulty: process.env.ALTCHA_DIFFICULTY || undefined,
+    altchaTtlSecs: process.env.ALTCHA_TTL_SECS || undefined,
+    inferenceQuotaAnonymousFiveHourCents: process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS,
+    inferenceQuotaAnonymousSevenDayCents: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,
+    inferenceQuotaRegisteredFiveHourCents: process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS,
+    inferenceQuotaRegisteredSevenDayCents: process.env.INFERENCE_QUOTA_REGISTERED_7D_CENTS,
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
     enabledAgents: process.env.ENABLED_AGENTS || '',
     allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',
     disableBuiltInAgent: process.env.DISABLE_BUILT_IN_AGENT === 'true',
+    minimalMode: process.env.MINIMAL_MODE === 'true',
+    brandLogoUrl: process.env.BRAND_LOGO_URL,
+    brandLogoDarkUrl: process.env.BRAND_LOGO_DARK_URL,
+    brandLogoAlt: process.env.BRAND_LOGO_ALT,
+    branding: process.env.BRANDING || '',
     haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
     haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
+    agentEnabled: process.env.AGENT_ENABLED === 'true',
+    agentModel: process.env.AGENT_MODEL || '',
+    agentMaxSteps: process.env.AGENT_MAX_STEPS || undefined,
+    agentFireworksServiceTier: process.env.AGENT_FIREWORKS_SERVICE_TIER || undefined,
+    agentSystemPrompt: process.env.AGENT_SYSTEM_PROMPT || '',
+    agentMcpServers: process.env.AGENT_MCP_SERVERS || '',
+    agentName: process.env.AGENT_NAME || undefined,
+    agentDescription: process.env.AGENT_DESCRIPTION || '',
+    agentIcon: process.env.AGENT_ICON || '',
+    agentTimezone: process.env.AGENT_TIMEZONE || undefined,
+    allowAnonymousAgentDiscovery: process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY === 'true',
   }
 
   return settingsSchema.parse(env)
@@ -258,6 +721,21 @@ export const clearSettingsCache = (): void => {
   settings = null
 }
 
+/**
+ * Whether passkeys are offered: the operator turned them on and the deployment
+ * uses consumer auth. SSO deployments leave credentials to the IdP, so a passkey
+ * there would be a sign-in factor the IdP cannot revoke.
+ */
+export const isPasskeyEnabled = (settings: Pick<Settings, 'passkeyEnabled' | 'authMode'>): boolean =>
+  settings.passkeyEnabled && settings.authMode === 'consumer'
+
+/**
+ * The passkey Relying Party name the OS shows when saving a passkey:
+ * `PASSKEY_RP_NAME`, else the branding app name, else Thunderbolt.
+ */
+export const getPasskeyRpName = (settings: Pick<Settings, 'passkeyRpName' | 'branding'>): string =>
+  settings.passkeyRpName || resolveAppName(settings.branding)
+
 /** Parse comma-separated CORS origins into a list. */
 export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): string[] => {
   return settings.corsOrigins
@@ -269,6 +747,19 @@ export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): str
 /** Check whether a given origin is allowed by the configured CORS origins (exact match). */
 export const isOriginAllowed = (origin: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
   return getCorsOriginsList(settings).includes(origin)
+}
+
+/**
+ * Whether a request's `Origin` header is one we serve.
+ *
+ * Absence is allowed: a same-origin or non-browser caller sends no `Origin`, and
+ * every route using this authorises with a session or a token as well — this
+ * only refuses a *browser* on an origin we don't serve. Two routes had their own
+ * copy of exactly this, which is one copy too many for a security predicate.
+ */
+export const isRequestOriginAllowed = (request: Request, settings: Pick<Settings, 'corsOrigins'>): boolean => {
+  const origin = request.headers.get('origin')
+  return !origin || isOriginAllowed(origin, settings)
 }
 
 /** Validate that an OAuth redirect_uri points to a trusted origin. */
@@ -291,6 +782,13 @@ export const isOAuthRedirectUriAllowed = (uri: string, settings: Pick<Settings, 
   }
 }
 
+/** Parse comma-separated PASSKEY_ANDROID_ORIGINS into a list. */
+export const getPasskeyAndroidOriginsList = (settings: Pick<Settings, 'passkeyAndroidOrigins'>): string[] =>
+  settings.passkeyAndroidOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+
 export const getCorsMethodsList = (settings: Settings): string[] => {
   return settings.corsAllowMethods
     .split(',')
@@ -307,6 +805,12 @@ export const getEnabledAgentsList = (settings: Pick<Settings, 'enabledAgents'>):
     .split(',')
     .map((id) => id.trim())
     .filter((id) => id.length > 0)
+}
+
+/** Whether `ENABLED_AGENTS` lets `id` through. An empty list means no filter. */
+export const isAgentAllowed = (settings: Pick<Settings, 'enabledAgents'>, id: string): boolean => {
+  const enabledIds = getEnabledAgentsList(settings)
+  return enabledIds.length === 0 || enabledIds.includes(id)
 }
 
 /** Parse comma-separated auto-approved domains into a list */

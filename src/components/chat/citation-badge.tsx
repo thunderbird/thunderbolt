@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { CitationSource } from '@/types/citation'
 import { memo, useState } from 'react'
+import { CitationSourcesDrawer } from './citation-sources-drawer'
 import { useCitationPopover } from './citation-popover'
 import { SourceList } from './source-list'
 
@@ -17,7 +17,7 @@ type CitationBadgeProps = {
 
 /**
  * When inside a CitationPopoverProvider, acts as a lightweight trigger (overlay rendered externally).
- * When standalone (block-level widget), owns its own Popover/Sheet.
+ * When standalone (block-level widget), owns its own popover/drawer.
  * Memoized to prevent unnecessary re-renders during streaming.
  */
 export const CitationBadge = memo(({ sources, citationId }: CitationBadgeProps) => {
@@ -44,7 +44,10 @@ const getBadgeLabel = (sources: CitationSource[]) => {
   return {
     displayName: primary.siteName || primary.title,
     additionalCount: sources.length > 1 ? `+${sources.length - 1}` : null,
-    ariaLabel: `View source: ${primary.siteName || primary.title}`,
+    ariaLabel:
+      sources.length === 1
+        ? `View source: ${primary.siteName || primary.title}`
+        : `View ${sources.length} sources: ${primary.siteName || primary.title} and ${sources.length - 1} more`,
   }
 }
 
@@ -68,6 +71,7 @@ const BadgeButton = ({ sources, isOpen, onToggle }: BadgeButtonProps) => {
       className={badgeClass}
       aria-label={ariaLabel}
       aria-expanded={isOpen}
+      aria-haspopup="dialog"
       type="button"
     >
       <span className="truncate">{displayName}</span>
@@ -117,19 +121,7 @@ const StandaloneBadge = memo(({ sources }: { sources: CitationSource[] }) => {
   return (
     <>
       {badge}
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetContent
-          side="bottom"
-          className="inset-x-1 overflow-hidden rounded-2xl border p-0"
-          style={{ bottom: 'calc(20px + var(--safe-area-bottom-padding, 0px))' }}
-          hideCloseButton
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>{sources.length === 1 ? 'Source' : 'Sources'}</SheetTitle>
-          </SheetHeader>
-          <SourceList sources={sources} onSelect={close} />
-        </SheetContent>
-      </Sheet>
+      <CitationSourcesDrawer open={isOpen} onOpenChange={setIsOpen} sources={sources} />
     </>
   )
 })

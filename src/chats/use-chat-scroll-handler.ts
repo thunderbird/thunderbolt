@@ -163,6 +163,18 @@ export const useChatScrollHandler = ({
     [rawScrollToBottom, resetUserScroll],
   )
 
+  // Pins an arbitrary message near the top of the viewport (same offset as the
+  // just-sent-question pin at `onSubmitScroll`). Deep-linking from the Cmd+K
+  // search palette uses this to jump to a specific message. Returns false when
+  // the container isn't attached yet; callers must ensure the target element
+  // exists before calling, since `rawScrollToElement` falls back to
+  // scroll-to-bottom on a selector miss.
+  const scrollToMessage = useCallback(
+    (messageId: string): boolean =>
+      rawScrollToElement(`[data-message-id="${messageId}"]`, userMessageViewportOffsetPx, true, true),
+    [rawScrollToElement],
+  )
+
   return {
     isAtBottom,
     scrollContainerRef,
@@ -170,5 +182,6 @@ export const useChatScrollHandler = ({
     scrollTargetRef,
     scrollToBottom: rawScrollToBottom,
     scrollToBottomAndActivate,
+    scrollToMessage,
   }
 }

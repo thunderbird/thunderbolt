@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
+import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { getClock } from '@/testing-library'
 import type { Agent } from '@/types/acp'
 import { AgentSelector, buildAgentItems } from './agent-selector'
 
@@ -39,6 +41,7 @@ const customAgent: Agent = {
 
 afterEach(() => {
   cleanup()
+  restoreViewport()
 })
 
 describe('buildAgentItems', () => {
@@ -63,6 +66,26 @@ describe('AgentSelector', () => {
 
     const trigger = screen.getByTestId('agent-selector-trigger')
     expect(trigger).toHaveTextContent('RAG Chat')
+    expect(trigger).toHaveClass('max-md:h-[var(--touch-height-lg)]')
+    expect(screen.getByTestId('agent-selector-pill')).toHaveClass(
+      'px-4',
+      'md:px-3',
+      'max-md:bg-muted/80',
+      'max-md:dark:bg-muted/40',
+      'max-md:backdrop-blur-md',
+    )
+  })
+
+  it('gives the collapsed mobile control the shared frosted background', () => {
+    const onSelect = mock(() => {})
+    render(
+      <AgentSelector selectedAgent={systemAgent} agents={[builtInAgent, systemAgent]} onSelect={onSelect} collapsed />,
+    )
+
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass(
+      'max-md:bg-muted/80',
+      'max-md:backdrop-blur-md',
+    )
   })
 
   it('opens the dropdown and exposes all agents when enabled', () => {
@@ -125,15 +148,67 @@ describe('AgentSelector', () => {
     )
 
     fireEvent.click(screen.getByTestId('agent-selector-trigger'))
-    fireEvent.click(screen.getByText('Add agent'))
+    const trigger = screen.getByTestId('agent-selector-trigger').closest('button')
+    fireEvent.click(screen.getByText('Add Agent'))
 
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 
-  it('renders without crashing when only the built-in agent is available', () => {
-    const onSelect = mock(() => {})
-    render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={onSelect} />)
+  it('closes the mobile agent drawer when invoking Add Agent', async () => {
+    forceMobileViewport()
+    const onAddAgent = mock(() => {})
+    render(
+      <AgentSelector
+        selectedAgent={builtInAgent}
+        agents={[builtInAgent]}
+        onSelect={() => {}}
+        onAddAgent={onAddAgent}
+      />,
+    )
 
-    expect(screen.getByTestId('agent-selector-trigger')).toHaveTextContent('Thunderbolt')
+    const trigger = screen.getByTestId('agent-selector-trigger').closest('button')
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeNull()
+    fireEvent.click(screen.getByText('Add Agent'))
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(onAddAgent).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
+  })
+
+  it('is a plain label, with no menu, when there is one agent and no way to add another', () => {
+    render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={() => {}} disabled />)
+
+    const trigger = screen.getByTestId('agent-selector-trigger')
+    expect(trigger).toHaveTextContent('Thunderbolt')
+    expect(trigger.closest('button')).toBeNull()
+    // Not dimmed by `disabled`: there is no switch to hold back during a reply.
+    expect(trigger).not.toHaveClass('opacity-60')
+
+    fireEvent.click(trigger)
+
+    expect(screen.getAllByText('Thunderbolt')).toHaveLength(1)
+  })
+
+  describe('when the only available agent is not the selected one', () => {
+    // A chat created before hosted-agent discovery finished keeps the built-in
+    // fallback, so the hosted agent is the one choice and must stay reachable.
+    const openAndPick = () => {
+      const onSelect = mock()
+      render(<AgentSelector selectedAgent={builtInAgent} agents={[systemAgent]} onSelect={onSelect} />)
+      fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+      return onSelect
+    }
+
+    it('keeps the menu', () => {
+      const onSelect = openAndPick()
+
+      fireEvent.click(screen.getByText('RAG Chat'))
+      expect(onSelect).toHaveBeenCalledWith(systemAgent)
+    })
   })
 })

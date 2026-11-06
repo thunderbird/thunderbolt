@@ -45,9 +45,9 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write       # GHCR image push
-  id-token: write       # AWS OIDC federation for Pulumi
-  pull-requests: write  # sticky PR comment with preview URL
+  packages: write # GHCR image push
+  id-token: write # AWS OIDC federation for Pulumi
+  pull-requests: write # sticky PR comment with preview URL
 
 jobs:
   resolve:
@@ -132,6 +132,8 @@ jobs:
       (needs.approve-fork.result == 'success' || needs.approve-fork.result == 'skipped')
     uses: ./.github/workflows/images-publish.yml
     with:
+      # Preview stacks run on amd64 Fargate; skip the emulated arm64 build.
+      platforms: linux/amd64
       tag_override: pr-${{ needs.resolve.outputs.pr_number }}-${{ needs.resolve.outputs.head_sha }}
       ref: ${{ needs.resolve.outputs.head_sha }}
       vite_backend_url: https://api-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io/v1
@@ -153,12 +155,76 @@ jobs:
       powersync_hostname: powersync-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
       cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
       thunderbolt_inference_url: ${{ vars.THUNDERBOLT_INFERENCE_URL }}
+      # Off unless the repo variable is set, mirroring the flag's own default —
+      # previews are the only place a reviewer can exercise the PAT path, but
+      # nothing should switch it on for every PR implicitly.
+      confidential_api_keys_enabled: ${{ vars.PREVIEW_CONFIDENTIAL_API_KEYS_ENABLED == 'true' }}
       # Per-PR stacks read VPC/ALB/postgres/keycloak/powersync from the long-lived
       # `previews-shared` stack via Pulumi StackReference. The shared stack must
       # exist before this runs; deploy it once via the `Previews Shared Deploy`
       # workflow. See deploy/pulumi/SHARED.md.
       shared_stack_name: previews-shared
-    secrets: inherit
+    secrets:
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      GHCR_PAT: ${{ secrets.GHCR_PAT }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+      THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
+      TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
+      TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
+
+  # Reports a red check when the preview does not open or sign in. Intentionally
+  # not a required check in branch protection, so preview hiccups never block merge.
+  smoke:
+    needs: [resolve, deploy]
+    if: always() && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # Keep the default base ref under pull_request_target: never run fork code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        # Skip --with-deps: the runner image already ships Chromium's system libraries,
+        # and its apt step can stall on a slow mirror.
+        timeout-minutes: 3
+        run: bun run browsers:install
+
+      - name: Smoke test deployed preview
+        run: bun run e2e:preview
+        env:
+          PREVIEW_APP_URL: https://app-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
+          PREVIEW_API_URL: https://api-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
+
+      - name: Upload smoke test results
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preview-smoke-results
+          path: test-results/
+          retention-days: 7
 
   comment:
     needs: [resolve, deploy]

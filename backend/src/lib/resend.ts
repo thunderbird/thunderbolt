@@ -5,8 +5,17 @@
 import type React from 'react'
 import { Resend } from 'resend'
 
-/** Default sender address for all outgoing emails */
-export const emailFrom = 'hello@auth.thunderbolt.io'
+/**
+ * Sender address for all outgoing emails, and the contact address in their
+ * footer.
+ *
+ * Configurable because a self-hosted deployment cannot use this default even
+ * with its own `RESEND_API_KEY`: Resend only sends from a domain that account
+ * has verified, so an operator who follows the setup docs still has every send
+ * rejected. `||` rather than `??` so an env var present-but-empty (the usual
+ * docker-compose shape) falls back instead of producing an empty sender.
+ */
+export const emailFrom = process.env.EMAIL_FROM || 'hello@auth.thunderbolt.io'
 
 /**
  * Shared Resend client instance for sending emails

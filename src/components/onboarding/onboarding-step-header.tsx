@@ -16,7 +16,7 @@ export const OnboardingStepHeader = ({ icon, title, description }: OnboardingSte
       <div className="mx-auto mb-4 flex justify-center">{icon}</div>
       <h2 className="font-heading text-2xl">{title}</h2>
       {description && (
-        <p className="mt-1 px-4 text-[length:var(--font-size-sm)] text-muted-foreground">{description}</p>
+        <p className="mt-1 px-4 text-[length:var(--font-size-body)] text-muted-foreground">{description}</p>
       )}
     </div>
   )

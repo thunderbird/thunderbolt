@@ -11,16 +11,15 @@ import { useMutation } from '@tanstack/react-query'
  * Shared mutation for approving a pending device.
  * Used by both the pending device modal and the devices settings page.
  */
-export const useApproveDevice = (pendingDevices: Device[]) => {
+export const useApproveDevice = () => {
   const httpClient = useHttpClient()
 
   return useMutation({
-    mutationFn: async (deviceId: string) => {
-      const device = pendingDevices.find((d) => d.id === deviceId)
+    mutationFn: async ({ device, fingerprint }: { device: Device; fingerprint: string }) => {
       if (!device?.publicKey || !device?.mlkemPublicKey) {
         throw new Error('Device is missing public key(s)')
       }
-      await approveDevice(httpClient, deviceId, device.publicKey, device.mlkemPublicKey)
+      await approveDevice(httpClient, device.id, device.publicKey, device.mlkemPublicKey, fingerprint)
     },
   })
 }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +15,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { useBrandingLinks } from '@/lib/branding-selectors'
+import { supportHref } from '@/lib/support-href'
 import type { HandleError } from '@/types/handle-errors'
 
 /**
@@ -39,39 +42,47 @@ const generateSupportEmail = (error: HandleError) => {
 
 type AppErrorScreenProps = {
   error: HandleError
-  isClearingDatabase: boolean
   onClearDatabase: () => void
 }
 
-export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: AppErrorScreenProps) => {
+export const AppErrorScreen = ({ error, onClearDatabase }: AppErrorScreenProps) => {
   const isDatabaseError = error.code === 'MIGRATION_FAILED' || error.code === 'DATABASE_INIT_FAILED'
+  const links = useBrandingLinks()
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[100vh] p-4">
-      <div className="text-red-500 text-center mb-4">Failed to initialize app</div>
-      <div className="text-sm text-gray-500 text-center mb-6">{error.message}</div>
+      <div className="text-destructive text-center mb-4">
+        <Trans>Failed to initialize app</Trans>
+      </div>
+      <div className="text-sm text-muted-foreground text-center mb-6">{error.message}</div>
 
       <div className="flex flex-col gap-3">
         {isDatabaseError && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isClearingDatabase}>
-                {isClearingDatabase ? 'Clearing Database...' : 'Clear Local Database'}
+              <Button variant="destructive">
+                <Trans>Clear Local Database</Trans>
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Clear Local Database?</AlertDialogTitle>
+                <AlertDialogTitle>
+                  <Trans>Clear Local Database?</Trans>
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  Unfortunately, the local database encountered an error while being migrated to the latest version of
-                  this app. Deleting your local data will resolve the issue but you will permanently lose your settings
-                  and chat history. This action cannot be undone.
+                  <Trans>
+                    Unfortunately, the local database encountered an error while being migrated to the latest version of
+                    this app. Deleting your local data will resolve the issue but you will permanently lose your
+                    settings and chat history. This action cannot be undone.
+                  </Trans>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>
+                  <Trans>Cancel</Trans>
+                </AlertDialogCancel>
                 <AlertDialogAction onClick={onClearDatabase} variant="destructive">
-                  Clear Database
+                  <Trans>Clear Database</Trans>
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -80,12 +91,11 @@ export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: A
 
         <Button
           variant="outline"
-          onClick={() => {
-            const { subject, body } = generateSupportEmail(error)
-            window.open(`mailto:support@thunderbird.net?subject=${subject}&body=${body}`)
-          }}
+          onClick={() =>
+            window.open(supportHref(links.support, generateSupportEmail(error)), '_blank', 'noopener,noreferrer')
+          }
         >
-          Contact Support
+          <Trans>Contact Support</Trans>
         </Button>
       </div>
     </div>

@@ -5,20 +5,31 @@
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { Model, ModelProfile } from '@/types'
 import { createSetting } from '@/dal'
-import { eq, inArray, isNull } from 'drizzle-orm'
+import { eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
-import { modelProfilesTable, modelsTable, modesTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
+import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModes, defaultModesVersion, hashMode } from '../defaults/modes'
-import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
-import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
-import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
+import {
+  defaultModelImageSupport,
+  defaultModels,
+  defaultModelsVersion,
+  hashModel,
+  type SharedModel,
+} from '@shared/defaults/models'
+import { defaultSettings, defaultSettingsVersion, hashSetting, shipsWithoutValue } from '../defaults/settings'
+import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
+import { restampWidgetSkillDefaultHashes } from './data-migrations/restamp-widget-skill-default-hashes'
+import { normalizeModelDefault, upgradeModelDefaults } from './data-migrations/upgrade-model-defaults'
 import { nowIso } from './utils'
 
-const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
+const bundledModelsDefaults: ModelsDefaults = {
+  version: defaultModelsVersion,
+  data: defaultModels,
+  imageSupport: defaultModelImageSupport,
+}
 
 /**
  * Settings keys holding the highest defaults version ever applied to this
@@ -32,7 +43,6 @@ const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, d
  */
 export const versionMarkerKeys = {
   models: 'defaults_version.models',
-  modes: 'defaults_version.modes',
   tasks: 'defaults_version.tasks',
   skills: 'defaults_version.skills',
   settings: 'defaults_version.settings',
@@ -47,24 +57,24 @@ export const versionMarkerKeys = {
 export type VersionMarkerKey = (typeof versionMarkerKeys)[keyof typeof versionMarkerKeys]
 
 type StoredVersion = { exists: boolean; version: number | null }
+type AppliedVersions = ReadonlyMap<string, string | null>
 
 /**
- * Read a previously-recorded defaults version from `settingsTable`. Returns
+ * Read a defaults version from the transaction's batched marker snapshot. Returns
  * `exists` separately from `version` so callers can tell "row absent" from
  * "row present with garbage value" — the two need to branch to insert vs.
  * update on write-back. `version` is null when the row is absent OR its value
  * is not a finite number (treat as "safe to apply" for the gate comparison).
  */
-const readAppliedVersion = async (db: AnyDrizzleDatabase, key: string): Promise<StoredVersion> => {
-  const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, key))
-  const row = rows[0]
-  if (!row) {
+const readAppliedVersion = (versions: AppliedVersions, key: string): StoredVersion => {
+  if (!versions.has(key)) {
     return { exists: false, version: null }
   }
-  if (row.value == null) {
+  const value = versions.get(key)
+  if (value == null) {
     return { exists: true, version: null }
   }
-  const parsed = Number(row.value)
+  const parsed = Number(value)
   return { exists: true, version: Number.isFinite(parsed) ? parsed : null }
 }
 
@@ -83,14 +93,14 @@ const readAppliedVersion = async (db: AnyDrizzleDatabase, key: string): Promise<
  *      we haven't received yet. Fresh installs (0 rows) bypass this so the
  *      app still seeds bundle defaults offline.
  */
-const computeCanOverwrite = async (
-  tx: AnyDrizzleDatabase,
+const computeCanOverwrite = (
+  versions: AppliedVersions,
   versionKey: string,
   pickedVersion: number,
   hasAnyRow: boolean,
   initialSyncCompleted: boolean,
-): Promise<{ canOverwrite: boolean; stored: StoredVersion }> => {
-  const stored = await readAppliedVersion(tx, versionKey)
+): { canOverwrite: boolean; stored: StoredVersion } => {
+  const stored = readAppliedVersion(versions, versionKey)
   const rawCanOverwrite = pickedVersion > (stored.version ?? Number.NEGATIVE_INFINITY)
   // Fresh install (0 rows) always seeds; a populated table needs sync to have
   // settled before we trust the stored marker enough to write.
@@ -144,21 +154,38 @@ const advanceVersionMarker = async (
  *   partial delivery of an authoritative retirement. Defaults to
  *   `canOverwrite` for callers that don't split the two signals.
  * @property frozenFields - Field names that must never change on an existing
- *   row via reconcile. When updating, the existing row's value is kept for
- *   each listed field and the stored `defaultHash` reflects that
- *   post-freeze state. Protects identity-critical columns whose values
- *   establish downstream contracts — e.g. `isConfidential` on models
- *   (encrypted threads bind to it at creation) and `provider` (routing).
- *   A server-shipped OTA payload cannot flip these on a bundle-known id;
- *   a new value ships under a fresh id. Only applies to updates — inserts
- *   use the default as-is.
+ *   row via reconcile, or a selector returning those names per default item.
+ *   When updating, the existing row's value is kept for each listed field and
+ *   the stored `defaultHash` reflects that post-freeze state. Protects
+ *   identity-critical columns whose values establish downstream contracts —
+ *   e.g. `isConfidential` on models (encrypted threads bind to it at creation)
+ *   and `provider` (routing). A server-shipped OTA payload cannot flip these
+ *   on a bundle-known id; a new value ships under a fresh id. Only applies to
+ *   updates — inserts use the default as-is.
+ * @property metadataFields - Server-owned fields intentionally excluded from
+ *   the user-edit hash. Differences in these fields still trigger an update
+ *   after the row's hashed fields are verified as unmodified.
  */
-export type ReconcileDefaultsForTableOptions = {
+type FrozenField<T> = Extract<keyof T, string>
+
+export type ReconcileDefaultsForTableOptions<T> = {
   keyField?: string
   canOverwrite?: boolean
   insertMissing?: boolean
   canResurrect?: boolean
-  frozenFields?: readonly string[]
+  frozenFields?: readonly FrozenField<T>[] | ((defaultItem: T) => readonly FrozenField<T>[])
+  metadataFields?: readonly FrozenField<T>[]
+  /**
+   * Predicate for defaults whose absence IS the target state, so a missing row
+   * must be left missing rather than seeded. The caller supplies the rule
+   * because only it knows the row shape — see `shipsWithoutValue` in
+   * `defaults/settings.ts` for the one use today and why it exists.
+   *
+   * Rows skipped this way keep `everyBundleRowAtTarget` true, on the same
+   * reasoning as the `wouldOverwriteUserValue` branch: absent is where they
+   * belong, so there is nothing unverified about them.
+   */
+  skipMissingWhen?: (defaultItem: T) => boolean
 }
 
 /**
@@ -195,7 +222,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
   table: SQLiteTableWithColumns<any>,
   defaults: readonly T[],
   hashFn: (item: any) => string,
-  options: ReconcileDefaultsForTableOptions = {},
+  options: ReconcileDefaultsForTableOptions<T> = {},
 ): Promise<ReconcileDefaultsForTableResult> => {
   const {
     keyField = 'id',
@@ -203,6 +230,8 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     insertMissing = canOverwrite,
     canResurrect = canOverwrite,
     frozenFields = [],
+    metadataFields = [],
+    skipMissingWhen,
   } = options
 
   if (defaults.length === 0) {
@@ -227,6 +256,12 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     const existing = existingByKey.get(keyValue)
 
     if (!existing) {
+      // Defaults whose absence is the target state stay absent — see
+      // `skipMissingWhen`. `everyBundleRowAtTarget` is deliberately untouched.
+      if (skipMissingWhen?.(defaultItem)) {
+        continue
+      }
+
       // Row missing locally: only seed when we're allowed to. For most tables
       // that mirrors `canOverwrite` (ghost-insert protection). Tables that opt
       // into `insertMissing: true` seed regardless because their row must
@@ -292,27 +327,40 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       continue
     }
 
-    // If hashes don't match, user has modified (including soft-delete) - skip update
-    if (currentHash !== existing.defaultHash) {
-      everyBundleRowAtTarget = false
-      continue
-    }
-
     // Compute the effective default: for each `frozenFields` entry, keep the
     // existing row's value instead of the incoming default. Hash covers the
     // effective (post-freeze) state so future reconciles still recognize the
     // row as unedited. Skips the copy entirely when no fields are frozen.
+    const itemFrozenFields = typeof frozenFields === 'function' ? frozenFields(defaultItem) : frozenFields
     const effectiveDefault =
-      frozenFields.length === 0
+      itemFrozenFields.length === 0
         ? defaultItem
-        : (frozenFields.reduce<T>((acc, field) => ({ ...acc, [field]: (existing as any)[field] }), defaultItem) as T)
-    const effectiveHash = frozenFields.length === 0 ? hashFn(defaultItem) : hashFn(effectiveDefault)
+        : (itemFrozenFields.reduce<T>(
+            (acc, field) => ({ ...acc, [field]: (existing as any)[field] }),
+            defaultItem,
+          ) as T)
+    const effectiveHash = itemFrozenFields.length === 0 ? hashFn(defaultItem) : hashFn(effectiveDefault)
+    const metadataChanged = metadataFields.some(
+      (field) => (existing as Record<string, unknown>)[field] !== (effectiveDefault as Record<string, unknown>)[field],
+    )
+
+    // If hashes don't match, user has modified (including soft-delete) - skip update.
+    // A row that already holds the effective default is not an edit, though: it is
+    // a value the user chose before the bundle shipped it. It takes the update
+    // below, which re-stamps `defaultHash`, so a later edit reads as one; left on
+    // the old hash, an edit back to the old default would look unedited and be
+    // overwritten by the next bump.
+    if (currentHash !== existing.defaultHash && currentHash !== effectiveHash) {
+      everyBundleRowAtTarget = false
+      continue
+    }
 
     // Skip update if the effective default matches what's already stored
     // (prevents empty PATCH operations, and collapses OTA payloads that only
-    // touch frozen fields to a no-op). Row content genuinely matches target —
-    // keep `everyBundleRowAtTarget` true for this row.
-    if (existing.defaultHash === effectiveHash) {
+    // touch frozen fields to a no-op). Server-owned metadata is intentionally
+    // outside the hash, so compare it explicitly before declaring the row at
+    // target.
+    if (existing.defaultHash === effectiveHash && !metadataChanged) {
       continue
     }
 
@@ -436,7 +484,11 @@ export type ReconcileDefaultsOverrides = {
 }
 
 export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: ReconcileDefaultsOverrides) => {
-  const modelsSource = overrides?.models ?? bundledModelsDefaults
+  const pickedModelsSource = overrides?.models ?? bundledModelsDefaults
+  const modelsSource = {
+    ...pickedModelsSource,
+    data: pickedModelsSource.data.map(normalizeModelDefault),
+  }
   const initialSyncCompleted = overrides?.initialSyncCompleted ?? true
 
   await db.transaction(async (tx) => {
@@ -445,22 +497,34 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // hasAnyRow probe on fresh installs: earlier tables advance their version
     // markers into settingsTable via `advanceVersionMarker`, so by the time
     // the settings block ran, the "empty settings table" signal would be
-    // gone. Reading all five probes here — before any writes land in this
+    // gone. Reading all probes here — before any writes land in this
     // transaction — keeps every table's gate on the same pre-reconcile view.
-    const hasAnyModelRow = (await tx.select({ id: modelsTable.id }).from(modelsTable).limit(1)).length > 0
-    const hasAnyModeRow = (await tx.select({ id: modesTable.id }).from(modesTable).limit(1)).length > 0
-    const hasAnyTaskRow = (await tx.select({ id: tasksTable.id }).from(tasksTable).limit(1)).length > 0
-    const hasAnySkillRow = (await tx.select({ id: skillsTable.id }).from(skillsTable).limit(1)).length > 0
-    const hasAnySettingsRow = (await tx.select({ key: settingsTable.key }).from(settingsTable).limit(1)).length > 0
+    const [populated] = await tx
+      .select({
+        models: sql<number>`EXISTS (SELECT 1 FROM ${modelsTable})`,
+        tasks: sql<number>`EXISTS (SELECT 1 FROM ${tasksTable})`,
+        skills: sql<number>`EXISTS (SELECT 1 FROM ${skillsTable})`,
+        settings: sql<number>`EXISTS (SELECT 1 FROM ${settingsTable})`,
+      })
+      .from(sql`(SELECT 1)`)
+    const hasAnyModelRow = Boolean(populated.models)
+    const hasAnyTaskRow = Boolean(populated.tasks)
+    const hasAnySkillRow = Boolean(populated.skills)
+    const hasAnySettingsRow = Boolean(populated.settings)
+    const markers = await tx
+      .select({ key: settingsTable.key, value: settingsTable.value })
+      .from(settingsTable)
+      .where(inArray(settingsTable.key, Object.values(versionMarkerKeys)))
+    const appliedVersions: AppliedVersions = new Map(markers.map(({ key, value }) => [key, value]))
 
     // Version gate for models. Returns the stored marker snapshot so the
     // per-table write-back can INSERT vs UPDATE without a second read. See
     // `computeCanOverwrite` for the full rationale — in short, prevents an
     // older-bundle device from downgrading newer synced rows (THU-637).
-    // Modes/tasks/skills/settings gate the same way, folded into the loop
+    // Tasks/skills/settings gate the same way, folded into the loop
     // near the bottom of this transaction (THU-677).
-    const modelsGate = await computeCanOverwrite(
-      tx,
+    const modelsGate = computeCanOverwrite(
+      appliedVersions,
       versionMarkerKeys.models,
       modelsSource.version,
       hasAnyModelRow,
@@ -513,7 +577,9 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       canOverwrite: modelsGate.canOverwrite,
       canResurrect: initialSyncCompleted,
       frozenFields: ['isConfidential', 'provider'],
+      metadataFields: ['description', 'vendor'],
     })
+    await upgradeModelDefaults(tx)
 
     // Model profiles ship 1:1 with models and mutate together in practice, so
     // they ride the same authority gate as models — otherwise an older-bundle
@@ -570,7 +636,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       await advanceVersionMarker(tx, versionMarkerKeys.models, modelsSource.version, modelsGate.stored)
     }
 
-    // Modes / tasks / skills / settings share the same shape: gate on the
+    // Tasks / skills / settings share the same shape: gate on the
     // per-table version + sync-incomplete guard, reconcile, advance marker
     // only on a real mutation. `canResurrect` follows the models pattern —
     // it requires a trustworthy view of cloud state, otherwise a peer's
@@ -591,13 +657,13 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionKey: string,
       currentVersion: number,
       hasAnyRow: boolean,
-      keyField?: string,
+      reconcileOptions: Pick<ReconcileDefaultsForTableOptions<T>, 'keyField' | 'frozenFields' | 'skipMissingWhen'> = {},
     ): Promise<void> => {
-      const gate = await computeCanOverwrite(tx, versionKey, currentVersion, hasAnyRow, initialSyncCompleted)
+      const gate = computeCanOverwrite(appliedVersions, versionKey, currentVersion, hasAnyRow, initialSyncCompleted)
       const pass = await reconcileDefaultsForTable(tx, table, defaults, hashFn, {
         canOverwrite: gate.canOverwrite,
         canResurrect: initialSyncCompleted,
-        ...(keyField ? { keyField } : {}),
+        ...reconcileOptions,
       })
       // Advance when we wrote something OR verified every row is at target.
       // See the models-path guard above for the full rationale — single-table
@@ -607,8 +673,11 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       }
     }
 
-    await runGatedPass(modesTable, defaultModes, hashMode, versionMarkerKeys.modes, defaultModesVersion, hasAnyModeRow)
     await runGatedPass(tasksTable, defaultTasks, hashTask, versionMarkerKeys.tasks, defaultTasksVersion, hasAnyTaskRow)
+    // Main shipped weather with a full-row v4 hash before weather became a
+    // locked widget contract. Re-stamp first so v5 can recognize and replace
+    // that pristine row with the canonical widget instructions in this pass.
+    await restampWidgetSkillDefaultHashes.run(tx)
     await runGatedPass(
       skillsTable,
       defaultSkills,
@@ -616,6 +685,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionMarkerKeys.skills,
       defaultSkillsVersion,
       hasAnySkillRow,
+      { frozenFields: (skill) => (isWidgetSkillId(skill.id) ? ['enabled', 'pinnedOrder'] : []) },
     )
     await runGatedPass(
       settingsTable,
@@ -624,7 +694,10 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionMarkerKeys.settings,
       defaultSettingsVersion,
       hasAnySettingsRow,
-      'key',
+      // A placeholder row would turn the later seed into an UPDATE, which
+      // uploads as a PATCH and escapes the create-only guard — see
+      // `shipsWithoutValue`.
+      { keyField: 'key', skipMissingWhen: shipsWithoutValue },
     )
 
     // Initialize anonymous ID for analytics (unique per user)

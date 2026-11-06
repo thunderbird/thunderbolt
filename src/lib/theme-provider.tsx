@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { invoke } from '@tauri-apps/api/core'
-import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
+import { useSyncExternalStore, createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
+import { selectBranding } from './branding-selectors'
+import { syncDocumentBackground } from './document-background'
 import { isMacDesktop, isTauri } from './platform'
 import { setAndroidBarColor } from './set-android-bar-color'
 
@@ -40,15 +43,6 @@ const syncMacWindowTheme = async (theme: Theme) => {
 }
 
 /**
- * Read the theme's `--color-background` from CSS after the theme class has
- * been applied, so index.css stays the single runtime source of truth for the
- * page background (the pre-paint boot script in index.html is the one
- * unavoidable duplicate — it runs before the stylesheet loads).
- */
-const readThemeBackgroundColor = (root: HTMLElement): string =>
-  getComputedStyle(root).getPropertyValue('--color-background').trim()
-
-/**
  * Pick the macOS vibrancy material per resolved theme. Dark uses HudWindow — a
  * neutral blur that passes the backdrop through distinctly. Light can't: a
  * neutral blur inherits the backdrop's luminance, so dark windows behind the
@@ -76,10 +70,7 @@ const applyResolvedTheme = (resolvedTheme: 'dark' | 'light') => {
   const root = window.document.documentElement
   root.classList.remove('light', 'dark')
   root.classList.add(resolvedTheme)
-
-  const bgColor = readThemeBackgroundColor(root)
-  root.style.backgroundColor = bgColor
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bgColor)
+  syncDocumentBackground()
 
   void setAndroidBarColor(resolvedTheme === 'dark' ? 'light' : 'dark')
   syncNativeInterfaceStyle(resolvedTheme)
@@ -117,7 +108,10 @@ const initialState: ThemeProviderState = {
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const theme = useLocalSettingsStore((s) => s.theme)
+  // A user who never picked a theme follows the operator's default, then the OS.
+  const chosenTheme = useLocalSettingsStore((s) => s.theme)
+  const defaultTheme = useConfigStore((s) => selectBranding(s.config)?.defaultThemeMode)
+  const theme = chosenTheme ?? defaultTheme ?? 'system'
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   const setTheme = useCallback((newTheme: Theme) => setLocalSetting('theme', newTheme), [setLocalSetting])
@@ -155,6 +149,38 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }
 
   return <ThemeProviderContext.Provider value={value}>{children}</ThemeProviderContext.Provider>
+}
+
+const darkQuery = () => window.matchMedia('(prefers-color-scheme: dark)')
+
+const subscribeToSystemTheme = (onChange: () => void) => {
+  const query = darkQuery()
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+/**
+ * The appearance actually on screen — `'light'` or `'dark'`, never `'system'`.
+ *
+ * `useTheme().theme` is the *setting*, so on `'system'` it never changes when
+ * the OS flips and anything deriving from it silently misses the switch. That
+ * bit the Mini App bridge, which pushed the resolved theme to the guest in an
+ * effect keyed on the setting: a user on `'system'` toggling dark mode watched
+ * Thunderbolt repaint while the embedded app stayed light for the session.
+ */
+export const useResolvedTheme = (): 'light' | 'dark' => {
+  const { theme } = useTheme()
+  const systemIsDark = useSyncExternalStore(
+    subscribeToSystemTheme,
+    () => darkQuery().matches,
+    // Server/prerender has no media query; light is the safer guess.
+    () => false,
+  )
+
+  if (theme === 'light' || theme === 'dark') {
+    return theme
+  }
+  return systemIsDark ? 'dark' : 'light'
 }
 
 export const useTheme = () => {

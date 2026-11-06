@@ -2,22 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { collectPageErrors, loginViaOidc } from './helpers'
 
 /**
  * E2E for the "Add custom agent" CRUD path on `/settings/agents`.
  *
  * Since #933, "Add agent" is gated behind a successful "Test connection": the
- * dialog opens a WebSocket to the entered URL and runs the ACP `initialize`
+ * form opens a WebSocket to the entered URL and runs the ACP `initialize`
  * handshake. CI can't reach a real agent, so we mock the WebSocket (Playwright
  * `routeWebSocket`) and answer `initialize` with a minimal valid result — this
  * exercises the real `testAcpConnection` path without an upstream. The contract
- * under test: dialog → connection test → DAL insert → PowerSync live query → UI
- * row.
+ * under test: add panel → connection test → DAL insert → PowerSync live query →
+ * UI row. The redesign hosts the form in a slide-in detail panel (an `aside`,
+ * role `complementary`) rather than a dialog.
  */
 test.describe('ACP add custom agent', () => {
-  test('submitting the dialog persists a new row to the list', async ({ page }) => {
+  test('submitting the add form persists a new row to the list', async ({ page }) => {
     const errors = collectPageErrors(page)
 
     // Mock the ACP endpoint: accept the socket and answer the JSON-RPC
@@ -25,7 +26,7 @@ test.describe('ACP add custom agent', () => {
     // one JSON-RPC object per WS message (see src/acp/transports/websocket.ts).
     await page.routeWebSocket(/invalid\.example\.test/, (ws) => {
       ws.onMessage((message) => {
-        const rpc = JSON.parse(typeof message === 'string' ? message : message.toString())
+        const rpc = JSON.parse(message.toString())
         if (rpc.method === 'initialize') {
           ws.send(
             JSON.stringify({
@@ -43,10 +44,14 @@ test.describe('ACP add custom agent', () => {
     await page.goto('/settings/agents')
     await expect(page.getByTestId('agent-list')).toBeVisible({ timeout: 10_000 })
 
-    await page.getByRole('button', { name: 'Add custom agent' }).click()
+    await page.getByRole('button', { name: 'New Agent' }).click()
 
-    const dialog = page.getByRole('dialog')
-    await expect(dialog).toBeVisible()
+    // The desktop panel is complementary; mobile presents the same form as a dialog.
+    const panel = page
+      .getByRole('complementary')
+      .filter({ hasText: 'Add Agent' })
+      .or(page.getByRole('dialog', { name: 'Add Agent' }))
+    await expect(panel).toBeVisible()
 
     await page.getByLabel('Name').fill('Test Agent')
     await page.getByLabel('URL').fill('wss://invalid.example.test/ws')
@@ -54,14 +59,14 @@ test.describe('ACP add custom agent', () => {
 
     // Add Agent is gated behind a successful connection test (#933): run it and
     // wait for the success state before submitting.
-    await dialog.getByRole('button', { name: 'Test connection' }).click()
-    await expect(dialog.getByText('Connection successful!')).toBeVisible({ timeout: 10_000 })
+    await panel.getByRole('button', { name: 'Test connection' }).click()
+    await expect(panel.getByText('Connection successful!')).toBeVisible({ timeout: 10_000 })
 
     await page.getByRole('button', { name: 'Add agent' }).click()
 
-    // Dialog dismisses on success — if validation rejected the URL the dialog
-    // would stay open with an inline error.
-    await expect(dialog).toBeHidden({ timeout: 5_000 })
+    // The panel closes on success — if validation rejected the URL it would
+    // stay open with an inline error.
+    await expect(panel).toBeHidden({ timeout: 5_000 })
 
     // The new row is rendered by name. PowerSync's live query feeds the list
     // from the synced `agents` table so the row should appear without a manual

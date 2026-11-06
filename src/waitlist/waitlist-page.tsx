@@ -5,15 +5,19 @@
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
+import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { useAuth } from '@/contexts'
-import { otpLength, privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
+import { otpLength } from '@/lib/constants'
+import { useBrandingLinks } from '@/lib/branding-selectors'
+import { usePasskeyAvailable } from '@/lib/passkey'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
-import { Loader2 } from 'lucide-react'
-import { useNavigate } from 'react-router'
+import { Fingerprint } from 'lucide-react'
+import { useId } from 'react'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
+import { WaitlistLanguagePicker } from './waitlist-language-picker'
 
 /**
  * Unified entry page at /waitlist.
@@ -23,14 +27,15 @@ import { WaitlistHeader } from './waitlist-header'
  * The backend sends different emails based on whether they're approved, pending, or new.
  */
 export const WaitlistPage = () => {
+  const { t } = useLingui()
+  const links = useBrandingLinks()
   const authClient = useAuth()
-  const navigate = useNavigate()
-  const { state, isValidEmail, actions } = useWaitlistState({
-    authClient,
-    onVerified: () => navigate('/', { replace: true }),
-  })
+  const { state, isValidEmail, actions } = useWaitlistState({ authClient })
 
   const isVerifying = state.status === 'verifying'
+  const email = state.email
+  const passkeyAvailable = usePasskeyAvailable()
+  const otpPromptId = useId()
 
   if (state.status === 'checkEmail' || state.status === 'verifying') {
     return (
@@ -40,16 +45,25 @@ export const WaitlistPage = () => {
         <div className="flex w-full flex-1 flex-col items-center p-4">
           <WaitlistHeader />
 
-          <div className="my-auto flex flex-col items-center text-center">
-            <p className="font-sans text-[28px] font-medium leading-normal text-foreground">Check your email</p>
+          <div className="mt-auto flex flex-col items-center text-center md:my-auto">
+            <p className="font-sans text-[28px] font-medium leading-normal text-foreground">
+              <Trans>Check your email</Trans>
+            </p>
             <p className="mt-2 text-base text-muted-foreground">
-              We&apos;ve sent an email to <span className="font-medium text-foreground">{state.email}</span> with your
-              next steps.
+              {/* Bound to a local so the catalog placeholder is named `{email}`
+                  rather than positional `{0}` — a member expression gives the
+                  extractor no name to use. */}
+              <Trans>
+                We&apos;ve sent an email to <span className="font-medium text-foreground">{email}</span> with your next
+                steps.
+              </Trans>
             </p>
           </div>
 
-          <div className="flex w-full flex-col items-center gap-4">
-            <p className="text-sm text-muted-foreground">If you received a code to log in, enter it here:</p>
+          <div className="mb-auto mt-8 flex w-full flex-col items-center gap-4 md:mb-0 md:mt-0">
+            <p id={otpPromptId} className="text-sm text-muted-foreground">
+              <Trans>If you received a code to log in, enter it here:</Trans>
+            </p>
             <InputOTP
               maxLength={otpLength}
               pattern={REGEXP_ONLY_DIGITS}
@@ -58,17 +72,14 @@ export const WaitlistPage = () => {
               onComplete={actions.handleOtpComplete}
               disabled={isVerifying}
               autoFocus
+              aria-labelledby={otpPromptId}
               autoComplete="one-time-code"
               data-1p-ignore
               data-lpignore="true"
               data-form-type="other"
               containerClassName="w-full"
             >
-              <InputOTPGroup className="w-full gap-2">
-                {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-                  <InputOTPSlot key={i} index={i} className="flex-1 rounded-lg" />
-                ))}
-              </InputOTPGroup>
+              <InputOTPSlots />
             </InputOTP>
 
             {state.errorMessage && <p className="text-sm text-destructive">{state.errorMessage}</p>}
@@ -76,17 +87,12 @@ export const WaitlistPage = () => {
             <Button
               type="button"
               onClick={() => actions.handleOtpComplete(state.otp)}
-              disabled={isVerifying || state.otp.length !== otpLength}
-              className="h-[46px] w-full rounded-lg text-base"
+              isLoading={isVerifying}
+              loadingLabel={t`Verifying…`}
+              disabled={state.otp.length !== otpLength}
+              className="h-[46px] w-full rounded-xl text-base"
             >
-              {isVerifying ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Verifying...
-                </>
-              ) : (
-                'Continue'
-              )}
+              <Trans>Continue</Trans>
             </Button>
           </div>
         </div>
@@ -101,14 +107,16 @@ export const WaitlistPage = () => {
 
         <div className="flex w-full flex-col items-center gap-8">
           <div className="text-center font-sans">
-            <p className="text-[28px] font-medium leading-normal text-foreground">Wanna try the beta?</p>
+            <p className="text-[28px] font-medium leading-normal text-foreground">
+              <Trans>Want early access?</Trans>
+            </p>
           </div>
 
           <form onSubmit={actions.handleSubmit} className="flex w-full flex-col gap-4">
             <Input
               type="email"
               inputMode="email"
-              placeholder="Email"
+              placeholder={t`Email`}
               value={state.email}
               onChange={(e) => actions.setEmail(e.target.value)}
               disabled={state.status === 'joining'}
@@ -122,37 +130,66 @@ export const WaitlistPage = () => {
 
             <Button
               type="submit"
-              disabled={state.status === 'joining' || !isValidEmail}
-              className="h-[46px] w-full rounded-lg text-base"
+              isLoading={state.status === 'joining'}
+              loadingLabel={t`Sending…`}
+              disabled={!isValidEmail || state.passkeyPending}
+              className="h-[46px] w-full rounded-xl text-base"
             >
-              {state.status === 'joining' ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                'Continue'
-              )}
+              <Trans>Continue</Trans>
             </Button>
+
+            {passkeyAvailable && (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted-foreground">
+                    <Trans>or</Trans>
+                  </span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  isLoading={state.passkeyPending}
+                  disabled={state.status === 'joining'}
+                  onClick={actions.handlePasskeySignIn}
+                  className="h-[46px] w-full rounded-xl text-base font-medium"
+                >
+                  <Fingerprint className="mr-2 h-4 w-4" />
+                  <Trans>Sign in with passkey</Trans>
+                </Button>
+              </>
+            )}
           </form>
         </div>
 
-        <p className="text-center text-xs text-muted-foreground">
-          By continuing, you agree to our{' '}
-          <a
-            href={termsOfServiceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:no-underline"
-          >
-            Terms of Service
-          </a>{' '}
-          and{' '}
-          <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
-            Privacy Policy
-          </a>
-          .
-        </p>
+        <div className="flex flex-col items-center gap-4">
+          <p className="text-center text-xs text-muted-foreground">
+            <Trans>
+              By continuing, you agree to our{' '}
+              <a
+                href={links.termsOfService}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:no-underline"
+              >
+                Terms of Service
+              </a>{' '}
+              and{' '}
+              <a
+                href={links.privacyPolicy}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:no-underline"
+              >
+                Privacy Policy
+              </a>
+              .
+            </Trans>
+          </p>
+          <WaitlistLanguagePicker />
+        </div>
       </div>
     </WaitlistCard>
   )

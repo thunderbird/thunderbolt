@@ -2,11 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { generateCodeVerifier } from './pkce'
+
 /** Timeout for the user to complete SSO auth in the system browser (5 minutes) */
 const ssoTimeoutMs = 5 * 60 * 1000
 
 /** Sentinel used to distinguish timeout rejections from real errors */
 const ssoTimeout = Symbol('sso-timeout')
+
+/** The loopback callback reported a failed login. `code` is the untrusted `error` query value. */
+export class SsoCallbackError extends Error {
+  constructor(readonly code: string) {
+    super(code)
+  }
+}
 
 /**
  * Starts an SSO flow using the localhost loopback server and the system browser.
@@ -19,14 +28,16 @@ const ssoTimeout = Symbol('sso-timeout')
  * @param baseUrl - Backend base URL (e.g. `http://localhost:8000`)
  * @param timeoutMs - How long to wait for the user to complete auth (default: 5 minutes)
  * @returns Signed bearer token on success, `null` on timeout
- * @throws On server start failure, network error, or IdP error
+ * @throws On server start failure, network error, or `SsoCallbackError` for an IdP error
  */
 export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeoutMs): Promise<string | null> => {
   const { invoke } = await import('@tauri-apps/api/core')
   const { listen } = await import('@tauri-apps/api/event')
   const { openUrl } = await import('@tauri-apps/plugin-opener')
 
-  const port = await invoke<number>('start_oauth_server')
+  const clientState = generateCodeVerifier()
+  const port = await invoke<number>('start_oauth_server', { clientState })
+  const callbackOrigin = `http://localhost:${port}`
 
   let unlisten: (() => void) | undefined
   let timeoutId: ReturnType<typeof setTimeout> | undefined
@@ -39,14 +50,27 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
 
     // Register listener BEFORE opening browser to avoid race condition
     unlisten = await listen<{ url: string }>('oauth-callback', (event) => {
-      resolveUrl(event.payload.url)
+      const url = URL.canParse(event.payload.url) ? new URL(event.payload.url) : null
+      if (
+        url?.origin === callbackOrigin &&
+        url.pathname === '/' &&
+        !url.username &&
+        !url.password &&
+        url.searchParams.getAll('client_state').length === 1 &&
+        url.searchParams.get('client_state') === clientState
+      ) {
+        resolveUrl(url.href)
+      }
     })
 
     // Open the system browser to the backend's desktop-initiate endpoint.
     // This endpoint calls Better Auth's /sign-in/sso internally and redirects
     // to the IdP, ensuring state cookies are set in the system browser context
     // (not the Tauri webview, which drops cross-origin cookies).
-    const initiateUrl = `${baseUrl}/v1/api/auth/sso/desktop-initiate?loopback_port=${port}`
+    const initiateUrl = `${baseUrl}/v1/api/auth/sso/desktop-initiate?${new URLSearchParams({
+      loopback_port: String(port),
+      client_state: clientState,
+    })}`
     await openUrl(initiateUrl)
 
     const callbackUrl = await Promise.race([
@@ -57,9 +81,9 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
     ])
 
     const url = new URL(callbackUrl)
-    const error = url.searchParams.get('error_description') ?? url.searchParams.get('error')
+    const error = url.searchParams.get('error')
     if (error) {
-      throw new Error(error)
+      throw new SsoCallbackError(error)
     }
 
     const token = url.searchParams.get('token')

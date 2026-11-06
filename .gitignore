@@ -57,6 +57,11 @@ mise.toml
 !.claude/skills/
 !.claude/skills/thunder-deep-review/
 !.claude/skills/thunder-deep-review/**
+!.claude/security/
+!.claude/security/**
+!.claude/skills/thunder-red-team/
+!.claude/skills/thunder-red-team/**
+!.claude/skills/thunder-update-model
 .zed/**
 .zedscratches/**
 .mcp.json
@@ -71,6 +76,8 @@ src-tauri/gen/apple/.bundle/
 test-results/
 playwright-report/
 blob-report/
+qa-out*/
+qa-dist*/
 
 # Powersync
 public/@powersync/**
@@ -80,3 +87,9 @@ Pulumi.*.yaml
 
 # Astro
 .astro/
+
+# Red-team scratch — throwaway attack attempts, never committed.
+e2e/e2ee/attacks/scratch/
+
+# Red-team findings ledger — local run state, never committed (Linear is the shared record).
+.red-team/

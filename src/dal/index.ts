@@ -35,7 +35,7 @@ export {
 // Chat Threads
 export {
   createChatThread,
-  deleteAllChatThreads,
+  deleteNonProjectChatThreads,
   deleteChatThread,
   getAllChatThreads,
   getChatThread,
@@ -47,7 +47,6 @@ export {
 
 // Chat Messages
 export {
-  deleteChatMessageAndDescendants,
   getChatMessages,
   getLastMessage,
   saveMessagesWithContextUpdate,
@@ -75,12 +74,20 @@ export {
   getAllMcpServers,
   getRemoteMcpServers,
   updateMcpServer,
+  updateMcpServerEnabled,
   updateMcpServerWithCredentials,
   type McpServerWithCredential,
 } from './mcp-servers'
 
 // MCP Secrets (local-only credentials)
-export { deleteMcpServerCredentials, getMcpServerCredentials, setMcpServerCredentials } from './mcp-secrets'
+export {
+  deleteMcpServerCredentials,
+  getMcpServerCredentialRows,
+  getMcpServerCredentials,
+  parseMcpCredentialSummary,
+  setMcpServerCredentials,
+  type McpCredentialSummary,
+} from './mcp-secrets'
 
 // Prompts
 export {
@@ -101,9 +108,6 @@ export {
   getAllEnabledTriggers,
   getAllTriggersForPrompt,
 } from './triggers'
-
-// Modes
-export { getAllModes, getDefaultMode, getMode, getSelectedMode } from './modes'
 
 // Model Profiles
 export {

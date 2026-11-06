@@ -2,18 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  SearchableMenu,
-  searchableMenuFooterActionClass,
-  searchableMenuRowClass,
-  type SearchableMenuItem,
-} from '@/components/ui/searchable-menu'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { SearchableMenu, searchableMenuRowClass, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
 import { iconForAgent } from '@/components/agent-icon'
-import { ChevronDown, Plus } from 'lucide-react'
+import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
+import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 export type AgentSelectorProps = {
@@ -22,6 +19,13 @@ export type AgentSelectorProps = {
   onSelect: (agent: Agent) => void
   onAddAgent?: () => void
   disabled?: boolean
+  /** Collapses the trigger into a circular icon-only button (the mobile
+   *  header's top-right control, matching the sidebar toggle's muted circle).
+   *  The label and paddings transition, so toggling this mid-mount morphs the
+   *  pill smoothly instead of swapping shapes. */
+  collapsed?: boolean
+  /** Share the mobile header capsule's background when docked beside the project. */
+  mobileJoined?: boolean
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
 }
@@ -79,12 +83,31 @@ export const AgentSelector = ({
   onSelect,
   onAddAgent,
   disabled = false,
+  collapsed = false,
+  mobileJoined = false,
   side,
   align,
 }: AgentSelectorProps) => {
+  const { t } = useLingui()
   const items = useMemo(() => buildAgentItems(agents), [agents])
+
   const [open, setOpen] = useState(false)
   const { triggerSelection } = useHaptics()
+
+  // One agent and no way to add another leaves nothing to choose, so the
+  // trigger renders as a plain label: no chevron, no menu, and no dimming
+  // while a reply streams, since there is no switch to hold back. Minimal mode
+  // never renders the selector at all (see `Header`).
+  //
+  // That only holds when the sole available agent is the selected one. An
+  // existing chat can still hold the built-in fallback it was given before
+  // hosted-agent discovery finished (discovery skips existing chats), so with
+  // the hosted agent as the only agent on offer the menu stays as the one way
+  // to switch. The chat's agent is deliberately not switched
+  // for the user: that is a persisted write.
+  const soleAgentIsOther = agents.length === 1 && agents[0].id !== selectedAgent.id
+  const isLabel = !soleAgentIsOther && agents.length <= 1 && !onAddAgent
+  const dimmed = disabled && !isLabel
 
   const handleAgentChange = (_id: string, item: SearchableMenuItem<AgentItemData>) => {
     const agent = item.data?.agent
@@ -101,58 +124,93 @@ export const AgentSelector = ({
     const triggerInner = (
       <div
         data-testid="agent-selector-trigger"
-        aria-disabled={disabled}
+        aria-disabled={dimmed}
         className={cn(
-          'flex items-center gap-2 px-3 h-[var(--touch-height-sm)] rounded-full transition-colors text-[length:var(--font-size-body)] max-w-[50vw] md:max-w-none',
-          disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-          // Light secondary is nearly the same shade as the page background,
-          // so at 50% the hover reads as invisible — use full accent there
-          // (same hover as the header's ghost buttons). Dark keeps the
-          // subtler half-secondary.
-          !disabled && isOpen ? 'bg-secondary' : 'hover:bg-accent dark:hover:bg-secondary/50',
+          'group relative h-[var(--touch-height-sm)] max-w-[50vw] text-[length:var(--font-size-body)] max-md:h-[var(--touch-height-lg)] md:max-w-none',
+          collapsed ? 'pointer-events-none' : 'pointer-events-auto',
+          isLabel && 'cursor-default',
+          dimmed && 'opacity-60 cursor-not-allowed',
+          !isLabel && !dimmed && 'cursor-pointer',
         )}
       >
-        <Icon
-          className={cn('text-muted-foreground shrink-0', triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5')}
-        />
-        {/* Muted like the mode/model picker labels — chrome, not content. */}
-        <span className="font-medium truncate text-muted-foreground">{selected?.label ?? selectedAgent.name}</span>
-        <ChevronDown
+        {/* The fixed-width labeled pill is never resized. On mobile it simply
+            fades away while its parent slides right, avoiding all per-frame
+            layout work and truncation artifacts. It remains in flow (and
+            therefore keeps the trigger width stable) while transparent. */}
+        <div
+          data-testid="agent-selector-pill"
           className={cn(
-            'size-3.5 text-muted-foreground transition-transform shrink-0',
-            !disabled && isOpen && 'rotate-180',
+            'relative z-10 flex h-full items-center rounded-full px-4 transition-[opacity,background-color,color] duration-150 motion-reduce:transition-none md:px-3',
+            mobileHeaderControlFillClass,
+            collapsed ? 'opacity-0' : 'opacity-100',
+            !dimmed && isOpen
+              ? 'bg-secondary'
+              : !collapsed &&
+                  !isLabel &&
+                  'hover:bg-accent max-md:group-active:bg-muted-foreground/20 dark:hover:bg-secondary/50',
           )}
-        />
+        >
+          <Icon
+            className={cn(
+              'max-w-none shrink-0 text-muted-foreground',
+              triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5',
+            )}
+          />
+          <span className="min-w-0 truncate pl-2 font-medium text-muted-foreground">
+            {selected?.label ?? selectedAgent.name}
+          </span>
+          {/* Hidden on mobile: the menu opens as an animated card there, so the
+              chevron affordance is redundant. */}
+          {!isLabel && (
+            <ChevronDown
+              className={cn(
+                'ml-2 size-3.5 shrink-0 text-muted-foreground transition-transform max-md:hidden',
+                !dimmed && isOpen && 'rotate-180',
+              )}
+            />
+          )}
+        </div>
+
+        {/* Crossfade the fixed-width pill with the circle. When collapsed, only
+            this visible circle accepts taps; the transparent pill lets them
+            through to the project control below it. */}
+        <div
+          aria-hidden="true"
+          data-testid="agent-selector-collapsed-circle"
+          className={cn(
+            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 motion-reduce:transition-none max-md:group-active:bg-muted-foreground/20 md:hidden',
+            mobileHeaderControlFillClass,
+            collapsed ? 'pointer-events-auto opacity-100' : 'opacity-0',
+            mobileJoined &&
+              'max-md:rounded-l-full max-md:rounded-r-none max-md:bg-transparent max-md:dark:bg-transparent max-md:backdrop-blur-none max-md:group-hover:bg-muted-foreground/10',
+          )}
+        >
+          <Icon className="max-w-none size-[var(--icon-size-default)] text-muted-foreground" />
+        </div>
       </div>
     )
 
-    if (!disabled) {
-      return triggerInner
-    }
-
+    // Keep the wrapper mounted when `disabled` changes on send; remounting the
+    // trigger would cancel its slide and crossfade.
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{triggerInner}</TooltipTrigger>
-          <TooltipContent side="bottom">Cannot change agent during reply</TooltipContent>
+          {dimmed && (
+            <TooltipContent side="bottom">
+              <Trans>Cannot change agent during reply</Trans>
+            </TooltipContent>
+          )}
         </Tooltip>
       </TooltipProvider>
     )
   }
 
-  const footer = onAddAgent ? (
-    <button
-      type="button"
-      onClick={() => {
-        setOpen(false)
-        onAddAgent()
-      }}
-      className={searchableMenuFooterActionClass}
-    >
-      <Plus className="size-4" />
-      Add agent
-    </button>
-  ) : undefined
+  const footerAction = onAddAgent ? { label: t`Add Agent`, onAction: onAddAgent } : undefined
+
+  if (isLabel) {
+    return renderTrigger(undefined, false)
+  }
 
   return (
     <SearchableMenu
@@ -160,14 +218,16 @@ export const AgentSelector = ({
       value={selectedAgent.id}
       onValueChange={handleAgentChange}
       searchable={agents.length > 10}
-      searchPlaceholder="Search agents"
-      emptyMessage="No agents found"
-      blurBackdrop
+      searchPlaceholder={t`Search agents`}
+      emptyMessage={t`No agents found`}
+      mobileTitle={t`Choose agent`}
+      showDesktopTitle
+      mobileSide="top"
       trigger={renderTrigger}
       renderItem={renderAgentItem}
-      footer={footer}
-      width={320}
-      maxHeight={340}
+      footerAction={footerAction}
+      width={240}
+      maxHeight={300}
       side={side}
       align={align}
       open={disabled ? false : open}

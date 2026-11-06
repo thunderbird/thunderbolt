@@ -21,6 +21,8 @@ type InitTimingState = {
   bundleEvaluatedMs: number | null
   appMountedMs: number | null
   chatReadyMs: number | null
+  contentReadyMs: number | null
+  spinnerMountedMs: number | null
   stepDurations: Record<string, number>
 }
 
@@ -29,7 +31,34 @@ const state: InitTimingState = {
   bundleEvaluatedMs: null,
   appMountedMs: null,
   chatReadyMs: null,
+  contentReadyMs: null,
+  spinnerMountedMs: null,
   stepDurations: {},
+}
+
+/** Marks spinner commit; a trace is still needed to establish its actual first painted frame. */
+export const markSpinnerMounted = (): void => {
+  if (state.spinnerMountedMs !== null) {
+    return
+  }
+  state.spinnerMountedMs = performance.now()
+  performance.mark('thunderbolt:spinner-mounted')
+}
+
+/** Marks committed chat content after yielding to rendering or a hidden-tab timer, once per page. */
+export const markContentReady = (): Record<string, number | null> | null => {
+  if (state.contentReadyMs !== null) {
+    return null
+  }
+  state.contentReadyMs = performance.now()
+  performance.mark('thunderbolt:content-ready')
+  const payload = {
+    content_ready_ms: Math.round(state.contentReadyMs),
+    spinner_to_content_ms:
+      state.spinnerMountedMs === null ? null : Math.round(state.contentReadyMs - state.spinnerMountedMs),
+  }
+  console.info(`[startup] content ready ${JSON.stringify(payload)}`)
+  return payload
 }
 
 /**
@@ -54,8 +83,14 @@ export const beginInitRun = (): void => {
   state.stepDurations = {}
 }
 
-/** Records the duration of a single init step, keyed by its `[init]` log label. */
-export const recordInitStep = (label: string, durationMs: number): void => {
+/** Captures the active run so async work can report only to the run that started it. */
+export const getInitRun = (): number => state.initRun
+
+/** Records a step duration unless the initialization that started it has been superseded. */
+export const recordInitStep = (label: string, durationMs: number, initRun: number = state.initRun): void => {
+  if (initRun !== state.initRun) {
+    return
+  }
   state.stepDurations[label] = durationMs
 }
 
@@ -93,5 +128,7 @@ export const resetInitTiming = (): void => {
   state.bundleEvaluatedMs = null
   state.appMountedMs = null
   state.chatReadyMs = null
+  state.contentReadyMs = null
+  state.spinnerMountedMs = null
   state.stepDurations = {}
 }

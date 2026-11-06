@@ -31,6 +31,8 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
     loadBalancerType: 'application',
     securityGroups: [albSgId],
     subnets: publicSubnetIds,
+    // Must stay strictly below the backend keep-alive timeout — see backend/src/index.ts (120s).
+    idleTimeout: 60,
     tags: { Name: `${name}-alb` },
   })
 
@@ -41,7 +43,7 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
   // generate a unique short name, while `tags.Name` preserves human-readable stack identification.
   const frontendTg = new aws.lb.TargetGroup(`${name}-frontend-tg`, {
     namePrefix: 'tb-fe',
-    port: 80,
+    port: 8080,
     protocol: 'HTTP',
     targetType: 'ip',
     vpcId,
@@ -90,7 +92,7 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
 
   const marketingTg = new aws.lb.TargetGroup(`${name}-marketing-tg`, {
     namePrefix: 'tb-mk',
-    port: 80,
+    port: 8080,
     protocol: 'HTTP',
     targetType: 'ip',
     vpcId,

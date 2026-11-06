@@ -2,31 +2,42 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { deleteModel, getAllModels } from '@/dal'
+import { deleteModel, getAllModels, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import type { AnyColumn } from 'drizzle-orm'
 import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core'
-import {
-  modelProfilesTable,
-  modelsTable,
-  modesTable,
-  promptsTable,
-  settingsTable,
-  skillsTable,
-  tasksTable,
-} from '../db/tables'
+import { modelProfilesTable, modelsTable, promptsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
-import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
-import { defaultModes, defaultModesVersion, hashMode } from '../defaults/modes'
+import { defaultModelProfileOpus55, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
+import {
+  defaultModelGlm53,
+  defaultModelDeepSeekV41Flash,
+  defaultModelOpus55,
+  defaultModels,
+  defaultModelsVersion,
+  hashModel,
+  type SharedModel,
+} from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
-import { defaultSkills, defaultSkillsVersion, hashSkill } from '../defaults/skills'
+import {
+  defaultSkillWeather,
+  defaultSkills,
+  defaultSkillsVersion,
+  hashSkill,
+  isWidgetSkillId,
+} from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
+import { hashValues } from './utils'
 import type { ModelsDefaults } from './pick-defaults'
-import { cleanupRemovedDefaults, reconcileDefaults, reconcileDefaultsForTable } from './reconcile-defaults'
+import {
+  cleanupRemovedDefaults,
+  reconcileDefaults,
+  reconcileDefaultsForTable,
+  versionMarkerKeys,
+} from './reconcile-defaults'
 import type { Model, ModelProfile, Prompt } from '@/types'
 
 /** A model id no current default uses — stands in for any retired default. */
@@ -378,16 +389,24 @@ describe('seedPrompts', () => {
   })
 })
 
+/**
+ * Defaults the app actually has an opinion about. A null-valued default means
+ * something else supplies the value (browser language, region units, the user),
+ * and reconcile deliberately leaves those rows absent so the eventual seed is
+ * an INSERT — see the null-default branch in `reconcileDefaultsForTable`.
+ */
+const valuedDefaultSettings = defaultSettings.filter((s) => s.value !== null)
+const nullDefaultSettings = defaultSettings.filter((s) => s.value === null)
+
 describe('reconcileDefaultsForTable', () => {
   test('inserts new defaults on first run', async () => {
     const db = getDb()
     await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     const settings = await db.select().from(settingsTable)
-    // Should have all default settings plus anonymous_id
-    expect(settings.length).toBeGreaterThanOrEqual(defaultSettings.length)
+    expect(settings.length).toBeGreaterThanOrEqual(valuedDefaultSettings.length)
 
-    for (const defaultSetting of defaultSettings) {
+    for (const defaultSetting of valuedDefaultSettings) {
       const inserted = settings.find((s) => s.key === defaultSetting.key)
       expect(inserted).toBeDefined()
       // Verify hash was computed during seed
@@ -797,6 +816,134 @@ describe('reconcileDefaultsForTable', () => {
   })
 })
 
+for (const [target, model, name] of [
+  [defaultModelOpus55, 'opus-5', 'Opus 5'],
+  [defaultModelGlm53, 'glm-5-2', 'GLM 5.2'],
+  [defaultModelDeepSeekV41Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash'],
+  [defaultModelDeepSeekV41Flash, 'glm-5-3-flash', 'GLM 5.3 Flash'],
+] as const) {
+  test(`reconciliation upgrades an edited ${model} row outside the hash gate`, async () => {
+    const db = getDb()
+    const legacy = { ...target, model, name }
+    const edited = { ...legacy, name: 'My model', contextWindow: 123_456, defaultHash: hashModel(legacy) }
+    await db.insert(modelsTable).values(edited)
+    await db.insert(settingsTable).values({ key: versionMarkerKeys.models, value: String(defaultModelsVersion) })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()).toEqual({
+      ...edited,
+      model: target.model,
+    })
+  })
+}
+
+describe('Opus data migration', () => {
+  const legacyDefault = (): SharedModel => ({
+    ...defaultModelOpus55,
+    name: 'Opus 4.8',
+    model: 'opus-4.8',
+    contextWindow: 200_000,
+  })
+
+  test('fully upgrades an untouched legacy default and refreshes its lineage hash', async () => {
+    const db = getDb()
+    const legacyModel = legacyDefault()
+    await db.insert(modelsTable).values({
+      ...legacyModel,
+      defaultHash: hashModel(legacyModel),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
+      ...defaultModelOpus55,
+      defaultHash: hashModel(defaultModelOpus55),
+    })
+  })
+
+  test('preserves custom fields while upgrading the legacy model slug', async () => {
+    const db = getDb()
+    const legacyModel = legacyDefault()
+    const customizedLegacy = {
+      ...legacyModel,
+      name: 'My customized Opus',
+      enabled: 0,
+      startWithReasoning: 1,
+      contextWindow: 123_456,
+      defaultHash: hashModel(legacyModel),
+    }
+    await db.insert(modelsTable).values(customizedLegacy)
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
+      ...customizedLegacy,
+      model: defaultModelOpus55.model,
+    })
+  })
+
+  test('normalizes a legacy OTA default before reconciliation', async () => {
+    const db = getDb()
+    const legacyModel = legacyDefault()
+    await db.insert(modelsTable).values({
+      ...legacyModel,
+      defaultHash: hashModel(legacyModel),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+    const otaVersion = defaultModelsVersion + 1
+    const otaModels = defaultModels.map((model) => (model.id === defaultModelOpus55.id ? legacyModel : model))
+
+    await reconcileDefaults(db, { models: { version: otaVersion, data: otaModels, imageSupport: {} } })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
+      ...defaultModelOpus55,
+      defaultHash: hashModel(defaultModelOpus55),
+    })
+    expect(
+      await db.select().from(settingsTable).where(eq(settingsTable.key, versionMarkerKeys.models)).get(),
+    ).toMatchObject({ value: String(otaVersion) })
+  })
+
+  test('resurrects and upgrades a cleanup-shaped legacy row in one boot', async () => {
+    const db = getDb()
+    const legacyModel = legacyDefault()
+    await db.insert(modelsTable).values({
+      ...legacyModel,
+      deletedAt: '2026-01-01T00:00:00.000Z',
+      defaultHash: hashModel(legacyModel),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.models,
+      value: String(defaultModelsVersion),
+    })
+
+    await reconcileDefaults(db)
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
+      ...defaultModelOpus55,
+      defaultHash: hashModel(defaultModelOpus55),
+    })
+    expect(
+      await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, defaultModelOpus55.id)).get(),
+    ).toEqual({
+      ...defaultModelProfileOpus55,
+      defaultHash: hashModelProfile(defaultModelProfileOpus55),
+    })
+  })
+})
+
 /**
  * Regression tests for THU-637 ("Models are janky"): older-bundle devices used
  * to overwrite rows authored by newer-bundle devices via sync, causing every
@@ -890,6 +1037,27 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const upgraded = await db.select().from(modelsTable).where(eq(modelsTable.id, targetId)).get()
     expect(upgraded?.name).toBe(defaultModels[0].name)
     expect(upgraded?.defaultHash).toBe(hashModel(defaultModels[0]))
+    expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
+  })
+
+  test('newer bundle updates server-owned model metadata excluded from the user-edit hash', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+    await db
+      .update(modelsTable)
+      .set({ description: 'Confidential chat via Tinfoil' })
+      .where(eq(modelsTable.id, defaultModelGlm53.id))
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultModelsVersion - 1) })
+      .where(eq(settingsTable.key, modelsVersionKey))
+
+    await reconcileDefaults(db)
+
+    const upgraded = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelGlm53.id)).get()
+    expect(upgraded?.description).toBe('Confidential chat via Thunderbolt')
+    expect(upgraded?.provider).toBe('tinfoil')
+    expect(upgraded?.isConfidential).toBe(1)
     expect(await readStoredModelsVersion()).toBe(defaultModelsVersion)
   })
 
@@ -1015,7 +1183,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
 
     // Seed at the current bundle so every row has a matching defaultHash.
     // This models the state of a pre-THU-677 device on its first boot after
-    // upgrading to this build: the four new markers (modes/tasks/skills/
+    // upgrading to this build: the four new markers (models/tasks/skills/
     // settings) don't exist yet, but the rows themselves were already
     // seeded by earlier reconcile runs and their hashes match the bundle.
     await reconcileDefaults(db)
@@ -1081,55 +1249,53 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     expect(preservedProfile?.temperature).toBe(0.77)
   })
 
-  // Coverage guard for `runGatedPass` (modes/tasks/skills/settings) — the
-  // models path has its own dedicated test above. Modes is a good stand-in
-  // for the loop because it has multiple rows and its own hashFn/defaults.
-  const readStoredModesVersion = async () => {
+  // Coverage guard for `runGatedPass` (tasks/skills/settings) — the models
+  // path has its own dedicated test above. Skills is a good stand-in for the
+  // loop because it has multiple rows and its own hashFn/defaults.
+  const readStoredSkillsVersion = async () => {
     const db = getDb()
-    const row = await db.select().from(settingsTable).where(eq(settingsTable.key, 'defaults_version.modes')).get()
+    const row = await db.select().from(settingsTable).where(eq(settingsTable.key, 'defaults_version.skills')).get()
     return row?.value == null ? null : Number(row.value)
   }
 
-  test('runGatedPass advances marker when every mode row is at target and mutated is false', async () => {
+  test('runGatedPass advances marker when every skill row is at target and mutated is false', async () => {
     const db = getDb()
 
-    // Seed at the current bundle so every modes row hashes to target.
+    // Seed at the current bundle so every skills row hashes to target.
     await reconcileDefaults(db)
 
-    // Wipe the modes marker to simulate the pre-THU-677 "no marker yet"
+    // Wipe the skills marker to simulate the pre-THU-677 "no marker yet"
     // state for the non-models tables. The gate opens, reconcile finds
     // every row already at target (mutated=false), and the marker must
     // still advance via the `everyBundleRowAtTarget` branch.
-    await db.delete(settingsTable).where(eq(settingsTable.key, 'defaults_version.modes'))
+    await db.delete(settingsTable).where(eq(settingsTable.key, 'defaults_version.skills'))
 
     await reconcileDefaults(db)
 
-    expect(await readStoredModesVersion()).toBe(defaultModesVersion)
+    expect(await readStoredSkillsVersion()).toBe(defaultSkillsVersion)
   })
 
-  test('runGatedPass does not advance marker when every mode row is user-edited', async () => {
+  test('runGatedPass does not advance marker when every editable skill row is user-edited', async () => {
     const db = getDb()
     await reconcileDefaults(db)
 
-    // Every modes row user-edited (hash mismatch) and marker rewound so the
-    // version gate opens. Reconcile skips every row → `mutated=false` AND
-    // `everyBundleRowAtTarget=false` (hash-mismatch branch). Marker must
-    // stay at the rewound value — mirrors the existing models-path
-    // regression guard for the runGatedPass loop.
-    for (const mode of defaultModes) {
+    // Every editable skill row is user-edited (hash mismatch) and the marker
+    // is rewound. Locked widget contracts remain at target. Reconcile skips
+    // each editable row, so `mutated=false` and the marker stays rewound.
+    for (const skill of defaultSkills.filter((defaultSkill) => !isWidgetSkillId(defaultSkill.id))) {
       await db
-        .update(modesTable)
-        .set({ label: `user-edited ${mode.id}` })
-        .where(eq(modesTable.id, mode.id))
+        .update(skillsTable)
+        .set({ label: `user-edited ${skill.id}` })
+        .where(eq(skillsTable.id, skill.id))
     }
     await db
       .update(settingsTable)
-      .set({ value: String(defaultModesVersion - 1) })
-      .where(eq(settingsTable.key, 'defaults_version.modes'))
+      .set({ value: String(defaultSkillsVersion - 1) })
+      .where(eq(settingsTable.key, 'defaults_version.skills'))
 
     await reconcileDefaults(db)
 
-    expect(await readStoredModesVersion()).toBe(defaultModesVersion - 1)
+    expect(await readStoredSkillsVersion()).toBe(defaultSkillsVersion - 1)
   })
 
   test('sync-incomplete + populated table + stale stored version → skip mutations', async () => {
@@ -1298,6 +1464,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const otaSource: ModelsDefaults = {
       version: defaultModelsVersion + 1,
       data: [...remaining],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1328,6 +1495,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const otaSource: ModelsDefaults = {
       version: defaultModelsVersion + 1,
       data: [...remaining],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1363,6 +1531,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const otaSource: ModelsDefaults = {
       version: defaultModelsVersion + 1,
       data: [flipped, ...defaultModels.slice(1)],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1422,6 +1591,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
           userId: null,
         },
       ],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1442,9 +1612,71 @@ describe('reconcileDefaults version gate (THU-637)', () => {
   })
 })
 
+describe('widget skill reconciliation', () => {
+  test('upgrades shipped v4 weather to canonical widget instructions on the first v5 pass', async () => {
+    const db = getDb()
+    const shippedV4Weather = {
+      ...defaultSkillWeather,
+      instruction: 'Shipped v4 inline weather instruction',
+    }
+    await db.insert(skillsTable).values({
+      ...shippedV4Weather,
+      defaultHash: hashValues([
+        shippedV4Weather.name,
+        shippedV4Weather.label,
+        shippedV4Weather.description,
+        shippedV4Weather.instruction,
+        shippedV4Weather.enabled,
+        shippedV4Weather.pinnedOrder,
+        shippedV4Weather.deletedAt,
+      ]),
+    })
+    await db.insert(settingsTable).values({
+      key: versionMarkerKeys.skills,
+      value: String(defaultSkillsVersion - 1),
+    })
+
+    await reconcileDefaults(db)
+
+    const updated = await db.select().from(skillsTable).where(eq(skillsTable.id, defaultSkillWeather.id)).get()
+    const marker = await db.select().from(settingsTable).where(eq(settingsTable.key, versionMarkerKeys.skills)).get()
+    expect(updated?.instruction).toBe(defaultSkillWeather.instruction)
+    expect(updated?.pinnedOrder).toBe(defaultSkillWeather.pinnedOrder)
+    expect(marker?.value).toBe(String(defaultSkillsVersion))
+  })
+
+  test('newer defaults update contract content while preserving enabled and pinned state', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    const staleWidget = { ...defaultSkillWeather, description: 'stale widget contract' }
+    await db
+      .update(skillsTable)
+      .set({
+        description: staleWidget.description,
+        enabled: 0,
+        pinnedOrder: 4,
+        defaultHash: hashSkill(staleWidget),
+      })
+      .where(eq(skillsTable.id, staleWidget.id))
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultSkillsVersion - 1) })
+      .where(eq(settingsTable.key, versionMarkerKeys.skills))
+
+    await reconcileDefaults(db)
+
+    const updated = await db.select().from(skillsTable).where(eq(skillsTable.id, staleWidget.id)).get()
+    expect(updated?.description).toBe(defaultSkillWeather.description)
+    expect(updated?.enabled).toBe(0)
+    expect(updated?.pinnedOrder).toBe(4)
+    expect(updated?.defaultHash).toBe(hashSkill({ ...defaultSkillWeather, enabled: 0, pinnedOrder: 4 }))
+  })
+})
+
 /**
  * THU-677 extends the THU-637 version-gate pattern from models to every
- * other reconciled table (modes, tasks, skills, settings). The scenarios
+ * other reconciled table (tasks, skills, settings). The scenarios
  * per table mirror the models coverage above but at reduced depth — the
  * shared `reconcileDefaultsForTable` and `computeCanOverwrite` behaviour
  * is already exercised by the models suite. Here we prove each table
@@ -1553,16 +1785,6 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
   }
 
   describeGateCase({
-    table: 'modes',
-    versionKey: 'defaults_version.modes',
-    currentVersion: defaultModesVersion,
-    defaults: defaultModes,
-    hashFn: hashMode,
-    dbTable: modesTable,
-    pk: modesTable.id,
-    editableField: 'label',
-  })
-  describeGateCase({
     table: 'tasks',
     versionKey: 'defaults_version.tasks',
     currentVersion: defaultTasksVersion,
@@ -1592,9 +1814,26 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
       const db = getDb()
       await reconcileDefaults(db)
 
-      for (const bundle of defaultSettings) {
+      for (const bundle of valuedDefaultSettings) {
         const row = await db.select().from(settingsTable).where(eq(settingsTable.key, bundle.key)).get()
         expect(row).toBeDefined()
+      }
+      expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
+    })
+
+    test('leaves null-valued defaults absent so their first seed is an INSERT', async () => {
+      // The row is what turns a later seed (browser language, region units)
+      // into an UPDATE, which uploads as a PATCH and escapes the create-only
+      // guard that stops a fresh device overwriting an established one
+      // (GH #1299). No row means that seed is an INSERT, which the guard
+      // covers. The marker must still advance — absent IS the target state.
+      const db = getDb()
+      await reconcileDefaults(db)
+
+      expect(nullDefaultSettings.length).toBeGreaterThan(0)
+      for (const bundle of nullDefaultSettings) {
+        const row = await db.select().from(settingsTable).where(eq(settingsTable.key, bundle.key)).get()
+        expect(row).toBeUndefined()
       }
       expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
     })
@@ -1681,7 +1920,10 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
       const db = getDb()
 
       // Seed the bundle defaults so the pre-THU-677 device has all rows.
+      // Reconcile no longer lays down null-valued rows, so create the one this
+      // test edits the way an older build would have.
       await reconcileDefaults(db)
+      await db.insert(settingsTable).values({ key: 'preferred_name', value: null })
 
       // Simulate the pre-THU-677 state: settings marker doesn't exist yet.
       await db.delete(settingsTable).where(eq(settingsTable.key, 'defaults_version.settings'))
@@ -1716,19 +1958,74 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
 
   test('per-table marker writes do not poison the settings hasAnyRow probe on fresh install', async () => {
     // Regression guard for the intra-transaction ordering hazard: the models/
-    // modes/tasks/skills passes each land a marker row in `settingsTable` via
+    // tasks/skills passes each land a marker row in `settingsTable` via
     // `advanceVersionMarker`. If `hasAnySettingsRow` were read inline before
     // the settings block instead of at the top of the transaction, those
     // earlier marker writes would flip the probe to `true` on a fresh install
-    // and the settings gate would refuse to seed. Every default settings row
-    // and the settings marker must land on this pass.
+    // and the settings gate would refuse to seed. Every valued default settings
+    // row and the settings marker must land on this pass.
     const db = getDb()
     await reconcileDefaults(db)
 
-    for (const bundle of defaultSettings) {
+    for (const bundle of valuedDefaultSettings) {
       const row = await db.select().from(settingsTable).where(eq(settingsTable.key, bundle.key)).get()
       expect(row).toBeDefined()
     }
     expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
   })
+})
+
+describe('analytics opt-in (`data_collection` ships on)', () => {
+  const key = 'data_collection'
+  const shipped = defaultSettings.find((setting) => setting.key === key)
+  if (!shipped) {
+    throw new Error('fixture drift: `data_collection` no longer in defaultSettings')
+  }
+  /** What the previous bundle shipped, and so the hash every existing row carries. */
+  const previousDefault = { ...shipped, value: 'false' }
+
+  const storedValue = async () =>
+    (await getDb().select().from(settingsTable).where(eq(settingsTable.key, key)).get())?.value
+
+  /** Put the account's settings marker one version behind the bundle, as the next default bump does. */
+  const rewindSettingsMarker = () =>
+    getDb()
+      .update(settingsTable)
+      .set({ value: String(defaultSettingsVersion - 1) })
+      .where(eq(settingsTable.key, 'defaults_version.settings'))
+
+  /** An account from the previous bundle: `value` stored under the old default's hash. */
+  const stageAccountFromPreviousBundle = async (value: 'true' | 'false') => {
+    await reconcileDefaults(getDb())
+    await getDb()
+      .update(settingsTable)
+      .set({ value, defaultHash: hashSetting(previousDefault) })
+      .where(eq(settingsTable.key, key))
+    await rewindSettingsMarker()
+  }
+
+  test('starts a new account opted in', async () => {
+    await reconcileDefaults(getDb())
+    expect(await storedValue()).toBe('true')
+  })
+
+  test('opts in an existing account that had it off, even one that switched it off itself', async () => {
+    await stageAccountFromPreviousBundle('false')
+    await reconcileDefaults(getDb())
+    expect(await storedValue()).toBe('true')
+  })
+
+  // An account that was already on keeps the old default's hash unless reconcile re-stamps it, and an opt-out back
+  // to the old default would then read as unedited and be overwritten by the next bump.
+  test.each(['false', 'true'] as const)(
+    'keeps an opt-out made after the switch through later default bumps (previously %s)',
+    async (previousValue) => {
+      await stageAccountFromPreviousBundle(previousValue)
+      await reconcileDefaults(getDb())
+      await updateSettings(getDb(), { data_collection: false })
+      await rewindSettingsMarker()
+      await reconcileDefaults(getDb())
+      expect(await storedValue()).toBe('false')
+    },
+  )
 })

@@ -20,6 +20,10 @@ const stackName = pulumi.getStack()
 const name = `tb-${stackName}`
 const platform = config.get('platform') || 'fargate'
 const version = config.require('version')
+const minAppVersion = config.get('minAppVersion') ?? ''
+const cliDeviceRegistrationEnabled = config.getBoolean('cliDeviceRegistrationEnabled') ?? false
+const confidentialApiKeysEnabled = config.getBoolean('confidentialApiKeysEnabled') ?? false
+const branding = config.get('branding') ?? ''
 
 // --- Shared-stack architecture (Phase 1 scaffolding) ---
 //
@@ -65,13 +69,11 @@ if (isSharedStack) {
     imagePrefix,
     ghcrToken: config.getSecret('ghcrToken'),
     authHostname: config.require('authHostname'),
-    powersyncHostname: config.require('powersyncHostname'),
     cloudflareZoneId: config.get('cloudflareZoneId'),
     cloudflareApiToken: config.getSecret('cloudflareApiToken'),
     aiSecrets: {
       anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
       fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),
-      mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
       thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
       exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
       tinfoilApiKey: config.getSecret('tinfoilApiKey') ?? pulumi.output(''),
@@ -123,6 +125,7 @@ if (isSharedStack) {
       marketing: config.require('marketingHostname'),
       app: config.require('appHostname'),
       api: config.require('apiHostname'),
+      powersync: config.require('powersyncHostname'),
     },
     cloudflareZoneId: cloudflareZoneIdInput,
     cloudflareApiToken: cloudflareApiTokenInput,
@@ -130,6 +133,10 @@ if (isSharedStack) {
     betterAuthSecret: betterAuthSecretInput,
     thunderboltInferenceUrl: config.get('thunderboltInferenceUrl'),
     tinfoilEnclaveUrl: config.get('tinfoilEnclaveUrl'),
+    minAppVersion,
+    cliDeviceRegistrationEnabled,
+    confidentialApiKeysEnabled,
+    branding,
   })
 
   module.exports = {
@@ -236,7 +243,6 @@ if (isSharedStack) {
     // AI provider keys — empty default so enterprise stacks don't need them set.
     anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
     fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),
-    mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
     thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
     exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
     tinfoilApiKey: config.getSecret('tinfoilApiKey') ?? pulumi.output(''),
@@ -263,6 +269,7 @@ if (isSharedStack) {
       privateSubnetIds: privateSubnets.map((s) => s.id),
       ghcrToken: config.getSecret('ghcrToken'),
       betterAuthSecretBase64: secrets.betterAuthSecret.apply((s) => Buffer.from(s).toString('base64')),
+      branding,
     })
 
     module.exports = {
@@ -331,6 +338,10 @@ if (isSharedStack) {
       publicUrls,
       thunderboltInferenceUrl,
       tinfoilEnclaveUrl,
+      minAppVersion,
+      cliDeviceRegistrationEnabled,
+      confidentialApiKeysEnabled,
+      branding,
       behindCloudflareProxy: hasSubdomainRouting,
       albListener: listener,
       targetGroups: {

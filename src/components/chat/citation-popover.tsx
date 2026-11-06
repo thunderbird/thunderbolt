@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { CitationSource } from '@/types/citation'
 import {
@@ -17,6 +16,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { CitationSourcesDrawer } from './citation-sources-drawer'
 import { SourceList } from './source-list'
 
 type PopoverData = {
@@ -37,7 +37,7 @@ const CitationPopoverContext = createContext<CitationPopoverState | null>(null)
 export const useCitationPopover = () => useContext(CitationPopoverContext)
 
 /**
- * Provides citation popover state and renders the overlay (Popover/Sheet)
+ * Provides citation popover state and renders the overlay (popover/drawer)
  * outside the markdown tree so streaming re-renders don't destroy it.
  */
 export const CitationPopoverProvider = ({ children }: { children: ReactNode }) => {
@@ -92,21 +92,7 @@ const CitationOverlay = memo(({ popover, close }: { popover: PopoverData | null;
   const { sources } = popover
 
   if (isMobile) {
-    return (
-      <Sheet open onOpenChange={(open) => !open && close()}>
-        <SheetContent
-          side="bottom"
-          className="inset-x-1 overflow-hidden rounded-2xl border p-0"
-          style={{ bottom: 'calc(20px + var(--safe-area-bottom-padding, 0px))' }}
-          hideCloseButton
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>{sources.length === 1 ? 'Source' : 'Sources'}</SheetTitle>
-          </SheetHeader>
-          <SourceList sources={sources} onSelect={close} />
-        </SheetContent>
-      </Sheet>
-    )
+    return <CitationSourcesDrawer open onOpenChange={(open) => !open && close()} sources={sources} />
   }
 
   return (

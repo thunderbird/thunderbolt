@@ -2,7 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { loopbackOrigin } from '@shared/url'
 import type { DraftEmailParams } from './tools'
+
+// A loopback VITE_GOOGLE_BASE_URL (the QA build's fake Google) serves every Google host from one origin. Any other
+// value is ignored, so a misconfigured build never sends user tokens elsewhere.
+const googleBaseUrl = loopbackOrigin(import.meta.env.VITE_GOOGLE_BASE_URL)
+export const googleAccountsUrl = googleBaseUrl ?? 'https://accounts.google.com'
+export const googleApisUrl = googleBaseUrl ?? 'https://www.googleapis.com'
 
 // =============================================================================
 // EMAIL UTILITY FUNCTIONS
@@ -11,7 +18,7 @@ import type { DraftEmailParams } from './tools'
 /**
  * Parse email address from Gmail API format
  */
-export const parseEmailAddress = (emailStr: string): { name: string; email: string } => {
+export const parseEmailAddress = (emailStr: string) => {
   if (!emailStr) {
     return { name: '', email: '' }
   }

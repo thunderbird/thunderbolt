@@ -1,0 +1,67 @@
+appId: net.thunderbird.thunderbolt.dev
+env:
+  # The confidential default every fresh account lands on; a model swap changes it here only.
+  DEFAULT_MODEL: DeepSeek V4.1 Flash
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: Want early access?
+    timeout: 300000
+- waitForAnimationToEnd
+# Each retry block re-checks its own outcome. The simulator can drop a focus tap, and inputText
+# types anyway; eraseText stops a partial try doubling up. Maestro aims a tap with the
+# hierarchy read before it settles, so the model sheet sliding into place can take the tap
+# on a neighbouring row ("Add Model").
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          text: Email
+          retryTapIfNoChange: true
+      - eraseText
+      - inputText: ${EMAIL}
+      - assertVisible: ${EMAIL}
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Check your email
+    timeout: 120000
+- inputText: 12345678
+- extendedWaitUntil:
+    visible: ${DEFAULT_MODEL}
+    timeout: 120000
+- retry:
+    maxRetries: 2
+    commands:
+      # Counts as an interaction, so it restores the lookup time a failed attempt used up.
+      - waitForAnimationToEnd
+      - runFlow:
+          when:
+            visible: Close
+          commands:
+            - tapOn: Close
+      - runFlow:
+          when:
+            notVisible: Model and reasoning effort
+          commands:
+            - tapOn: '${DEFAULT_MODEL}|Opus 5.5'
+      - waitForAnimationToEnd
+      - tapOn: Opus 5.5
+      # A pick leaves the sheet open; a tap above it closes it.
+      - tapOn:
+          point: 50%,30%
+      - assertNotVisible: Model and reasoning effort
+      - assertVisible: Opus 5.5
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn: Ask me anything…
+      - eraseText
+      - inputText: Please greet me briefly.
+      - assertVisible:
+          text: Send message
+          enabled: true
+- tapOn: Send message
+- extendedWaitUntil:
+    visible: Hello from the fake provider, one word at a time.
+    timeout: 60000

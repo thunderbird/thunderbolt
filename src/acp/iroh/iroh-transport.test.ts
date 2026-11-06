@@ -11,10 +11,12 @@
 import type { AnyMessage } from '@agentclientprotocol/sdk'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { ensureSelfEnrollment, resetSelfEnrollmentForTests } from '@/lib/iroh-enrollment'
+import { TransportTerminationError } from '../termination'
 import {
   bindAndPersistForTests,
   bindIrohClient,
   clearIrohClientSecret,
+  dialIrohBridge,
   irohRelayUrl,
   resetSharedIrohClientForTests,
   acpIrohAlpn,
@@ -71,6 +73,12 @@ const makeFakeClient = (connection: IrohConnectionLike, captured: CapturedConnec
 })
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s)
+
+const flush = async (): Promise<void> => {
+  for (let count = 0; count < 10; count++) {
+    await Promise.resolve()
+  }
+}
 
 afterEach(() => {
   resetSharedIrohClientForTests()
@@ -146,7 +154,7 @@ describe('openIrohTransport', () => {
     ])
   })
 
-  it('propagates a send failure to the writable write (no silently swallowed error)', async () => {
+  it('terminates the generation and classifies a send failure as connection loss', async () => {
     const fake = makeFakeConnection()
     // The wasm `send()` now rejects when the underlying QUIC write fails, instead
     // of resolving on enqueue — the writable must surface that rejection.
@@ -162,9 +170,13 @@ describe('openIrohTransport', () => {
       loadClient: async () => makeFakeClient(failing, []),
     })
     const writer = transport.stream.writable.getWriter()
-    await expect(
-      writer.write({ jsonrpc: '2.0', id: 1, method: 'initialize' } as unknown as AnyMessage),
-    ).rejects.toThrow('iroh connection closed')
+    const writeError = await writer
+      .write({ jsonrpc: '2.0', id: 1, method: 'initialize' } as unknown as AnyMessage)
+      .catch((error: unknown) => error)
+    expect(writeError).toBeInstanceOf(TransportTerminationError)
+    expect(writeError).toMatchObject({ reason: 'stream-error', message: 'iroh connection closed' })
+    await expect(transport.closed).rejects.toBe(writeError)
+    expect(fake.closed()).toBe(true)
   })
 
   it('decodes inbound ndjson bytes into ACP messages on the readable', async () => {
@@ -213,7 +225,9 @@ describe('openIrohTransport', () => {
       loadClient: async () => makeFakeClient(fake.connection, []),
     })
     fake.errorReceive(new Error('relay dropped'))
-    await expect(transport.closed).rejects.toThrow('relay dropped')
+    const error = await transport.closed?.catch((reason: unknown) => reason)
+    expect(error).toBeInstanceOf(TransportTerminationError)
+    expect(error).toMatchObject({ reason: 'stream-error', message: 'relay dropped' })
   })
 
   it('routes teardown through close() on a receive error: closes the connection and detaches the abort listener', async () => {
@@ -317,9 +331,164 @@ describe('openIrohTransport', () => {
     await expect(open).rejects.toThrow(/abort/i)
     // The dial wins the race a tick too late; the orphaned connection must close.
     resolveConnect(fake.connection)
-    await Promise.resolve()
-    await Promise.resolve()
+    await flush()
     expect(fake.closed()).toBe(true)
+  })
+
+  it('does not start a replacement dial while an abandoned dial is still pending', async () => {
+    const abandoned = makeFakeConnection()
+    const replacement = makeFakeConnection()
+    const firstController = new AbortController()
+    let connectCalls = 0
+    let resolveFirst: (connection: IrohConnectionLike) => void = () => {}
+    let signalFirstDial: () => void = () => {}
+    const firstDialStarted = new Promise<void>((resolve) => {
+      signalFirstDial = resolve
+    })
+    const firstPending = new Promise<IrohConnectionLike>((resolve) => {
+      resolveFirst = resolve
+    })
+    const client: IrohClientLike = {
+      nodeId: () => 'slow',
+      connect: () => {
+        connectCalls += 1
+        signalFirstDial()
+        return connectCalls === 1 ? firstPending : Promise.resolve(replacement.connection)
+      },
+    }
+
+    const first = dialIrohBridge({
+      target: 'same-target',
+      alpn: acpIrohAlpn,
+      signal: firstController.signal,
+      loadClient: async () => client,
+    })
+    await firstDialStarted
+    firstController.abort()
+    await expect(first).rejects.toThrow(/abort/i)
+
+    const second = dialIrohBridge({
+      target: 'same-target',
+      alpn: acpIrohAlpn,
+      signal: new AbortController().signal,
+      loadClient: async () => client,
+    })
+    await Promise.resolve()
+    expect(connectCalls).toBe(1)
+
+    resolveFirst(abandoned.connection)
+    await expect(second).resolves.toBe(replacement.connection)
+    expect(connectCalls).toBe(2)
+    expect(abandoned.closed()).toBe(true)
+  })
+
+  it('serializes every queued dial to the same bridge and ALPN', async () => {
+    const connections = [makeFakeConnection(), makeFakeConnection(), makeFakeConnection()]
+    const resolvers: Array<(connection: IrohConnectionLike) => void> = []
+    let connectCalls = 0
+    const client: IrohClientLike = {
+      nodeId: () => 'queued',
+      connect: () => {
+        connectCalls += 1
+        return new Promise<IrohConnectionLike>((resolve) => resolvers.push(resolve))
+      },
+    }
+    const options = {
+      target: 'same-target',
+      alpn: acpIrohAlpn,
+      signal: new AbortController().signal,
+      loadClient: async () => client,
+    }
+
+    const first = dialIrohBridge(options)
+    const second = dialIrohBridge(options)
+    const third = dialIrohBridge(options)
+    await flush()
+    expect(connectCalls).toBe(1)
+
+    resolvers[0](connections[0].connection)
+    await expect(first).resolves.toBe(connections[0].connection)
+    await flush()
+    expect(connectCalls).toBe(2)
+
+    resolvers[1](connections[1].connection)
+    await expect(second).resolves.toBe(connections[1].connection)
+    await flush()
+    expect(connectCalls).toBe(3)
+
+    resolvers[2](connections[2].connection)
+    await expect(third).resolves.toBe(connections[2].connection)
+  })
+
+  it('times out a wedged wasm dial so the queued replacement can proceed', async () => {
+    const abandoned = makeFakeConnection()
+    const replacement = makeFakeConnection()
+    let fireTimeout: () => void = () => {}
+    let signalDialStarted: () => void = () => {}
+    let signalTimeoutScheduled: () => void = () => {}
+    const dialStarted = new Promise<void>((resolve) => {
+      signalDialStarted = resolve
+    })
+    const timeoutScheduled = new Promise<void>((resolve) => {
+      signalTimeoutScheduled = resolve
+    })
+    let resolveAbandoned: (connection: IrohConnectionLike) => void = () => {}
+    const abandonedPending = new Promise<IrohConnectionLike>((resolve) => {
+      resolveAbandoned = resolve
+    })
+    let connectCalls = 0
+    const client: IrohClientLike = {
+      nodeId: () => 'wedged',
+      connect: () => {
+        connectCalls += 1
+        signalDialStarted()
+        if (connectCalls === 1) {
+          return abandonedPending
+        }
+        return Promise.resolve(replacement.connection)
+      },
+    }
+    const options = {
+      target: 'same-target',
+      alpn: acpIrohAlpn,
+      signal: new AbortController().signal,
+      loadClient: async () => client,
+      dialTimeoutMs: 5,
+      setTimer: ((callback: TimerHandler) => {
+        fireTimeout = callback as () => void
+        signalTimeoutScheduled()
+        return 1 as unknown as ReturnType<typeof setTimeout>
+      }) as unknown as typeof setTimeout,
+      clearTimer: (() => {}) as typeof clearTimeout,
+    }
+
+    const wedged = dialIrohBridge(options)
+    let timeoutError: unknown
+    void wedged.catch((error: unknown) => {
+      timeoutError = error
+    })
+
+    await dialStarted
+    await timeoutScheduled
+    expect(connectCalls).toBe(1)
+    const queued = dialIrohBridge(options)
+    await flush()
+    expect(connectCalls).toBe(1)
+    fireTimeout()
+    await flush()
+    expect(timeoutError).toBeInstanceOf(Error)
+    expect((timeoutError as Error).message).toBe('Iroh dial timed out after 5ms')
+    expect(connectCalls).toBe(2)
+    let queuedConnection: IrohConnectionLike | undefined
+    void queued.then((connection) => {
+      queuedConnection = connection
+    })
+    await flush()
+    expect(queuedConnection).toBe(replacement.connection)
+    expect(connectCalls).toBe(2)
+    resolveAbandoned(abandoned.connection)
+    await flush()
+    expect(abandoned.closed()).toBe(true)
   })
 
   it('evicts the shared client when the bind fails so a later dial rebinds', async () => {

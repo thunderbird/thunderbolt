@@ -4,11 +4,15 @@
 
 import { useHttpClient } from '@/contexts/http-client-context'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { getActiveLocale } from '@/i18n/active-locale'
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSession } from '@/lib/session-cache'
+import { normalizeBackendUrl } from '@/lib/url-utils'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
@@ -20,8 +24,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
  * Uses Bearer token authentication for all platforms, storing tokens
  * in the settings database for persistence across app restarts.
  */
-const createAuthClientInstance = (cloudUrl: string) => {
-  const baseURL = cloudUrl.replace(/\/v1$/, '') // Better Auth adds /api/auth
+export const createAuthClientInstance = (cloudUrl: string) => {
+  const baseURL = normalizeBackendUrl(cloudUrl).replace(/\/v1$/, '') // Better Auth adds /api/auth
   const platform = getPlatform()
 
   const client = createAuthClient({
@@ -29,10 +33,9 @@ const createAuthClientInstance = (cloudUrl: string) => {
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient(), anonymousClient()],
     fetchOptions: buildFetchOptions(platform),
-    // Disable Better Auth's focus/online refetch — Thunderbolt's own cross-tab sync
-    // (`onAuthTokenChangedInOtherTab` in src/lib/auth-token.ts) plus the 401 safety net
-    // in HttpClient.afterResponse already cover the relevant scenarios without burning
-    // rate-limit budget on every tab focus / visibilitychange / online event.
+    // Skip focus refetches to avoid spending rate-limit budget on every tab switch.
+    // The refresh manager skips offline checks, but still refetches on reconnect
+    // and cross-tab broadcasts so cached sessions recover when the network returns.
     sessionOptions: {
       refetchOnWindowFocus: false,
       refetchWhenOffline: false,
@@ -108,9 +111,36 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
   })
 }
 
+/** The headers every Better Auth request must carry. `buildFetchOptions` sets them on each request. */
+export const authRequestHeaders = (
+  extra: Record<string, string> = {},
+  platform: string = getPlatform(),
+): Record<string, string> => ({
+  'X-Client-Platform': platform,
+  'X-App-Language': getActiveLocale(),
+  ...appVersionHeader(),
+  ...extra,
+})
+
+/**
+ * Sign-in endpoints answer a failed attempt with 401. That says nothing about a
+ * session the device already holds (a signed-in user confirming it's them, or
+ * trying a passkey), so it must not be read as that session expiring.
+ */
+const signInPaths = ['/sign-in/email-otp', '/passkey/verify-authentication']
+
+const isSignInRequest = (url: URL | string | undefined): boolean =>
+  url !== undefined && signInPaths.some((path) => new URL(url, 'http://localhost').pathname.endsWith(path))
+
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
-  headers: { 'X-Client-Platform': platform },
+  // Applied per request instead of through `headers` so the locale is re-read on
+  // every call, not frozen at client construction before the synced setting hydrates.
+  onRequest: (ctx: { headers: Headers }) => {
+    for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
+      ctx.headers.set(key, value)
+    }
+  },
   auth: {
     type: 'Bearer' as const,
     token: () => getAuthToken() ?? '',
@@ -121,8 +151,15 @@ export const buildFetchOptions = (platform: string) => ({
       setAuthToken(token)
     }
   },
-  onError: (ctx: { response: Response }) => {
-    if (ctx.response?.status !== 401) {
+  onError: (ctx: { response: Response; request?: { url: URL | string } }) => {
+    // A 426 from our backend means this build is below the enforced minimum —
+    // flip into the upgrade blocker (mirrors the 401 → session_expired dispatch
+    // below). Status-only: the response body belongs to Better Auth here.
+    if (ctx.response.status === 426) {
+      handleAppVersionUnsupported(ctx.response.status)
+      return
+    }
+    if (ctx.response?.status !== 401 || isSignInRequest(ctx.request?.url)) {
       return
     }
     // Capture token presence BEFORE clearing — only a 401 against an existing token signals a real
@@ -132,7 +169,7 @@ export const buildFetchOptions = (platform: string) => ({
     clearCachedSession()
     if (hadToken) {
       // Event name + reason kept in sync with src/db/powersync/connector.ts. Fires on Better Auth's
-      // session validation (mount + tab focus), which detects expiry well before PowerSync's
+      // session validation (mount + reconnect), which detects expiry well before PowerSync's
       // credential refresh kicks in — cuts boot-time delay from seconds to milliseconds.
       window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
     }
@@ -199,16 +236,15 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     void consumePendingSsoAnonAlias(value.authClient)
   }, [value])
 
-  // Validate the stored token on mount via HttpClient — its afterResponse hook fires
-  // session_expired on the first 401. Avoids Better Auth's auth client to sidestep its
-  // internal retry path. Ref guards against StrictMode's double mount.
+  // Check the session on mount via HttpClient — its afterResponse hook fires
+  // session_expired on the first 401, or device_revoked on a 403 for a revoked device.
+  // Runs without a token too: a revoked device whose token an earlier 401 cleared still
+  // gets its 403. Avoids Better Auth's auth client to sidestep its internal retry path.
+  // Ref guards against StrictMode's double mount.
   const httpClient = useHttpClient()
   const sessionCheckFiredRef = useRef(false)
   useEffect(() => {
     if (!value?.authClient || sessionCheckFiredRef.current) {
-      return
-    }
-    if (!getAuthToken()) {
       return
     }
     sessionCheckFiredRef.current = true

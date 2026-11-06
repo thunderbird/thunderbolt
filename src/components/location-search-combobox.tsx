@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { useLocationSearch, type LocationData } from '@/hooks/use-location-search'
 import type { ComponentPropsWithoutRef } from 'react'
@@ -16,12 +17,13 @@ type LocationSearchComboboxProps = Omit<ComponentPropsWithoutRef<'button'>, 'val
 export const LocationSearchCombobox = ({
   value,
   onSelect,
-  placeholder = 'Select location...',
+  placeholder,
   autoOpen = false,
   className,
   disabled,
   ...rest
 }: LocationSearchComboboxProps) => {
+  const { t } = useLingui()
   const locationSearch = useLocationSearch({ autoOpen })
 
   const items: ComboboxItem[] = locationSearch.locations.map((location) => ({
@@ -42,14 +44,14 @@ export const LocationSearchCombobox = ({
       items={items}
       onValueChange={handleValueChange}
       displayValue={value || undefined}
-      placeholder={placeholder}
-      searchPlaceholder="Search locations..."
+      placeholder={placeholder ?? t`Select location…`}
+      searchPlaceholder={t`Search locations…`}
       searchValue={locationSearch.searchQuery}
       onSearchChange={locationSearch.setSearchQuery}
       loading={locationSearch.searchQuery.trim().length > 0 && (locationSearch.isSearching || locationSearch.isPending)}
       emptyMessage={
         locationSearch.searchQuery.trim().length > 0 && locationSearch.locations.length === 0
-          ? 'No locations found.'
+          ? t`No locations found.`
           : ''
       }
       open={locationSearch.open}

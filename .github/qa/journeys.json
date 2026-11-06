@@ -1,0 +1,144 @@
+[
+  {
+    "id": "trip-planner",
+    "who": "Marta, a freelance designer planning a long weekend in Lisbon with a friend.",
+    "goal": "Wants to know what the weather will be like, see where the main sights are relative to each other, and get a few good articles to read. Needs the whole plan to still be there when she comes back later.",
+    "style": "Asks follow-ups that build on earlier answers, changes her mind about dates mid-chat.",
+    "crosses": ["chat", "weather widget", "map widget", "link preview", "citations", "reload"],
+    "pt": "Planeja uma viagem a Lisboa com clima, mapa e links, e confere depois de recarregar."
+  },
+  {
+    "id": "contract-reader",
+    "who": "Daniel, a law student who got a PDF and a photo from a classmate and has to prepare for a seminar.",
+    "goal": "Wants the AI to tell him what is in the PDF and the image, then compare the two in a follow-up. Wants to keep the files tied to the right chat.",
+    "style": "Asks open questions, never describes the files himself, attaches the same file twice to see what happens.",
+    "crosses": ["attachments (pdf, png)", "chat", "model picker", "reload"],
+    "pt": "Estudante manda PDF e imagem e faz perguntas sobre eles em dois chats."
+  },
+  {
+    "id": "tone-coach",
+    "who": "Priya, a support lead who rewrites customer emails all day and wants them consistently warm and short.",
+    "goal": "Wants a reusable way to make the AI rewrite any email in her team's tone, and wants proof that it really changes the replies versus a chat without it.",
+    "style": "Methodical, compares before and after, edits the instructions and tries again.",
+    "crosses": ["skills", "settings", "chat", "reload"],
+    "pt": "Cria uma skill de revisão de e-mails e testa se ela muda de fato as respostas."
+  },
+  {
+    "id": "thesis-project",
+    "who": "Tomas, a master's student keeping all research chats for his thesis on urban beekeeping in one place.",
+    "goal": "Wants a home for the thesis with standing instructions the AI always follows, several chats inside it, and a clean way to tidy up when he is done.",
+    "style": "Organizes obsessively, renames things, moves between projects and plain chats.",
+    "crosses": ["projects", "chat", "rename/delete", "sidebar", "reload"],
+    "pt": "Cria um projeto para a tese, com instruções, e conversa dentro dele."
+  },
+  {
+    "id": "mcp-tinkerer",
+    "who": "Wei, a developer who just set up a small local tool server and wants to try it from chat.",
+    "goal": "Wants to connect his local MCP server, see which tool it offers, use it from a normal conversation, and confirm the connection survives a reload and can be turned off.",
+    "style": "Skeptical: checks that the tool really ran rather than trusting the reply; tries a bad URL first.",
+    "crosses": ["connections", "MCP tools", "chat", "settings", "reload"],
+    "pt": "Conecta o servidor MCP local e usa a ferramenta echo em conversa normal."
+  },
+  {
+    "id": "model-hopper",
+    "who": "Aisha, a data analyst who suspects different models answer the same question differently.",
+    "goal": "Wants to ask the same questions to each available model, switch models in the middle of a conversation without losing context, and see which one she prefers.",
+    "style": "Impatient: stops replies early, regenerates, switches model while a reply is streaming.",
+    "crosses": ["models", "model picker", "chat", "stop/regenerate", "settings"],
+    "pt": "Troca de modelo no meio da conversa e compara as respostas."
+  },
+  {
+    "id": "portuguese-cook",
+    "who": "Beatriz, a home cook in Sao Paulo who uses the app only in Brazilian Portuguese.",
+    "goal": "Wants recipes in metric units, the weather for her weekend barbecue, and wants the app to remember her language and units after she closes the tab.",
+    "style": "Writes in Portuguese with accents and informal slang, switches units to imperial to see the replies change.",
+    "crosses": ["language pt-BR", "units", "chat", "weather widget", "reload"],
+    "pt": "Usuária brasileira usa o app todo em português e pede receitas, tempo e medidas."
+  },
+  {
+    "id": "japanese-student",
+    "who": "Kenji, a university student in Osaka who keeps notes and questions in Japanese.",
+    "goal": "Wants the interface and the AI in Japanese, a few chats about his studies, and to find an old chat again by searching for a word he remembers.",
+    "style": "Writes in Japanese, mixes in English words and emoji, pastes a long paragraph.",
+    "crosses": ["language ja", "chat", "search", "long text", "reload"],
+    "pt": "Estudante japonês muda para japonês, escreve em japonês e busca no histórico."
+  },
+  {
+    "id": "backup-keeper",
+    "who": "Olu, a cautious user who wants a safety copy of everything before trying a new laptop.",
+    "goal": "Wants to export all his data, wipe the app clean, bring everything back from the file, and be sure chats, skills and projects are all intact afterwards.",
+    "style": "Careful, counts items before and after, tries importing the same file twice.",
+    "crosses": ["data export/import", "chats", "skills", "projects", "settings"],
+    "pt": "Exporta os dados, apaga tudo e importa de volta, conferindo se nada se perdeu."
+  },
+  {
+    "id": "phone-commuter",
+    "who": "Sofia, who uses the app on her phone on the train, one-handed, in short bursts.",
+    "goal": "Wants to ask quick questions, send a photo and ask about it, find her older chats from the menu, and tidy a few of them.",
+    "style": "Taps fast, rotates between chats, types long messages with the on-screen keyboard.",
+    "crosses": ["chat", "attachments (png)", "sidebar drawer", "rename/delete", "widgets on a narrow screen"],
+    "pt": "No celular, faz perguntas rápidas, anexa foto, renomeia e apaga conversas."
+  },
+  {
+    "id": "settings-fiddler",
+    "who": "Greta, a retired teacher who likes everything set just so: dark theme, her city, her units, her name.",
+    "goal": "Wants to personalize the app and see the AI actually use it, for example greeting her by name and answering weather in her units and city.",
+    "style": "Changes many things quickly, reloads often, clears fields she just filled.",
+    "crosses": ["preferences", "units", "location", "theme", "chat", "weather widget", "reload"],
+    "pt": "Mexe em várias preferências ao mesmo tempo e confere se tudo persiste e se reflete no chat."
+  },
+  {
+    "id": "quiz-teacher",
+    "who": "Hannah, a geography teacher preparing a 15-minute class activity.",
+    "goal": "Wants a short quiz she can try herself, a map that shows the places from the quiz, and a summary she could hand out.",
+    "style": "Answers quiz questions wrongly on purpose, asks for the same widget again with different content.",
+    "crosses": ["quiz widget", "map widget", "document widgets", "chat", "reload"],
+    "pt": "Professor pede quizzes e mapas para aula e usa os widgets interativos."
+  },
+  {
+    "id": "chaos-keyboard",
+    "who": "Rafa, a power user who never touches the mouse and loves to find where software cracks.",
+    "goal": "Wants to run a whole conversation, switch chats, open settings and come back using only the keyboard, while throwing odd input at it.",
+    "style": "Keyboard-only, impatient, tries to break things: double sends, pasting markup, emoji, very long lines, Enter during streaming.",
+    "crosses": ["composer", "keyboard navigation", "stop reply", "long/special input", "sidebar", "settings"],
+    "pt": "Usuário impaciente só de teclado tenta quebrar o app com envios rápidos e textos estranhos."
+  },
+  {
+    "id": "agent-builder",
+    "who": "Lena, a product manager who wants a dedicated assistant for writing release notes.",
+    "goal": "Wants an assistant of her own with the right skill and model, then to use it on a real piece of text and edit it when the first result is not quite right.",
+    "style": "Iterates: tweaks the setup, retries the same prompt, compares results.",
+    "crosses": ["agents", "skills", "models", "chat", "reload"],
+    "pt": "Cria um agente personalizado com skill e modelo próprios e conversa com ele."
+  },
+  {
+    "id": "calendar-planner",
+    "who": "Jonas, a consultant with a crowded week. His personal Google calendar is his main one; his employer's work calendar, jonas@northwind.test, is shared into the same Google account.",
+    "goal": "Wants a free hour on Thursday for a client call that clashes with nothing in either calendar, and wants to be sure the suggestion is right before he sends the invite. He asks for it by naming both calendars, for example 'check my calendar and also my work calendar, jonas@northwind.test'.",
+    "style": "Plain and direct; always names the work calendar by its address; double-checks the suggested time against both calendars; when something fails he wants to know exactly why.",
+    "crosses": ["connections", "Google sign-in", "calendar tool", "chat", "error messages", "reload"],
+    "facts": [
+      "Connect Google as jonas@gmail.test on the fake's account chooser. All times are UTC; 'Thursday' is the next Thursday after today.",
+      "Primary calendar, Thursday: 09:00-11:00 Client workshop (Acme), 12:00-13:00 Lunch with Ana, 13:00-15:00 Proposal writing, 16:00-18:00 Quarterly planning. Free working hours there: 11:00-12:00 and 15:00-16:00. Friday is an all-day 'Conference - Lisbon'.",
+      "Work calendar jonas@northwind.test (not primary), Thursday: 15:00-16:00 Design review. So 11:00-12:00 is the only hour free across both. Jonas names this calendar in his request, so a suggestion of 15:00 means the app ignored the calendar he named. The app has no way to list calendars, so he must give the address; the AI is not expected to find the calendar by itself.",
+      "Other accounts on the chooser: no-calendar-scope@gmail.test (Calendar access not granted: Google 403 insufficientPermissions) and no-calendar-api@gmail.test (Calendar API disabled: 403 accessNotConfigured). The app should name the real cause, not a generic error."
+    ],
+    "pt": "Conecta o Google e pede um horário livre na quinta que não conflite com nada na agenda pessoal nem na do trabalho."
+  },
+  {
+    "id": "inbox-triager",
+    "who": "Camille, a startup founder back from a week off, with her work mail in Gmail.",
+    "goal": "Wants only her unread emails, ordered by how urgent they really are, then a reply draft to the most urgent one saved in Gmail so she can review and send it herself.",
+    "style": "Asks for corrections to the draft, switches its tone twice, pushes back if an email she already read shows up.",
+    "crosses": ["connections", "Google sign-in", "Gmail tools", "chat", "reload"],
+    "facts": [
+      "Connect Google as camille@gmail.test on the fake's account chooser.",
+      "8 messages from the last two days, 6 unread. Most urgent: Rita Okafor (Northstar Ventures), 'Term sheet: signature needed today by 17:00 UTC', even though Gmail does not mark it Important or starred. Next: Paul Meyer (CTO), 'Prod database at 91% disk' (marked Important), needs her OK by tomorrow; then Jana Novak asking to move Thursday's demo.",
+      "Low: Acme Tools 'ACTION REQUIRED: your 40% discount expires tonight' (marked Important and in Promotions, but marketing), a newsletter, and an HR note about next year's holiday calendar.",
+      "Already read, so never listed as unread: Paul's 'Outage last night: resolved' and Rita's 'Draft term sheet v1'.",
+      "The reply is saved as a Gmail draft (the fake stores nothing, but the tool must report it was created); it should answer Rita about the 17:00 deadline.",
+      "Other accounts on the chooser: expired@gmail.test (every call must refresh the token first) and big@gmail.test (1,200 messages)."
+    ],
+    "pt": "Conecta o Gmail e pede um resumo dos e-mails não lidos por urgência e um rascunho de resposta ao mais urgente."
+  }
+]

@@ -65,16 +65,13 @@ fn read_file(path: PathBuf) -> Result<Vec<u8>, String> {
 /// Restore inputs atomically without truncating files edited between turns.
 fn restore_input(path: &std::path::Path, content: &[u8]) -> Result<(), String> {
     use std::io::Write;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-    {
-        Ok(mut file) => file.write_all(content).map_err(|e| e.to_string()),
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+    let parent = path.parent().ok_or("Missing input directory")?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+    staged.write_all(content).map_err(|e| e.to_string())?;
+    match staged.persist_noclobber(path) {
+        Ok(_) => Ok(()),
+        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(error) => Err(error.to_string()),
     }
 }
@@ -445,6 +442,16 @@ mod tests {
         std::fs::write(&file, b"edited").unwrap();
         restore_input(&file, b"original").unwrap();
         assert_eq!(std::fs::read(&file).unwrap(), b"edited");
+    }
+
+    #[test]
+    fn failed_input_publication_removes_the_staged_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join("existing-directory");
+        std::fs::create_dir(&destination).unwrap();
+        restore_input(&destination, b"content").unwrap();
+        assert!(destination.is_dir());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[test]

@@ -672,6 +672,36 @@ describe('startMembershipHeartbeat — 45s cadence', () => {
     expect(heartbeatIntervalMs).toBe(45_000)
   })
 
+  it('recovers after a refresh rejects, sweeps the next tick, and still stops', async () => {
+    const refresh = mock(async () => {}).mockRejectedValueOnce(new Error('temporary refresh failure'))
+    const allowlist = fakeAllowlist(new Set(), refresh)
+    const peer = fakeOpen('revoked-peer')
+    const pending: Array<() => void> = []
+    const sleep = (_ms: number) => new Promise<void>((resolve) => pending.push(resolve))
+    const stderr = spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const stop = startMembershipHeartbeat(allowlist, new Set([peer.open]), { now: () => 0, sleep })
+    try {
+      pending.shift()?.()
+      await flush()
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(peer.close).not.toHaveBeenCalled()
+      expect(stderr).toHaveBeenCalledWith(expect.stringContaining('temporary refresh failure'))
+      pending.shift()?.()
+      await flush()
+      expect(refresh).toHaveBeenCalledTimes(2)
+      expect(peer.close).toHaveBeenCalledTimes(1)
+      stop()
+      pending.shift()?.()
+      await flush()
+      expect(refresh).toHaveBeenCalledTimes(2)
+    } finally {
+      stop()
+      pending.shift()?.()
+      await flush()
+      stderr.mockRestore()
+    }
+  })
+
   it('refreshes each interval until stopped, driven by the injected clock (no real timers)', async () => {
     const refresh = mock(async () => {})
     const allowlist = fakeAllowlist(new Set(), refresh)

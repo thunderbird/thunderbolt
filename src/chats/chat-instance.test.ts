@@ -101,12 +101,15 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     triggerData: null,
   })
 
-  const finishWithError = (error?: Error) => {
+  const finishWithError = (
+    error?: Error,
+    message: ThunderboltUIMessage = { id: 'failed-assistant', role: 'assistant', parts: [] },
+  ) => {
     if (error) {
       onError?.(error)
     }
     return onFinish!({
-      message: { id: 'failed-assistant', role: 'assistant', parts: [] },
+      message,
       messages: [],
       isAbort: false,
       isDisconnect: false,
@@ -1591,6 +1594,32 @@ describe('createChatInstance — retry policy', () => {
     expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(1)
     await getClock().runAllAsync()
     expect(regenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry a newer turn when an older failed response finishes saving', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishWithError, getTurnBudget, instance, regenerate, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const firstFinish = finishWithError(new Error('Connection failed'), {
+      id: 'partial-assistant',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Partial response' }],
+    })
+
+    await instance.sendMessage({ text: 'second turn' })
+    const secondTurnBudget = getTurnBudget()
+    resolveSave(0)
+    await firstFinish
+
+    expect(getTurnBudget()).toBe(secondTurnBudget)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(0)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retriesExhausted).toBe(false)
+    await getClock().runAllAsync()
+    expect(regenerate).not.toHaveBeenCalled()
+    const summaries = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]![1]).toEqual(expect.objectContaining({ outcome: 'error' }))
   })
 
   it('attributes a reply to the turn model when the session model changes mid-save', async () => {

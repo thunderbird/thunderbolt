@@ -76,34 +76,184 @@ const fixture = (save: SaveMessagesFunction = async () => {}) => {
   return { instance, saved, send, regenerate, finish, callbacks }
 }
 
+/** Exercise real SDK stream updates and final persistence with only the wire response injected. */
+const sdkFixture = (respond: (instance: ReturnType<typeof createChatInstance>) => Response) => {
+  const persisted = new Map<string, ThunderboltUIMessage>()
+  const fetch = mock(async () => respond(instance))
+  const instance = createChatInstance(
+    'chat',
+    [],
+    async ({ messages }) => {
+      for (const message of messages) {
+        persisted.set(message.id, message)
+      }
+    },
+    createClient({ prefixUrl: 'https://backend.invalid' }),
+    () => Object.assign(async () => new Response(), { preconnect: async () => false }),
+    {
+      createChat: (init) =>
+        new Chat({
+          ...init,
+          transport: new DefaultChatTransport({ fetch: Object.assign(fetch, { preconnect: () => undefined }) }),
+        }),
+      trackEvent: () => {},
+    },
+  )
+  hydrateStore({
+    id: 'chat',
+    chatInstance: instance,
+    chatThread: createMockChatThread({ agentId: agent.id }),
+    selectedModel: createMockModel(),
+    triggerData: null,
+  })
+  useChatStore.getState().updateSession('chat', { selectedAgent: agent })
+  return { instance, persisted, fetch }
+}
+
 afterEach(() => {
   resetStore()
   useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() })
 })
 
 describe('ACP compaction chat lifecycle', () => {
-  it('finishes a silent translator response without the real SDK submitting the command again', async () => {
-    const f = fixture()
-    const fetch = mock(async () => {
-      const { body, translator, close } = createTranslatorStream()
-      translator.start()
-      if (fetch.mock.calls.length > 1) {
-        translator.error('Unexpected command resubmission')
+  it.each(['text', 'tool', 'compaction', 'usage'] as const)(
+    'keeps replayed compaction before a %s response when saved messages are reloaded by id',
+    async (firstContent) => {
+      const { instance, persisted } = sdkFixture((instance) => {
+        instance.onAcpSessionEvent({ type: 'compaction', compaction }, false, true)
+        const { body, translator, close } = createTranslatorStream({ textDeltaThrottleMs: 0 })
+        translator.start()
+        if (firstContent === 'text') {
+          translator.handle({
+            sessionId: 'acp-1',
+            update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'New response' } },
+          })
+        } else if (firstContent === 'tool') {
+          translator.handle({
+            sessionId: 'acp-1',
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId: 'tool',
+              title: 'Read',
+              status: 'completed',
+              rawOutput: 'Done',
+            },
+          })
+        } else if (firstContent === 'compaction') {
+          translator.compaction({ ...compaction, compactionId: 'current' })
+        } else {
+          translator.usage({ agentId: agent.id, sessionId: 'acp-1', used: 20, size: 1000 })
+        }
+        translator.finish()
+        close()
+        return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+      })
+      await instance.sendMessage({ text: 'Continue' })
+      await getClock().tickAsync(0)
+      const live = instance.messages.filter((message) => message.role === 'assistant')
+      expect(live).toHaveLength(2)
+      expect(live[0].parts[0]).toMatchObject({ type: 'data-acp-compaction', data: compaction })
+      const restored = [...persisted.values()].sort((a, b) => a.id.localeCompare(b.id))
+      expect(restored.map((message) => message.id)).toEqual(live.map((message) => message.id))
+    },
+  )
+
+  it.each([false, true])(
+    'finishes a silent command without an empty reply or resubmission (error: %s)',
+    async (isError) => {
+      const {
+        instance: sdk,
+        persisted,
+        fetch,
+      } = sdkFixture(() => {
+        const { body, translator, close } = createTranslatorStream()
+        translator.start()
+        if (fetch.mock.calls.length > 1) {
+          translator.error('Unexpected command resubmission')
+        } else if (isError) {
+          translator.error('Command failed')
+        }
+        translator.finish()
+        close()
+        return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+      })
+      await sdk.sendMessage({ text: '/compact', metadata: { acpCommand: 'compact' } })
+      await getClock().tickAsync(0)
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(sdk.status).toBe(isError ? 'error' : 'ready')
+      expect(sdk.messages).toHaveLength(1)
+      expect(sdk.messages[0].role).toBe('user')
+      expect(sdk.error?.message).toBe(isError ? 'Command failed' : undefined)
+      expect(persisted.size).toBe(0)
+    },
+  )
+
+  it.each(['text', 'reasoning', 'compaction', 'usage'] as const)(
+    'persists a final %s snapshot on error without a mounted chat',
+    async (content) => {
+      const { instance, persisted } = sdkFixture((instance) => {
+        const { body, translator, close } = createTranslatorStream({ textDeltaThrottleMs: 0 })
+        translator.start()
+        if (content === 'compaction') {
+          expect(instance.onAcpSessionEvent({ type: 'compaction', compaction }, true)).toBe(false)
+          translator.compaction(compaction)
+        } else if (content === 'usage') {
+          translator.usage({ agentId: agent.id, sessionId: 'acp-1', used: 20, size: 1000 })
+        } else {
+          translator.handle({
+            sessionId: 'acp-1',
+            update: {
+              sessionUpdate: content === 'text' ? 'agent_message_chunk' : 'agent_thought_chunk',
+              content: { type: 'text', text: 'Final partial' },
+            },
+          })
+        }
+        translator.error('Command failed after streaming')
+        translator.finish()
+        close()
+        return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+      })
+      await instance.sendMessage({ text: '/compact', metadata: { acpCommand: 'compact' } })
+      await getClock().tickAsync(0)
+      expect(instance.status).toBe('error')
+      const saved = [...persisted.values()]
+      expect(saved).toHaveLength(1)
+      expect(saved[0].id).toBe(instance.messages.at(-1)!.id)
+      if (content === 'usage') {
+        expect(saved[0].metadata?.acpContextUsage).toEqual({
+          agentId: agent.id,
+          sessionId: 'acp-1',
+          used: 20,
+          size: 1000,
+        })
+      } else {
+        const part =
+          content === 'compaction'
+            ? { type: 'data-acp-compaction', data: compaction }
+            : { type: content, text: 'Final partial', ...(content === 'reasoning' ? { state: 'done' } : {}) }
+        expect(saved[0].parts).toContainEqual(expect.objectContaining(part))
+        expect(instance.messages.at(-1)?.parts).toContainEqual(expect.objectContaining(part))
       }
-      translator.finish()
-      close()
-      return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+    },
+  )
+
+  it('persists an empty reply materialized before an error so reload cannot automatically resubmit its prompt', async () => {
+    const { instance, persisted, fetch } = sdkFixture(() => {
+      const chunks = [
+        { type: 'start', messageId: 'empty-reply' },
+        { type: 'start-step' },
+        { type: 'error', errorText: 'Provider unavailable' },
+      ]
+      return new Response(chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join(''), {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
     })
-    const sdk = new Chat<ThunderboltUIMessage>({
-      transport: new DefaultChatTransport({ fetch: Object.assign(fetch, { preconnect: () => undefined }) }),
-      sendAutomaticallyWhen: f.callbacks.current!.sendAutomaticallyWhen,
-    })
-    await sdk.sendMessage({ text: '/compact', metadata: { acpCommand: 'compact' } })
+    await instance.sendMessage({ text: 'Continue' })
+    await getClock().tickAsync(0)
+    expect(instance.status).toBe('error')
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(sdk.status).toBe('ready')
-    expect(sdk.messages).toHaveLength(1)
-    expect(sdk.messages[0].role).toBe('user')
-    expect(sdk.error).toBeUndefined()
+    expect(instance.messages.at(-1)).toMatchObject({ id: 'empty-reply', role: 'assistant' })
+    expect([...persisted.values()]).toEqual([instance.messages.at(-1)!])
   })
 
   it('does not automatically resubmit a silent native command through the SDK send predicate', async () => {

@@ -184,10 +184,6 @@ export const useHydrateChatStore = ({
    * are all avoidable per token. The authoritative complete save runs in the
    * chat instance's `onFinish` via {@link saveMessages}.
    */
-  // Stable identity (deps: the stable `db` context value) so it can sit in the
-  // partial-save effect's dependency array without re-firing on every parent
-  // render — otherwise an on-screen error terminal would re-run the direct
-  // error-save (a redundant idempotent upsert + E2EE encrypt/upload) per render.
   const saveStreamingMessage: SaveStreamingMessageFunction = useCallback(
     async ({ threadId, message, parentId }) => {
       await saveStreamingAssistantMessage(db, threadId, message, parentId)

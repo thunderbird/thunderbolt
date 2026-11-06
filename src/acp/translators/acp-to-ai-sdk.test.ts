@@ -4,9 +4,8 @@
 
 /**
  * Translator unit tests. The translator state is exercised through `emit`
- * collection (an array) rather than the SSE byte stream — wire encoding is
- * trivial and orthogonal to the mapping logic. The stream-end + finish path
- * is covered indirectly by `createTranslatorStream` (one test below).
+ * collection (an array) and the real AI SDK consuming the SSE byte stream.
+ * Stream tests also cover deferred response IDs and command completion.
  */
 
 import '@/testing-library'
@@ -18,6 +17,8 @@ import { getClock } from '@/testing-library'
 import { createTranslator, createTranslatorStream } from './acp-to-ai-sdk'
 import type { AiSdkChunk } from '../types'
 import { acpCompactionKey, type AcpCompaction } from '../compaction'
+import { Chat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
 
 const notification = (update: SessionNotification['update']): SessionNotification => ({
   sessionId: 'sess-1',
@@ -193,6 +194,70 @@ describe('createTranslator — mapping', () => {
     ])
   })
 
+  it.each([false, 0, '', [], { query: 'updated' }].map((input) => ({ input })))(
+    'applies a late input value $input and retains it through null patches',
+    ({ input }) => {
+      const { emit, chunks } = collect()
+      const t = createTranslator(emit)
+      t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search' }))
+      t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawInput: input }))
+      t.handle(
+        notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawInput: null, title: 'Searching' }),
+      )
+      expect(chunks.filter((chunk) => chunk.type === 'tool-input-available').at(-1)).toEqual({
+        type: 'tool-input-available',
+        toolCallId: 'tc1',
+        toolName: 'search',
+        title: 'Searching',
+        input,
+      })
+    },
+  )
+
+  it.each(['completed', 'failed'] as const)(
+    'updates tool details without losing the SDK %s state or duration',
+    async (status) => {
+      const { body, translator, close } = createTranslatorStream({ now: () => 10 })
+      translator.start()
+      translator.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search' }))
+      translator.handle(
+        notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawInput: { query: 'first' } }),
+      )
+      translator.handle(
+        notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status, rawOutput: 'result' }),
+      )
+      translator.compaction({ agentId: 'agent', sessionId: 'sess-1', compactionId: 'compact', status: 'completed' })
+      translator.handle(
+        notification({
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'tc1',
+          rawInput: { query: 'final' },
+          title: 'Search complete',
+        }),
+      )
+      translator.finish()
+      close()
+      const sdk = new Chat({
+        transport: new DefaultChatTransport({
+          fetch: Object.assign(async () => new Response(body, { headers: { 'Content-Type': 'text/event-stream' } }), {
+            preconnect: () => undefined,
+          }),
+        }),
+      })
+      await sdk.sendMessage({ text: 'Search' })
+      expect(sdk.error).toBeUndefined()
+      expect(sdk.messages.at(-1)?.parts.find((part) => part.type === 'tool-search')).toMatchObject({
+        type: 'tool-search',
+        title: 'Search complete',
+        input: { query: 'final' },
+        ...(status === 'completed'
+          ? { state: 'output-available', output: 'result' }
+          : { state: 'output-error', errorText: 'result' }),
+      })
+      expect(sdk.messages.at(-1)?.metadata).toMatchObject({ reasoningTime: { tc1: 0 } })
+    },
+  )
+
   it('plan / available_commands_update / current_mode_update are ignored', () => {
     const { emit, chunks } = collect()
     const t = createTranslator(emit)
@@ -353,11 +418,23 @@ describe('createTranslatorStream — wire format', () => {
       }
       text += decoder.decode(value, { stream: true })
     }
-    expect(text).toContain('data: {"type":"start"}\n\n')
+    expect(JSON.parse(text.split('\n\n')[0].slice('data: '.length))).toEqual({
+      type: 'start',
+      messageId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+    })
     expect(text).toContain('data: {"type":"text-start"')
     expect(text).toContain('"type":"text-delta"')
     expect(text).toContain('data: {"type":"finish"}\n\n')
     expect(text.endsWith('data: [DONE]\n\n')).toBe(true)
+  })
+
+  it('flushes a closed startup without allocating an empty assistant message', async () => {
+    const { body, translator, close } = createTranslatorStream()
+    translator.start()
+    close()
+    expect(await new Response(body).text()).toBe(
+      'data: {"type":"start"}\n\ndata: {"type":"start-step"}\n\ndata: [DONE]\n\n',
+    )
   })
 })
 

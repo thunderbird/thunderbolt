@@ -33,8 +33,12 @@ const summaryBlockText = (block: ContentBlock): string => {
 /** Offer inspection only when an ACP event contains readable summary content. */
 export const acpCompactionSummary = (compaction: AcpCompaction): CompactionSummary | undefined => {
   const summary = compaction.summary
-    ?.map(summaryBlockText)
-    .filter((text) => text.trim())
-    .join('\n\n')
-  return summary ? { summary } : undefined
+    ?.map((block, index, blocks) => {
+      // Text chunks can split words or Markdown; only non-text blocks need separators.
+      const adjacentText = block.type === 'text' && blocks[index - 1]?.type === 'text'
+      const separator = index === 0 || adjacentText ? '' : '\n\n'
+      return separator + summaryBlockText(block)
+    })
+    .join('')
+  return summary?.trim() ? { summary } : undefined
 }

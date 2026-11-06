@@ -29,6 +29,18 @@ const show = (compaction: Partial<AcpCompaction>) =>
 
 afterEach(cleanup)
 
+it('renders Markdown split across streamed summary chunks as one continuous document', () => {
+  show({
+    summary: ['Keep **auth', 'entication', '** safe.', '\n', '\n', '- Preserve credentials'].map((text) => ({
+      type: 'text',
+      text,
+    })),
+  })
+  fireEvent.click(screen.getByRole('button', { name: /View summary/ }))
+  expect(screen.getByText('authentication').tagName).toBe('STRONG')
+  expect(screen.getByRole('listitem')).toHaveTextContent('Preserve credentials')
+})
+
 it.each([
   ['in_progress', 'Compacting…'],
   ['completed', 'Compacted'],

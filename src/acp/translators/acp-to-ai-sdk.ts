@@ -15,7 +15,8 @@
  *   agent_message_chunk (reasoning) → reasoning-start … → reasoning-delta … (rare)
  *   agent_thought_chunk             → reasoning-start (once) → reasoning-delta … → reasoning-end
  *   tool_call                       → tool-input-start + tool-input-available
- *   tool_call_update (in_progress)  → buffered (no emit)
+ *   tool_call_update (input/title)  → tool-input-available with the latest details
+ *   tool_call_update (in_progress)  → results buffered until terminal status
  *   tool_call_update (completed)    → tool-output-available
  *   tool_call_update (failed)       → tool-output-error
  *   available_commands_update      → ignored here (captured agent-level by the
@@ -39,6 +40,7 @@ import type {
 import type { HaystackDocumentMeta, HaystackReferenceMeta } from '@/types'
 import type { AiSdkChunk } from '../types'
 import { acpCompactionKey, type AcpCompaction, type AcpContextUsage } from '../compaction'
+import { v7 as uuidv7 } from 'uuid'
 
 const sseDataPrefix = 'data: '
 const sseDataSuffix = '\n\n'
@@ -186,9 +188,16 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
   let textPart = 0
   let reasoningPart = 0
   const compactionIds = new Set<string>()
-  const toolOutputs = new Map<
+  const toolCalls = new Map<
     string,
-    { status: ToolCallStatus; rawOutput: unknown; content: ToolCallUpdate['content'] }
+    {
+      toolName: string | undefined
+      title: string | undefined
+      input: unknown
+      status: ToolCallStatus
+      rawOutput: unknown
+      content: ToolCallUpdate['content']
+    }
   >()
   // Tool IDs and zero-based reasoning indices match groupMessageParts' keys.
   const toolStartTimes = new Map<string, number>()
@@ -275,15 +284,27 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
     emit({ type: 'reasoning-start', id: reasoningThrottle.id })
   }
 
-  /** ACP tool patches retain omitted/null fields, including results sent before terminal status. */
-  const updateToolOutput = (update: ToolCallUpdate): void => {
-    const previous = toolOutputs.get(update.toolCallId)
+  /** Apply ACP patches while preserving the tool's identity and any terminal result. */
+  const updateToolCall = (update: ToolCallUpdate): void => {
+    const previous = toolCalls.get(update.toolCallId)
     const state = {
+      toolName: previous?.toolName ?? update.title ?? undefined,
+      title: update.title ?? previous?.title,
+      input: update.rawInput ?? previous?.input ?? {},
       status: update.status ?? previous?.status ?? 'pending',
       rawOutput: update.rawOutput ?? previous?.rawOutput,
       content: update.content ?? previous?.content,
     }
-    toolOutputs.set(update.toolCallId, state)
+    toolCalls.set(update.toolCallId, state)
+    if (state.toolName !== undefined && (update.rawInput != null || update.title != null)) {
+      emit({
+        type: 'tool-input-available',
+        toolCallId: update.toolCallId,
+        toolName: state.toolName,
+        title: state.title,
+        input: state.input,
+      })
+    }
     if (state.status === 'in_progress' || state.status === 'pending') {
       return
     }
@@ -339,18 +360,11 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
           toolName: update.title,
           title: update.title,
         })
-        emit({
-          type: 'tool-input-available',
-          toolCallId: update.toolCallId,
-          toolName: update.title,
-          input: update.rawInput ?? {},
-          title: update.title,
-        })
-        updateToolOutput(update)
+        updateToolCall(update)
         return
       }
       case 'tool_call_update': {
-        updateToolOutput(update)
+        updateToolCall(update)
         return
       }
       case 'current_mode_update': {
@@ -435,6 +449,7 @@ export const createTranslatorStream = (
 ): { body: ReadableStream<Uint8Array>; translator: Translator; close: () => void } => {
   let controller: ReadableStreamDefaultController<Uint8Array>
   let closed = false
+  const pendingStart: AiSdkChunk[] = []
 
   const body = new ReadableStream<Uint8Array>({
     start(c) {
@@ -449,9 +464,24 @@ export const createTranslatorStream = (
     },
   })
 
+  /** Allocate the response after replayed entries, without creating a shell for silent commands. */
+  const flushStart = (messageId?: string): void => {
+    for (const chunk of pendingStart.splice(0)) {
+      controller.enqueue(encodeChunk(chunk.type === 'start' && messageId ? { ...chunk, messageId } : chunk))
+    }
+  }
+
   const emit = (chunk: AiSdkChunk): void => {
     if (closed) {
       return
+    }
+    if (chunk.type === 'start' || chunk.type === 'start-step') {
+      pendingStart.push(chunk)
+      return
+    }
+    if (pendingStart.length > 0) {
+      const terminal = chunk.type === 'finish-step' || chunk.type === 'finish' || chunk.type === 'error'
+      flushStart(terminal ? undefined : uuidv7())
     }
     controller.enqueue(encodeChunk(chunk))
   }
@@ -462,6 +492,7 @@ export const createTranslatorStream = (
     if (closed) {
       return
     }
+    flushStart()
     closed = true
     controller.enqueue(encodeDone())
     controller.close()

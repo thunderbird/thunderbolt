@@ -4,6 +4,45 @@
 
 import { expect, it } from 'bun:test'
 import { acpCompactionSummary } from './compaction-summary'
+import { applyAcpCompactionUpdate, type AcpCompaction } from '@/acp/compaction'
+
+it('preserves streamed text and whitespace without inserting paragraph breaks between chunks', () => {
+  const chunks = [
+    '## Retained',
+    ' context',
+    '\n\n',
+    '**Dec',
+    'isions**:',
+    ' ',
+    'keep authentication',
+    '\n',
+    '- Add tests',
+  ]
+  const initial: AcpCompaction = { agentId: 'agent', sessionId: 's', compactionId: 'c', status: 'in_progress' }
+  const compaction = chunks.reduce(
+    (previous, text) =>
+      applyAcpCompactionUpdate(
+        'agent',
+        's',
+        { sessionUpdate: 'compaction_summary_chunk', compactionId: 'c', content: { type: 'text', text } },
+        previous,
+      ),
+    initial,
+  )
+  expect(acpCompactionSummary(compaction)).toEqual({ summary: chunks.join('') })
+  const replacement = applyAcpCompactionUpdate(
+    'agent',
+    's',
+    {
+      sessionUpdate: 'compaction_update',
+      compactionId: 'c',
+      status: 'completed',
+      summary: [{ type: 'text', text: chunks.join('') }],
+    },
+    compaction,
+  )
+  expect(acpCompactionSummary(replacement)).toEqual(acpCompactionSummary(compaction))
+})
 
 it('preserves readable ACP resources while omitting embedded binaries and metadata', () => {
   const value = acpCompactionSummary({

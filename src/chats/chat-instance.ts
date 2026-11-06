@@ -543,8 +543,9 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
   }
 }
 
+/** Stream framing alone is not a reply; usage-only metadata still needs persistence. */
 const isEmptyAssistantMessage = (message: ThunderboltUIMessage | undefined): boolean =>
-  message?.role === 'assistant' && !message.parts?.length
+  message?.role === 'assistant' && !message.parts.some((part) => part.type !== 'step-start') && !message.metadata
 
 /** A reasoning part still mid-stream keeps its spinner running (reasoning-group.tsx)
  *  even after the turn settles — true when an aborted turn stopped during thinking. */
@@ -990,6 +991,12 @@ export const createChatInstance = (
         }
         resetRetryStateForNewTurn()
       }
+      /** Persist the terminal snapshot independently of mounted UI subscribers. */
+      const saveFinalMessage = async (completedMessage: ThunderboltUIMessage) => {
+        finishedTurn.telemetry?.startPhase('final_save')
+        await saveMessages({ id, messages: [completedMessage] })
+        finishedTurn.telemetry?.endPhase('final_save')
+      }
 
       if (isAbort) {
         // Settle the aborted turn so no spinner survives the stop,
@@ -1015,26 +1022,22 @@ export const createChatInstance = (
           const next = instance.messages.slice()
           next[lastIndex] = finalized
           instance.messages = next
-          finishedTurn.telemetry?.startPhase('final_save')
-          await saveMessages({ id, messages: [finalized] })
-          finishedTurn.telemetry?.endPhase('final_save')
-        } else if (completedMessage?.parts?.length) {
+          await saveFinalMessage(finalized)
+        } else if (message && !isEmptyAssistantMessage(message)) {
           // Stopped mid-answer: persist the partial. Streaming partial saves are
           // throttled and their pending trailing write is cancelled the moment
           // streaming stops (see SavePartialAssistantMessagesHandler), so onFinish
           // is the authoritative final save on abort — without this the last
           // streamed chunk would be lost on reload.
-          finishedTurn.telemetry?.startPhase('final_save')
-          await saveMessages({ id, messages: [completedMessage] })
-          finishedTurn.telemetry?.endPhase('final_save')
+          await saveFinalMessage(completedMessage!)
         }
         emitTurnCompleted(finishedTurn, 'abort', completedMessage)
         resetRetryStateIfUnswapped()
         return
       }
 
-      // Handle successful responses: message exists, no error, and has parts
-      if (!isError && message && message.parts?.length) {
+      // Handle successful responses with content or usage metadata.
+      if (!isError && message && !isEmptyAssistantMessage(message)) {
         const completedMessage = withDebugMetadata(finishedTurn, message)
         if (retryCount > 0) {
           trackEvent('chat_retry_success', {
@@ -1051,9 +1054,7 @@ export const createChatInstance = (
           throw new Error('No session found')
         }
 
-        finishedTurn.telemetry?.startPhase('final_save')
-        await saveMessages({ id, messages: [completedMessage] })
-        finishedTurn.telemetry?.endPhase('final_save')
+        await saveFinalMessage(completedMessage)
 
         trackEvent('chat_receive_reply', {
           ...finishedTurn.modelProperties,
@@ -1065,6 +1066,25 @@ export const createChatInstance = (
         emitTurnCompleted(finishedTurn, 'success', completedMessage)
         resetRetryStateIfUnswapped()
         return
+      }
+
+      // Background chats have no mounted partial-save subscriber. Persist the
+      // final error snapshot here too, before retrying or leaving the turn idle.
+      // Keep a visible empty failed reply too, so reload cannot auto-run its
+      // trailing prompt. Silent commands never create that live assistant row.
+      if (
+        isError &&
+        message &&
+        (!isEmptyAssistantMessage(message) ||
+          instance.messages.some((item) => item.role === 'assistant' && item.id === message.id))
+      ) {
+        const completedMessage = withDebugMetadata(finishedTurn, finalizeReasoning(message))
+        instance.messages = instance.messages.map((item) => (item.id === message.id ? completedMessage : item))
+        await saveFinalMessage(completedMessage)
+        if (currentTurn !== finishedTurn) {
+          emitTurnCompleted(finishedTurn, 'error', completedMessage)
+          return
+        }
       }
 
       // Agent commands may finish silently. Retrying a compaction command can
@@ -1131,7 +1151,7 @@ export const createChatInstance = (
         return
       }
 
-      const isEmptyTurn = !isError && !lastError && !message?.parts?.length
+      const isEmptyTurn = !isError && !lastError && (!message || isEmptyAssistantMessage(message))
       const retryReason = getChatErrorKind(lastError) ?? (isEmptyTurn ? emptyResponseRetryReason : 'unknown')
 
       if (retryCount < maxRetries) {

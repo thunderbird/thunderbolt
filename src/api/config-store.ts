@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { SharedModel } from '@shared/defaults/models'
+import type { ImageSupport, SharedModel } from '@shared/defaults/models'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -22,6 +22,14 @@ export type AppConfig = {
   allowCustomAgents?: boolean
   /** Chat-only shell for public deployments; see `selectMinimalMode`. */
   minimalMode?: boolean
+  /** Operator logo for the minimal-mode header; see `selectBrandLogo`. */
+  brandLogoUrl?: string
+  brandLogoDarkUrl?: string
+  brandLogoAlt?: string
+  /** Operator branding (`PublicBranding`), exactly as received. Read it only
+   *  through `selectBranding` (`src/lib/branding-selectors.ts`), which validates
+   *  it before it becomes CSS, hrefs or request paths. */
+  branding?: unknown
   debugTranscriptsEnabled?: boolean
   /** Whether the deployment offers passkeys (sign-in and sync unlock). False or
    *  absent (an older backend) = off; the frontend hides all passkey UI. */
@@ -39,6 +47,8 @@ export type AppConfig = {
       version: number
       defaultModelId: string
       data: SharedModel[]
+      /** Absent from backends that predate it. */
+      imageSupport?: Record<string, ImageSupport>
     }
   }
 }
@@ -71,6 +81,7 @@ export const useConfigStore = create<ConfigStore>()(
     }),
     // Persist only `config` — the transient upgrade flag must not survive a
     // reload (the reload itself is the upgrade path once the build is updated).
+    // index.html's pre-paint script reads this key (src/prepaint.test.ts).
     { name: 'thunderbolt-config', partialize: (state) => ({ config: state.config }) },
   ),
 )
@@ -95,6 +106,20 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
  *  `/` is plain text, and no skill is offered to any agent. Absent means off. Role-based visibility is
  *  expected to replace this predicate. */
 export const selectMinimalMode = (config: AppConfig): boolean => config.minimalMode === true
+
+/** The operator's header logo, or null when `BRAND_LOGO_URL` is unset. Dark
+ *  falls back to the light URL; `alt` is empty when unset, so the caller picks
+ *  its own fallback. */
+export const selectBrandLogo = (config: AppConfig): { light: string; dark: string; alt: string } | null => {
+  if (!config.brandLogoUrl) {
+    return null
+  }
+  return {
+    light: config.brandLogoUrl,
+    dark: config.brandLogoDarkUrl || config.brandLogoUrl,
+    alt: config.brandLogoAlt ?? '',
+  }
+}
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isUnauthorizedError } from '@/lib/mcp-errors'
+import { isUnauthorizedError } from '@/lib/mcp-unauthorized-error'
 
 /**
  * Industry-grounded MCP auth precedence (confirmed across Claude Code, Cline,

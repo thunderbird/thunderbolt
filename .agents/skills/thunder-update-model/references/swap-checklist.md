@@ -55,7 +55,8 @@ writing a new mock.
    item 13). Done when the comment matches `legacyConfidentialModels`.
 6. universal. `defaultModelImageSupport`, keyed by the incoming model's id: `'supported'` iff
    `image` is in its `modalities.input` and the provider catalog agrees; `models.test.ts` fails
-   without an entry. fresh-id: drop the leaving model's entry. Done when each default has one entry.
+   without an entry, and the map ships in `/v1/config` under the version item 7 bumps. fresh-id:
+   drop the leaving model's entry. Done when each default has one entry.
 7. universal. Bump `defaultModelsVersion` by one. Done when the constant is higher than on `main`.
 8. universal. Snapshot test: run `bun test shared/defaults --timeout 5000`, paste the new
    `version`, `hash` and `metadataHash` into `expected` in `shared/defaults/models.test.ts`, then

@@ -21,7 +21,9 @@ mock.module('@/db/powersync/sync-state', () => ({
 // Spread the REAL modules so every untouched export survives if these
 // registrations leak across files under `--randomize`; only the symbols this
 // suite drives are overridden. See docs/internals/development/testing.md §65.
-const realPosthog = await import('@/lib/posthog')
+// Snapshot exports before mock.module replaces their live bindings. Restore
+// them below so later startup-telemetry tests exercise the real event buffer.
+const realPosthog = { ...(await import('@/lib/posthog')) }
 mock.module('@/lib/posthog', () => ({
   ...realPosthog,
   trackEvent: mockTrackEvent,
@@ -41,6 +43,7 @@ mock.module('@/db/encryption', () => ({
   needsSyncSetupWizard: async () => !(await mockGetCK()),
 }))
 afterAll(() => {
+  mock.module('@/lib/posthog', () => realPosthog)
   mock.module('@/db/encryption', () => realEncryption)
   mock.module('@/db/encryption/config', () => realEncryptionConfig)
 })

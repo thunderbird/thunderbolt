@@ -168,7 +168,7 @@ openssl rand 32 | basenc --base64url --wrap=0
 | A second `powersync_storage` database                   | On the same server                                                                                                                                                                          |
 | `DATABASE_DRIVER=postgres`                              | PGlite runs in-process, so the sync service has nothing to connect to. The server does not notice and keeps handing out sync tokens, so sync fails quietly rather than reporting itself off |
 
-**6. The device is waiting for approval.** A new device registers as pending and shows an approval screen. Approve it from an already trusted device under **Settings → Devices**, or enter the 24-word recovery phrase. With every trusted device lost and no recovery phrase, the encrypted history cannot be recovered, by the user or by you. An account is limited to 10 active devices; revoke one under **Settings → Devices** to free a slot. On an account's first device there is nothing to approve, but sync starts only once the user confirms they saved the recovery phrase.
+**6. The device is waiting for approval.** A new device registers as pending and shows an approval screen. Follow the [device approval and recovery guide](./admin/devices.md#approving-a-device) for the current unlock options. An account is limited to 10 active devices; revoke one under **Settings → Devices** to free a slot. On an account's first device there is nothing to approve, but sync starts only once the user confirms they saved the recovery phrase.
 
 Once those are settled, confirm the sync service is alive with `/v1/health/powersync`.
 
@@ -210,7 +210,9 @@ This sends one tiny completion to each model in the catalog and reports `not-con
 
 ### Egress allowlists
 
-Two paths reach hosts you cannot list in advance. First, a user's own provider key, or a tool server they connect over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools): those calls are relayed through your server, because a browser cannot make them directly. Second, link previews, which fetch whatever page a user pasted. A strict outbound allowlist breaks both.
+Two paths reach hosts you cannot list in advance. First, a user's own provider key, or a tool server they connect over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools): web calls and non-loopback native calls with **Use Cloud Proxy** on are relayed through your server. Desktop and mobile connect directly by default. Models, HTTP/SSE MCP servers and external agents on the same device (loopback) always connect directly in desktop and mobile. Second, link previews, which fetch whatever page a user pasted. A strict outbound allowlist breaks both.
+
+For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy.
 
 ## Attachments fail
 
@@ -268,4 +270,4 @@ The check fails closed: a client that sends no version is treated as too old. If
 - Open an issue at [github.com/thunderbird/thunderbolt](https://github.com/thunderbird/thunderbolt/issues) with your deployment target, the app version from **Settings → Preferences**, and the relevant server log lines.
 - Sending a debug transcript is an option only if your deployment is configured for it. See the [configuration reference](./self-hosting/configuration.md).
 
-> Understand what a transcript contains before you enable forwarding: the full conversation plus the user ID and email your deployment holds, sent to and retained by the Thunderbolt team.
+> Understand what a transcript contains before you enable forwarding: the full conversation plus the user ID and email your deployment holds, sent to and retained by whoever runs the intake (the Thunderbolt team unless you forward to your own, named in the share dialog by `debugTranscriptRecipient` in [`BRANDING`](./self-hosting/configuration.md#branding)).

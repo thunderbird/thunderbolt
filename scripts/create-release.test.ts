@@ -711,3 +711,31 @@ describe('create-release.ts', () => {
     })
   })
 })
+
+describe('create-release.ts input validation', () => {
+  const scriptPath = join(import.meta.dir, 'create-release.ts')
+
+  /** Runs the real script in dry-run mode, so nothing is written even if validation lets an input through. */
+  const runDryRun = (...args: string[]) => {
+    const result = Bun.spawnSync(['bun', scriptPath, '--dry-run', ...args], { stdout: 'pipe', stderr: 'pipe' })
+    return { exitCode: result.exitCode, stderr: result.stderr.toString() }
+  }
+
+  it.each([['1.2.3; touch /tmp/pwned'], ['1.2.3$(id)'], ['1.2'], ['1.2.3-rc']])('rejects version %p', (version) => {
+    const { exitCode, stderr } = runDryRun('--version', version)
+
+    expect(exitCode).toBe(1)
+    expect(stderr).toContain('Invalid version')
+  })
+
+  it('rejects an unknown platform', () => {
+    const { exitCode, stderr } = runDryRun('--version', '1.2.3', '--platform', 'all;id')
+
+    expect(exitCode).toBe(1)
+    expect(stderr).toContain('Invalid platform')
+  })
+
+  it('accepts a valid version and platform', () => {
+    expect(runDryRun('--version', 'v1.2.3', '--platform', 'desktop').exitCode).toBe(0)
+  })
+})

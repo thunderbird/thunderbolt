@@ -2,10 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { invoke, isTauri as isTauriCore } from '@tauri-apps/api/core'
+import { isTauri as isTauriCore } from '@tauri-apps/api/core'
 import { platform, type Platform } from '@tauri-apps/plugin-os'
 import type { DatabaseType } from '../db/database'
-import { memoize } from './memoize'
 
 /** Matches Render PR preview hostnames: thunderbolt-pr-{number}.onrender.com */
 export const prPreviewHostRegex = /^thunderbolt-pr-\d+\.onrender\.com$/
@@ -121,6 +120,9 @@ export const isWebMobilePlatform = (): boolean => {
   return p === 'ios' || p === 'android'
 }
 
+/** Phones and tablets: the Tauri mobile apps and iOS/Android browsers, including iPadOS posing as macOS. */
+export const isTouchPlatform = (): boolean => isMobile() || isWebMobilePlatform()
+
 /** Returns true when the web browser is running on a desktop OS (macOS, Windows, Linux). */
 export const isWebDesktopPlatform = (): boolean => {
   const p = getWebOsPlatform()
@@ -179,8 +181,9 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
     // Try to access OPFS - this will fail in private browsing
     const root = await navigator.storage.getDirectory()
 
-    // Try to create a test file to ensure write access
-    const testFileName = `opfs-test-${Date.now()}.txt`
+    // Concurrent tabs can probe in the same millisecond. Each must remove only
+    // its own file, or one reports unavailable storage and opens an empty DB.
+    const testFileName = `opfs-test-${crypto.randomUUID()}.txt`
     await root.getFileHandle(testFileName, { create: true })
 
     // Clean up test file
@@ -281,38 +284,7 @@ export const isIndexedDbAvailable = async (idb?: IDBFactory | null): Promise<boo
   }
 }
 
-// -----------------------------------------------------------------------------
-// Capabilities
-// -----------------------------------------------------------------------------
-
-export type Capabilities = {
-  native_fetch: boolean
-}
-
-const defaultCapabilities: Capabilities = { native_fetch: false }
-
-// Fetch once, then memoize for the rest of the session.
-const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
-  if (!isTauri()) {
-    return defaultCapabilities
-  }
-
-  try {
-    return await invoke<Capabilities>('capabilities')
-  } catch (err) {
-    console.error('Failed to retrieve capabilities:', err)
-    return defaultCapabilities
-  }
-}, 'capabilities')
-
-export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
-
-/**
- * Determines the appropriate database type based on the platform and the
- * capabilities exposed by the backend.
- *
- * Note: this is asynchronous because we might need to query the backend once.
- */
+/** Return the app database implementation. */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
   return 'powersync'
 }

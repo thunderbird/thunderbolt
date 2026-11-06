@@ -12,6 +12,8 @@ import type { InferSelectModel } from 'drizzle-orm'
 import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
+import type { CompactionCheckpoint } from '@shared/agent-core'
+import type { AcpCompaction, AcpContextUsage } from '@/acp/compaction'
 import type { DebugTranscriptMessageMetadataV1 } from './debug-transcript/types'
 import type { EmbeddedSurfaceChoice } from './ai/embedded-surface'
 import type { HttpClient } from './contexts'
@@ -39,6 +41,7 @@ export type InitData = {
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
   experimentalFeatureVoice: boolean
+  sidebarOpen: boolean
 }
 
 /**
@@ -81,11 +84,17 @@ export type QuoteData = {
 export type ThunderboltUIDataTypes = {
   attachment: AttachmentData
   quote: QuoteData
+  'acp-compaction': AcpCompaction
 }
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDataTypes, UITools>
 
-export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
+export type SaveMessagesFunction = (params: {
+  id: string
+  messages: ThunderboltUIMessage[]
+  /** Historical message edits must not replace the thread's current context size. */
+  updateContext?: boolean
+}) => Promise<void>
 
 /**
  * Persists a single in-flight assistant message during streaming (crash-recovery
@@ -166,6 +175,13 @@ export type AutomationRun = {
 }
 
 export type UIMessageMetadata = {
+  /** Pi context checkpoint; the visible transcript remains intact. */
+  contextCompaction?: CompactionCheckpoint
+  /** Current model context, separate from billable generation usage. */
+  contextTokens?: number
+  acpContextUsage?: AcpContextUsage
+  /** An explicit agent command, sent verbatim without prompt decoration. */
+  acpCommand?: 'compact'
   modelId?: string
   /** Correlates a persisted turn with its richer session-scoped debug capture. */
   debugTranscript?: DebugTranscriptMessageMetadataV1
@@ -201,6 +217,12 @@ export type UIMessageMetadata = {
    * alone, since they may well be artifact reads.
    */
   embeddedSurface?: Exclude<EmbeddedSurfaceChoice, null>
+  /**
+   * Set on a prompt when the user stopped its reply. If the reply had no text
+   * yet, later turns show the model a stop marker after the prompt, so the
+   * model doesn't answer it again.
+   */
+  stoppedByUser?: boolean
 }
 
 /**

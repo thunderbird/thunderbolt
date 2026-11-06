@@ -24,13 +24,16 @@ export const SyntheticLoadingPart = ({ message = '', isStreaming }: SyntheticLoa
   )
 
   return (
-    <Expandable
-      title={titleNode}
-      defaultOpen={false}
-      icon={<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-      className="shadow-none pointer-events-none mt-6" // Prevent clicking while loading
-    >
-      {null}
-    </Expandable>
+    // There is nothing to expand yet, so keep the placeholder away from clicks, focus and screen readers.
+    <div inert>
+      <Expandable
+        title={titleNode}
+        defaultOpen={false}
+        icon={<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        className="shadow-none mt-6"
+      >
+        {null}
+      </Expandable>
+    </div>
   )
 }

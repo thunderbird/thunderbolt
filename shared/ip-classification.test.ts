@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   extractEmbeddedIpv4Address,
+  isLocalNetworkAddress,
   isPrivateOrInternalAddress,
   parseIpAddress,
   privateOrInternalAddressCidrs,
@@ -94,6 +95,93 @@ const allowedIpv6Boundaries = [
   ['3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff'],
   ['3fff:1000::'],
 ] as const
+
+describe('local network IP classification', () => {
+  test.each([
+    ['0.0.0.0', true],
+    ['0.0.0.1', false],
+    ['0.255.255.255', false],
+    ['9.255.255.255', false],
+    ['10.0.0.0', true],
+    ['10.255.255.255', true],
+    ['11.0.0.0', false],
+    ['100.63.255.255', false],
+    ['100.64.0.0', true],
+    ['100.127.255.255', true],
+    ['100.128.0.0', false],
+    ['126.255.255.255', false],
+    ['127.0.0.0', true],
+    ['127.255.255.255', true],
+    ['128.0.0.0', false],
+    ['169.253.255.255', false],
+    ['169.254.0.0', true],
+    ['169.254.255.255', true],
+    ['169.255.0.0', false],
+    ['172.15.255.255', false],
+    ['172.16.0.0', true],
+    ['172.31.255.255', true],
+    ['172.32.0.0', false],
+    ['192.167.255.255', false],
+    ['192.168.0.0', true],
+    ['192.168.255.255', true],
+    ['192.169.0.0', false],
+    ['::', true],
+    ['::1', true],
+    ['::2', false],
+    ['fbff:ffff:ffff:ffff:ffff:ffff:ffff:ffff', false],
+    ['fc00::', true],
+    ['fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff', true],
+    ['fe00::', false],
+    ['fe7f:ffff:ffff:ffff:ffff:ffff:ffff:ffff', false],
+    ['fe80::', true],
+    ['febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff', true],
+    ['fec0::', false],
+  ] as const)('classifies boundary %s as local=%s', (literal, expected) => {
+    expect(isLocalNetworkAddress(parseLiteral(literal))).toBe(expected)
+  })
+
+  test.each([
+    ['0.0.0.0', true],
+    ['10.1.2.3', true],
+    ['100.64.0.1', true],
+    ['127.0.0.1', true],
+    ['169.254.1.2', true],
+    ['172.16.0.1', true],
+    ['192.168.1.10', true],
+    ['8.8.8.8', false],
+    ['192.88.99.1', false],
+    ['203.0.113.1', false],
+  ] as const)('classifies mapped and compatible IPv4 %s as local=%s', (literal, expected) => {
+    expect(isLocalNetworkAddress(parseLiteral(`::ffff:${literal}`))).toBe(expected)
+    expect(isLocalNetworkAddress(parseLiteral(`::${literal}`))).toBe(expected)
+  })
+
+  test.each([
+    '192.0.0.1',
+    '192.0.2.1',
+    '192.88.99.1',
+    '198.18.0.1',
+    '198.51.100.1',
+    '203.0.113.1',
+    '224.0.0.1',
+    '240.0.0.1',
+    '255.255.255.255',
+    '64:ff9b::192.168.1.10',
+    '::ffff:0:192.168.1.10',
+    '2002:c000:0204::1',
+    '2002:c0a8:10a::1',
+    '2001:0::1',
+    '2001::3f57:fef5',
+    '2001:db8::1',
+    '3fff::1',
+    '1fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
+    '4000::1',
+    'ff02::1',
+    '2606:4700:4700::1111',
+  ])('excludes non-local address %s', (literal) => {
+    expect(isLocalNetworkAddress(parseLiteral(literal))).toBe(false)
+  })
+})
 
 describe('IP literal parsing', () => {
   test.each([

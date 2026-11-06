@@ -6,7 +6,7 @@
  * Moving a chat into (or out of) a project.
  *
  * Shared by the two entry points — dragging a chat onto a sidebar project row,
- * and the chat's own "Move to project" action — because the write is more than
+ * and the chat's own "Move" action — because the write is more than
  * one column: the live session's badge has to be updated and the sidebar list
  * re-read. Two copies of that would drift.
  *
@@ -18,6 +18,7 @@
 
 import { useQueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/chats/chat-store'
+import { withChatThreadWrite } from '@/chats/chat-thread-write'
 import { useDatabase } from '@/contexts'
 import { setChatThreadProject } from '@/dal/projects'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
@@ -33,11 +34,12 @@ export type MoveChatDeps = {
 }
 
 export const moveChatToProject = async ({ chatThreadId, projectId }: ChatDrop, deps: MoveChatDeps): Promise<void> => {
-  await deps.setProject(deps.db, chatThreadId, projectId)
-  // The row is the source of truth for the next send, but the header badge reads
-  // the live session — without this a chat only shows its new project after a
-  // reload.
-  deps.updateOpenSession(chatThreadId, projectId)
+  await withChatThreadWrite(chatThreadId, async () => {
+    const assigned = await deps.setProject(deps.db, chatThreadId, projectId)
+    if (assigned) {
+      deps.updateOpenSession(chatThreadId, projectId)
+    }
+  })
   // Only the chat rows need a nudge; the project counts are a reactive PowerSync
   // query and update themselves.
   await deps.refreshChatList()

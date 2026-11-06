@@ -18,6 +18,7 @@ for (const model of defaultModels) {
       .getByRole('button')
       .filter({ has: page.getByText(model.name, { exact: true }) })
       .click()
+    await page.keyboard.press('Escape')
 
     page.on('response', (response) => {
       if (response.request().method() !== 'POST' || !response.ok()) {

@@ -121,6 +121,7 @@ describe('requestPermission bridge', () => {
     }
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: mock(async () => adapter) as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,

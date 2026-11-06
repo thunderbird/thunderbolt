@@ -14,6 +14,7 @@ import {
   getSettings,
   isOAuthRedirectUriAllowed,
   isOriginAllowed,
+  getPasskeyRpName,
 } from './settings'
 
 describe('Config Settings', () => {
@@ -863,6 +864,136 @@ describe('Config Settings', () => {
     it('rejects malformed numeric values like "0,2,0"', () => {
       process.env.MIN_APP_VERSION = '0,2,0'
       expect(() => getSettings()).toThrow(/MIN_APP_VERSION must be empty or a semver string/)
+    })
+  })
+
+  describe('brand logo settings', () => {
+    const envKeys = ['BRAND_LOGO_URL', 'BRAND_LOGO_DARK_URL', 'BRAND_LOGO_ALT']
+    const savedEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]))
+
+    beforeEach(() => {
+      clearSettingsCache()
+      envKeys.forEach((key) => delete process.env[key])
+    })
+
+    afterEach(() => {
+      envKeys.forEach((key) =>
+        savedEnv[key] === undefined ? delete process.env[key] : (process.env[key] = savedEnv[key]),
+      )
+      clearSettingsCache()
+    })
+
+    it('defaults to empty', () => {
+      const { brandLogoUrl, brandLogoDarkUrl, brandLogoAlt } = getSettings()
+      expect([brandLogoUrl, brandLogoDarkUrl, brandLogoAlt]).toEqual(['', '', ''])
+    })
+
+    it('accepts an https URL and a data:image URL', () => {
+      process.env.BRAND_LOGO_URL = 'https://example.com/logo.svg'
+      process.env.BRAND_LOGO_DARK_URL = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4='
+      expect(getSettings()).toMatchObject({
+        brandLogoUrl: process.env.BRAND_LOGO_URL,
+        brandLogoDarkUrl: process.env.BRAND_LOGO_DARK_URL,
+      })
+    })
+
+    it('trims whitespace, so a blank value is empty', () => {
+      process.env.BRAND_LOGO_URL = '   '
+      process.env.BRAND_LOGO_DARK_URL = '  https://example.com/logo.svg'
+      expect(getSettings()).toMatchObject({ brandLogoUrl: '', brandLogoDarkUrl: 'https://example.com/logo.svg' })
+    })
+
+    it('falls back to empty when the alt text is only whitespace', () => {
+      process.env.BRAND_LOGO_ALT = '   '
+      expect(getSettings().brandLogoAlt).toBe('')
+    })
+
+    it.each([
+      'javascript:alert(1)',
+      'http://example.com/logo.svg',
+      'data:text/html,<script>',
+      '//cdn.example/logo.svg',
+      'https://%',
+    ])('rejects %s', (value) => {
+      process.env.BRAND_LOGO_DARK_URL = value
+      expect(() => getSettings()).toThrow(/BRAND_LOGO_DARK_URL must be empty, an https: URL or a data:image\/ URL/)
+    })
+  })
+
+  describe('branding settings', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = process.env.BRANDING
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.BRANDING = savedEnv
+      } else {
+        delete process.env.BRANDING
+      }
+      clearSettingsCache()
+    })
+
+    it('is undefined when BRANDING is unset or blank', () => {
+      delete process.env.BRANDING
+      expect(getSettings().branding).toBeUndefined()
+
+      clearSettingsCache()
+      process.env.BRANDING = '   '
+      expect(getSettings().branding).toBeUndefined()
+    })
+
+    it('parses a valid config and trims the app name', () => {
+      process.env.BRANDING = JSON.stringify({
+        appName: '  Acme AI ',
+        debugTranscriptRecipient: 'Acme Support',
+        defaultThemeMode: 'dark',
+        cssVars: {
+          theme: { radius: '0px', 'font-sans': 'DM Sans, sans-serif' },
+          light: { primary: 'oklch(0.6489 0.237 26.97)', 'brand-gradient-start': '#7c3aed', 'shadow-offset-x': '4px' },
+          dark: { background: '#000' },
+        },
+      })
+      expect(getSettings().branding).toEqual({
+        appName: 'Acme AI',
+        debugTranscriptRecipient: 'Acme Support',
+        defaultThemeMode: 'dark',
+        cssVars: {
+          theme: { radius: '0px', 'font-sans': 'DM Sans, sans-serif' },
+          light: { primary: 'oklch(0.6489 0.237 26.97)', 'brand-gradient-start': '#7c3aed', 'shadow-offset-x': '4px' },
+          dark: { background: '#000' },
+        },
+      })
+    })
+
+    it('rejects malformed JSON at startup', () => {
+      process.env.BRANDING = '{appName:'
+      expect(() => getSettings()).toThrow(/BRANDING must be valid JSON/)
+    })
+
+    it('rejects unsafe colors at startup', () => {
+      process.env.BRANDING = JSON.stringify({ cssVars: { light: { brand: 'red;}body{' } } })
+      expect(() => getSettings()).toThrow(
+        /cssVars\.light\.brand: must be a hex, rgb\(\), hsl\(\), oklch\(\) or oklab\(\) color/,
+      )
+    })
+
+    it('reports every problem at once', () => {
+      process.env.BRANDING = JSON.stringify({ favicon: 'x', cssVars: { light: { cards: '#fff' } } })
+      expect(() => getSettings()).toThrow(/favicon: unknown key[\s\S]*cssVars\.light\.cards: unknown token/)
+    })
+  })
+
+  describe('getPasskeyRpName', () => {
+    it('prefers PASSKEY_RP_NAME, then the branding app name, then Thunderbolt', () => {
+      expect(getPasskeyRpName({ passkeyRpName: 'Acme Passkeys', branding: { appName: 'Acme AI' } })).toBe(
+        'Acme Passkeys',
+      )
+      expect(getPasskeyRpName({ passkeyRpName: '', branding: { appName: 'Acme AI' } })).toBe('Acme AI')
+      expect(getPasskeyRpName({ passkeyRpName: '', branding: undefined })).toBe('Thunderbolt')
     })
   })
 

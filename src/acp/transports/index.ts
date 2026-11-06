@@ -17,21 +17,14 @@
  *     and the extra hop would strip the credential. The path falls back to a
  *     direct, unauthenticated connect only when no `httpClient` is wired
  *     (true Standalone — no backend reachable).
- *   - `remote-acp` (user-configured external agents): Connected vs Standalone
- *     is layered orthogonally:
- *       - Web (always Connected): proxied WebSocket via `createProxyWebSocket`.
- *       - Tauri + proxy toggle ON  (Connected):  proxied WebSocket.
- *       - Tauri + proxy toggle OFF (Standalone): native `new WebSocket()`.
- *
- * The effective proxy value is read from `computeEffectiveProxyEnabled` so the
- * factory matches the rest of the codebase (one source of truth).
+ *   - `remote-acp` (user-configured external agents): follows Use Cloud Proxy
+ *     on Tauri, except loopback stays direct; always tunneled on web.
  */
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
 import { getAuthToken } from '@/lib/auth-token'
 import type { HttpClient } from '@/lib/http'
-import { isTauri } from '@/lib/platform'
-import { computeEffectiveProxyEnabled, createProxyWebSocket } from '@/lib/proxy-fetch'
+import { createProxyWebSocket } from '@/lib/proxy-fetch'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { AgentType } from '@shared/acp-types'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
@@ -48,10 +41,8 @@ export type OpenTransportInputs = {
   signal: AbortSignal
   /** Test seam — production omits and the factory builds a default. */
   webSocketFactory?: WebSocketFactory
-  /** Overrides for the proxy-effective + standalone determinations. Tests pass
-   *  explicit values to avoid touching the platform / localStorage globals. */
+  /** Test seam — defaults to Tauri detection in the WebSocket factory. */
   isStandalone?: () => boolean
-  readProxyEnabled?: () => string | null
   /** Authenticated cloud backend client. Managed-ACP uses its presence to offer
    *  the bearer subprotocol; iroh uses it for transparent device enrollment. */
   httpClient?: HttpClient
@@ -60,18 +51,6 @@ export type OpenTransportInputs = {
 }
 
 const cloudWsUrl = (): string => useLocalSettingsStore.getState().cloudUrl
-
-/** Decide if the transport should use the native (Standalone) path or the
- *  cloud-proxy path. Mirrors `computeEffectiveProxyEnabled` exactly — when the
- *  proxy is OFF *and* we're on Tauri, the transport is native. */
-export const isStandaloneTransport = (
-  isStandalone: () => boolean = isTauri,
-  readProxyEnabled: () => string | null = () =>
-    typeof localStorage === 'undefined' ? null : localStorage.getItem('proxy_enabled'),
-): boolean => {
-  const proxyEnabled = computeEffectiveProxyEnabled(isStandalone, readProxyEnabled)
-  return isStandalone() && !proxyEnabled
-}
 
 /** Open a transport for the given ACP agent URL. The returned `AcpTransport`
  *  is the bidirectional stream `ClientSideConnection` expects.
@@ -100,17 +79,15 @@ export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTra
 
 /** Pick the WebSocket constructor for the given inputs. Managed agents skip
  *  the universal proxy unconditionally — see file header. Remote agents fall
- *  through to the standalone-vs-proxied decision.
+ *  through to the WebSocket factory that applies Use Cloud Proxy on Tauri
+ *  (loopback always direct) and always proxies on web.
  *
  *  When the proxied path is selected, `createProxyWebSocket` returns a sync
  *  factory that builds the `Sec-WebSocket-Protocol` list (carrier + bearer +
- *  target) synchronously from the in-memory bearer token. */
+ *  target) synchronously from the stored bearer token. */
 const resolveWebSocketFactory = (inputs: OpenTransportInputs): WebSocketFactory => {
   if (inputs.agentType === 'managed-acp') {
     return resolveManagedAcpFactory(inputs)
-  }
-  if (isStandaloneTransport(inputs.isStandalone, inputs.readProxyEnabled)) {
-    return nativeWebSocketFactory
   }
   const proxyWs = createProxyWebSocket({
     cloudUrl: cloudWsUrl(),

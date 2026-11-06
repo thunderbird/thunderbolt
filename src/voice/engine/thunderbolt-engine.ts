@@ -45,7 +45,7 @@ const ttsInstructions =
 /** The slice of the attested `SecureClient` the transport drives — injectable for tests. */
 type TinfoilTransportDeps = {
   getClient: () => Promise<Pick<SecureClient, 'getBaseURL' | 'fetch'>>
-  evictClient: () => void
+  evictClient: (client: Pick<SecureClient, 'getBaseURL' | 'fetch'>) => void
   isSsoMode: () => boolean
   getAuthToken: () => string | null
 }
@@ -68,7 +68,7 @@ export const createTinfoilTransport =
   async (path, body, headers, signal) => {
     const sso = deps.isSsoMode()
     const token = deps.getAuthToken()
-    const attempt = async (): Promise<Response> => {
+    const attempt = async (canRetry: boolean): Promise<Response> => {
       const client = await deps.getClient() // awaits attestation (`ready()`)
       const baseUrl = client.getBaseURL()
       if (!baseUrl) {
@@ -85,26 +85,27 @@ export const createTinfoilTransport =
       } else if (token) {
         reqHeaders.set('Authorization', `Bearer ${token}`)
       }
-      return client.fetch(`${baseUrl}${path}`, init)
-    }
-    // Retry once on a wedged transport or a 422 key-mismatch response.
-    const run = async (): Promise<Response> => {
       try {
-        const res = await attempt()
-        if (res.status === 422) {
-          deps.evictClient()
-          return await attempt()
+        const res = await client.fetch(`${baseUrl}${path}`, init)
+        if (res.status !== 422) {
+          return res
         }
-        return res
+        deps.evictClient(client)
+        if (!canRetry) {
+          return res
+        }
       } catch (err) {
         if (!isTinfoilTransportWedgedError(err)) {
           throw err
         }
-        deps.evictClient()
-        return attempt()
+        deps.evictClient(client)
+        if (!canRetry) {
+          throw err
+        }
       }
+      return attempt(false)
     }
-    const res = await run()
+    const res = await attempt(true)
     handleAppVersionUnsupported(res.status)
     await handleSessionRejected(res)
     return res

@@ -16,29 +16,22 @@ const values: ProjectFormValues = {
   instructions: 'Reply in bullet points.',
 }
 
-const renderForm = (mode: 'create' | 'edit', onSubmit = mock(async (_values: ProjectFormValues) => {})) => {
+const renderForm = (onSubmit = mock(async (_values: ProjectFormValues) => {})) => {
   const onCancel = mock(() => {})
-  render(
-    <ProjectForm
-      mode={mode}
-      initialValues={mode === 'edit' ? values : undefined}
-      onCancel={onCancel}
-      onSubmit={onSubmit}
-    />,
-  )
+  render(<ProjectForm initialValues={values} onCancel={onCancel} onSubmit={onSubmit} />)
   return { onSubmit, onCancel }
 }
 
 describe('ProjectForm in edit mode', () => {
   it('starts from the project’s current values', () => {
-    renderForm('edit')
+    renderForm()
     expect(screen.getByLabelText('Name')).toHaveValue('Q3 Planning')
-    expect(screen.getByLabelText('Description')).toHaveValue('Quarterly work')
+    expect(screen.getByLabelText('Description (optional)')).toHaveValue('Quarterly work')
     expect(screen.getByLabelText('Instructions')).toHaveValue('Reply in bullet points.')
   })
 
   it('submits the edited values', async () => {
-    const { onSubmit } = renderForm('edit')
+    const { onSubmit } = renderForm()
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Q4 Planning' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
@@ -50,12 +43,12 @@ describe('ProjectForm in edit mode', () => {
   })
 
   it('labels its action Save changes, not Create', () => {
-    renderForm('edit')
+    renderForm()
     expect(screen.queryByRole('button', { name: 'Create' })).not.toBeInTheDocument()
   })
 
   it('refuses to save a project with no name', () => {
-    renderForm('edit')
+    renderForm()
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: '   ' } })
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
   })
@@ -66,7 +59,7 @@ describe('ProjectForm in edit mode', () => {
     const failing = mock(async () => {
       throw new Error('Project name is required.')
     })
-    renderForm('edit', failing)
+    renderForm(failing)
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await act(async () => {})
@@ -74,23 +67,9 @@ describe('ProjectForm in edit mode', () => {
   })
 
   it('cancels without submitting', () => {
-    const { onSubmit, onCancel } = renderForm('edit')
+    const { onSubmit, onCancel } = renderForm()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onCancel).toHaveBeenCalled()
     expect(onSubmit).not.toHaveBeenCalled()
-  })
-})
-
-describe('ProjectForm in create mode', () => {
-  it('starts empty and cannot be submitted without a name', () => {
-    renderForm('create')
-    expect(screen.getByLabelText('Name')).toHaveValue('')
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
-  })
-
-  it('enables Create once a name is typed', () => {
-    renderForm('create')
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'New thing' } })
-    expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled()
   })
 })

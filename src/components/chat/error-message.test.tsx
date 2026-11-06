@@ -68,6 +68,10 @@ describe('ErrorMessage', () => {
         message:
           'The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed.',
       },
+      {
+        kind: 'tools-unsupported',
+        message: "This model doesn't support tools.",
+      },
     ] as const
 
     for (const { kind, message } of cases) {
@@ -137,8 +141,8 @@ describe('ErrorMessage', () => {
         for (const element of [title, body]) {
           expect(element).toHaveClass('text-foreground')
           expect(element).not.toHaveClass('text-warning-foreground')
-          expect(element).not.toHaveClass('text-amber-500/90')
-          expect(element).not.toHaveClass('text-amber-500/80')
+          expect(element).not.toHaveClass('text-warning/90')
+          expect(element).not.toHaveClass('text-warning/80')
         }
         expect(screen.queryByText('Too many requests. Please try again in a moment.')).toBeNull()
         expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull()
@@ -266,6 +270,59 @@ describe('ErrorMessage', () => {
       expect(screen.getByText(/too large for the model's context window/i)).toBeTruthy()
       expect(screen.queryByText('Retry')).toBeNull()
       expect(screen.queryByText(/Retrying/)).toBeNull()
+    })
+  })
+
+  describe('tools unsupported', () => {
+    const toolsError = new Error(
+      '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}',
+    )
+
+    it('offers to turn tools off in place of a Retry that would fail the same way', () => {
+      const onTurnOffTools = mock(() => {})
+      render(
+        <ErrorMessage
+          retryCount={0}
+          retriesExhausted={true}
+          error={toolsError}
+          onRetry={mock(() => {})}
+          onTurnOffTools={onTurnOffTools}
+        />,
+      )
+
+      fireEvent.click(screen.getByText('Turn off tools and retry'))
+
+      expect(screen.getByText("This model doesn't support tools.")).toBeTruthy()
+      expect(screen.queryByText('Retry')).toBeNull()
+      expect(onTurnOffTools).toHaveBeenCalledTimes(1)
+    })
+
+    it('disables the button while tools are being turned off', () => {
+      render(
+        <ErrorMessage
+          retryCount={0}
+          retriesExhausted={true}
+          error={toolsError}
+          onTurnOffTools={mock(() => {})}
+          isTurningOffTools
+        />,
+      )
+
+      expect(screen.getByRole('button', { name: 'Turn off tools and retry' }).hasAttribute('disabled')).toBe(true)
+    })
+
+    it('keeps Retry and shows no button without a handler, as for an external agent', () => {
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} error={toolsError} onRetry={mock(() => {})} />)
+
+      expect(screen.queryByText('Turn off tools and retry')).toBeNull()
+      expect(screen.getByText('Retry')).toBeTruthy()
+    })
+
+    it('shows no button for other errors', () => {
+      const error = new Error(JSON.stringify({ error: 'Server error', status: 500 }))
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} error={error} onTurnOffTools={mock(() => {})} />)
+
+      expect(screen.queryByText('Turn off tools and retry')).toBeNull()
     })
   })
 

@@ -11,6 +11,7 @@ import {
   useModelConnectionTest,
   type ConnectionTestProbe,
   type ModelConnectionConfig,
+  type ToolSupport,
 } from './use-model-connection-test'
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -38,7 +39,7 @@ describe('useModelConnectionTest', () => {
   })
 
   it('surfaces success when the probe resolves for the current credentials', async () => {
-    const probe: ConnectionTestProbe = mock(async () => {})
+    const probe: ConnectionTestProbe = mock(async () => 'supported' as const)
     const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, probe), { wrapper })
 
     await act(async () => {
@@ -68,7 +69,7 @@ describe('useModelConnectionTest', () => {
   })
 
   it('collapses status to idle when current credentials diverge from the tested ones', async () => {
-    const probe: ConnectionTestProbe = mock(async () => {})
+    const probe: ConnectionTestProbe = mock(async () => 'supported' as const)
     const { result, rerender } = renderHook(
       ({ config }: { config: ModelConnectionConfig }) => useModelConnectionTest(config, probe),
       { wrapper, initialProps: { config: anthropicConfig } },
@@ -86,7 +87,7 @@ describe('useModelConnectionTest', () => {
   })
 
   it('treats empty and null credentials as equivalent when matching the tested config', async () => {
-    const probe: ConnectionTestProbe = mock(async () => {})
+    const probe: ConnectionTestProbe = mock(async () => 'supported' as const)
     const initial: ModelConnectionConfig = { ...anthropicConfig, url: '', apiKey: 'sk-abc' }
     const { result, rerender } = renderHook(
       ({ config }: { config: ModelConnectionConfig }) => useModelConnectionTest(config, probe),
@@ -106,7 +107,7 @@ describe('useModelConnectionTest', () => {
   })
 
   it('reset clears status and the stored tested config', async () => {
-    const probe: ConnectionTestProbe = mock(async () => {})
+    const probe: ConnectionTestProbe = mock(async () => 'supported' as const)
     const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, probe), { wrapper })
 
     await act(async () => {
@@ -123,10 +124,10 @@ describe('useModelConnectionTest', () => {
   })
 
   it('collapses isTesting to false when credentials diverge mid-flight', async () => {
-    let resolveInFlight: (() => void) | null = null
+    let resolveInFlight: ((support: ToolSupport) => void) | null = null
     const probe: ConnectionTestProbe = mock(
       () =>
-        new Promise<void>((resolve) => {
+        new Promise<ToolSupport>((resolve) => {
           resolveInFlight = resolve
         }),
     )
@@ -135,7 +136,7 @@ describe('useModelConnectionTest', () => {
       { wrapper, initialProps: { config: anthropicConfig } },
     )
 
-    let testPromise: Promise<void> = Promise.resolve()
+    let testPromise: Promise<ToolSupport | null> = Promise.resolve(null)
     act(() => {
       testPromise = result.current.test(anthropicConfig)
     })
@@ -146,23 +147,23 @@ describe('useModelConnectionTest', () => {
     expect(result.current.isTesting).toBe(false)
 
     await act(async () => {
-      resolveInFlight!()
+      resolveInFlight!('supported')
       await testPromise
     })
   })
 
   it('ignores probe completions from superseded runs', async () => {
-    let resolveInFlight: (() => void) | null = null
+    let resolveInFlight: ((support: ToolSupport) => void) | null = null
     const probe: ConnectionTestProbe = mock(
       () =>
-        new Promise<void>((resolve) => {
+        new Promise<ToolSupport>((resolve) => {
           resolveInFlight = resolve
         }),
     )
     const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, probe), { wrapper })
 
     // Fire the test but do not await — the probe hangs until we call resolveInFlight().
-    let testPromise: Promise<void> = Promise.resolve()
+    let testPromise: Promise<ToolSupport | null> = Promise.resolve(null)
     act(() => {
       testPromise = result.current.test(anthropicConfig)
     })
@@ -176,11 +177,85 @@ describe('useModelConnectionTest', () => {
 
     // Now let the probe resolve — the guarded dispatch must skip.
     await act(async () => {
-      resolveInFlight!()
+      resolveInFlight!('supported')
       await testPromise
     })
 
     expect(result.current.status).toBe('idle')
     expect(result.current.isTesting).toBe(false)
+  })
+
+  it('exposes and returns the tool-support verdict for the current config', async () => {
+    const probe: ConnectionTestProbe = mock(async () => 'unsupported' as const)
+    const { result, rerender } = renderHook(
+      ({ config }: { config: ModelConnectionConfig }) => useModelConnectionTest(config, probe),
+      { wrapper, initialProps: { config: anthropicConfig } },
+    )
+
+    let verdict: ToolSupport | null = null
+    await act(async () => {
+      verdict = await result.current.test(anthropicConfig)
+    })
+
+    expect(verdict).toBe('unsupported')
+    expect(result.current.toolSupport).toBe('unsupported')
+
+    rerender({ config: { ...anthropicConfig, model: 'another-model' } })
+    expect(result.current.toolSupport).toBeNull()
+  })
+
+  it('returns no verdict for a superseded run', async () => {
+    let resolveInFlight: ((support: ToolSupport) => void) | null = null
+    const probe: ConnectionTestProbe = mock(
+      () =>
+        new Promise<ToolSupport>((resolve) => {
+          resolveInFlight = resolve
+        }),
+    )
+    const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, probe), { wrapper })
+
+    let testPromise: Promise<ToolSupport | null> = Promise.resolve(null)
+    act(() => {
+      testPromise = result.current.test(anthropicConfig)
+    })
+    act(() => {
+      result.current.reset()
+    })
+
+    let verdict: ToolSupport | null = 'supported'
+    await act(async () => {
+      resolveInFlight!('unsupported')
+      verdict = await testPromise
+    })
+
+    expect(verdict).toBeNull()
+  })
+
+  it('returns no verdict when the config was edited while the test ran', async () => {
+    let resolveInFlight: ((support: ToolSupport) => void) | null = null
+    const probe: ConnectionTestProbe = mock(
+      () =>
+        new Promise<ToolSupport>((resolve) => {
+          resolveInFlight = resolve
+        }),
+    )
+    const { result, rerender } = renderHook(
+      ({ config }: { config: ModelConnectionConfig }) => useModelConnectionTest(config, probe),
+      { wrapper, initialProps: { config: anthropicConfig } },
+    )
+
+    let testPromise: Promise<ToolSupport | null> = Promise.resolve(null)
+    act(() => {
+      testPromise = result.current.test(anthropicConfig)
+    })
+    rerender({ config: { ...anthropicConfig, model: 'another-model' } })
+
+    let verdict: ToolSupport | null = 'supported'
+    await act(async () => {
+      resolveInFlight!('unsupported')
+      verdict = await testPromise
+    })
+
+    expect(verdict).toBeNull()
   })
 })

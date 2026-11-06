@@ -10,8 +10,15 @@
  */
 
 import { describe, expect, it } from 'bun:test'
+import * as fsp from '@zenfs/core/promises'
+import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
 import { inferenceUsageReceiptHeader } from '../inference-usage.ts'
-import { buildAppHarness, workspaceDirFor } from './build-app-harness.ts'
+import {
+  buildAppHarness,
+  removeAgentWorkspace,
+  workspaceDirFor,
+  writeAgentWorkspaceFiles,
+} from './build-app-harness.ts'
 import { createReceiptLifecycle } from './confidential-model.ts'
 
 describe('workspaceDirFor', () => {
@@ -35,6 +42,64 @@ describe('workspaceDirFor', () => {
     ['is empty', ''],
   ])('throws when the threadId %s', (_why, threadId) => {
     expect(() => workspaceDirFor(threadId)).toThrow(/unsafe threadId/)
+  })
+})
+
+describe('writeAgentWorkspaceFiles', () => {
+  const readWorkspaceFile = (threadId: string, path: string) =>
+    fsp.readFile(`${workspaceDirFor(threadId)}/${path}`, 'utf-8')
+
+  it('writes files at workspace-relative paths, creating directories', async () => {
+    const threadId = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(threadId, [{ path: 'attachments/a/data.tsv', content: 'x\ty\n1\t2' }])
+    expect(await readWorkspaceFile(threadId, 'attachments/a/data.tsv')).toBe('x\ty\n1\t2')
+    await removeAgentWorkspace(threadId)
+  })
+
+  it('restores attachments into the selected execution environment', async () => {
+    const nativeThread = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(nativeThread, [])
+    const cwd = workspaceDirFor(nativeThread)
+    const env = new BrowserExecutionEnv({ cwd })
+    const failures = await writeAgentWorkspaceFiles(
+      'native/thread',
+      [{ path: 'attachments/a.txt', content: 'native context' }],
+      { env, cwd },
+    )
+    expect(failures).toEqual([])
+    expect(await fsp.readFile(`${cwd}/attachments/a.txt`, 'utf-8')).toBe('native context')
+    await removeAgentWorkspace(nativeThread)
+  })
+
+  it('overwrites a same-size edit with the original content', async () => {
+    const threadId = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(threadId, [{ path: 'a.txt', content: '100' }])
+    await fsp.writeFile(`${workspaceDirFor(threadId)}/a.txt`, '900')
+    await writeAgentWorkspaceFiles(threadId, [{ path: 'a.txt', content: '100' }])
+    expect(await readWorkspaceFile(threadId, 'a.txt')).toBe('100')
+    await removeAgentWorkspace(threadId)
+  })
+
+  it('reports a path that escapes the workspace instead of writing it', async () => {
+    const threadId = crypto.randomUUID()
+    const failures = await writeAgentWorkspaceFiles(threadId, [{ path: '../escape.txt', content: 'x' }])
+    expect(failures.map(({ path, error }) => ({ path, code: error.code }))).toEqual([
+      { path: '../escape.txt', code: 'permission_denied' },
+    ])
+    await removeAgentWorkspace(threadId)
+  })
+
+  it('writes the remaining files after one fails, returning only the failure', async () => {
+    const threadId = crypto.randomUUID()
+    // 'blocked' is a file, so writing under it fails.
+    await writeAgentWorkspaceFiles(threadId, [{ path: 'blocked', content: 'file' }])
+    const failures = await writeAgentWorkspaceFiles(threadId, [
+      { path: 'blocked/inner.txt', content: 'x' },
+      { path: 'ok.txt', content: 'fine' },
+    ])
+    expect(failures.map(({ path }) => path)).toEqual(['blocked/inner.txt'])
+    expect(await readWorkspaceFile(threadId, 'ok.txt')).toBe('fine')
+    await removeAgentWorkspace(threadId)
   })
 })
 

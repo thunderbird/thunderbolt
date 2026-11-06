@@ -191,6 +191,18 @@ describe('Settings DAL', () => {
   })
 
   describe('getSettings', () => {
+    it('reads mixed types and missing values together without relying on database row order', async () => {
+      await updateSettings(getDb(), { z_enabled: false, a_count: 0, m_label: '' })
+      expect(
+        await getSettings(getDb(), {
+          z_enabled: true,
+          missing_value: 'fallback',
+          m_label: 'label',
+          a_count: 10,
+        }),
+      ).toEqual({ zEnabled: false, missingValue: 'fallback', mLabel: '', aCount: 0 })
+      expect(await getSettings(getDb(), {})).toEqual({})
+    })
     it('should return null when setting does not exist and no default provided', async () => {
       const settings = await getSettings(getDb(), { nonexistent_key: String })
       expect(settings.nonexistentKey).toBe(null)

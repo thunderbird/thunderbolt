@@ -47,29 +47,50 @@ type Label = { id: string; name: string; team: { id: string } | null }
 /** A JSON value, as sent in GraphQL variables. */
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 
-/** Report only trusted API context, never response content or network error text. */
+/**
+ * Report only trusted API context, never response content or network error text. A caller that passes `errorDetail`
+ * gets the failed response's body in the error, as text it must clean itself.
+ */
 const requestJson = async <T>(
   service: string,
   operation: string,
   request: () => Promise<Response>,
+  errorDetail?: (body: string) => string,
 ): Promise<{ body: T; status: number }> => {
   const context = `${service} ${operation}`
   const response = await request().catch(() => {
     throw new Error(`${context} request failed`)
   })
-  if (!response.ok) {throw new Error(`${context} HTTP ${response.status}`)}
+  if (!response.ok) {
+    const detail = errorDetail ? `: ${errorDetail(await response.text())}` : ''
+    throw new Error(`${context} HTTP ${response.status}${detail}`)
+  }
   const body = (await response.json().catch(() => {
     throw new Error(`${context} HTTP ${response.status} invalid JSON`)
   })) as T
   return { body, status: response.status }
 }
 
-/** Query Linear and reject GraphQL errors, including partial 200 responses. */
+/** Linear's GraphQL error messages, or the whole body when it holds none. */
+const graphqlMessages = (body: string): string => {
+  try {
+    const { errors } = JSON.parse(body) as { errors?: { message: string }[] }
+    return errors?.map((error) => error.message).join('; ') || body
+  } catch {
+    return body
+  }
+}
+
+/**
+ * Query Linear and reject GraphQL errors, including partial 200 responses. With `errorDetail` the error also carries
+ * Linear's own messages, raw: the caller must clean them before they reach a log.
+ */
 export const linear = async <T>(
   fetchFn: typeof fetch,
   key: string,
   query: string,
   variables?: { [name: string]: Json },
+  { errorDetail = false } = {},
 ): Promise<T> => {
   const operation = /^(?:query|mutation) (\w+)/.exec(query)?.[1] ?? 'GraphQL'
   const { body: result, status } = await requestJson<{ data?: T; errors?: { message: string }[] }>(
@@ -81,8 +102,12 @@ export const linear = async <T>(
         headers: { Authorization: key, 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, variables }),
       }),
+    errorDetail ? graphqlMessages : undefined,
   )
-  if (result.errors?.length) {throw new Error(`Linear ${operation} HTTP ${status} GraphQL errors`)}
+  if (result.errors?.length) {
+    const detail = errorDetail ? `: ${result.errors.map((error) => error.message).join('; ')}` : ''
+    throw new Error(`Linear ${operation} HTTP ${status} GraphQL errors${detail}`)
+  }
   if (!result.data) {throw new Error(`Linear ${operation} HTTP ${status} returned no data`)}
   return result.data
 }

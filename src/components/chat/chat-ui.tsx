@@ -5,6 +5,7 @@
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { AnimatePresence, m, type Transition } from 'framer-motion'
+import { Loader2 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { useScrollToMessage } from '@/chats/use-scroll-to-message'
@@ -19,6 +20,7 @@ import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
 import { getGreeting } from './chat-ui-greeting'
 import { useLingui } from '@lingui/react/macro'
+import { ChatContentReady } from './chat-content-ready'
 
 const MiniAppApprovalHost = lazy(() =>
   import('@/mini-apps/mini-app-approval-host').then((module) => ({ default: module.MiniAppApprovalHost })),
@@ -44,8 +46,8 @@ const EmptyChatGreeting = () => {
 }
 
 export default function ChatUI() {
-  const { i18n } = useLingui()
-  const { chatInstance, miniAppApprovalQueue } = useCurrentChatSession()
+  const { i18n, t } = useLingui()
+  const { chatInstance, miniAppApprovalQueue, awaitingSyncedMessages } = useCurrentChatSession()
 
   // ChatUI only needs the structural "are there any messages" signal (to switch
   // between the empty-state logo and the message list), not per-token content —
@@ -65,6 +67,9 @@ export default function ChatUI() {
   // the throttled `messages.length` can read stale 0 for up to that window. The
   // instant `submitted`/`streaming` transition mounts the list immediately.
   const hasMessages = messages.length > 0 || status === 'submitted' || status === 'streaming'
+  // A saved chat whose messages are still downloading must not look like a new, empty one.
+  const isSyncingMessages = !hasMessages && Boolean(awaitingSyncedMessages)
+  const showsEmptyState = !hasMessages && !isSyncingMessages
 
   const {
     isAtBottom,
@@ -136,6 +141,7 @@ export default function ChatUI() {
                 <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-[calc(var(--header-inset)+1.5rem)] pb-0 md:px-4">
                   <Suspense fallback={null}>
                     <ChatMessageList scrollTargetRef={scrollTargetRef} />
+                    <ChatContentReady />
                   </Suspense>
                 </div>
               </m.div>
@@ -144,6 +150,15 @@ export default function ChatUI() {
                 onClick={() => scrollToBottomAndActivate(true)}
                 className="bottom-6 md:bottom-7"
               />
+            </div>
+          ) : isSyncingMessages ? (
+            <div
+              key="syncing"
+              role="status"
+              aria-label={t`Loading…`}
+              className="flex flex-1 items-center justify-center"
+            >
+              <Loader2 aria-hidden="true" className="animate-spin text-muted-foreground" size={24} />
             </div>
           ) : isMobile ? (
             <m.div
@@ -166,7 +181,7 @@ export default function ChatUI() {
           className={cn(
             'relative z-10 px-3 pb-3 md:px-4 md:pb-4 flex',
             isNativeMobile && 'pb-0',
-            !hasMessages && !isMobile && 'flex-1 items-center',
+            showsEmptyState && !isMobile && 'flex-1 items-center',
           )}
           initial={false}
           layout
@@ -178,7 +193,7 @@ export default function ChatUI() {
                 abruptly, which reads as a hitch in the otherwise-smooth
                 new-chat → real-chat transition. */}
             <AnimatePresence>
-              {!hasMessages && !isMobile && (
+              {showsEmptyState && !isMobile && (
                 <m.div
                   key="greeting"
                   layout
@@ -210,6 +225,7 @@ export default function ChatUI() {
             </div>
             <m.div className="w-full max-w-[696px] min-w-[268px] rounded-2xl" layout transition={firstSendTween}>
               <ChatPromptInput />
+              {!hasMessages && <ChatContentReady />}
             </m.div>
           </m.div>
         </m.div>

@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "clips": [
+    {
+      "id": "desktop-light",
+      "source": "smooth/desktop-03-poster-light.mp4",
+      "keep": [
+        [17.8, 24.0],
+        [32.9, 33.3],
+        [35.8, 36.9],
+        [41.1, 46.0]
+      ],
+      "removeOverlays": [
+        {
+          "x": 12,
+          "y": 13,
+          "width": 105,
+          "height": 39
+        }
+      ],
+      "outputWidth": 1920,
+      "posterAt": 11.5,
+      "output": "videos/marketing/desktop-light.mp4",
+      "poster": "images/marketing/screenshots/desktop-light.webp",
+      "crop": {
+        "x": 20,
+        "y": 12,
+        "width": 1880,
+        "height": 1142
+      }
+    },
+    {
+      "id": "desktop-dark",
+      "source": "smooth/desktop-04-curiosity-dark.mp4",
+      "keep": [
+        [6.8, 13.0],
+        [21.9, 23.5],
+        [28.6, 35.0]
+      ],
+      "removeOverlays": [
+        {
+          "x": 12,
+          "y": 13,
+          "width": 105,
+          "height": 39
+        }
+      ],
+      "outputWidth": 1920,
+      "posterAt": 12.8,
+      "output": "videos/marketing/desktop-dark.mp4",
+      "poster": "images/marketing/screenshots/desktop-dark.webp",
+      "crop": {
+        "x": 20,
+        "y": 12,
+        "width": 1880,
+        "height": 1142
+      }
+    },
+    {
+      "id": "mobile-light",
+      "source": "smooth/mobile-02-rainy-day-light.mp4",
+      "keep": [[0.0, 10.5]],
+      "outputWidth": 784,
+      "posterAt": 3.0,
+      "output": "videos/marketing/mobile-light.mp4",
+      "poster": "images/marketing/screenshots/mobile-light.webp"
+    },
+    {
+      "id": "mobile-dark",
+      "source": "smooth/mobile-03-seed-swap-dark.mp4",
+      "keep": [
+        [13.0, 18.5],
+        [28.9, 35.4]
+      ],
+      "outputWidth": 784,
+      "posterAt": 4.0,
+      "output": "videos/marketing/mobile-dark.mp4",
+      "poster": "images/marketing/screenshots/mobile-dark.webp"
+    },
+    {
+      "id": "terminal",
+      "source": "cli-natural-02-focus.mp4",
+      "keep": [[0.0, 12.8]],
+      "crop": {
+        "x": 100,
+        "y": 276,
+        "width": 1600,
+        "height": 720
+      },
+      "outputWidth": 1600,
+      "posterAt": 10.0,
+      "output": "videos/marketing/terminal.mp4",
+      "poster": "images/marketing/screenshots/terminal.webp"
+    }
+  ]
+}

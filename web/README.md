@@ -48,4 +48,18 @@ The site ships as a container image, not a hosted static-site service. `deploy/d
 
 The selected desktop recordings are the Night School poster conversation (light) and the curious-niece conversation (dark), recorded continuously from the native macOS app with [Kottke’s Webb photo story](https://kottke.org/24/02/spectacular-jwst-photos-adorn-new-usps-stamps) opening in the side browser. Source imagery includes NASA/ESA/CSA/STScI photography reproduced on USPS stamps. The mobile pair is the rainy-day conversation (light) and neighborhood seed-sharing app (dark), recorded from the real responsive web app in a phone viewport, not a native iOS/Android build. Their genuine local Qwen replies predate the takes; the dark take ends with an unsent follow-up. The light reply retains its generated `[N]` marker.
 
-The terminal demo is a 30 fps replay of an actual Thunderbolt CLI PTY session building and running a focus-planning tool, with idle waits shortened. Its gallery headings, border, and footer are cropped out; the website supplies the terminal chrome. All selected videos are silent, retain recorded frame timing, and use only start/end trims and compression. No prompts, replies, commands, or results are rewritten. Desktop exports start 8s/3s into the light/dark candidates; mobile exports start 0s/13s into the light/dark candidates. Full review originals remain outside the repository.
+The terminal demo is a 30 fps replay of an actual Thunderbolt CLI PTY session building and running a focus-planning tool, with idle waits shortened. Its gallery headings, border, and footer are cropped out; the website supplies the terminal chrome. All selected videos are silent and retain recorded frame timing within each kept segment. Desktop edits cut long waits between the response and opening the side browser, crop the native rounded window edges, and remove the small native recording control at the top left using localized pixel interpolation. Mobile edits shorten repeated reading holds. No prompts, replies, commands, or results are rewritten. Full review originals remain outside the repository.
+
+## Refreshing product videos
+
+Use [$thunder-demo-videos](../.agents/skills/thunder-demo-videos/SKILL.md) to capture a new feature or revise the existing demos. The skill includes a window-only macOS recorder, genuine CLI PTY capture/replay, and an FFmpeg editor with source hashes and cadence reports. The Claude skill path links to the same repository source.
+
+`demo-edits.json` stores the current source-relative keep ranges, cosmetic cleanup, terminal crop, output paths, and poster timestamps. Run the skill's editor from a prepared Python environment:
+
+```sh
+python ../.agents/skills/thunder-demo-videos/scripts/demo.py edit demo-edits.json \
+  --source-dir /absolute/path/to/product-demo-videos --output-dir public \
+  --report /absolute/path/to/session/exports.json
+```
+
+The current source directory contains the `smooth/` GUI recordings and `cli-natural-02-focus.mp4`. Choose new source files and inspect their timelines when a feature changes; old timestamps are specific to the recorded session. The editor derives posters from the edited videos, so playback, fallback frames, and cleanup stay consistent. Update `product-demos.ts` if the dimensions, filenames, or story change.

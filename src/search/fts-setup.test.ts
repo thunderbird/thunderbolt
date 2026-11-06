@@ -240,6 +240,11 @@ describe('FTS SQL end-to-end against real SQLite', () => {
 
     expect(search(db, 'alpha')).toHaveLength(0)
     expect(search(db, 'beta').map((row) => row.id)).toEqual(['m1'])
+    db.run(`UPDATE search_index SET body = 'untouched'`)
+    setData(db, 'm1', { name: 'Beta', deleted_at: null, updated_at: 'now' })
+    expect(search(db, 'untouched').map((row) => row.id)).toEqual(['m1'])
+    setData(db, 'm1', { name: 'Beta', description: 'fresh' })
+    expect(search(db, 'untouched')).toHaveLength(0)
     db.close()
   })
 

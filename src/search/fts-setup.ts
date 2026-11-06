@@ -126,9 +126,11 @@ export const buildTriggerSql = (cfg: SearchEntityConfig, internalName: string): 
     `INSERT INTO ${searchIndexTable}(rowid, ${indexColumns}) SELECT ${ftsRowid(cfg, 'NEW.id')}, ` +
     `NEW.id, '${cfg.type}', ${parentExpr(cfg, 'NEW.data')}, ${titleExpr(cfg, 'NEW.data')}, ${bodyExpr(cfg, 'NEW.data')} ` +
     `WHERE ${notSoftDeleted('NEW.data')}`
+  const indexed = (dataExpr: string) =>
+    `(${parentExpr(cfg, dataExpr)}, ${titleExpr(cfg, dataExpr)}, ${bodyExpr(cfg, dataExpr)}, ${notSoftDeleted(dataExpr)})`
   return [
     `CREATE TRIGGER ${names.insert} AFTER INSERT ON ${internalName} BEGIN ${remove('NEW.id')}; ${insert}; END`,
-    `CREATE TRIGGER ${names.update} AFTER UPDATE ON ${internalName} BEGIN ${remove('OLD.id')}; ${insert}; END`,
+    `CREATE TRIGGER ${names.update} AFTER UPDATE ON ${internalName} WHEN ${indexed('OLD.data')} IS NOT ${indexed('NEW.data')} BEGIN ${remove('OLD.id')}; ${insert}; END`,
     `CREATE TRIGGER ${names.delete} AFTER DELETE ON ${internalName} BEGIN ${remove('OLD.id')}; END`,
   ]
 }

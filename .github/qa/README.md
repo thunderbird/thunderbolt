@@ -372,7 +372,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
-   line is the proof and a screenshot only context. The default answer is drop. The judge also proposes the
+   line is the proof and a screenshot only context. The fake AI provider (`e2e/fake-provider.ts`) answers streamed
+   Anthropic Messages and streamed OpenAI-compatible chat completions, the two requests the backend sends it, and
+   gives anything else a 404 and a `[fake-provider] unsupported <time> <request>` line in the stack log. Replay reads
+   that log (`QA_BACKEND_LOG`) and gives each finding the lines logged while one of its counted runs ran, as
+   `replay.provider_gaps`: by time for a spec, since specs replay in parallel and a line can land on another spec's
+   finding too, and from the run's own log lines for a flow. The judge sees them in `<fake_provider>` and drops a
+   finding whose failure follows from one as an environment artifact. A spec can write to that log, so the lines
+   are untrusted like the rest, and at most 10 are kept. The default answer is drop. The judge also proposes the
    ticket's priority from a four-line rubric in `judge.md`. When the kept findings carry two distinct fingerprints or more, one more
    call with the same model groups them by defect (`groupFindings`), because each platform can word one bug
    differently: Android names an icon button by the text before it where the web and iOS also name the icon, and
@@ -653,8 +660,8 @@ QA_BACKEND_PORT to a free port`. So stop any `bun run e2e` first, or move the st
 .github/qa/scripts/stack.sh build qa-dist-onboarding onboarding   # only for c1
 
 # The stack: fake AI, pglite, the normal build on the frontend port and the onboarding build on the onboarding port.
-# Leave it running.
-.github/qa/scripts/stack.sh serve qa-dist qa-dist-onboarding
+# Leave it running. The tee keeps the log replay reads for the fake provider's lines.
+.github/qa/scripts/stack.sh serve qa-dist qa-dist-onboarding 2>&1 | tee /tmp/qa-stack.log
 
 # The guard
 bunx playwright test --config .github/qa/playwright.config.ts --project control
@@ -682,8 +689,9 @@ ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c2-chat-power-user-phone
 Then the rest of the pipeline:
 
 ```sh
-# Replay: no keys in this shell, and the stack running with the fake AI (real providers for c3–c5 and free-*)
-bun .github/qa/scripts/verify.ts replay --out qa-out
+# Replay: no keys in this shell, and the stack running with the fake AI (real providers for c3–c5 and free-*).
+# QA_BACKEND_LOG is the stack's log, where the fake provider writes the requests it cannot answer.
+QA_BACKEND_LOG=/tmp/qa-stack.log bun .github/qa/scripts/verify.ts replay --out qa-out
 ANTHROPIC_API_KEY=… bun .github/qa/scripts/verify.ts judge --out qa-out
 bun .github/qa/scripts/file-findings.ts --out qa-out    # dry run; LINEAR_API_KEY adds dedupe and scorecard.json
 bun .github/qa/scripts/fix.ts route --out qa-out       # lists open PRs, so `gh` must be signed in here

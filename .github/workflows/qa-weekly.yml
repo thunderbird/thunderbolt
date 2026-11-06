@@ -901,6 +901,9 @@ jobs:
       - *lock
 
       - name: Replay the repro specs
+        env:
+          # The fake provider logs the requests it cannot answer here; the judge sees them per finding.
+          QA_BACKEND_LOG: ${{ runner.temp }}/qa-stack.log
         run: |
           mkdir -p "$QA_OUT"
           bun .github/qa/scripts/verify.ts replay --out "$QA_OUT"

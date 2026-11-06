@@ -213,7 +213,11 @@ export type HarnessBindingTransaction = {
 export type ProviderRuntime = {
   readonly snapshot: () => ProviderSnapshot
   readonly manage: (command: ProviderCommand) => Promise<ProviderSnapshot>
-  readonly prepare: (selection: InvocationSelection, signal?: AbortSignal) => Promise<PreparedPiBinding>
+  readonly prepare: (
+    selection: InvocationSelection,
+    signal?: AbortSignal,
+    advisorySignal?: AbortSignal,
+  ) => Promise<PreparedPiBinding>
 }
 
 export type CommandOutcome =

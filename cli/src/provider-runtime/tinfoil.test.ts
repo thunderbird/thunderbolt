@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, describe, expect, spyOn, test } from 'bun:test'
+import { afterAll, describe, expect, mock, spyOn, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,15 +11,17 @@ import { AttestationError } from '@tinfoilsh/verifier'
 import { SecureClient } from 'tinfoil'
 import { defaultModelGlm53, defaultModelDeepSeekV41Flash, type SharedModel } from '../../../shared/defaults/models.ts'
 import { inferenceUsageReceiptHeader, inferenceModelHeader } from '../../../shared/inference-usage.ts'
-import { noReasoningEffort } from '../../../shared/reasoning-effort.ts'
+import { noReasoningEffort, type ReasoningCapabilities } from '../../../shared/reasoning-effort.ts'
 import { parseTinfoilReasoningCatalog } from '../../../shared/reasoning-effort-catalog.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
 import { readFileOrNull } from '../lib/secure-fs.ts'
 import { cliVersion } from '../version.ts'
 import type { HarnessRuntime, PreparedPiBinding, ResolvedAccountCredential } from './types.ts'
-import { testSessionCredential } from './test-fixtures.ts'
+import { createTestProviderRuntime, testSessionCredential } from './test-fixtures.ts'
 import { createTinfoilBinding, type CreateTinfoilBindingOptions } from './tinfoil.ts'
+import { prepareProviderBinding } from './provider-stage.ts'
+import { runProviderManager } from './manager.ts'
 
 const confidentialModel: SharedModel = {
   ...defaultModelGlm53,
@@ -239,6 +241,101 @@ const createRuntime = (binding: PreparedPiBinding, thinking: ThinkingLevel = 'hi
   )
 
 describe('createTinfoilBinding', () => {
+  test('cancels hanging discovery and disposes the binding created after caller cancellation', async () => {
+    const controller = new AbortController()
+    const discoveryStarted = Promise.withResolvers<void>()
+    const pendingDiscovery = Promise.withResolvers<ReasoningCapabilities>()
+    const disposed = Promise.withResolvers<void>()
+    const reset = mock(() => disposed.resolve())
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const { runtime } = await createTestProviderRuntime({
+      resolveAccountCredential: async () => sessionCredential(),
+      loadCatalog: async () => ({ version: 1, defaultModelId: confidentialModel.id, data: [confidentialModel] }),
+      createTinfoilBinding: (options) =>
+        createTinfoilBinding({
+          ...bindingOptions(),
+          ...options,
+          loadReasoningCapabilities: async () => {
+            discoveryStarted.resolve()
+            return pendingDiscovery.promise
+          },
+          createSecureClient: secureClientFactory(() => successfulCompletion(''), reset),
+        }),
+    })
+    try {
+      const pending = prepareProviderBinding(
+        runtime,
+        { providerId: 'thunderbolt', model: confidentialModel.id },
+        { signal: controller.signal },
+      )
+      await discoveryStarted.promise
+      controller.abort()
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+      await disposed.promise
+      expect(reset).toHaveBeenCalledTimes(1)
+    } finally {
+      pendingDiscovery.resolve(noReasoningEffort)
+      warn.mockRestore()
+    }
+  })
+
+  test.each([0, 300])(
+    'prepares and runs a manager-selected model despite hanging discovery after %dms of required work',
+    async (requiredDelay) => {
+      const pending = Promise.withResolvers<ReasoningCapabilities>()
+      const loadReasoningCapabilities = mock(async () => pending.promise)
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      const catalog = { version: 1, defaultModelId: confidentialModel.id, data: [confidentialModel] }
+      const { runtime: providerRuntime } = await createTestProviderRuntime({
+        loadConfig: async () => ({
+          version: 3,
+          activeProviderId: 'thunderbolt',
+          thunderbolt: { defaultModelId: confidentialModel.id },
+          providers: [],
+        }),
+        resolveAccountCredential: async () => sessionCredential(),
+        loadCatalog: async () => {
+          await Bun.sleep(requiredDelay)
+          return catalog
+        },
+        createTinfoilBinding: (options) =>
+          createTinfoilBinding({
+            ...bindingOptions(),
+            ...options,
+            loadReasoningCapabilities,
+            createSecureClient: secureClientFactory(() => successfulCompletion('')),
+          }),
+      })
+      try {
+        const outcome = await runProviderManager(
+          {
+            choose: async () => confidentialModel.id,
+            readText: async () => null,
+            readSecret: async () => null,
+            write: () => {},
+            showVerification: () => {},
+            showStatus: () => {},
+          },
+          providerRuntime,
+          'models',
+        )
+        if (outcome.kind !== 'switch') throw new Error('Expected the model manager to select a binding')
+        const binding = await prepareProviderBinding(providerRuntime, outcome.selection, { timeoutMs: 500 })
+        const runtime = await createRuntime(binding, 'medium')
+        try {
+          expect(runtime.reasoning.capabilities()).toEqual(noReasoningEffort)
+          expect((await runtime.prompt('Continue working')).stopReason).toBe('stop')
+          expect(loadReasoningCapabilities).toHaveBeenCalledTimes(requiredDelay === 0 ? 1 : 0)
+        } finally {
+          await runtime.dispose()
+        }
+      } finally {
+        pending.resolve(noReasoningEffort)
+        warn.mockRestore()
+      }
+    },
+  )
+
   test('keeps ordinary inference working through legacy defaults during a cold discovery outage', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     const requests: Record<string, unknown>[] = []

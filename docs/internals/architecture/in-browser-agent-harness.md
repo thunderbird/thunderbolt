@@ -369,6 +369,9 @@ a cold discovery failure also hides controls. The app preserves explicit saved w
 the CLI retains its saved thinking level with Pi's legacy compatibility mapping until metadata is available. Public catalog requests
 contain no session credentials, cache secret, or conversation data. The CLI uses the same Tinfoil metadata and cache
 policy, with Pi's compatibility aliases retained for legacy inference defaults when native support is unknown.
+CLI discovery may wait only during the first half of the overall provider-preparation budget, measured before
+credential and managed-catalog loading. If that budget is exhausted, binding construction continues with legacy
+defaults; an already-running public catalog request can still populate the cache for subsequent bindings.
 
 The browser harness changes thinking level between turns without rebuilding the session or losing compaction
 checkpoints. An absent override uses the profile's level and leaves the provider payload unchanged.

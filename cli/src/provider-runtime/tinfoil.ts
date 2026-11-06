@@ -21,6 +21,7 @@ import { SecureClient } from 'tinfoil'
 import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
 import { thunderboltHomeDir } from '../paths.ts'
+import { abortable } from '../lib/abort.ts'
 import { providerRuntimeError } from './types.ts'
 import type { AccountFetch, PreparedPiBinding, ProviderRuntimeError, SessionCredential } from './types.ts'
 import { createUsageReceiptLifecycle, submitInferenceUsageReceipt } from './usage-receipt.ts'
@@ -42,6 +43,7 @@ export type CreateTinfoilBindingOptions = {
   readonly reportError?: (error: Error) => void
   readonly createSecureClient?: (options: ConstructorParameters<typeof SecureClient>[0]) => SecureClient
   readonly loadReasoningCapabilities?: (modelId: string) => Promise<ReasoningCapabilities>
+  readonly advisorySignal?: AbortSignal
 }
 
 /** Build a non-secret preparation error for malformed confidential state. */
@@ -99,7 +101,11 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
 
   const capabilities = await (async () => {
     try {
-      return await (options.loadReasoningCapabilities ?? loadTinfoilReasoningCapabilities)(options.model.model)
+      options.advisorySignal?.throwIfAborted()
+      return await abortable(
+        (options.loadReasoningCapabilities ?? loadTinfoilReasoningCapabilities)(options.model.model),
+        options.advisorySignal,
+      )
     } catch (error) {
       // Discovery is advisory. Keep Pi's existing inference behavior without advertising unverified choices.
       console.warn('Could not discover Tinfoil reasoning capabilities; keeping provider defaults', error)

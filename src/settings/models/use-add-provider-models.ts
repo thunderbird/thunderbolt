@@ -23,14 +23,23 @@ type PickerState = {
   search: string
   manualId: string
   manual: boolean
+  enableUnknownTools: boolean
 }
-const initialState: PickerState = { connectionId: '', selected: [], search: '', manualId: '', manual: false }
+const initialState: PickerState = {
+  connectionId: '',
+  selected: [],
+  search: '',
+  manualId: '',
+  manual: false,
+  enableUnknownTools: false,
+}
 type PickerAction =
   | { type: 'connection'; id: string }
   | { type: 'toggle'; id: string }
   | { type: 'search'; value: string }
   | { type: 'manual'; value: boolean }
   | { type: 'manualId'; value: string }
+  | { type: 'enableUnknownTools'; value: boolean }
   | { type: 'reset' }
 
 /** Keeps catalog selections scoped to the connection that supplied them. */
@@ -51,6 +60,8 @@ export const providerModelPickerReducer = (state: PickerState, action: PickerAct
       return { ...state, manual: action.value }
     case 'manualId':
       return { ...state, manualId: action.value }
+    case 'enableUnknownTools':
+      return { ...state, enableUnknownTools: action.value }
     case 'reset':
       return initialState
   }
@@ -148,6 +159,7 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     visibleModels,
     existingIds,
     selectedCount: selectedModels.length,
+    hasUnknownToolSupport: selectedModels.some((model) => model.supports_tools === undefined),
     isLoadingCatalog: canLoad && catalog.isFetching,
     catalogError: catalog.isError ? t`Could not load this connection's models. Try again.` : null,
     submitError: mutation.isError ? t`Could not add the models. Try again.` : null,
@@ -161,12 +173,21 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     setSearch: (value: string) => dispatch({ type: 'search', value }),
     setManual: (value: boolean) => dispatch({ type: 'manual', value }),
     setManualId: (value: string) => dispatch({ type: 'manualId', value }),
+    setEnableUnknownTools: (value: boolean) => dispatch({ type: 'enableUnknownTools', value }),
     refresh: () => void catalog.refetch(),
     submit: () => {
       if (canSubmit && connection && !pending.current) {
         const controller = new AbortController()
         pending.current = controller
-        mutation.mutate({ id: connection.id, models: selectedModels, updatedAt: connection.updatedAt, controller })
+        mutation.mutate({
+          id: connection.id,
+          models: selectedModels.map((model) => ({
+            ...model,
+            supports_tools: model.supports_tools ?? state.enableUnknownTools,
+          })),
+          updatedAt: connection.updatedAt,
+          controller,
+        })
       }
     },
     onCancel: () => {

@@ -43,6 +43,8 @@ import { LazyCreateItemHost } from '@/components/create-item/lazy-create-item-ho
 import * as otariBrowser from '@/lib/otari-browser-auth'
 import * as platform from '@/lib/platform'
 import * as chatgptAuth from '@/providers/chatgpt-auth'
+import * as openrouterAuth from '@/lib/openrouter-auth'
+import * as opener from '@tauri-apps/plugin-opener'
 import { ChatModelSetup } from '@/components/chat/chat-model-setup'
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
@@ -486,9 +488,7 @@ describe('ConnectionsPage list', () => {
       fireEvent.pointerDown(picker, { button: 0 })
     })
     fireEvent.click(screen.getByRole('menuitem', { name: 'Use another ChatGPT account' }))
-    await act(async () => {
-      await getClock().tickAsync(50)
-    })
+    await waitForElement(() => (connect.mock.calls.length > 0 ? document.body : null))
     expect(connect).toHaveBeenCalledTimes(1)
     const signal = connect.mock.calls[0][1]
     expect(signal.aborted).toBe(false)
@@ -496,6 +496,49 @@ describe('ConnectionsPage list', () => {
     expect(signal.aborted).toBe(true)
     expect(await waitForElement(() => screen.queryByLabelText('API key'))).toBeVisible()
   })
+
+  it.each(['desktop', 'manual'] as const)(
+    'shows connected controls after an in-place OAuth reconnect: %s',
+    async (flow) => {
+      const id = await saveProviderConnection(getDb(), {
+        provider: 'openrouter',
+        name: 'My OpenRouter',
+        authMethod: 'oauth',
+        credentials: { access_token: 'old' },
+      })
+      await disconnectProviderConnection(getDb(), id)
+      spyOn(platform, 'isTauri').mockReturnValue(true)
+      spyOn(platform, 'isMobile').mockReturnValue(flow === 'manual')
+      spyOn(openrouterAuth, 'startOpenRouterConnection').mockResolvedValue('new-token')
+      spyOn(openrouterAuth, 'prepareOpenRouterManualConnection').mockResolvedValue({
+        authorizationUrl: 'https://openrouter.ai/auth',
+        verifier: 'test-verifier',
+      })
+      spyOn(opener, 'openUrl').mockResolvedValue()
+      spyOn(openrouterAuth, 'exchangeOpenRouterCode').mockResolvedValue('new-token')
+      renderWithReactivity(<ConnectionsPage />, {
+        wrapper: McpProviderWrapper,
+        tables: ['provider_connections', 'provider_connection_secrets'],
+      })
+      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open My OpenRouter' })))
+      for (const attempt of [1, 2]) {
+        fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Connect OpenRouter' })))
+        if (flow === 'manual') {
+          const code = await waitForElement(() => screen.queryByLabelText('Authorization code'))
+          fireEvent.change(code, { target: { value: 'test-code' } })
+          fireEvent.click(screen.getByRole('button', { name: 'Complete connection' }))
+        }
+        const disconnect = await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect this device' }))
+        expect(Boolean(disconnect)).toBe(true)
+        expect(screen.queryByRole('button', { name: 'Connect OpenRouter' })).toBeNull()
+        expect(screen.queryByLabelText('Authorization code')).toBeNull()
+        expect(screen.getByRole('status')).toHaveTextContent('Connected to OpenRouter')
+        if (attempt === 1) {
+          fireEvent.click(disconnect)
+        }
+      }
+    },
+  )
 
   it('opens the connection aside directly from empty chat and lets users choose a provider', async () => {
     renderWithReactivity(

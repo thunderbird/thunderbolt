@@ -14,6 +14,8 @@ export type ConnectionSelection =
 
 export type ConnectionsPageState = {
   selected: ConnectionSelection
+  /** Reset a reconnect form only after authorization and discovery finish. */
+  providerSaveVersion: number
   mode: AddServerMode
   jsonText: string
   importError: string | null
@@ -30,6 +32,7 @@ export type ConnectionsPageState = {
 
 export type ConnectionsPageAction =
   | { type: 'SELECTION_CHANGED'; selection: ConnectionSelection }
+  | { type: 'PROVIDER_SAVED'; id: string }
   | { type: 'MODE_CHANGED'; mode: AddServerMode }
   | { type: 'JSON_CHANGED'; value: string }
   | { type: 'IMPORT_FAILED'; error: string }
@@ -52,6 +55,7 @@ export type ConnectionsPageAction =
  *  page mounts from an in-flight integration OAuth redirect so the spinner shows immediately. */
 export const createConnectionsPageState = (isProcessingCallback = false): ConnectionsPageState => ({
   selected: null,
+  providerSaveVersion: 0,
   mode: 'simple',
   jsonText: '',
   importError: null,
@@ -74,6 +78,14 @@ export const connectionsPageReducer = (
   action: ConnectionsPageAction,
 ): ConnectionsPageState => {
   switch (action.type) {
+    case 'PROVIDER_SAVED':
+      return {
+        ...state,
+        selected: { kind: 'provider', id: action.id, fromPicker: true },
+        providerSaveVersion: state.providerSaveVersion + 1,
+        integrationError: null,
+        serverError: null,
+      }
     case 'SELECTION_CHANGED':
       return { ...state, selected: action.selection, integrationError: null, serverError: null }
     case 'MODE_CHANGED':

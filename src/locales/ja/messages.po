@@ -2430,6 +2430,10 @@ msgstr "テレメトリーを有効にする"
 msgid "Enable this connection to add models."
 msgstr ""
 
+#: src/settings/models/add-provider-models.tsx
+msgid "Enable tools for models with unknown support"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Enabled"
 msgstr "有効"

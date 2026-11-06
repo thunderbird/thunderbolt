@@ -7,7 +7,9 @@ import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import { createModel } from '@/dal/models'
 import * as connections from '@/dal/provider-connections'
-import { providerConnectionsTable } from '@/db/tables'
+import { providerConnectionsTable, integrationsSecretsTable } from '@/db/tables'
+import { migrateProviderConnections } from './provider-connections'
+import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
 import { searchSelectionStorageKey, useSearchProviderStore } from '@/stores/search-provider-store'
 import { legacySearchStorageKey, migrateSearchProviderConnections } from './search-provider-connections'
 
@@ -121,6 +123,52 @@ it('keeps explicit disconnected Tinfoil intent instead of falling back to Cloud'
   await migrateSearchProviderConnections(getDb())
   expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'connection', connectionId: 'oauth:tinfoil' })
 })
+
+it.each([
+  { access_token: '', sessionRevision: 'disconnected' },
+  { access_token: 'expired', expires_at: 1 },
+  { access_token: 'expired', refresh_token: 'refresh', reauth_required: true },
+])('keeps auto-selected Tinfoil private when legacy credentials are unavailable: %j', async (credentials) => {
+  legacy({ selection: 'auto' })
+  await getDb()
+    .insert(integrationsSecretsTable)
+    .values({ provider: 'tinfoil', credentials: JSON.stringify(credentials), enabled: 0 })
+  await migrateProviderConnections(getDb())
+  await migrateSearchProviderConnections(getDb())
+  const selection = useSearchProviderStore.getState()
+  expect(selection).toMatchObject({ selection: 'connection', connectionId: 'oauth:tinfoil' })
+  expect(resolveSearchSelection(selection.selection, { connection: false, cloud: true })).toBeNull()
+  useSearchProviderStore.getState().selectSearchProvider('cloud')
+  await migrateSearchProviderConnections(getDb())
+  expect(useSearchProviderStore.getState().selection).toBe('cloud')
+})
+
+it.each(['disconnect', 'remove'] as const)('retains local private-search history after %s', async (action) => {
+  const id = await connections.saveProviderConnection(getDb(), {
+    provider: 'tinfoil',
+    name: 'Private search',
+    authMethod: 'api_key',
+    credentials: { apiKey: 'test' },
+  })
+  await (action === 'disconnect' ? connections.disconnectProviderConnection : connections.deleteProviderConnection)(
+    getDb(),
+    id,
+  )
+  await migrateSearchProviderConnections(getDb())
+  expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'connection', connectionId: id })
+})
+
+it.each(['cloud', 'none'] as const)(
+  'preserves explicit %s despite unavailable legacy Tinfoil history',
+  async (selection) => {
+    legacy({ selection })
+    await getDb()
+      .insert(integrationsSecretsTable)
+      .values({ provider: 'tinfoil', credentials: '{"access_token":""}', enabled: 0 })
+    await migrateSearchProviderConnections(getDb())
+    expect(useSearchProviderStore.getState().selection).toBe(selection)
+  },
+)
 it('does not leak malformed legacy configuration through the migration error', async () => {
   localStorage.setItem(legacySearchStorageKey, 'secret malformed JSON')
   await expect(migrateSearchProviderConnections(getDb())).rejects.toThrow(

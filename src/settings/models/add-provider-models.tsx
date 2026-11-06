@@ -172,6 +172,16 @@ export const AddProviderModels = (state: ReturnType<typeof useAddProviderModels>
           {state.submitError}
         </p>
       )}
+      {state.canLoad && state.hasUnknownToolSupport && (
+        <label className="flex items-center gap-3 text-sm">
+          <Checkbox
+            checked={state.enableUnknownTools}
+            onCheckedChange={(checked) => state.setEnableUnknownTools(checked === true)}
+            disabled={state.isPending}
+          />
+          <Trans>Enable tools for models with unknown support</Trans>
+        </label>
+      )}
       <FormFooter>
         <Button type="button" variant="outline" onClick={state.onCancel} disabled={state.isPending}>
           <Trans>Cancel</Trans>

@@ -36,7 +36,7 @@ const onSaved = mock((_id: string) => {})
 const onCancel = mock(() => {})
 const settle = async () => {
   await act(async () => {
-    await getClock().runAllAsync()
+    await getClock().tickAsync(10)
   })
   await waitForElement(() =>
     screen.queryByRole('button', { name: /^(Save connection|Save Changes)$/ })?.getAttribute('aria-busy') === 'true'

@@ -2442,6 +2442,10 @@ msgstr "Enable Telemetry"
 msgid "Enable this connection to add models."
 msgstr "Enable this connection to add models."
 
+#: src/settings/models/add-provider-models.tsx
+msgid "Enable tools for models with unknown support"
+msgstr "Enable tools for models with unknown support"
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Enabled"
 msgstr "Enabled"

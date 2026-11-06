@@ -69,6 +69,7 @@ describe('connection model picker', () => {
     const models = await getAllModels(getDb())
     expect(models.map((model) => model.model).sort()).toEqual(['one', 'two'])
     expect(models.every((model) => model.providerConnectionId === id)).toBe(true)
+    expect(models.every((model) => model.toolUsage === 0)).toBe(true)
     expect(await getDb().select().from(modelsSecretsTable)).toEqual([])
     expect(saved).toHaveBeenCalledTimes(1)
   })
@@ -110,15 +111,18 @@ describe('connection model picker', () => {
     renderPicker()
     await chooseConnection('First')
     fireEvent.click(await waitForElement(() => screen.queryByRole('checkbox', { name: 'A model' })))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Enable tools for models with unknown support' }))
     await chooseConnection('Disabled')
     expect(screen.getByRole('button', { name: 'Add models' })).toBeDisabled()
     expect(screen.getByText('Enable this connection to add models.')).toBeInTheDocument()
     expect(fetch.mock.calls.some((call) => call[1] === disabled)).toBe(false)
     await chooseConnection('First')
     expect(await waitForElement(() => screen.queryByRole('checkbox', { name: 'A model' }))).not.toBeChecked()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'A model' }))
+    expect(screen.getByRole('checkbox', { name: 'Enable tools for models with unknown support' })).not.toBeChecked()
   })
 
-  it('allows a manual custom model when discovery fails and keeps retry available', async () => {
+  it.each([false, true])('allows manual custom models with explicit tools choice (%s)', async (enableTools) => {
     await saveProviderConnection(getDb(), {
       provider: 'custom',
       name: 'Local server',
@@ -135,9 +139,43 @@ describe('connection model picker', () => {
     expect(fetch).toHaveBeenCalledTimes(2)
     fireEvent.click(screen.getByRole('button', { name: 'Enter a model ID' }))
     fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: '  local-model  ' } })
+    const tools = screen.getByRole('checkbox', { name: 'Enable tools for models with unknown support' })
+    expect(tools).not.toBeChecked()
+    if (enableTools) {
+      fireEvent.click(tools)
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Add models' }))
     await settle()
     expect((await getAllModels(getDb()))[0]?.model).toBe('local-model')
+    expect((await getAllModels(getDb()))[0]?.toolUsage).toBe(enableTools ? 1 : 0)
+  })
+
+  it('applies the tools opt-in only to unknown catalog entries', async () => {
+    await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Mixed catalog',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'test' },
+    })
+    spyOn(providerModels, 'fetchProviderModels').mockResolvedValue([
+      { id: 'yes', name: 'Supported', supports_tools: true },
+      { id: 'no', name: 'Unsupported', supports_tools: false },
+      { id: 'unknown', name: 'Unknown' },
+    ])
+    renderPicker()
+    await chooseConnection('Mixed catalog')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Supported' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Unsupported' }))
+    expect(screen.queryByRole('checkbox', { name: 'Enable tools for models with unknown support' })).toBeNull()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Unknown' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Enable tools for models with unknown support' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add models' }))
+    await settle()
+    expect(Object.fromEntries((await getAllModels(getDb())).map((model) => [model.model, model.toolUsage]))).toEqual({
+      yes: 1,
+      no: 0,
+      unknown: 1,
+    })
   })
 
   it.each(['cancel', 'unmount', 'switch'] as const)('does not save queued selections after %s', async (action) => {

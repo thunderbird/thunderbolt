@@ -218,15 +218,7 @@ const ConnectionsPage = ({
 
   const providerConnections = useAiProviderConnections()
   const aiProviders = providerConnections.providers
-  const providerSaved = (id: string) =>
-    dispatch({
-      type: 'SELECTION_CHANGED',
-      selection: {
-        kind: 'provider',
-        id,
-        fromPicker: true,
-      },
-    })
+  const providerSaved = (id: string) => dispatch({ type: 'PROVIDER_SAVED', id })
   const authorization = useProviderAuthorization({ onConnected: providerSaved })
 
   const integrationsController = useIntegrationsController({ db, dispatch })
@@ -401,7 +393,7 @@ const ConnectionsPage = ({
     if (connection) {
       return (
         <ProviderConnectionDetail
-          key={`${connection.id}:${selected?.kind === 'provider' ? selected.action : ''}`}
+          key={`${connection.id}:${selected?.kind === 'provider' ? selected.action : ''}:${state.providerSaveVersion}`}
           initialAction={selected?.kind === 'provider' ? selected.action : undefined}
           onBack={selected?.kind === 'provider' && selected.fromPicker ? backToPicker : undefined}
           connection={connection}

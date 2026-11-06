@@ -97,7 +97,7 @@ export const addProviderModels = async (
         url: null,
         isSystem: 0,
         enabled: 1,
-        toolUsage: model.supports_tools === false ? 0 : 1,
+        toolUsage: model.supports_tools === true ? 1 : 0,
         isConfidential: connection.provider === 'tinfoil' ? 1 : 0,
       })
       ids.push(id)

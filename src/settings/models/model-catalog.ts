@@ -17,8 +17,7 @@ export type AvailableModel = {
   name?: string
   created?: number
   owned_by?: string
-  /** Only the built-in Thunderbolt catalog sets this; other providers' tool
-   *  support is learned by the connection test. */
+  /** Known catalog support; otherwise require an explicit choice or connection test. */
   supports_tools?: boolean
   /** Whether the model accepts image input. Undefined when the provider doesn't say. */
   supports_images?: boolean

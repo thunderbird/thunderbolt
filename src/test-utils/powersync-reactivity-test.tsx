@@ -5,6 +5,7 @@
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { act, render, type RenderOptions, type RenderResult } from '@testing-library/react'
 import type { ReactElement, ReactNode } from 'react'
+import { setTimeout as delay } from 'node:timers/promises'
 import { getClock } from '@/testing-library'
 import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
 import { PowerSyncReactivityTestProvider } from './powersync-mock'
@@ -15,8 +16,8 @@ import { mockProxyFetch } from './proxy-fetch'
  */
 export const waitForElement = async (getElement: () => HTMLElement | null, timeoutMs = 2000): Promise<HTMLElement> => {
   const clock = getClock()
-  const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
+  const start = performance.now()
+  while (performance.now() - start < timeoutMs) {
     try {
       const el = getElement()
       if (el) {
@@ -26,8 +27,10 @@ export const waitForElement = async (getElement: () => HTMLElement | null, timeo
       // not found yet
     }
     await act(async () => {
-      // Draining every timer would also run query-cache GC and skip this poll's deadline.
-      await clock.tickAsync(50)
+      // Native work (e.g. Web Crypto) needs real time; fake timers alone can exhaust
+      // the deadline before it finishes. Keep virtual time close to elapsed time.
+      await delay(10)
+      await clock.tickAsync(10)
     })
   }
   return getElement()!

@@ -2571,6 +2571,7 @@ msgstr "Cargando la vista previa…"
 msgid "Loading this app's pairing identity…"
 msgstr "Cargando la identidad de emparejamiento de esta app…"
 
+#: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 #: src/widgets/connect-integration/widget.tsx

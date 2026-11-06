@@ -2547,6 +2547,7 @@ msgstr "プレビューを読み込んでいます…"
 msgid "Loading this app's pairing identity…"
 msgstr "このアプリのペアリング ID を読み込んでいます…"
 
+#: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 #: src/widgets/connect-integration/widget.tsx

@@ -281,6 +281,13 @@
       "when": 1792431652652,
       "tag": "0039_device_code_unique_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793926107392,
+      "tag": "0040_huge_gamora",
+      "breakpoints": true
     }
   ]
 }

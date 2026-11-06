@@ -322,16 +322,24 @@ describe('FTS SQL end-to-end against real SQLite', () => {
     db.close()
   })
 
-  it('backfills pre-existing rows and skips soft-deleted ones', () => {
+  it('backfills pre-existing rows, skips soft-deleted ones, then updates/deletes a backfilled row through the key map', () => {
     const db = makeDb(false) // rows pre-exist before any trigger — the backfill must catch them
+    db.run(`INSERT INTO search_index_keys(fts_rowid, entity_type, id) VALUES (1, 'skill', 'unrelated')`)
     insertRow(db, 'keep', { name: 'Keeper', deleted_at: null })
     insertRow(db, 'skip', { name: 'Skipper', deleted_at: 'yes' })
-    for (const statement of buildBackfillSql(modelCfg, internalName)) {
+    for (const statement of [...buildBackfillSql(modelCfg, internalName), ...buildTriggerSql(modelCfg, internalName)]) {
       db.run(statement)
     }
 
     expect(search(db, 'keep*').map((row) => row.id)).toEqual(['keep'])
     expect(search(db, 'skip*')).toHaveLength(0)
+
+    setData(db, 'keep', { name: 'Renamed', deleted_at: null })
+    expect(search(db, 'keep*')).toHaveLength(0)
+    expect(search(db, 'renamed').map((row) => row.id)).toEqual(['keep'])
+
+    db.run(`DELETE FROM ${internalName} WHERE id = ?`, ['keep'])
+    expect(search(db, 'renamed')).toHaveLength(0)
     db.close()
   })
 })

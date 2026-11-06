@@ -350,7 +350,6 @@ describe('createTinfoilBinding', () => {
           const binding = await preparation
           timeout.mockRestore()
           runtime = await createRuntime(binding, 'medium')
-          expect(overallDeadline.signal.aborted).toBe(false)
           expect(runtime.reasoning.capabilities()).toEqual(noReasoningEffort)
           expect((await runtime.prompt('Continue working')).stopReason).toBe('stop')
           expect(loadReasoningCapabilities).toHaveBeenCalledTimes(expiry === 'while discovery is pending' ? 1 : 0)

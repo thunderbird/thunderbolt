@@ -17,17 +17,23 @@ const playVideo = async (video: HTMLVideoElement, source: string) => {
 /** Keep one demo in sync with visibility, reduced motion, and the visitor's pause choice. */
 export const useProductDemoState = (source: string) => {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const pausedByUser = useRef(false)
+  const playbackIntent = useRef<'auto' | 'play' | 'pause'>('auto')
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasPlayed, setHasPlayed] = useState(false)
 
   useEffect(() => {
     const video = videoRef.current!
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
-    let isVisible = false
+    let visibleRatio = 0
 
     const updatePlayback = () => {
-      if (!isVisible || document.hidden || reducedMotion.matches || pausedByUser.current) {
+      const explicitlyPlaying = playbackIntent.current === 'play'
+      if (
+        visibleRatio <= 0 ||
+        document.hidden ||
+        playbackIntent.current === 'pause' ||
+        (!explicitlyPlaying && (visibleRatio < 0.15 || reducedMotion.matches))
+      ) {
         video.pause()
         return
       }
@@ -36,10 +42,10 @@ export const useProductDemoState = (source: string) => {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        isVisible = entry.isIntersecting && entry.intersectionRatio >= 0.15
+        visibleRatio = entry.isIntersecting ? entry.intersectionRatio : 0
         updatePlayback()
       },
-      { threshold: 0.15 },
+      { threshold: [0, 0.15] },
     )
 
     observer.observe(video)
@@ -57,8 +63,8 @@ export const useProductDemoState = (source: string) => {
 
   const togglePlayback = async () => {
     const video = videoRef.current!
-    pausedByUser.current = !video.paused
-    if (pausedByUser.current) {
+    playbackIntent.current = isPlaying ? 'pause' : 'play'
+    if (isPlaying) {
       video.pause()
       return
     }
@@ -70,6 +76,11 @@ export const useProductDemoState = (source: string) => {
     isPlaying,
     hasPlayed,
     togglePlayback,
+    onPlay: () => setIsPlaying(true),
+    onEmptied: () => {
+      setIsPlaying(false)
+      setHasPlayed(false)
+    },
     onPlaying: () => {
       setIsPlaying(true)
       setHasPlayed(true)

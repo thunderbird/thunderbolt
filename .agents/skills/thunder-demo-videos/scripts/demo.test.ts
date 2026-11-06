@@ -53,7 +53,15 @@ const editCommand = [
   join(directory, 'report.json'),
 ]
 
+/** A rejection must be our validation error, not a missing dependency or timeout. */
+const expectValidationError = (result: ReturnType<typeof run>, message: string) => {
+  expect(result.exitCode, result.stderr.toString()).toBe(1)
+  expect(result.stderr.toString()).toContain(`ValueError: ${message}`)
+}
+
 beforeAll(() => {
+  const dependencies = run([python, '-c', 'import PIL, pyte'])
+  expect(dependencies.exitCode, dependencies.stderr.toString()).toBe(0)
   const result = run([
     'ffmpeg',
     '-v',
@@ -121,7 +129,7 @@ test.each([
     .update(readFileSync(join(directory, 'out.mp4')))
     .digest('hex')
   writeRecipe(keep)
-  expect(run(editCommand).exitCode).not.toBe(0)
+  expectValidationError(run(editCommand), 'Keep ranges must be ordered, non-overlapping, and within the source')
   expect(
     createHash('sha256')
       .update(readFileSync(join(directory, 'out.mp4')))
@@ -131,7 +139,7 @@ test.each([
 
 test('rejects a crop outside the recorded window', () => {
   writeRecipe([[0, 2]], { x: 20, y: 0, width: 160, height: 100 })
-  expect(run(editCommand).exitCode).not.toBe(0)
+  expectValidationError(run(editCommand), 'Crop/overlay rectangle lies outside the source')
 })
 
 test('rejects a batch that would overwrite another clip’s raw source', () => {
@@ -146,7 +154,7 @@ test('rejects a batch that would overwrite another clip’s raw source', () => {
       ],
     }),
   )
-  expect(run(editCommand).exitCode).not.toBe(0)
+  expectValidationError(run(editCommand), 'Outputs must be unique and cannot overwrite any raw source in the batch')
   expect(createHash('sha256').update(readFileSync(source)).digest('hex')).toBe(before)
 })
 
@@ -181,4 +189,62 @@ test('PTY capture preserves real stdout, stderr, and a failing command exit', ()
       .join(''),
   ).toContain('real stderr')
   expect(recording.timedOut).toBe(false)
+})
+
+test('a later invalid clip leaves all existing assets and their provenance intact', () => {
+  const previous = ['first.mp4', 'first.webp', 'second.mp4', 'second.webp', 'report.json']
+  for (const name of previous) writeFileSync(join(directory, name), `previous ${name}`)
+  writeFileSync(
+    recipePath,
+    JSON.stringify({
+      version: 1,
+      clips: [
+        { id: 'first', source: 'source.mp4', keep: [[0, 1]], output: 'first.mp4', poster: 'first.webp' },
+        { id: 'second', source: 'source.mp4', keep: [[3, 9]], output: 'second.mp4', poster: 'second.webp' },
+      ],
+    }),
+  )
+  expectValidationError(run(editCommand), 'Keep ranges must be ordered, non-overlapping, and within the source')
+  for (const name of previous) expect(readFileSync(join(directory, name), 'utf8')).toBe(`previous ${name}`)
+})
+
+test('a publish failure restores the previous assets and provenance report', () => {
+  const result = run([
+    python,
+    '-c',
+    `
+import importlib.util, sys, tempfile
+from pathlib import Path
+from unittest.mock import patch
+spec = importlib.util.spec_from_file_location('demo', sys.argv[1])
+demo = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(demo)
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory)
+    files = []
+    for name in ('video', 'poster', 'report'):
+        source, target = root / (name + '-new'), root / name
+        source.write_text('new ' + name)
+        target.write_text('old ' + name)
+        files.append((source, target))
+    replace = Path.replace
+    def fail_report(source, target):
+        if source.name == 'new' and target == root / 'report':
+            raise OSError('simulated report publish failure')
+        return replace(source, target)
+    with patch.object(Path, 'replace', fail_report):
+        try:
+            demo.publish_files(files)
+        except OSError as error:
+            assert str(error) == 'simulated report publish failure'
+        else:
+            raise AssertionError('expected publish failure')
+    for name in ('video', 'poster', 'report'):
+        assert (root / name).read_text() == 'old ' + name
+print('restored assets and report')
+`,
+    editor,
+  ])
+  expect(result.exitCode, result.stderr.toString()).toBe(0)
+  expect(result.stdout.toString()).toContain('restored assets and report')
 })

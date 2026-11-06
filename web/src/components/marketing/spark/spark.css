@@ -234,8 +234,6 @@
   background: #b3b7a2;
 }
 .spark-product-view {
-  /* Mask the native corner's encoded fringe, including the composited video. */
-  clip-path: inset(0 round 1.875% / 3.09%);
   overflow: hidden;
   background: var(--spark-device-shell);
 }

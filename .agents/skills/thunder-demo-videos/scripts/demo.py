@@ -5,12 +5,14 @@
 """Inspect authentic footage and export reproducible, edited marketing demos."""
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import io
 import json
 import math
 from pathlib import Path
 import statistics
+import shutil
 import subprocess
 import tempfile
 from PIL import Image, ImageDraw, ImageFont
@@ -169,6 +171,34 @@ def edit_clip(clip, source_dir, output_dir):
     return result
 
 
+def publish_files(files):
+    """Replace assets and provenance together, restoring originals on a publish error."""
+    with ExitStack() as stack:
+        prepared = []
+        for source, destination in files:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = Path(stack.enter_context(tempfile.TemporaryDirectory(
+                prefix='.demo-publish-', dir=destination.parent)))
+            staged = temporary / 'new'
+            shutil.copy2(source, staged)
+            backup = temporary / 'previous' if destination.exists() else None
+            if backup:
+                shutil.copy2(destination, backup)
+            prepared.append((staged, destination, backup))
+        replaced = []
+        try:
+            for staged, destination, backup in prepared:
+                staged.replace(destination)
+                replaced.append((destination, backup))
+        except OSError:
+            for destination, backup in reversed(replaced):
+                if backup:
+                    backup.replace(destination)
+                else:
+                    destination.unlink()
+            raise
+
+
 def main():
     """Expose inspect, edit, and check commands without hardcoded project paths."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -205,11 +235,19 @@ def main():
         raise ValueError('No matching clips in the recipe')
     sources = {child_path(args.source_dir, clip['source']) for clip in clips}
     outputs = [child_path(args.output_dir, clip[key]) for clip in clips for key in ('output', 'poster')]
+    if args.report.resolve() in sources.union(outputs):
+        raise ValueError('Report must be distinct from every source and output')
     if len(set(outputs)) != len(outputs) or sources.intersection(outputs):
         raise ValueError('Outputs must be unique and cannot overwrite any raw source in the batch')
-    report = [edit_clip(clip, args.source_dir, args.output_dir) for clip in clips]
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(json.dumps(report, indent=2) + '\n')
+    # A later clip's validation/encode failure must leave the whole published batch intact.
+    with tempfile.TemporaryDirectory(prefix='thunder-demo-batch-') as temporary:
+        staging = Path(temporary)
+        report = [edit_clip(clip, args.source_dir, staging / 'assets') for clip in clips]
+        staged_report = staging / 'report.json'
+        staged_report.write_text(json.dumps(report, indent=2) + '\n')
+        files = [(child_path(staging / 'assets', clip[key]), child_path(args.output_dir, clip[key]))
+                 for clip in clips for key in ('output', 'poster')]
+        publish_files(files + [(staged_report, args.report.resolve())])
     print(json.dumps(report, indent=2))
 
 

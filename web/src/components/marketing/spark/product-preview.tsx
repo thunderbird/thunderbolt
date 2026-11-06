@@ -5,6 +5,10 @@
 import { useProductPreviewState } from './use-product-preview-state'
 import { SparkBurst } from './spark-burst'
 import { ProductDemo } from './product-demo'
+import { productDemos } from './product-demos'
+
+const desktop = productDemos.desktop
+const desktopCornerMask = `inset(0 round ${(desktop.cornerRadius / desktop.width) * 100}% / ${(desktop.cornerRadius / desktop.height) * 100}%)`
 
 const WindowChrome = ({ title }: { title: string }) => (
   <div className="spark-window-chrome" aria-hidden="true">
@@ -35,7 +39,7 @@ export const ProductPreview = () => {
         {platform === 'Desktop' && (
           <div className="spark-product-frame">
             <WindowChrome title="Thunderbolt" />
-            <div className="spark-product-view">
+            <div className="spark-product-view" style={{ clipPath: desktopCornerMask }}>
               <ProductDemo platform="desktop" />
             </div>
           </div>

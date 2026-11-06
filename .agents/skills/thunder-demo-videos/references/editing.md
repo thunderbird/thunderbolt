@@ -1,6 +1,6 @@
 # Reproducible edits
 
-Keep the master outside the repository. `demo.py` invokes FFmpeg with argument arrays, never a shell. It retains frame timing within each selected segment, concatenates cuts, strips audio, and writes H.264/yuv420p MP4 with fast-start metadata. Posters are WebP frames from the edited result. Both outputs are prepared before either website file is replaced.
+Keep the master outside the repository. `demo.py` invokes FFmpeg with argument arrays, never a shell. It retains frame timing within each selected segment, concatenates cuts, strips audio, and writes H.264/yuv420p MP4 with fast-start metadata. Posters are WebP frames from the edited result. All clips and the provenance report are prepared before any website file is replaced. Validation or encoding failures leave the previous batch intact; ordinary file-replacement errors roll back the assets and report together.
 
 ```json
 {
@@ -39,7 +39,7 @@ Use `check` for codec/audio/cadence, then play the actual files. FPS metadata al
 From the repository root, run the bounded media/PTY tests with the prepared environment:
 
 ```sh
-DEMO_PYTHON=/path/to/video-env/bin/python bun test ./.agents/skills/thunder-demo-videos/scripts/demo.test.ts --timeout 20000
+DEMO_PYTHON=/path/to/video-env/bin/python bun run test:demo-videos
 ```
 
-The tests create tiny synthetic footage only in a temporary directory; it is never a product-demo source. They verify cuts/crops, silent H.264 output, WebP posters, master preservation, rejection of invalid recipes, and faithful capture of real command output and exit status.
+The tests create tiny synthetic footage only in a temporary directory; it is never a product-demo source. A dedicated `Demo videos` CI workflow runs these checks when the skill changes. They verify batch rollback, specific validation errors, cuts/crops, silent H.264 output, WebP posters, master preservation, rejection of invalid recipes, and faithful capture of real command output and exit status.

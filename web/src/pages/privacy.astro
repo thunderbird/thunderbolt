@@ -5,6 +5,7 @@
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import { SparkHeader } from '../components/marketing/spark/spark-header';
 import { SparkFooter } from '../components/marketing/spark/spark-footer';
+import { SparkBurst } from '../components/marketing/spark/spark-burst';
 import PrivacyPathIllustration from '../components/privacy/PrivacyPathIllustration.astro';
 import '@fontsource-variable/lora';
 import '../components/marketing/spark/spark.css';
@@ -62,7 +63,7 @@ const safetyArticle = 'https://tinfoil.sh/blog/2026-09-14-safety-without-comprom
 
       <section class="privacy-training" aria-labelledby="privacy-training-title">
         <div class="spark-shell privacy-training-layout">
-          <div class="privacy-training-mark" aria-hidden="true"><svg viewBox="0 0 120 120" fill="none"><path d="M60 10 70 22l15-5 4 15 16 4-5 15 12 9-12 10 5 15-16 4-4 16-15-5-10 12-9-12-15 5-4-16-15-4 5-15L10 60l12-9-5-15 15-4 4-15 15 5Z" fill="currentColor"/><rect x="42" y="53" width="36" height="29" rx="5" stroke="var(--spark-graphic-ink)" stroke-width="3"/><path d="M48 53V43a12 12 0 0 1 24 0v10M60 64v7" stroke="var(--spark-graphic-ink)" stroke-width="3" stroke-linecap="round"/></svg></div>
+          <div class="privacy-training-mark"><SparkBurst symbol="lock" /></div>
           <div><h2 id="privacy-training-title">Your thoughts aren’t<br />training material.</h2><p>Thunderbolt doesn’t use your conversations to train AI models. Tinfoil-powered private models don’t use your prompts or responses for training, either.</p><p class="privacy-qualification">If you connect a different model provider, its own retention and training policies apply. Choosing your provider is part of choosing your privacy.</p></div>
         </div>
       </section>
@@ -73,7 +74,7 @@ const safetyArticle = 'https://tinfoil.sh/blog/2026-09-14-safety-without-comprom
           <details open><summary>Your workspace starts on your device.<span aria-hidden="true">+</span></summary><div><p>Conversations are stored locally first. Uploaded files and provider API keys aren’t included in cross-device sync. An attachment can still be sent to the model you ask to work with it.</p></div></details>
           <details><summary>Keep synced conversations encrypted.<span aria-hidden="true">+</span></summary><div><p>When you enable sync, sensitive content—including messages and chat titles—is encrypted on your device before upload. Some metadata, such as timestamps and record relationships, stays readable on the server.</p><p>Encrypted sync is a preview feature and hasn’t had a cryptography audit. If your organization enables key escrow, it can decrypt your synced content. <a href="/docs/admin/security-and-privacy/#end-to-end-encryption">See what encryption covers.</a></p></div></details>
           <details><summary>Connected tools have their own boundaries.<span aria-hidden="true">+</span></summary><div><p>A search service receives your query. A connected tool receives the arguments it needs. An external model or agent receives the conversation it answers. These connections aren’t automatically protected by Tinfoil’s enclave.</p><p>Choose the services you trust, and turn off connections you don’t need. Self-hosting alone doesn’t keep requests to external services local. <a href="/docs/using/connections/">Manage your connections.</a></p></div></details>
-          <details><summary>Know what else is collected.<span aria-hidden="true">+</span></summary><div><p>Private content doesn’t mean zero operational data. Accounts, sign-in sessions, and managed-model usage records help a deployment function. Optional app analytics exclude conversation content and can be turned off in Preferences.</p><p>This website uses Matomo for page-view and link analytics. For the specifics, read our <a href="/docs/admin/security-and-privacy/">data-flow documentation</a> and <a href="https://www.thunderbird.net/en-US/privacy/">privacy policy</a>.</p></div></details>
+          <details><summary>Know what else is collected.<span aria-hidden="true">+</span></summary><div><p>Private content doesn’t mean zero operational data. Accounts, sign-in sessions, and managed-model usage records help a deployment function. App analytics exclude conversation content. They are enabled by default when your deployment configures analytics, and can be turned off in Settings → Preferences.</p><p>This website uses Matomo for page-view and link analytics. For the specifics, read our <a href="/docs/admin/security-and-privacy/">data-flow documentation</a> and <a href="https://www.thunderbird.net/en-US/privacy/">privacy policy</a>.</p></div></details>
         </div>
       </section>
 

@@ -12,6 +12,8 @@ export const productDemos = {
   desktop: {
     width: 1920,
     height: 1166,
+    // Source-pixel mask includes the native corner’s encoded black fringe.
+    cornerRadius: 36,
     description: 'Thunderbolt develops an idea in chat, then opens a Webb telescope photo story in its side browser.',
     light: asset('desktop-light'),
     dark: asset('desktop-dark'),

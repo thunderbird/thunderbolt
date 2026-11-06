@@ -10,9 +10,8 @@ type DemoProps = { platform: DemoPlatform; theme: 'light' | 'dark' }
 
 const DemoVideo = ({ platform, theme }: DemoProps) => {
   const demo = productDemos[platform]
-  const { videoRef, hasPlayed, isPlaying, togglePlayback, onPlaying, onPause, onError } = useProductDemoState(
-    demo[theme].src,
-  )
+  const { videoRef, hasPlayed, isPlaying, togglePlayback, onPlay, onPlaying, onPause, onError, onEmptied } =
+    useProductDemoState(demo[theme].src)
   const imageProps = {
     width: demo.width,
     height: demo.height,
@@ -46,6 +45,8 @@ const DemoVideo = ({ platform, theme }: DemoProps) => {
         playsInline
         preload="none"
         aria-label={demo.description}
+        onPlay={onPlay}
+        onEmptied={onEmptied}
         onPlaying={onPlaying}
         onPause={onPause}
         onError={onError}
@@ -67,5 +68,5 @@ const DemoVideo = ({ platform, theme }: DemoProps) => {
 
 export const ProductDemo = ({ platform }: { platform: DemoPlatform }) => {
   const { resolvedTheme } = useSiteTheme()
-  return <DemoVideo key={`${platform}-${resolvedTheme}`} platform={platform} theme={resolvedTheme} />
+  return <DemoVideo key={platform} platform={platform} theme={resolvedTheme} />
 }

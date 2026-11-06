@@ -17,7 +17,7 @@ import { agentsSystemTable, chatThreadsTable, modelsTable, projectsTable } from 
 import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
-import { createAgent } from '@/dal/agents'
+import { createAgent, deleteAgent } from '@/dal/agents'
 import { updateSettings } from '@/dal/settings'
 import { getModel, updateModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
@@ -485,6 +485,32 @@ describe('useHydrateChatStore', () => {
       })
       expect(getCurrentSession()?.selectedAgent).toEqual(hostedAgent)
       expect(getCurrentSession()?.selectedAgent.enabled).toBe(1)
+    })
+
+    it('keeps a deleted custom agent unavailable despite a stale discovery snapshot', async () => {
+      const customAgent = {
+        ...builtInAgent,
+        id: 'deleted-custom',
+        type: 'remote-acp' as const,
+        transport: 'websocket' as const,
+        url: 'wss://agent.example/ws',
+        isSystem: 0 as const,
+        userId: 'u1',
+      }
+      await createAgent(getDb(), customAgent)
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent, customAgent], {})
+      const threadId = uuidv7()
+      await getDb().insert(chatThreadsTable).values({ id: threadId, agentId: customAgent.id, isEncrypted: 0 })
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(getCurrentSession()?.selectedAgent.enabled).toBe(1)
+      await deleteAgent(getDb(), customAgent.id)
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(getCurrentSession()?.selectedAgent).toMatchObject({ id: customAgent.id, enabled: 0, url: null })
     })
 
     it('keeps a persisted thread with no agent of its own off the discovered default', async () => {

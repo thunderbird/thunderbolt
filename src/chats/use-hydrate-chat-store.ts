@@ -134,7 +134,12 @@ const withDiscoveredAgents = (agents: Agent[]): Agent[] => {
   if (agentDiscovery.status !== 'done') {
     return agents
   }
-  return [...agents, ...agentDiscovery.agents.filter((agent) => !agents.some(({ id }) => id === agent.id))]
+  return [
+    ...agents,
+    ...agentDiscovery.agents.filter(
+      (agent) => agent.isSystem === 1 && agent.type !== 'built-in' && !agents.some(({ id }) => id === agent.id),
+    ),
+  ]
 }
 
 export const useHydrateChatStore = ({

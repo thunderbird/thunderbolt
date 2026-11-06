@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useReducer } from 'react'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { msg } from '@lingui/core/macro'
 import { useHttpClient, type HttpClient } from '@/contexts'
 import { i18n } from '@/i18n'
+import { getEncryptionErrorMessage } from '@/lib/encryption-error-message'
 import { postStepUpRequest } from '@/api/encryption'
 import {
   changeRecoveryPhrase,
@@ -104,30 +106,54 @@ export const useChangeRecoveryKey = (
 ) => {
   const httpClient = useHttpClient()
   const [state, dispatch] = useReducer(reducer, initialState)
+  const operation = useAsyncAttempt()
 
   const openConfirm = () => dispatch({ type: 'OPEN_CONFIRM' })
-  const cancel = () => dispatch({ type: 'CANCEL' })
+  const cancel = () => {
+    operation.cancel()
+    dispatch({ type: 'CANCEL' })
+  }
   const done = () => dispatch({ type: 'DONE' })
   const setOtp = (otp: string) => dispatch({ type: 'OTP_CHANGED', payload: otp })
 
   /** Confirm step → email the code and advance to code entry. Also the Resend handler. */
   const requestStepUpCode = async () => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     dispatch({ type: 'START_REQUEST' })
     try {
       await requestCode(httpClient)
-      dispatch({ type: 'CODE_SENT' })
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'CODE_SENT' })
+      }
     } catch (err) {
+      if (!attempt.isCurrent()) {
+        return
+      }
       const message = err instanceof Error ? err.message : i18n._(codeRequestFailed)
       dispatch({ type: 'REQUEST_FAILED', payload: message })
+    } finally {
+      attempt.finish()
     }
   }
 
   const confirmRotation = async () => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     dispatch({ type: 'START_ROTATION' })
     try {
       const newRecoveryKey = await rotate(httpClient, { stepUpOtp: state.otp })
-      dispatch({ type: 'ROTATION_SUCCESS', payload: newRecoveryKey })
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'ROTATION_SUCCESS', payload: newRecoveryKey })
+      }
     } catch (err) {
+      if (!attempt.isCurrent()) {
+        return
+      }
       if (err instanceof StepUpVerificationError) {
         dispatch({ type: 'CODE_REJECTED', payload: i18n._(codeRejected) })
         return
@@ -142,8 +168,10 @@ export const useChangeRecoveryKey = (
         dispatch({ type: 'ROTATION_FAILED', payload: i18n._(passkeyAnchorFailed) })
         return
       }
-      const message = err instanceof Error ? err.message : i18n._(rotationFailed)
+      const message = getEncryptionErrorMessage(err, i18n._(rotationFailed))
       dispatch({ type: 'ROTATION_FAILED', payload: message })
+    } finally {
+      attempt.finish()
     }
   }
 

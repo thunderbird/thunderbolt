@@ -180,7 +180,11 @@ describe('DevicesSettingsPage reactivity', () => {
       expect(within(dialog).getByRole('alert')).toHaveTextContent(
         "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again.",
       )
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      const cancel = within(dialog).getByRole('button', { name: 'Cancel' })
+      // The dialog error renders before React Query publishes the settled mutation.
+      await waitForElement(() => (cancel.hasAttribute('disabled') ? null : cancel))
+      expect(cancel).toBeEnabled()
+      fireEvent.click(cancel)
       await act(async () => {
         await getClock().runAllAsync()
       })
@@ -302,9 +306,7 @@ describe('DevicesSettingsPage reactivity', () => {
     expect(screen.getByText('Revoke this CLI?')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }))
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
+    await waitForElement(() => (screen.queryByText('Revoke this CLI?') ? null : screen.queryByText('Terminal CLI')))
 
     expect(requests).toHaveLength(2)
     expect(requests[0]?.method).toBe('GET')

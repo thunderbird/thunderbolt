@@ -22,6 +22,7 @@ import {
   clearAllKeys,
 } from './key-storage'
 import { generateAK, generateDEK, generateKeyPair, generateMlKemKeyPair, wrapDEK } from './primitives'
+import { withKeyStoreLock } from './key-store-lock'
 import type { EncryptedBytes } from './primitives'
 
 const dbName = 'thunderbolt-keys'
@@ -144,7 +145,9 @@ describe('WS1.5 — v1 plaintext ML-KEM secret read-migration', () => {
     const first = await getKeyPair()
     expect(first?.mlkemSecretKey).toEqual(mlkem.secretKey)
 
-    // The read-migration re-encrypted it in place.
+    // Ordinary reads stay read-only; a writer explicitly owns the migration.
+    expect(await readRaw('thunderbolt_mlkem_secret_key')).toBeInstanceOf(Uint8Array)
+    await withKeyStoreLock((lock) => getKeyPair(lock))
     const raw = (await readRaw('thunderbolt_mlkem_secret_key')) as EncryptedBytes
     expect(raw).not.toBeInstanceOf(Uint8Array)
     expect(raw.iv.length).toBe(12)
@@ -300,5 +303,34 @@ describe('clearAllKeys', () => {
     expect(await getAK()).toBeNull()
     expect(await listDEKs()).toEqual([])
     expect(await getKeyVersion()).toBeNull()
+  })
+})
+
+describe('key-store reset ownership', () => {
+  it('rejects a pending database write when a wipe begins before its database opens', async () => {
+    const key = await generateAK()
+    const writing = storeAK(key)
+    const outcome = writing.then(
+      () => null,
+      (error: unknown) => error,
+    )
+    await clearAllKeys()
+    expect(await outcome).toMatchObject({ name: 'EncryptionOperationCancelledError' })
+    expect(await getAK()).toBeNull()
+    await storeAK(key)
+    expect(await getAK()).not.toBeNull()
+  })
+
+  it('rejects transport keys whose encryption completes after a wipe begins', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const writing = storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
+    const outcome = writing.then(
+      () => null,
+      (error: unknown) => error,
+    )
+    await clearAllKeys()
+    expect(await outcome).toMatchObject({ name: 'EncryptionOperationCancelledError' })
+    expect(await getKeyPair()).toBeNull()
   })
 })

@@ -251,7 +251,12 @@ describe('createTinfoilBinding', () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     const { runtime } = await createTestProviderRuntime({
       resolveAccountCredential: async () => sessionCredential(),
-      loadCatalog: async () => ({ version: 1, defaultModelId: confidentialModel.id, data: [confidentialModel] }),
+      loadCatalog: async () => ({
+        version: 1,
+        defaultModelId: confidentialModel.id,
+        data: [confidentialModel],
+        imageSupport: {},
+      }),
       createTinfoilBinding: (options) =>
         createTinfoilBinding({
           ...bindingOptions(),
@@ -294,7 +299,7 @@ describe('createTinfoilBinding', () => {
         return pending.promise
       })
       const warn = spyOn(console, 'warn').mockImplementation(() => {})
-      const catalog = { version: 1, defaultModelId: confidentialModel.id, data: [confidentialModel] }
+      const catalog = { version: 1, defaultModelId: confidentialModel.id, data: [confidentialModel], imageSupport: {} }
       const loadCatalog = mock(async () => catalog)
       const { runtime: providerRuntime } = await createTestProviderRuntime({
         loadConfig: async () => ({

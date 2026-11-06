@@ -7,7 +7,6 @@ import type { CliAuth, DeviceGrantPresentation, SessionCredential } from '../pro
 import type { DeviceCodeResponse } from './device-grant.ts'
 import { performLogin, type LoginDeps } from './login.ts'
 
-
 const code: DeviceCodeResponse = {
   deviceCode: 'dev-code',
   userCode: 'WDJB-MJHT',
@@ -80,6 +79,22 @@ const createLoginDeps = (overrides: Partial<LoginDeps> = {}) => {
 }
 
 describe('performLogin', () => {
+  it('does not poll or register after cancellation while the browser prompt is open', async () => {
+    const controller = new AbortController()
+    const prompt = Promise.withResolvers<void>()
+    const setup = createLoginDeps({ signal: controller.signal })
+    const pending = performLogin({
+      ...setup.deps,
+      presentation: { ...setup.presentation, promptToOpenBrowser: () => prompt.promise },
+    })
+    await Promise.resolve()
+    controller.abort(new Error('cancelled'))
+    prompt.resolve()
+    await expect(pending).rejects.toThrow('cancelled')
+    expect(setup.registered).toHaveLength(0)
+    expect(setup.statuses).toHaveLength(0)
+  })
+
   it('presents the exact verification data and succeeds only after registration', async () => {
     const { deps, events, registered, statuses, verifications } = createLoginDeps()
 
@@ -188,5 +203,4 @@ describe('performLogin', () => {
     expect(statuses.map(({ status }) => status)).toEqual(['waiting'])
     expect(registered).toEqual([])
   })
-
 })

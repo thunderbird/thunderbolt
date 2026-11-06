@@ -519,13 +519,13 @@ export const piHarnessToUiMessageStream = (
         }
       })()
     },
-    async cancel() {
+    cancel() {
       closed = true
       detachSignal?.()
       detachSignal = null
       unsubscribe?.()
       unsubscribe = null
-      await harness.abort()
+      abortAndKeepStoppedReply(harness)
     },
   })
 }

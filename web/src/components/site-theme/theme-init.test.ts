@@ -10,7 +10,7 @@ import type { ThemePreference } from './use-site-theme'
 const source = readFileSync(new URL('./theme-init.js', import.meta.url), 'utf8')
 
 /** Run the actual pre-paint script with a saved preference and an OS theme. */
-const createPage = (saved: string | null, isDark = false, development = true) => {
+const createPage = (saved: string | null, isDark = false, development = true, blockedStorage = false) => {
   const storage = new Map(saved === null ? [] : [['starlight-theme', saved]])
   const root = { dataset: {} as Record<string, string> }
   const system = Object.assign(new EventTarget(), { matches: isDark })
@@ -27,8 +27,14 @@ const createPage = (saved: string | null, isDark = false, development = true) =>
     document: { documentElement: root, currentScript: { dataset: { themeControls: String(development) } } },
     window,
     localStorage: {
-      getItem: (key: string) => storage.get(key) ?? null,
-      setItem: (key: string, value: string) => storage.set(key, value),
+      getItem: (key: string) => {
+        if (blockedStorage) throw new Error('Storage access denied')
+        return storage.get(key) ?? null
+      },
+      setItem: (key: string, value: string) => {
+        if (blockedStorage) throw new Error('Storage access denied')
+        storage.set(key, value)
+      },
     },
   })
   return { root, storage, system, window, theme: window.thunderboltTheme }
@@ -102,4 +108,24 @@ describe('shared site theme', () => {
     window.dispatchEvent(Object.assign(new Event('storage'), { key: 'another-setting' }))
     expect(theme.getResolvedTheme()).toBe('light')
   })
+})
+
+test('blocked preview storage does not disable theme initialization or in-memory controls', () => {
+  const { root, theme, system } = createPage('light', true, true, true)
+  expect(root.dataset.theme).toBe('dark')
+  theme.setPreference('light')
+  expect(root.dataset.theme).toBe('light')
+  system.matches = false
+  system.dispatchEvent(new Event('change'))
+  expect(root.dataset.theme).toBe('light')
+  theme.setPreference('auto')
+  system.matches = true
+  system.dispatchEvent(new Event('change'))
+  expect(root.dataset.theme).toBe('dark')
+})
+
+test('production never needs storage access, even when storage is blocked', () => {
+  const { root, theme } = createPage('light', true, false, true)
+  theme.setPreference('light')
+  expect(root.dataset.theme).toBe('dark')
 })

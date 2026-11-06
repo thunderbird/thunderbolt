@@ -37,3 +37,15 @@ jobs:
           "$RUNNER_TEMP/demo-env/bin/pip" install -r .agents/skills/thunder-demo-videos/scripts/requirements.txt
       - name: Test media exports and real PTY capture
         run: DEMO_PYTHON="$RUNNER_TEMP/demo-env/bin/python" bun run test:demo-videos
+
+  native-recorder:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Compile native window recorder without starting a capture
+        run: >-
+          xcrun swiftc -parse-as-library
+          -module-cache-path "$RUNNER_TEMP/swift-cache"
+          .agents/skills/thunder-demo-videos/scripts/capture-window.swift
+          -o "$RUNNER_TEMP/thunder-demo-capture"

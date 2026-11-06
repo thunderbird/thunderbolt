@@ -6,18 +6,18 @@ import { useIdeaStarterState } from './use-idea-starter-state'
 import { productLinks } from '../../../data/website-product'
 
 export const IdeaStarter = () => {
-  const { active, setActive, idea, ideas } = useIdeaStarterState()
+  const { idea, setIdea, ideas } = useIdeaStarterState()
 
   return (
     <div className="spark-workflow">
       <div className="spark-workflow-choices" role="group" aria-label="Explore an example workflow">
-        {ideas.map((item, index) => (
+        {ideas.map((item) => (
           <button
             key={item.name}
             type="button"
-            aria-pressed={active === index}
+            aria-pressed={idea === item}
             aria-controls="spark-workflow-example"
-            onClick={() => setActive(index)}
+            onClick={() => setIdea(item)}
           >
             {item.name}
             <span aria-hidden="true">↗</span>

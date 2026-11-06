@@ -1,0 +1,38 @@
+---
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import ThemeProvider from './site-theme/ThemeProvider.astro';
+
+type Props = {
+  title: string;
+  description: string;
+  ogImage?: string;
+  ogType?: 'website' | 'article';
+  canonical?: string;
+};
+
+const {
+  title,
+  description,
+  ogImage = 'https://thunderbolt.io/social.png',
+  ogType = 'website',
+  canonical = new URL(Astro.url.pathname, Astro.site).href,
+} = Astro.props;
+---
+
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<ThemeProvider />
+<title>{title}</title>
+<meta name="description" content={description} />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<link rel="apple-touch-icon" href="/favicon.png" />
+<link rel="canonical" href={canonical} />
+<meta property="og:url" content={canonical} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:image" content={ogImage} />
+<meta property="og:type" content={ogType} />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content={ogImage} />

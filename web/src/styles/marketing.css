@@ -79,9 +79,6 @@
     transition:
       box-shadow 150ms,
       background-color 150ms;
-  }
-
-  .button-primary {
     background: var(--tb-primary);
     color: var(--tb-on-brand);
     box-shadow: 0 2px 4px rgb(38 33 32 / 6%);

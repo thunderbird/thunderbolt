@@ -22,7 +22,8 @@ type SparkHeaderProps = {
 }
 
 export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeaderProps) => {
-  const { isOpen, setIsOpen, navigationRef, triggerRef } = useSparkHeaderState()
+  const { isOpen, toggleNavigation, closeNavigation, onNavigationBlur, navigationRef, triggerRef } =
+    useSparkHeaderState()
   const panelId = useId()
 
   return (
@@ -32,20 +33,14 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
         <span>Thunderbolt</span>
       </a>
       <nav className="spark-main-nav" aria-label="Main navigation">
-        <div
-          className="spark-nav-disclosure"
-          ref={navigationRef}
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false)
-          }}
-        >
+        <div className="spark-nav-disclosure" ref={navigationRef} onBlur={onNavigationBlur}>
           <button
             className="spark-nav-trigger"
             type="button"
             aria-expanded={isOpen}
             aria-controls={panelId}
             ref={triggerRef}
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={toggleNavigation}
           >
             Explore
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -58,31 +53,29 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
               />
             </svg>
           </button>
-          {isOpen && (
-            <div className="spark-nav-panel" id={panelId}>
-              <div className="spark-nav-pages">
-                {pages.map((page) => (
-                  <a
-                    key={page.href}
-                    href={page.href}
-                    aria-current={currentPage === page.label ? 'page' : undefined}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    {page.label}
-                    <span aria-hidden="true">→</span>
-                  </a>
-                ))}
-              </div>
-              <div className="spark-nav-community">
-                <a href={productLinks.github}>
-                  GitHub <span aria-hidden="true">↗</span>
+          <div className="spark-nav-panel" id={panelId} hidden={!isOpen}>
+            <div className="spark-nav-pages">
+              {pages.map((page) => (
+                <a
+                  key={page.href}
+                  href={page.href}
+                  aria-current={currentPage === page.label ? 'page' : undefined}
+                  onClick={closeNavigation}
+                >
+                  {page.label}
+                  <span aria-hidden="true">→</span>
                 </a>
-                <a href={productLinks.discord}>
-                  Discord <span aria-hidden="true">↗</span>
-                </a>
-              </div>
+              ))}
             </div>
-          )}
+            <div className="spark-nav-community">
+              <a href={productLinks.github}>
+                GitHub <span aria-hidden="true">↗</span>
+              </a>
+              <a href={productLinks.discord}>
+                Discord <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+          </div>
         </div>
         <a className="spark-nav-values" href="/#spark-values">
           Our values

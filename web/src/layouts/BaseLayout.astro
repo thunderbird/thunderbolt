@@ -4,7 +4,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import '../styles/spark-editorial.css';
 import '@fontsource-variable/lora';
-import ThemeProvider from '../components/site-theme/ThemeProvider.astro';
+import SiteHead from '../components/SiteHead.astro';
 import { SparkHeader } from '../components/marketing/spark/spark-header';
 import { SparkFooter } from '../components/marketing/spark/spark-footer';
 
@@ -29,21 +29,7 @@ const {
 <!doctype html>
 <html lang="en" class="spark-site-theme">
 	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<ThemeProvider />
-		<meta name="generator" content={Astro.generator} />
-		<meta name="description" content={description} />
-		<title>{fullTitle}</title>
-		<link rel="icon" type="image/png" href="/favicon.png" />
-		<link rel="apple-touch-icon" href="/favicon.png" />
-
-		<meta property="og:title" content={fullTitle} />
-		<meta property="og:description" content={description} />
-		<meta property="og:image" content={ogImage} />
-		<meta property="og:type" content={ogType} />
-		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:image" content={ogImage} />
+		<SiteHead title={fullTitle} {description} {ogImage} {ogType} />
 	</head>
 	<body>
 		<a class="spark-skip" href="#main-content">Skip to content</a>

@@ -35,6 +35,6 @@ const ideas = [
 
 /** Selects the workflow shown in the interactive example. */
 export const useIdeaStarterState = () => {
-  const [active, setActive] = useState(1)
-  return { active, setActive, idea: ideas[active], ideas }
+  const [idea, setIdea] = useState<(typeof ideas)[number]>(ideas[1])
+  return { idea, setIdea, ideas }
 }

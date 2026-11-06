@@ -7,7 +7,7 @@ import Search from 'virtual:starlight/components/Search';
 import MobileTableOfContents from 'virtual:starlight/components/MobileTableOfContents';
 import { SparkHeader } from '../marketing/spark/spark-header';
 
-const { entry } = Astro.locals.starlightRoute;
+const { entry, toc } = Astro.locals.starlightRoute;
 const isHome = entry.id === 'docs';
 const shouldRenderSearch = config.pagefind ||
   config.components.Search !== '@astrojs/starlight/components/Search.astro';
@@ -20,7 +20,7 @@ const shouldRenderSearch = config.pagefind ||
     {!isHome && <><span aria-hidden="true">/</span><span aria-current="page">{entry.data.title}</span></>}
   </nav>
   <div class="docs-tools">
-    {!isHome && <div class="docs-contents"><MobileTableOfContents /></div>}
+    {!isHome && toc && <div class="docs-contents"><MobileTableOfContents /></div>}
     {shouldRenderSearch && <Search />}
   </div>
 </div>

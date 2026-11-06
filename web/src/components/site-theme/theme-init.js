@@ -13,8 +13,13 @@
   /** Production follows the OS; development can restore a preview preference. */
   const readPreference = () => {
     if (!allowOverride) return 'auto'
-    const saved = localStorage.getItem(storageKey)
-    return saved === 'light' || saved === 'dark' ? saved : 'auto'
+    try {
+      const saved = localStorage.getItem(storageKey)
+      return saved === 'light' || saved === 'dark' ? saved : 'auto'
+    } catch {
+      // Storage can be blocked in embedded or privacy-restricted preview browsers.
+      return 'auto'
+    }
   }
 
   let preference = readPreference()
@@ -33,8 +38,12 @@
     setPreference: (next) => {
       if (!allowOverride) return
       preference = next
-      localStorage.setItem(storageKey, next === 'auto' ? '' : next)
       apply()
+      try {
+        localStorage.setItem(storageKey, next === 'auto' ? '' : next)
+      } catch {
+        // The preview still works in this tab when the preference cannot be persisted.
+      }
     },
     subscribe: (listener) => {
       listeners.add(listener)

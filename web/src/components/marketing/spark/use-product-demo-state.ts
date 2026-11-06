@@ -18,8 +18,9 @@ const playVideo = async (video: HTMLVideoElement, source: string) => {
 export const useProductDemoState = (source: string) => {
   const videoRef = useRef<HTMLVideoElement>(null)
   const playbackIntent = useRef<'auto' | 'play' | 'pause'>('auto')
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [hasPlayed, setHasPlayed] = useState(false)
+  const [playingSource, setPlayingSource] = useState<string>()
+  const [playedSource, setPlayedSource] = useState<string>()
+  const isPlaying = playingSource === source
 
   useEffect(() => {
     const video = videoRef.current!
@@ -74,21 +75,25 @@ export const useProductDemoState = (source: string) => {
   return {
     videoRef,
     isPlaying,
-    hasPlayed,
+    hasPlayed: playedSource === source,
     togglePlayback,
-    onPlay: () => setIsPlaying(true),
+    onPlay: () => setPlayingSource(source),
     onEmptied: () => {
-      setIsPlaying(false)
-      setHasPlayed(false)
+      setPlayingSource(undefined)
+      setPlayedSource(undefined)
     },
     onPlaying: () => {
-      setIsPlaying(true)
-      setHasPlayed(true)
+      setPlayingSource(source)
+      setPlayedSource(source)
     },
-    onPause: () => setIsPlaying(false),
+    onPause: () => setPlayingSource(undefined),
     onError: () => {
-      setIsPlaying(false)
-      setHasPlayed(false)
+      // A failed media resource cannot retry with play() alone; release it for the next explicit attempt.
+      const video = videoRef.current!
+      video.removeAttribute('src')
+      video.load()
+      setPlayingSource(undefined)
+      setPlayedSource(undefined)
     },
   }
 }

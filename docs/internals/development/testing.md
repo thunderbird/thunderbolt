@@ -17,6 +17,12 @@ bun run test:agent-core:browser
 # Run frontend tests in watch mode (src/ only)
 bun run test:watch
 
+# Run website tests and type checks (separate workspace)
+(cd web && bun run test && bun run typecheck)
+
+# Run demo recording/export tests (Python dependencies and FFmpeg required)
+DEMO_PYTHON=/path/to/video-env/bin/python bun run test:demo-videos
+
 # Run backend tests
 bun run test:backend
 
@@ -34,6 +40,14 @@ helm unittest deploy/k8s
 **Never run `bun test` from the project root.** [`bunfig.toml`](../../../bunfig.toml)'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suite and the Playwright specs, but is a silent no-op on Bun below 1.3.11, and a root run has no per-test timeout, no `--randomize`, and walks `shared/agent-core/` (own runner).
 
 `bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+
+### Website and demo tooling
+
+The public site has its own dependencies, DOM test setup, and commands in `web/`:
+`bun run test`, `bun run test:coverage`, `bun run typecheck`, and `bun run build`.
+These tests are intentionally outside the app's root suite. `web.yml` runs them for website changes.
+The `demo-videos.yml` workflow separately installs FFmpeg and the skill's Python requirements,
+then runs `bun run test:demo-videos`; see the [editing guide](../../../.agents/skills/thunder-demo-videos/references/editing.md#helper-checks).
 
 ### Browser security updates
 

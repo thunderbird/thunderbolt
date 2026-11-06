@@ -3,6 +3,7 @@
 The public web surfaces for Thunderbolt, unified as a single Astro project:
 
 - **Landing** — `/` (`src/pages/index.astro`), the marketing home
+- **Privacy** — `/privacy`, privacy choices and confidential inference
 - **Enterprise** — `/enterprise`, the organization and self-hosting overview
 - **Contact** — `/contact` (a React island wrapped in an Astro page). `/announcing-thunderbolt` is a redirect to `/blog/mozilla-introduces-thunderbolt`, configured in `redirects` in `astro.config.mjs`
 - **Blog** — `/blog/*` (`src/content/blog/`)
@@ -12,7 +13,7 @@ The public web surfaces for Thunderbolt, unified as a single Astro project:
 
 - Astro 7 (with `@astrojs/react` for marketing islands, `@astrojs/starlight` for docs)
 - Tailwind 4 via `@tailwindcss/vite`
-- Docs styling is hand-rolled: `src/styles/starlight.css` plus `Head`, `Header`, `PageTitle` and `ThemeSelect` overrides in `src/components/starlight/`, wired up in `astro.config.mjs`
+- Docs styling is hand-rolled: `src/styles/starlight.css` plus `Head`, `Header`, `PageTitle`, `PageSidebar`, `MobileMenuToggle`, and `ThemeSelect` overrides in `src/components/starlight/`, wired up in `astro.config.mjs`
 - Blog and docs share Spark’s palette (`src/styles/spark-palette.css`), editorial styles (`src/styles/spark-editorial.css`), and navigation (`SparkHeader` and `spark-chrome.css`). Docs retain Starlight search and sidebar navigation. Blog posts retain their canonical Markdown content and use `BlogPost.astro` for the reading layout.
 - Spark, blog, docs, enterprise, and contact share system-based light/dark mode through `src/components/site-theme/`. `ThemeProvider.astro` applies the OS palette before first paint and follows OS changes. Only development builds show a theme toggle and honor the saved `starlight-theme` preview preference; production ignores saved overrides. New themed layouts must include this provider, and colors belong in `spark-palette.css`.
 - Spark’s product demos use `ProductDemo`, backed by `product-demos.ts`. H.264 videos live in `public/videos/marketing/`; WebP posters in `public/images/marketing/screenshots/`. Only the selected client and theme loads a video. Playback pauses outside the viewport or in a background tab, respects reduced motion, and offers a keyboard-accessible play/pause button. Posters use `<picture>` for production OS themes and CSS for development overrides.
@@ -25,6 +26,9 @@ Run from this directory:
 ```bash
 bun install
 bun run dev          # http://localhost:4321
+bun run test         # isolated website tests
+bun run test:coverage
+bun run typecheck    # Astro types + TypeScript
 bun run build        # static output in ./dist
 bun run preview      # serve the build locally
 ```
@@ -33,7 +37,7 @@ bun run preview      # serve the build locally
 
 Spark is the production homepage at `/`, with shared components in `src/components/marketing/spark/`. The old `/designs/spark` preview redirects to `/`; the alternate concepts and font explorer are excluded from the production site.
 
-The shared header’s Explore dropdown links Docs, Blog, Enterprise, and Contact. Add future destinations to the `pages` array in `spark-header.tsx`. Download and community destinations live in `src/data/website-product.ts`; public mobile store URLs are still pending.
+The shared header’s Explore dropdown links Privacy, Enterprise, Docs, Blog, and Contact. Add future destinations to the `pages` array in `spark-header.tsx`. Download and community destinations live in `src/data/website-product.ts`; public mobile store URLs are still pending.
 
 ## Deploys
 
@@ -52,7 +56,7 @@ The terminal demo is a 30 fps replay of an actual Thunderbolt CLI PTY session bu
 
 ## Refreshing product videos
 
-Use [$thunder-demo-videos](../.agents/skills/thunder-demo-videos/SKILL.md) to capture a new feature or revise the existing demos. The skill includes a window-only macOS recorder, genuine CLI PTY capture/replay, and an FFmpeg editor with source hashes and cadence reports. The Claude skill path links to the same repository source.
+Use [$thunder-demo-videos](../.agents/skills/thunder-demo-videos/SKILL.md) to capture a new feature or revise the existing demos. The skill includes a window-only macOS recorder, native terminal-window recording and genuine CLI PTY logs, and an FFmpeg editor with source hashes and cadence reports. The Claude skill path links to the same repository source.
 
 `demo-edits.json` stores the current source-relative keep ranges, cosmetic cleanup, terminal crop, output paths, and poster timestamps. Run the skill's editor from a prepared Python environment:
 
@@ -63,3 +67,19 @@ python ../.agents/skills/thunder-demo-videos/scripts/demo.py edit demo-edits.jso
 ```
 
 The current source directory contains the `smooth/` GUI recordings and `cli-natural-02-focus.mp4`. Choose new source files and inspect their timelines when a feature changes; old timestamps are specific to the recorded session. The editor derives posters from the edited videos, so playback, fallback frames, and cleanup stay consistent. Update `product-demos.ts` if the dimensions, filenames, or story change.
+
+## Contact form delivery
+
+The contact form posts to the backend's public `POST /v1/contact` endpoint. It sends an internal notification through Resend; it does not subscribe visitors to a mailing list. Configure these **backend** environment variables:
+
+- `CONTACT_EMAIL_TO`: the inbox that receives inquiries. There is no default; leaving it unset disables delivery and returns an unavailable response.
+- `RESEND_API_KEY`: the existing transactional-email API key.
+- `EMAIL_FROM`: a sender on a domain verified in your Resend account.
+
+Visitors can supply only their contact details and message. The recipient and subject are fixed by the server. Requests are limited to three per hour per client IP, even when general application rate limiting is disabled. Configure `TRUSTED_PROXY` for the deployment's actual ingress/proxy so unrelated visitors do not share one limit; never trust arbitrary forwarded headers.
+
+For Kubernetes, use `backend.email.contactTo`, `backend.email.from`, and `backend.email.resendApiKeyBase64`. The marketing hostname routes only the exact `/v1/contact` path to the backend; the rest remains static. Supply secrets through your normal deployment secret workflow, not committed values files.
+
+During `bun run dev`, Vite proxies `/v1/contact` to `http://127.0.0.1:8000`. Set `CONTACT_API_TARGET` to use another local backend. Static preview servers do not provide the API. On other hosting platforms, configure the same reverse-proxy route or set `PUBLIC_CONTACT_ENDPOINT` at build time to your backend URL and include the site's origin in backend CORS configuration. Only that public URL belongs in the website build; never expose a Resend key through a `PUBLIC_` variable.
+
+The UI reports success only after Resend accepts the message. Delivery to the final inbox can still bounce or be filtered; monitor that through Resend. Automated tests mock the mail provider and do not send email.

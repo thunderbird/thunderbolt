@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef, useState } from 'react'
+import { type FocusEvent, useEffect, useRef, useState } from 'react'
 
 /** Keeps the navigation disclosure in sync with outside clicks and keyboard focus. */
 export const useSparkHeaderState = () => {
@@ -30,5 +30,11 @@ export const useSparkHeaderState = () => {
     }
   }, [isOpen])
 
-  return { isOpen, setIsOpen, navigationRef, triggerRef }
+  const toggleNavigation = () => setIsOpen((open) => !open)
+  const closeNavigation = () => setIsOpen(false)
+  const onNavigationBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) closeNavigation()
+  }
+
+  return { isOpen, toggleNavigation, closeNavigation, onNavigationBlur, navigationRef, triggerRef }
 }

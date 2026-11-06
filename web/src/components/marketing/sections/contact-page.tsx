@@ -2,101 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { type ChangeEvent, type FormEvent, useReducer, useRef } from 'react'
 import { SparkFooter } from '../spark/spark-footer'
 import { SparkHeader } from '../spark/spark-header'
+import { useContactFormState } from './use-contact-form-state'
 
-const MAILCHIMP_URL =
-  'https://thunderbird.us12.list-manage.com/subscribe/post?u=f8051cc8637cf3ff79661f382&id=61b3bbfdaa&f_id=00bfaae0f0'
-
-type FormState = {
-  firstName: string
-  lastName: string
-  title: string
-  email: string
-  help: string
-  org: string
-  companySize: string
-  status: 'idle' | 'submitting' | 'success' | 'error'
-  errorMessage: string
-}
-
-type FormField = 'firstName' | 'lastName' | 'title' | 'email' | 'help' | 'org' | 'companySize'
-
-type FormAction =
-  | { type: 'SET_FIELD'; field: FormField; value: string }
-  | { type: 'SUBMITTING' }
-  | { type: 'SUCCESS' }
-  | { type: 'ERROR'; message: string }
-
-const initialState: FormState = {
-  firstName: '',
-  lastName: '',
-  title: '',
-  email: '',
-  help: '',
-  org: '',
-  companySize: '',
-  status: 'idle',
-  errorMessage: '',
-}
-
-const reducer = (state: FormState, action: FormAction): FormState => {
-  if (action.type === 'SET_FIELD') return { ...state, [action.field]: action.value }
-  if (action.type === 'SUBMITTING') return { ...state, status: 'submitting', errorMessage: '' }
-  if (action.type === 'SUCCESS') return { ...state, status: 'success' }
-  if (action.type === 'ERROR') return { ...state, status: 'error', errorMessage: action.message }
-  return state
-}
-
-const useContactFormState = () => {
-  const [state, dispatch] = useReducer(reducer, initialState)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const formRef = useRef<HTMLFormElement>(null)
-
-  const set = (field: FormField) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-    dispatch({ type: 'SET_FIELD', field, value: e.target.value })
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    dispatch({ type: 'SUBMITTING' })
-
-    const iframe = iframeRef.current
-    if (!iframe || !formRef.current) {
-      dispatch({ type: 'ERROR', message: 'Something went wrong. Please try again.' })
-      return
-    }
-
-    if (!navigator.onLine) {
-      dispatch({ type: 'ERROR', message: 'You appear to be offline. Please check your connection and try again.' })
-      return
-    }
-
-    let settled = false
-
-    const settle = (action: { type: 'SUCCESS' } | { type: 'ERROR'; message: string }) => {
-      if (settled) return
-      settled = true
-      iframe.removeEventListener('load', onLoad)
-      iframe.removeEventListener('error', onError)
-      dispatch(action)
-    }
-
-    const onLoad = () => settle({ type: 'SUCCESS' })
-    const onError = () => settle({ type: 'ERROR', message: 'Submission failed. Please try again.' })
-
-    iframe.addEventListener('load', onLoad)
-    iframe.addEventListener('error', onError)
-
-    formRef.current.submit()
-
-    // Fallback timeout — if neither load nor error fires in 10s, assume success
-    // (cross-origin iframes may not fire events reliably)
-    setTimeout(() => settle({ type: 'SUCCESS' }), 10000)
-  }
-
-  return { state, set, handleSubmit, iframeRef, formRef }
-}
+const contactEndpoint = import.meta.env.PUBLIC_CONTACT_ENDPOINT ?? '/v1/contact'
 
 const inputClass =
   'w-full rounded-lg border border-border-strong bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground outline-none focus:border-brand focus:ring-1 focus:ring-brand'
@@ -104,24 +14,29 @@ const inputClass =
 const labelClass = 'block text-sm font-medium text-secondary-foreground mb-1.5'
 
 export const ContactPage = () => {
-  const { state, set, handleSubmit, iframeRef, formRef } = useContactFormState()
+  const { submission, isPending, handleSubmit } = useContactFormState(contactEndpoint)
 
-  if (state.status === 'success') {
+  if (submission?.status === 'success') {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="flex min-h-screen flex-col bg-background">
         <SparkHeader currentPage="Contact" />
-        <main className="flex min-h-screen flex-col items-center justify-center px-6 pt-20">
+        <main className="flex flex-1 flex-col items-center justify-center px-6 py-24">
           <img src="/enterprise/thunderbolt-logo.png" alt="Thunderbolt" className="size-12" />
-          <h1 className="mt-4 font-sans text-[32px] font-medium leading-[1.2] tracking-[-0.96px] text-foreground">
+          <h1
+            tabIndex={-1}
+            ref={(heading) => heading?.focus()}
+            className="mt-4 font-sans text-[32px] font-medium leading-[1.2] tracking-[-0.96px] text-foreground"
+          >
             Thank you!
           </h1>
           <p className="mt-2 max-w-[400px] text-center text-base leading-6 text-muted-foreground">
-            We&rsquo;ve received your inquiry and will be in touch shortly.
+            Your message has been sent to the Thunderbolt team.
           </p>
           <a href="/" className="button-primary mt-6">
             Go Back
           </a>
         </main>
+        <SparkFooter />
       </div>
     )
   }
@@ -143,93 +58,88 @@ export const ContactPage = () => {
           Tell us about your organization and how we can help.
         </p>
 
-        {/* Hidden iframe target for form submission — no visible redirect */}
-        <iframe ref={iframeRef} name="mc-hidden-iframe" className="hidden" aria-hidden="true" />
-
         <form
-          ref={formRef}
-          action={MAILCHIMP_URL}
-          method="post"
-          target="mc-hidden-iframe"
           onSubmit={handleSubmit}
+          aria-busy={isPending}
           className="mt-8 flex flex-col gap-5 rounded-xl border border-border bg-card p-5 shadow-soft sm:p-8"
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="mce-FNAME" className={labelClass}>
+              <label htmlFor="contact-firstName" className={labelClass}>
                 First Name
               </label>
               <input
                 type="text"
-                name="FNAME"
-                id="mce-FNAME"
-                value={state.firstName}
-                onChange={set('firstName')}
+                name="firstName"
+                maxLength={150}
+                autoComplete="given-name"
+                id="contact-firstName"
                 className={inputClass}
               />
             </div>
             <div>
-              <label htmlFor="mce-LNAME" className={labelClass}>
+              <label htmlFor="contact-lastName" className={labelClass}>
                 Last Name
               </label>
               <input
                 type="text"
-                name="LNAME"
-                id="mce-LNAME"
-                value={state.lastName}
-                onChange={set('lastName')}
+                name="lastName"
+                maxLength={150}
+                autoComplete="family-name"
+                id="contact-lastName"
                 className={inputClass}
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="mce-EMAIL" className={labelClass}>
+            <label htmlFor="contact-email" className={labelClass}>
               Email Address <span className="text-red-500">*</span>
             </label>
             <input
               type="email"
-              name="EMAIL"
-              id="mce-EMAIL"
-              value={state.email}
-              onChange={set('email')}
+              name="email"
+              maxLength={254}
+              autoComplete="email"
+              id="contact-email"
               required
               className={inputClass}
             />
           </div>
 
           <div>
-            <label htmlFor="mce-TITLE" className={labelClass}>
+            <label htmlFor="contact-title" className={labelClass}>
               Title
             </label>
             <input
               type="text"
-              name="TITLE"
-              id="mce-TITLE"
-              value={state.title}
-              onChange={set('title')}
+              name="title"
+              maxLength={150}
+              autoComplete="organization-title"
+              id="contact-title"
               className={inputClass}
             />
           </div>
 
           <div>
-            <label htmlFor="mce-ORG" className={labelClass}>
+            <label htmlFor="contact-org" className={labelClass}>
               Company / Organization
             </label>
-            <input type="text" name="ORG" id="mce-ORG" value={state.org} onChange={set('org')} className={inputClass} />
+            <input
+              type="text"
+              name="org"
+              maxLength={200}
+              autoComplete="organization"
+              id="contact-org"
+              className={inputClass}
+            />
           </div>
 
           <div>
-            <label htmlFor="mce-MMERGE8" className={labelClass}>
+            <label htmlFor="contact-companySize" className={labelClass}>
               Company Size
             </label>
-            <select
-              name="MMERGE8"
-              id="mce-MMERGE8"
-              value={state.companySize}
-              onChange={set('companySize')}
-              className={inputClass}
-            >
+            <select name="companySize" id="contact-companySize" className={inputClass}>
               <option value=""></option>
               <option value="1 to 50">1 to 50</option>
               <option value="51 to 200">51 to 200</option>
@@ -239,32 +149,25 @@ export const ContactPage = () => {
           </div>
 
           <div>
-            <label htmlFor="mce-HELP" className={labelClass}>
+            <label htmlFor="contact-help" className={labelClass}>
               How can we help?
             </label>
-            <textarea
-              name="HELP"
-              id="mce-HELP"
-              value={state.help}
-              onChange={set('help')}
-              rows={4}
-              className={inputClass}
-            />
+            <textarea name="help" maxLength={5000} id="contact-help" rows={4} className={inputClass} />
           </div>
 
-          {/* Mailchimp honeypot — must be present and empty */}
+          {/* Bots fill this field; visitors and assistive technology skip it. */}
           <div className="absolute -left-[5000px]" aria-hidden="true">
-            <input type="text" name="b_f8051cc8637cf3ff79661f382_61b3bbfdaa" tabIndex={-1} defaultValue="" />
+            <input type="text" name="website" autoComplete="off" tabIndex={-1} defaultValue="" />
           </div>
 
-          {state.status === 'error' && <p className="text-sm text-red-600">{state.errorMessage}</p>}
+          {submission?.status === 'error' && (
+            <p role="alert" className="text-sm text-brand">
+              {submission.message}
+            </p>
+          )}
 
-          <button
-            type="submit"
-            disabled={state.status === 'submitting'}
-            className="button-primary w-full disabled:opacity-50"
-          >
-            {state.status === 'submitting' ? 'Submitting...' : 'Submit'}
+          <button type="submit" disabled={isPending} className="button-primary w-full disabled:opacity-50">
+            {isPending ? 'Sending…' : 'Send message'}
           </button>
         </form>
       </main>

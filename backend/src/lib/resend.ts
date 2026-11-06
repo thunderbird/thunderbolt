@@ -43,10 +43,14 @@ export const shouldSkipEmail = (): boolean => {
   return false
 }
 
+/** Whether a real email provider is configured; public forms must never simulate delivery. */
+export const isEmailConfigured = (): boolean => resend !== null
+
 export type SendEmailParams = {
   to: string
   from?: string
   subject: string
+  replyTo?: string
   react: React.ReactElement
 }
 
@@ -55,12 +59,12 @@ export type SendEmailParams = {
  * Uses the default sender address unless overridden.
  * @throws Error if resend client is not configured (should call shouldSkipEmail first)
  */
-export const sendEmail = async ({ to, from = emailFrom, subject, react }: SendEmailParams) => {
+export const sendEmail = async ({ to, from = emailFrom, subject, react, replyTo }: SendEmailParams) => {
   if (!resend) {
     throw new Error('Email service not configured')
   }
 
-  const { data, error } = await resend.emails.send({ from, to, subject, react })
+  const { data, error } = await resend.emails.send({ from, to, subject, react, replyTo })
 
   if (error) {
     throw new Error(`Failed to send email: ${error.message}`)

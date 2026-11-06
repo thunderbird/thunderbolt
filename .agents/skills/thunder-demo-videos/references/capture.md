@@ -1,6 +1,6 @@
 # Capture setup
 
-The edit/inspect and CLI helpers use Python 3.9+, FFmpeg/ffprobe, Pillow, and pyte. Create an environment outside the repository:
+The edit/inspect and CLI helpers use Python 3.9+, FFmpeg/ffprobe, and Pillow. Create an environment outside the repository:
 
 ```sh
 python3 -m venv /tmp/thunder-demo-tools
@@ -53,12 +53,6 @@ python scripts/cli.py record --cwd /absolute/demo-fixture \
 
 The JSON preserves actual ANSI output and timestamps, command, exit code, and timeout status. The helper is for an already configured, noninteractive command. If interactive approval is needed, use an appropriate interactive terminal/recording workflow rather than bypass it. Verify results using real commands and keep their real output as a separate take if needed.
 
-Render a faithful replay with a system monospace font:
+Record the actual terminal window with the native window-capture helper above. List the terminal application’s exact bundle ID and window title, verify the selected window, and capture real typing, output, and scrolling. Use `cli.py record` only when a separate raw PTY log is useful for checking the command’s result; it does not produce a video. Never replace native terminal footage with reconstructed ANSI frames.
 
-```sh
-python scripts/cli.py render /absolute/session/feature.cast.json \
-  --output /absolute/session/raw/terminal.mp4 \
-  --font /System/Library/Fonts/Menlo.ttc --idle-cap 1.2 --final-hold 2.5
-```
-
-On Linux, pass an installed monospace font such as DejaVu Sans Mono. The renderer includes every captured event; it only compresses inter-event waiting. Output is a plain terminal body at 30 fps, ready for website chrome. Record it as a PTY replay, not a native-window video. Keep terminal columns/rows compact enough for the target website size and check that output does not scroll important results away.
+Older session assets may contain PTY replays. Preserve their existing provenance rather than relabeling them as native recordings; new or refreshed CLI videos should use native terminal capture.

@@ -19,6 +19,7 @@ type RateLimitTier =
   | 'receipt'
   | 'pro'
   | 'auth'
+  | 'contact'
   | 'anonymous-sign-in'
   | 'anonymous-sign-in-global'
   | 'captcha-challenge'
@@ -26,7 +27,7 @@ type RateLimitTier =
   | 'debug-transcript-intake'
 /** Tiers with a hardcoded limit; the anonymous sign-in and captcha challenge tiers are configured by the operator. */
 type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in' | 'anonymous-sign-in-global' | 'captcha-challenge'>
-export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>
+export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth' | 'contact'>
 
 type RateLimitTierConfig = {
   max: number
@@ -51,6 +52,7 @@ const tierConfigs = {
   receipt: { max: 100, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
+  contact: { max: 3, durationSecs: 60 * 60 },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },
   'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
 } satisfies Record<FixedRateLimitTier, RateLimitTierConfig>
@@ -184,7 +186,8 @@ const createTierLimiter = (database: typeof DbType, ...args: TierArgs) =>
 
 /** IP-keyed middleware for one tier; fails closed like createAuthIpRateLimit. */
 export const createIpTierRateLimit = (database: typeof DbType, settings: IpRateLimitSettings, ...args: TierArgs) => {
-  if (!settings.enabled) {
+  // Public email intake always needs an abuse limit, even when app limits are disabled.
+  if (!settings.enabled && args[0] !== 'contact') {
     return new Elysia()
   }
   const limiter = createTierLimiter(database, ...args)

@@ -8,14 +8,11 @@ export const productLinks = {
   github: 'https://github.com/thunderbird/thunderbolt',
   fork: 'https://github.com/thunderbird/thunderbolt/fork',
   discord: 'https://discord.gg/chwSZCBC8V',
-  enterprise: '/contact',
   cliDocs: 'https://github.com/thunderbird/thunderbolt/blob/main/cli/README.md',
   privacy: '/docs/admin/security-and-privacy',
   connections: '/docs/using/connections',
-  platforms: '/docs/using/apps-and-sync',
   selfHost: '/docs/self-hosting',
   render: '/docs/self-hosting/public-agent',
-  renderBlueprint: 'https://github.com/thunderbird/thunderbolt/blob/main/deploy/render/public-agent.yaml',
   docker: '/docs/self-hosting/docker-compose',
   kubernetes: '/docs/self-hosting/kubernetes',
   aws: '/docs/self-hosting/pulumi',
@@ -26,6 +23,6 @@ export const cliInstallCommand =
 
 // Public store destinations can be filled in when the listings are available.
 export const mobileStores = [
-  { platform: 'iOS', store: 'App Store', status: 'Coming soon', href: undefined },
-  { platform: 'Android', store: 'Google Play', status: 'Coming soon', href: undefined },
+  { platform: 'iOS', store: 'App Store', status: 'Coming soon' },
+  { platform: 'Android', store: 'Google Play', status: 'Coming soon' },
 ] as const

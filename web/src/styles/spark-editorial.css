@@ -5,19 +5,6 @@
 @import './tokens.css';
 @import '../components/marketing/spark/spark-chrome.css';
 
-:root {
-  --tb-bg: var(--spark-background);
-  --tb-surface: var(--spark-surface);
-  --tb-surface-subtle: var(--spark-hover);
-  --tb-surface-input: var(--spark-hover);
-  --tb-border: var(--spark-border);
-  --tb-text: var(--spark-ink);
-  --tb-text-secondary: var(--spark-secondary);
-  --tb-text-muted: var(--spark-muted);
-  --tb-brand: var(--spark-red);
-  --tb-link: var(--spark-red);
-}
-
 html {
   background: var(--tb-bg);
   color: var(--tb-text);

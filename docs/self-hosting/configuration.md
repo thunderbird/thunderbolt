@@ -371,15 +371,18 @@ An app appears in the sidebar as soon as it is registered. An entry that fails v
 
 ## Email
 
-Sign-in codes are sent through Resend.
+Sign-in codes and website contact notifications are sent through Resend.
 
 | Variable                    | Default                     | What it does                                                                                                                                          |
 | --------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `RESEND_API_KEY`            | none                        | Sending key. Leave it unset and no mail is sent. Fine for local evaluation, and fine on OIDC or SAML, but it breaks email-code sign-in in production. |
 | `RESEND_MONITORING_API_KEY` | none                        | Separate full-access key used only by the email health check, so the sending key can stay send-only.                                                  |
 | `EMAIL_FROM`                | `hello@auth.thunderbolt.io` | Sender address for outgoing mail, and the contact address in its footer.                                                                              |
+| `CONTACT_EMAIL_TO`          | none                        | Fixed inbox for website inquiries. Unset disables the contact endpoint; it never defaults to the sender or a visitor-supplied address.                |
 
 Set `EMAIL_FROM` to an address on a domain your Resend account has verified: Resend rejects the default everywhere except Thunderbird's own deployment. There is no setting to use your own SMTP server.
+
+The website posts to `POST /v1/contact`. The endpoint requires a configured recipient and sending key, and limits each client IP to three requests per hour even when application rate limits are disabled. Set `TRUSTED_PROXY` for your actual ingress so it can identify clients correctly. Kubernetes exposes these settings under `backend.email` and routes `/v1/contact` on the marketing hostname to the backend.
 
 ## Browser access
 

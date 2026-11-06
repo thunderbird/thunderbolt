@@ -53,7 +53,7 @@ def inspect_video(source, output, start=0, end=None, step=None):
     metadata = probe(source)
     end = metadata['duration'] if end is None else end
     step = max(1, (end - start) / 20) if step is None else step
-    if not 0 <= start < end <= metadata['duration'] + .05 or step <= 0:
+    if not all(math.isfinite(value) for value in (start, end, step)) or not 0 <= start < end <= metadata['duration'] + .05 or step <= 0:
         raise ValueError('Inspection range/step must be positive and inside the source')
     samples = [start + index * step for index in range(math.ceil((end - start) / step))]
     thumbnails = []
@@ -107,6 +107,8 @@ def validate_clip(clip, metadata):
 
 def child_path(root, relative):
     """Keep a recipe's relative paths inside its explicit source/output directory."""
+    if Path(relative).is_absolute():
+        raise ValueError('Recipe paths must be relative to the supplied directory')
     path = (root / relative).resolve()
     if not path.is_relative_to(root.resolve()):
         raise ValueError('Recipe paths must stay inside the supplied directory')
@@ -149,26 +151,23 @@ def edit_clip(clip, source_dir, output_dir):
     filters.append(''.join(labels) + f"concat=n={len(labels)}:v=1:a=0," + ','.join(finishing) + '[out]')
     destination.parent.mkdir(parents=True, exist_ok=True)
     poster.parent.mkdir(parents=True, exist_ok=True)
-    # Stage both outputs before replacing either website asset.
-    with tempfile.TemporaryDirectory(prefix='.demo-edit-', dir=destination.parent) as temporary:
-        video_temp = Path(temporary) / 'demo.mp4'
-        poster_temp = Path(temporary) / 'poster.webp'
-        run(['ffmpeg', '-v', 'error', '-y', '-i', str(source), '-filter_complex', ';'.join(filters),
-             '-map', '[out]', '-an', '-map_metadata', '-1', '-c:v', 'libx264', '-preset', 'fast',
-             '-crf', str(clip.get('crf', 22)), '-pix_fmt', 'yuv420p', '-fps_mode', 'vfr',
-             '-movflags', '+faststart', str(video_temp)])
-        result = probe(video_temp)
-        png = run(['ffmpeg', '-v', 'error', '-ss', str(clip.get('posterAt', max(0, result['duration'] - 1))),
-                   '-i', str(video_temp), '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'])
-        Image.open(io.BytesIO(png)).convert('RGB').save(poster_temp, 'WEBP', quality=88)
-        video_temp.replace(destination)
-        poster_temp.replace(poster)
+    # The caller owns the isolated batch directory; publication happens only after every clip succeeds.
+    run(['ffmpeg', '-v', 'error', '-y', '-i', str(source), '-filter_complex', ';'.join(filters),
+         '-map', '[out]', '-an', '-map_metadata', '-1', '-c:v', 'libx264', '-preset', 'fast',
+         '-crf', str(clip.get('crf', 22)), '-pix_fmt', 'yuv420p', '-fps_mode', 'vfr',
+         '-movflags', '+faststart', str(destination)])
+    result = probe(destination)
+    poster_at = clip.get('posterAt', max(0, result['duration'] - 1))
+    png = run(['ffmpeg', '-v', 'error', '-ss', str(poster_at),
+               '-i', str(destination), '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'])
+    Image.open(io.BytesIO(png)).convert('RGB').save(poster, 'WEBP', quality=88)
     result.update({'id': clip['id'], 'source': clip['source'],
                    'sourceSha256': source_hash(source),
                    'keep': clip['keep'], 'crop': clip.get('crop'),
-                   'removeOverlays': clip.get('removeOverlays', []), 'posterAt': clip.get('posterAt'),
+                   'removeOverlays': clip.get('removeOverlays', []), 'posterAt': poster_at,
                    'output': clip['output'], 'poster': clip['poster'], 'bytes': destination.stat().st_size})
     return result
+
 
 
 def publish_files(files):
@@ -177,8 +176,8 @@ def publish_files(files):
         prepared = []
         for source, destination in files:
             destination.parent.mkdir(parents=True, exist_ok=True)
-            temporary = Path(stack.enter_context(tempfile.TemporaryDirectory(
-                prefix='.demo-publish-', dir=destination.parent)))
+            temporary = Path(tempfile.mkdtemp(prefix='.demo-publish-', dir=destination.parent))
+            stack.callback(shutil.rmtree, temporary)
             staged = temporary / 'new'
             shutil.copy2(source, staged)
             backup = temporary / 'previous' if destination.exists() else None
@@ -191,13 +190,18 @@ def publish_files(files):
                 staged.replace(destination)
                 replaced.append((destination, backup))
         except OSError:
-            for destination, backup in reversed(replaced):
-                if backup:
-                    backup.replace(destination)
-                else:
-                    destination.unlink()
+            try:
+                for destination, backup in reversed(replaced):
+                    if backup:
+                        backup.replace(destination)
+                    else:
+                        destination.unlink()
+            except OSError as restore_error:
+                # Keep recovery copies if the filesystem also refuses the rollback.
+                stack.pop_all()
+                recovery = ', '.join(str(staged.parent) for staged, _, _ in prepared)
+                raise RuntimeError(f'Rollback failed; recovery files retained at: {recovery}') from restore_error
             raise
-
 
 def main():
     """Expose inspect, edit, and check commands without hardcoded project paths."""
@@ -230,13 +234,16 @@ def main():
     recipe = json.loads(args.recipe.read_text())
     if recipe.get('version') != 1:
         raise ValueError('Expected edit recipe version 1')
-    clips = [clip for clip in recipe['clips'] if not args.only or clip['id'] == args.only]
+    all_clips = recipe['clips']
+    if len({clip['id'] for clip in all_clips}) != len(all_clips):
+        raise ValueError('Clip IDs must be unique')
+    clips = [clip for clip in all_clips if not args.only or clip['id'] == args.only]
     if not clips:
         raise ValueError('No matching clips in the recipe')
-    sources = {child_path(args.source_dir, clip['source']) for clip in clips}
+    sources = {child_path(args.source_dir, clip['source']) for clip in all_clips}
     outputs = [child_path(args.output_dir, clip[key]) for clip in clips for key in ('output', 'poster')]
-    if args.report.resolve() in sources.union(outputs):
-        raise ValueError('Report must be distinct from every source and output')
+    if args.report.resolve() in sources.union(outputs, {args.recipe.resolve()}):
+        raise ValueError('Report must be distinct from the recipe, sources, and outputs')
     if len(set(outputs)) != len(outputs) or sources.intersection(outputs):
         raise ValueError('Outputs must be unique and cannot overwrite any raw source in the batch')
     # A later clip's validation/encode failure must leave the whole published batch intact.

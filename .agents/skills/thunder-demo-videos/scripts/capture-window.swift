@@ -85,8 +85,8 @@ struct WindowCapture {
         guard args.count >= 2 else {
             throw CaptureError.invalid("Usage: capture-window list [BUNDLE_ID] [TITLE] | record CONFIG.json")
         }
-        let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
         if args[1] == "list" {
+            let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
             for window in content.windows {
                 guard let owner = window.owningApplication else { continue }
                 let matches = args.count > 2 ? owner.bundleIdentifier == args[2] : owner.applicationName.localizedCaseInsensitiveContains("Thunderbolt")
@@ -99,9 +99,10 @@ struct WindowCapture {
             throw CaptureError.invalid("Expected record CONFIG.json")
         }
         let config = try JSONDecoder().decode(CaptureConfig.self, from: Data(contentsOf: URL(fileURLWithPath: args[2])))
-        guard config.seconds > 0, config.seconds <= 600, (1...60).contains(config.fps ?? 60) else {
+        guard config.seconds.isFinite, config.seconds > 0, config.seconds <= 600, (1...60).contains(config.fps ?? 60) else {
             throw CaptureError.invalid("Use a positive duration up to 600 seconds and FPS from 1 to 60")
         }
+        let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
         guard let window = content.windows.first(where: { $0.windowID == config.windowID }),
               window.owningApplication?.bundleIdentifier == config.expectedBundleID,
               config.expectedTitle == nil || config.expectedTitle == window.title else {
@@ -109,7 +110,8 @@ struct WindowCapture {
         }
         let rect = config.crop.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
             ?? CGRect(origin: .zero, size: window.frame.size)
-        guard rect.width > 0, rect.height > 0, CGRect(origin: .zero, size: window.frame.size).contains(rect) else {
+        guard [rect.origin.x, rect.origin.y, rect.width, rect.height].allSatisfy({ $0.isFinite }),
+              rect.width > 0, rect.height > 0, CGRect(origin: .zero, size: window.frame.size).contains(rect) else {
             throw CaptureError.invalid("Crop must fit inside the selected window in logical pixels")
         }
         let output = URL(fileURLWithPath: config.output)
@@ -120,9 +122,15 @@ struct WindowCapture {
         let streamConfig = SCStreamConfiguration()
         streamConfig.sourceRect = rect
         let width = config.width ?? min(1920, Int(rect.width * 2))
-        guard width >= 2 else { throw CaptureError.invalid("Output width must be at least 2") }
+        guard (2...8192).contains(width) else {
+            throw CaptureError.invalid("Output width must be from 2 to 8192 pixels")
+        }
+        let height = Double(width / 2 * 2) * rect.height / rect.width
+        guard height.isFinite, height >= 2, height <= 8192 else {
+            throw CaptureError.invalid("Output height must be from 2 to 8192 pixels; check crop and width")
+        }
         streamConfig.width = width / 2 * 2
-        streamConfig.height = Int(Double(streamConfig.width) * rect.height / rect.width) / 2 * 2
+        streamConfig.height = Int(height) / 2 * 2
         streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: Int32(config.fps ?? 60))
         streamConfig.queueDepth = 6
         streamConfig.showsCursor = true

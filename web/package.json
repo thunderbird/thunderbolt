@@ -7,7 +7,10 @@
     "start": "ASTRO_TELEMETRY_DISABLED=1 astro dev",
     "build": "ASTRO_TELEMETRY_DISABLED=1 astro build",
     "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "test": "bun test --timeout 5000",
+    "test:coverage": "bun test --timeout 5000 --coverage",
+    "typecheck": "ASTRO_TELEMETRY_DISABLED=1 astro sync && tsc --noEmit"
   },
   "dependencies": {
     "@astrojs/react": "^6.0.1",
@@ -24,5 +27,10 @@
     "react-dom": "^19.2.4",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.2.2"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
   }
 }

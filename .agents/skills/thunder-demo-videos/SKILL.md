@@ -16,7 +16,7 @@ Make concise, convincing videos of the actual app. Use an existing relevant chec
 
 ## Capture
 
-Read [references/capture.md](references/capture.md) for native window recording or real PTY capture/replay. Use the supported UI tools to operate the app; the native helper records only a selected window and does not automate input.
+Read [references/capture.md](references/capture.md) for native window recording and optional PTY evidence capture. Use the supported UI tools to operate the app; the native helper records only a selected window and does not automate input.
 
 Keep raw masters outside the repository, with a brief story/feature note and the app version, model, theme, viewport, and verification result. Never overwrite the master. Use already configured providers without exposing credentials; prepare the demo workspace before recording.
 
@@ -44,6 +44,6 @@ Resolve the `scripts/` path against this skill's directory; use the prepared Pyt
 
 Update `web/src/components/marketing/spark/product-demos.ts` when dimensions, filenames, or the visible story change. Set the desktop `cornerRadius` in recording pixels to cover the native corner fringe; the preview computes its mask from that radius and the recording dimensions. Keep both palettes, static posters, muted inline playback, reduced-motion behavior, offscreen pausing, and the manual pause control. The website supplies the desktop/terminal chrome; remove duplicate review-gallery framing from assets. Inspect the native rounded capture edges at the actual website size, since black corners can be baked into the recording. Preserve the full app frame and its original padding; match the website corner mask proportionally to the native radius instead of trimming all four edges to hide rounded corners. Check sidebar icons, text insets, and top/bottom controls in both themes and at phone width.
 
-Run `scripts/demo.py check OUTPUT.mp4`, the web build, and appropriate source checks. Visually review light/dark desktop and a phone-width layout, source changes between clients, playback/pause, corners, and poster fallback. Don't claim cadence or outcomes that weren't checked. Update capture notes when cuts, cosmetic cleanup, or PTY replay change the provenance.
+Run `scripts/demo.py check OUTPUT.mp4`, the web build, and appropriate source checks. Visually review light/dark desktop and a phone-width layout, source changes between clients, playback/pause, corners, and poster fallback. Don't claim cadence or outcomes that weren't checked. Update capture notes when cuts, cosmetic cleanup, or recording method change the provenance.
 
 If review was requested, present candidates before integration. If selection/integration was already authorized, choose the strongest set and complete it. For commits/pushes, follow the repository's `/thunderpush` rule; don't bypass signing or publish to a different destination.

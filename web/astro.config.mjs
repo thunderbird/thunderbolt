@@ -83,6 +83,7 @@ export default defineConfig({
 			components: {
 				Head: './src/components/starlight/Head.astro',
 				Header: './src/components/starlight/Header.astro',
+				MobileMenuToggle: './src/components/starlight/MobileMenuToggle.astro',
 				PageTitle: './src/components/starlight/PageTitle.astro',
 				PageSidebar: './src/components/starlight/PageSidebar.astro',
 				ThemeSelect: './src/components/starlight/ThemeSelect.astro',
@@ -146,6 +147,14 @@ export default defineConfig({
 		}),
 	],
 	vite: {
+		// Build/typecheck content sync also optimizes dependencies. Keep its React
+		// production runtime from replacing a running dev server's cached runtime.
+		cacheDir: `./node_modules/.vite/${process.env.NODE_ENV === 'production' ? 'production' : 'development'}`,
 		plugins: [tailwindcss()],
+		server: {
+			proxy: {
+				'/v1/contact': { target: process.env.CONTACT_API_TARGET || 'http://127.0.0.1:8000', changeOrigin: true },
+			},
+		},
 	},
 });

@@ -6,9 +6,8 @@ import { useSiteTheme } from '../../site-theme/use-site-theme'
 import { productDemos, type DemoPlatform } from './product-demos'
 import { useProductDemoState } from './use-product-demo-state'
 
-type DemoProps = { platform: DemoPlatform; theme: 'light' | 'dark' }
-
-const DemoVideo = ({ platform, theme }: DemoProps) => {
+export const ProductDemo = ({ platform }: { platform: DemoPlatform }) => {
+  const { resolvedTheme: theme } = useSiteTheme()
   const demo = productDemos[platform]
   const { videoRef, hasPlayed, isPlaying, togglePlayback, onPlay, onPlaying, onPause, onError, onEmptied } =
     useProductDemoState(demo[theme].src)
@@ -45,6 +44,7 @@ const DemoVideo = ({ platform, theme }: DemoProps) => {
         playsInline
         preload="none"
         aria-label={demo.description}
+        aria-hidden={!hasPlayed}
         onPlay={onPlay}
         onEmptied={onEmptied}
         onPlaying={onPlaying}
@@ -64,9 +64,4 @@ const DemoVideo = ({ platform, theme }: DemoProps) => {
       </button>
     </div>
   )
-}
-
-export const ProductDemo = ({ platform }: { platform: DemoPlatform }) => {
-  const { resolvedTheme } = useSiteTheme()
-  return <DemoVideo key={platform} platform={platform} theme={resolvedTheme} />
 }

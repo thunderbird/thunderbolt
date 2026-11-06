@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { createContactRoutes } from '@/contact/routes'
 import { createMainRoutes } from '@/api/routes'
 import { createHealthRoutes } from '@/api/health'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
@@ -222,6 +223,12 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createPostHogRoutes(fetchFn))
+      .use(
+        createContactRoutes({
+          settings,
+          ipRateLimit: createIpTierRateLimit(database, ipRateLimitSettings, 'contact'),
+        }),
+      )
       .use(
         createWaitlistRoutes({
           database,

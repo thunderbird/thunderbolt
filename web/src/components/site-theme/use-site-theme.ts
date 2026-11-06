@@ -5,7 +5,7 @@
 import { useSyncExternalStore } from 'react'
 
 export type ThemePreference = 'light' | 'auto' | 'dark'
-type ResolvedTheme = Exclude<ThemePreference, 'auto'>
+export type ResolvedTheme = Exclude<ThemePreference, 'auto'>
 
 declare global {
   interface Window {
@@ -19,14 +19,11 @@ declare global {
 }
 
 const subscribe = (listener: () => void) => window.thunderboltTheme.subscribe(listener)
-const getPreference = () => window.thunderboltTheme.getPreference()
 const getResolvedTheme = () => window.thunderboltTheme.getResolvedTheme()
-const getServerPreference = (): ThemePreference => 'auto'
 const getServerTheme = (): ResolvedTheme => 'light'
 
 /** Subscribe to the same pre-paint theme store on marketing, blog, and docs pages. */
 export const useSiteTheme = () => ({
-  preference: useSyncExternalStore(subscribe, getPreference, getServerPreference),
   resolvedTheme: useSyncExternalStore(subscribe, getResolvedTheme, getServerTheme),
   setPreference: (theme: ThemePreference) => window.thunderboltTheme.setPreference(theme),
 })

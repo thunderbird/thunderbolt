@@ -12,6 +12,7 @@ import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getProviderDefinition } from '@/providers/registry'
+import { ProviderConnectionIcon } from '@/settings/connections/provider-connection-icon'
 import { getModelDisplayName } from './model-display-name'
 import type { useAddProviderModels } from './use-add-provider-models'
 
@@ -35,7 +36,8 @@ export const AddProviderModels = (state: ReturnType<typeof useAddProviderModels>
           items={state.connections.map((connection) => ({
             id: connection.id,
             label: connection.name,
-            description: getProviderDefinition(connection.provider).name,
+            filterValue: getProviderDefinition(connection.provider).name,
+            icon: <ProviderConnectionIcon provider={connection.provider} />,
           }))}
           value={state.connectionId}
           onValueChange={state.changeConnection}

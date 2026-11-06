@@ -94,6 +94,7 @@ it.each(['disabled', 'disconnected'] as const)(
 it('offers adding a connection when none exists', () => {
   renderPage()
   fireEvent.click(screen.getByRole('button', { name: 'New Search Connection' }))
+  expect(screen.getByRole('link', { name: 'Manage all connections' })).toHaveAttribute('href', '/settings/connections')
   fireEvent.click(screen.getByRole('button', { name: 'Exa Search' }))
   expect(screen.getByLabelText('API key')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'OpenAI Models' })).toBeNull()

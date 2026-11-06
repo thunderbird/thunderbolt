@@ -1192,8 +1192,8 @@ msgid "Connect to your server"
 msgstr ""
 
 #: src/settings/connections/provider-connection-form.tsx
-msgid "Connect with"
-msgstr ""
+#~ msgid "Connect with"
+#~ msgstr ""
 
 #: src/settings/connections/ai-provider-detail.tsx
 #~ msgid "Connect with a paid Tinfoil subscription."
@@ -3084,6 +3084,10 @@ msgstr "ログアウトしています…"
 msgid "Mainly clear"
 msgstr "おおむね晴れ"
 
+#: src/settings/search/index.tsx
+msgid "Manage all connections"
+msgstr ""
+
 #: src/settings/models/model-detail.tsx
 #: src/settings/search/index.tsx
 msgid "Manage connection"
@@ -3946,8 +3950,8 @@ msgid "Projects"
 msgstr "プロジェクト"
 
 #: src/settings/search/index.tsx
-msgid "Provided by your server"
-msgstr ""
+#~ msgid "Provided by your server"
+#~ msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 #: src/settings/voice.tsx
@@ -4668,7 +4672,6 @@ msgstr "もう一度サインイン"
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
-#: src/settings/connections/provider-connection-form.tsx
 msgid "Sign in"
 msgstr "サインイン"
 
@@ -5764,6 +5767,10 @@ msgstr ""
 msgid "Use an http:// or https:// URL"
 msgstr "http:// または https:// の URL を使用してください"
 
+#: src/settings/connections/provider-connection-form.tsx
+msgid "Use API Key instead"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Use Cloud Proxy"
 msgstr "クラウドプロキシを使用"
@@ -5785,6 +5792,7 @@ msgid "Use passkey"
 msgstr "パスキーを使用"
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/connections/provider-connection-form.tsx
 msgid "Use sign-in instead"
 msgstr ""
 

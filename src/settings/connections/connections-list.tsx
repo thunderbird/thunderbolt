@@ -258,9 +258,7 @@ export const ConnectionsList = ({
               <li key={`${provider.id}:${areProvidersReady}`}>
                 <ConnectionRow
                   title={provider.name}
-                  subtitle={
-                    provider.connected ? getProviderDefinition(provider.provider).name : t`Connect on this device`
-                  }
+                  subtitle={provider.connected ? undefined : t`Connect on this device`}
                   leading={<ProviderConnectionIcon provider={provider.provider} />}
                   isActive={activeKey === `provider:${provider.id}`}
                   isDimmed={!provider.enabled || !provider.connected}

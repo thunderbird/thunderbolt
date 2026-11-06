@@ -37,7 +37,6 @@ export const ProviderConnectionDetail = ({
   return (
     <DetailPanel
       title={connection.name}
-      subtitle={definition.name}
       icon={<ProviderConnectionIcon provider={connection.provider} />}
       onClose={onClose}
     >

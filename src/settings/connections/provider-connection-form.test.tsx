@@ -119,6 +119,32 @@ describe('provider connection form', () => {
     )
   })
 
+  it.each(['otari', 'tinfoil', 'openrouter'] as const)(
+    'switches %s authentication through the secondary link without submitting or losing the name',
+    (provider) => {
+      renderWithReactivity(
+        <ProviderConnectionForm
+          provider={provider}
+          authorization={authorization}
+          onSaved={onSaved}
+          onCancel={onCancel}
+        />,
+      )
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'My account' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
+      expect(screen.getByLabelText('API key')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save connection' })).toBeDisabled()
+      fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'test-key' } })
+      expect(screen.getByRole('button', { name: 'Save connection' })).toBeEnabled()
+      fireEvent.click(screen.getByRole('button', { name: 'Use sign-in instead' }))
+      expect(screen.queryByLabelText('API key')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Name')).toHaveValue('My account')
+      expect(authorization.authorize).not.toHaveBeenCalled()
+      expect(onSaved).not.toHaveBeenCalled()
+    },
+  )
+
   it.each(['none', 'cloud', 'connection'] as const)(
     'discovers API-key Otari search at the normalized endpoint without replacing the %s search choice',
     async (selection) => {
@@ -139,7 +165,7 @@ describe('provider connection form', () => {
       renderWithReactivity(
         <ProviderConnectionForm provider="otari" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
       )
-      fireEvent.click(screen.getByRole('radio', { name: 'API key' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
       fireEvent.click(screen.getByRole('button', { name: 'Custom URL' }))
       fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'http://localhost:8099' } })
       fireEvent.change(screen.getByLabelText('API key', { selector: 'input[type="password"]' }), {
@@ -180,7 +206,7 @@ describe('provider connection form', () => {
     const view = renderWithReactivity(
       <ProviderConnectionForm provider="otari" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
     )
-    fireEvent.click(screen.getByRole('radio', { name: 'API key' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
     fireEvent.change(screen.getByLabelText('API key', { selector: 'input[type="password"]' }), {
       target: { value: 'local-key' },
     })
@@ -222,6 +248,7 @@ describe('provider connection form', () => {
       />,
     )
     const button = screen.getByRole('button', { name: 'Cancel connection' })
+    expect(screen.getByRole('button', { name: 'Use API Key instead' })).toBeDisabled()
     expect(button).toHaveTextContent('Connecting…')
     fireEvent.mouseEnter(button)
     expect(button).toHaveTextContent('Cancel')
@@ -250,7 +277,7 @@ describe('provider connection form', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open My account' }))
     expect(onSaved).toHaveBeenCalledWith(id)
     expect(authorization.authorize).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('radio', { name: 'API key' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
     expect(screen.getByLabelText('Name')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save connection' })).toBeDisabled()
   })

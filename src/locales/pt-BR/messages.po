@@ -1216,8 +1216,8 @@ msgid "Connect to your server"
 msgstr ""
 
 #: src/settings/connections/provider-connection-form.tsx
-msgid "Connect with"
-msgstr ""
+#~ msgid "Connect with"
+#~ msgstr ""
 
 #: src/settings/connections/ai-provider-detail.tsx
 #~ msgid "Connect with a paid Tinfoil subscription."
@@ -3108,6 +3108,10 @@ msgstr "Saindo…"
 msgid "Mainly clear"
 msgstr "Predominantemente limpo"
 
+#: src/settings/search/index.tsx
+msgid "Manage all connections"
+msgstr ""
+
 #: src/settings/models/model-detail.tsx
 #: src/settings/search/index.tsx
 msgid "Manage connection"
@@ -3970,8 +3974,8 @@ msgid "Projects"
 msgstr "Projetos"
 
 #: src/settings/search/index.tsx
-msgid "Provided by your server"
-msgstr ""
+#~ msgid "Provided by your server"
+#~ msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 #: src/settings/voice.tsx
@@ -4692,7 +4696,6 @@ msgstr "Entrar novamente"
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
-#: src/settings/connections/provider-connection-form.tsx
 msgid "Sign in"
 msgstr "Entrar"
 
@@ -5788,6 +5791,10 @@ msgstr ""
 msgid "Use an http:// or https:// URL"
 msgstr "Use uma URL http:// ou https://"
 
+#: src/settings/connections/provider-connection-form.tsx
+msgid "Use API Key instead"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Use Cloud Proxy"
 msgstr "Usar o proxy na nuvem"
@@ -5809,6 +5816,7 @@ msgid "Use passkey"
 msgstr "Usar chave de acesso"
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/connections/provider-connection-form.tsx
 msgid "Use sign-in instead"
 msgstr ""
 

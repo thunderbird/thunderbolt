@@ -59,31 +59,6 @@ export const ProviderConnectionForm = ({
           />
         </div>
       )}
-      {state.definition.oauth && !connection && (
-        <fieldset className="flex gap-4" disabled={state.busy}>
-          <legend className="mb-2 text-sm font-medium">
-            <Trans>Connect with</Trans>
-          </legend>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="connection-auth"
-              checked={state.authMethod === 'oauth'}
-              onChange={() => state.dispatch({ field: 'authMethod', value: 'oauth' })}
-            />
-            <Trans>Sign in</Trans>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="connection-auth"
-              checked={state.authMethod === 'api_key'}
-              onChange={() => state.dispatch({ field: 'authMethod', value: 'api_key' })}
-            />
-            <Trans>API key</Trans>
-          </label>
-        </fieldset>
-      )}
       {existingSignIn && (
         <p className="text-sm text-muted-foreground">
           <Trans>
@@ -181,17 +156,34 @@ export const ProviderConnectionForm = ({
           </Button>
         )}
       </FormFooter>
-      {provider === 'otari' && !state.customUrl && !existingSignIn && (
-        <Button
-          type="button"
-          variant="link"
-          className="self-center text-muted-foreground"
-          disabled={state.busy}
-          onClick={() => state.dispatch({ field: 'customUrl', value: true })}
-        >
-          <Trans>Custom URL</Trans>
-        </Button>
-      )}
+      <div className="flex flex-wrap justify-end gap-x-4 empty:hidden">
+        {provider === 'otari' && !state.customUrl && !existingSignIn && (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="px-0 text-xs font-normal text-muted-foreground"
+            disabled={state.busy}
+            onClick={() => state.dispatch({ field: 'customUrl', value: true })}
+          >
+            <Trans>Custom URL</Trans>
+          </Button>
+        )}
+        {state.definition.oauth && !connection && (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="px-0 text-xs font-normal text-muted-foreground"
+            disabled={state.busy}
+            onClick={() =>
+              state.dispatch({ field: 'authMethod', value: state.authMethod === 'oauth' ? 'api_key' : 'oauth' })
+            }
+          >
+            {state.authMethod === 'oauth' ? <Trans>Use API Key instead</Trans> : <Trans>Use sign-in instead</Trans>}
+          </Button>
+        )}
+      </div>
     </form>
   )
 }

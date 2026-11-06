@@ -1204,8 +1204,8 @@ msgid "Connect to your server"
 msgstr "Connect to your server"
 
 #: src/settings/connections/provider-connection-form.tsx
-msgid "Connect with"
-msgstr "Connect with"
+#~ msgid "Connect with"
+#~ msgstr "Connect with"
 
 #: src/settings/connections/ai-provider-detail.tsx
 #~ msgid "Connect with a paid Tinfoil subscription."
@@ -3096,6 +3096,10 @@ msgstr "Logging out…"
 msgid "Mainly clear"
 msgstr "Mainly clear"
 
+#: src/settings/search/index.tsx
+msgid "Manage all connections"
+msgstr "Manage all connections"
+
 #: src/settings/models/model-detail.tsx
 #: src/settings/search/index.tsx
 msgid "Manage connection"
@@ -3958,8 +3962,8 @@ msgid "Projects"
 msgstr "Projects"
 
 #: src/settings/search/index.tsx
-msgid "Provided by your server"
-msgstr "Provided by your server"
+#~ msgid "Provided by your server"
+#~ msgstr "Provided by your server"
 
 #: src/settings/models/add-model-form.tsx
 #: src/settings/voice.tsx
@@ -4680,7 +4684,6 @@ msgstr "Sign back in"
 
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
-#: src/settings/connections/provider-connection-form.tsx
 msgid "Sign in"
 msgstr "Sign in"
 
@@ -5776,6 +5779,10 @@ msgstr "Use an API key instead"
 msgid "Use an http:// or https:// URL"
 msgstr "Use an http:// or https:// URL"
 
+#: src/settings/connections/provider-connection-form.tsx
+msgid "Use API Key instead"
+msgstr "Use API Key instead"
+
 #: src/settings/preferences.tsx
 msgid "Use Cloud Proxy"
 msgstr "Use Cloud Proxy"
@@ -5797,6 +5804,7 @@ msgid "Use passkey"
 msgstr "Use passkey"
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/connections/provider-connection-form.tsx
 msgid "Use sign-in instead"
 msgstr "Use sign-in instead"
 

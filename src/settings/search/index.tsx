@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { NewConnectionPicker } from '@/settings/connections/new-connection-picker'
 import { ProviderConnectionForm } from '@/settings/connections/provider-connection-form'
-import { getProviderDefinition, providerDefinitions } from '@/providers/registry'
+import { providerDefinitions } from '@/providers/registry'
 import { useProviderAuthorization } from '@/providers/use-provider-authorization'
 import { PageHeader } from '@/components/ui/page-header'
 import { PrivateBadge } from '@/components/ui/private-badge'
@@ -53,11 +53,7 @@ const SearchSettingsPage = () => {
                     {connection.provider === 'tinfoil' && <PrivateBadge />}
                   </span>
                 }
-                subtitle={
-                  canSupplySearch(connection)
-                    ? getProviderDefinition(connection.provider).name
-                    : t`Connect or enable this connection to use search`
-                }
+                subtitle={canSupplySearch(connection) ? undefined : t`Connect or enable this connection to use search`}
                 ariaLabel={t`Open ${connection.name}`}
                 isSelected={page.panel === connection.id}
                 onSelect={() => page.setPanel(connection.id)}
@@ -83,7 +79,6 @@ const SearchSettingsPage = () => {
             {page.cloudVisible && (
               <SettingsSelectableRow
                 title="Thunderbolt"
-                subtitle={t`Provided by your server`}
                 ariaLabel={t`Open Thunderbolt`}
                 isSelected={page.panel === 'cloud'}
                 onSelect={() => page.setPanel('cloud')}
@@ -105,6 +100,12 @@ const SearchSettingsPage = () => {
         {page.panel === 'new' && (
           <DetailPanel title={t`New Search Connection`} onClose={close}>
             <NewConnectionPicker capability="search" onProvider={(id) => page.setPanel(`add:${id}`)} />
+            <Link
+              to="/settings/connections"
+              className="self-start text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              <Trans>Manage all connections</Trans>
+            </Link>
           </DetailPanel>
         )}
         {adding && (

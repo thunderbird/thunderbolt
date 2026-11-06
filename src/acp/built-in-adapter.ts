@@ -749,10 +749,17 @@ const disposeHarness = async (record: HarnessRecord): Promise<void> => {
 /** Dispose every cached harness and clear the cache. Fire-and-forget so the
  *  adapter's synchronous `disconnect` doesn't await teardown; a never-resolved or
  *  rejected build is swallowed so no straggler escapes as an unhandled rejection. */
-const disposeAllHarnesses = (cache: HarnessCache): void => {
-  const cached = [...cache.values()]
+const disposeAllHarnesses = (cache: HarnessCache, pendingRequests: Map<Promise<Response>, string>): void => {
+  const cached = [...cache]
   cache.clear()
-  void Promise.all(cached.map(({ record }) => record.then(disposeHarness).catch(() => {})))
+  for (const [threadId, { record }] of cached) {
+    const preparation = [...pendingRequests].flatMap(([pending, owner]) => (owner === threadId ? [pending] : []))
+    // Wait only for this workspace's writes; another thread may be stuck loading.
+    void Promise.allSettled(preparation)
+      .then(() => record)
+      .then(disposeHarness)
+      .catch(() => {})
+  }
 }
 
 /** Run the built-in request on the thread's persistent in-browser Pi harness and
@@ -776,6 +783,7 @@ const fetchViaHarness = async (
   // built-in Pi agent actually runs; the legacy path's imports stay static.
   context.telemetry?.startPhase('agent_core_load')
   const agentCore = await loadAgentCore()
+  init.signal?.throwIfAborted()
   context.telemetry?.endPhase('agent_core_load')
 
   // Resolve the model to a Pi descriptor; an unknown anthropic id or an
@@ -793,7 +801,9 @@ const fetchViaHarness = async (
     chatThreadId: context.threadId,
     telemetry: context.telemetry,
   })
+  init.signal?.throwIfAborted()
   const resolved = await resolvePiModel(agentCore, context, config.profile, tinfoilOptions)
+  init.signal?.throwIfAborted()
   if (!resolved) {
     context.telemetry?.setDimensions({ engine: 'legacy' })
     return fallback()
@@ -807,6 +817,7 @@ const fetchViaHarness = async (
   const { history, prompt, files } = await prepareConversation(messages, skillInstructions, {
     workspace: config.supportsTools,
   })
+  init.signal?.throwIfAborted()
   if (debugTraceId) {
     recordDebugTranscriptSystemPrompts(context.threadId, debugTraceId, [
       composeAppHarnessSystemPrompt(config),
@@ -819,12 +830,16 @@ const fetchViaHarness = async (
   // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
   context.telemetry?.startPhase('harness_build')
   const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
-  const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
-    buildHarnessRecord(agentCore, context, resolved, history, config),
-  )
+  const record = await getOrBuildHarness(cache, context.threadId, signature, () => {
+    init.signal?.throwIfAborted()
+    return buildHarnessRecord(agentCore, context, resolved, history, config)
+  })
+  init.signal?.throwIfAborted()
   await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+  init.signal?.throwIfAborted()
   // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
   const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
+  init.signal?.throwIfAborted()
   for (const { path, error } of failures) {
     console.error(`Built-in agent: could not save ${path} to the workspace`, error)
   }
@@ -903,6 +918,8 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   // itself cached per-agent (`adapter-cache.ts`), so a thread's harness survives
   // across all of that thread's turns; `disconnect` disposes them all.
   const harnessCache: HarnessCache = new Map()
+  const lifetime = new AbortController()
+  const pendingRequests = new Map<Promise<Response>, string>()
 
   /** Legacy engine — every provider the Pi harness doesn't (yet) serve. */
   const fetchViaLegacyPipeline = (init: RequestInit, context: AgentAdapterContext): Promise<Response> =>
@@ -924,7 +941,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
 
   // Route Pi-serviceable models to the in-browser harness. Tinfoil always takes
   // this route; other providers still fall back when their id/config is unusable.
-  const fetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+  const routeFetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
     if (isPiModelCandidate(context.selectedModel)) {
       return fetchViaHarness(
         init,
@@ -941,6 +958,28 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     return fetchViaLegacyPipeline(init, context)
   }
 
+  const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+    const signal = init.signal ? AbortSignal.any([lifetime.signal, init.signal]) : lifetime.signal
+    signal.throwIfAborted()
+    const pending = routeFetch({ ...init, signal }, context)
+    pendingRequests.set(pending, context.threadId)
+    try {
+      return await pending
+    } finally {
+      pendingRequests.delete(pending)
+    }
+  }
+
+  const disconnect = () => {
+    if (lifetime.signal.aborted) {
+      return
+    }
+    lifetime.abort()
+    // Preparation may still be writing workspace files. Abort active streams
+    // immediately, then let owned preparation settle before removing files.
+    disposeAllHarnesses(harnessCache, pendingRequests)
+  }
+
   return {
     agent,
     capabilities: null,
@@ -948,6 +987,6 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     // No ACP wire to warm. Each thread's harness IS persistent, so disconnect
     // disposes every cached harness and removes its isolated workspace.
     ensureSession: async () => {},
-    disconnect: () => disposeAllHarnesses(harnessCache),
+    disconnect,
   }
 }

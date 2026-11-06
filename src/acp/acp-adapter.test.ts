@@ -514,7 +514,7 @@ describe('connectAcpAdapter — skills capability', () => {
 describe('connectAcpAdapter — per-thread session multiplexing over one connection', () => {
   it('resolves a separate ACP session per thread and persists each independently', async () => {
     const { transport } = buildFakeTransport()
-    const { FakeConnection, calls } = buildFakeConnection()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
 
     const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
       openTransport: async () => transport,
@@ -524,7 +524,7 @@ describe('connectAcpAdapter — per-thread session multiplexing over one connect
     const persistedA: string[] = []
     const persistedB: string[] = []
 
-    await adapter.fetch(
+    const first = await adapter.fetch(
       promptInit('a'),
       threadCtx('thread-A', { onAcpSessionId: async (s) => void persistedA.push(s) }),
     )
@@ -540,6 +540,8 @@ describe('connectAcpAdapter — per-thread session multiplexing over one connect
     expect(persistedB).toEqual(['sess-2'])
 
     // A second send on thread-A reuses its cached session — no extra newSession.
+    releasePrompts()
+    await first.text()
     await adapter.fetch(promptInit('a2'), threadCtx('thread-A'))
     expect(calls.newSession).toHaveLength(2)
   })
@@ -1042,30 +1044,177 @@ describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
     expect(outcome?.outcome.outcome).toBe('cancelled')
   })
 
-  it('a signal already aborted at fetch time cancels immediately', async () => {
+  it('consumer cancellation stops the remote turn once and releases its handlers before a later abort', async () => {
     const { transport } = buildFakeTransport()
-    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+    const { FakeConnection, calls, pushPermission, releasePrompts } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    const controller = new AbortController()
+    const response = await adapter.fetch(
+      promptInit('long response', controller.signal),
+      threadCtx('consumer-stop', {
+        requestPermission: async () => ({ outcome: { outcome: 'selected', optionId: 'allow' } }),
+      }),
+    )
+
+    await response.body!.cancel()
+    expect(calls.cancel).toEqual([{ sessionId: 'sess-1' }])
+    expect(await pushPermission(permissionReq('sess-1'))).toEqual({ outcome: { outcome: 'cancelled' } })
+    controller.abort()
+    releasePrompts()
+    await Promise.resolve()
+    expect(calls.cancel).toHaveLength(1)
+  })
+
+  it('never starts or resolves a remote turn for an already aborted request', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls } = buildFakeConnection()
 
     const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
       openTransport: async () => transport,
       ClientSideConnection: FakeConnection as never,
     })
 
-    const response = await adapter.fetch(promptInit('hi', AbortSignal.abort()), threadCtx('thread-A'))
-
-    // The turn was issued (can't un-send) but immediately cancelled — once.
-    expect(calls.prompt).toHaveLength(1)
-    expect(calls.cancel).toHaveLength(1)
-    expect(calls.cancel[0]?.sessionId).toBe('sess-1')
-
-    await act(async () => {
-      releasePrompts()
-      await getClock().runAllAsync()
-      await readSse(response)
+    await expect(adapter.fetch(promptInit('hi', AbortSignal.abort()), threadCtx('thread-A'))).rejects.toMatchObject({
+      name: 'AbortError',
     })
+    expect(calls.prompt).toHaveLength(0)
+    expect(calls.newSession).toHaveLength(0)
+    expect(calls.cancel).toHaveLength(0)
+  })
 
-    // The agent resolving the cancelled turn does not double-cancel.
-    expect(calls.cancel).toHaveLength(1)
+  it('preserves first-send history when Stop lands during session persistence', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    const persisting = Promise.withResolvers<void>()
+    const persist = Promise.withResolvers<void>()
+    let writes = 0
+    const context = threadCtx('stopped-preparation', {
+      onAcpSessionId: async () => {
+        writes += 1
+        persisting.resolve()
+        await persist.promise
+      },
+    })
+    const init = conversationInit([
+      { role: 'user', text: 'earlier question' },
+      { role: 'assistant', text: 'earlier answer' },
+      { role: 'user', text: 'follow up' },
+    ])
+    const controller = new AbortController()
+    const pending = adapter.fetch({ ...init, signal: controller.signal }, context)
+    await persisting.promise
+    controller.abort()
+    persist.resolve()
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(calls.prompt).toHaveLength(0)
+    expect(calls.cancel).toHaveLength(0)
+    const response = await adapter.fetch(init, context)
+    releasePrompts()
+    await response.text()
+    expect(writes).toBe(1)
+    expect(JSON.stringify(calls.prompt[0]?.prompt)).toContain('earlier question')
+    expect(JSON.stringify(calls.prompt[0]?.prompt)).toContain('earlier answer')
+  })
+
+  it('rejects overlapping prompts without replacing the current permission owner', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, calls, releasePrompts, pushPermission } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    const context = threadCtx('one-turn', {
+      requestPermission: async () => ({ outcome: { outcome: 'selected', optionId: 'first-owner' } }),
+    })
+    const controller = new AbortController()
+    const response = await adapter.fetch(promptInit('first', controller.signal), context)
+    await expect(adapter.fetch(promptInit('second'), threadCtx('one-turn'))).rejects.toThrow('active prompt')
+    expect(calls.prompt).toHaveLength(1)
+    expect((await pushPermission(permissionReq('sess-1')))?.outcome).toEqual({
+      outcome: 'selected',
+      optionId: 'first-owner',
+    })
+    controller.abort()
+    await expect(adapter.fetch(promptInit('while cancelled turn is unwinding'), context)).rejects.toThrow(
+      'active prompt',
+    )
+    releasePrompts()
+    await response.text()
+    const next = await adapter.fetch(promptInit('after remote completion'), context)
+    await next.text()
+    expect(calls.prompt).toHaveLength(2)
+  })
+
+  it('serializes permission dialogs and cancels queued requests when their turn ends', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, pushPermission, releasePrompts } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    const decisions = [
+      Promise.withResolvers<RequestPermissionResponse>(),
+      Promise.withResolvers<RequestPermissionResponse>(),
+    ]
+    let shown = 0
+    const controller = new AbortController()
+    const response = await adapter.fetch(
+      promptInit('tools', controller.signal),
+      threadCtx('permissions', {
+        requestPermission: () => decisions[shown++].promise,
+      }),
+    )
+    const first = pushPermission(permissionReq('sess-1'))
+    const second = pushPermission(permissionReq('sess-1'))
+    const third = pushPermission(permissionReq('sess-1'))
+    await Promise.resolve()
+    expect(shown).toBe(1)
+    decisions[0].resolve({ outcome: { outcome: 'selected', optionId: 'allow-once' } })
+    await first
+    await Promise.resolve()
+    expect(shown).toBe(2)
+    controller.abort()
+    decisions[1].resolve({ outcome: { outcome: 'cancelled' } })
+    await second
+    expect((await third)?.outcome).toEqual({ outcome: 'cancelled' })
+    expect(shown).toBe(2)
+    releasePrompts()
+    await response.text()
+  })
+
+  it('a rejected permission dialog releases the queue for the next request', async () => {
+    const { transport } = buildFakeTransport()
+    const { FakeConnection, pushPermission, releasePrompts } = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: FakeConnection as never,
+    })
+    let requests = 0
+    const response = await adapter.fetch(
+      promptInit('two tools'),
+      threadCtx('permission-failure', {
+        requestPermission: async () => {
+          if (++requests === 1) {
+            throw new Error('dialog failed')
+          }
+          return { outcome: { outcome: 'selected', optionId: 'allow' } }
+        },
+      }),
+    )
+    const first = pushPermission(permissionReq('sess-1'))
+    const second = pushPermission(permissionReq('sess-1'))
+    await expect(first).rejects.toThrow('dialog failed')
+    expect(await second).toEqual({ outcome: { outcome: 'selected', optionId: 'allow' } })
+    expect(requests).toBe(2)
+    releasePrompts()
+    await response.text()
   })
 
   it('a normal completion never sends session/cancel', async () => {

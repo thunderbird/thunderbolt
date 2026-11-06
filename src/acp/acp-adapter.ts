@@ -428,14 +428,14 @@ export const connectAcpAdapter = async (
   }
 
   // `session/update` notifications are routed to the owning thread's translator
-  // by ACP `sessionId`. While a thread isn't actively prompting its entry is
-  // absent and updates for it are dropped (the agent SHOULD only emit them
-  // inside a turn anyway). A per-session map — never a single last-writer-wins
-  // sink — is what prevents cross-thread bleed when two threads stream at once.
-  const sessionUpdateSinks = new Map<string, (notification: SessionNotification) => void>()
+  // by ACP `sessionId`. A null sink retains the cancelled turn's ownership until
+  // its remote prompt settles: late updates are dropped and a new turn cannot
+  // accidentally adopt them. Deleting the entry releases the session for reuse.
+  const sessionUpdateSinks = new Map<string, ((notification: SessionNotification) => void) | null>()
   // Permission prompts also carry an ACP `sessionId`, so route them the same
   // way. A thread registers its handler while connected; the fallback cancels.
-  const permissionHandlers = new Map<string, RequestPermissionFn>()
+  type PermissionOwner = { request: RequestPermissionFn; pending: Promise<void> }
+  const permissionHandlers = new Map<string, PermissionOwner>()
 
   const routeSessionUpdate = (notification: SessionNotification): void => {
     // The advertised command list is an agent-level capability, not part of a
@@ -449,8 +449,22 @@ export const connectAcpAdapter = async (
   }
 
   const routePermission: RequestPermissionFn = (request) => {
-    const handler = permissionHandlers.get(request.sessionId)
-    return (handler ?? cancelledPermission)(request)
+    const owner = permissionHandlers.get(request.sessionId)
+    if (!owner) {
+      return cancelledPermission(request)
+    }
+    // The chat has one permission dialog. Queue this turn's requests, and never
+    // adopt queued work into a later turn that happens to reuse the session id.
+    const previous = owner.pending
+    const response = (async () => {
+      await previous
+      return permissionHandlers.get(request.sessionId) === owner ? owner.request(request) : cancelledPermission(request)
+    })()
+    owner.pending = response.then(
+      () => undefined,
+      () => undefined,
+    )
+    return response
   }
 
   const connection = new ConnectionCtor(
@@ -490,7 +504,7 @@ export const connectAcpAdapter = async (
   // concurrent sends on the same thread dedupe to one resume/load/new call.
   const sessionByThread = new Map<string, Promise<string>>()
   // Threads whose current session was freshly minted via `session/new`. Consumed
-  // after the first real `fetch` persists the id; failed persistence restores the
+  // when the first real prompt starts; failed or canceled preparation retains the
   // marker. Deferring this out of resolution means warm-then-reload before any
   // prompt never persists an empty session id.
   type FreshSessionState = {
@@ -592,30 +606,23 @@ export const connectAcpAdapter = async (
     return resolve
   }
 
-  /** Persist and consume one freshly minted session marker. A failed write
+  /** Persist one freshly minted session marker without consuming its transcript. A failed write
    *  restores the marker so the next send retries instead of silently losing
    *  both durable session continuity and first-send transcript replay. */
-  const consumeFreshSession = async (
-    context: AgentAdapterContext,
-    sessionId: string,
-  ): Promise<FreshSessionState | null> => {
+  const persistFreshSession = async (context: AgentAdapterContext, sessionId: string): Promise<void> => {
     const pending = freshPending.get(context.threadId)
     if (!pending || pending.sessionId !== sessionId) {
-      return null
+      return
     }
     if (pending.persistence) {
       await pending.persistence
-      return null
+      return
     }
 
     const persistence = context.onAcpSessionId(sessionId)
     freshPending.set(context.threadId, { ...pending, persistence })
     try {
       await persistence
-      if (freshPending.get(context.threadId)?.persistence === persistence) {
-        freshPending.delete(context.threadId)
-      }
-      return pending
     } catch (error) {
       if (freshPending.get(context.threadId)?.persistence === persistence) {
         freshPending.set(context.threadId, pending)
@@ -626,14 +633,23 @@ export const connectAcpAdapter = async (
 
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
     throwIfConnectionLost()
+    init.signal?.throwIfAborted()
     const sessionId = await resolveThreadSession(context)
+    const assertCanPrompt = () => {
+      throwIfConnectionLost()
+      init.signal?.throwIfAborted()
+      if (sessionUpdateSinks.has(sessionId)) {
+        throw new Error('ACP session already has an active prompt')
+      }
+    }
+    assertCanPrompt()
 
     // First real send of a freshly-minted session: persist the id we actually
     // used, and (tier-3 only) seed the prior transcript as context. The marker
     // is keyed on "fresh session's first prompt" (not "we prepended a
     // transcript") so a brand-new thread's second prompt never re-injects its
     // first exchange. Consumption happens only after persistence succeeds.
-    const freshSession = await consumeFreshSession(context, sessionId)
+    const freshSession = freshPending.get(context.threadId)
     const priorTranscript = freshSession ? extractPriorTranscript(init) : undefined
     const prompt = await buildPromptBlocks(
       init,
@@ -644,15 +660,22 @@ export const connectAcpAdapter = async (
       freshSession?.skillDisclosure,
       context.projectSection,
     )
+    assertCanPrompt()
+    await persistFreshSession(context, sessionId)
+    assertCanPrompt()
+    freshPending.delete(context.threadId)
 
-    const { body, translator, close } = createTranslatorStream({
-      textDeltaThrottleMs: deps.textDeltaThrottleMs,
-      onSideEffect: context.onSessionSideEffect,
-    })
+    const { body, translator, close } = createTranslatorStream(
+      {
+        textDeltaThrottleMs: deps.textDeltaThrottleMs,
+        onSideEffect: context.onSessionSideEffect,
+      },
+      () => onAbort(),
+    )
 
     sessionUpdateSinks.set(sessionId, (notification) => translator.handle(notification))
     if (context.requestPermission) {
-      permissionHandlers.set(sessionId, context.requestPermission)
+      permissionHandlers.set(sessionId, { request: context.requestPermission, pending: Promise.resolve() })
     }
 
     translator.start()
@@ -669,7 +692,7 @@ export const connectAcpAdapter = async (
       }
       tornDown = true
       signal?.removeEventListener('abort', onAbort)
-      sessionUpdateSinks.delete(sessionId)
+      sessionUpdateSinks.set(sessionId, null)
       permissionHandlers.delete(sessionId)
       translator.finish()
       close()
@@ -680,6 +703,9 @@ export const connectAcpAdapter = async (
     // agent. Send `session/cancel` — fire-and-forget, since teardown must not
     // block on the wire — then run the same teardown.
     const onAbort = (): void => {
+      if (tornDown) {
+        return
+      }
       // Fire-and-forget: teardown must not block on the wire. A rejection means
       // the transport is already tearing down (the turn is ending anyway), so
       // swallow it to avoid an unhandled rejection — matching the sibling
@@ -704,6 +730,7 @@ export const connectAcpAdapter = async (
         translator.error(terminationError?.message ?? (err instanceof Error ? err.message : String(err)))
       } finally {
         teardown()
+        sessionUpdateSinks.delete(sessionId)
       }
     })()
 

@@ -8,9 +8,11 @@ export const abortable = async <Value>(operation: Promise<Value>, signal?: Abort
   const cancellation = Promise.withResolvers<never>()
   const abort = (): void => cancellation.reject(signal.reason)
   signal.addEventListener('abort', abort, { once: true })
+  if (signal.aborted) abort()
   try {
-    signal.throwIfAborted()
-    return await Promise.race([operation, cancellation.promise])
+    // Observe the operation even when cancellation has already won, so a late
+    // transport rejection cannot become an unhandled rejection.
+    return await Promise.race([cancellation.promise, operation])
   } finally {
     signal.removeEventListener('abort', abort)
   }

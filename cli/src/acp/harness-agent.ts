@@ -60,10 +60,7 @@ import type { SessionStore } from './session-store.ts'
  * The frozen {@link HarnessRuntime} operations the ACP agent drives. Keeping the
  * surface narrow lets tests exercise the round-trip with no API key.
  */
-export type ServeHarness = Pick<
-  HarnessRuntime,
-  'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose'
->
+export type ServeHarness = Pick<HarnessRuntime, 'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose'>
 
 /** Builds a {@link ServeHarness} for one disk-backed Pi session. */
 export type BuildServeHarness = (
@@ -199,6 +196,7 @@ export const createHarnessAgent = (
   buildServeHarness: BuildServeHarness = createHarnessRuntime,
 ): Agent => {
   const sessions = new Map<SessionId, Session>()
+  const pendingResumes = new Map<SessionId, Promise<void>>()
   const trustedWorkspace = realpath(config.cwd)
 
   // Release every session's execution environment when the connection ends, so
@@ -224,6 +222,7 @@ export const createHarnessAgent = (
   })
 
   const requireSession = (sessionId: SessionId): Session => {
+    if (pendingResumes.has(sessionId)) throw RequestError.invalidParams(undefined, `session '${sessionId}' is resuming`)
     const session = sessions.get(sessionId)
     if (!session) throw RequestError.invalidParams(undefined, `unknown session '${sessionId}'`)
     return session
@@ -330,10 +329,25 @@ export const createHarnessAgent = (
     if (!sessionIdPattern.test(params.sessionId)) {
       throw RequestError.invalidParams(undefined, `invalid session id '${params.sessionId}'`)
     }
-    const workspaceRoot = await trustedWorkspace
-    const session = await store.openSession(params.sessionId, workspaceRoot)
-    await activate(params.sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/resume')
-    return {}
+    const previous = pendingResumes.get(params.sessionId)
+    const pending = (async () => {
+      // A failed resume still releases the lane. Different sessions remain independent.
+      await previous?.catch(() => {})
+      conn.signal.throwIfAborted()
+      // Stop writes to the durable history before opening its replacement view.
+      await sessions.get(params.sessionId)?.harness.abort()
+      conn.signal.throwIfAborted()
+      const workspaceRoot = await trustedWorkspace
+      const session = await store.openSession(params.sessionId, workspaceRoot)
+      await activate(params.sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/resume')
+    })()
+    pendingResumes.set(params.sessionId, pending)
+    try {
+      await pending
+      return {}
+    } finally {
+      if (pendingResumes.get(params.sessionId) === pending) pendingResumes.delete(params.sessionId)
+    }
   }
 
   const prompt = async (params: PromptRequest): Promise<PromptResponse> => {

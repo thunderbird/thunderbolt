@@ -302,9 +302,7 @@ describe('DevicesSettingsPage reactivity', () => {
     expect(screen.getByText('Revoke this CLI?')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }))
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
+    await waitForElement(() => (screen.queryByText('Revoke this CLI?') ? null : screen.queryByText('Terminal CLI')))
 
     expect(requests).toHaveLength(2)
     expect(requests[0]?.method).toBe('GET')

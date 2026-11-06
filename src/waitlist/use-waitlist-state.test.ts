@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import * as passkeys from '@/lib/passkey'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { settingsTable } from '@/db/tables'
@@ -10,9 +11,12 @@ import { useWelcomeStore } from '@/components/welcome-dialog'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { useWaitlistState } from './use-waitlist-state'
+import type { FormEvent } from 'react'
+import { createClient } from '@/lib/http'
+import { getClock } from '@/testing-library'
 
 /**
  * GH #1299: a sign-in path that forgets to mark a returning account as
@@ -75,5 +79,144 @@ describe('useWaitlistState — returning-user onboarding', () => {
     await verifyAs({ id: 'u1', isNew: true })
 
     expect(await readOnboarding()).toBe('false')
+  })
+  it('admits one OTP submission before analytics finishes and blocks a concurrent passkey attempt', async () => {
+    const session = Promise.withResolvers<{ data: null; error: null }>()
+    const signIn = mock(async () => ({ data: { user: { id: 'u1', isNew: true } }, error: null }))
+    const authClient = createMockAuthClient({ getSession: () => session.promise, signInEmailOtp: signIn })
+    const { result } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+    act(() => result.current.actions.setEmail('test@example.com'))
+    const runs: Promise<void>[] = []
+    act(() => {
+      runs.push(result.current.actions.handleOtpComplete('12345678'))
+      runs.push(result.current.actions.handleOtpComplete('12345678'))
+      runs.push(result.current.actions.handlePasskeySignIn())
+    })
+    expect(result.current.state.status).toBe('verifying')
+    expect(result.current.state.passkeyPending).toBe(false)
+    expect(signIn).not.toHaveBeenCalled()
+    await act(async () => {
+      session.resolve({ data: null, error: null })
+      await Promise.all(runs)
+    })
+    expect(signIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases the OTP lane when analytics fails and allows retry', async () => {
+    const getSession = mock().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ data: null, error: null })
+    const signIn = mock(async () => ({ data: { user: { id: 'u1', isNew: true } }, error: null }))
+    const authClient = createMockAuthClient({ getSession, signInEmailOtp: signIn })
+    const { result } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+    act(() => result.current.actions.setEmail('test@example.com'))
+    await act(() => result.current.actions.handleOtpComplete('12345678'))
+    expect(result.current.state.status).toBe('checkEmail')
+    expect(result.current.state.errorMessage).not.toBe('')
+    await act(() => result.current.actions.handleOtpComplete('12345678'))
+    expect(signIn).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['reset', 'unmount'])('does not begin authentication after %s during analytics capture', async (end) => {
+    const session = Promise.withResolvers<{ data: null; error: null }>()
+    const signIn = mock(async () => ({ data: { user: { id: 'u1', isNew: true } }, error: null }))
+    const authClient = createMockAuthClient({ getSession: () => session.promise, signInEmailOtp: signIn })
+    const { result, unmount } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+    let pending: Promise<void>
+    act(() => {
+      pending = result.current.actions.handleOtpComplete('12345678')
+    })
+    if (end === 'reset') {
+      act(() => result.current.actions.reset())
+    } else {
+      unmount()
+    }
+    await act(async () => {
+      session.resolve({ data: null, error: null })
+      await pending
+    })
+    expect(signIn).not.toHaveBeenCalled()
+  })
+
+  it('recovers from a passkey analytics failure before opening the browser prompt', async () => {
+    const getSession = mock().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ data: null, error: null })
+    const signIn = spyOn(passkeys, 'signInWithPasskey').mockResolvedValue({ userId: 'existing-user' })
+    try {
+      const authClient = createMockAuthClient({ getSession })
+      const { result } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+      await act(() => result.current.actions.handlePasskeySignIn())
+      expect(result.current.state.status).toBe('error')
+      expect(result.current.state.passkeyPending).toBe(false)
+      expect(signIn).not.toHaveBeenCalled()
+      await act(() => result.current.actions.handlePasskeySignIn())
+      expect(signIn).toHaveBeenCalledTimes(1)
+      expect(useWelcomeStore.getState().pending).toBe(true)
+    } finally {
+      signIn.mockRestore()
+    }
+  })
+
+  it.each([new DOMException('cancelled', 'NotAllowedError'), new Error('ceremony failed')])(
+    'settles a failed passkey ceremony: %p',
+    async (error) => {
+      const signIn = spyOn(passkeys, 'signInWithPasskey').mockRejectedValue(error)
+      try {
+        const authClient = createMockAuthClient()
+        const { result } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+        await act(() => result.current.actions.handlePasskeySignIn())
+        expect(result.current.state.status).toBe(error.name === 'NotAllowedError' ? 'idle' : 'error')
+        expect(result.current.state.passkeyPending).toBe(false)
+        expect(useWelcomeStore.getState().pending).toBe(false)
+      } finally {
+        signIn.mockRestore()
+      }
+    },
+  )
+
+  it('rejects incomplete OTPs and surfaces a rejected complete OTP', async () => {
+    const signIn = mock(async () => ({
+      data: null,
+      error: { message: 'Invalid OTP', code: 'INVALID_OTP', status: 400, statusText: 'Bad Request' },
+    }))
+    const authClient = createMockAuthClient({ signInEmailOtp: signIn })
+    const { result } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+    await act(() => result.current.actions.handleOtpComplete('123'))
+    expect(signIn).not.toHaveBeenCalled()
+    act(() => result.current.actions.setOtp('12345678'))
+    await act(() => result.current.actions.handleOtpComplete('12345678'))
+    expect(result.current.state.status).toBe('checkEmail')
+    expect(result.current.state.otp).toBe('')
+    expect(result.current.state.errorMessage).not.toBe('')
+  })
+
+  it('ignores a join response after Reset starts a new email attempt', async () => {
+    const old = Promise.withResolvers<Response>()
+    const httpClient = createClient({
+      prefixUrl: 'https://example.com',
+      fetch: (input) => {
+        const url = String(input instanceof Request ? input.url : input)
+        return url.endsWith('/waitlist/join') ? old.promise : Promise.resolve(Response.json({}))
+      },
+    })
+    const authClient = createMockAuthClient()
+    const { result } = renderHook(() => useWaitlistState({ authClient }), {
+      wrapper: createTestProvider({ httpClient }),
+    })
+    act(() => result.current.actions.setEmail('old@example.com'))
+    let pending: Promise<void>
+    const event = { preventDefault: () => {} } as FormEvent
+    act(() => {
+      pending = result.current.actions.handleSubmit(event)
+    })
+    act(() => {
+      result.current.actions.reset()
+      result.current.actions.setEmail('new@example.com')
+    })
+    await act(async () => {
+      old.resolve(Response.json({ success: true, challengeToken: 'old' }))
+      await pending
+      await getClock().tickAsync(0)
+    })
+    expect(result.current.state.status).toBe('idle')
+    expect(result.current.state.email).toBe('new@example.com')
+    expect(result.current.state.challengeToken).toBe('')
   })
 })

@@ -1213,6 +1213,7 @@ const createBudgetAdapter = (
     embeddedSurface: null,
   })
   const registrations = new Set<unknown>()
+  const registrationRemoved = Promise.withResolvers<void>()
   const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
     prepareConfig: prepareConfig ?? prepareFixtureConfig,
     loadAgentCore: async () => ({
@@ -1229,6 +1230,7 @@ const createBudgetAdapter = (
           return () => {
             registrations.delete(handler)
             remove()
+            registrationRemoved.resolve()
           }
         }
         return harness
@@ -1264,7 +1266,18 @@ const createBudgetAdapter = (
       context,
     )
   const send = async () => (await response()).text()
-  return { adapter, budget, context, response, send, requests, searches, writes, registrations }
+  return {
+    adapter,
+    budget,
+    context,
+    response,
+    send,
+    requests,
+    searches,
+    writes,
+    registrations,
+    registrationRemoved: registrationRemoved.promise,
+  }
 }
 
 const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) => ({
@@ -1491,8 +1504,8 @@ it('removes the budget listener when the response consumer stops the live harnes
     await requested.promise
     expect(run.registrations.size).toBe(1)
     await response.body!.cancel()
-    // Cancellation aborts Pi; the prompt's finally removes the turn-local hook.
-    await Promise.resolve()
+    // Consumer cancellation settles promptly; the prompt's teardown removes the hook.
+    await run.registrationRemoved
     expect(run.registrations.size).toBe(0)
   } finally {
     run.adapter.disconnect()
@@ -1578,7 +1591,12 @@ describe('createBuiltInAdapter stop', () => {
 
     // Without this the in-browser loop keeps calling the model and running tools
     // after Stop — the AI SDK only aborts the signal, it never cancels the body.
-    expect(signals).toEqual([controller.signal])
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.aborted).toBe(false)
+    const reason = new Error('user stopped')
+    controller.abort(reason)
+    expect(signals[0]?.aborted).toBe(true)
+    expect(signals[0]?.reason).toBe(reason)
   })
 })
 
@@ -1964,5 +1982,138 @@ describe('attachments in the harness workspace', () => {
     } finally {
       consoleError.mockRestore()
     }
+  })
+})
+
+describe('built-in adapter lifetime ownership', () => {
+  const setup = (blockedPhase?: 'load' | 'config' | 'build' | 'write') => {
+    const reached = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const removed = Promise.withResolvers<void>()
+    let paused = false
+    const pause = async (phase: typeof blockedPhase) => {
+      if (phase === blockedPhase && !paused) {
+        paused = true
+        reached.resolve()
+        await release.promise
+      }
+    }
+    const model = {
+      id: 'lifetime-model',
+      provider: 'anthropic',
+      model: 'claude-opus-4-8',
+      apiKey: 'test',
+      toolUsage: 1,
+    } as Model
+    const config: PreparedAiRequestConfig = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
+      mcpToolsMetadata: undefined,
+    }
+    const listeners = new Set<(event: AgentHarnessEvent) => void>()
+    const run = Promise.withResolvers<void>()
+    const prompt = mock(async () => {
+      for (const listener of listeners) {
+        listener({ type: 'agent_start' })
+      }
+      await run.promise
+    })
+    const abort = mock(async () => {
+      run.resolve()
+    })
+    const harness = {
+      getTools: () => [],
+      setTools: async () => {},
+      prompt,
+      abort,
+      waitForIdle: async () => {},
+      on: () => () => {},
+      subscribe: (listener: (event: AgentHarnessEvent) => void) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    } as unknown as AgentHarness
+    const build = mock(async () => {
+      await pause('build')
+      return harness
+    })
+    const remove = mock(async () => {
+      removed.resolve()
+    })
+    const agentCore = {
+      isKnownAnthropicModel: () => true,
+      buildAppHarness: build,
+      removeAgentWorkspace: remove,
+      toPiAgentTools: async () => [],
+      writeAgentWorkspaceFiles: async () => {
+        await pause('write')
+        return []
+      },
+      piHarnessToUiMessageStream: realAgentCore.piHarnessToUiMessageStream,
+    } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      loadAgentCore: async () => {
+        await pause('load')
+        return agentCore
+      },
+      prepareConfig: async () => {
+        await pause('config')
+        return config
+      },
+      prepareConversation: async () => ({ history: [], prompt: { text: 'hello', images: [] }, files: [] }),
+    })
+    const send = (threadId = 'lifetime-thread') =>
+      adapter.fetch({ body: JSON.stringify({ messages: [] }) }, { ...tinfoilContext(model), threadId })
+    return { adapter, send, reached, release, build, remove, removed: removed.promise, prompt, abort }
+  }
+
+  for (const phase of ['load', 'config', 'build', 'write'] as const) {
+    it(`does not adopt or run work that completes after disconnect during ${phase}`, async () => {
+      const fixture = setup(phase)
+      const pending = fixture.send()
+      await fixture.reached.promise
+      fixture.adapter.disconnect()
+      expect(fixture.remove).not.toHaveBeenCalled()
+      fixture.release.resolve()
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+      if (phase === 'build' || phase === 'write') {
+        await fixture.removed
+      }
+      expect(fixture.prompt).not.toHaveBeenCalled()
+      expect(fixture.remove).toHaveBeenCalledTimes(phase === 'build' || phase === 'write' ? 1 : 0)
+      expect(fixture.build).toHaveBeenCalledTimes(phase === 'build' || phase === 'write' ? 1 : 0)
+      await expect(fixture.send()).rejects.toMatchObject({ name: 'AbortError' })
+    })
+  }
+
+  it('aborts an active stream when the adapter disconnects and disposes its workspace once', async () => {
+    const fixture = setup()
+    const response = await fixture.send()
+    fixture.adapter.disconnect()
+    fixture.adapter.disconnect()
+    await response.text()
+    await fixture.removed
+    expect(fixture.abort).toHaveBeenCalled()
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('disposes a ready workspace without waiting for another thread to finish loading', async () => {
+    const fixture = setup('build')
+    const pending = fixture.send('blocked-thread')
+    await fixture.reached.promise
+    const response = await fixture.send('ready-thread')
+    fixture.adapter.disconnect()
+    await response.text()
+    await fixture.removed
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+    fixture.release.resolve()
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

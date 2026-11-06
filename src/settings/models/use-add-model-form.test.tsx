@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import * as modelsDal from '@/dal/models'
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -64,6 +65,44 @@ describe('useAddModelForm', () => {
     cleanup()
     resetStore()
     await resetTestDatabase()
+  })
+
+  it.each(['resolve', 'reject'] as const)('keeps a replacement draft when an abandoned add %s', async (outcome) => {
+    const pending = Promise.withResolvers<void>()
+    const create = spyOn(modelsDal, 'createModel').mockImplementation(() => pending.promise)
+    const onClose = mock(() => {})
+    try {
+      const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
+        wrapper: createTestProvider(),
+      })
+      const values = { provider: 'thunderbolt' as const, name: 'Original', model: 'original', supportsTools: true }
+      const first = result.current.onSubmit(values)
+      await result.current.onSubmit(values)
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(create).toHaveBeenCalledTimes(1)
+      act(() => {
+        result.current.onCancel()
+        result.current.prepareForOpen()
+        result.current.form.setValue('name', 'Replacement')
+      })
+      onClose.mockClear()
+      await act(async () => {
+        if (outcome === 'resolve') {
+          pending.resolve()
+        } else {
+          pending.reject(new Error('old add failed'))
+        }
+        await first
+        await getClock().runAllAsync()
+      })
+      expect(result.current.form.getValues('name')).toBe('Replacement')
+      expect(result.current.submitError).toBeNull()
+      expect(onClose).not.toHaveBeenCalled()
+    } finally {
+      create.mockRestore()
+    }
   })
 
   it('refreshes the chat model list before closing after creation', async () => {

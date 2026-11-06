@@ -193,6 +193,7 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         }
 
         const server = new HaystackAcpServer({
+          userId: user.id,
           send: (payload) => {
             ws.send(payload)
           },

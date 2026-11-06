@@ -2,8 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { act, renderHook } from '@testing-library/react'
+import * as platform from '@/lib/platform'
+import * as updaterPlugin from '@tauri-apps/plugin-updater'
+import { getClock } from '@/testing-library'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 import {
+  createDesktopUpdateStore,
+  useDesktopUpdate,
   updateReducer,
   initialUpdateState,
   selectUpdateAction,
@@ -18,6 +24,7 @@ describe('updateReducer', () => {
         ...initialUpdateState,
         status: 'error',
         error: 'Previous error',
+        errorPhase: 'check',
       }
 
       const result = updateReducer(stateWithError, { type: 'CHECK_START' })
@@ -53,6 +60,7 @@ describe('updateReducer', () => {
       const state: UpdateState = {
         ...initialUpdateState,
         status: 'available',
+        update: { version: '1.0.0' } as UpdateState['update'],
         downloadProgress: 50,
       }
 
@@ -163,10 +171,265 @@ describe('selectUpdateAction', () => {
     ['idle', 'check'],
     ['checking', 'check'],
     ['downloading', 'check'],
+    ['restarting', 'check'],
     ['error', 'check'],
   ]
 
   it.each(cases)('maps %s → %s', (status, expected) => {
     expect(selectUpdateAction(status)).toBe(expected)
+  })
+})
+
+describe('update transition guards', () => {
+  it('does not admit a duplicate download or let a check overwrite a completed install', () => {
+    const available: UpdateState = {
+      ...initialUpdateState,
+      status: 'available',
+      update: { version: '2' } as UpdateState['update'],
+    }
+    const downloading = updateReducer(available, { type: 'DOWNLOAD_START' })
+    expect(updateReducer(downloading, { type: 'DOWNLOAD_START' })).toBe(downloading)
+    const ready = updateReducer(downloading, { type: 'DOWNLOAD_SUCCESS' })
+    expect(updateReducer(ready, { type: 'CHECK_SUCCESS', update: null })).toBe(ready)
+    expect(updateReducer(ready, { type: 'DOWNLOAD_PROGRESS', progress: 1 })).toBe(ready)
+    expect(updateReducer(ready, { type: 'DOWNLOAD_SUCCESS' })).toBe(ready)
+    expect(updateReducer(ready, { type: 'ERROR', phase: 'download', error: 'late failure' })).toBe(ready)
+  })
+
+  it('retries the failed phase and keeps an installed update available for restart', () => {
+    const ready: UpdateState = { ...initialUpdateState, status: 'ready' }
+    const restarting = updateReducer(ready, { type: 'RESTART_START' })
+    expect(updateReducer(restarting, { type: 'RESTART_START' })).toBe(restarting)
+    const failed = updateReducer(restarting, { type: 'ERROR', phase: 'restart', error: 'failed' })
+    expect(selectUpdateAction(failed.status, failed.errorPhase)).toBe('restart')
+    expect(updateReducer(failed, { type: 'CHECK_START' })).toBe(failed)
+    expect(selectUpdateAction('error', 'download')).toBe('download')
+  })
+})
+
+describe('desktop update operations', () => {
+  const setup = () => {
+    const download = mock(
+      async (_onEvent: Parameters<NonNullable<UpdateState['update']>['downloadAndInstall']>[0]) => {},
+    )
+    const update = {
+      version: '2',
+      downloadAndInstall: download,
+      close: mock(async () => {}),
+    } as unknown as NonNullable<UpdateState['update']>
+    const services = {
+      isDesktop: () => true,
+      check: mock(async (): Promise<UpdateState['update']> => update),
+      disconnect: mock(async () => {}),
+      relaunch: mock(async () => {}),
+    }
+    const store = createDesktopUpdateStore(services)
+    return { store, services, download, update }
+  }
+
+  it('drives check, download and restart through one primary action', async () => {
+    const { store, services, download } = setup()
+    const { primaryAction } = store.getState()
+    await primaryAction()
+    expect(store.getState().status).toBe('available')
+    await primaryAction()
+    expect(store.getState().status).toBe('ready')
+    await primaryAction()
+    expect(store.getState().status).toBe('restarting')
+    expect(services.check).toHaveBeenCalledTimes(1)
+    expect(download).toHaveBeenCalledTimes(1)
+    expect(services.disconnect).toHaveBeenCalledTimes(1)
+    expect(services.relaunch).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem('thunderbolt_post_update')).toBe('1')
+  })
+
+  it('never loads the updater on web and ignores premature download/restart', async () => {
+    const { store, services, download } = setup()
+    services.isDesktop = () => false
+    await store.getState().checkForUpdates()
+    await store.getState().downloadAndInstall()
+    await store.getState().restartApp()
+    expect(store.getState().status).toBe('initial')
+    expect(services.check).not.toHaveBeenCalled()
+    expect(download).not.toHaveBeenCalled()
+    expect(services.relaunch).not.toHaveBeenCalled()
+  })
+
+  it('admits one check and retries check failures', async () => {
+    const { store, services, update } = setup()
+    const pending = Promise.withResolvers<UpdateState['update']>()
+    services.check.mockImplementationOnce(() => pending.promise)
+    const first = store.getState().checkForUpdates()
+    await store.getState().checkForUpdates()
+    expect(services.check).toHaveBeenCalledTimes(1)
+    pending.reject('offline')
+    await first
+    expect(store.getState()).toMatchObject({ status: 'error', error: 'offline', errorPhase: 'check' })
+    await store.getState().primaryAction()
+    expect(store.getState()).toMatchObject({ status: 'available', update })
+    expect(services.check).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows later checks after the server reports no update', async () => {
+    const { store, services } = setup()
+    services.check.mockResolvedValueOnce(null)
+    await store.getState().primaryAction()
+    expect(store.getState().status).toBe('idle')
+    await store.getState().primaryAction()
+    expect(store.getState().status).toBe('available')
+  })
+
+  it('retries downloads without rechecking and ignores progress from the failed attempt', async () => {
+    const { store, services, download } = setup()
+    const pending = Promise.withResolvers<void>()
+    const retry = Promise.withResolvers<void>()
+    download.mockImplementationOnce(() => pending.promise).mockImplementationOnce(() => retry.promise)
+    await store.getState().checkForUpdates()
+    const first = store.getState().downloadAndInstall()
+    const firstProgress = download.mock.calls[0][0]!
+    await store.getState().downloadAndInstall()
+    await store.getState().checkForUpdates()
+    expect(download).toHaveBeenCalledTimes(1)
+    firstProgress({ event: 'Started', data: { contentLength: 100 } })
+    firstProgress({ event: 'Progress', data: { chunkLength: 25 } })
+    expect(store.getState().downloadProgress).toBe(25)
+    pending.reject({ message: 'download failed' })
+    await first
+    const second = store.getState().primaryAction()
+    const nextProgress = download.mock.calls[1][0]!
+    firstProgress({ event: 'Finished' })
+    expect(store.getState().downloadProgress).toBe(0)
+    nextProgress({ event: 'Started', data: {} })
+    nextProgress({ event: 'Progress', data: { chunkLength: 10 } })
+    expect(store.getState().downloadProgress).toBe(0)
+    nextProgress({ event: 'Started', data: { contentLength: 10 } })
+    nextProgress({ event: 'Progress', data: { chunkLength: 20 } })
+    expect(store.getState().downloadProgress).toBe(100)
+    nextProgress({ event: 'Finished' })
+    retry.resolve()
+    await second
+    nextProgress({ event: 'Progress', data: { chunkLength: 1 } })
+    expect(store.getState()).toMatchObject({ status: 'ready', downloadProgress: 100 })
+    expect(services.check).toHaveBeenCalledTimes(1)
+  })
+
+  it('deduplicates restart, tolerates disconnect failure, and retries a failed relaunch', async () => {
+    const { store, services } = setup()
+    const disconnect = Promise.withResolvers<void>()
+    services.disconnect.mockImplementationOnce(() => disconnect.promise)
+    services.relaunch.mockRejectedValueOnce(new Error('restart failed'))
+    await store.getState().primaryAction()
+    await store.getState().primaryAction()
+    const first = store.getState().restartApp()
+    await store.getState().restartApp()
+    await store.getState().checkForUpdates()
+    expect(services.disconnect).toHaveBeenCalledTimes(1)
+    expect(services.relaunch).not.toHaveBeenCalled()
+    disconnect.reject(new Error('disconnect failed'))
+    await first
+    expect(store.getState()).toMatchObject({ status: 'error', errorPhase: 'restart', error: 'restart failed' })
+    expect(localStorage.getItem('thunderbolt_post_update')).toBeNull()
+    await store.getState().primaryAction()
+    expect(services.relaunch).toHaveBeenCalledTimes(2)
+    expect(services.check).toHaveBeenCalledTimes(1)
+    expect(store.getState().status).toBe('restarting')
+  })
+
+  it.each([undefined, {}, 42])('handles non-Error native failures: %p', async (error) => {
+    const { store, services } = setup()
+    services.check.mockRejectedValueOnce(error)
+    await store.getState().primaryAction()
+    expect(store.getState().error).toBe(error === 42 ? '42' : 'Failed to check for updates')
+  })
+
+  it('handles an unserializable native failure', async () => {
+    const { store, services } = setup()
+    const circular: { self?: unknown } = {}
+    circular.self = circular
+    services.check.mockRejectedValueOnce(circular)
+    await store.getState().primaryAction()
+    expect(store.getState().error).toBe('Failed to check for updates')
+  })
+})
+
+describe('shared automatic update check', () => {
+  it('cancels an early unmount and only checks once across mounted surfaces', async () => {
+    const desktop = spyOn(platform, 'isDesktop').mockReturnValue(true)
+    const check = spyOn(updaterPlugin, 'check').mockResolvedValue(null)
+    try {
+      const early = renderHook(useDesktopUpdate)
+      early.unmount()
+      await act(async () => {
+        await getClock().tickAsync(5000)
+      })
+      expect(check).not.toHaveBeenCalled()
+      const first = renderHook(useDesktopUpdate)
+      const second = renderHook(useDesktopUpdate)
+      await act(async () => {
+        await getClock().tickAsync(5000)
+      })
+      expect(check).toHaveBeenCalledTimes(1)
+      expect(first.result.current.status).toBe('idle')
+      expect(second.result.current.status).toBe('idle')
+      first.unmount()
+      second.unmount()
+      const later = renderHook(useDesktopUpdate)
+      await act(async () => {
+        await getClock().tickAsync(5000)
+      })
+      expect(check).toHaveBeenCalledTimes(1)
+      later.unmount()
+    } finally {
+      desktop.mockRestore()
+      check.mockRestore()
+    }
+  })
+})
+
+describe('updater manifest replacement', () => {
+  it('closes a superseded native update after an explicit recheck', async () => {
+    const old = { close: mock(async () => {}) } as unknown as NonNullable<UpdateState['update']>
+    const check = mock(async (): Promise<UpdateState['update']> => old)
+      .mockResolvedValueOnce(old)
+      .mockResolvedValueOnce(null)
+    const store = createDesktopUpdateStore({
+      isDesktop: () => true,
+      check,
+      disconnect: async () => {},
+      relaunch: async () => {},
+    })
+    await store.getState().checkForUpdates()
+    await store.getState().checkForUpdates()
+    expect(store.getState()).toMatchObject({ status: 'idle', update: null })
+    expect(old.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('recovers from a withdrawn release and a failure to release the old native resource', async () => {
+    const old = {
+      downloadAndInstall: mock(async () => {
+        throw new Error('asset withdrawn')
+      }),
+      close: mock(async () => {
+        throw new Error('native cleanup failed')
+      }),
+    } as unknown as NonNullable<UpdateState['update']>
+    const replacement = { downloadAndInstall: mock(async () => {}) } as unknown as NonNullable<UpdateState['update']>
+    const check = mock(async (): Promise<UpdateState['update']> => old)
+      .mockResolvedValueOnce(old)
+      .mockResolvedValueOnce(replacement)
+    const store = createDesktopUpdateStore({
+      isDesktop: () => true,
+      check,
+      disconnect: async () => {},
+      relaunch: async () => {},
+    })
+    await store.getState().primaryAction()
+    await store.getState().primaryAction()
+    expect(store.getState()).toMatchObject({ status: 'error', errorPhase: 'download' })
+    await store.getState().checkForUpdates()
+    expect(store.getState()).toMatchObject({ status: 'available', update: replacement })
+    expect(old.close).toHaveBeenCalledTimes(1)
+    await store.getState().primaryAction()
+    expect(store.getState().status).toBe('ready')
   })
 })

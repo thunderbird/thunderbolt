@@ -7,7 +7,8 @@ import { getDb } from '@/db/database'
 import { settingsTable } from '@/db/tables'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as passkeys from '@/lib/passkey'
 import { eq } from 'drizzle-orm'
 import type { FormEvent } from 'react'
 import type { HttpClient } from '@/lib/http'
@@ -17,6 +18,106 @@ import { useSignInFormState } from './use-sign-in-form-state'
 
 const challengeToken = 'test-challenge-token'
 const waitlistResponse = { success: true, challengeToken }
+
+describe('sign-in operation outcomes', () => {
+  const mount = (authClient = createMockAuthClient()) => {
+    const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
+    return renderHook(() => useSignInFormState({ authClient, httpClient, initialEmail: 'test@example.com' }))
+  }
+
+  it.each([
+    [new DOMException('cancelled', 'NotAllowedError'), 'idle'],
+    [new Error('unavailable'), 'error'],
+  ] as const)('settles a rejected passkey ceremony: %s', async (error, status) => {
+    const signIn = spyOn(passkeys, 'signInWithPasskey').mockRejectedValueOnce(error)
+    try {
+      const { result } = mount()
+      await act(async () => result.current.actions.handlePasskeySignIn())
+      expect(result.current.state.status).toBe(status)
+      expect(result.current.state.passkeyPending).toBe(false)
+      expect(result.current.state.errorMessage).toBe(
+        status === 'idle' ? '' : "Couldn't sign in with your passkey. Please try again or use your email.",
+      )
+    } finally {
+      signIn.mockRestore()
+    }
+  })
+
+  it('announces a successful passkey sign-in', async () => {
+    const signIn = spyOn(passkeys, 'signInWithPasskey').mockResolvedValueOnce({ userId: 'user' })
+    try {
+      const { result } = mount()
+      await act(async () => result.current.actions.handlePasskeySignIn())
+      expect(result.current.state.status).toBe('success')
+      expect(result.current.state.passkeyPending).toBe(false)
+    } finally {
+      signIn.mockRestore()
+    }
+  })
+
+  it('excludes overlapping OTP and passkey operations and ignores a cancelled ceremony', async () => {
+    const response = Promise.withResolvers<{ userId: string }>()
+    const signIn = spyOn(passkeys, 'signInWithPasskey').mockImplementationOnce(() => response.promise)
+    const otp = mock(async () => ({ error: null }))
+    try {
+      const { result } = mount(createMockAuthClient({ signInEmailOtp: otp }))
+      let pending: Promise<void>
+      await act(async () => {
+        pending = result.current.actions.handlePasskeySignIn()
+      })
+      expect(result.current.state.passkeyPending).toBe(true)
+      await act(async () => {
+        await result.current.actions.handlePasskeySignIn()
+        await result.current.actions.handleOtpComplete('12345678')
+      })
+      expect(signIn).toHaveBeenCalledTimes(1)
+      expect(otp).not.toHaveBeenCalled()
+      act(() => result.current.actions.handleCancel())
+      await act(async () => {
+        response.resolve({ userId: 'late' })
+        await pending
+      })
+      expect(result.current.state.status).toBe('idle')
+    } finally {
+      signIn.mockRestore()
+    }
+  })
+
+  it.each(['reported', 'thrown'] as const)('returns to code entry after a %s verification error', async (failure) => {
+    const authClient = createMockAuthClient({
+      signInEmailOtp: async () => {
+        if (failure === 'thrown') {
+          throw new Error('offline')
+        }
+        return { error: { message: 'Invalid code', code: 'INVALID_OTP' } }
+      },
+    })
+    const { result } = mount(authClient)
+    await act(async () => result.current.actions.handleOtpComplete('12345678'))
+    expect(result.current.state.status).toBe('sent')
+    expect(result.current.state.otp).toBe('')
+    expect(result.current.state.errorMessage).not.toBe('')
+  })
+
+  it('does not verify an incomplete code or a cancelled analytics preflight', async () => {
+    const session = Promise.withResolvers<{ data: null; error: null }>()
+    const otp = mock(async () => ({ error: null }))
+    const { result } = mount(createMockAuthClient({ getSession: () => session.promise, signInEmailOtp: otp }))
+    await act(async () => result.current.actions.handleOtpComplete('12'))
+    expect(result.current.state.status).toBe('idle')
+    let pending: Promise<void>
+    act(() => {
+      pending = result.current.actions.handleOtpComplete('12345678')
+    })
+    act(() => result.current.actions.goBack())
+    await act(async () => {
+      session.resolve({ data: null, error: null })
+      await pending
+    })
+    expect(otp).not.toHaveBeenCalled()
+    expect(result.current.state.status).toBe('idle')
+  })
+})
 
 describe('useSignInFormState', () => {
   let authClient: ReturnType<typeof createMockAuthClient>
@@ -164,70 +265,21 @@ describe('useSignInFormState', () => {
     })
   })
 
-  describe('skipToOtp with initialChallengeToken', () => {
-    it('initializes with challengeToken when skipToOtp is true', () => {
-      const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
-      const { result } = renderHook(() =>
-        useSignInFormState({
-          authClient,
-          httpClient,
-          initialEmail: 'test@example.com',
-          skipToOtp: true,
-          initialChallengeToken: 'pre-existing-token',
-        }),
-      )
-
-      expect(result.current.state.status).toBe('sent')
-      expect(result.current.state.challengeToken).toBe('pre-existing-token')
-    })
-
-    it('sends challengeToken in OTP verification when skipToOtp is used', async () => {
-      const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
-      const emailOtpSpy = mock(async () => ({ data: { user: { id: '1' } }, error: null }))
-      authClient = createMockAuthClient({ signInEmailOtp: emailOtpSpy })
-
-      const { result } = renderHook(() =>
-        useSignInFormState({
-          authClient,
-          httpClient,
-          initialEmail: 'test@example.com',
-          skipToOtp: true,
-          initialChallengeToken: 'pre-existing-token',
-        }),
-      )
-
-      await act(async () => {
-        await result.current.actions.handleOtpComplete('12345678')
-      })
-
-      // Asserted per-key rather than as a whole object: the per-call headers must
-      // also re-include the client-level ones (X-App-Version above all), because
-      // Better Auth replaces them instead of merging and the gate is fail-closed.
-      // `mock(async () => …)` declares no parameters, so `calls` is typed as an
-      // empty tuple — widen before indexing.
-      const [call] = emailOtpSpy.mock.calls[0] as unknown as [
-        { email: string; otp: string; fetchOptions: { headers: Record<string, string> } },
-      ]
-      expect(call.email).toBe('test@example.com')
-      expect(call.otp).toBe('12345678')
-      expect(call.fetchOptions.headers['x-challenge-token']).toBe('pre-existing-token')
-      expect(call.fetchOptions.headers).toHaveProperty('X-Client-Platform')
-    })
-
-    it('defaults challengeToken to empty string without initialChallengeToken', () => {
-      const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
-      const { result } = renderHook(() =>
-        useSignInFormState({
-          authClient,
-          httpClient,
-          initialEmail: 'test@example.com',
-          skipToOtp: true,
-        }),
-      )
-
-      expect(result.current.state.status).toBe('sent')
-      expect(result.current.state.challengeToken).toBe('')
-    })
+  it('sends the issued challenge token when verifying the code', async () => {
+    const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
+    const emailOtp = mock(async (_options: { email: string; otp: string }) => ({ error: null }))
+    authClient = createMockAuthClient({ signInEmailOtp: emailOtp })
+    const { result } = renderFormHook(httpClient)
+    await submitEmail(result)
+    await act(async () => result.current.actions.handleOtpComplete('12345678'))
+    expect(emailOtp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'test@example.com',
+        otp: '12345678',
+        fetchOptions: { headers: expect.objectContaining({ 'x-challenge-token': challengeToken }) },
+      }),
+    )
+    expect(result.current.state.status).toBe('success')
   })
 
   /**
@@ -251,7 +303,7 @@ describe('useSignInFormState', () => {
         signInEmailOtp: mock(async () => ({ data: { user }, error: null })),
       })
       const { result } = renderHook(() =>
-        useSignInFormState({ authClient, httpClient, initialEmail: 'test@example.com', skipToOtp: true }),
+        useSignInFormState({ authClient, httpClient, initialEmail: 'test@example.com' }),
       )
 
       await act(async () => {
@@ -285,5 +337,62 @@ describe('useSignInFormState', () => {
 
       expect(await readOnboarding()).toBe('false')
     })
+  })
+})
+
+describe('sign-in attempt lifetime', () => {
+  it.each(['back', 'cancel', 'unmount'] as const)('ignores a code response after %s', async (action) => {
+    const response = Promise.withResolvers<Response>()
+    const { httpClient } = createSpyHttpClient(() => response.promise)
+    const onEmailSent = mock(() => {})
+    const { result, unmount } = renderHook(() =>
+      useSignInFormState({
+        authClient: createMockAuthClient(),
+        httpClient,
+        initialEmail: 'test@example.com',
+        onEmailSent,
+      }),
+    )
+    const pending: Promise<void>[] = []
+    act(() => {
+      pending.push(result.current.actions.handleSubmit({ preventDefault() {} } as FormEvent))
+    })
+    act(() => {
+      if (action === 'back') {
+        result.current.actions.goBack()
+      } else if (action === 'cancel') {
+        result.current.actions.handleCancel()
+      } else {
+        unmount()
+      }
+    })
+    await act(async () => {
+      response.resolve(jsonResponse(waitlistResponse))
+      await pending[0]
+    })
+    expect(onEmailSent).not.toHaveBeenCalled()
+    if (action !== 'unmount') {
+      expect(result.current.state.status).toBe('idle')
+    }
+  })
+
+  it('does not start duplicate sends from the same render', async () => {
+    const response = Promise.withResolvers<Response>()
+    const send = mock(() => response.promise)
+    const { httpClient } = createSpyHttpClient(send)
+    const { result } = renderHook(() =>
+      useSignInFormState({ authClient: createMockAuthClient(), httpClient, initialEmail: 'test@example.com' }),
+    )
+    const pending: Promise<void>[] = []
+    act(() => {
+      pending.push(result.current.actions.handleSubmit({ preventDefault() {} } as FormEvent))
+      pending.push(result.current.actions.handleSubmit({ preventDefault() {} } as FormEvent))
+    })
+    await act(async () => {
+      response.resolve(jsonResponse(waitlistResponse))
+      await Promise.all(pending)
+    })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(result.current.state.status).toBe('sent')
   })
 })

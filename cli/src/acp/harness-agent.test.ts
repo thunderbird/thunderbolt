@@ -15,14 +15,26 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
 import { realpath } from 'node:fs/promises'
 import { AgentSideConnection, ClientSideConnection, PROTOCOL_VERSION, ndJsonStream } from '@agentclientprotocol/sdk'
 import type { Client, RequestPermissionRequest, SessionNotification, Stream } from '@agentclientprotocol/sdk'
-import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import type {
+  AgentHarnessEvent,
+  Session as PiSession,
+  ToolCallEvent,
+  ToolCallResult,
+} from '@earendil-works/pi-agent-core'
 import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { createHarnessAgent } from './harness-agent.ts'
 import type { BuildServeHarness } from './harness-agent.ts'
 import type { SessionStore } from './session-store.ts'
 import type { CommandSyntaxServeConfig } from '../agent/types.ts'
 import type { PreparedPiBinding, ProviderRuntime } from '../provider-runtime/types.ts'
-import { assistantMessage, controlledAgent, fakeHarness, fakeStore, preparedBinding, providerRuntime } from './test-fixtures.ts'
+import {
+  assistantMessage,
+  controlledAgent,
+  fakeHarness,
+  fakeStore,
+  preparedBinding,
+  providerRuntime,
+} from './test-fixtures.ts'
 
 const captureRejection = async (operation: Promise<unknown>): Promise<unknown> => {
   try {
@@ -79,7 +91,10 @@ const restoreSpies: (() => void)[] = []
 beforeAll(() => {
   const consoleError = spyOn(console, 'error').mockImplementation(() => {})
   const stderrWrite = spyOn(process.stderr, 'write').mockImplementation(() => true)
-  restoreSpies.push(() => consoleError.mockRestore(), () => stderrWrite.mockRestore())
+  restoreSpies.push(
+    () => consoleError.mockRestore(),
+    () => stderrWrite.mockRestore(),
+  )
 })
 afterAll(() => {
   for (const restore of restoreSpies) restore()
@@ -257,6 +272,84 @@ describe('createHarnessAgent (ACP server)', () => {
     await disposed.promise
 
     expect(events).toEqual(['unsubscribe', 'dispose'])
+  })
+
+  test('serializes same-session resumes through teardown and retires every replacement', async () => {
+    const retiring = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const disposed: number[] = []
+    const aborted: number[] = []
+    let builds = 0
+    const builder: BuildServeHarness = async () => {
+      const id = builds++
+      return fakeHarness({
+        abort: async () => {
+          aborted.push(id)
+        },
+        dispose: async () => {
+          if (id === 0) {
+            retiring.resolve()
+            await release.promise
+          }
+          disposed.push(id)
+        },
+      })
+    }
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, fakeStore(), providerRuntime(), builder),
+    )
+    const resume = controlled.agent.resumeSession!
+    const sessionId = '44444444-4444-4444-8444-444444444444'
+    const params = { sessionId, cwd: '/', mcpServers: [] }
+    await resume(params)
+    const first = resume(params)
+    await retiring.promise
+    const second = resume(params)
+    await Promise.resolve()
+    expect(builds).toBe(2)
+    await expect(controlled.agent.prompt({ sessionId, prompt: [] })).rejects.toThrow('resuming')
+    release.resolve()
+    await Promise.all([first, second])
+    expect(builds).toBe(3)
+    expect(disposed).toEqual([0, 1])
+    expect(aborted).toEqual([0, 1])
+    controlled.close()
+    await controlled.closed
+    for (let tick = 0; tick < 20; tick++) await Promise.resolve()
+    expect(disposed).toEqual([0, 1, 2])
+  })
+
+  test('a failed resume releases its lane for a queued retry', async () => {
+    const opened = Promise.withResolvers<void>()
+    const fail = Promise.withResolvers<void>()
+    const store = fakeStore()
+    const openSession = store.openSession
+    let attempts = 0
+    store.openSession = async (...args) => {
+      if (++attempts === 1) {
+        opened.resolve()
+        await fail.promise
+        throw new Error('history temporarily unreadable')
+      }
+      return openSession(...args)
+    }
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, store, providerRuntime(), async () => fakeHarness()),
+    )
+    const params = { sessionId: '55555555-5555-4555-8555-555555555555', cwd: '/', mcpServers: [] }
+    const first = controlled.agent.resumeSession!(params)
+    const failed = captureRejection(first)
+    await opened.promise
+    const retry = controlled.agent.resumeSession!(params)
+    fail.resolve()
+    expect(await failed).toEqual(new Error('history temporarily unreadable'))
+    await retry
+    expect(attempts).toBe(2)
+    expect(await controlled.agent.prompt({ sessionId: params.sessionId, prompt: [] })).toEqual({
+      stopReason: 'end_turn',
+    })
+    controlled.close()
+    await controlled.closed
   })
 
   test('disposes a candidate when event subscription fails before publication', async () => {

@@ -33,6 +33,9 @@ import { MobileSidebarScrim } from '@/components/ui/scrim'
 import { SidebarFooter as ShadcnSidebarFooter, useSidebar } from '@/components/ui/sidebar'
 import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
+import { useE2eeReady } from '@/hooks/use-e2ee-ready'
+import { supportsKeyStoreLock } from '@/crypto/key-store-lock'
+import { encryptedSyncUpgradeMessage } from '@/lib/encrypted-sync-support'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useHaptics } from '@/hooks/use-haptics'
 import type { Formatters } from '@/i18n/format'
@@ -191,6 +194,8 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
     useSyncEnabledToggle()
 
+  const e2eeReady = useE2eeReady()
+  const syncUnsupported = syncEnabled && e2eeReady && !supportsKeyStoreLock()
   const createNewChat = useCreateNewChat()
 
   // Close the drawer before navigating, like the chats rail's own "New chat"
@@ -443,9 +448,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
             </div>
             <div className="flex items-center justify-between gap-2">
               <p className={cn('text-xs text-muted-foreground', syncNeedsAttention && 'text-warning')}>
-                {syncStatusText(i18n, formatters, syncEnabled, connectionStatus, hasSynced, lastSyncedAt)}
+                {syncUnsupported
+                  ? i18n._(encryptedSyncUpgradeMessage)
+                  : syncStatusText(i18n, formatters, syncEnabled, connectionStatus, hasSynced, lastSyncedAt)}
               </p>
-              {syncNeedsAttention && (
+              {syncNeedsAttention && !syncUnsupported && (
                 <Button
                   variant="outline"
                   size="sm"

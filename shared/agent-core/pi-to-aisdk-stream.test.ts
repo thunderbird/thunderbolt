@@ -365,6 +365,40 @@ const createHarnessFake = () => {
 }
 
 describe('piHarnessToUiMessageStream abort', () => {
+  it('consumer cancellation settles immediately and preserves the late stopped reply', async () => {
+    const { harness, emit } = createHarnessEvents()
+    const stopping = Promise.withResolvers<void>()
+    const preserved = Promise.withResolvers<void>()
+    const appended: unknown[] = []
+    harness.abort = async () => {
+      await stopping.promise
+      emit({
+        type: 'message_end',
+        message: {
+          ...assistantMessage,
+          content: [{ type: 'text', text: 'partial answer' }],
+          stopReason: 'aborted',
+        },
+      })
+      return { clearedSteer: [], clearedFollowUp: [] }
+    }
+    harness.appendMessage = async (message) => {
+      appended.push(message)
+      preserved.resolve()
+    }
+    const stream = piHarnessToUiMessageStream(harness, () => {
+      emit({ type: 'agent_start' })
+      return stopping.promise
+    })
+    await stream.cancel()
+    expect(appended).toEqual([])
+    stopping.resolve()
+    await preserved.promise
+    expect(appended).toHaveLength(1)
+    expect(JSON.stringify(appended[0])).toContain('partial answer')
+    expect(appended[0]).toMatchObject({ stopReason: 'stop' })
+  })
+
   it('closes the stream and aborts the harness when the signal fires mid-run', async () => {
     const { harness, state, emit, listenerCount } = createHarnessFake()
     const controller = new AbortController()

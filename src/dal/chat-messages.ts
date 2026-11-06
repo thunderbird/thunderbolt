@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { isInsertConflictError } from '../lib/sqlite-errors'
 import { chatMessagesTable } from '../db/tables'
 import type { ChatMessage, ThunderboltUIMessage, UIMessageMetadata } from '../types'
-import { clearNullableColumns, convertUIMessageToDbChatMessage, nowIso } from '../lib/utils'
+import { convertUIMessageToDbChatMessage } from '../lib/utils'
 import { getChatThread, updateChatThread } from './chat-threads'
 
 /**
@@ -55,7 +55,7 @@ export const getLastMessage = async (db: AnyDrizzleDatabase, threadId: string): 
  * insert time. Re-saving the same id (streaming partials, then the `onFinish`
  * complete save) must never restructure the tree. Recomputing the parent from
  * `getLastMessage` would return the row being written and make the message its
- * own parent — corrupting the tree and hanging the descendant BFS on delete.
+ * own parent, corrupting the tree.
  */
 const updateMutableMessageColumns = async (db: AnyDrizzleDatabase, msg: ChatMessage): Promise<void> => {
   await db
@@ -198,45 +198,4 @@ export const updateMessage = async (
   message: Partial<ChatMessage>,
 ): Promise<void> => {
   await db.update(chatMessagesTable).set(message).where(eq(chatMessagesTable.id, messageId))
-}
-
-/**
- * Collect message id and all descendant ids (children, grandchildren, etc.) that are not yet soft-deleted.
- * Uses iterative BFS to avoid stack overflow and N+1 query issues with deep message trees.
- */
-const getMessageAndDescendantIds = async (db: AnyDrizzleDatabase, messageId: string): Promise<string[]> => {
-  const allIds: string[] = []
-  let parentIds: string[] = [messageId]
-
-  while (parentIds.length > 0) {
-    allIds.push(...parentIds)
-    const children = (await db
-      .select({ id: chatMessagesTable.id })
-      .from(chatMessagesTable)
-      .where(and(inArray(chatMessagesTable.parentId, parentIds), isNull(chatMessagesTable.deletedAt)))) as {
-      id: string
-    }[]
-
-    parentIds = children.map((c) => c.id)
-  }
-
-  return allIds
-}
-
-/**
- * Soft deletes a chat message and all its descendants (children, grandchildren, etc.).
- * Sets deletedAt and clears nullable columns. Only updates records not already soft-deleted.
- * Cascade is handled in the DAL; parent_id is a logical reference only.
- */
-export const deleteChatMessageAndDescendants = async (db: AnyDrizzleDatabase, messageId: string): Promise<void> => {
-  const idsToSoftDelete = await getMessageAndDescendantIds(db, messageId)
-  if (idsToSoftDelete.length === 0) {
-    return
-  }
-
-  const deletedAt = nowIso()
-  await db
-    .update(chatMessagesTable)
-    .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
-    .where(and(inArray(chatMessagesTable.id, idsToSoftDelete), isNull(chatMessagesTable.deletedAt)))
 }

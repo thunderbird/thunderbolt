@@ -11,6 +11,7 @@
  *   bun scripts/report.ts .perf-hunt/runs/<id>/report.json
  */
 
+import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import type { Finding, RunReport, ScenarioReport, Severity } from './lib/types'
 import { applyExclusions, loadCalibration } from './lib/calibration'
@@ -121,6 +122,7 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
       push({
         id: slug(`crash-${err}-${where}`),
         category: 'crash',
+        issueIdentity: err,
         title: `Uncaught error on ${r.scenario} (${r.browser})`,
         severity: 'critical',
         confidence: 'high',
@@ -135,6 +137,7 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
       push({
         id: slug(`console-${c.text}-${where}`),
         category: 'console-error',
+        issueIdentity: c.text,
         title: `Console error on ${r.scenario} (${r.browser})`,
         severity: 'medium',
         confidence: 'medium',
@@ -150,6 +153,7 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
       push({
         id: slug(`a11y-${a.ruleId}-${where}`),
         category: 'a11y',
+        issueIdentity: a.ruleId,
         title: `a11y: ${a.ruleId} (${a.impact}) on ${r.scenario}`,
         severity: a.impact === 'critical' ? 'high' : 'medium',
         confidence: 'high',
@@ -209,7 +213,7 @@ export const deriveCandidates = (report: RunReport): Finding[] => {
 }
 
 /** Collapse the same issue+scenario seen in both browsers into one finding. */
-const mergeAcrossBrowsers = (findings: Finding[]): Finding[] => {
+export const mergeAcrossBrowsers = (findings: Finding[]): Finding[] => {
   const order: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 }
   const byKey = new Map<string, Finding>()
   for (const f of findings) {
@@ -218,16 +222,20 @@ const mergeAcrossBrowsers = (findings: Finding[]): Finding[] => {
     // both) stays distinct — only genuine cross-browser duplicates of one issue
     // on one scenario merge.
     const attribution = f.sourceAttribution ?? f.title.replace(/\(.*?\)/g, '')
-    const key = `${f.category}::${f.scenarios.join(',')}::${attribution}`
+    const key = JSON.stringify([f.category, f.scenarios, attribution, f.issueIdentity])
+    const id = `${f.category}-${createHash('sha256').update(key).digest('hex').slice(0, 16)}`
     const existing = byKey.get(key)
     if (!existing) {
-      byKey.set(key, f)
+      byKey.set(key, { ...f, id })
       continue
     }
-    existing.browsers = [...new Set([...existing.browsers, ...f.browsers])]
-    existing.scenarios = [...new Set([...existing.scenarios, ...f.scenarios])]
-    // Keep the more severe reading rather than letting the first-seen browser win.
-    if (order[f.severity] < order[existing.severity]) existing.severity = f.severity
+    const strongest = order[f.severity] < order[existing.severity] ? f : existing
+    byKey.set(key, {
+      ...strongest,
+      id,
+      browsers: [...new Set([...existing.browsers, ...f.browsers])],
+      scenarios: [...new Set([...existing.scenarios, ...f.scenarios])],
+    })
   }
   return [...byKey.values()].sort((a, b) => order[a.severity] - order[b.severity])
 }

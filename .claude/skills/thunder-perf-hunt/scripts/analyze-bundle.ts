@@ -38,7 +38,7 @@ const readSizeLimits = (): SizeLimitEntry[] => {
 
 const runBuild = (): void => {
   console.error(`perf-hunt/bundle: running \`bun run ${BUILD_SCRIPT}\` (this can take a few minutes)…`)
-  const proc = Bun.spawnSync(['bun', 'run', BUILD_SCRIPT], { cwd: REPO_ROOT, stdout: 'inherit', stderr: 'inherit' })
+  const proc = Bun.spawnSync(['bun', 'run', BUILD_SCRIPT], { cwd: REPO_ROOT, stdout: Bun.stderr, stderr: 'inherit' })
   if (proc.exitCode !== 0) {
     console.error(`perf-hunt/bundle: build failed (exit ${proc.exitCode}). See output above.`)
     process.exit(1)

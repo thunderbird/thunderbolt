@@ -167,6 +167,8 @@ export type RunReport = {
 /** A normalized, agent-facing issue derived from one or more probe samples. */
 export type Finding = {
   id: string
+  /** Stable error, rule, or metric identity used to merge browser observations. */
+  issueIdentity?: string
   category: FindingCategory
   title: string
   severity: Severity

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useLanguageSetting } from '@/hooks/use-language-setting'
 import { languageOptions } from '@/i18n/language-options'
@@ -16,6 +17,7 @@ import { OnboardingStepHeader } from './onboarding-step-header'
  * living abroad doesn't quietly change the UI language.
  */
 export const OnboardingLanguageStep = () => {
+  const appName = useAppName()
   const { t } = useLingui()
   const { setLanguage } = useLanguageSetting()
   // The store, not the raw setting: an unset `language` reads back as the
@@ -27,7 +29,7 @@ export const OnboardingLanguageStep = () => {
       <OnboardingStepHeader
         icon={<Languages className="size-10 text-primary" />}
         title={<Trans>Which language do you prefer?</Trans>}
-        description={<Trans>Thunderbolt will use it across the app. You can change it later in Preferences.</Trans>}
+        description={<Trans>{appName} will use it across the app. You can change it later in Preferences.</Trans>}
       />
 
       <div className="mt-10">

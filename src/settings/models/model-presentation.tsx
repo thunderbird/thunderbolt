@@ -14,19 +14,43 @@ import { AppLogo } from '@/components/app-logo'
 import { IconTile } from '@/components/settings/icon-tile'
 import type { Model } from '@/types'
 
-/** Canonical display names for model providers — the single source for labels.
- *  Key order is the provider-picker menu order (the add form derives its options
- *  from these keys, so a new provider can't silently drop out of the picker). */
-// Brand names, deliberately not translated. The one exception is `custom`,
-// which is real copy — callers substitute a translated label for it (see
-// `customProviderLabel`).
-export const providerLabels: Record<Model['provider'], string> = {
-  thunderbolt: 'Thunderbolt',
+/** The one provider label that is copy rather than a brand name. */
+export const customProviderLabel = msg`Custom`
+
+// Brand names, deliberately not translated, in provider-picker menu order.
+// Managed models take the deployment's app name and `custom` is copy, so those
+// two are resolved by `getProviderLabel`; any other new provider must be added
+// here or `getProviderLabel` fails to compile.
+const providerBrandNames: Record<Exclude<Model['provider'], 'thunderbolt' | 'custom'>, string> = {
   tinfoil: 'Tinfoil',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
   anthropic: 'Anthropic',
-  custom: 'Custom',
+}
+
+/** Every provider, in provider-picker menu order: managed models first, custom last. */
+export const providerPickerOrder: Model['provider'][] = [
+  'thunderbolt',
+  ...(Object.keys(providerBrandNames) as (keyof typeof providerBrandNames)[]),
+  'custom',
+]
+
+/**
+ * A provider's display name: the deployment's app name for managed models,
+ * translated copy for `custom`, else the brand name.
+ *
+ * @param i18n - For the `custom` label.
+ * @param provider - The provider to name.
+ * @param appName - The deployment's app name, from `useAppName()`.
+ */
+export const getProviderLabel = (i18n: I18n, provider: Model['provider'], appName: string): string => {
+  if (provider === 'thunderbolt') {
+    return appName
+  }
+  if (provider === 'custom') {
+    return i18n._(customProviderLabel)
+  }
+  return providerBrandNames[provider]
 }
 
 /** System-managed Tinfoil is a Thunderbolt product; Tinfoil is only its transport. */
@@ -62,13 +86,12 @@ export const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider'
   </IconTile>
 )
 
-/** The one provider label that is copy rather than a brand name. */
-export const customProviderLabel = msg`Custom`
-
-/** Provider label for display — system-managed Tinfoil models brand as Thunderbolt. */
-export const getProviderDisplay = (i18n: I18n, model: Pick<Model, 'provider' | 'isSystem'>): string => {
-  if (isThunderboltManagedModel(model)) {
-    return 'Thunderbolt'
-  }
-  return model.provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[model.provider]
-}
+/**
+ * Provider label for a model: managed models, system Tinfoil included, carry the app name.
+ *
+ * @param i18n - For the `custom` label.
+ * @param model - The model to label.
+ * @param appName - The deployment's app name, from `useAppName()`.
+ */
+export const getProviderDisplay = (i18n: I18n, model: Pick<Model, 'provider' | 'isSystem'>, appName: string): string =>
+  getProviderLabel(i18n, isThunderboltManagedModel(model) ? 'thunderbolt' : model.provider, appName)

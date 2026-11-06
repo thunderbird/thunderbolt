@@ -21,21 +21,26 @@ Also part of the same machinery:
 | `previews-shared-deploy.yml`  | Manual, plus Mondays 07:00 UTC                                    |
 | `nightly-images.yml`          | 05:00 UTC                                                         |
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
+| `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |
+
+`image-scan.yml` runs Trivy over the six published `:latest` images and reports HIGH and CRITICAL
+findings that have a fix to code scanning, one category per image. Findings never fail the job. It covers
+what Dependabot's security alerts can't see: the packages inside container images.
 
 Release workflows: [RELEASE.md](../../../RELEASE.md).
 
 ## The `ci.yml` jobs
 
-| Job             | Runs when                                                                      | What it does                                                         |
-| --------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                    |
-| `backend`       | Always                                                                         | Backend type-check, lint, tests (5x) plus the segregated WS suite    |
-| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire  |
-| `agent-core`    | `shared/agent-core/**`, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check  |
-| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test        |
-| `wasm-artifact` | `src/acp/iroh/pkg/**` or `crates/thunderbolt-acp-client/` sources              | Staleness gate plus `CHECKSUMS.txt` verification                     |
-| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test` |
+| Job             | Runs when                                                                      | What it does                                                                          |
+| --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
+| `backend`       | Always                                                                         | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
+| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
+| `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
+| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test                         |
+| `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`        | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
+| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
 
 Only `typescript` and `backend` run on every PR; the rest are gated by `detect-changes`
 (`dorny/paths-filter`), so **"CI passed" can mean "your job never ran"**. `agent-core` runs
@@ -71,25 +76,28 @@ with up to five attempts: they wait on same-process WebSocket close and message 
 that Bun drops or delays under load. Five consecutive non-zero attempts still red the
 build.
 
-## The Bun versions differ on purpose
+## One Bun version everywhere
 
-| Bun version | Jobs                                                   |
-| ----------- | ------------------------------------------------------ |
-| 1.3.14      | `typescript`, `localization`, `agent-core`, `cli`, e2e |
-| 1.3.13      | `backend`, `pr-metrics.yml`                            |
-
-Not drift: on the backend job 1.3.14 caused multi-minute hangs inside PGlite's WASM that
-the per-test timeout could not interrupt, never seen on 1.3.13. Rationale sits by the pin
-in [`ci.yml`](../../../.github/workflows/ci.yml).
+Every `setup-bun` step, every `oven/bun` image in `deploy/docker/` and
+`.thunderbot/Dockerfile.dev`, and the `BUN_VERSION` of both services in
+`deploy/render/public-agent.yaml` pin Bun 1.4.4. Bump them together, along with `BUN_VERSION`
+on the production backend, which is set in the Render dashboard. A `setup-bun` step without
+`bun-version` reads `packageManager`, then `engines.bun`, from `package.json`, and installs the
+latest release when neither is set; the root `package.json` sets neither. A Render service without
+`BUN_VERSION` reads a `.bun-version` file at the repo root, then falls back to Render's default
+Bun for the date it was created.
 
 ## Gates that surprise people
 
 **Stale wasm artifact.** The iroh ACP client ships prebuilt at `src/acp/iroh/pkg` so the
-web build needs no wasm toolchain; touching the crate source without committing a
-regenerated `pkg/` fails `wasm-artifact` with a fix instruction, and the committed files
-are verified against `CHECKSUMS.txt`. Rebuild with
-`crates/thunderbolt-acp-client/build.sh` (`--verify` reproduces bit-identically on the
-pinned toolchain).
+web build needs no wasm toolchain. Crate input changes must include a regenerated
+`pkg/`; CI compares `SOURCES.txt` with current input paths and hashes, then checks the
+package files against `CHECKSUMS.txt`. These checks detect divergence; they are not
+signed attestations that compilation occurred. Input discovery includes untracked
+and ignored files under the crate's `src/` and `.cargo/`, so remove unrelated editor
+or OS files there before rebuilding. Rebuild with
+`crates/thunderbolt-acp-client/build.sh`; see the [crate README](../../../crates/thunderbolt-acp-client/README.md)
+for the build inputs, toolchain and `--verify` reproduction procedure.
 
 **Untransformed Lingui macros.** A macro that escapes the Babel transform renders literal
 `<Trans>` instead of failing the build, so the `localization` job greps the bundle for the
@@ -97,10 +105,38 @@ stub's error text ("outside the context of compilation"). It fails if `dist/asse
 missing (a moved `outDir` would make it a silent pass), and runs `bun run i18n:check` over
 the frontend and backend email catalogs ([AGENTS.md](../../../AGENTS.md)).
 
-**The glib unsoundness tripwire.** The `rust` job runs
-`scripts/check-glib-variantstriter.sh` first: RUSTSEC-2024-0429 is accepted only because
-`glib::VariantStrIter` has zero callers in the Linux build graph, and the script reds the
-job if a dependency gains one.
+**The glib unsoundness tripwire.** [RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429.html)
+remains unpatched in the Linux application's `glib 0.18.5`. Risk acceptance rests
+on a source scan finding no references to `VariantStrIter` or its public producer
+`Variant::array_iter_str()` outside glib. Iterating it can cause undefined behavior;
+a passing scan or native smoke does not prove the vulnerable code is absent from
+the executable.
+
+The `rust` job runs `scripts/check-glib-variantstriter.sh` for x86_64 and aarch64.
+It checks that the excluded crate is exactly one upstream `glib 0.18.5`, then
+scans every package directory reported by Cargo, including registry, Git and path
+sources and first-party build scripts. Missing sources or metadata failures fail
+the job. Guard and workflow changes trigger the job, which also runs negative
+fixtures. Comments count as references. Generated references and `include!` paths
+outside package directories still need manual review.
+
+The fixed release line starts at glib 0.20, but the current GTK/WebKit/Tauri
+consumers require glib 0.18. A direct update fails dependency resolution.
+Upstream's [0.18 backport proposal](https://github.com/gtk-rs/gtk-rs-core/pull/2009)
+was closed without merging. A local backport of the
+[two-line upstream fix](https://github.com/gtk-rs/gtk-rs-core/commit/b5a4071e439bef2b5eea76c3aa25e5ae84839e34)
+would repair this defect, but would make us maintain a vendored EOL crate; this
+change does not take on that maintenance.
+
+A coordinated GTK3 upgrade is also possible in principle:
+[gtk3-rs 0.19](https://github.com/gtk-rs/gtk3-rs/releases/tag/0.19.0) uses glib 0.22,
+but its consumers must migrate together. GTK4 is not required solely to fix this
+advisory, and Tauri 3 alone does not select GTK4: its
+[runtime documentation](https://v3.tauri.app/develop/webview-runtime/#gtk-version)
+distinguishes Wry/GTK3 from CEF/GTK4. Re-audit the exemption when changing glib,
+its source, code generation or the runtime stack. A compatible fixed graph or
+reviewed backport must pass optimized iterator tests and native Linux validation
+before this advisory can be reported as fixed.
 
 **Shared CLI dependency skew.** `cli/` has its own lockfile but imports `shared/agent-core`,
 which resolves from the repo root. The `cli` job asserts `@earendil-works/pi-ai` and
@@ -219,10 +255,14 @@ a fork can change image contents but never the infrastructure code.
 
 ### Teardown: on close, hourly, and by hand
 
-`preview-destroy.yml` fires on PR close. `scripts/drop-preview-db.sh` runs before
-`pulumi destroy` because it needs the per-stack secrets and backend task definition the
-stack owns; destroy runs even if the drop fails, so a flaky drop cannot orphan an ALB and
-leak cost.
+`preview-destroy.yml` fires on PR close. Every preview destroy, on close, hourly or by
+hand, goes through `stack-deploy.yml`'s `destroy` job, which runs
+`scripts/drop-preview-db.sh` before `pulumi destroy` because it needs the per-stack
+secrets and backend task definition the stack owns; destroy runs even if the drop fails,
+so a flaky drop cannot orphan an ALB and leak cost. A failed drop then fails the job, and
+the databases and slot it left need dropping by hand. The hourly cleanup sends a failure
+notification; on PR close the failure shows only in that run and in the PR's preview
+comment, because `notify-on-failure.yml` alerts only for runs on `main`.
 
 Pulumi does not remove the logical database that `deploy/docker/backend-entrypoint.sh`
 creates per PR at backend startup on the shared Postgres instance (when
@@ -244,16 +284,19 @@ a teardown.
 
 ## Scripts the pipeline depends on
 
-| Script                                    | Invoked by                                           | Notes                                                                 |
-| ----------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| `scripts/check-glib-variantstriter.sh`    | `ci.yml` `rust` job                                  | RUSTSEC-2024-0429 tripwire; runs before the build because it is cheap |
-| `scripts/agent-core-browser-check.ts`     | `bun run test:agent-core:browser` (`agent-core` job) | Chromium + WebKit check of the production agent chunk                 |
-| `crates/thunderbolt-acp-client/build.sh`  | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums   |
-| `scripts/drop-preview-db.sh`              | `preview-destroy.yml`                                | Drops the per-PR logical database before `pulumi destroy`; idempotent |
-| `.github/scripts/review-orchestrator.mjs` | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`      |
-| `.github/scripts/post-pr-metrics.cjs`     | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
-| `.github/scripts/post-eval-results.ts`    | `evals.yml`                                          | Unit-tested by `bun run test`                                         |
-| `scripts/lingui-macro-bun-shim.ts`        | `--preload` on every `eval*` script                  | See below                                                             |
+| Script                                                  | Invoked by                                           | Notes                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
+| `scripts/check-glib-variantstriter.sh`                  | `ci.yml` `rust` job                                  | RUSTSEC-2024-0429 tripwire; runs before the build because it is cheap |
+| `scripts/agent-core-browser-check.ts`                   | `bun run test:agent-core:browser` (`agent-core` job) | Chromium + WebKit check of the production agent chunk                 |
+| `crates/thunderbolt-acp-client/build.sh`                | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums   |
+| `crates/thunderbolt-acp-client/source-manifest.sh`      | `build.sh` and `ci.yml` `wasm-artifact` job          | Hashes current crate inputs for `SOURCES.txt`                         |
+| `crates/thunderbolt-acp-client/source-manifest.test.sh` | `ci.yml` `wasm-artifact` job                         | Tests source drift and build failures without a wasm toolchain        |
+| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent |
+| `.github/scripts/review-orchestrator.mjs`               | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`      |
+| `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
+| `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                         |
+| `scripts/lingui-macro-bun-shim.ts`                      | `--preload` on every `eval*` script                  | See below                                                             |
+| `scripts/prune-unreachable-deps.ts`                     | `deploy/docker/backend.Dockerfile`                   | Works around `--production` installing dev-only optional peers        |
 
 Bun has no Babel pass, so a Lingui macro imported under plain `bun run` resolves to a stub
 that throws, and the eval CLIs reach UI modules transitively. Every `eval*` script in

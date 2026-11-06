@@ -55,7 +55,7 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
-msgid "Your Thunderbolt recovery phrase was changed from device “{deviceName}”. Your previous phrase no longer works."
+msgid "Your {appName} recovery phrase was changed from device “{deviceName}”. Your previous phrase no longer works."
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -135,13 +135,13 @@ msgstr "Vous pouvez répondre à cet e-mail"
 
 #. js-lingui-explicit-id
 #: src/emails/magic-link.tsx
-msgid "Your Thunderbolt verification code"
-msgstr "Votre code de vérification Thunderbolt"
+msgid "Your {appName} verification code"
+msgstr "Votre code de vérification {appName}"
 
 #. js-lingui-explicit-id
 #: src/emails/magic-link.tsx
-msgid "Sign in to Thunderbolt"
-msgstr "Se connecter à Thunderbolt"
+msgid "Sign in to {appName}"
+msgstr "Se connecter à {appName}"
 
 #. js-lingui-explicit-id
 #: src/emails/magic-link.tsx
@@ -156,8 +156,8 @@ msgstr "Se connecter"
 #. js-lingui-explicit-id
 #: src/emails/waitlist-joined.tsx
 #: src/emails/waitlist-not-ready.tsx
-msgid "You're on the Thunderbolt waitlist!"
-msgstr "Vous êtes sur la liste d'attente Thunderbolt !"
+msgid "You're on the {appName} waitlist!"
+msgstr "Vous êtes sur la liste d'attente {appName} !"
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-joined.tsx
@@ -166,15 +166,15 @@ msgstr "Merci de votre inscription !"
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-joined.tsx
-msgid "You've been added to the Thunderbolt waitlist. We're working hard to get you access as soon as possible. We'll send you another email when it's your turn to join."
-msgstr "Vous avez été ajouté à la liste d'attente Thunderbolt. Nous faisons tout notre possible pour vous donner accès dès que possible. Nous vous enverrons un autre e-mail lorsque ce sera votre tour."
+msgid "You've been added to the {appName} waitlist. We're working hard to get you access as soon as possible. We'll send you another email when it's your turn to join."
+msgstr "Vous avez été ajouté à la liste d'attente {appName}. Nous faisons tout notre possible pour vous donner accès dès que possible. Nous vous enverrons un autre e-mail lorsque ce sera votre tour."
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-joined.tsx
 #: src/emails/waitlist-not-ready.tsx
 #: src/emails/waitlist-reminder.tsx
-msgid "The Thunderbolt Team"
-msgstr "L'équipe Thunderbolt"
+msgid "The {appName} Team"
+msgstr "L'équipe {appName}"
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-not-ready.tsx
@@ -183,8 +183,8 @@ msgstr "Pas encore tout à fait prêt !"
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-not-ready.tsx
-msgid "We noticed you tried to sign in to Thunderbolt. You're on our waitlist, but we're not quite ready for you yet. Don't worry — we're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
-msgstr "Nous avons remarqué que vous avez essayé de vous connecter à Thunderbolt. Vous êtes sur notre liste d'attente, mais nous ne sommes pas encore tout à fait prêts à vous accueillir. Pas d'inquiétude — nous faisons tout notre possible pour vous donner accès dès que possible. Nous vous enverrons un e-mail lorsque ce sera votre tour."
+msgid "We noticed you tried to sign in to {appName}. You're on our waitlist, but we're not quite ready for you yet. Don't worry — we're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
+msgstr "Nous avons remarqué que vous avez essayé de vous connecter à {appName}. Vous êtes sur notre liste d'attente, mais nous ne sommes pas encore tout à fait prêts à vous accueillir. Pas d'inquiétude — nous faisons tout notre possible pour vous donner accès dès que possible. Nous vous enverrons un e-mail lorsque ce sera votre tour."
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-reminder.tsx
@@ -193,5 +193,5 @@ msgstr "Vous êtes déjà sur la liste d'attente !"
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-reminder.tsx
-msgid "Good news — you're already on the Thunderbolt waitlist. No need to sign up again! We're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
-msgstr "Bonne nouvelle — vous êtes déjà sur la liste d'attente Thunderbolt. Pas besoin de vous inscrire à nouveau ! Nous faisons tout notre possible pour vous donner accès dès que possible. Nous vous enverrons un e-mail lorsque ce sera votre tour."
+msgid "Good news — you're already on the {appName} waitlist. No need to sign up again! We're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
+msgstr "Bonne nouvelle — vous êtes déjà sur la liste d'attente {appName}. Pas besoin de vous inscrire à nouveau ! Nous faisons tout notre possible pour vous donner accès dès que possible. Nous vous enverrons un e-mail lorsque ce sera votre tour."

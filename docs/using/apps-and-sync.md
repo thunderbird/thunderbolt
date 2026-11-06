@@ -32,7 +32,7 @@ Every install holds a full local database. Reads and writes go there first, so t
 
 Sync is a per-device switch under **Settings → Preferences → Data**, labeled **Sync This Device With Cloud**, and repeated as **Cloud Sync** in the sidebar account menu. A device that has never been signed in has sync off, and anonymous sessions cannot sync at all. Signing in from inside the app runs a short setup step on that device, and sync turns on when it finishes. You can turn it back off from the same screen at any time. That leaves the local database intact and stops the device exchanging changes.
 
-Synced data is always end-to-end encrypted. The first device you set up shows a 24 word recovery phrase once; save it, because it is the only way back in if you lose every device. Each later device has to be approved before it can read anything.
+Synced data is always end-to-end encrypted. Save the current 24 word recovery phrase shown during setup. A later device unlocks through fingerprint approval from a trusted device, the current recovery phrase, or an available passkey enrolled for sync.
 
 Encryption covers the columns that hold your content, including the names, addresses and descriptions of the external agents you add. Structural fields and device names are stored readable.
 
@@ -67,8 +67,9 @@ File attachments do not follow a chat. The message carries the file's name but n
 
 Install or open Thunderbolt on the new device and sign in with the same account. It registers as pending and shows an "Approve this device" screen until you either:
 
-- Approve it from an already trusted device under **Settings → Devices**, or
-- Enter the 24 word recovery key you saved when you first set up sync.
+- Approve it from an already trusted device under **Settings → Devices**, entering the fingerprint shown on the new device's screen or received through a separate trusted channel.
+- Enter the current 24 word recovery phrase. Use the new phrase if it was replaced during migration or a phrase change.
+- Choose **Unlock with passkey** if the account has an available passkey enrolled for sync.
 
 The pending device checks for approval on its own, so nothing needs re-entering once you approve.
 

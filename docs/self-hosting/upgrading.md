@@ -211,7 +211,7 @@ If you deploy through the repository's stack workflow instead, pass the same ver
 
 ## Database migrations
 
-Migrations run automatically, each time the API container starts, before it accepts traffic. You never run one by hand. `SKIP_MIGRATIONS=true` stops the API applying them in-process, but the container image's entrypoint runs `drizzle-kit migrate` before the server starts regardless, so migrating separately means overriding the container command as well. They are **not** reversible: migrations are forward-only, and there are no down migrations. The whole run goes in one transaction, so if any migration fails the rest roll back with it, the container exits, and the reason is in its log.
+Migrations run automatically, each time the API container starts, before it accepts traffic. You never run one by hand. `SKIP_MIGRATIONS=true` stops the API applying them, for when you run migrations separately; the image has no migration tool of its own, so run `cd backend && bun db migrate` from a source checkout against the same `DATABASE_URL` before starting the API. They are **not** reversible: migrations are forward-only, and there are no down migrations. The whole run goes in one transaction, so if any migration fails the rest roll back with it, the container exits, and the reason is in its log.
 
 Forward-only also means going back to an older image does not undo a schema change. Some releases drop columns or tables, and an older API against a newer schema may fail. A database backup taken before the upgrade is the only real rollback for a schema change.
 
@@ -225,7 +225,7 @@ The sync service decides which data reaches a device, and it reads that from a c
 | Kubernetes     | The Helm chart                                      | Upgrading the chart updates the rules |
 | AWS            | Built into the packaged sync-service image          | Moving the version updates the rules  |
 
-The rules are written as PowerSync Sync Streams (`edition: 3`), which need sync service 1.20 or later; an older service rejects them and no device syncs. Versions 1.20 to 1.25 carry a Sync Streams advisory (GHSA-hfrf-pvrg-5c3h) fixed in 1.26; the configs are tested on 1.27.0. Every deployment path pins the sync service version, so an upgrade brings the matching one, unless you set `powersync.image.tag` yourself or upgrade the chart with `--reuse-values`, which keeps the previous release's tag. The move from the older Sync Rules format makes every device download its data once more, in full, on its next connection.
+The rules are written as PowerSync Sync Streams (`edition: 3`), which need sync service 1.20 or later; an older service rejects them and no device syncs. Versions 1.20 to 1.25 carry a Sync Streams advisory (GHSA-hfrf-pvrg-5c3h) fixed in 1.26; the configs are tested on 1.28.0. Every deployment path pins the sync service version, so an upgrade brings the matching one, unless you set `powersync.image.tag` yourself or upgrade the chart with `--reuse-values`, which keeps the previous release's tag. The move from the older Sync Rules format makes every device download its data once more, in full, on its next connection.
 
 A rule change takes effect only when the sync service restarts. On Kubernetes, changing the configuration does not trigger that, so roll the sync deployment by hand after a chart upgrade that changes the rules.
 

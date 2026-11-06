@@ -52,6 +52,11 @@ describe('Combobox', () => {
       expect(popoverContent).toHaveClass('w-[var(--radix-popover-trigger-width)]')
     })
 
+    it('names the search input after its placeholder', () => {
+      render(<Combobox items={mockItems} onValueChange={() => {}} open={true} searchPlaceholder="Search models…" />)
+      expect(screen.getByPlaceholderText('Search models…')).toHaveAccessibleName('Search models…')
+    })
+
     it('calls onOpenChange when trigger is clicked', () => {
       const handleOpenChange = mock()
       render(<Combobox items={mockItems} onValueChange={() => {}} open={false} onOpenChange={handleOpenChange} />)

@@ -12,6 +12,7 @@ import { needsApiKey } from './model-policy'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Model } from '@/types'
+import { useAppName } from '@/lib/branding-selectors'
 import { getProviderDisplay, ModelProviderIconTile } from './model-presentation'
 
 type ModelsListProps = {
@@ -25,6 +26,7 @@ type ModelsListProps = {
 /** Presentational list of configured models with enable toggles and the add affordance. */
 export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }: ModelsListProps) => {
   const { i18n, t } = useLingui()
+  const appName = useAppName()
 
   return (
     <SettingsListBody className={settingsListBodyRowsClass}>
@@ -44,7 +46,7 @@ export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }:
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+                        <AlertTriangle className="size-3.5 shrink-0 text-warning" />
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
                         <p>
@@ -57,7 +59,7 @@ export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }:
                 <span className="truncate">{model.name}</span>
               </span>
             }
-            subtitle={getProviderDisplay(i18n, model)}
+            subtitle={getProviderDisplay(i18n, model, appName)}
             trailing={
               <Switch
                 checked={isEnabled}

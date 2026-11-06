@@ -22,10 +22,10 @@ type SecurityCodeEmailProps = {
  */
 export const SecurityCodeEmail = ({ i18n, code, preview, body, guidance }: SecurityCodeEmailProps) => (
   <EmailLayout i18n={i18n} preview={preview}>
-    <Section className="bg-white border border-solid border-tb-border rounded-2xl text-center px-8 py-8">
-      <Text className="text-sm text-tb-text m-0 mb-6">{body}</Text>
-      <Text className="text-2xl font-semibold text-tb-text m-0 mb-6">{code}</Text>
-      <Text className="text-sm text-tb-text m-0">{guidance}</Text>
+    <Section className="bg-tb-card border border-solid border-tb-border rounded-2xl text-center px-8 py-8">
+      <Text className="text-sm text-tb-card-text m-0 mb-6">{body}</Text>
+      <Text className="text-2xl font-semibold text-tb-card-text m-0 mb-6">{code}</Text>
+      <Text className="text-sm text-tb-card-text m-0">{guidance}</Text>
     </Section>
   </EmailLayout>
 )

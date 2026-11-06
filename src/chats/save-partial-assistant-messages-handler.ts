@@ -36,13 +36,8 @@ export const SavePartialAssistantMessagesHandler = ({
 }: SavePartialAssistantMessagesHandlerProps) => {
   const { chatInstance, id: chatThreadId } = useCurrentChatSession()
 
-  // Intentionally UNthrottled: this is a durability subscriber, not a renderer.
-  // It returns `children` unchanged (no subtree re-render) and its actual DB write
-  // is already gated by its own `streamingSaveThrottleMs` `useThrottledCallback`, so per-token cost is
-  // O(1) — throttling the `useChat` messages callback here would buy no perf while
-  // widening the window where an aborted/errored stream's last partial goes unsaved
-  // (`onFinish` doesn't persist on abort, and the effect's `isStreaming` guard skips
-  // once status flips to `ready`).
+  // Subscribe without throttling so the trailing save is cancelled as soon as
+  // streaming ends. Database writes already have their own throttle below.
   const { status, messages } = useChat({ chat: chatInstance })
 
   const isStreaming = status === 'streaming'
@@ -60,18 +55,8 @@ export const SavePartialAssistantMessagesHandler = ({
     const isAssistantLatest = latestMessage?.role === 'assistant'
 
     if (!isStreaming) {
-      // Stream ended (or never started). On a success/abort terminal `onFinish`
-      // performs the authoritative final save (see chat-instance.ts), so drop any
-      // pending trailing partial to stop it firing *after* onFinish and clobbering
-      // it with a stale, mid-stream snapshot. On an *error* terminal onFinish does
-      // NOT persist, so this partial is the only record of what streamed before
-      // the error — persist the *freshest* live message directly (the pending
-      // trailing call holds an older delta's args and would drop the final chunk
-      // when the last delta and the `error` flip coalesce into one commit), then
-      // drop the now-redundant pending trailing.
-      if (status === 'error' && isAssistantLatest) {
-        saveStreamingMessage({ threadId: chatThreadId, message: latestMessage, parentId })
-      }
+      // onFinish owns the authoritative final save, including errors and aborts.
+      // A trailing partial must never overwrite it with an older snapshot.
       throttledSave.cancel()
       return
     }
@@ -79,12 +64,11 @@ export const SavePartialAssistantMessagesHandler = ({
     // A turn that has opened but produced no part yet has nothing to recover, and
     // persisting the empty shell outlives the in-memory drop an aborted turn does
     // (chat-instance.ts) — on reload it resurfaces as a failed turn the user had
-    // deliberately stopped. The `error` branch above deliberately still saves it:
-    // there the empty trailing turn is what hydration reads to show the failure.
-    if (isAssistantLatest && latestMessage.parts.length > 0) {
+    // deliberately stopped.
+    if (isAssistantLatest && latestMessage.parts.some((part) => part.type !== 'step-start')) {
       throttledSave(latestMessage, parentId)
     }
-  }, [messages, isStreaming, status, throttledSave, saveStreamingMessage, chatThreadId])
+  }, [messages, isStreaming, throttledSave])
 
   return children
 }

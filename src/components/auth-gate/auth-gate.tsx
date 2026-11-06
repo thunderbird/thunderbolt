@@ -49,7 +49,12 @@ export const AuthGate = ({ require }: AuthGateProps) => {
     return <BrowserCheck onRetry={state.retry} />
   }
   if (state.status === 'redirect') {
-    return <Navigate to={state.to} replace />
+    return (
+      <>
+        <Loading />
+        <Navigate to={state.to} replace />
+      </>
+    )
   }
 
   return <Outlet />

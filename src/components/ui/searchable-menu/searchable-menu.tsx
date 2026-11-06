@@ -56,22 +56,26 @@ type ItemButtonProps<T> = {
   item: SearchableMenuItem<T>
   isSelected: boolean
   onClick: () => void
+  closeMenu: () => void
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
 }
 
-const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButtonProps<T>) => {
-  if (renderItem) {
-    return (
-      <button type="button" disabled={item.disabled} onClick={onClick} className="w-full text-left">
-        {renderItem(item, isSelected)}
-      </button>
-    )
-  }
-
-  return (
+const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem, closeMenu }: ItemButtonProps<T>) => {
+  const button = renderItem ? (
+    <button
+      type="button"
+      aria-current={isSelected || undefined}
+      disabled={item.disabled}
+      onClick={onClick}
+      className="w-full min-w-0 text-left"
+    >
+      {renderItem(item, isSelected)}
+    </button>
+  ) : (
     <button
       type="button"
       disabled={item.disabled}
+      aria-current={isSelected || undefined}
       onClick={onClick}
       className={cn(
         'w-full flex items-center gap-2 px-3 py-2 max-md:min-h-[var(--touch-height-default)] rounded-lg transition-colors text-left cursor-pointer',
@@ -87,6 +91,29 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
       </div>
     </button>
   )
+
+  const action = item.action
+  if (!action) {
+    return button
+  }
+
+  return (
+    <div className={cn('group/menu-item flex items-center rounded-lg hover:bg-accent/50', isSelected && 'bg-accent')}>
+      {button}
+      <button
+        type="button"
+        aria-label={action.label}
+        title={action.label}
+        className="mr-1 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:size-10 transition-opacity [@media(hover:hover)]:md:opacity-0 md:group-hover/menu-item:opacity-100 md:group-focus-within/menu-item:opacity-100"
+        onClick={() => {
+          closeMenu()
+          action.onAction()
+        }}
+      >
+        {action.icon}
+      </button>
+    </div>
+  )
 }) as <T>(props: ItemButtonProps<T>) => ReactNode
 ;(ItemButton as { displayName?: string }).displayName = 'ItemButton'
 
@@ -95,17 +122,17 @@ type GroupSectionProps<T> = {
   value?: string
   onSelect: (id: string, item: SearchableMenuItem<T>) => void
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
-  hideLabel?: boolean
+  closeMenu: () => void
 }
 
-const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }: GroupSectionProps<T>) => {
+const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, closeMenu }: GroupSectionProps<T>) => {
   if (group.items.length === 0) {
     return null
   }
 
   return (
     <div className="flex flex-col gap-1">
-      {!hideLabel && group.label && (
+      {group.label && (
         <div className="px-3 pt-2">
           <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
           {group.subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{group.subtitle}</p>}
@@ -119,6 +146,7 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }
             isSelected={value === item.id}
             onClick={() => onSelect(item.id, item)}
             renderItem={renderItem}
+            closeMenu={closeMenu}
           />
         ))}
       </div>
@@ -153,6 +181,8 @@ const DefaultTrigger = <T,>({
 }
 
 export const SearchableMenu = <T,>({
+  embedded = false,
+  disabled = false,
   items,
   value,
   onValueChange,
@@ -160,6 +190,7 @@ export const SearchableMenu = <T,>({
   searchPlaceholder: searchPlaceholderProp,
   emptyMessage: emptyMessageProp,
   mobileTitle: mobileTitleProp,
+  showDesktopTitle = false,
   mobileSide = 'bottom',
   trigger,
   renderItem,
@@ -198,7 +229,7 @@ export const SearchableMenu = <T,>({
       return items
     }
 
-    const query = searchQuery.toLowerCase()
+    const query = searchQuery.trim().toLowerCase()
 
     const matchesQuery = (item: SearchableMenuItem<T>) =>
       item.label.toLowerCase().includes(query) ||
@@ -224,7 +255,9 @@ export const SearchableMenu = <T,>({
   }
 
   const handleSelect = (id: string, item: SearchableMenuItem<T>) => {
-    closeMenu()
+    if (!embedded) {
+      closeMenu()
+    }
     onValueChange(id, item)
   }
 
@@ -241,13 +274,14 @@ export const SearchableMenu = <T,>({
 
   const contentWidth = typeof width === 'number' ? `${width}px` : width
   const menuContent = (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-col gap-2">
         {searchable && (
-          <div className="px-1 pt-1">
+          <div className="shrink-0 px-1 pt-1">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
+                aria-label={searchPlaceholder}
                 placeholder={searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -258,12 +292,18 @@ export const SearchableMenu = <T,>({
           </div>
         )}
 
+        {showDesktopTitle && (
+          <h3 className="shrink-0 px-4 pt-2 text-xs font-medium text-muted-foreground max-md:hidden">{mobileTitle}</h3>
+        )}
+
         <div
           className="min-h-0 overflow-y-auto"
           style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
         >
           <div className={cn('flex flex-col gap-4 px-1 pb-1', !searchable && 'pt-1')}>
-            {isGroupedItems(filteredItems) ? (
+            {flatFiltered.length === 0 ? (
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
+            ) : isGroupedItems(filteredItems) ? (
               filteredItems.map((group) => (
                 <GroupSection
                   key={group.id}
@@ -271,7 +311,7 @@ export const SearchableMenu = <T,>({
                   value={value}
                   onSelect={handleSelect}
                   renderItem={renderItem}
-                  hideLabel={filteredItems.length === 1}
+                  closeMenu={closeMenu}
                 />
               ))
             ) : (
@@ -283,39 +323,46 @@ export const SearchableMenu = <T,>({
                     isSelected={value === item.id}
                     onClick={() => handleSelect(item.id, item)}
                     renderItem={renderItem}
+                    closeMenu={closeMenu}
                   />
                 ))}
               </div>
-            )}
-
-            {flatFiltered.length === 0 && (
-              <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
             )}
           </div>
         </div>
       </div>
 
       {footerAction && (
-        <div className="border-t p-1 dark:border-border/50">
-          <FooterActionRow {...footerAction} closeMenu={closeMenu} />
+        <div className="shrink-0 border-t p-1 dark:border-border/50">
+          {(Array.isArray(footerAction) ? footerAction : [footerAction]).map((action) => (
+            <FooterActionRow key={action.label} {...action} closeMenu={closeMenu} />
+          ))}
         </div>
       )}
     </div>
   )
 
+  if (embedded) {
+    return menuContent
+  }
+
   return (
     <ResponsivePopover
-      open={open}
-      onOpenChange={setOpen}
+      open={disabled ? false : open}
+      onOpenChange={(next) => {
+        if (!disabled) {
+          setOpen(next)
+        }
+      }}
       title={mobileTitle}
       trigger={
         // min-w-0 lets a truncating trigger label (e.g. the model selector's)
         // shrink and ellipsize instead of forcing the row wider.
-        <button type="button" className="flex min-w-0 items-center focus:outline-none">
+        <button type="button" disabled={disabled} className="flex min-w-0 items-center focus:outline-none">
           {triggerContent}
         </button>
       }
-      mobileMenu={{ side: mobileSide, className: contentClassName, initialFocus: false }}
+      mobileMenu={{ side: mobileSide, className: contentClassName }}
       desktopMenu={{
         align,
         side,

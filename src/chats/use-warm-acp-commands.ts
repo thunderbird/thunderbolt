@@ -13,6 +13,7 @@ import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { ChatThread } from '@/types'
 import type { Agent } from '@/types/acp'
 import { makeCommandSink as defaultMakeCommandSink } from './chat-instance'
+import { useChatStore } from './chat-store'
 
 /** DI seam so tests can inject fakes for the external dependencies without
  *  `mock.module()` (which is global and would leak into unrelated suites).
@@ -90,6 +91,8 @@ export const useWarmAcpCommands = (
         .ensureSession({
           threadId: id,
           acpSessionId: chatThread?.acpSessionId ?? null,
+          getAcpCompactions: useChatStore.getState().sessions.get(id)?.chatInstance.getAcpCompactions,
+          onAcpSessionEvent: useChatStore.getState().sessions.get(id)?.chatInstance.onAcpSessionEvent,
           onAcpSessionId: async (sessionId) => {
             if (chatThread) {
               await updateChatThread(getDb(), chatThread.id, { acpSessionId: sessionId })

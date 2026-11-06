@@ -7,18 +7,19 @@ import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/da
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { getClock } from '@/testing-library'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { moveChatToProject } from '@/projects/use-move-chat-to-project'
+import { setChatThreadProject } from '@/dal/projects'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { agentsSystemTable, chatThreadsTable, modelsTable } from '@/db/tables'
+import { agentsSystemTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
 import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
 import { updateSettings } from '@/dal/settings'
-import { getModel } from '@/dal/models'
+import { getModel, updateModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
@@ -26,6 +27,7 @@ import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
 import { DatabaseProvider } from '@/contexts/database-context'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { getClock } from '@/testing-library'
 
 /**
  * Helper function to create a system model (required for getDefaultModelForThread)
@@ -396,6 +398,30 @@ describe('useHydrateChatStore', () => {
       })
     }
 
+    it('restores the selected model for a new chat without creating a thread', async () => {
+      const modelId = await createTestModel()
+      await updateSettings(getDb(), { selected_model: modelId })
+
+      await hydrateNewChat()
+
+      const session = getCurrentSession()
+      expect(session?.selectedModel.id).toBe(modelId)
+      expect(session?.chatThread).toBeNull()
+      expect(session?.chatInstance.messages).toEqual([])
+      expect(session?.triggerData).toBeNull()
+    })
+
+    it('falls back to a system model when the selected model is disabled', async () => {
+      const modelId = await createTestModel()
+      await updateSettings(getDb(), { selected_model: modelId })
+      await updateModel(getDb(), modelId, { enabled: 0 })
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedModel.isSystem).toBe(1)
+      expect(getCurrentSession()?.selectedModel.id).not.toBe(modelId)
+    })
+
     it('keeps the last-used agent for a new chat ahead of the agent discovery names as default', async () => {
       await createAgent(getDb(), {
         id: 'custom-last-used',
@@ -690,6 +716,95 @@ describe('useHydrateChatStore', () => {
       expect((await getThread(getDb(), threadId))?.isEncrypted).toBe(isEncrypted)
     })
 
+    it.each(['project-b', null])(
+      'keeps first-save membership consistent when a move to %s starts first',
+      async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+        })
+        const wroteProject = Promise.withResolvers<void>()
+        const releaseMove = Promise.withResolvers<void>()
+        await act(async () => {
+          const moving = moveChatToProject(
+            { chatThreadId: id, projectId },
+            {
+              db: getDb(),
+              setProject: async (...args) => {
+                const assigned = await setChatThreadProject(...args)
+                wroteProject.resolve()
+                await releaseMove.promise
+                return assigned
+              },
+              updateOpenSession: (chatThreadId, nextProjectId) =>
+                useChatStore.getState().updateSession(chatThreadId, { projectId: nextProjectId }),
+              refreshChatList: async () => {},
+            },
+          )
+          await wroteProject.promise
+          const saving = result.current.saveMessages({ id, messages: [createTestMessage()] })
+          releaseMove.resolve()
+          await Promise.all([moving, saving])
+        })
+        expect((await getThread(getDb(), id))?.projectId).toBe(projectId)
+        expect(getCurrentSession()?.projectId).toBe(projectId)
+      },
+    )
+
+    it.each(['project-b', null])(
+      'keeps first-save membership consistent when a move to %s starts during insertion',
+      async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+        })
+        const moved = Promise.withResolvers<void>()
+        const db = getDb()
+        const insert = db.insert.bind(db)
+        // Start the move after saveMessages has read the old project but before
+        // the thread's insert is executed, so an uncoordinated UPDATE finds no row.
+        const insertSpy = spyOn(db, 'insert').mockImplementation((table) => {
+          if (Object.is(table, chatThreadsTable)) {
+            moved.resolve(
+              moveChatToProject(
+                { chatThreadId: id, projectId },
+                {
+                  db,
+                  setProject: setChatThreadProject,
+                  updateOpenSession: (chatThreadId, nextProjectId) =>
+                    useChatStore.getState().updateSession(chatThreadId, { projectId: nextProjectId }),
+                  refreshChatList: async () => {},
+                },
+              ),
+            )
+          }
+          return insert(table)
+        })
+        try {
+          await act(async () => {
+            await result.current.saveMessages({ id, messages: [createTestMessage()] })
+            await moved.promise
+          })
+          expect((await getThread(db, id))?.projectId).toBe(projectId)
+          expect(getCurrentSession()?.projectId).toBe(projectId)
+        } finally {
+          insertSpy.mockRestore()
+        }
+      },
+    )
+
     it('should throw error if no session is found when saving messages', async () => {
       const threadId = uuidv7()
 
@@ -784,6 +899,33 @@ describe('useHydrateChatStore', () => {
 
       // Verify no error was thrown
       expect(result.current.saveMessages).toBeDefined()
+    })
+
+    it('preserves current context for historical edits and updates it for ordinary saves', async () => {
+      const modelId = await createSystemModel()
+      const threadId = await createTestThread(modelId)
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      const message = createTestMessage({ role: 'assistant', metadata: { contextTokens: 2000 } })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+        await result.current.saveMessages({ id: threadId, messages: [message] })
+        await result.current.saveMessages({
+          id: threadId,
+          messages: [{ ...message, metadata: { contextTokens: 500 } }],
+          updateContext: false,
+        })
+      })
+      expect((await getThread(getDb(), threadId))?.contextSize).toBe(2000)
+
+      await act(async () => {
+        await result.current.saveMessages({
+          id: threadId,
+          messages: [{ ...message, metadata: { contextTokens: 600 } }],
+        })
+      })
+      expect((await getThread(getDb(), threadId))?.contextSize).toBe(600)
     })
   })
   /*

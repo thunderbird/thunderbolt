@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { useAppName } from '@/lib/branding-selectors'
 import type { ReactNode } from 'react'
 
 import { msg } from '@lingui/core/macro'
@@ -38,10 +40,12 @@ type RevokeDeviceDialogProps = {
  * local copy when the revocation reaches it; one that stays offline is never
  * reached. Promising more would mislead someone revoking a lost or stolen device.
  */
-const descriptions = {
-  trusted: msg`The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working.`,
-  pending: msg`This will deny the device access to your encrypted data. The device will need to set up sync again.`,
-  cli: msg`The CLI will be signed out and must sign in again before it can use your Thunderbolt account.`,
+const descriptions: Record<RevokeDeviceDialogProps['variant'], (appName: string) => MessageDescriptor> = {
+  trusted: () =>
+    msg`The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working.`,
+  pending: () =>
+    msg`This will deny the device access to your encrypted data. The device will need to set up sync again.`,
+  cli: (appName) => msg`The CLI will be signed out and must sign in again before it can use your ${appName} account.`,
 }
 
 export const RevokeDeviceDialog = ({
@@ -54,6 +58,7 @@ export const RevokeDeviceDialog = ({
   errorAction,
 }: RevokeDeviceDialogProps) => {
   const { i18n, t } = useLingui()
+  const appName = useAppName()
   const isPendingVariant = variant === 'pending'
 
   return (
@@ -69,7 +74,7 @@ export const RevokeDeviceDialog = ({
               <Trans>Revoke this device?</Trans>
             )}
           </AlertDialogTitle>
-          <AlertDialogDescription>{i18n._(descriptions[variant])}</AlertDialogDescription>
+          <AlertDialogDescription>{i18n._(descriptions[variant](appName))}</AlertDialogDescription>
         </AlertDialogHeader>
         {error && (
           <div className="flex flex-col gap-2">

@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { getClock } from '@/testing-library'
 import type { Agent } from '@/types/acp'
 import { AgentSelector, buildAgentItems } from './agent-selector'
 
@@ -139,7 +140,7 @@ describe('AgentSelector', () => {
       <AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent, zeusAgent]} onSelect={onSelect} readOnly />,
     )
     const trigger = screen.getByTestId('agent-selector-trigger')
-    expect(trigger.closest('button')).toBeNull()
+    expect(trigger.closest('button')).toBeDisabled()
     expect(trigger).toHaveTextContent('Vesta')
     expect(trigger).not.toHaveTextContent('Private')
     fireEvent.click(trigger)
@@ -179,7 +180,7 @@ describe('AgentSelector', () => {
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 
-  it('closes the mobile agent drawer before invoking Add Agent', () => {
+  it('closes the mobile agent drawer when invoking Add Agent', async () => {
     forceMobileViewport()
     const onAddAgent = mock(() => {})
     render(
@@ -197,9 +198,11 @@ describe('AgentSelector', () => {
     fireEvent.click(screen.getByText('Add Agent'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    // The mobile card drawer must be gone before the add flow opens.
-    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(onAddAgent).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
   })
 
   it('is a plain label, with no menu, when there is one agent and no way to add another', () => {
@@ -207,7 +210,7 @@ describe('AgentSelector', () => {
 
     const trigger = screen.getByTestId('agent-selector-trigger')
     expect(trigger).toHaveTextContent('Vesta')
-    expect(trigger.closest('button')).toBeNull()
+    expect(trigger.closest('button')).toBeDisabled()
     // Not dimmed by `disabled`: there is no switch to hold back during a reply.
     expect(trigger).not.toHaveClass('opacity-60')
 

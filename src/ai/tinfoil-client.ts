@@ -5,11 +5,13 @@
 import { getUserCacheSecret } from '@/lib/auth-token'
 import { getErrorName } from '@/lib/error-utils'
 import { trackEvent } from '@/lib/posthog'
-import { withDeadline } from '@/lib/timeout'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import type { Model } from '@/types'
 import type { SecureClient } from 'tinfoil'
+import { attestationStore, type AttestationStore } from '@/attestation/store'
+import { tinfoilAttestationKey } from '@/attestation/target'
+import type { AttestationReporter } from '@/attestation/types'
 
 export const tinfoilAttestationTimeoutMs = 15_000
 
@@ -32,17 +34,17 @@ type TinfoilAttestationProperties = {
 type TinfoilTraceProperties = Pick<TinfoilAttestationProperties, 'trace_id' | 'engine' | 'provider' | 'model_id'>
 
 type TinfoilClientLifecycleOptions = {
-  createClient: (type: TinfoilClientType, cloudUrl: string) => Promise<SecureClient>
+  createClient: (type: TinfoilClientType, cloudUrl: string, reporter: AttestationReporter) => Promise<SecureClient>
   getCloudUrl: () => string
-  timeoutMs?: number
+  attestations?: AttestationStore
   trackAttestation?: (properties: TinfoilAttestationProperties) => void
 }
 
-/** Create the timeout error surfaced when Tinfoil attestation does not settle. */
-const createAttestationTimeoutError = (timeoutMs: number): Error =>
-  Object.assign(new Error(`Tinfoil attestation timed out after ${timeoutMs}ms`), {
-    name: 'TinfoilAttestationTimeoutError',
-  })
+type CachedTinfoilClient = {
+  key: string
+  clientPromise: Promise<SecureClient>
+  reporter: AttestationReporter
+}
 
 /**
  * Stabilize attestation classification across the SDK's inconsistent failure
@@ -58,33 +60,26 @@ const createAttestationError = (cause: unknown): Error => {
 
 /** Extract the verified enclave's identity so telemetry can date enclave-side changes. */
 const getEnclaveIdentity = (client: SecureClient): Partial<TinfoilAttestationProperties> => {
-  try {
-    const document = client.getVerificationDocument()
-    return {
-      enclave_host: document.enclaveHost,
-      release_digest: document.releaseDigest,
-      enclave_fingerprint: document.enclaveFingerprint,
-      router_endpoint: document.selectedRouterEndpoint,
-    }
-  } catch {
-    return {}
+  const document = client.getVerificationDocument()
+  return {
+    enclave_host: document.enclaveHost,
+    release_digest: document.releaseDigest,
+    enclave_fingerprint: document.enclaveFingerprint,
+    router_endpoint: document.selectedRouterEndpoint,
   }
 }
 
-/** Bound the SDK's non-abortable attestation wait and emit structured telemetry. */
+/** Observe the adapter's bounded readiness operation and emit structured telemetry. */
 const waitForAttestation = async (
   client: SecureClient,
   clientType: TinfoilClientType,
-  timeoutMs: number,
   trackAttestation: (properties: TinfoilAttestationProperties) => void,
   traceProperties: TinfoilTraceProperties,
 ): Promise<TinfoilAttestationProperties> => {
   const startedAt = Date.now()
 
   try {
-    // Escaped FetchError resets SDK state, so next ready() re-attests against
-    // atc.tinfoil.sh; bound every call, including previously attested clients.
-    await withDeadline(client.ready(), timeoutMs, () => createAttestationTimeoutError(timeoutMs))
+    await client.ready()
     return {
       outcome: 'success',
       duration_ms: Date.now() - startedAt,
@@ -109,15 +104,17 @@ const waitForAttestation = async (
 
 /**
  * Create an isolated Tinfoil lifecycle. Production uses one instance; tests
- * inject client factories, timeout, and telemetry without shared-module mocks.
+ * inject client factories and telemetry without shared-module mocks.
  */
 export const createTinfoilClientLifecycle = ({
   createClient,
   getCloudUrl,
-  timeoutMs = tinfoilAttestationTimeoutMs,
+  attestations = attestationStore,
   trackAttestation = (properties) => trackEvent('tinfoil_attestation', properties),
 }: TinfoilClientLifecycleOptions) => {
-  const clients = new Map<string, Promise<SecureClient>>()
+  const clients = new Map<string, CachedTinfoilClient>()
+  const owners = new WeakMap<object, CachedTinfoilClient>()
+  const attestationKeys = new Set<string>()
   const reportedClients = new WeakSet<SecureClient>()
 
   /** Resolve the cache key for a client type. */
@@ -125,11 +122,38 @@ export const createTinfoilClientLifecycle = ({
     type === 'user' ? 'user' : `system:${getCloudUrl().replace(/\/$/, '')}`
 
   /** Cache construction before it settles so concurrent callers share one client. */
-  const construct = (key: string, type: TinfoilClientType): Promise<SecureClient> => {
+  const construct = (key: string, type: TinfoilClientType): CachedTinfoilClient => {
     const cloudUrl = type === 'system' ? key.slice('system:'.length) : ''
-    const clientPromise = createClient(type, cloudUrl)
-    clients.set(key, clientPromise)
-    return clientPromise
+    const attestationKey = tinfoilAttestationKey(type, cloudUrl)
+    attestationKeys.add(attestationKey)
+    const owner = attestations.open(attestationKey)
+    const reporter: AttestationReporter = {
+      publish: (state) => {
+        owner.publish(state)
+        // A re-attestation can fail inside SDK fetch(), outside acquire().
+        // Retire that cached generation immediately so the next send recovers.
+        if (state.status === 'failed') {
+          if (clients.get(key)?.reporter === reporter) {
+            clients.delete(key)
+          }
+          owner.close()
+        }
+      },
+      close: owner.close,
+    }
+    // Defer construction until its cache entry exists, including synchronous
+    // provider failures reported before the factory's first await.
+    const entry: CachedTinfoilClient = {
+      key,
+      clientPromise: Promise.resolve().then(async () => {
+        const client = await createClient(type, cloudUrl, reporter)
+        owners.set(client, entry)
+        return client
+      }),
+      reporter,
+    }
+    clients.set(key, entry)
+    return entry
   }
 
   /** Return an attested client, evicting failed construction or attestation. */
@@ -138,10 +162,13 @@ export const createTinfoilClientLifecycle = ({
     traceProperties: TinfoilTraceProperties = {},
   ): Promise<SecureClient> => {
     const key = getClientKey(type)
-    const clientPromise = clients.get(key) ?? construct(key, type)
+    const entry = clients.get(key) ?? construct(key, type)
     try {
-      const client = await clientPromise
-      const properties = await waitForAttestation(client, type, timeoutMs, trackAttestation, traceProperties)
+      const client = await entry.clientPromise
+      const properties = await waitForAttestation(client, type, trackAttestation, traceProperties)
+      if (clients.get(key) !== entry) {
+        throw createAttestationError(new Error('This Tinfoil client was revoked during verification.'))
+      }
       if (!reportedClients.has(client) || traceProperties.trace_id !== undefined) {
         reportedClients.add(client)
         trackAttestation(properties)
@@ -149,8 +176,11 @@ export const createTinfoilClientLifecycle = ({
       return client
     } catch (error) {
       // Delete only the failed generation; a replacement may already be cached.
-      if (clients.get(key) === clientPromise) {
-        clients.delete(key)
+      if (clients.get(key) === entry) {
+        entry.reporter.publish({
+          status: 'failed',
+          reason: getErrorName(error) === 'TinfoilAttestationTimeoutError' ? 'timeout' : 'verification',
+        })
       }
       throw error
     }
@@ -162,13 +192,27 @@ export const createTinfoilClientLifecycle = ({
   /** Return the attested user client. */
   const getTinfoilClient = (traceProperties?: TinfoilTraceProperties): Promise<SecureClient> =>
     acquire('user', traceProperties)
-  /** Drop the current cloud URL's system client. */
-  const evictSystemTinfoilClient = (): void => {
-    clients.delete(getClientKey('system'))
+  /** Revoke a cached client's evidence before another generation can be acquired. */
+  const evict = (type: TinfoilClientType, expectedClient?: object): void => {
+    const expectedEntry = expectedClient ? owners.get(expectedClient) : undefined
+    if (expectedClient && (!expectedEntry || clients.get(expectedEntry.key) !== expectedEntry)) {
+      return
+    }
+    const key = expectedEntry?.key ?? getClientKey(type)
+    clients.get(key)?.reporter.close()
+    clients.delete(key)
+    attestations.clear(`tinfoil:${key}`)
   }
+  /** Drop the current cloud URL's system client. */
+  const evictSystemTinfoilClient = (expectedClient?: object): void => evict('system', expectedClient)
   /** Drop the user client. */
-  const evictUserTinfoilClient = (): void => {
-    clients.delete(getClientKey('user'))
+  const evictUserTinfoilClient = (expectedClient?: object): void => evict('user', expectedClient)
+  /** Revoke every identity-scoped client and snapshot, including failed generations. */
+  const clearTinfoilClients = (): void => {
+    clients.forEach(({ reporter }) => reporter.close())
+    clients.clear()
+    attestationKeys.forEach((key) => attestations.clear(key))
+    attestationKeys.clear()
   }
 
   return {
@@ -176,6 +220,7 @@ export const createTinfoilClientLifecycle = ({
     evictSystemTinfoilClient,
     getTinfoilClient,
     evictUserTinfoilClient,
+    clearTinfoilClients,
   }
 }
 
@@ -190,21 +235,31 @@ export const createTinfoilClientLifecycle = ({
 const lifecycle = createTinfoilClientLifecycle({
   // Cache construction synchronously before this dynamic import resolves so
   // prewarm and immediate first send share one client and attestation.
-  createClient: async (type, cloudUrl) => {
-    const { SecureClient } = await import('tinfoil')
+  createClient: async (type, cloudUrl, reporter) => {
+    const { AttestedTinfoilClient } = await import('@/attestation/tinfoil')
     if (type === 'user') {
-      return new SecureClient({ userCacheSecret: getUserCacheSecret() })
+      return new AttestedTinfoilClient({ userCacheSecret: getUserCacheSecret() }, reporter, tinfoilAttestationTimeoutMs)
     }
-    return new SecureClient({
-      // SecureClient rejects a relative baseURL with a ConfigurationError.
-      baseURL: `${resolveAbsoluteBackendUrl(cloudUrl)}/tinfoil`,
-      userCacheSecret: getUserCacheSecret(),
-    })
+    return new AttestedTinfoilClient(
+      {
+        // SecureClient rejects a relative baseURL with a ConfigurationError.
+        baseURL: `${resolveAbsoluteBackendUrl(cloudUrl)}/tinfoil`,
+        userCacheSecret: getUserCacheSecret(),
+      },
+      reporter,
+      tinfoilAttestationTimeoutMs,
+    )
   },
   getCloudUrl: () => getLocalSetting('cloudUrl'),
 })
 
-export const { getSystemTinfoilClient, evictSystemTinfoilClient, getTinfoilClient, evictUserTinfoilClient } = lifecycle
+export const {
+  getSystemTinfoilClient,
+  evictSystemTinfoilClient,
+  getTinfoilClient,
+  evictUserTinfoilClient,
+  clearTinfoilClients,
+} = lifecycle
 
 /**
  * Best-effort warm-up of the Tinfoil system enclave so first chat send avoids

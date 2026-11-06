@@ -13,10 +13,10 @@ import { useIsMobile } from '@/hooks/use-mobile'
  * Thunderbolt agent. Managed-acp, managed-http and remote-acp agents own
  * their own model selection upstream, so it is hidden for them.
  *
- * Uses the `composer` ModelSelector variant, opening down on desktop and up
- * on mobile (above the bottom-anchored composer).
+ * Can embed the model list directly in the combined model/effort picker.
+ * Standalone usage opens a popover on desktop and a bottom drawer on mobile.
  */
-export const ChatModelPicker = () => {
+export const ChatModelPicker = ({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void }) => {
   const models = useChatStore((state) => state.models)
   const setSelectedModel = useChatStore((state) => state.setSelectedModel)
   const { openCreateItem } = useCreateItem()
@@ -35,6 +35,8 @@ export const ChatModelPicker = () => {
 
   return (
     <ModelSelector
+      embedded={embedded}
+      onClose={onClose}
       variant="composer"
       models={agentModels}
       selectedModel={selectedModel ?? null}

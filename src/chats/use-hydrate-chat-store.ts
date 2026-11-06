@@ -14,6 +14,7 @@ import {
   getChatMessages,
   getChatThread,
   getDefaultModelForThread,
+  getSelectedModel,
   getSettings,
   getTriggerPromptForThread,
   isChatThreadDeleted,
@@ -28,15 +29,23 @@ import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle, titleSourceText } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
+import type {
+  ChatMessage,
+  Model,
+  SaveMessagesFunction,
+  SaveStreamingMessageFunction,
+  ThunderboltUIMessage,
+} from '@/types'
 import type { Agent } from '@/types/acp'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useChatStore } from './chat-store'
+import { type ChatSession, useChatStore } from './chat-store'
+import { withChatThreadWrite } from './chat-thread-write'
 import { createChatInstance } from './chat-instance'
 import { persistedThreadAgentId, resolveSessionAgent } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
+import { waitForSyncCatchUp as defaultWaitForSyncCatchUp } from '@/db/powersync/sync-state'
 
 type UseHydrateChatStoreParams = {
   id: string
@@ -66,6 +75,8 @@ type UseHydrateChatStoreParams = {
    * recorded.
    */
   onCreated?: (chatThreadId: string) => void
+  /** Injected for tests; see {@link defaultWaitForSyncCatchUp}. */
+  waitForSyncCatchUp?: () => Promise<void> | null
 }
 
 /**
@@ -77,6 +88,31 @@ const trackChatReadyOnce = () => {
   if (chatReadyMs !== null) {
     trackEvent('app_chat_ready', { chat_ready_ms: Math.round(chatReadyMs) })
   }
+}
+
+/**
+ * A saved empty reply is a turn that already failed. The session marks its retries
+ * exhausted so it shows as failed rather than as a recovery still in progress.
+ */
+const endsWithEmptyReply = (messages: ThunderboltUIMessage[]): boolean => {
+  const last = messages.at(-1)
+  return last?.role === 'assistant' && !last.parts?.length
+}
+
+/**
+ * The saved messages that follow the ones the session holds. Null while the chat is
+ * busy, or once it no longer matches the start of the saved list, so nothing the user
+ * did meanwhile is overwritten.
+ */
+const getSyncedTail = (session: ChatSession, saved: ChatMessage[]): ThunderboltUIMessage[] | null => {
+  if (session.stopping || session.compactionStatus === 'compacting' || session.chatInstance.status !== 'ready') {
+    return null
+  }
+  const current = session.chatInstance.messages
+  if (saved.length <= current.length || current.some((message, index) => message.id !== saved[index].id)) {
+    return null
+  }
+  return saved.slice(current.length).map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
 }
 
 /**
@@ -98,6 +134,7 @@ export const useHydrateChatStore = ({
   projectId: newChatProjectId = null,
   miniAppId: newChatMiniAppId = null,
   onCreated,
+  waitForSyncCatchUp = defaultWaitForSyncCatchUp,
 }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
   const httpClient = useHttpClient()
@@ -133,25 +170,31 @@ export const useHydrateChatStore = ({
     await updateChatThread(db, threadId, { title })
   }
 
-  const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
-    const { sessions, updateSession } = useChatStore.getState()
+  const saveMessages: SaveMessagesFunction = async ({ id, messages, updateContext = true }) => {
+    const { updateSession } = useChatStore.getState()
+    // Read the session inside the queue so a move that ran before creation is
+    // included in the insert; a later move waits until the row exists.
+    const { session, thread } = await withChatThreadWrite(id, async () => {
+      const { sessions } = useChatStore.getState()
 
-    const session = sessions.get(id)
+      const session = sessions.get(id)
 
-    if (!session) {
-      throw new Error('No session found')
-    }
+      if (!session) {
+        throw new Error('No session found')
+      }
 
-    // Fetch thread info to check if we need to generate a title.
-    // Pass `selectedAgent.id` so a brand-new thread is created with the user's
-    // currently-selected agent — otherwise the row would default to `null`
-    // and a reload would silently fall back to the built-in agent.
-    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, {
-      agentId: session.selectedAgent.id,
-      // Stamped here rather than at navigation time: the row is created lazily
-      // on this first save, so both must ride the session to reach it.
-      projectId: session.projectId,
-      miniAppId: session.miniAppId,
+      // Fetch thread info to check if we need to generate a title.
+      // Pass `selectedAgent.id` so a brand-new thread is created with the user's
+      // currently-selected agent — otherwise the row would default to `null`
+      // and a reload would silently fall back to the built-in agent.
+      const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, {
+        agentId: session.selectedAgent.id,
+        // Stamped here rather than at navigation time: the row is created lazily
+        // on this first save, so both must ride the session to reach it.
+        projectId: session.projectId,
+        miniAppId: session.miniAppId,
+      })
+      return { session, thread }
     })
 
     // Persist a legacy agent mapping only when the user resumes the conversation.
@@ -160,7 +203,7 @@ export const useHydrateChatStore = ({
     }
 
     // Save messages and update context size using DAL
-    await saveMessagesWithContextUpdate(db, id, messages)
+    await saveMessagesWithContextUpdate(db, id, messages, { updateContext })
 
     // Generate title in background if needed
     if (thread?.title === defaultChatTitle) {
@@ -186,10 +229,6 @@ export const useHydrateChatStore = ({
    * are all avoidable per token. The authoritative complete save runs in the
    * chat instance's `onFinish` via {@link saveMessages}.
    */
-  // Stable identity (deps: the stable `db` context value) so it can sit in the
-  // partial-save effect's dependency array without re-firing on every parent
-  // render — otherwise an on-screen error terminal would re-run the direct
-  // error-save (a redundant idempotent upsert + E2EE encrypt/upload) per render.
   const saveStreamingMessage: SaveStreamingMessageFunction = useCallback(
     async ({ threadId, message, parentId }) => {
       await saveStreamingAssistantMessage(db, threadId, message, parentId)
@@ -197,12 +236,34 @@ export const useHydrateChatStore = ({
     [db],
   )
 
+  /**
+   * A chat opened before its messages finished downloading read only part of them, and
+   * the session keeps that copy. Append what has landed once the sync completes, then
+   * stop showing the chat as waiting.
+   */
+  const appendMessagesSyncedAfterOpen = async (syncCatchUp: Promise<void>) => {
+    await syncCatchUp
+    const saved = await getChatMessages(db, id)
+    const session = useChatStore.getState().sessions.get(id)
+    if (!session) {
+      return
+    }
+    const synced = getSyncedTail(session, saved)
+    if (synced) {
+      session.chatInstance.messages = [...session.chatInstance.messages, ...synced]
+    }
+    useChatStore.getState().updateSession(id, {
+      awaitingSyncedMessages: false,
+      retriesExhausted: session.retriesExhausted || (synced !== null && endsWithEmptyReply(synced)),
+    })
+  }
+
   const hydrateChatStore = async () => {
     const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModels } =
       useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
-    const isDeleted = await isChatThreadDeleted(db, id)
+    const isDeleted = !isNew && (await isChatThreadDeleted(db, id))
     if (isDeleted) {
       navigate('/not-found', { replace: true })
       return
@@ -236,16 +297,19 @@ export const useHydrateChatStore = ({
       return
     }
 
-    // If the session does not exist, create it below
-    const settings = await getSettings(db, { selected_model: String, selected_agent: String })
+    // Taken before the reads below, so a sync that lands while they run is still caught.
+    const syncCatchUp = isNew ? null : waitForSyncCatchUp()
 
-    const [defaultModel, chatThread, initialMessages, models, triggerData, customAgentRows, systemAgentRows] =
+    // New IDs are minted locally and have no history. Read the selected model
+    // directly, and start independent reads together instead of gating on settings.
+    const [settings, defaultModel, chatThread, initialMessages, models, triggerData, customAgentRows, systemAgentRows] =
       await Promise.all([
-        getDefaultModelForThread(db, id, settings.selectedModel ?? undefined),
-        getChatThread(db, id),
-        getChatMessages(db, id),
+        getSettings(db, { selected_model: String, selected_agent: String }),
+        isNew ? getSelectedModel(db) : getDefaultModelForThread(db, id),
+        isNew ? null : getChatThread(db, id),
+        isNew ? [] : getChatMessages(db, id),
         getAvailableModels(db),
-        getTriggerPromptForThread(db, id),
+        isNew ? null : getTriggerPromptForThread(db, id),
         getAllAgents(db),
         getAllSystemAgents(db),
       ])
@@ -302,8 +366,7 @@ export const useHydrateChatStore = ({
     const initialUiMessages = initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
     const chatInstance = createChatInstance(id, initialUiMessages, saveMessages, httpClient, getProxyFetch)
 
-    const lastInitialMessage = initialUiMessages[initialUiMessages.length - 1]
-    const hydratedTrailingEmptyTurn = lastInitialMessage?.role === 'assistant' && !lastInitialMessage.parts?.length
+    const hydratedTrailingEmptyTurn = endsWithEmptyReply(initialUiMessages)
 
     createSession({
       chatInstance,
@@ -315,6 +378,8 @@ export const useHydrateChatStore = ({
       miniAppApprovalQueue: [],
       retryCount: 0,
       retriesExhausted: hydratedTrailingEmptyTurn,
+      // A saved thread always has messages, so none here means they are still downloading.
+      awaitingSyncedMessages: syncCatchUp !== null && initialMessages.length === 0,
       stopping: false,
       // Existing chats keep their persisted agent, including unavailable ones.
       selectedAgent,
@@ -336,6 +401,10 @@ export const useHydrateChatStore = ({
     setIsReady(true)
     trackChatReadyOnce()
     maybePrewarmBuiltInAgent(selectedAgent, selectedModel)
+
+    if (syncCatchUp) {
+      void appendMessagesSyncedAfterOpen(syncCatchUp)
+    }
   }
 
   return { hydrateChatStore, isReady, saveMessages, saveStreamingMessage }

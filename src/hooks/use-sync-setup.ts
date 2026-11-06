@@ -9,8 +9,10 @@ import { useReducer } from 'react'
 import { HttpError } from '@/lib/http'
 import { useHttpClient, type HttpClient } from '@/contexts'
 import { ValidationError } from '@/crypto'
+import { DeviceApprovalError } from '@/crypto/errors'
 import {
   registerThisDevice,
+  getThisDeviceApprovalFingerprint,
   completeFirstDeviceSetup,
   checkApprovalAndUnwrap,
   recoverWithKey,
@@ -46,11 +48,13 @@ type SyncSetupState = {
   recoveryKeyInput: string
   recoveryKeyError: string | null
   approvalError: string | null
+  approvalFingerprint: string
   isLoading: boolean
   error: string | null
 }
 
 type SyncSetupAction =
+  | { type: 'SET_APPROVAL_FINGERPRINT'; payload: string }
   | { type: 'CONTINUE_INTRO' }
   | { type: 'DETECTED_FIRST_DEVICE' }
   | { type: 'DETECTED_ADDITIONAL_DEVICE' }
@@ -78,12 +82,15 @@ export const initialState: SyncSetupState = {
   recoveryKeyInput: '',
   recoveryKeyError: null,
   approvalError: null,
+  approvalFingerprint: '',
   isLoading: false,
   error: null,
 }
 
 export const reducer = (state: SyncSetupState, action: SyncSetupAction): SyncSetupState => {
   switch (action.type) {
+    case 'SET_APPROVAL_FINGERPRINT':
+      return { ...state, approvalFingerprint: action.payload }
     case 'CONTINUE_INTRO':
       return { ...state, step: 'detecting', isLoading: true, error: null }
     case 'DETECTED_FIRST_DEVICE':
@@ -170,6 +177,7 @@ export const useSyncSetup = () => {
 
     try {
       await registerThisDevice(httpClient)
+      dispatch({ type: 'SET_APPROVAL_FINGERPRINT', payload: await getThisDeviceApprovalFingerprint() })
       const metadata = await fetchMetadataOrNull(httpClient)
       const passkeySlotCredentialId = metadata?.passkey_credential_id ?? null
       const done = (outcome: IntroOutcome) => ({ outcome, passkeySlotCredentialId })
@@ -186,7 +194,13 @@ export const useSyncSetup = () => {
       // whether this device migrates (v1 + holds the legacy CK), follows (v2 or
       // an already-migrated account), or must wait for approval. A v1 account
       // routes into the seamless migration — never a reset.
-      const result = await ensureV2Encryption(httpClient)
+      const result = await ensureV2Encryption(httpClient).catch((error) => {
+        if (error instanceof DeviceApprovalError && error.reason === 'recipient-unverified') {
+          approvalVerificationFailed()
+          return { outcome: 'awaiting-approval' } as const
+        }
+        throw error
+      })
       switch (result.outcome) {
         case 'migrated':
           dispatch({ type: 'SET_RECOVERY_KEY', payload: result.recoveryKey })
@@ -281,6 +295,14 @@ export const useSyncSetup = () => {
     }
   }
 
+  const approvalVerificationFailed = () =>
+    dispatch({
+      type: 'SET_APPROVAL_ERROR',
+      payload: i18n._(
+        msg`Couldn't verify this device's approval. Select Check now to try again, or choose another option below.`,
+      ),
+    })
+
   const confirmApproval = async () => {
     dispatch({ type: 'START_LOADING' })
 
@@ -298,6 +320,10 @@ export const useSyncSetup = () => {
     } catch (err) {
       if (err instanceof HttpError && err.response.status === 422) {
         dispatch({ type: 'DEVICE_DENIED' })
+        return false
+      }
+      if (err instanceof DeviceApprovalError && err.reason === 'recipient-unverified') {
+        approvalVerificationFailed()
         return false
       }
       const message = err instanceof Error ? err.message : t`Failed to check approval`
@@ -354,6 +380,7 @@ export const useSyncSetup = () => {
     setRecoveryKeyInput,
     submitRecoveryKey,
     confirmApproval,
+    approvalVerificationFailed,
     unlockWithPasskey,
     goToPasskeyEnroll,
     completeSetup,

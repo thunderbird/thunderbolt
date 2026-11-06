@@ -16,12 +16,6 @@ use tauri::Manager;
 pub fn create_app() -> tauri::Builder<tauri::Wry> {
     let mut builder = tauri::Builder::default();
 
-    // Conditionally include the HTTP plugin when the `native_fetch` feature is enabled
-    #[cfg(feature = "native_fetch")]
-    {
-        builder = builder.plugin(tauri_plugin_http::init());
-    }
-
     // Single-instance: focus existing window when a second instance is launched (desktop only)
     #[cfg(desktop)]
     {
@@ -35,6 +29,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
 
     // Core plugins that are always enabled
     builder = builder
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -47,7 +42,6 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
             commands::toggle_dock_icon,
-            commands::capabilities,
             commands::set_interface_style,
             commands::start_oauth_server,
             commands::install_thunderbolt_cli,

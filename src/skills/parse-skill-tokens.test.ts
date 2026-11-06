@@ -4,10 +4,14 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
+  chipMarker,
   deleteSkillTokenAt,
   findSkillTokens,
+  foldPendingSigils,
+  hasPendingSigil,
   normalizeSkillTokensToSlugs,
   parseSkillTokens,
+  pendingSigilForKey,
   type SkillResolver,
 } from './parse-skill-tokens'
 
@@ -220,8 +224,37 @@ describe('deleteSkillTokenAt', () => {
   })
 })
 
+describe('pending sigils', () => {
+  const pendingSlash = pendingSigilForKey('/')!
+  const pendingAt = pendingSigilForKey('@')!
+
+  it('has a stand-in only for "/" and "@"', () => {
+    expect(pendingSigilForKey('a')).toBeNull()
+  })
+
+  it('folds stand-ins to the typed character without changing the length', () => {
+    const text = `a ${pendingSlash}b ${pendingAt}c`
+    const folded = foldPendingSigils(text)
+    expect(folded).toBe('a /b @c')
+    expect(folded).toHaveLength(text.length)
+  })
+
+  it('detects a stand-in', () => {
+    expect(hasPendingSigil(`${pendingAt}x`)).toBe(true)
+    expect(hasPendingSigil('/x @y')).toBe(false)
+  })
+})
+
 describe('normalizeSkillTokensToSlugs', () => {
   const titles = new Map([['Daily Brief', 'daily-brief']])
+
+  it('sends a pending "/" as a slash, resolving the slug it starts', () => {
+    expect(normalizeSkillTokensToSlugs(`hi ${pendingSigilForKey('/')}daily-brief`, titles)).toBe('hi /daily-brief')
+  })
+
+  it('sends a pending "@" as an at sign', () => {
+    expect(normalizeSkillTokensToSlugs(`ping ${pendingSigilForKey('@')}alex`, titles)).toBe('ping @alex')
+  })
 
   it('rewrites display tokens to slug form', () => {
     expect(normalizeSkillTokensToSlugs('run /Daily Brief now', titles)).toBe('run /daily-brief now')
@@ -238,5 +271,30 @@ describe('normalizeSkillTokensToSlugs', () => {
 
   it('leaves unknown tokens as typed', () => {
     expect(normalizeSkillTokensToSlugs('try /Unknown Thing', titles)).toBe('try /Unknown Thing')
+  })
+
+  it('rewrites marker chips to slug form', () => {
+    expect(normalizeSkillTokensToSlugs(`run ${chipMarker}Daily Brief now`, titles)).toBe('run /daily-brief now')
+    expect(normalizeSkillTokensToSlugs(`${chipMarker}daily-brief `, titles)).toBe('/daily-brief ')
+  })
+
+  it('drops a marker that no longer precedes a chip', () => {
+    expect(normalizeSkillTokensToSlugs(`a${chipMarker}b ${chipMarker}`, titles)).toBe('ab ')
+  })
+})
+
+describe('chip marker tokens', () => {
+  const titles = new Map([['Daily Brief', 'daily-brief']])
+
+  it('findSkillTokens recognizes a marker chip like a slash chip', () => {
+    const text = `hi ${chipMarker}Daily Brief now`
+    expect(findSkillTokens(text, titles)).toEqual([
+      { slug: 'daily-brief', start: 3, end: 3 + 1 + 'Daily Brief'.length, committed: true, isDisplay: true },
+    ])
+  })
+
+  it('deleteSkillTokenAt removes the marker with the chip', () => {
+    const text = `${chipMarker}Daily Brief `
+    expect(deleteSkillTokenAt(text, text.length, titles)).toEqual({ text: '', caret: 0 })
   })
 })

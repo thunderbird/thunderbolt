@@ -81,7 +81,10 @@ describe('detectImageSupport', () => {
       getProxyFetch,
       options,
     )
-    expect(options.fetchCatalog).toHaveBeenCalledWith({ provider: 'openrouter', apiKey: 'or-key', url: undefined })
+    expect(options.fetchCatalog).toHaveBeenCalledWith(
+      { provider: 'openrouter', apiKey: 'or-key', url: undefined },
+      getProxyFetch,
+    )
   })
 
   it('probes when the catalog doesn’t list the model or says nothing about images', async () => {

@@ -106,26 +106,13 @@ export const getSelectedModel = async (db: AnyDrizzleDatabase): Promise<Model> =
 }
 
 /**
- * Gets the default model for a chat thread based on the last message in the thread, falling back to the selected_model setting.
- * If any fallback model is disabled, continues to the next fallback option.
+ * Uses the last message's enabled model, falling back to the selected or system default model.
  */
-export const getDefaultModelForThread = async (
-  db: AnyDrizzleDatabase,
-  threadId: string,
-  fallbackModelId?: string,
-): Promise<Model> => {
+export const getDefaultModelForThread = async (db: AnyDrizzleDatabase, threadId: string): Promise<Model> => {
   const lastMessage = await getLastMessage(db, threadId)
 
   if (lastMessage?.modelId) {
     const model = await getModel(db, lastMessage.modelId)
-
-    if (model && model.enabled) {
-      return model
-    }
-  }
-
-  if (fallbackModelId) {
-    const model = await getModel(db, fallbackModelId)
 
     if (model && model.enabled) {
       return model

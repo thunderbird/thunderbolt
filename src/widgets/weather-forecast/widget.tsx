@@ -50,8 +50,8 @@ export const WeatherForecastWidget = ({ location, region, country, messageId }: 
     // translator could not tell the value was itself copy.
     const errorMessage = error instanceof Error ? error.message : null
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 my-4 dark:border-red-800 dark:bg-red-950">
-        <p className="text-sm text-red-800 dark:text-red-200">
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 my-4">
+        <p className="text-sm text-destructive">
           {errorMessage ? (
             <Trans>Unable to load weather forecast: {errorMessage}</Trans>
           ) : (

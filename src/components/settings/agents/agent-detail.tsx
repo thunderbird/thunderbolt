@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -90,6 +91,7 @@ export const AgentDetail = ({
   onDelete,
   testAcpConnection = defaultTestAcpConnection,
 }: AgentDetailProps) => {
+  const appName = useAppName()
   const agentName = agent.name
   const { i18n } = useLingui()
   const Icon = iconForAgent(agent)
@@ -159,7 +161,7 @@ export const AgentDetail = ({
               <Trans>Delete {agentName}?</Trans>
             </AlertDialogTitle>
             <AlertDialogDescription>
-              <Trans>This removes the connection from Thunderbolt only. Nothing on the remote server is changed.</Trans>
+              <Trans>This removes the connection from {appName} only. Nothing on the remote server is changed.</Trans>
             </AlertDialogDescription>
           </AlertDialogHeader>
           {removeError && (
@@ -459,11 +461,11 @@ const TestStatus = ({ result }: { result: TestState }) => {
     <span
       className={cn(
         'inline-flex items-center gap-1.5 text-sm font-medium',
-        result.isReachable ? 'text-green-600 dark:text-green-500' : 'text-destructive',
+        result.isReachable ? 'text-success' : 'text-destructive',
       )}
     >
       <span
-        className={cn('inline-block size-2 rounded-full', result.isReachable ? 'bg-green-500' : 'bg-destructive')}
+        className={cn('inline-block size-2 rounded-full', result.isReachable ? 'bg-success' : 'bg-destructive')}
         aria-hidden="true"
       />
       {result.isReachable ? <Trans>Reachable {relative}</Trans> : <Trans>Unreachable {relative}</Trans>}

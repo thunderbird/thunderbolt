@@ -11,11 +11,12 @@
  * are imported directly from `@earendil-works/pi-agent-core` where needed.
  */
 
+import type { ThinkingLevel } from '@earendil-works/pi-agent-core'
 import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import type { InvocationSelection } from '../provider-runtime/types.ts'
 
 /** Reasoning depth passed to the Pi harness (`thinkingLevel`). */
-export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type { ThinkingLevel } from '@earendil-works/pi-agent-core'
 
 /** Built-in Pi providers exposed by thunderbolt. */
 export const builtinProviders = [
@@ -116,9 +117,10 @@ type CommandExecutionConfig = Pick<HarnessConfig, 'cwd' | 'thinking'> & {
 export type CommandSyntaxServeConfig = CommandExecutionConfig
 
 /** Canonical syntactic configuration for a direct CLI invocation. */
-export type CommandSyntaxRunConfig = CommandExecutionConfig &
-  { readonly fullscreen: boolean } &
-  ({ readonly mode: 'oneshot'; readonly prompt: string } | { readonly mode: 'repl'; readonly noTui: boolean })
+export type CommandSyntaxRunConfig = CommandExecutionConfig & { readonly fullscreen: boolean } & (
+    | { readonly mode: 'oneshot'; readonly prompt: string }
+    | { readonly mode: 'repl'; readonly noTui: boolean }
+  )
 
 /** Canonical result of syntactically parsing command-line arguments. */
 export type ParsedCommandSyntax =

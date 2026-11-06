@@ -12,6 +12,7 @@ import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { isPasskeyCancellation, signInWithPasskey } from '@/lib/passkey'
 import { isValidEmailFormat } from '@/lib/utils'
+import { useAuthAttempt } from '@/hooks/use-auth-attempt'
 import { useReducer, type FormEvent } from 'react'
 
 const sendFailed = msg`Failed to send verification code. Please check your connection.`
@@ -35,7 +36,16 @@ const getServerErrorMessage = async (error: unknown, fallback: string): Promise<
   return fallback
 }
 
-type FormStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'
+type FormStatus =
+  | 'idle'
+  | 'sending'
+  | 'sent'
+  | 'resending'
+  | 'verifying'
+  | 'completing'
+  | 'success'
+  | 'error'
+  | 'passkey'
 
 type State = {
   email: string
@@ -43,23 +53,20 @@ type State = {
   challengeToken: string
   status: FormStatus
   errorMessage: string
-  /** Passkey ceremony in progress. Kept separate from `status` so the email step
-   *  stays rendered (a `verifying` status would route to the OTP UI). */
-  passkeyPending: boolean
 }
 
 type Action =
   | { type: 'SET_EMAIL'; payload: string }
   | { type: 'SET_OTP'; payload: string }
-  | { type: 'START_SENDING' }
+  | { type: 'START_SENDING'; resend: boolean }
   | { type: 'SEND_SUCCESS'; payload: string }
-  | { type: 'SEND_ERROR'; payload: string }
+  | { type: 'SEND_ERROR'; payload: string; resend: boolean }
   | { type: 'START_VERIFYING' }
+  | { type: 'AUTHENTICATED' }
   | { type: 'VERIFY_SUCCESS' }
   | { type: 'VERIFY_ERROR'; payload: string }
   | { type: 'RESET' }
   | { type: 'GO_BACK' }
-  | { type: 'SET_ERROR'; payload: string }
   | { type: 'PASSKEY_START' }
   | { type: 'PASSKEY_ERROR'; payload: string }
   | { type: 'PASSKEY_CANCEL' }
@@ -70,7 +77,6 @@ const initialState: State = {
   challengeToken: '',
   status: 'idle',
   errorMessage: '',
-  passkeyPending: false,
 }
 
 const reducer = (state: State, action: Action): State => {
@@ -80,13 +86,15 @@ const reducer = (state: State, action: Action): State => {
     case 'SET_OTP':
       return { ...state, otp: action.payload }
     case 'START_SENDING':
-      return { ...state, status: 'sending', errorMessage: '' }
+      return { ...state, status: action.resend ? 'resending' : 'sending', otp: '', errorMessage: '' }
     case 'SEND_SUCCESS':
       return { ...state, status: 'sent', challengeToken: action.payload, otp: '', errorMessage: '' }
     case 'SEND_ERROR':
-      return { ...state, status: 'error', errorMessage: action.payload }
+      return { ...state, status: action.resend ? 'sent' : 'error', errorMessage: action.payload }
     case 'START_VERIFYING':
       return { ...state, status: 'verifying', errorMessage: '' }
+    case 'AUTHENTICATED':
+      return { ...state, status: 'completing', errorMessage: '' }
     case 'VERIFY_SUCCESS':
       return { ...state, status: 'success' }
     case 'VERIFY_ERROR':
@@ -95,14 +103,12 @@ const reducer = (state: State, action: Action): State => {
       return initialState
     case 'GO_BACK':
       return { ...state, status: 'idle', otp: '', errorMessage: '' }
-    case 'SET_ERROR':
-      return { ...state, errorMessage: action.payload }
     case 'PASSKEY_START':
-      return { ...state, status: 'idle', passkeyPending: true, errorMessage: '' }
+      return { ...state, status: 'passkey', errorMessage: '' }
     case 'PASSKEY_ERROR':
-      return { ...state, status: 'error', passkeyPending: false, errorMessage: action.payload }
+      return { ...state, status: 'error', errorMessage: action.payload }
     case 'PASSKEY_CANCEL':
-      return { ...state, status: 'idle', passkeyPending: false, errorMessage: '' }
+      return { ...state, status: 'idle', errorMessage: '' }
     default:
       return state
   }
@@ -115,10 +121,6 @@ type UseSignInFormStateOptions = {
   onEmailSent?: () => void
   /** Pre-fill the email input (user still needs to click submit) */
   initialEmail?: string
-  /** Initialize directly in OTP step (OTP must already be sent before mounting) */
-  skipToOtp?: boolean
-  /** Challenge token to use when skipToOtp is true (required for OTP verification) */
-  initialChallengeToken?: string
 }
 
 /**
@@ -131,137 +133,167 @@ export const useSignInFormState = ({
   onCancel,
   onEmailSent,
   initialEmail,
-  skipToOtp,
-  initialChallengeToken,
 }: UseSignInFormStateOptions) => {
-  // If skipToOtp is requested without an email, fall back to idle state instead of crashing
-  const canSkipToOtp = skipToOtp && !!initialEmail?.trim()
-
   const [state, dispatch] = useReducer(reducer, {
     ...initialState,
     email: initialEmail ?? '',
-    status: canSkipToOtp ? 'sent' : 'idle',
-    challengeToken: canSkipToOtp ? (initialChallengeToken ?? '') : '',
   })
 
+  const operation = useAuthAttempt()
   const analytics = useAnonymousPromotionAnalytics()
   const isValidEmail = isValidEmailFormat(state.email.trim())
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-
-    const trimmedEmail = state.email.trim()
-    if (!trimmedEmail || !isValidEmailFormat(trimmedEmail)) {
-      return
+  const sendCode = async (resend: boolean): Promise<boolean> => {
+    const email = state.email.trim()
+    if (!isValidEmailFormat(email)) {
+      return false
     }
-
-    dispatch({ type: 'START_SENDING' })
-
+    const attempt = operation.begin()
+    if (!attempt) {
+      return false
+    }
+    dispatch({ type: 'START_SENDING', resend })
     try {
       const { challengeToken } = await httpClient
-        .post('waitlist/join', { json: { email: trimmedEmail } })
+        .post('waitlist/join', { json: { email }, signal: attempt.signal })
         .json<{ success: boolean; challengeToken?: string }>()
-
+      if (!attempt.isCurrent()) {
+        return false
+      }
       dispatch({ type: 'SEND_SUCCESS', payload: challengeToken ?? '' })
+      if (!resend) {
+        onEmailSent?.()
+      }
+      return true
     } catch (error) {
-      console.error('Failed to send verification OTP:', error)
-      const message = await getServerErrorMessage(error, i18n._(sendFailed))
-      dispatch({ type: 'SEND_ERROR', payload: message })
-      return
+      if (!attempt.isCancellation(error)) {
+        console.error('Failed to send verification OTP:', error)
+      }
+      const message = await getServerErrorMessage(error, i18n._(resend ? resendFailed : sendFailed))
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'SEND_ERROR', payload: message, resend })
+      }
+      attempt.finish('failed')
+      return false
+    } finally {
+      attempt.finish()
     }
+  }
 
-    onEmailSent?.()
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    await sendCode(false)
   }
 
   const handleOtpComplete = async (value: string) => {
     if (value.length !== otpLength) {
       return
     }
-
-    await analytics.captureAnonId(authClient)
-
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     dispatch({ type: 'START_VERIFYING' })
-
     try {
-      // `state.challengeToken` is always a string, so the header is always sent
-      // — including empty, as before.
+      await analytics.captureAnonId(authClient)
+      if (!attempt.isCurrent()) {
+        return
+      }
       const result = await signInWithOtp(authClient, {
         email: state.email.trim(),
         otp: value,
         challengeToken: state.challengeToken,
+        signal: attempt.signal,
+        onAuthenticated: () => {
+          attempt.commit()
+          if (attempt.isCurrent()) {
+            dispatch({ type: 'AUTHENTICATED' })
+          }
+        },
       })
-
+      if (!attempt.isCurrent()) {
+        return
+      }
       if (result.error) {
         dispatch({ type: 'VERIFY_ERROR', payload: i18n._(getOtpErrorMessage(result.error, 'code')) })
         return
       }
-
       if (result.data?.user?.id) {
         analytics.onPromotionSuccess(result.data.user.id)
       }
-
-      // Sign-in successful - show success state
       dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (error) {
-      console.error('OTP verification error:', error)
-      dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
+      if (!attempt.isCancellation(error)) {
+        console.error('OTP verification error:', error)
+      }
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
+      }
+      attempt.finish('failed')
+    } finally {
+      attempt.finish()
     }
   }
 
   const handlePasskeySignIn = async () => {
-    // Disable the button before any await, so a double tap can't start a second ceremony.
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     dispatch({ type: 'PASSKEY_START' })
-    await analytics.captureAnonId(authClient)
-
     try {
-      const { userId } = await signInWithPasskey(authClient)
-
-      analytics.onPromotionSuccess(userId)
-
-      dispatch({ type: 'VERIFY_SUCCESS' })
-    } catch (error) {
-      if (isPasskeyCancellation(error)) {
-        dispatch({ type: 'PASSKEY_CANCEL' })
+      await analytics.captureAnonId(authClient)
+      if (!attempt.isCurrent()) {
         return
       }
-      console.error('Passkey sign-in error:', error)
-      dispatch({ type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
+      const { userId } = await signInWithPasskey(authClient, {
+        signal: attempt.signal,
+        onAuthenticated: () => {
+          attempt.commit()
+          if (attempt.isCurrent()) {
+            dispatch({ type: 'AUTHENTICATED' })
+          }
+        },
+      })
+      if (!attempt.isCurrent()) {
+        return
+      }
+      analytics.onPromotionSuccess(userId)
+      dispatch({ type: 'VERIFY_SUCCESS' })
+    } catch (error) {
+      const cancelled = !attempt.isCommitted() && (isPasskeyCancellation(error) || attempt.isCancellation(error))
+      if (!cancelled) {
+        console.error('Passkey sign-in error:', error)
+      }
+      if (attempt.isCurrent()) {
+        dispatch(cancelled ? { type: 'PASSKEY_CANCEL' } : { type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
+      }
+      attempt.finish('failed')
+    } finally {
+      attempt.finish()
     }
   }
 
   const handleCancel = () => {
+    if (!operation.cancel()) {
+      return
+    }
     dispatch({ type: 'RESET' })
     onCancel?.()
   }
-
   const setEmail = (email: string) => dispatch({ type: 'SET_EMAIL', payload: email })
   const setOtp = (otp: string) => dispatch({ type: 'SET_OTP', payload: otp })
-  const goBack = () => dispatch({ type: 'GO_BACK' })
-
-  /** Resends the verification email. Returns true on success, false on failure. */
-  const handleResend = async (): Promise<boolean> => {
-    const trimmedEmail = state.email.trim()
-    if (!trimmedEmail) {
+  const goBack = () => {
+    if (!operation.cancel()) {
       return false
     }
-
-    try {
-      const { challengeToken } = await httpClient
-        .post('waitlist/join', { json: { email: trimmedEmail } })
-        .json<{ success: boolean; challengeToken?: string }>()
-
-      dispatch({ type: 'SEND_SUCCESS', payload: challengeToken ?? '' })
-      return true
-    } catch (error) {
-      console.error('Failed to resend verification OTP:', error)
-      const message = await getServerErrorMessage(error, i18n._(resendFailed))
-      dispatch({ type: 'SET_ERROR', payload: message })
-      return false
-    }
+    dispatch({ type: 'GO_BACK' })
+    return true
   }
+  const handleResend = () => sendCode(true)
 
   return {
-    state,
+    state: { ...state, passkeyPending: state.status === 'passkey' },
     isValidEmail,
     actions: {
       handleSubmit,

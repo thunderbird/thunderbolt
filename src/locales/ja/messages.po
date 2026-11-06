@@ -29,14 +29,6 @@ msgid_plural "# bundled skills"
 msgstr[0] ""
 msgstr[1] ""
 
-#. placeholder {0}: items.length
-#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
-#: src/components/embedded/surface-selection-bar.tsx
-#~ msgid "# item selected"
-#~ msgid_plural "# items selected"
-#~ msgstr[0] ""
-#~ msgstr[1] ""
-
 #. placeholder {0}: mcpServers.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+MCP+server%7D+other+%7B%23+MCP+servers%7D%7D&pluralize_on=0
 #: src/components/settings/agents/agent-detail.tsx
@@ -58,14 +50,6 @@ msgid "# user failure in the sample"
 msgid_plural "# user failures in the sample"
 msgstr[0] ""
 msgstr[1] ""
-
-#. placeholder {0}: items.length
-#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BAsk+about+it%7D+other+%7BAsk+about+them%7D%7D&pluralize_on=0
-#: src/components/embedded/surface-selection-bar.tsx
-#~ msgid "Ask about it"
-#~ msgid_plural "Ask about them"
-#~ msgstr[0] ""
-#~ msgstr[1] ""
 
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
@@ -119,12 +103,6 @@ msgid_plural "# connections"
 msgstr[0] ""
 msgstr[1] ""
 
-#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
-#: src/projects/index.tsx
-#~ msgid "# chat"
-#~ msgid_plural "# chats"
-#~ msgstr[0] "# 件のチャット"
-
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+delete+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+delete+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
 #: src/skills/dependents-dialog.tsx
 msgid "One skill references this. If you delete it, that skill may no longer resolve."
@@ -150,18 +128,6 @@ msgstr[0] "# 個のスキル"
 #: src/mini-apps/mini-app-download-prompt.tsx
 msgid "{fileName} will be saved to your Downloads folder."
 msgstr ""
-
-#: src/layout/sidebar/project-drop-list.tsx
-#~ msgid "{label} — already in this project"
-#~ msgstr "{label} — すでにこのプロジェクトにあります"
-
-#: src/layout/sidebar/sidebar-section-toggle.tsx
-#~ msgid "{label} options"
-#~ msgstr ""
-
-#: admin/screens/agents-page.tsx
-#~ msgid "{mode} · {category}"
-#~ msgstr ""
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -221,10 +187,6 @@ msgid "Imported # row. The app may take a moment to reflect new chats."
 msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] "# 行をインポートしました。新しいチャットが反映されるまで少し時間がかかる場合があります。"
 
-#: src/components/context-usage/context-usage-indicator.tsx
-#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
-#~ msgstr ""
-
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
 msgstr "{verbPhrase}…"
@@ -261,10 +223,6 @@ msgstr "新しいバージョンが利用できます。"
 msgid "A new version is available. See the update prompt to install."
 msgstr "新しいバージョンが利用できます。インストールするには更新の案内を確認してください。"
 
-#: src/projects/index.tsx
-#~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
-#~ msgstr "プロジェクトは指示を 1 か所にまとめるため、その中のすべてのチャットが同じコンテキストで始まります。"
-
 #: admin/screens/company-skill-editor.tsx
 msgid "A skill with this slug already exists."
 msgstr ""
@@ -299,15 +257,6 @@ msgstr "お使いのデバイスからの接続を受け付けます"
 #: admin/screens/agent-capabilities.tsx
 msgid "Accepts images"
 msgstr ""
-
-#: admin/screens/agent-access-panel.tsx
-#: admin/screens/agent-editor.tsx
-#~ msgid "Access"
-#~ msgstr ""
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Access level"
-#~ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Access token required"
@@ -365,17 +314,9 @@ msgstr "新しいタスクを追加…"
 msgid "Add a passkey"
 msgstr ""
 
-#: src/components/onboarding/onboarding-passkey-step.tsx
-#~ msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
-#~ msgstr ""
-
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr "スキルを追加"
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Add access"
-#~ msgstr ""
 
 #: src/components/create-item/context.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -405,18 +346,10 @@ msgstr "MCP サーバーを追加"
 msgid "Add Model"
 msgstr "モデルを追加"
 
-#: src/settings/passkeys.tsx
-#~ msgid "Add passkey"
-#~ msgstr ""
-
 #: admin/screens/company-mcp-editor.tsx
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "サーバーを追加"
-
-#: admin/screens/company-skills.tsx
-#~ msgid "Add skill"
-#~ msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Add summary instructions (optional)"
@@ -427,10 +360,6 @@ msgstr ""
 msgid "Add to chat"
 msgstr "チャットに追加"
 
-#: src/settings/passkeys.tsx
-#~ msgid "Add your first passkey"
-#~ msgstr ""
-
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
 msgstr "最初のサーバーを追加"
@@ -438,11 +367,6 @@ msgstr "最初のサーバーを追加"
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr "最初のタスクを追加"
-
-#. placeholder {0}: formatters.date(passkey.createdAt)
-#: src/settings/passkeys.tsx
-#~ msgid "Added {0}"
-#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -455,26 +379,9 @@ msgstr "追加中…"
 msgid "Admin"
 msgstr ""
 
-#: admin/preview-notice.tsx
-#~ msgid "Admin design preview"
-#~ msgstr ""
-
-#: admin/screens/agent-access-panel.tsx
-#: admin/screens/agents-page.tsx
-#~ msgid "Admin only"
-#~ msgstr ""
-
-#: src/layout/sidebar/nav-toggle.tsx
-#~ msgid "Admin preview"
-#~ msgstr ""
-
 #: admin/screens/member-editor.tsx
 msgid "Administrator"
 msgstr ""
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Admins with access"
-#~ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Advanced (JSON)"
@@ -516,11 +423,6 @@ msgstr "AI 利用上限に達しました"
 #: src/search/commands/navigation.ts
 msgid "All agents"
 msgstr "すべてのエージェント"
-
-#: src/layout/sidebar/project-drop-list.tsx
-#: src/projects/index.tsx
-#~ msgid "All projects"
-#~ msgstr "すべてのプロジェクト"
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
@@ -618,10 +520,6 @@ msgstr "API キーが設定されていません"
 msgid "App Version"
 msgstr "アプリのバージョン"
 
-#: src/projects/project-form.tsx
-#~ msgid "Applied to every chat in this project."
-#~ msgstr "このプロジェクトのすべてのチャットに適用されます。"
-
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
@@ -658,15 +556,6 @@ msgstr "続行しますか？行った変更はすべて失われます。"
 #: src/components/chat/artifact-message-part.tsx
 msgid "Artifact"
 msgstr "アーティファクト"
-
-#: src/projects/project-action-menu-items.tsx
-#: src/projects/project-actions.tsx
-#: src/projects/project-artifact-gallery.tsx
-#: src/projects/project-artifact-grid.tsx
-#: src/projects/project-artifact-workspace.tsx
-#: src/projects/project-artifacts-dialog.tsx
-#~ msgid "Artifacts"
-#~ msgstr "アーティファクト"
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
@@ -740,14 +629,6 @@ msgstr "認可中…"
 #: admin/screens/agent-capabilities.tsx
 msgid "Available modes"
 msgstr ""
-
-#: admin/screens/agent-editor.tsx
-#~ msgid "Available to members"
-#~ msgstr ""
-
-#: admin/screens/resources-page.tsx
-#~ msgid "Available to the organization"
-#~ msgstr ""
 
 #: src/components/available-tools.tsx
 msgid "Available Tools"
@@ -876,6 +757,7 @@ msgstr ""
 msgid "Change your recovery phrase?"
 msgstr ""
 
+#: src/hooks/use-mcp-server-oauth.ts
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "変更は保存されましたが、再接続に失敗しました。もう一度お試しください。"
@@ -905,7 +787,7 @@ msgstr ""
 msgid "Chats in a project inherit its instructions."
 msgstr "プロジェクト内のチャットは、そのプロジェクトの指示を継承します。"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
 msgstr "更新を確認"
@@ -949,8 +831,7 @@ msgid "Checking your session."
 msgstr "セッションを確認しています。"
 
 #: src/components/sync-setup/approval-waiting-step.tsx
-#: src/components/upgrade-required.tsx
-#: src/settings/app-version-section.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Checking…"
 msgstr "確認中…"
 
@@ -975,10 +856,6 @@ msgstr "オプションを選択"
 msgid "Choose effort"
 msgstr ""
 
-#: admin/screens/agent-editor.tsx
-#~ msgid "Choose groups, or leave all unchecked to make this agent available to everyone."
-#~ msgstr ""
-
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Choose model"
 msgstr "モデルを選択"
@@ -990,18 +867,6 @@ msgstr "1 つ選択"
 #: src/projects/project-badge.tsx
 msgid "Choose project"
 msgstr "プロジェクトを選択"
-
-#: admin/screens/resources-page.tsx
-#~ msgid "Choose the connections your organization can use."
-#~ msgstr ""
-
-#: admin/screens/thunderbolt-resources.tsx
-#~ msgid "Choose what Thunderbolt can use. Changes are saved automatically."
-#~ msgstr ""
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "Choose your email provider {displayReason}"
-#~ msgstr "メールプロバイダーを選択してください {displayReason}"
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Choose your email provider {reason}"
@@ -1018,12 +883,6 @@ msgstr "メールにアクセスするためにメールプロバイダーを選
 #: src/widgets/connect-integration/widget.tsx
 msgid "Choose your email provider to access your email and calendar"
 msgstr "メールとカレンダーにアクセスするためにメールプロバイダーを選択してください"
-
-#: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
-#: src/search/commands/use-commands.ts
-#~ msgid "Clear all chats"
-#~ msgstr "すべてのチャットを削除"
 
 #: src/components/app-error-screen.tsx
 msgid "Clear Database"
@@ -1053,10 +912,6 @@ msgstr "検索をクリア"
 msgid "Clear sky"
 msgstr "晴れ"
 
-#: src/components/app-error-screen.tsx
-#~ msgid "Clearing Database…"
-#~ msgstr "データベースを消去しています…"
-
 #: src/settings/devices.tsx
 msgid "CLI"
 msgstr ""
@@ -1076,10 +931,6 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "閉じる"
-
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Close chat"
-#~ msgstr ""
 
 #: src/components/detail-panel.tsx
 msgid "Close details"
@@ -1157,10 +1008,6 @@ msgstr ""
 msgid "Compaction summary"
 msgstr ""
 
-#: admin/admin-sidebar.tsx
-#~ msgid "Company"
-#~ msgstr ""
-
 #: admin/screens/agent-editor.tsx
 msgid "Company agent"
 msgstr ""
@@ -1178,16 +1025,8 @@ msgid "Complete the setup process to get started with {appName}"
 msgstr "セットアップを完了して {appName} を使い始めましょう"
 
 #: src/components/onboarding/onboarding-dialog.tsx
-#~ msgid "Complete the setup process to get started with Thunderbolt"
-#~ msgstr "セットアップを完了して Thunderbolt を使い始めましょう"
-
-#: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
 msgstr "完了しています…"
-
-#: src/components/chat/attestation/attestation-details.tsx
-#~ msgid "Confidential hardware"
-#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
@@ -1338,10 +1177,6 @@ msgstr ""
 msgid "Connections"
 msgstr "接続"
 
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "Connections available to the company's Thunderbolt agent."
-#~ msgstr ""
-
 #: admin/screens/company-mcp-page.tsx
 msgid "Connections for the company's Thunderbolt agent."
 msgstr ""
@@ -1353,10 +1188,6 @@ msgstr "サポートに問い合わせる"
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Context"
 msgstr ""
-
-#: src/components/context-usage/context-usage-indicator.tsx
-#~ msgid "Context compaction is available with supported built-in models."
-#~ msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Context usage"
@@ -1382,10 +1213,6 @@ msgstr "コンテキストウィンドウを超えました"
 #: src/waitlist/waitlist-page.tsx
 msgid "Continue"
 msgstr "続行"
-
-#: admin/screens/resources-page.tsx
-#~ msgid "Control whether this resource is available to members of your organization."
-#~ msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
@@ -1449,10 +1276,6 @@ msgstr ""
 msgid "Could not compact context. Please try again."
 msgstr ""
 
-#: src/components/context-usage/context-usage-indicator.tsx
-#~ msgid "Could not compact context. Your chat history is safe. Please try again."
-#~ msgstr ""
-
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr "エージェントに接続できませんでした。"
@@ -1497,17 +1320,13 @@ msgstr "ペアリングコードを表示できませんでした。"
 msgid "Could not save the project."
 msgstr "プロジェクトを保存できませんでした。"
 
-#: src/settings/passkeys.tsx
-#~ msgid "Couldn't add a passkey. Please try again."
-#~ msgstr ""
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "Could not start authorization. Please try again."
+msgstr ""
 
 #: src/components/onboarding/onboarding-passkey-step.tsx
 msgid "Couldn't add a passkey. You can add one later when you set up sync."
 msgstr "パスキーを追加できませんでした。同期を設定するときに、あとで追加できます。"
-
-#: src/components/onboarding/onboarding-passkey-step.tsx
-#~ msgid "Couldn't add a passkey. You can try again from Settings later."
-#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
@@ -1520,10 +1339,6 @@ msgstr ""
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "「{filename}」を添付できませんでした — ブラウザーのストレージが満杯か利用できません。"
-
-#: src/settings/app-version-section.tsx
-#~ msgid "Couldn't check for updates"
-#~ msgstr "更新を確認できませんでした"
 
 #: src/settings/app-version-section.tsx
 msgid "Couldn't check for updates: {error}"
@@ -1540,10 +1355,6 @@ msgstr ""
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Couldn't copy. Select the fingerprint to copy it manually."
 msgstr ""
-
-#: src/settings/app-version-section.tsx
-#~ msgid "Couldn't download the update"
-#~ msgstr "更新をダウンロードできませんでした"
 
 #: src/settings/app-version-section.tsx
 msgid "Couldn't download the update: {error}"
@@ -1578,10 +1389,6 @@ msgid "Couldn't remove the passkey. Please try again."
 msgstr "パスキーを削除できませんでした。もう一度お試しください。"
 
 #: src/settings/app-version-section.tsx
-#~ msgid "Couldn't restart to apply the update"
-#~ msgstr "更新を適用するための再起動ができませんでした"
-
-#: src/settings/app-version-section.tsx
 msgid "Couldn't restart to apply the update: {error}"
 msgstr "更新を適用するための再起動ができませんでした: {error}"
 
@@ -1613,10 +1420,6 @@ msgstr "パスキーを設定できませんでした。もう一度お試しく
 #: src/waitlist/use-waitlist-state.ts
 msgid "Couldn't sign in with your passkey. Please try again or use your email."
 msgstr "パスキーでサインインできませんでした。もう一度お試しいただくか、メールアドレスをご利用ください。"
-
-#: src/hooks/use-sync-setup.ts
-#~ msgid "Couldn't unlock sync with your passkey."
-#~ msgstr ""
 
 #: src/hooks/use-sync-setup.ts
 msgid "Couldn't unlock sync with your passkey. Please try again."
@@ -1671,10 +1474,6 @@ msgstr "プロジェクトを作成"
 #: src/skills/skills-view.tsx
 msgid "Create Skill"
 msgstr "スキルを作成"
-
-#: src/projects/index.tsx
-#~ msgid "Create your first project"
-#~ msgstr "最初のプロジェクトを作成"
 
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
@@ -1746,10 +1545,6 @@ msgstr "データはお使いのデバイスに安全に保存されます。"
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
 
-#: src/components/chat/effort-selector/use-effort-selector-state.ts
-#~ msgid "Default"
-#~ msgstr ""
-
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
 msgstr "既定の設定"
@@ -1786,14 +1581,6 @@ msgstr "アカウントを削除"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Delete agent"
 msgstr "エージェントを削除"
-
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "Delete All Chats"
-#~ msgstr "すべてのチャットを削除"
-
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "Delete all chats?"
-#~ msgstr "すべてのチャットを削除しますか？"
 
 #: src/settings/preferences.tsx
 msgid "Delete All Local Data"
@@ -1930,10 +1717,6 @@ msgstr "説明"
 #: src/projects/project-form.tsx
 msgid "Description (optional)"
 msgstr "説明（任意）"
-
-#: admin/screens/resources-page.tsx
-#~ msgid "Design proposal"
-#~ msgstr ""
 
 #: admin/screens/agent-editor.tsx
 msgid "Details"
@@ -2077,7 +1860,7 @@ msgstr "アプリをダウンロード"
 msgid "Download HTML"
 msgstr "HTML をダウンロード"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Download update"
 msgstr "更新をダウンロード"
 
@@ -2089,7 +1872,7 @@ msgstr "更新をダウンロードしています…"
 msgid "Downloading update… {downloadProgress}%"
 msgstr "更新をダウンロードしています… {downloadProgress}%"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Downloading…"
 msgstr "ダウンロード中…"
 
@@ -2135,10 +1918,6 @@ msgstr "MCP サーバーを編集"
 #: src/settings/models/index.tsx
 msgid "Edit Model"
 msgstr "モデルを編集"
-
-#: src/projects/index.tsx
-#~ msgid "Edit project"
-#~ msgstr "プロジェクトを編集"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Edit skill"
@@ -2225,10 +2004,6 @@ msgstr ""
 msgid "Enclave-bound encryption key"
 msgstr ""
 
-#: src/components/chat/attestation/attestation-details.tsx
-#~ msgid "Encrypted connection"
-#~ msgstr ""
-
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
 msgstr ""
@@ -2296,10 +2071,6 @@ msgstr ""
 #: admin/screens/agent-access-summary.tsx
 msgid "Everyone"
 msgstr ""
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Everyone in your organization can use this agent."
-#~ msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
@@ -2549,11 +2320,6 @@ msgstr "おはようございます"
 msgid "Got it, working on that next."
 msgstr "承知しました。次に取り組みます。"
 
-#. placeholder {0}: group.name
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Group · {0}"
-#~ msgstr ""
-
 #: admin/screens/group-editor.tsx
 msgid "Group name"
 msgstr ""
@@ -2601,10 +2367,6 @@ msgid "Help {appName} Improve"
 msgstr "{appName} の改善に協力する"
 
 #: src/settings/preferences.tsx
-#~ msgid "Help Thunderbolt Improve"
-#~ msgstr "Thunderbolt の改善に協力する"
-
-#: src/settings/preferences.tsx
 msgid "Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. Read more about our <0>privacy policy</0>."
 msgstr "クラッシュ、パフォーマンス、利用状況などの匿名の利用情報を送信して、アプリの改善にご協力ください。詳しくは<0>プライバシーポリシー</0>をご覧ください。"
 
@@ -2625,25 +2387,13 @@ msgstr "{deviceName} の QR コードを隠す"
 msgid "High"
 msgstr ""
 
-#: src/components/chat/effort-selector/effort-selector.tsx
-#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
-#~ msgstr ""
-
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
 msgstr "{appName} からの呼びかけ方"
 
-#: src/settings/preferences.tsx
-#~ msgid "How Thunderbolt salutes you"
-#~ msgstr "Thunderbolt からの呼びかけ方"
-
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "I agree to share this chat session with the {recipient} team."
 msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "I agree to share this chat session with the Thunderbolt team."
-#~ msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
@@ -2656,10 +2406,6 @@ msgstr "リカバリーフレーズを保存しました"
 #: src/components/storage-unavailable-screen.tsx
 msgid "If you are using iOS Lockdown Mode, exclude {appName} from the \"Configure Web Browsing\" setting, then reopen the app."
 msgstr "iOS のロックダウンモードを使用している場合は、「Web ブラウズを設定」の設定から {appName} を除外し、アプリを開き直してください。"
-
-#: src/components/storage-unavailable-screen.tsx
-#~ msgid "If you are using iOS Lockdown Mode, exclude Thunderbolt from the \"Configure Web Browsing\" setting, then reopen the app."
-#~ msgstr "iOS のロックダウンモードを使用している場合は、「Web ブラウズを設定」の設定から Thunderbolt を除外し、アプリを開き直してください。"
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "If you have access, we've sent an 8-digit code to <0>{email}</0>"
@@ -2726,10 +2472,6 @@ msgstr ""
 #: src/settings/voice.tsx
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "バージョンのプレフィックス（例: /v1）を含めてください。その後「モデルを読み込む」を押すと、下の選択肢が設定されます。"
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Individuals"
-#~ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
@@ -2806,10 +2548,6 @@ msgstr "{activeLanguageLabel} のままにする"
 #: src/settings/preferences.tsx
 msgid "Keep Current Units"
 msgstr "現在の単位を維持"
-
-#: src/components/revoked-device-modal.tsx
-#~ msgid "Keep data on device"
-#~ msgstr "データをデバイスに残す"
 
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
@@ -2917,10 +2655,6 @@ msgstr "デバイスを読み込んでいます…"
 msgid "Loading emoji…"
 msgstr "絵文字を読み込んでいます…"
 
-#: src/settings/passkeys.tsx
-#~ msgid "Loading passkeys…"
-#~ msgstr ""
-
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
 msgstr "プレビューを読み込んでいます…"
@@ -2936,10 +2670,6 @@ msgstr "このアプリのペアリング ID を読み込んでいます…"
 msgid "Loading…"
 msgstr "読み込んでいます…"
 
-#: admin/preview-notice.tsx
-#~ msgid "Local sample organization · Changes saved on this device"
-#~ msgstr ""
-
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
 msgstr "ローカルストレージ"
@@ -2954,8 +2684,8 @@ msgid "Location"
 msgstr "位置情報"
 
 #: src/components/onboarding/onboarding-location-step.tsx
-msgid "Location is required."
-msgstr "位置情報は必須です。"
+#~ msgid "Location is required."
+#~ msgstr "位置情報は必須です。"
 
 #: src/components/logout-modal.tsx
 #: src/components/sidebar-footer.tsx
@@ -2978,37 +2708,13 @@ msgstr "おおむね晴れ"
 msgid "Manage"
 msgstr ""
 
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "Manage connections"
-#~ msgstr ""
-
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Manage integrations"
 msgstr "連携を管理"
 
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "Manage MCP servers"
-#~ msgstr ""
-
 #: admin/screens/members-page.tsx
 msgid "Manage membership, administrator roles, and group access."
 msgstr ""
-
-#: admin/screens/resources-page.tsx
-#~ msgid "Manage model profiles available to your organization."
-#~ msgstr ""
-
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "Manage models"
-#~ msgstr ""
-
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "Manage skills"
-#~ msgstr ""
-
-#: admin/screens/agents-page.tsx
-#~ msgid "Manage the agents your organization can use and who has access."
-#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Managed by your deployment — always available, no setup needed."
@@ -3030,22 +2736,10 @@ msgstr "最大化"
 msgid "Maximum"
 msgstr ""
 
-#: admin/screens/agent-preview.tsx
-#~ msgid "MCP"
-#~ msgstr ""
-
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr "MCP サーバー"
-
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "MCP servers available to the company's Thunderbolt agent."
-#~ msgstr ""
-
-#: admin/screens/company-mcp-page.tsx
-#~ msgid "MCP servers for the company's Thunderbolt agent."
-#~ msgstr ""
 
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
 msgid "Medium"
@@ -3054,11 +2748,6 @@ msgstr ""
 #: admin/screens/member-editor.tsx
 msgid "Member"
 msgstr ""
-
-#. placeholder {0}: member.name || member.email
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Member · {0}"
-#~ msgstr ""
 
 #: admin/admin-sidebar.tsx
 #: admin/screens/group-editor.tsx
@@ -3086,14 +2775,6 @@ msgstr ""
 msgid "Members’ library skills are not shared with this agent."
 msgstr ""
 
-#: admin/screens/group-editor.tsx
-#~ msgid "Membership changes apply immediately to the sample data."
-#~ msgstr ""
-
-#: admin/screens/group-editor.tsx
-#~ msgid "Membership changes are saved automatically."
-#~ msgstr ""
-
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Message Simulator"
@@ -3107,17 +2788,9 @@ msgstr "メッセージ"
 msgid "Metric"
 msgstr "メートル法"
 
-#: src/settings/preferences.tsx
-#~ msgid "Mini Apps"
-#~ msgstr ""
-
 #: src/mini-apps/mini-app-page.tsx
 msgid "Mini Apps are only available on desktop"
 msgstr ""
-
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
-#~ msgstr ""
 
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
 msgid "Minimal"
@@ -3141,10 +2814,6 @@ msgstr "モデル"
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Model and reasoning effort"
 msgstr ""
-
-#: src/settings/models/add-model-form.tsx
-#~ msgid "Model may not be compatible"
-#~ msgstr "このモデルは対応していない可能性があります"
 
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
@@ -3173,10 +2842,6 @@ msgstr ""
 #: src/settings/models/index.tsx
 msgid "Models"
 msgstr "モデル"
-
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "Models available to the company's Thunderbolt agent."
-#~ msgstr ""
 
 #: admin/screens/company-models-page.tsx
 msgid "Models for the company's Thunderbolt agent."
@@ -3225,11 +2890,6 @@ msgstr "ファイルを移動"
 msgid "Move session?"
 msgstr ""
 
-#: src/layout/sidebar/chat-list-item.tsx
-#: src/projects/move-chat-to-project-dialog.tsx
-#~ msgid "Move to project"
-#~ msgstr "プロジェクトに移動"
-
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "My Agent"
 msgstr "マイエージェント"
@@ -3250,7 +2910,6 @@ msgstr "名前"
 msgid "Name from the agent’s endpoint"
 msgstr ""
 
-#: src/components/onboarding/onboarding-name-step.tsx
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Name is required."
@@ -3267,11 +2926,6 @@ msgstr "ネットワーク"
 #: src/settings/models/model-catalog.ts
 msgid "Network request failed (the browser blocked the request or the server is unreachable)."
 msgstr "ネットワークリクエストに失敗しました（ブラウザーがリクエストをブロックしたか、サーバーに到達できません）。"
-
-#: admin/screens/agent-editor.tsx
-#: admin/screens/agents-page.tsx
-#~ msgid "New agent"
-#~ msgstr ""
 
 #: src/routes/settings/agents/index.tsx
 msgid "New Agent"
@@ -3292,11 +2946,6 @@ msgstr "新しいチャット"
 #: src/lib/title-generator.ts
 msgid "New Chat"
 msgstr "新しいチャット"
-
-#: src/projects/project-detail-panel.tsx
-#: src/projects/project-workspace.tsx
-#~ msgid "New chat in this project"
-#~ msgstr "このプロジェクトで新しいチャット"
 
 #: src/settings/connections/connections-list.tsx
 msgid "New Connection"
@@ -3350,14 +2999,6 @@ msgstr ""
 msgid "No agents with access."
 msgstr ""
 
-#: admin/screens/agents-page.tsx
-#~ msgid "No agents yet."
-#~ msgstr ""
-
-#: src/projects/project-detail-panel.tsx
-#~ msgid "No artifacts yet."
-#~ msgstr "まだアーティファクトはありません。"
-
 #: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/chat-menu-items.tsx
 msgid "No chats yet"
@@ -3371,22 +3012,6 @@ msgstr "まだチャットはありません。"
 msgid "No chats yet. Anything you ask beside this app shows up here."
 msgstr ""
 
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "No company connections yet."
-#~ msgstr ""
-
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "No company MCP servers yet."
-#~ msgstr ""
-
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "No company models yet."
-#~ msgstr ""
-
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "No company skills yet."
-#~ msgstr ""
-
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
 msgstr "まだデバイスはありません。同期を有効にしてサインインすると、ここにデバイスが表示されます。"
@@ -3394,10 +3019,6 @@ msgstr "まだデバイスはありません。同期を有効にしてサイン
 #: admin/screens/agents-page.tsx
 msgid "No groups assigned"
 msgstr ""
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "No groups or people found"
-#~ msgstr ""
 
 #: admin/screens/groups-page.tsx
 msgid "No groups yet."
@@ -3445,10 +3066,6 @@ msgstr ""
 msgid "No matching members."
 msgstr ""
 
-#: src/projects/index.tsx
-#~ msgid "No matching projects"
-#~ msgstr "一致するプロジェクトはありません"
-
 #: src/projects/move-chat-to-project-dialog.tsx
 #: src/projects/project-badge.tsx
 msgid "No matching projects."
@@ -3482,22 +3099,6 @@ msgstr "モデルが見つかりません。"
 #: src/settings/voice.tsx
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr "モデルが返されませんでした（サーバーに到達できない、またはモデルを列挙していません）。モデル ID と音声 ID を手動で入力してください。"
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "No one yet. Add a group or individual."
-#~ msgstr ""
-
-#: src/settings/passkeys.tsx
-#~ msgid "No passkeys yet"
-#~ msgstr ""
-
-#: src/projects/index.tsx
-#~ msgid "No projects yet"
-#~ msgstr "まだプロジェクトはありません"
-
-#: src/projects/move-chat-to-project-dialog.tsx
-#~ msgid "No projects yet. Create one from the Projects page, then move this chat into it."
-#~ msgstr "まだプロジェクトはありません。プロジェクトページで作成してから、このチャットを移動してください。"
 
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "No projects yet. Create one in the sidebar, then move this chat into it."
@@ -3564,15 +3165,6 @@ msgstr "未テスト"
 msgid "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
 msgstr ""
 
-#. placeholder {0}: app.url
-#: src/mini-apps/mini-app-frame.tsx
-#~ msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
-#~ msgstr ""
-
-#: src/components/embedded/surface-selection-bar.tsx
-#~ msgid "Nothing to ask about there. Try covering some content."
-#~ msgstr ""
-
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Nothing to compact yet."
 msgstr ""
@@ -3606,8 +3198,8 @@ msgid "OAuth state mismatch — possible CSRF, authorization rejected."
 msgstr "OAuth のステートが一致しません。CSRF の可能性があるため認可を拒否しました。"
 
 #: src/hooks/use-oauth-connect.ts
-msgid "OAuth validation failed"
-msgstr "OAuth の検証に失敗しました"
+#~ msgid "OAuth validation failed"
+#~ msgstr "OAuth の検証に失敗しました"
 
 #: src/projects/emoji-catalog.ts
 msgid "Objects"
@@ -3620,10 +3212,6 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr ""
-
-#: src/settings/preferences.tsx
-#~ msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
-#~ msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
@@ -3674,10 +3262,6 @@ msgstr "{title} を開く"
 msgid "Open app"
 msgstr ""
 
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Open chat"
-#~ msgstr ""
-
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
 msgstr "外部リンクを開く"
@@ -3723,10 +3307,6 @@ msgstr "ストアを開いて更新を確認してください。"
 msgid "Open Thunderbolt CLI"
 msgstr "Thunderbolt CLI を開く"
 
-#: src/components/sync-setup/approval-waiting-step.tsx
-#~ msgid "Open Thunderbolt on one of your trusted devices and go to Settings → Devices to approve this device."
-#~ msgstr "信頼済みのデバイスで Thunderbolt を開き、設定 → デバイス からこのデバイスを承認してください。"
-
 #: src/components/chat/external-link-dialog.tsx
 msgid "Opening…"
 msgstr "開いています…"
@@ -3739,10 +3319,6 @@ msgstr "任意"
 #: src/settings/voice.tsx
 msgid "Optional — leave blank for local servers that don’t require auth."
 msgstr "任意 — 認証が不要なローカルサーバーの場合は空欄のままにしてください。"
-
-#: src/projects/project-form.tsx
-#~ msgid "Optional — what this project is for"
-#~ msgstr "任意 — このプロジェクトの目的"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
@@ -3757,21 +3333,9 @@ msgstr "またはメールのマジックリンクをクリックしてくださ
 msgid "Or enter the 8-digit code"
 msgstr "または 8 桁のコードを入力してください"
 
-#: admin/screens/agents-page.tsx
-#~ msgid "Organization agents"
-#~ msgstr ""
-
 #: admin/screens/member-editor.tsx
 msgid "Organization membership"
 msgstr ""
-
-#: admin/screens/resources-page.tsx
-#~ msgid "Organization resource"
-#~ msgstr ""
-
-#: admin/screens/agent-editor.tsx
-#~ msgid "Organization-managed agent"
-#~ msgstr ""
 
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
@@ -3801,25 +3365,6 @@ msgstr "一部曇り"
 #: src/settings/encryption/passkey-section.tsx
 msgid "Passkey"
 msgstr "パスキー"
-
-#: src/components/onboarding/onboarding-passkey-step.tsx
-#~ msgid "Passkey added — you're all set."
-#~ msgstr ""
-
-#: src/components/sign-in/use-sign-in-form-state.ts
-#: src/waitlist/use-waitlist-state.ts
-#~ msgid "Passkey sign-in failed. Please try again or use your email."
-#~ msgstr ""
-
-#: src/layout/sidebar/settings-sidebar.tsx
-#: src/search/commands/navigation.ts
-#: src/settings/passkeys.tsx
-#~ msgid "Passkeys"
-#~ msgstr ""
-
-#: src/settings/passkeys.tsx
-#~ msgid "Passkeys aren't available on this device."
-#~ msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
@@ -3862,11 +3407,6 @@ msgstr ""
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr "ピン留めの上限（{maxPinnedSkills}）に達しました。先にどれかのピン留めを解除してください。"
 
-#: src/projects/project-action-menu-items.tsx
-#: src/projects/project-actions.tsx
-#~ msgid "Pin project"
-#~ msgstr ""
-
 #: src/skills/suggestion-chip.tsx
 msgid "Pinned skill {label}"
 msgstr "ピン留めされたスキル {label}"
@@ -3876,8 +3416,8 @@ msgid "Please choose one of the options on screen."
 msgstr "画面に表示されている選択肢からお選びください。"
 
 #: src/components/onboarding/onboarding-location-step.tsx
-msgid "Please select a location from the dropdown to get coordinates."
-msgstr "座標を取得するには、ドロップダウンから場所を選択してください。"
+#~ msgid "Please select a location from the dropdown to get coordinates."
+#~ msgstr "座標を取得するには、ドロップダウンから場所を選択してください。"
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Please store your recovery key somewhere safe. You'll need it to access your data if you ever lose all your devices."
@@ -3916,10 +3456,6 @@ msgstr "プレビュー機能が無効になります"
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Preview not available for this file type. Use the download button to view it."
 msgstr "このファイル形式はプレビューできません。ダウンロードボタンから表示してください。"
-
-#: admin/screens/member-editor.tsx
-#~ msgid "Preview only — no invitation is sent"
-#~ msgstr ""
 
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview webview is only available in the desktop app"
@@ -3968,10 +3504,6 @@ msgstr "プロバイダー"
 #: src/settings/preferences.tsx
 msgid "Proxying is required in the web app to bypass browser CORS restrictions."
 msgstr "Web アプリでは、ブラウザーの CORS 制限を回避するためにプロキシが必要です。"
-
-#: src/components/chat/attestation/attestation-details.tsx
-#~ msgid "Published code"
-#~ msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
@@ -4026,17 +3558,9 @@ msgstr "モデルのテスト中にエラーが発生しました。"
 msgid "Recent chat options"
 msgstr ""
 
-#: src/layout/sidebar/chat-list.tsx
-#~ msgid "Recent Chats"
-#~ msgstr "最近のチャット"
-
 #: admin/screens/agents-page.tsx
 msgid "Recent connection failures in the sample"
 msgstr ""
-
-#: src/layout/sidebar/project-drop-list.tsx
-#~ msgid "Recent Projects"
-#~ msgstr "最近のプロジェクト"
 
 #: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
@@ -4054,6 +3578,10 @@ msgstr "復元に失敗しました"
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Recovery phrase"
 msgstr "リカバリーフレーズ"
+
+#: src/hooks/use-sync-setup.ts
+msgid "Recovery phrase must be 24 words (you entered {wordCount})."
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
@@ -4092,11 +3620,6 @@ msgstr ""
 msgid "Remove"
 msgstr "削除"
 
-#. placeholder {0}: skill.name
-#: admin/screens/company-skills.tsx
-#~ msgid "Remove {0}"
-#~ msgstr ""
-
 #. placeholder {0}: agent.name
 #. placeholder {0}: member.name
 #: admin/screens/agent-editor.tsx
@@ -4119,12 +3642,6 @@ msgstr "このデバイスからすべてのチャット、設定、キャッシ
 #: admin/screens/member-editor.tsx
 msgid "Remove from {name}"
 msgstr ""
-
-#: admin/screens/agent-editor.tsx
-#: admin/screens/group-editor.tsx
-#: admin/screens/member-editor.tsx
-#~ msgid "Remove from preview"
-#~ msgstr ""
 
 #: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
@@ -4203,10 +3720,6 @@ msgstr "スキルを並べ替え"
 msgid "Reply"
 msgstr "返信"
 
-#: src/projects/project-form.tsx
-#~ msgid "Reply in British English. Prefer bullet points over prose."
-#~ msgstr "イギリス英語で回答してください。文章よりも箇条書きを優先してください。"
-
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Request denied"
 msgstr "リクエストが拒否されました"
@@ -4243,18 +3756,6 @@ msgstr "データベースをリセット"
 msgid "Reset Local Database?"
 msgstr "ローカルデータベースをリセットしますか？"
 
-#: admin/preview-notice.tsx
-#~ msgid "Reset preview"
-#~ msgstr ""
-
-#: src/components/chat/effort-selector/effort-selector.tsx
-#~ msgid "Reset reasoning effort"
-#~ msgstr ""
-
-#: admin/preview-reset-action.tsx
-#~ msgid "Reset sample data"
-#~ msgstr ""
-
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr "既定値に戻す"
@@ -4267,14 +3768,9 @@ msgstr "リセットしています…"
 msgid "Restart Now"
 msgstr "今すぐ再起動"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
 msgstr "再起動して更新"
-
-#: admin/screens/agent-access-panel.tsx
-#: admin/screens/agents-page.tsx
-#~ msgid "Restricted"
-#~ msgstr ""
 
 #: src/components/context-usage/compaction-summary-content.tsx
 msgid "Retained messages and tool results"
@@ -4288,7 +3784,7 @@ msgstr "データを取得中…"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Retry"
 msgstr "再試行"
 
@@ -4308,11 +3804,6 @@ msgstr "取り消す"
 #: src/settings/devices.tsx
 msgid "Revoke {deviceName}"
 msgstr "{deviceName} を取り消す"
-
-#. placeholder {0}: target.label
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Revoke access for {0}"
-#~ msgstr ""
 
 #: admin/screens/agent-access-panel.tsx
 msgid "Revoke access for {name}"
@@ -4363,10 +3854,6 @@ msgstr ""
 msgid "Sample connection successful"
 msgstr ""
 
-#: admin/preview-notice.tsx
-#~ msgid "Sample data only. Changes stay in this preview."
-#~ msgstr ""
-
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
@@ -4380,10 +3867,6 @@ msgstr "保存"
 #: src/mini-apps/mini-app-download-prompt.tsx
 msgid "Save a file from {appName}?"
 msgstr ""
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Save access"
-#~ msgstr ""
 
 #: admin/screens/agent-editor.tsx
 #: admin/screens/group-editor.tsx
@@ -4400,12 +3883,6 @@ msgstr "変更を保存"
 #: src/settings/connections/index.tsx
 msgid "Save failed"
 msgstr "保存に失敗しました"
-
-#: admin/screens/agent-editor.tsx
-#: admin/screens/group-editor.tsx
-#: admin/screens/member-editor.tsx
-#~ msgid "Save preview"
-#~ msgstr ""
 
 #: src/app.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
@@ -4478,10 +3955,6 @@ msgid "Search connections"
 msgstr "接続を検索"
 
 #: src/settings/preferences.tsx
-#~ msgid "Search currencies..."
-#~ msgstr ""
-
-#: src/settings/preferences.tsx
 msgid "Search currencies…"
 msgstr "通貨を検索…"
 
@@ -4498,10 +3971,6 @@ msgstr "実行するコマンドを検索…"
 #: admin/screens/member-editor.tsx
 msgid "Search groups"
 msgstr ""
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Search groups or people…"
-#~ msgstr ""
 
 #: src/components/location-search-combobox.tsx
 msgid "Search locations…"
@@ -4624,10 +4093,6 @@ msgstr "この非公開チャットを{agentName}に送信しますか？"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the {recipient} team"
 msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "Send to the Thunderbolt team"
-#~ msgstr ""
 
 #: src/components/sync-setup/confirm-identity-step.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
@@ -4820,14 +4285,6 @@ msgstr "次回からすばやくサインイン"
 msgid "Sign in to {appName}"
 msgstr "{appName} にサインイン"
 
-#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
-#~ msgid "Sign in to a full account to share a debug transcript."
-#~ msgstr ""
-
-#: src/components/device-approval.tsx
-#~ msgid "Sign in to a Thunderbolt account to approve this CLI request."
-#~ msgstr ""
-
 #: src/components/device-approval.tsx
 msgid "Sign in to continue"
 msgstr ""
@@ -4840,10 +4297,6 @@ msgstr "クラウドプロキシを有効にするにはサインインしてく
 msgid "Sign in to the CLI"
 msgstr "CLI にサインイン"
 
-#: src/components/sign-in-modal.tsx
-#~ msgid "Sign in to Thunderbolt"
-#~ msgstr "Thunderbolt にサインイン"
-
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Sign in with passkey"
@@ -4852,10 +4305,6 @@ msgstr "パスキーでサインイン"
 #: src/components/device-approval.tsx
 msgid "Sign in with your {appName} account to approve this CLI request."
 msgstr ""
-
-#: src/settings/passkeys.tsx
-#~ msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
-#~ msgstr ""
 
 #: src/settings/encryption/passkey-section.tsx
 msgid "Sign in with your fingerprint, face, or device PIN."
@@ -4893,9 +4342,9 @@ msgstr ""
 msgid "Signed Out"
 msgstr "サインアウトしました"
 
-#: src/components/revoked-device-modal.tsx
-#~ msgid "Signing out…"
-#~ msgstr "サインアウトしています…"
+#: src/components/sign-in/sign-in-form.tsx
+msgid "Signing in…"
+msgstr ""
 
 #: src/components/magic-link-verify.tsx
 msgid "Signing you in…"
@@ -4904,10 +4353,6 @@ msgstr "サインインしています…"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Simple"
 msgstr "シンプル"
-
-#: admin/screens/company-skills.tsx
-#~ msgid "Skill name"
-#~ msgstr ""
 
 #: admin/admin-sidebar.tsx
 #: admin/screens/agent-capabilities.tsx
@@ -4927,10 +4372,6 @@ msgstr "スキルは再利用できる指示のテンプレートで、チャッ
 #: admin/screens/company-skills-page.tsx
 msgid "Skills for the company's Thunderbolt agent."
 msgstr ""
-
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "Skills the built-in Thunderbolt agent can use for everyone in your company."
-#~ msgstr ""
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
 msgid "Skip"
@@ -5001,10 +4442,6 @@ msgstr "音声認識と音声合成は Thunderbolt の機密エンクレーブ�
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Start Using {appName}"
 msgstr "{appName} を使い始める"
-
-#: src/components/onboarding/onboarding-dialog.tsx
-#~ msgid "Start Using Thunderbolt"
-#~ msgstr "Thunderbolt を使い始める"
 
 #: src/voice/ui/voice-mode-button.tsx
 msgid "Start voice mode"
@@ -5214,25 +4651,9 @@ msgstr "AI プロバイダーの応答に時間がかかりすぎました。も
 msgid "The chat will be retained by the {recipient} team."
 msgstr ""
 
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
-#~ msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
-#~ msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The chat will be retained by the Thunderbolt team."
-#~ msgstr ""
-
 #: src/components/revoke-device-dialog.tsx
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr ""
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
-#~ msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "The connection could not be verified. A verified connection is required before sending to this provider."
@@ -5253,18 +4674,6 @@ msgstr ""
 #: src/services/revoke-failure.ts
 msgid "The device lost access, but your account key was not replaced, so it can still read your data."
 msgstr ""
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
-#~ msgstr "デバイスはサインアウトされ、次回の同期時にローカルデータが消去されます。同期を利用するには、このデバイスで再度サインインする必要があります。"
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
-#~ msgstr ""
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working."
-#~ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
@@ -5290,17 +4699,13 @@ msgstr "リクエストは拒否されました。このページは閉じても
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr "サーバーが認証情報を拒否しました。Bearer トークンまたは API キーを確認してください。"
 
+#: src/lib/encryption-error-message.ts
+msgid "The server took too long to respond. Please try again."
+msgstr ""
+
 #: src/lib/device-grant.ts
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
 msgstr "サインインサービスを現在利用できません。接続を確認して、もう一度お試しください。"
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The Thunderbolt team, for debugging. It's tied to your account — it isn't anonymous."
-#~ msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
-#~ msgstr ""
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "The transcript was rejected by the server."
@@ -5324,10 +4729,6 @@ msgstr "この操作は取り消せません。このチャットとすべての
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr "プライベートウィンドウや、サイトデータがブロックされている場合に発生することがあります。このサイトのストレージを有効にして再読み込みしてください。"
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
-#~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "This chat session, including the messages you sent and the responses from the agent, the data inputs and outputs of any tools used, errors, and timestamps."
@@ -5357,10 +4758,6 @@ msgstr "このデバイス"
 msgid "This device has been approved and sync is now enabled across your devices."
 msgstr "このデバイスは承認され、すべてのデバイスで同期が有効になりました。"
 
-#: src/components/revoked-device-modal.tsx
-#~ msgid "This device has been signed out remotely. Choose what to do with your local data."
-#~ msgstr "このデバイスはリモートからサインアウトされました。ローカルデータをどうするか選択してください。"
-
 #: src/hooks/use-sync-setup.ts
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
 msgstr "このデバイスはまだ承認されていません。先に信頼済みのデバイスから承認してください。"
@@ -5381,17 +4778,9 @@ msgstr ""
 msgid "This file doesn't look like a {appName} export."
 msgstr "このファイルは {appName} のエクスポートではないようです。"
 
-#: src/settings/preferences.tsx
-#~ msgid "This file doesn't look like a Thunderbolt export."
-#~ msgstr "このファイルは Thunderbolt のエクスポートではないようです。"
-
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "This helps us personalize your experience with local settings and features."
 msgstr "地域に応じた設定や機能で体験をパーソナライズするために使用します。"
-
-#: admin/screens/agent-preview.tsx
-#~ msgid "This is how the agent appears to your members in the Thunderbolt app."
-#~ msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
@@ -5421,13 +4810,13 @@ msgstr "このリンクのアドレスはアプリで開けません。"
 msgid "This member will lose their organization membership and agent access."
 msgstr ""
 
+#: src/mini-apps/mini-app-frame.tsx
+msgid "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
 msgstr "このモデルは添付ファイルを読み取れませんでした。別のモデルをお試しください。"
-
-#: src/settings/models/add-model-form.tsx
-#~ msgid "This model does not seem to support tool usage."
-#~ msgstr "このモデルはツールの利用に対応していないようです。"
 
 #: src/settings/models/connection-test-section.tsx
 msgid "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
@@ -5488,10 +4877,6 @@ msgstr ""
 msgid "This removes the connection from {appName} only. Nothing on the remote server is changed."
 msgstr "{appName} から接続を削除するだけです。リモートサーバー側には何も変更されません。"
 
-#: src/components/settings/agents/agent-detail.tsx
-#~ msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
-#~ msgstr "Thunderbolt から接続を削除するだけです。リモートサーバー側には何も変更されません。"
-
 #: src/settings/devices.tsx
 msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
 msgstr ""
@@ -5520,10 +4905,6 @@ msgstr ""
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr "このサインインリクエストは有効期限が切れています。ターミナルから新しく開始してください。"
 
-#: admin/screens/resources-page.tsx
-#~ msgid "This switch only changes the preview. Provider configuration and enforcement are not connected."
-#~ msgstr ""
-
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "This transcript is too large to upload."
 msgstr ""
@@ -5531,10 +4912,6 @@ msgstr ""
 #: src/components/upgrade-required.tsx
 msgid "This version of {appName} is no longer supported. Update the app to keep chatting and syncing."
 msgstr "このバージョンの {appName} はサポートされていません。チャットと同期を続けるにはアプリを更新してください。"
-
-#: src/components/upgrade-required.tsx
-#~ msgid "This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing."
-#~ msgstr "このバージョンの Thunderbolt はサポートされていません。チャットと同期を続けるにはアプリを更新してください。"
 
 #: src/components/delete-all-chats-dialog.tsx
 msgid "This will delete all chats outside projects. Chats in projects won't be deleted."
@@ -5557,10 +4934,6 @@ msgstr ""
 msgid "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
 msgstr "設定、チャット履歴、キャッシュされた情報を含む、すべてのローカルデータが完全に削除されます。この操作は取り消せません。"
 
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "This will permanently delete all your chats."
-#~ msgstr "すべてのチャットが完全に削除されます。"
-
 #: src/skills/delete-skill-dialog.tsx
 msgid "This will permanently delete the skill. Other skills that reference it may no longer resolve."
 msgstr "スキルを完全に削除します。このスキルを参照している他のスキルは解決できなくなる可能性があります。"
@@ -5574,16 +4947,8 @@ msgid "This will permanently delete your account and all of your data on our ser
 msgstr "設定、チャット履歴、キャッシュされた情報を含む、アカウントと当社のサーバーおよびこのデバイス上のすべてのデータが完全に削除されます。この操作は取り消せません。"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "This will send the current chat with the Thunderbolt team so that they can debug the problem."
-#~ msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "This will share the current chat with the {recipient} team so that they can debug the problem."
 msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "This will share the current chat with the Thunderbolt team so that they can debug the problem."
-#~ msgstr ""
 
 #: src/components/approve-device-dialog.tsx
 msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."
@@ -5592,10 +4957,6 @@ msgstr "暗号化キーをこのデバイスと共有し、データの復号と
 #: src/components/chat/reasoning-group-title.tsx
 msgid "Thought for {duration}"
 msgstr "{duration}思考しました"
-
-#: src/settings/voice.tsx
-#~ msgid "Thunderbolt (hosted, private)"
-#~ msgstr "Thunderbolt（ホスト型・プライベート）"
 
 #: admin/admin-sidebar.tsx
 #: admin/screens/company-mcp-page.tsx
@@ -5612,41 +4973,13 @@ msgstr "Thunderbolt CLI"
 msgid "Thunderbolt is open-source"
 msgstr "Thunderbolt はオープンソースです"
 
-#: src/components/settings/agents/agent-detail.tsx
-#~ msgid "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
-#~ msgstr "Thunderbolt はアプリに組み込まれたエージェントです。いつでも利用でき、設定は不要です。ライブラリで有効にしているもの（スキル、連携、MCP サーバー）をすべて活用し、取り組んでいる作業をお手伝いします。"
-
 #: admin/screens/thunderbolt-agent-panel.tsx
 msgid "Thunderbolt is the agent built into the app. Everyone in your company can use it with the skills, connections, and models enabled by your organization."
 msgstr ""
 
-#: src/components/storage-unavailable-screen.tsx
-#~ msgid "Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled."
-#~ msgstr "Thunderbolt はブラウザーのストレージ（IndexedDB）を必要としますが、現在無効になっています。"
-
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
 msgstr "Thunderbolt Pro はまだ利用できません。お楽しみに！"
-
-#: admin/screens/thunderbolt-agent-panel.tsx
-#~ msgid "Thunderbolt settings"
-#~ msgstr ""
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "Thunderbolt wants to connect to {providerName} Calendar"
-#~ msgstr "Thunderbolt が {providerName} カレンダーへの接続を求めています"
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "Thunderbolt wants to connect to {providerName} Email"
-#~ msgstr "Thunderbolt が {providerName} メールへの接続を求めています"
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "Thunderbolt wants to connect to {providerName} Email and Calendar"
-#~ msgstr "Thunderbolt が {providerName} メールとカレンダーへの接続を求めています"
-
-#: src/components/onboarding/onboarding-language-step.tsx
-#~ msgid "Thunderbolt will use it across the app. You can change it later in Preferences."
-#~ msgstr "Thunderbolt はアプリ全体でこの言語を使用します。後で環境設定から変更できます。"
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Thunderstorm"
@@ -5668,21 +5001,13 @@ msgstr "時刻形式"
 msgid "Time Format"
 msgstr "時刻形式"
 
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "to access your calendar"
-#~ msgstr "カレンダーにアクセスするため"
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "to access your email"
-#~ msgstr "メールにアクセスするため"
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "to access your email and calendar"
-#~ msgstr "メールとカレンダーにアクセスするため"
-
 #: src/components/sync-setup/confirm-identity-step.tsx
 msgid "To continue, we’ll email you a verification code."
 msgstr "続行するには、確認コードをメールでお送りします。"
+
+#: src/lib/encrypted-sync-support.ts
+msgid "To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system."
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
@@ -5800,10 +5125,6 @@ msgstr "不明"
 msgid "Unknown (code {code})"
 msgstr "不明（コード {code}）"
 
-#: src/widgets/weather-forecast/widget.tsx
-#~ msgid "Unknown error"
-#~ msgstr "不明なエラー"
-
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Unlock sync with a passkey"
 msgstr "パスキーで同期のロックを解除"
@@ -5817,11 +5138,6 @@ msgstr "パスキーでロック解除"
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"
 msgstr "ピン留めを解除"
-
-#: src/projects/project-action-menu-items.tsx
-#: src/projects/project-actions.tsx
-#~ msgid "Unpin project"
-#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
@@ -5923,10 +5239,6 @@ msgstr "コマンドラインから Thunderbolt を使えます。"
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Use your fingerprint, face, or device PIN to sign in instead of an email code. Email sign-in still works too."
 msgstr "メールのコードの代わりに、指紋や顔認証、デバイスの PIN でサインインできます。メールでのサインインも引き続き使えます。"
-
-#: src/components/sync-setup/passkey-enroll-step.tsx
-#~ msgid "Use your passkey to turn on sync on new devices, without approving them from another device. Anyone who can use this passkey will be able to unlock your data."
-#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "User Experience"
@@ -6046,10 +5358,6 @@ msgstr ""
 msgid "Waiting for approval"
 msgstr "承認を待っています"
 
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Waiting for your approval in the app"
-#~ msgstr ""
-
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
 msgstr "早期アクセスをご希望ですか？"
@@ -6103,10 +5411,6 @@ msgstr "ようこそ"
 msgid "Welcome to {appName}!"
 msgstr "{appName} へようこそ"
 
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Welcome to Thunderbolt!"
-#~ msgstr "Thunderbolt へようこそ"
-
 #: src/components/magic-link-verify.tsx
 msgid "Welcome, {displayName}"
 msgstr "{displayName} さん、ようこそ"
@@ -6153,10 +5457,6 @@ msgstr "ローカルデータをどうしますか？"
 msgid "What's in it?"
 msgstr ""
 
-#: src/settings/preferences.tsx
-#~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
-#~ msgstr "有効にすると、リクエストは Thunderbolt のクラウドプロキシ経由で送信されます。"
-
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"
 msgstr "このスキルを使う場面…"
@@ -6176,10 +5476,6 @@ msgstr "チャット内のリンクを開く場所"
 #: src/components/onboarding/onboarding-language-step.tsx
 msgid "Which language do you prefer?"
 msgstr "どの言語をご希望ですか？"
-
-#: admin/screens/agent-access-panel.tsx
-#~ msgid "Who can access"
-#~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Who can read it?"
@@ -6344,17 +5640,9 @@ msgstr "変更は保存されません。"
 msgid "Your chats and settings will remain on this device for next time."
 msgstr "チャットと設定は次回のためにこのデバイスに残ります。"
 
-#: src/components/revoked-device-modal.tsx
-#~ msgid "Your chats and settings will remain on this device for offline use."
-#~ msgstr "チャットと設定はオフラインで使えるようにこのデバイスに残ります。"
-
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"
 msgstr "デプロイのサーバー"
-
-#: src/components/chat/attestation/attestation-control.tsx
-#~ msgid "Your device checks the confidential hardware and published code before sending to {provider}."
-#~ msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
@@ -6363,10 +5651,6 @@ msgstr ""
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
 msgstr ""
-
-#: src/components/chat/attestation/attestation-control.tsx
-#~ msgid "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
-#~ msgstr ""
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
@@ -6380,21 +5664,9 @@ msgstr "メッセージがモデルのコンテキストウィンドウ（{forma
 msgid "Your name"
 msgstr "お名前"
 
-#: src/settings/preferences.tsx
-#~ msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
-#~ msgstr "新しい所在地では主に {suggestedLanguageLabel} が話されています。Thunderbolt を {suggestedLanguageLabel} で使用しますか？"
-
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
 msgstr ""
-
-#: src/settings/encryption/use-change-recovery-key.ts
-#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey in Preferences, then try again."
-#~ msgstr ""
-
-#: src/settings/encryption/use-change-recovery-key.ts
-#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey under Settings → Preferences in the web app, then try again."
-#~ msgstr ""
 
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Your passkey's sync keys couldn't be verified. Remove the passkey in Settings → Preferences on the web, then try again."
@@ -6403,10 +5675,6 @@ msgstr "パスキーの同期キーを確認できませんでした。Web 版�
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"
 msgstr "プライベートな AI アシスタント"
-
-#: src/components/chat/error-message.tsx
-#~ msgid "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
-#~ msgstr "プロジェクトとスキルの指示がこのエージェントには長すぎます。長いスキルまたはプロジェクトの指示を短くしてから、もう一度お試しください。"
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Your recovery phrase was never saved"

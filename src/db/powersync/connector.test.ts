@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
+import { clearAuthToken, clearDeviceId, invalidateAuthRequests, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { clearAllKeys, generateAK, getPrimaryKeyId, storeAK, storePrimaryKeyId } from '@/crypto'
 import { resetCodecState } from '@/db/encryption'
@@ -181,6 +181,128 @@ describe('ThunderboltConnector', () => {
     await clearAllKeys()
   })
 
+  it.each([200, 401])('rejects a token response for a replaced account (%i)', async (status) => {
+    setAuthToken(authToken)
+    fetchMock.mockImplementation(async () => {
+      setAuthToken('replacement')
+      return Response.json(
+        {
+          token: 'old-sync-token',
+          powerSyncUrl: 'https://sync.test',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+        { status },
+      )
+    })
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+    expect(await connector.fetchCredentials()).toBeNull()
+    expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('never sends an old account’s queued upload using the replacement account’s token', async () => {
+    setAuthToken(authToken)
+    await storePrimaryKeyId('1')
+    const { database, complete } = createQueuedUpload()
+    const readTransaction = database.getNextCrudTransaction.bind(database)
+    const queued = spyOn(database, 'getNextCrudTransaction').mockImplementation(async () => {
+      setAuthToken('replacement')
+      return readTransaction()
+    })
+    try {
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+      await expect(connector.uploadData(database)).rejects.toThrow('Session changed while preparing sync upload')
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(complete).not.toHaveBeenCalled()
+    } finally {
+      queued.mockRestore()
+    }
+  })
+
+  it.each([200, 401])('does not acknowledge or invalidate a replaced account after upload (%i)', async (status) => {
+    setAuthToken(authToken)
+    await storePrimaryKeyId('1')
+    const { database, complete } = createQueuedUpload()
+    fetchMock.mockImplementation(async () => {
+      setAuthToken('replacement')
+      return Response.json({}, { status })
+    })
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+    await expect(connector.uploadData(database)).rejects.toThrow()
+    expect(complete).not.toHaveBeenCalled()
+    expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('discards cookie-only credentials when cleanup ends their lifetime before auth storage changes', async () => {
+    env.VITE_AUTH_MODE = 'sso'
+    const entered = Promise.withResolvers<void>()
+    const response = Promise.withResolvers<Response>()
+    fetchMock.mockImplementation(() => {
+      entered.resolve()
+      return response.promise
+    })
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+    const pending = connector.fetchCredentials()
+    await entered.promise
+    invalidateAuthRequests()
+    response.resolve(
+      Response.json({
+        token: 'old-cookie-account',
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        powerSyncUrl: 'https://sync.test',
+      }),
+    )
+    expect(await pending).toBeNull()
+    expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('withholds encrypted credentials and queued uploads on runtimes without Web Locks', async () => {
+    setAuthToken(authToken)
+    await storePrimaryKeyId('0')
+    const previous = navigator.locks
+    const { database, complete } = createQueuedUpload()
+    try {
+      Object.defineProperty(navigator, 'locks', { configurable: true, value: {} })
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+      expect(await connector.fetchCredentials()).toBeNull()
+      await expect(connector.uploadData(database)).rejects.toThrow(
+        'Encrypted sync requires Web Locks in a secure context',
+      )
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(complete).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(navigator, 'locks', { configurable: true, value: previous })
+    }
+  })
+
+  it('still permits an explicitly plaintext account without Web Locks', async () => {
+    setAuthToken(authToken)
+    await clearAllKeys()
+    const previous = navigator.locks
+    const { database, complete } = createQueuedUpload()
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/encryption/canary')) {
+        return new Response(null, { status: 404 })
+      }
+      if (url.endsWith('/powersync/token')) {
+        return Response.json({
+          token: 'sync-token',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          powerSyncUrl: 'https://sync.test',
+        })
+      }
+      return new Response(null, { status: 204 })
+    })
+    try {
+      Object.defineProperty(navigator, 'locks', { configurable: true, value: {} })
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+      expect((await connector.fetchCredentials())?.token).toBe('sync-token')
+      await connector.uploadData(database)
+      expect(complete).toHaveBeenCalledTimes(1)
+    } finally {
+      Object.defineProperty(navigator, 'locks', { configurable: true, value: previous })
+    }
+  })
+
   it('fetchCredentials returns null when no auth token', async () => {
     clearAuthToken()
     const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
@@ -299,7 +421,9 @@ describe('ThunderboltConnector', () => {
     })
     const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
 
-    await expect(connector.uploadData(database)).rejects.toThrow('Not signed in — deferring sync')
+    await expect(connector.uploadData(database)).rejects.toThrow(
+      'Cannot confirm account encryption state — deferring upload instead of risking plaintext',
+    )
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]?.[0]).toBe(`${backendUrl}/encryption/canary`)

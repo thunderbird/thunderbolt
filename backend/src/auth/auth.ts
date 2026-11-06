@@ -6,7 +6,7 @@ import {
   approveWaitlistEntry,
   getOrCreateOtpChallenge,
   createWaitlistEntry,
-  deleteOtpChallengesForEmail,
+  consumeOtpChallenge,
   deletePersistedSignInOtp,
   getUserByEmail,
   getWaitlistByEmail,
@@ -503,8 +503,9 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         }
 
         const email = (ctx.body as { email?: string })?.email
-        if (email) {
-          await deleteOtpChallengesForEmail(database, normalizeEmail(email))
+        const challengeToken = ctx.headers?.get(challengeTokenHeader)
+        if (email && challengeToken) {
+          await consumeOtpChallenge(database, normalizeEmail(email), challengeToken)
         }
 
         const sessionUser = newSession.user

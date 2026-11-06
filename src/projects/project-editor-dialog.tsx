@@ -40,6 +40,7 @@ export const ProjectEditorDialog = ({ project, onClose }: ProjectEditorDialogPro
               instructions: project.instructions ?? '',
             }}
             onCancel={onClose}
+            onSuccess={onClose}
             onSubmit={async ({ name, icon, description, instructions }) => {
               const values = {
                 name,
@@ -48,7 +49,6 @@ export const ProjectEditorDialog = ({ project, onClose }: ProjectEditorDialogPro
                 instructions: instructions.trim() || null,
               }
               await updateProject(db, project.id, values)
-              onClose()
             }}
           />
         </DetailPanel>

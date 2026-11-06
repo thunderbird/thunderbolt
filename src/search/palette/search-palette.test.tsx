@@ -9,12 +9,13 @@ import { getClock } from '@/testing-library'
 import { useConfigStore } from '@/api/config-store'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createModel } from '@/dal'
+import * as modelsDal from '@/dal/models'
 import { getDb } from '@/db/database'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Bot, LogOut, Plus } from 'lucide-react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { type ReactNode, useState } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import type { PaletteCommand, UseCommandsOptions } from '../commands/types'
@@ -88,6 +89,37 @@ describe('SearchPalette commands', () => {
     cleanup()
     restoreViewport()
     useConfigStore.setState({ config: {}, configLoaded: false })
+  })
+
+  it('keeps the newest destination when an earlier model lookup finishes last', async () => {
+    const lookup = Promise.withResolvers<Awaited<ReturnType<typeof modelsDal.getModel>>>()
+    const getModel = spyOn(modelsDal, 'getModel').mockImplementation(() => lookup.promise)
+    try {
+      searchResults = [
+        { id: 'old', entityType: 'model', title: 'Old model', snippet: '', to: '/settings/models' },
+        { id: 'new', entityType: 'chat', title: 'New chat', snippet: '', to: '/chats/new' },
+      ]
+      renderPalette()
+      fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'match' } })
+      await act(async () => {
+        await getClock().tickAsync(debounceMs)
+      })
+      const old = screen.getByRole('option', { name: /Old model/ })
+      const next = screen.getByRole('option', { name: /New chat/ })
+      await act(async () => {
+        fireEvent.click(old)
+        fireEvent.click(next)
+      })
+      expect(screen.getByTestId('location')).toHaveTextContent('/chats/new')
+      await act(async () => {
+        lookup.resolve(undefined)
+        await lookup.promise
+      })
+      expect(screen.getByTestId('location')).toHaveTextContent('/chats/new')
+      expect(mockTrackEvent).toHaveBeenCalledTimes(1)
+    } finally {
+      getModel.mockRestore()
+    }
   })
 
   describe('in minimal mode', () => {

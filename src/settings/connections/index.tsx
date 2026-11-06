@@ -364,6 +364,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   }
 
   const openAddForm = () => {
+    formController.cancel()
     dispatch({ type: 'SELECTION_CHANGED', selection: null })
     form.openAddForm()
   }

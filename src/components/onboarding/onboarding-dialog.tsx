@@ -4,7 +4,7 @@
 
 import { useAppName } from '@/lib/branding-selectors'
 import { Trans } from '@lingui/react/macro'
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useEffectEvent, useTransition } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { useDatabase } from '@/contexts'
@@ -58,7 +58,7 @@ export const OnboardingDialog = () => {
   // already has one), but only once that's known: the skip is persisted, so
   // skipping while still loading would lose the step for good.
   const skipPasskeyStep = useEffectEvent(() => {
-    actions.skipStep().catch((error) => console.error('Failed to skip the passkey step:', error))
+    runAction(actions.skipStep)
   })
   useEffect(() => {
     if (isOpen && state.currentStep === passkeyStep && accountPasskey.isSettled && !shouldOfferPasskeyStep) {
@@ -72,55 +72,37 @@ export const OnboardingDialog = () => {
     await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
   }
 
-  // Celebration step completion handler
-  const [isCompleting, setIsCompleting] = useState(false)
-  const [isFormDirty, setIsFormDirty] = useState(false)
-  const { onboardingCurrentStep } = useSettings({
-    onboarding_current_step: '1',
-  })
+  const [isNavigating, startNavigation] = useTransition()
+  const isCelebration = state.currentStep === onboardingStepCount
+  const isBusy = isNavigating || state.isSubmittingName || state.isSubmittingLocation
+  const continueDisabled =
+    isBusy || (!isCelebration && !state.canGoNext) || (state.currentStep === passkeyStep && !accountPasskey.isSettled)
 
-  const handleCelebrationComplete = async () => {
-    setIsCompleting(true)
-    await Promise.all([userHasCompletedOnboarding.setValue(true), onboardingCurrentStep.setValue('1')])
-    setIsCompleting(false)
+  const runAction = (action: () => Promise<void>) => {
+    startNavigation(async () => {
+      try {
+        await action()
+      } catch (error) {
+        console.error('Failed to update onboarding:', error)
+      }
+    })
   }
 
-  // Unified action handlers
-  const handleContinue = async () => {
-    if (state.currentStep === onboardingStepCount) {
-      // Special handling for celebration step
-      handleCelebrationComplete()
-    } else if (state.currentStep === 2) {
-      // Auth step - only allow continue if connected
-      if (state.isProviderConnected) {
-        actions.nextStep()
-      }
-    } else if (state.currentStep === 3) {
-      // Name step - save name to database before proceeding
-      if (state.isNameValid && state.nameValue) {
-        try {
-          await actions.submitName(state.nameValue)
-          actions.nextStep()
-        } catch (error) {
-          console.error('Failed to save name:', error)
-        }
-      }
-    } else if (state.canGoNext) {
-      actions.nextStep()
+  const handleContinue = () => {
+    if (!continueDisabled) {
+      runAction(isCelebration ? actions.completeOnboarding : actions.nextStep)
     }
   }
 
-  const isCelebration = state.currentStep === onboardingStepCount
-
   const handleBackAction = () => {
-    if (state.canGoBack) {
-      actions.prevStep()
+    if (!isBusy && state.canGoBack) {
+      runAction(actions.prevStep)
     }
   }
 
   const handleSkipAction = () => {
-    if (state.canSkip) {
-      actions.skipStep()
+    if (!isBusy && state.canSkip) {
+      runAction(actions.skipStep)
     }
   }
 
@@ -154,10 +136,10 @@ export const OnboardingDialog = () => {
               />
             )}
             {state.currentStep === 3 && (
-              <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
+              <OnboardingNameStep state={{ ...state, isSubmittingName: isBusy }} actions={actions} />
             )}
             {state.currentStep === 4 && (
-              <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
+              <OnboardingLocationStep state={{ ...state, isSubmittingLocation: isBusy }} actions={actions} />
             )}
             {state.currentStep === 5 && <OnboardingLanguageStep />}
             {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
@@ -170,32 +152,22 @@ export const OnboardingDialog = () => {
           </div>
           <div className="relative flex w-full shrink-0 px-5 pt-2">
             <OnboardingActionButtons
-              onBack={isCelebration ? undefined : state.canGoBack ? handleBackAction : undefined}
-              onSkip={isCelebration ? undefined : state.canSkip ? handleSkipAction : undefined}
+              onBack={handleBackAction}
+              onSkip={handleSkipAction}
               onContinue={handleContinue}
-              showBack={isCelebration ? false : state.canGoBack}
-              showSkip={isCelebration ? false : state.canSkip}
+              showBack={!isCelebration && state.canGoBack}
+              showSkip={!isCelebration && state.canSkip}
+              backDisabled={isBusy}
               skipDisabled={
+                isBusy ||
                 (state.currentStep === 2 && state.isProviderConnected) ||
                 (state.currentStep === 3 && state.isNameValid) ||
-                (state.currentStep === 4 && isFormDirty)
+                (state.currentStep === 4 && state.isLocationValid)
               }
-              continueDisabled={
-                state.currentStep === 1
-                  ? !state.privacyAgreed
-                  : state.currentStep === 2
-                    ? !state.isProviderConnected
-                    : state.currentStep === 3
-                      ? !state.isNameValid
-                      : state.currentStep === 4
-                        ? !state.isLocationValid
-                        : state.currentStep === passkeyStep
-                          ? !accountPasskey.isSettled
-                          : isCelebration && isCompleting
-              }
+              continueDisabled={continueDisabled}
               continueText={
                 isCelebration ? (
-                  isCompleting ? (
+                  isNavigating ? (
                     <Trans>Completing…</Trans>
                   ) : (
                     <Trans>Start Using {appName}</Trans>

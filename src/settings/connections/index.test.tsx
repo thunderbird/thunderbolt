@@ -16,12 +16,13 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ReactNode } from 'react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import ConnectionsPage from '.'
 import { getProviderConnection, saveProviderConnection, disconnectProviderConnection } from '@/dal/provider-connections'
 import { addProviderModels } from '@/providers/models'
 import { getModel, getAvailableModels } from '@/dal/models'
+import { ChatModelSetup } from '@/components/chat/chat-model-setup'
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
 const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 })
@@ -93,6 +94,13 @@ describe('ConnectionsPage list', () => {
       wrapper: McpProviderWrapper,
     })
     fireEvent.click(await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Work account' })))
+    expect(await waitForElement(() => screen.queryByRole('alertdialog'))).toHaveTextContent('Disable Work account?')
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ enabled: 1 })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ enabled: 1 })
+    fireEvent.click(screen.getByRole('switch', { name: 'Disable Work account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Disable connection' }))
     await act(async () => {
       await getClock().runAllAsync()
     })
@@ -161,6 +169,26 @@ describe('ConnectionsPage list', () => {
       wrapper: LinkedConnectionWrapper,
     })
     expect(await waitForElement(() => screen.queryByLabelText('Name'))).toHaveValue('Linked account')
+  })
+
+  it('opens the connection aside directly from empty chat and lets users choose a provider', async () => {
+    renderWithReactivity(
+      <Routes>
+        <Route path="/" element={<ChatModelSetup />} />
+        <Route path="/settings/connections" element={<ConnectionsPage />} />
+      </Routes>,
+      {
+        tables: ['provider_connections', 'provider_connection_secrets'],
+        wrapper: McpProviderWrapper,
+      },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Add connection' }))
+    expect(await waitForElement(() => screen.queryByRole('heading', { name: 'New Connection' }))).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Connect Otari' }))).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('button', { name: 'Connect Otari' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'New Connection' })).not.toBeInTheDocument()
   })
 
   it('offers disconnected integrations in the create menu and updates MCP servers', async () => {

@@ -7,7 +7,7 @@ import { Plug, Plus } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { EditDeleteContextMenuContent } from '@/components/settings/edit-delete-context-menu'
-import { SettingsEmptyState, SettingsNoResults } from '@/components/settings/settings-empty-state'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import {
   SettingsListBody,
   SettingsListPane,
@@ -17,6 +17,7 @@ import {
 import { StatusIndicator, type StatusState } from '@/components/status-indicator'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { EmptyState } from '@/components/ui/empty-state'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
@@ -168,10 +169,10 @@ export const ConnectionsList = ({
   integrations,
   areIntegrationsReady,
   servers,
+  areServersReady,
   serverStatus,
   activeKey,
   onAdd,
-  onAddServer,
   onSelectIntegration,
   onSelectServer,
   onToggleIntegration,
@@ -191,12 +192,12 @@ export const ConnectionsList = ({
    *  the loaded position instead of animating off→on. */
   areIntegrationsReady: boolean
   servers: McpServer[]
+  areServersReady: boolean
   /** Live connection state for a server row's status dot. */
   serverStatus: (server: McpServer) => StatusState
   /** `integration:<id>` / `server:<id>` of the row whose detail panel is open, or null. */
   activeKey: string | null
   onAdd: () => void
-  onAddServer: () => void
   onSelectIntegration: (id: string) => void
   onSelectServer: (id: string) => void
   onToggleIntegration: (integration: Integration, next: boolean) => void
@@ -222,6 +223,13 @@ export const ConnectionsList = ({
 
   const nothingMatches =
     filteredProviders.length === 0 && filteredIntegrations.length === 0 && filteredServers.length === 0
+  const isEmpty =
+    areProvidersReady &&
+    areIntegrationsReady &&
+    areServersReady &&
+    aiProviders.length === 0 &&
+    integrations.length === 0 &&
+    servers.length === 0
 
   // md:min-w mirrors the skills/agents/models pages: once the detail aside
   // squeezes the list to this floor, the column stops sliding and tucks under
@@ -299,15 +307,15 @@ export const ConnectionsList = ({
           </div>
         )}
 
-        {servers.length === 0 && !query && (
-          <SettingsEmptyState
-            className="mt-1"
-            icon={<Plug className="size-8 text-muted-foreground" aria-hidden="true" />}
-            description={t`Connect your own MCP servers to give agents more tools.`}
+        {isEmpty && !query && (
+          <EmptyState
+            icon={Plug}
+            title={t`No connections yet`}
+            description={t`Connect providers, accounts, or MCP servers to use their models and tools.`}
             action={
-              <Button size="sm" variant="outline" onClick={onAddServer}>
+              <Button variant="outline" onClick={onAdd}>
                 <Plus />
-                <Trans>Add your first server</Trans>
+                <Trans>Add connection</Trans>
               </Button>
             }
           />

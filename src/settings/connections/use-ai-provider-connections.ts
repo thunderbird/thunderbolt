@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -12,8 +13,10 @@ import { getAvailableModels } from '@/dal'
 import {
   disconnectProviderConnection,
   getProviderConnections,
+  getModelProviderConnectionIds,
   updateProviderConnection,
 } from '@/dal/provider-connections'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 
 type ConnectionChange =
   | { kind: 'update'; id: string; name?: string; enabled?: boolean }
@@ -24,10 +27,19 @@ export const useAiProviderConnections = () => {
   const { t } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
-  const { data: providers = [], isLoading } = useQuery({
+  const { data: providers = [], isSuccess: providersReady } = useQuery({
     queryKey: ['provider-connections'],
     query: toCompilableQuery(getProviderConnections(db)),
   })
+  const { data: modelConnections = [], isSuccess: modelsReady } = useQuery({
+    queryKey: ['model-provider-connections'],
+    query: toCompilableQuery(getModelProviderConnectionIds(db)),
+  })
+  const searchConnectionId = useSearchProviderStore((state) =>
+    state.selection === 'connection' ? state.connectionId : null,
+  )
+  const [disableId, setDisableId] = useState<string | null>(null)
+  const ready = providersReady && modelsReady
   const mutation = useMutation({
     mutationFn: async (change: ConnectionChange) => {
       if (change.kind === 'update') {
@@ -35,17 +47,44 @@ export const useAiProviderConnections = () => {
       } else {
         await disconnectProviderConnection(db, change.id)
       }
-      useChatStore.getState().setModels(await getAvailableModels(db))
-      await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
-      await queryClient.invalidateQueries({ queryKey: ['models'] })
+      const [models] = await Promise.all([
+        getAvailableModels(db),
+        queryClient.invalidateQueries({ queryKey: ['provider-connections'] }),
+        queryClient.invalidateQueries({ queryKey: ['models'] }),
+      ])
+      useChatStore.getState().setModels(models)
     },
   })
+  const pendingChange = mutation.isPending ? mutation.variables : undefined
+  const visibleProviders = providers.map((provider) =>
+    pendingChange?.kind === 'update' && pendingChange.enabled !== undefined && pendingChange.id === provider.id
+      ? { ...provider, enabled: pendingChange.enabled ? 1 : 0 }
+      : provider,
+  )
   return {
-    providers,
-    ready: !isLoading,
+    providers: visibleProviders,
+    ready,
     pending: mutation.isPending,
     error: mutation.isError ? t`Could not update the connection. Try again.` : null,
-    toggle: (id: string, enabled: boolean) => mutation.mutate({ kind: 'update', id, enabled }),
+    toggle: (id: string, enabled: boolean) => {
+      if (!ready || mutation.isPending) {
+        return
+      }
+      if (!enabled && (searchConnectionId === id || modelConnections.some(({ connectionId }) => connectionId === id))) {
+        setDisableId(id)
+        return
+      }
+      mutation.mutate({ kind: 'update', id, enabled })
+    },
+    pendingDisable: providers.find((provider) => provider.id === disableId),
+    cancelDisable: () => setDisableId(null),
+    confirmDisable: () => {
+      if (!disableId || mutation.isPending) {
+        return
+      }
+      mutation.mutate({ kind: 'update', id: disableId, enabled: false })
+      setDisableId(null)
+    },
     rename: (id: string, name: string) => mutation.mutate({ kind: 'update', id, name }),
     disconnect: (id: string) => mutation.mutate({ kind: 'disconnect', id }),
   }

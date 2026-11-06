@@ -8,6 +8,7 @@ import { Navigate, useLocation } from 'react-router'
 
 import { irohClientNodeId } from '@/acp/iroh/iroh-transport'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { useAppNodeId } from '@/components/settings/iroh-pairing-panel'
 import {
   AlertDialog,
@@ -46,7 +47,12 @@ import { IntegrationDetail } from './integration-detail'
 import { McpServerDetail } from './mcp-server-detail'
 import { McpServerForm } from './mcp-server-form'
 import { getConnectionsOAuthCallback } from './oauth-callback'
-import { connectionsPageReducer, createConnectionsPageState, type ConnectionSelection } from './page-state'
+import {
+  connectionsPageReducer,
+  createConnectionsPageState,
+  type ConnectionSelection,
+  type ConnectionsPageState,
+} from './page-state'
 import { useConnectionsOAuthCallback } from './use-connections-oauth-callback'
 import { useIntegrationsController } from './use-integrations-controller'
 import { useMcpServersData } from './use-mcp-servers-data'
@@ -100,13 +106,16 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const [state, dispatch] = useReducer(
     connectionsPageReducer,
     initialCallback.kind === 'integration',
-    (processing) => ({
-      ...createConnectionsPageState(processing),
-      selected:
-        location.state && typeof location.state.providerConnectionId === 'string'
-          ? { kind: 'provider' as const, id: location.state.providerConnectionId }
-          : null,
-    }),
+    (processing): ConnectionsPageState => {
+      const initialState = createConnectionsPageState(processing)
+      if (typeof location.state?.providerConnectionId === 'string') {
+        return { ...initialState, selected: { kind: 'provider', id: location.state.providerConnectionId } }
+      }
+      if (location.state?.addConnection === true) {
+        return { ...initialState, selected: { kind: 'new', id: '' }, shouldClearNavigationState: true }
+      }
+      return initialState
+    },
   )
   const {
     selected,
@@ -172,7 +181,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const formError =
     formErrorSources.find((source): source is { title: string; body: string } => source.body != null) ?? null
 
-  const { servers, credentialsById, serverTools } = useMcpServersData(db, mcpServers)
+  const { servers, areServersReady, credentialsById, serverTools } = useMcpServersData(db, mcpServers)
 
   const providerConnections = useAiProviderConnections()
   const aiProviders = providerConnections.providers
@@ -452,13 +461,13 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           integrations={integrationsController.integrations.filter((integration) => integration.isConnected)}
           areIntegrationsReady={integrationsController.areIntegrationsReady}
           servers={servers}
+          areServersReady={areServersReady}
           serverStatus={rowStatus}
           activeKey={panelOpen && selected && !form.isAddFormOpen ? `${selected.kind}:${selected.id}` : null}
           onAdd={() => {
             formController.cancel()
             dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'new', id: '' } })
           }}
-          onAddServer={openAddForm}
           onSelectIntegration={(id) => toggleSelection({ kind: 'integration', id })}
           onSelectServer={(id) => toggleSelection({ kind: 'server', id })}
           onToggleIntegration={integrationsController.toggle}
@@ -470,6 +479,16 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       <DetailPanelSurface open={panelOpen} onClose={closePanel}>
         {panel}
       </DetailPanelSurface>
+      {providerConnections.pendingDisable && (
+        <ConfirmActionDialog
+          open
+          title={t`Disable ${providerConnections.pendingDisable.name}?`}
+          description={t`Models and search using this connection will be unavailable until you enable it again.`}
+          confirmLabel={t`Disable connection`}
+          onConfirm={providerConnections.confirmDisable}
+          onCancel={providerConnections.cancelDisable}
+        />
+      )}
       {shouldClearNavigationState && location.state !== null && <Navigate to="." replace state={null} />}
       <AlertDialog
         open={pendingDelete !== null}

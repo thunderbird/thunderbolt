@@ -2,9 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, eq, getTableColumns, isNull } from 'drizzle-orm'
+import { and, eq, getTableColumns, isNotNull, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { providerConnectionsTable as connections, providerConnectionSecretsTable as secrets } from '@/db/tables'
+import {
+  modelsTable,
+  providerConnectionsTable as connections,
+  providerConnectionSecretsTable as secrets,
+} from '@/db/tables'
 import type { DrizzleQueryWithPromise } from '@/types'
 import type { ProviderAuthMethod, ProviderConnection, ProviderCredentials, ProviderType } from '@/providers/types'
 import { credentialBinding, providerCredentialConnected, writeProviderCredentials } from '@/providers/credentials'
@@ -29,6 +33,14 @@ export const getProviderConnections = (db: AnyDrizzleDatabase) => {
     .orderBy(connections.name)
   return query as typeof query & DrizzleQueryWithPromise<ProviderConnection>
 }
+
+/** Connection references used by saved models, without reading device credentials. */
+export const getModelProviderConnectionIds = (db: AnyDrizzleDatabase) =>
+  db
+    .select({ connectionId: modelsTable.providerConnectionId })
+    .from(modelsTable)
+    .where(and(isNull(modelsTable.deletedAt), isNotNull(modelsTable.providerConnectionId)))
+    .groupBy(modelsTable.providerConnectionId)
 
 /** Return active connection metadata, including whether this device is authenticated. */
 export const getProviderConnection = async (db: AnyDrizzleDatabase, id: string): Promise<ProviderConnection | null> => {

@@ -293,7 +293,6 @@ msgstr "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 #~ msgid "Add a connection"
 #~ msgstr "Add a connection"
 
-#: src/components/chat/chat-model-setup.tsx
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Add a model"
 msgstr "Add a model"
@@ -327,6 +326,11 @@ msgstr "Add Agent"
 #: src/components/chat/chat-prompt-input.tsx
 #~ msgid "Add and select a model in Settings to start chatting."
 #~ msgstr "Add and select a model in Settings to start chatting."
+
+#: src/components/chat/chat-model-setup.tsx
+#: src/settings/connections/connections-list.tsx
+msgid "Add connection"
+msgstr "Add connection"
 
 #: src/settings/connections/index.tsx
 msgid "Add failed"
@@ -378,8 +382,8 @@ msgstr "Add web search"
 #~ msgstr "Add your first passkey"
 
 #: src/settings/connections/connections-list.tsx
-msgid "Add your first server"
-msgstr "Add your first server"
+#~ msgid "Add your first server"
+#~ msgstr "Add your first server"
 
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
@@ -1131,12 +1135,12 @@ msgid "Connect a local model or use an API key."
 msgstr "Connect a local model or use an API key."
 
 #: src/components/chat/chat-model-setup.tsx
-msgid "Connect a model provider or add your own model to start chatting."
-msgstr "Connect a model provider or add your own model to start chatting."
+#~ msgid "Connect a model provider or add your own model to start chatting."
+#~ msgstr "Connect a model provider or add your own model to start chatting."
 
 #: src/components/chat/chat-model-setup.tsx
-msgid "Connect a provider"
-msgstr "Connect a provider"
+#~ msgid "Connect a provider"
+#~ msgstr "Connect a provider"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Connect a remote agent that speaks the Agent Client Protocol."
@@ -1174,6 +1178,10 @@ msgstr "Connect Otari"
 #: src/settings/search/index.tsx
 #~ msgid "Connect Otari in Connections and enable web search in your Otari workspace."
 #~ msgstr "Connect Otari in Connections and enable web search in your Otari workspace."
+
+#: src/settings/connections/connections-list.tsx
+msgid "Connect providers, accounts, or MCP servers to use their models and tools."
+msgstr "Connect providers, accounts, or MCP servers to use their models and tools."
 
 #: src/settings/models/add-provider-models.tsx
 msgid "Connect this provider on this device to add models."
@@ -1233,8 +1241,8 @@ msgid "Connect your AI"
 msgstr "Connect your AI"
 
 #: src/settings/connections/connections-list.tsx
-msgid "Connect your own MCP servers to give agents more tools."
-msgstr "Connect your own MCP servers to give agents more tools."
+#~ msgid "Connect your own MCP servers to give agents more tools."
+#~ msgstr "Connect your own MCP servers to give agents more tools."
 
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/components/search-provider-setup/search-provider-setup.tsx
@@ -2068,6 +2076,11 @@ msgstr "Devices"
 msgid "Disable {0}"
 msgstr "Disable {0}"
 
+#. placeholder {0}: providerConnections.pendingDisable.name
+#: src/settings/connections/index.tsx
+msgid "Disable {0}?"
+msgstr "Disable {0}?"
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Disable {customAgentName}"
 msgstr "Disable {customAgentName}"
@@ -2095,6 +2108,10 @@ msgstr "Disable {targetName}?"
 #: src/settings/connections/connections-list.tsx
 msgid "Disable {title}"
 msgstr "Disable {title}"
+
+#: src/settings/connections/index.tsx
+msgid "Disable connection"
+msgstr "Disable connection"
 
 #: src/skills/dependents-dialog.tsx
 msgid "Disable skill"
@@ -3211,6 +3228,10 @@ msgstr "Models"
 msgid "Models and search"
 msgstr "Models and search"
 
+#: src/settings/connections/index.tsx
+msgid "Models and search using this connection will be unavailable until you enable it again."
+msgstr "Models and search using this connection will be unavailable until you enable it again."
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Moderate drizzle"
 msgstr "Moderate drizzle"
@@ -3377,6 +3398,10 @@ msgstr "No chats yet. Anything you ask beside this app shows up here."
 #: src/settings/connections/new-connection-picker.tsx
 msgid "No connections found."
 msgstr "No connections found."
+
+#: src/settings/connections/connections-list.tsx
+msgid "No connections yet"
+msgstr "No connections yet"
 
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."

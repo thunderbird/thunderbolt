@@ -305,7 +305,6 @@ msgstr "Ajoutez <0>~/.local/bin</0> à votre PATH, puis redémarrez votre shell 
 #~ msgid "Add a connection"
 #~ msgstr ""
 
-#: src/components/chat/chat-model-setup.tsx
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Add a model"
 msgstr ""
@@ -339,6 +338,11 @@ msgstr "Ajouter un agent"
 #: src/components/chat/chat-prompt-input.tsx
 #~ msgid "Add and select a model in Settings to start chatting."
 #~ msgstr ""
+
+#: src/components/chat/chat-model-setup.tsx
+#: src/settings/connections/connections-list.tsx
+msgid "Add connection"
+msgstr ""
 
 #: src/settings/connections/index.tsx
 msgid "Add failed"
@@ -390,8 +394,8 @@ msgstr ""
 #~ msgstr ""
 
 #: src/settings/connections/connections-list.tsx
-msgid "Add your first server"
-msgstr "Ajoutez votre premier serveur"
+#~ msgid "Add your first server"
+#~ msgstr "Ajoutez votre premier serveur"
 
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
@@ -1143,12 +1147,12 @@ msgid "Connect a local model or use an API key."
 msgstr ""
 
 #: src/components/chat/chat-model-setup.tsx
-msgid "Connect a model provider or add your own model to start chatting."
-msgstr ""
+#~ msgid "Connect a model provider or add your own model to start chatting."
+#~ msgstr ""
 
 #: src/components/chat/chat-model-setup.tsx
-msgid "Connect a provider"
-msgstr ""
+#~ msgid "Connect a provider"
+#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Connect a remote agent that speaks the Agent Client Protocol."
@@ -1186,6 +1190,10 @@ msgstr ""
 #: src/settings/search/index.tsx
 #~ msgid "Connect Otari in Connections and enable web search in your Otari workspace."
 #~ msgstr ""
+
+#: src/settings/connections/connections-list.tsx
+msgid "Connect providers, accounts, or MCP servers to use their models and tools."
+msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "Connect this provider on this device to add models."
@@ -1245,8 +1253,8 @@ msgid "Connect your AI"
 msgstr ""
 
 #: src/settings/connections/connections-list.tsx
-msgid "Connect your own MCP servers to give agents more tools."
-msgstr "Connectez vos propres serveurs MCP pour donner plus d'outils aux agents."
+#~ msgid "Connect your own MCP servers to give agents more tools."
+#~ msgstr "Connectez vos propres serveurs MCP pour donner plus d'outils aux agents."
 
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/components/search-provider-setup/search-provider-setup.tsx
@@ -2080,6 +2088,11 @@ msgstr "Appareils"
 msgid "Disable {0}"
 msgstr ""
 
+#. placeholder {0}: providerConnections.pendingDisable.name
+#: src/settings/connections/index.tsx
+msgid "Disable {0}?"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Disable {customAgentName}"
 msgstr "Désactiver {customAgentName}"
@@ -2107,6 +2120,10 @@ msgstr "Désactiver {targetName} ?"
 #: src/settings/connections/connections-list.tsx
 msgid "Disable {title}"
 msgstr "Désactiver {title}"
+
+#: src/settings/connections/index.tsx
+msgid "Disable connection"
+msgstr ""
 
 #: src/skills/dependents-dialog.tsx
 msgid "Disable skill"
@@ -3223,6 +3240,10 @@ msgstr "Modèles"
 msgid "Models and search"
 msgstr ""
 
+#: src/settings/connections/index.tsx
+msgid "Models and search using this connection will be unavailable until you enable it again."
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Moderate drizzle"
 msgstr "Bruine modérée"
@@ -3388,6 +3409,10 @@ msgstr ""
 
 #: src/settings/connections/new-connection-picker.tsx
 msgid "No connections found."
+msgstr ""
+
+#: src/settings/connections/connections-list.tsx
+msgid "No connections yet"
 msgstr ""
 
 #: src/settings/devices.tsx

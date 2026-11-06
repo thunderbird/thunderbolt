@@ -166,6 +166,8 @@ export type PreparedPiBinding = {
   readonly wireModel: string
   readonly persistsCredentialStatus: boolean
   readonly piModel: Model<Api>
+  /** Provider discovery overrides Pi's static catalog; an empty list hides unverified controls. */
+  readonly reasoningCapabilities?: ReasoningCapabilities
   readonly install: (models: MutableModels) => void
   readonly attach: (harness: AgentHarness) => () => void
   readonly observePromptError: (failure: Error | AssistantMessage) => Promise<void>

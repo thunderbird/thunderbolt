@@ -3,7 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { piReasoningCapabilities } from '../../../shared/agent-core/reasoning-capabilities.ts'
-import { isReasoningEffort, type ReasoningEffort } from '../../../shared/reasoning-effort.ts'
+import {
+  isReasoningEffort,
+  type ReasoningCapabilities,
+  type ReasoningEffort,
+} from '../../../shared/reasoning-effort.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
 import { isDeepStrictEqual } from 'node:util'
@@ -72,10 +76,12 @@ const cleanupBindingState = async (state: BindingCleanupState): Promise<Error[]>
 }
 
 /** Resolve the effective native effort, including Pi's supported-level aliases. */
-const currentReasoningEffort = (harness: AgentHarness): ReasoningEffort | undefined => {
+const currentReasoningEffort = (
+  harness: AgentHarness,
+  capabilities: ReasoningCapabilities = piReasoningCapabilities(harness.getModel()),
+): ReasoningEffort | undefined => {
   const level = harness.getThinkingLevel()
   const model = harness.getModel()
-  const capabilities = piReasoningCapabilities(model)
   if (!model || !capabilities.efforts.length) return undefined
   if (capabilities.kind === 'toggle') return level === 'off' ? 'none' : 'high'
   const nativeLevel = level === 'off' ? level : clampThinkingLevel(model, level)
@@ -85,12 +91,13 @@ const currentReasoningEffort = (harness: AgentHarness): ReasoningEffort | undefi
 }
 
 /** Keep the selected level concrete when a model cannot honor the inherited effort. */
-const ensureSupportedReasoningEffort = async (harness: AgentHarness): Promise<void> => {
-  const efforts = piReasoningCapabilities(harness.getModel()).efforts
-  if (efforts.length && currentReasoningEffort(harness) === undefined) {
-    const effort = efforts.includes('medium')
-      ? 'medium'
-      : (efforts.find((level) => level !== 'none') ?? efforts[0]!)
+const ensureSupportedReasoningEffort = async (
+  harness: AgentHarness,
+  capabilities: ReasoningCapabilities = piReasoningCapabilities(harness.getModel()),
+): Promise<void> => {
+  const efforts = capabilities.efforts
+  if (efforts.length && currentReasoningEffort(harness, capabilities) === undefined) {
+    const effort = efforts.includes('medium') ? 'medium' : (efforts.find((level) => level !== 'none') ?? efforts[0]!)
     await harness.setThinkingLevel(effort === 'none' ? 'off' : effort)
   }
 }
@@ -102,7 +109,7 @@ const ensureSupportedReasoningEffort = async (harness: AgentHarness): Promise<vo
 export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): Promise<HarnessRuntime> => {
   const { harness, models } = options
   await harness.setSteeringMode('one-at-a-time')
-  await ensureSupportedReasoningEffort(harness)
+  await ensureSupportedReasoningEffort(harness, options.binding.reasoningCapabilities)
   const initialUnsubscribe = options.binding.attach(harness)
   let activeBinding: BindingCleanupState | null = createBindingCleanupState(options.binding, initialUnsubscribe)
   const retiredBindings = new Set<BindingCleanupState>()
@@ -316,7 +323,7 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
         if (modelChanged) {
           modelChangeAttempted = true
           await harness.setModel(binding.piModel)
-          await ensureSupportedReasoningEffort(harness)
+          await ensureSupportedReasoningEffort(harness, binding.reasoningCapabilities)
         }
       } catch (error) {
         const rollbackErrors = await restoreLiveBinding(previous, candidate, modelChangeAttempted, previousThinking)
@@ -421,8 +428,8 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
   }
 
   const reasoning = {
-    capabilities: () => piReasoningCapabilities(harness.getModel()),
-    current: () => currentReasoningEffort(harness),
+    capabilities: () => activeBinding?.binding.reasoningCapabilities ?? piReasoningCapabilities(harness.getModel()),
+    current: () => currentReasoningEffort(harness, reasoning.capabilities()),
     set: async (effort: ReasoningEffort): Promise<void> => {
       if (disposed || !activeBinding) throw new Error('Harness runtime is unavailable.')
       if (promptActive || transitionActive) throw new Error('Wait for the current operation to finish.')

@@ -361,10 +361,14 @@ A saved value that is no longer supported resolves to no override.
 `shared/reasoning-effort.ts` owns provider capability rules and exact wire values. OpenAI Chat Completions uses
 `reasoning_effort`; OpenRouter uses `reasoning.effort`. Tinfoil uses its documented native `reasoning_effort` values,
 including values that differ from Pi's catalog aliases. Explicit overrides replace conflicting profile controls.
-OpenAI/Anthropic capabilities come from Pi's model catalog, OpenRouter from its public model catalog, and Tinfoil
-from its documented per-model list. OpenRouter discovery shares one cached catalog across models; a refresh outage
-retains the last successful catalog, while a cold failure remains an error. Update the Tinfoil list when changing
-the bundled confidential models.
+OpenAI/Anthropic capabilities come from Pi's model catalog. OpenRouter and Tinfoil use their public model catalogs;
+Tinfoil's top-level `supported_efforts` lists exact native values, while its `reasoning_params.effort_map` only maps
+presets and is not a capability list. No per-model effort list is bundled. Discovery shares a five-minute cache per
+provider and keeps the last successful catalog during refresh outages. Missing metadata hides effort controls;
+a cold discovery failure also hides controls. The app preserves explicit saved wire choices during an outage;
+the CLI retains its saved thinking level with Pi's legacy compatibility mapping until metadata is available. Public catalog requests
+contain no session credentials, cache secret, or conversation data. The CLI uses the same Tinfoil metadata and cache
+policy, with Pi's compatibility aliases retained for legacy inference defaults when native support is unknown.
 
 The browser harness changes thinking level between turns without rebuilding the session or losing compaction
 checkpoints. An absent override uses the profile's level and leaves the provider payload unchanged.

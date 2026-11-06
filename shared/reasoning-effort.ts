@@ -29,27 +29,6 @@ export const resolveReasoningEffort = (
 export const reasoningEffortSettingKey = (threadId: string, modelId: string): string =>
   `chat-reasoning-effort:${threadId}:${modelId}`
 
-/** Native levels from https://docs.tinfoil.sh/guides/reasoning (2026-11-05).
- * https://inference.tinfoil.sh/v1/models exposes preset effort_map values, not complete native support:
- * Kimi has no mapping, and DeepSeek's mapping omits the supported max level.
- */
-export const tinfoilReasoningCapabilities = (modelId: string): ReasoningCapabilities => {
-  switch (modelId) {
-    case 'glm-5-3':
-    case 'kimi-k3':
-      return { efforts: ['low', 'high', 'max'] }
-    case 'deepseek-v4-1-flash':
-      return { efforts: ['none', 'low', 'high', 'xhigh', 'max'] }
-    case 'gemma4-31b':
-      return { efforts: reasoningEfforts }
-    case 'gpt-oss-120b':
-    case 'gpt-oss-safeguard-120b':
-      return { efforts: ['low', 'medium', 'high'] }
-    default:
-      return noReasoningEffort
-  }
-}
-
 /** Select the effort encoding for an OpenAI-compatible provider. */
 export const reasoningEffortFormat = (providerId: string): 'openai' | 'openrouter' | 'tinfoil' =>
   providerId === 'openrouter' || providerId === 'tinfoil' ? providerId : 'openai'

@@ -15,8 +15,10 @@ import { sessionConfigKey, useSessionConfigStore } from '@/acp/session-config-st
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
 import { EffortSelector } from './effort-selector'
 import { useEffortSelectorState } from './use-effort-selector-state'
+import { http } from '@/lib/http'
 
 const model = createMockModel({ id: 'effort-model', provider: 'tinfoil', model: 'glm-5-3' })
+let catalogRequest: ReturnType<typeof spyOn<typeof http, 'get'>>
 const Probe = () => {
   const { choices, value, busy, choose } = useEffortSelectorState()
   return (
@@ -68,6 +70,20 @@ const installRemoteOptions = (setOption: (configId: string, value: string) => Pr
 
 beforeAll(setupTestDatabase)
 beforeEach(async () => {
+  catalogRequest = spyOn(http, 'get').mockImplementation(() => {
+    const response = new Response(
+      JSON.stringify({
+        data: [
+          { id: 'glm-5-3', reasoning: true, supported_efforts: ['low', 'high', 'max'] },
+          { id: 'llama3-3-70b', reasoning: false, supported_efforts: [] },
+        ],
+      }),
+    )
+    return Object.assign(Promise.resolve(response), {
+      json: <T,>() => response.clone().json() as Promise<T>,
+      text: () => response.clone().text(),
+    })
+  })
   await resetTestDatabase()
   resetStore()
   hydrateStore({
@@ -80,6 +96,7 @@ beforeEach(async () => {
 })
 afterEach(() => {
   cleanup()
+  catalogRequest.mockRestore()
   resetStore()
 })
 afterAll(teardownTestDatabase)

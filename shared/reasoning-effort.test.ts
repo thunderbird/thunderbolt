@@ -11,7 +11,6 @@ import {
   reasoningEffortSettingKey,
   reasoningEffortFormat,
   resolveReasoningEffort,
-  tinfoilReasoningCapabilities,
 } from './reasoning-effort'
 
 describe('reasoning capabilities', () => {
@@ -22,8 +21,6 @@ describe('reasoning capabilities', () => {
     expect(reasoningEfforts).not.toContain('off')
   })
   it('does not invent levels for unknown or non-reasoning models', () => {
-    expect(tinfoilReasoningCapabilities('llama3-3-70b').efforts).toEqual([])
-    expect(tinfoilReasoningCapabilities('future-model').efforts).toEqual([])
     expect(openRouterReasoningCapabilities(undefined).efforts).toEqual([])
     expect(openRouterReasoningCapabilities({}).efforts).toEqual([])
   })
@@ -33,34 +30,8 @@ describe('reasoning capabilities', () => {
       openRouterReasoningCapabilities({ supported_efforts: ['high', 'none', 'unknown'], mandatory: true }).efforts,
     ).toEqual(['high'])
   })
-  it('preserves model-specific choices, including mandatory reasoning', () => {
-    expect(tinfoilReasoningCapabilities('glm-5-3').efforts).toEqual(['low', 'high', 'max'])
-    expect(tinfoilReasoningCapabilities('deepseek-v4-1-flash').efforts).toEqual(['none', 'low', 'high', 'xhigh', 'max'])
-  })
-  it.each(['gpt-oss-120b', 'gpt-oss-safeguard-120b'])(
-    'limits Tinfoil %s to Harmony-supported native levels',
-    (modelId) => {
-      const capabilities = tinfoilReasoningCapabilities(modelId)
-      expect(capabilities.efforts).toEqual(['low', 'medium', 'high'])
-      for (const unsupported of ['none', 'minimal', 'xhigh', 'max']) {
-        expect(resolveReasoningEffort(unsupported, capabilities)).toBeUndefined()
-      }
-    },
-  )
-  it('supports the full Gemma scale and Kimi native mandatory-reasoning levels', () => {
-    expect(tinfoilReasoningCapabilities('gemma4-31b').efforts).toEqual([
-      'none',
-      'minimal',
-      'low',
-      'medium',
-      'high',
-      'xhigh',
-      'max',
-    ])
-    expect(tinfoilReasoningCapabilities('kimi-k3').efforts).toEqual(['low', 'high', 'max'])
-  })
   it('resolves unsupported saved values to Default and isolates conversation/model preferences', () => {
-    const capabilities = tinfoilReasoningCapabilities('glm-5-3')
+    const capabilities = { efforts: ['low', 'high', 'max'] as const }
     expect(resolveReasoningEffort('none', capabilities)).toBeUndefined()
     expect(resolveReasoningEffort('default', capabilities)).toBeUndefined()
     expect(resolveReasoningEffort('high', capabilities)).toBe('high')

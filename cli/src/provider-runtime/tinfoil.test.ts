@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, describe, expect, test } from 'bun:test'
+import { afterAll, describe, expect, spyOn, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,7 +11,8 @@ import { AttestationError } from '@tinfoilsh/verifier'
 import { SecureClient } from 'tinfoil'
 import { defaultModelGlm53, defaultModelDeepSeekV41Flash, type SharedModel } from '../../../shared/defaults/models.ts'
 import { inferenceUsageReceiptHeader, inferenceModelHeader } from '../../../shared/inference-usage.ts'
-import { tinfoilReasoningCapabilities } from '../../../shared/reasoning-effort.ts'
+import { noReasoningEffort } from '../../../shared/reasoning-effort.ts'
+import { parseTinfoilReasoningCatalog } from '../../../shared/reasoning-effort-catalog.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
 import { readFileOrNull } from '../lib/secure-fs.ts'
@@ -29,6 +30,14 @@ const confidentialModel: SharedModel = {
   startWithReasoning: 1,
   supportsParallelToolCalls: 1,
 }
+
+// Representative metadata captured from Tinfoil's public /v1/models endpoint on 2026-11-05.
+const reasoningCatalog = parseTinfoilReasoningCatalog({
+  data: [
+    { id: 'glm-5-3', reasoning: true, supported_efforts: ['low', 'high', 'max'] },
+    { id: 'deepseek-v4-1-flash', reasoning: true, supported_efforts: ['none', 'low', 'high', 'xhigh', 'max'] },
+  ],
+})
 
 const receiptOutboxDirectory = await mkdtemp(join(tmpdir(), 'thunderbolt-tinfoil-'))
 const testOutboxPath = (): string => join(receiptOutboxDirectory, `${crypto.randomUUID()}.json`)
@@ -56,6 +65,7 @@ const bindingOptions = (
   receiptOutboxPath: testOutboxPath(),
   receiptRetryWait: async () => {},
   reportError: () => {},
+  loadReasoningCapabilities: async (modelId) => reasoningCatalog.get(modelId) ?? noReasoningEffort,
 })
 
 const successfulCompletion = (receipt: string): Response =>
@@ -229,6 +239,56 @@ const createRuntime = (binding: PreparedPiBinding, thinking: ThinkingLevel = 'hi
   )
 
 describe('createTinfoilBinding', () => {
+  test('keeps ordinary inference working through legacy defaults during a cold discovery outage', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const requests: Record<string, unknown>[] = []
+    const binding = await createTinfoilBinding({
+      ...bindingOptions(),
+      loadReasoningCapabilities: async () => {
+        throw new Error('Catalog unavailable')
+      },
+      createSecureClient: secureClientFactory(async (request) => {
+        requests.push((await request.json()) as Record<string, unknown>)
+        return successfulCompletion('')
+      }),
+    })
+    const runtime = await createRuntime(binding, 'medium')
+    try {
+      expect(runtime.reasoning.capabilities()).toEqual({ efforts: [] })
+      await expect(runtime.reasoning.set('high')).rejects.toThrow('Unsupported reasoning effort')
+      expect((await runtime.prompt('Continue working')).stopReason).toBe('stop')
+      // GLM does not accept native medium. Preserve Pi's medium -> high compatibility mapping.
+      expect(requests[0]?.reasoning_effort).toBe('high')
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      await runtime.dispose()
+      warn.mockRestore()
+    }
+  })
+
+  test.each([noReasoningEffort, { efforts: ['none', 'max'] as const }])(
+    'uses discovered capabilities even when they differ from the bundled model (%j)',
+    async (capabilities) => {
+      const binding = await createTinfoilBinding({
+        ...bindingOptions(),
+        loadReasoningCapabilities: async () => capabilities,
+        createSecureClient: secureClientFactory(() => successfulCompletion('')),
+      })
+      const runtime = await createRuntime(binding)
+      try {
+        expect(runtime.reasoning.capabilities()).toEqual(capabilities)
+        expect(binding.piModel.reasoning).toBe(true)
+        await expect(runtime.reasoning.set('high')).rejects.toThrow('Unsupported reasoning effort')
+        for (const effort of capabilities.efforts) {
+          await runtime.reasoning.set(effort)
+          expect(runtime.reasoning.current()).toBe(effort)
+        }
+      } finally {
+        await runtime.dispose()
+      }
+    },
+  )
+
   test('rejects a cache secret that is not exactly 32 bytes before binding construction', async () => {
     await expect(
       createTinfoilBinding(bindingOptions(sessionCredential({ userCacheSecret: new Uint8Array(31) }))),
@@ -387,7 +447,7 @@ describe('createTinfoilBinding', () => {
         }),
       })
       const runtime = await createRuntime(binding)
-      const capabilities = tinfoilReasoningCapabilities(model.model)
+      const capabilities = reasoningCatalog.get(model.model)!
       try {
         expect(runtime.reasoning.capabilities()).toEqual(capabilities)
         for (const effort of capabilities.efforts) {

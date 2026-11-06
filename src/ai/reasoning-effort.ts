@@ -14,9 +14,13 @@ import {
   openRouterReasoningCapabilities,
   reasoningEffortSettingKey,
   resolveReasoningEffort,
-  tinfoilReasoningCapabilities,
   type ReasoningCapabilities,
 } from '@shared/reasoning-effort'
+import {
+  createReasoningCatalogLoader,
+  parseTinfoilReasoningCatalog,
+  tinfoilModelsUrl,
+} from '@shared/reasoning-effort-catalog'
 
 const routerCatalogSchema = z.object({
   data: z.array(
@@ -32,44 +36,21 @@ const routerCatalogSchema = z.object({
   ),
 })
 
-type RouterCatalog = z.infer<typeof routerCatalogSchema>
 /** Create a capability resolver with one shared provider catalog cache. */
 export const createReasoningCapabilitiesLoader = () => {
-  const routerCatalogCache: { current?: { expires: number; value: Promise<RouterCatalog> } } = {}
-
-  /** Share one public catalog across models; a refresh outage keeps the last known capabilities. */
-  const loadRouterCatalog = (): Promise<RouterCatalog> => {
-    const previous = routerCatalogCache.current
-    if (previous && previous.expires > Date.now()) {
-      return previous.value
-    }
-    const value = (async () => {
-      try {
-        return routerCatalogSchema.parse(
-          await http.get('https://openrouter.ai/api/v1/models', { signal: AbortSignal.timeout(10_000) }).json(),
-        )
-      } catch (error) {
-        if (previous) {
-          console.warn('Could not refresh OpenRouter reasoning capabilities; using the previous catalog', error)
-          return previous.value
-        }
-        delete routerCatalogCache.current
-        throw error
-      } finally {
-        if (routerCatalogCache.current) {
-          routerCatalogCache.current.expires = Date.now() + 300_000
-        }
-      }
-    })()
-    // Pending requests stay shared even after a suspended tab resumes beyond the TTL.
-    routerCatalogCache.current = { expires: Infinity, value }
-    return value
-  }
+  const loadRouterCatalog = createReasoningCatalogLoader('OpenRouter', async () =>
+    routerCatalogSchema.parse(
+      await http.get('https://openrouter.ai/api/v1/models', { signal: AbortSignal.timeout(10_000) }).json(),
+    ),
+  )
+  const loadTinfoilCatalog = createReasoningCatalogLoader('Tinfoil', async () =>
+    parseTinfoilReasoningCatalog(await http.get(tinfoilModelsUrl, { signal: AbortSignal.timeout(10_000) }).json()),
+  )
 
   /** Resolve capabilities from the serving provider, never from the existence of a profile preference. */
   return async (model: Model): Promise<ReasoningCapabilities> => {
     if (model.provider === 'tinfoil') {
-      return tinfoilReasoningCapabilities(model.model)
+      return (await loadTinfoilCatalog()).get(model.model) ?? noReasoningEffort
     }
     if (model.provider === 'openrouter') {
       const catalog = await loadRouterCatalog()
@@ -91,21 +72,25 @@ export const createReasoningCapabilitiesLoader = () => {
 export const loadReasoningCapabilities = createReasoningCapabilitiesLoader()
 
 /** Read at the send boundary, so reloads and other devices use the same saved preference. */
-export const getChatReasoningEffort = async (threadId: string, model: Model) => {
+export const getChatReasoningEffort = async (
+  threadId: string,
+  model: Model,
+  loadCapabilities = loadReasoningCapabilities,
+) => {
   const key = reasoningEffortSettingKey(threadId, model.id)
   const settings = await getSettings(getDb(), { [key]: String }, { camelCase: false })
   if (!isReasoningEffort(settings[key])) {
     return undefined
   }
   try {
-    return resolveReasoningEffort(settings[key], await loadReasoningCapabilities(model))
+    return resolveReasoningEffort(settings[key], await loadCapabilities(model))
   } catch (error) {
-    if (model.provider !== 'openrouter') {
+    if (model.provider !== 'openrouter' && model.provider !== 'tinfoil') {
       throw error
     }
     // Discovery is advisory: preserve the user's explicit choice during a cold
     // catalog outage and let the inference endpoint validate it.
-    console.warn('Could not discover OpenRouter reasoning capabilities; keeping the saved effort', error)
+    console.warn(`Could not discover ${model.provider} reasoning capabilities; keeping the saved effort`, error)
     return settings[key]
   }
 }

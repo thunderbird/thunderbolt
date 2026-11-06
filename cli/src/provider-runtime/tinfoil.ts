@@ -12,7 +12,8 @@ import { inferenceModelHeader } from '../../../shared/inference-usage.ts'
 import {
   reasoningEfforts,
   resolveReasoningEffort,
-  tinfoilReasoningCapabilities,
+  noReasoningEffort,
+  type ReasoningCapabilities,
   type ReasoningEffort,
 } from '../../../shared/reasoning-effort.ts'
 import { join } from 'node:path'
@@ -23,6 +24,7 @@ import { thunderboltHomeDir } from '../paths.ts'
 import { providerRuntimeError } from './types.ts'
 import type { AccountFetch, PreparedPiBinding, ProviderRuntimeError, SessionCredential } from './types.ts'
 import { createUsageReceiptLifecycle, submitInferenceUsageReceipt } from './usage-receipt.ts'
+import { loadTinfoilReasoningCapabilities } from './tinfoil-catalog.ts'
 
 type TinfoilBindingError = Error & ProviderRuntimeError
 
@@ -39,6 +41,7 @@ export type CreateTinfoilBindingOptions = {
   readonly receiptRetryWait?: (milliseconds: number) => Promise<void>
   readonly reportError?: (error: Error) => void
   readonly createSecureClient?: (options: ConstructorParameters<typeof SecureClient>[0]) => SecureClient
+  readonly loadReasoningCapabilities?: (modelId: string) => Promise<ReasoningCapabilities>
 }
 
 /** Build a non-secret preparation error for malformed confidential state. */
@@ -94,6 +97,15 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     throw error
   }
 
+  const capabilities = await (async () => {
+    try {
+      return await (options.loadReasoningCapabilities ?? loadTinfoilReasoningCapabilities)(options.model.model)
+    } catch (error) {
+      // Discovery is advisory. Keep Pi's existing inference behavior without advertising unverified choices.
+      console.warn('Could not discover Tinfoil reasoning capabilities; keeping provider defaults', error)
+      return noReasoningEffort
+    }
+  })()
   const baseUrl = `${apiBaseUrl(options.credential.backendUrl)}/tinfoil`
   const createSecureClient = options.createSecureClient ?? ((clientOptions) => new SecureClient(clientOptions))
   let client: SecureClient | null = createSecureClient({
@@ -129,7 +141,6 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
         timeoutMs: options.receiptTimeoutMs,
       }),
   })
-  const capabilities = tinfoilReasoningCapabilities(options.model.model)
   const hasNativeEfforts = capabilities.efforts.length > 0
   let getReasoningEffort: () => ReasoningEffort | undefined = () => undefined
   const built = buildConfidentialModel({
@@ -140,7 +151,7 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     apiKey: sdkPlaceholderCredential,
     fetch: fetchFn,
     receipts,
-    getReasoningEffort: hasNativeEfforts ? () => getReasoningEffort() : undefined,
+    getReasoningEffort: () => getReasoningEffort(),
     thinkingLevelMap: hasNativeEfforts
       ? Object.fromEntries(
           reasoningEfforts.map((effort) => [
@@ -168,6 +179,7 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     wireModel: options.model.model,
     persistsCredentialStatus: false,
     piModel: built.model,
+    reasoningCapabilities: capabilities,
     install: (models) => models.setProvider(provider),
     attach: (harness) => {
       getReasoningEffort = () => {

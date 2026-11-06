@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { NotificationCard } from '@/components/ui/notification-card'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
@@ -12,6 +12,8 @@ import { useCurrentChatSession } from '@/chats/chat-store'
 import { useEffortSelectorState } from './use-effort-selector-state'
 import { needsApiKey } from '@/settings/models/model-policy'
 import { GradientLock } from '@/components/ui/gradient-lock'
+import { AttestationMenuRow, AttestationModal, useChatAttestationState } from '@/components/chat/attestation'
+import { useEffortSelectorMenu } from './use-effort-selector-menu'
 import { EffortControls } from './effort-controls'
 import { EffortRing } from './effort-ring'
 import './effort-selector.css'
@@ -20,8 +22,9 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
   const { t } = useLingui()
   const { selectedModel, chatThread } = useCurrentChatSession()
   const effort = useEffortSelectorState()
+  const attestation = useChatAttestationState()
   const { choices, value, kind, error, dismissError } = effort
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, privacyOpen, setPrivacyOpen, triggerRef } = useEffortSelectorMenu(attestation.target?.key)
   if (!choices.length && !modelPicker) {
     return null
   }
@@ -36,6 +39,7 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
     : effortDescription
   const trigger = (
     <button
+      ref={triggerRef}
       type="button"
       data-testid={modelPicker ? 'model-selector-trigger' : undefined}
       aria-haspopup="dialog"
@@ -73,8 +77,26 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
         }}
       >
         {modelPicker?.(() => setOpen(false))}
+        {modelPicker && attestation.target && (
+          <AttestationMenuRow
+            target={attestation.target}
+            state={attestation.state}
+            onClick={() => setPrivacyOpen(true)}
+          />
+        )}
         {choices.length > 0 && <EffortControls key={selectedModel.id} {...effort} />}
       </ResponsivePopover>
+      {modelPicker && attestation.target && (
+        <AttestationModal
+          target={attestation.target}
+          state={attestation.state}
+          onVerify={attestation.verify}
+          hour12={attestation.hour12}
+          open={privacyOpen}
+          onOpenChange={setPrivacyOpen}
+          returnFocusRef={triggerRef}
+        />
+      )}
       {createPortal(
         <>
           {!open && error && (

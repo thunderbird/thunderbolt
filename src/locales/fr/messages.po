@@ -3386,6 +3386,10 @@ msgstr "Aucune conversation pour l'instant."
 msgid "No chats yet. Anything you ask beside this app shows up here."
 msgstr ""
 
+#: src/settings/connections/new-connection-picker.tsx
+msgid "No connections found."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
 msgstr "Aucun appareil pour l'instant. Connectez-vous avec la synchronisation pour voir vos appareils ici."
@@ -3705,7 +3709,11 @@ msgid "Open Thunderbolt CLI"
 msgstr "Ouvrir la CLI Thunderbolt"
 
 #: src/settings/connections/new-connection-picker.tsx
-msgid "OpenAI-compatible"
+#~ msgid "OpenAI-compatible"
+#~ msgstr ""
+
+#: src/settings/connections/new-connection-picker.tsx
+msgid "OpenAI-compatible model provider"
 msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
@@ -4367,9 +4375,11 @@ msgid "Search chats…"
 msgstr "Rechercher des conversations…"
 
 #: src/settings/connections/connections-list.tsx
+#: src/settings/connections/new-connection-picker.tsx
 msgid "Search connections"
 msgstr "Rechercher des connexions"
 
+#: src/settings/connections/new-connection-picker.tsx
 #: src/settings/models/add-provider-models.tsx
 msgid "Search connections…"
 msgstr ""

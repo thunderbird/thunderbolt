@@ -905,7 +905,7 @@ describe('Opus data migration', () => {
     const otaVersion = defaultModelsVersion + 1
     const otaModels = defaultModels.map((model) => (model.id === defaultModelOpus55.id ? legacyModel : model))
 
-    await reconcileDefaults(db, { models: { version: otaVersion, data: otaModels } })
+    await reconcileDefaults(db, { models: { version: otaVersion, data: otaModels, imageSupport: {} } })
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
@@ -1464,6 +1464,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const otaSource: ModelsDefaults = {
       version: defaultModelsVersion + 1,
       data: [...remaining],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1494,6 +1495,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const otaSource: ModelsDefaults = {
       version: defaultModelsVersion + 1,
       data: [...remaining],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1529,6 +1531,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const otaSource: ModelsDefaults = {
       version: defaultModelsVersion + 1,
       data: [flipped, ...defaultModels.slice(1)],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1588,6 +1591,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
           userId: null,
         },
       ],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })

@@ -2,7 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ImageSupportModel } from '@shared/defaults/models'
+import { useConfigStore } from '@/api/config-store'
+import {
+  defaultModelDeepSeekV41Flash,
+  defaultModelId,
+  defaultModels,
+  defaultModelsVersion,
+  type ImageSupportModel,
+} from '@shared/defaults/models'
 import { beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import {
   clearImageSupportCache,
@@ -75,5 +82,49 @@ describe('getKnownImageSupport', () => {
     expect(getKnownImageSupport(model())).toBeUndefined()
     setCachedImageSupport(model(), 'unsupported')
     expect(getKnownImageSupport(model())).toBe('unsupported')
+  })
+
+  describe('with a newer server lineup', () => {
+    const serverOnly = { ...defaultModelDeepSeekV41Flash, id: 'server-only-default', model: 'kimi-k3' }
+
+    it('picks the lineup once per payload, so a rejected one warns once', () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      useConfigStore.setState({
+        config: {
+          defaults: {
+            models: {
+              version: defaultModelsVersion + 1,
+              defaultModelId: serverOnly.id,
+              data: [serverOnly],
+              imageSupport: { [serverOnly.id]: 'supported' },
+            },
+          },
+        },
+      })
+
+      getKnownImageSupport(serverOnly)
+      getKnownImageSupport(serverOnly)
+
+      expect(getKnownImageSupport(serverOnly)).toBeUndefined()
+      expect(warn).toHaveBeenCalledTimes(1)
+      warn.mockRestore()
+    })
+
+    it('answers for a default only the server declares', () => {
+      expect(getKnownImageSupport(serverOnly)).toBeUndefined()
+      useConfigStore.setState({
+        config: {
+          defaults: {
+            models: {
+              version: defaultModelsVersion + 1,
+              defaultModelId,
+              data: [...defaultModels, serverOnly],
+              imageSupport: { [serverOnly.id]: 'supported' },
+            },
+          },
+        },
+      })
+      expect(getKnownImageSupport(serverOnly)).toBe('supported')
+    })
   })
 })

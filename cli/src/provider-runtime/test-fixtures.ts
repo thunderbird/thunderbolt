@@ -24,6 +24,7 @@ export const futureDirectCatalog: ManagedCatalog = {
   version: 1,
   defaultModelId: futureDirectModelId,
   data: [futureDirectModel],
+  imageSupport: { [futureDirectModelId]: 'supported' },
 }
 
 /** Creates a valid stored-session credential for provider-runtime tests. */

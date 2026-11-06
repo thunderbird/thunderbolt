@@ -63,6 +63,7 @@ const bindingOptions = (
 ): CreateTinfoilBindingOptions => ({
   credential,
   model: confidentialModel,
+  supportsImages: false,
   onStoredSessionRejected: async () => {},
   receiptOutboxPath: testOutboxPath(),
   receiptRetryWait: async () => {},
@@ -922,6 +923,7 @@ describe('createTinfoilBinding', () => {
       const bindingA = await createTinfoilBinding({
         credential: credentialA,
         model: confidentialModel,
+        supportsImages: false,
         onStoredSessionRejected: async () => {},
         receiptRetryWait: async () => {},
         createSecureClient: secureClientFactory(() => successfulCompletion('account-a-receipt')),
@@ -937,6 +939,7 @@ describe('createTinfoilBinding', () => {
       const bindingB = await createTinfoilBinding({
         credential: credentialB,
         model: confidentialModel,
+        supportsImages: false,
         onStoredSessionRejected: async () => {
           accountBDemotions.push('demoted')
         },

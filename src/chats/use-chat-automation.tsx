@@ -40,7 +40,8 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
       chatInstance?.status === 'ready' &&
       hasMessages &&
       chatInstance?.messages[chatInstance?.messages.length - 1].role === 'user' &&
-      !chatInstance.messages.at(-1)?.metadata?.stoppedByUser
+      !chatInstance.messages.at(-1)?.metadata?.stoppedByUser &&
+      !chatInstance.messages.at(-1)?.metadata?.acpCommand
     ) {
       if (
         isPrivateAutoRunBlocked({

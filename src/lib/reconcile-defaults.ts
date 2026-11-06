@@ -10,7 +10,13 @@ import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
+import {
+  defaultModelImageSupport,
+  defaultModels,
+  defaultModelsVersion,
+  hashModel,
+  type SharedModel,
+} from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting, shipsWithoutValue } from '../defaults/settings'
 import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
@@ -19,7 +25,11 @@ import { restampWidgetSkillDefaultHashes } from './data-migrations/restamp-widge
 import { normalizeModelDefault, upgradeModelDefaults } from './data-migrations/upgrade-model-defaults'
 import { nowIso } from './utils'
 
-const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
+const bundledModelsDefaults: ModelsDefaults = {
+  version: defaultModelsVersion,
+  data: defaultModels,
+  imageSupport: defaultModelImageSupport,
+}
 
 /**
  * Settings keys holding the highest defaults version ever applied to this

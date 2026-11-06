@@ -37,7 +37,7 @@ bun run preview      # serve the build locally
 
 Spark is the production homepage at `/`, with shared components in `src/components/marketing/spark/`. The old `/designs/spark` preview redirects to `/`; the alternate concepts and font explorer are excluded from the production site.
 
-The shared header’s Explore dropdown links Privacy, Enterprise, Docs, Blog, and Contact. Add future destinations to the `pages` array in `spark-header.tsx`. Download and community destinations live in `src/data/website-product.ts`; public mobile store URLs are still pending.
+The shared header shows Privacy, Enterprise, and Docs directly when space permits. Links progressively move into More on narrower screens; Blog and Contact always live there. Add destinations to `primaryPages` or `morePages` in `spark-header.tsx`, with paired visibility rules in `spark-chrome.css` for any new primary link. Download and community destinations live in `src/data/website-product.ts`; public mobile store URLs are still pending.
 
 ## Deploys
 

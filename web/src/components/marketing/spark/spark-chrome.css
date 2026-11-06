@@ -44,7 +44,7 @@
   position: relative;
   z-index: 20;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 24px;
   height: 88px;
@@ -69,8 +69,18 @@
 .spark-main-nav {
   display: flex;
   align-items: center;
-  gap: 32px;
+  justify-content: center;
+  gap: 24px;
+  white-space: nowrap;
   font-size: 14px;
+}
+.spark-nav-direct {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.spark-nav-direct[aria-current='page'] {
+  color: var(--spark-red);
 }
 .spark-nav-disclosure {
   position: relative;
@@ -121,6 +131,11 @@
   border-radius: 9px;
   font-size: 15px;
   font-weight: 500;
+}
+/* Paired visibility rules keep each destination in exactly one navigation surface. */
+.spark-nav-pages
+  > :is([data-nav-page='Privacy'], [data-nav-page='Enterprise'], [data-nav-page='Docs']) {
+  display: none;
 }
 .spark-nav-pages > a > span {
   font-size: 13px;
@@ -223,9 +238,6 @@
   .spark-header {
     grid-template-columns: 1fr auto auto;
   }
-  .spark-nav-values {
-    display: none;
-  }
   .spark-nav-disclosure {
     position: static;
   }
@@ -284,5 +296,30 @@
     padding-inline: 14px;
     gap: 12px;
     font-size: 11px;
+  }
+}
+
+@media (width < 54rem) {
+  .spark-nav-direct[data-nav-page='Docs'] {
+    display: none;
+  }
+  .spark-nav-pages > [data-nav-page='Docs'] {
+    display: flex;
+  }
+}
+@media (width < 46rem) {
+  .spark-nav-direct[data-nav-page='Enterprise'] {
+    display: none;
+  }
+  .spark-nav-pages > [data-nav-page='Enterprise'] {
+    display: flex;
+  }
+}
+@media (width < 40rem) {
+  .spark-nav-direct[data-nav-page='Privacy'] {
+    display: none;
+  }
+  .spark-nav-pages > [data-nav-page='Privacy'] {
+    display: flex;
   }
 }

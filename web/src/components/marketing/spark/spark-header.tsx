@@ -8,16 +8,19 @@ import { productLinks } from '../../../data/website-product'
 import { useSparkHeaderState } from './use-spark-header-state'
 import { SiteThemeToggle } from '../../site-theme/site-theme-toggle'
 
-const pages = [
+const primaryPages = [
   { label: 'Privacy', href: '/privacy/' },
   { label: 'Enterprise', href: '/enterprise/' },
   { label: 'Docs', href: '/docs/' },
+] as const
+
+const morePages = [
   { label: 'Blog', href: '/blog/' },
   { label: 'Contact', href: '/contact/' },
 ] as const
 
 type SparkHeaderProps = {
-  currentPage?: (typeof pages)[number]['label']
+  currentPage?: (typeof primaryPages | typeof morePages)[number]['label']
   as?: 'header' | 'div'
 }
 
@@ -33,6 +36,17 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
         <span>Thunderbolt</span>
       </a>
       <nav className="spark-main-nav" aria-label="Main navigation">
+        {primaryPages.map((page) => (
+          <a
+            key={page.href}
+            className="spark-nav-direct"
+            data-nav-page={page.label}
+            href={page.href}
+            aria-current={currentPage === page.label ? 'page' : undefined}
+          >
+            {page.label}
+          </a>
+        ))}
         <div className="spark-nav-disclosure" ref={navigationRef} onBlur={onNavigationBlur}>
           <button
             className="spark-nav-trigger"
@@ -42,7 +56,7 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
             ref={triggerRef}
             onClick={toggleNavigation}
           >
-            Explore
+            More
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path
                 d="m4 6 4 4 4-4"
@@ -55,9 +69,10 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
           </button>
           <div className="spark-nav-panel" id={panelId} hidden={!isOpen}>
             <div className="spark-nav-pages">
-              {pages.map((page) => (
+              {[...primaryPages, ...morePages].map((page) => (
                 <a
                   key={page.href}
+                  data-nav-page={page.label}
                   href={page.href}
                   aria-current={currentPage === page.label ? 'page' : undefined}
                   onClick={closeNavigation}
@@ -77,9 +92,6 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
             </div>
           </div>
         </div>
-        <a className="spark-nav-values" href="/#spark-values">
-          Our values
-        </a>
       </nav>
       <div className="spark-header-actions">
         <SiteThemeToggle />

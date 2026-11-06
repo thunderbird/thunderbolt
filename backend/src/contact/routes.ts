@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Settings } from '@/config/settings'
-import { isEmailConfigured, sendEmail } from '@/lib/resend'
+import { EmailDeliveryError, isEmailConfigured, sendEmail } from '@/lib/resend'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { readBoundedJson } from '@/utils/request-body'
 import { Elysia, type AnyElysia } from 'elysia'
@@ -55,9 +55,17 @@ export const createContactRoutes = ({
             subject: 'Thunderbolt website inquiry',
             react: createElement(ContactEmail, { submission: parsed.data }),
           })
-          if (accepted.id) {return { success: true }}
-        } catch {
-          // Provider errors can contain addresses or credentials; never expose them to the visitor.
+          if (accepted.id) {
+            return { success: true }
+          }
+          console.error('[contact] Email delivery failed', { reason: 'missing_acceptance' })
+        } catch (error) {
+          console.error(
+            '[contact] Email delivery failed',
+            error instanceof EmailDeliveryError
+              ? { providerCode: error.providerCode, status: error.providerStatus }
+              : { reason: 'provider_request_failed' },
+          )
         }
         set.status = 502
         return { error: 'Your message could not be sent. Please try again later.' }

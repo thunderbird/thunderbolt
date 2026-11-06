@@ -32,6 +32,7 @@ export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth' | 'contact'>
 type RateLimitTierConfig = {
   max: number
   durationSecs: number
+  enforceWhenDisabled?: boolean
 }
 
 export type RateLimitSettings = {
@@ -52,7 +53,7 @@ const tierConfigs = {
   receipt: { max: 100, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
-  contact: { max: 3, durationSecs: 60 * 60 },
+  contact: { max: 3, durationSecs: 60 * 60, enforceWhenDisabled: true },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },
   'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
 } satisfies Record<FixedRateLimitTier, RateLimitTierConfig>
@@ -187,7 +188,8 @@ const createTierLimiter = (database: typeof DbType, ...args: TierArgs) =>
 /** IP-keyed middleware for one tier; fails closed like createAuthIpRateLimit. */
 export const createIpTierRateLimit = (database: typeof DbType, settings: IpRateLimitSettings, ...args: TierArgs) => {
   // Public email intake always needs an abuse limit, even when app limits are disabled.
-  if (!settings.enabled && args[0] !== 'contact') {
+  const config: RateLimitTierConfig = args.length === 1 ? tierConfigs[args[0]] : args[1]
+  if (!settings.enabled && !config.enforceWhenDisabled) {
     return new Elysia()
   }
   const limiter = createTierLimiter(database, ...args)

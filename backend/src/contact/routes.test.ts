@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { renderToStaticMarkup } from 'react-dom/server'
-import type { SendEmailParams } from '@/lib/resend'
+import { EmailDeliveryError, type SendEmailParams } from '@/lib/resend'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { createContactRoutes } from './routes'
 
@@ -54,8 +54,11 @@ describe('public contact endpoint', () => {
         method: 'POST',
         body: JSON.stringify({ email: 'visitor@example.org' }),
       })
-      if (contentType === null) {request.headers.delete('content-type')}
-      else {request.headers.set('content-type', contentType)}
+      if (contentType === null) {
+        request.headers.delete('content-type')
+      } else {
+        request.headers.set('content-type', contentType)
+      }
       const response = await app.handle(request)
       expect(response.status).toBe(415)
       expect(request.bodyUsed).toBe(false)
@@ -178,14 +181,25 @@ describe('public contact endpoint', () => {
     })
   }
 
-  it('returns a sanitized failure for provider errors and missing acceptance', async () => {
+  it('logs structured delivery failures without logging addresses or credentials', async () => {
     const { request, send } = setup()
+    const log = spyOn(console, 'error').mockImplementation(() => {})
+    send.mockRejectedValueOnce(new EmailDeliveryError('invalid_api_key', 401))
     send.mockRejectedValueOnce(new Error('Secret provider credentials and visitor email'))
     send.mockResolvedValueOnce({ id: '' })
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const response = await request({ email: 'a@example.org' })
-      expect(response.status).toBe(502)
-      expect(await response.json()).toEqual({ error: 'Your message could not be sent. Please try again later.' })
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const response = await request({ email: 'a@example.org' })
+        expect(response.status).toBe(502)
+        expect(await response.json()).toEqual({ error: 'Your message could not be sent. Please try again later.' })
+      }
+      expect(log.mock.calls).toEqual([
+        ['[contact] Email delivery failed', { providerCode: 'invalid_api_key', status: 401 }],
+        ['[contact] Email delivery failed', { reason: 'provider_request_failed' }],
+        ['[contact] Email delivery failed', { reason: 'missing_acceptance' }],
+      ])
+    } finally {
+      log.mockRestore()
     }
   })
 })

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type React from 'react'
-import { Resend } from 'resend'
+import { Resend, type ErrorResponse } from 'resend'
 
 /**
  * Sender address for all outgoing emails, and the contact address in their
@@ -54,6 +54,17 @@ export type SendEmailParams = {
   react: React.ReactElement
 }
 
+/** Structured provider rejection safe to log without message text or email addresses. */
+export class EmailDeliveryError extends Error {
+  constructor(
+    readonly providerCode: ErrorResponse['name'],
+    readonly providerStatus: number | null,
+  ) {
+    super('Email provider rejected delivery')
+    this.name = 'EmailDeliveryError'
+  }
+}
+
 /**
  * Send an email using a React Email component.
  * Uses the default sender address unless overridden.
@@ -67,7 +78,7 @@ export const sendEmail = async ({ to, from = emailFrom, subject, react, replyTo 
   const { data, error } = await resend.emails.send({ from, to, subject, react, replyTo })
 
   if (error) {
-    throw new Error(`Failed to send email: ${error.message}`)
+    throw new EmailDeliveryError(error.name, error.statusCode)
   }
 
   return data

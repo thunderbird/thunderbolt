@@ -345,6 +345,8 @@ On Linux, start and migrate PostgreSQL first, then start PowerSync using [`night
 
 The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
 
+Pull requests never run these jobs. To run them on a branch, dispatch the workflow with `gh workflow run nightly.yml --ref <branch>`: off `main` only `native-ios` and `native-linux` run, and no failure notification goes out. Maestro matches what the iOS accessibility tree exposes, and there an `aria-label` replaces the element's text, so a control whose label differs from the text it shows can be found only by the label.
+
 The fake provider binds to IPv4 loopback (`127.0.0.1`). Binding to `localhost`
 can select `::1` on Linux while the Bun backend connects over IPv4. The scoped
 `fake-provider.test.ts` opens a real socket and consumes the complete Messages

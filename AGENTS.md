@@ -110,6 +110,7 @@ Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive th
 
 - Create test files as `<file>.test.ts` next to source files
 - Test likely edge cases, aiming for useful 80% coverage
+- **Every UI change ships with its e2e updates in the same change.** Find each e2e flow that touches what you changed — visible text, an `aria-label`, a `data-testid`, a route, or how a control opens and closes — and update it. Search all of `e2e/`, including the native app smoke in `e2e/native-smoke/` (`ios.yaml` for Maestro, `linux.ts` for WebdriverIO): it runs only in the Nightly, so PR CI stays green when it breaks. [Native app smoke](docs/internals/development/testing.md#native-app-smoke) covers what iOS matches on and how to run it on a branch
 - **Never run bare `bun test` at the repo root** — it discovers every `*.test.*` file in the repo, including `backend/` tests that open real connections (test DB, WebSocket e2e) and hang forever without their services running, and it applies no timeout. Use `bun run test` (scoped, 5s per-test timeout, finishes in ~15s), `bun test <path> --timeout 5000` for a specific file/folder, or the per-workspace command below
 
 `bun run test` covers `src/` plus the `shared/` roots (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`), a few script tests, and `e2e/db-diagnostic.test.ts` — and nothing else. The other suites each need their own command:

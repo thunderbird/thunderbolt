@@ -12,11 +12,13 @@ import { v7 as uuidv7 } from 'uuid'
 import { DatabaseProvider } from '@/contexts'
 import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable, projectsTable } from '@/db/tables'
+import { getPowerSyncQueryPlan, getTableReads } from '@/test-utils/powersync-query-plan'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { getAllChatThreads } from './chat-threads'
 import {
   getAllProjects,
+  getAllProjectsQuery,
   getProjectChatThreads,
   setChatThreadProject,
   setProjectPinned,
@@ -29,6 +31,17 @@ beforeAll(setupTestDatabase)
 beforeEach(resetTestDatabase)
 afterEach(cleanup)
 afterAll(teardownTestDatabase)
+
+it('uses one indexed message lookup per chat on PowerSync JSON views', () => {
+  const plan = getPowerSyncQueryPlan(getAllChatThreads(getDb()))
+  expect(getTableReads(plan, 'chat_messages')).toEqual([expect.stringMatching(/^SEARCH /)])
+})
+
+it('looks up project chats and their messages through indexes on PowerSync JSON views', () => {
+  const plan = getPowerSyncQueryPlan(getAllProjectsQuery(getDb()))
+  expect(getTableReads(plan, 'chat_threads')).toEqual([expect.stringMatching(/^SEARCH /)])
+  expect(getTableReads(plan, 'chat_messages')).toEqual([expect.stringMatching(/^SEARCH /)])
+})
 
 /** Explicit times make recency assertions independent of the test clock. */
 const idAt = (second: number) => uuidv7({ msecs: Date.UTC(2026, 9, 21, 12, 0, second) })

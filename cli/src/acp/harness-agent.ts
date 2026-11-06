@@ -22,11 +22,15 @@
  * below remains the per-connection registry, now hydrated from disk on resume.
  */
 
+import { isReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import { realpath } from 'node:fs/promises'
 import { PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
 import type {
   Agent,
   AgentSideConnection,
+  SessionConfigOption,
+  SetSessionConfigOptionRequest,
+  SetSessionConfigOptionResponse,
   AuthenticateResponse,
   CancelNotification,
   ContentBlock,
@@ -60,7 +64,10 @@ import type { SessionStore } from './session-store.ts'
  * The frozen {@link HarnessRuntime} operations the ACP agent drives. Keeping the
  * surface narrow lets tests exercise the round-trip with no API key.
  */
-export type ServeHarness = Pick<HarnessRuntime, 'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose'>
+export type ServeHarness = Pick<
+  HarnessRuntime,
+  'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose' | 'reasoning'
+>
 
 /** Builds a {@link ServeHarness} for one disk-backed Pi session. */
 export type BuildServeHarness = (
@@ -196,7 +203,7 @@ export const createHarnessAgent = (
   buildServeHarness: BuildServeHarness = createHarnessRuntime,
 ): Agent => {
   const sessions = new Map<SessionId, Session>()
-  const pendingResumes = new Map<SessionId, Promise<void>>()
+  const pendingSessionChanges = new Map<SessionId, Promise<unknown>>()
   const trustedWorkspace = realpath(config.cwd)
 
   // Release every session's execution environment when the connection ends, so
@@ -222,10 +229,26 @@ export const createHarnessAgent = (
   })
 
   const requireSession = (sessionId: SessionId): Session => {
-    if (pendingResumes.has(sessionId)) throw RequestError.invalidParams(undefined, `session '${sessionId}' is resuming`)
     const session = sessions.get(sessionId)
     if (!session) throw RequestError.invalidParams(undefined, `unknown session '${sessionId}'`)
     return session
+  }
+
+  /** Serialize history-affecting session changes before a replacement can open its view. */
+  const changeSession = async <Result>(sessionId: SessionId, operation: () => Promise<Result>): Promise<Result> => {
+    const previous = pendingSessionChanges.get(sessionId)
+    const pending = (async () => {
+      // A failed change releases the lane; other sessions remain independent.
+      await previous?.catch(() => {})
+      conn.signal.throwIfAborted()
+      return operation()
+    })()
+    pendingSessionChanges.set(sessionId, pending)
+    try {
+      return await pending
+    } finally {
+      if (pendingSessionChanges.get(sessionId) === pending) pendingSessionChanges.delete(sessionId)
+    }
   }
 
   const initialize = async (_params: InitializeRequest): Promise<InitializeResponse> => ({
@@ -263,7 +286,7 @@ export const createHarnessAgent = (
     session: PiSession,
     skills: readonly SkillDefinition[],
     phase: string,
-  ): Promise<void> => {
+  ): Promise<Session> => {
     const binding = await prepareProviderBinding(runtime, config.selection, { signal: conn.signal })
     const harness = await buildServeHarness(harnessConfigFor(workspaceRoot, skills), binding, session)
 
@@ -307,14 +330,61 @@ export const createHarnessAgent = (
       return rejectWiring(candidate, RequestError.internalError(undefined, `connection closed during ${phase}`))
     }
     sessions.set(sessionId, candidate)
+    return candidate
   }
+
+  /** Advertise the native levels this session can actually apply. */
+  const sessionConfig = ({ reasoning }: ServeHarness): { configOptions?: SessionConfigOption[] } => {
+    const capabilities = reasoning.capabilities()
+    const efforts = capabilities.efforts
+    const current = reasoning.current()
+    if (!efforts.length || current === undefined) return {}
+    return {
+      configOptions: [
+        {
+          id: 'reasoning_effort',
+          name: 'Reasoning effort',
+          category: 'thought_level',
+          type: 'select',
+          currentValue: current,
+          options: efforts.map((value) => ({
+            value,
+            name: value === 'none' ? 'Off' : capabilities.kind === 'toggle' ? 'On' : value,
+          })),
+        },
+      ],
+    }
+  }
+
+  const setSessionConfigOption = async (
+    params: SetSessionConfigOptionRequest,
+  ): Promise<SetSessionConfigOptionResponse> =>
+    changeSession(params.sessionId, async () => {
+      const session = requireSession(params.sessionId)
+      const reasoning = session.harness.reasoning
+      if (
+        params.configId !== 'reasoning_effort' ||
+        !isReasoningEffort(params.value) ||
+        !reasoning.capabilities().efforts.includes(params.value)
+      ) {
+        throw RequestError.invalidParams(undefined, 'Unsupported reasoning configuration')
+      }
+      await reasoning.set(params.value)
+      conn.signal.throwIfAborted()
+      const configOptions = sessionConfig(session.harness).configOptions ?? []
+      await conn.sessionUpdate({
+        sessionId: params.sessionId,
+        update: { sessionUpdate: 'config_option_update', configOptions },
+      })
+      return { configOptions }
+    })
 
   const newSession = async (params: NewSessionRequest): Promise<NewSessionResponse> => {
     const sessionId = crypto.randomUUID()
     const workspaceRoot = await trustedWorkspace
     const session = await store.createSession(sessionId, workspaceRoot)
-    await activate(sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/new')
-    return { sessionId }
+    const active = await activate(sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/new')
+    return { sessionId, ...sessionConfig(active.harness) }
   }
 
   // Resume a prior thread on a fresh process: rehydrate the agent's execution
@@ -329,28 +399,27 @@ export const createHarnessAgent = (
     if (!sessionIdPattern.test(params.sessionId)) {
       throw RequestError.invalidParams(undefined, `invalid session id '${params.sessionId}'`)
     }
-    const previous = pendingResumes.get(params.sessionId)
-    const pending = (async () => {
-      // A failed resume still releases the lane. Different sessions remain independent.
-      await previous?.catch(() => {})
-      conn.signal.throwIfAborted()
+    return changeSession(params.sessionId, async () => {
       // Stop writes to the durable history before opening its replacement view.
       await sessions.get(params.sessionId)?.harness.abort()
       conn.signal.throwIfAborted()
       const workspaceRoot = await trustedWorkspace
       const session = await store.openSession(params.sessionId, workspaceRoot)
-      await activate(params.sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/resume')
-    })()
-    pendingResumes.set(params.sessionId, pending)
-    try {
-      await pending
-      return {}
-    } finally {
-      if (pendingResumes.get(params.sessionId) === pending) pendingResumes.delete(params.sessionId)
-    }
+      const active = await activate(
+        params.sessionId,
+        workspaceRoot,
+        session,
+        readWireSkills(params._meta),
+        'session/resume',
+      )
+      return sessionConfig(active.harness)
+    })
   }
 
   const prompt = async (params: PromptRequest): Promise<PromptResponse> => {
+    if (pendingSessionChanges.has(params.sessionId)) {
+      throw RequestError.invalidParams(undefined, `session '${params.sessionId}' is changing`)
+    }
     const { harness } = requireSession(params.sessionId)
     const result = await harness.prompt(promptText(params.prompt))
     // A failed turn resolves (it doesn't throw) with `stopReason: 'error'`, which
@@ -367,5 +436,5 @@ export const createHarnessAgent = (
   // trust boundary, so `authenticate` is a no-op the client should never need.
   const authenticate = async (): Promise<AuthenticateResponse> => ({})
 
-  return { initialize, newSession, resumeSession, prompt, cancel, authenticate }
+  return { initialize, newSession, resumeSession, setSessionConfigOption, prompt, cancel, authenticate }
 }

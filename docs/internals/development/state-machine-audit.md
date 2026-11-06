@@ -1,6 +1,6 @@
 # State-machine audit
 
-Base: `858eceafa` (`origin/main`). Branch: `codex/state-machine-audit`. Audit date: 2026-11-06.
+Original audit base: `858eceafa`. Audited commit: `ac18e8ff2`. Integrated main: `83117ef6b`. Branch: `codex/state-machine-audit`. Audit date: 2026-11-06.
 
 ## Counts and scope
 
@@ -224,19 +224,21 @@ This pass re-examined retained families and code outside the first diff, then cr
 
 | Check                                                              | Final result                                                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `bun run test` (randomized; earlier failing seed also verified)    | **8,023 passed**: 7,346 frontend, 673 shared/script, 4 scoped e2e unit checks; 0 failed                                     |
-| CLI `bun run test`                                                 | **883 passed**, 0 failed                                                                                                    |
-| `bun run test:agent-core`                                          | **258 passed**, 0 failed                                                                                                    |
+| `bun run test` (randomized; earlier failing seed also verified)    | **8,381 passed**: 7,663 frontend, 714 shared/script, 4 scoped e2e unit checks; 0 failed                                     |
+| CLI `bun run test`                                                 | **924 passed**, 0 failed                                                                                                    |
+| `bun run test:agent-core`                                          | **299 passed**, 0 failed                                                                                                    |
 | Selected backend auth/encryption and transport suites              | **573 passed** (305 + 268), 0 failed                                                                                        |
 | Agent-core production browser checks                               | **4 passed**: Chromium/WebKit, with native iterator helpers present/absent                                                  |
 | Production key-lock module in independent same-origin browser tabs | **8 passed**: Chromium/WebKit exclusion, settlement/failure release, owner-tab closure, unsupported API                     |
-| `bun run check`                                                    | Passed: TypeScript, lint (0 errors; 314 warnings), formatting, tracked license headers; new-file headers checked separately |
+| `bun run check`                                                    | Passed: TypeScript, lint (0 errors; 310 warnings), formatting, tracked license headers; new-file headers checked separately |
 | Backend and CLI type checks; backend lint                          | Passed; backend lint has 0 errors and 73 warnings                                                                           |
 | Production build                                                   | Passed                                                                                                                      |
 | Localization extraction                                            | Catalogs updated; repeat extraction is stable                                                                               |
 | `git diff --check`                                                 | Passed                                                                                                                      |
 
 The root test command preserves the package’s scoped discovery and 5-second per-test limit; it is not bare repository-wide `bun test`. Backend coverage uses isolated auth/encryption, OTP, SSO, relay, hosted-agent, streaming, usage and Haystack suites; it does not depend on a running production database. Local-server tests and browser checks ran with loopback access outside the network sandbox. The combined randomized run exposed outdated cancellation assertions, a Web Locks mock that deleted another suite’s manager, and a dialog test that stopped waiting before newly queued IndexedDB work finished. Those fixtures now preserve their original behavioral assertions and wait for the actual outcome.
+
+The integration preserves main’s compaction/reasoning feature alongside audit ownership rules. Added regressions cover cancelled/failed harness replacements retaining workspace cleanup, manual compaction cancellation, and reasoning persistence finishing before a resumed session opens its history. The current validation above uses main’s locked dependency versions. Existing browser and native-smoke selectors were reviewed and require no changes.
 
 ### Coverage and practical limits
 
@@ -248,13 +250,13 @@ Physical microphone capture, native updater relaunch, real passkey devices, depl
 
 ### Bundle impact
 
-Built baseline `858eceafa` and the final app snapshot at the same export path with the same dependencies/options. Gzip level 9, each asset compressed separately:
+Built integrated baseline `83117ef6b` and the final app snapshot at the same export path with the same dependencies/options. Gzip level 9, each asset compressed separately:
 
 | Assets                | Baseline bytes | Final bytes |          Change |
 | --------------------- | -------------: | ----------: | --------------: |
-| Entry JavaScript      |        648,774 |     639,660 | −9,114 (−1.40%) |
-| All JavaScript assets |      3,527,273 |   3,532,599 | +5,326 (+0.15%) |
-| CSS                   |         52,702 |      52,702 |               0 |
+| Entry JavaScript      |        673,597 |     664,484 | −9,113 (−1.35%) |
+| All JavaScript assets |      3,549,937 |   3,555,133 | +5,196 (+0.15%) |
+| CSS                   |         53,188 |      53,188 |               0 |
 
 The entry chunk became smaller; total JavaScript grew slightly as additional lifecycle boundaries were fixed. No new dependencies were added. The earlier first-pass size/line measurements are superseded by this broader change.
 

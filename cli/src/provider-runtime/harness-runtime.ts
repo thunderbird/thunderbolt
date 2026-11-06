@@ -2,9 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { piReasoningCapabilities } from '../../../shared/agent-core/reasoning-capabilities.ts'
+import {
+  isReasoningEffort,
+  type ReasoningCapabilities,
+  type ReasoningEffort,
+} from '../../../shared/reasoning-effort.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
-import { modelsAreEqual } from '@earendil-works/pi-ai'
+import { isDeepStrictEqual } from 'node:util'
+import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import type { MutableModels } from '@earendil-works/pi-ai'
 import { cleanupFailure, collect, withCleanupErrors } from '../agent/cleanup-errors.ts'
 import type { HarnessRuntime, PreparedPiBinding } from './types.ts'
@@ -68,6 +75,33 @@ const cleanupBindingState = async (state: BindingCleanupState): Promise<Error[]>
   return errors
 }
 
+/** Resolve the effective native effort, including Pi's supported-level aliases. */
+const currentReasoningEffort = (
+  harness: AgentHarness,
+  capabilities: ReasoningCapabilities = piReasoningCapabilities(harness.getModel()),
+): ReasoningEffort | undefined => {
+  const level = harness.getThinkingLevel()
+  const model = harness.getModel()
+  if (!model || !capabilities.efforts.length) return undefined
+  if (capabilities.kind === 'toggle') return level === 'off' ? 'none' : 'high'
+  const nativeLevel = level === 'off' ? level : clampThinkingLevel(model, level)
+  const mapped = model.thinkingLevelMap?.[nativeLevel]
+  const effort = mapped ?? (nativeLevel === 'off' ? 'none' : nativeLevel)
+  return isReasoningEffort(effort) && capabilities.efforts.includes(effort) ? effort : undefined
+}
+
+/** Keep the selected level concrete when a model cannot honor the inherited effort. */
+const ensureSupportedReasoningEffort = async (
+  harness: AgentHarness,
+  capabilities: ReasoningCapabilities = piReasoningCapabilities(harness.getModel()),
+): Promise<void> => {
+  const efforts = capabilities.efforts
+  if (efforts.length && currentReasoningEffort(harness, capabilities) === undefined) {
+    const effort = efforts.includes('medium') ? 'medium' : (efforts.find((level) => level !== 'none') ?? efforts[0]!)
+    await harness.setThinkingLevel(effort === 'none' ? 'off' : effort)
+  }
+}
+
 /**
  * Wrap one Pi harness and mutable registry with binding and transaction ownership.
  * The initial binding must already be installed in `models`.
@@ -75,6 +109,7 @@ const cleanupBindingState = async (state: BindingCleanupState): Promise<Error[]>
 export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): Promise<HarnessRuntime> => {
   const { harness, models } = options
   await harness.setSteeringMode('one-at-a-time')
+  await ensureSupportedReasoningEffort(harness, options.binding.reasoningCapabilities)
   const initialUnsubscribe = options.binding.attach(harness)
   let activeBinding: BindingCleanupState | null = createBindingCleanupState(options.binding, initialUnsubscribe)
   const retiredBindings = new Set<BindingCleanupState>()
@@ -116,6 +151,7 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
     previous: BindingCleanupState,
     candidate: BindingCleanupState,
     modelChangeAttempted: boolean,
+    previousThinking: ReturnType<AgentHarness['getThinkingLevel']>,
   ): Promise<Error[]> => {
     const errors: Error[] = []
 
@@ -126,6 +162,7 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
     if (modelChangeAttempted) {
       await collect(errors, async () => {
         await harness.setModel(previous.binding.piModel)
+        await harness.setThinkingLevel(previousThinking)
       })
     }
 
@@ -248,13 +285,14 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
     const finishTransition = beginTransition()
     const previous = activeBinding
     const candidate = createBindingCleanupState(binding)
+    const previousThinking = harness.getThinkingLevel()
     let modelChangeAttempted = false
 
     try {
       await harness.waitForIdle()
       if (disposed) return rejectOwnedBinding(binding, new Error('Harness runtime is disposed.'))
 
-      const modelChanged = !modelsAreEqual(previous.binding.piModel, binding.piModel)
+      const modelChanged = !isDeepStrictEqual(previous.binding.piModel, binding.piModel)
       const shouldActivate =
         switchOptions.forceReplace || modelChanged || previous.binding.providerId !== binding.providerId
 
@@ -285,9 +323,10 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
         if (modelChanged) {
           modelChangeAttempted = true
           await harness.setModel(binding.piModel)
+          await ensureSupportedReasoningEffort(harness, binding.reasoningCapabilities)
         }
       } catch (error) {
-        const rollbackErrors = await restoreLiveBinding(previous, candidate, modelChangeAttempted)
+        const rollbackErrors = await restoreLiveBinding(previous, candidate, modelChangeAttempted, previousThinking)
         await collect(rollbackErrors, transaction.rollback)
         rollbackErrors.push(...(await retireBinding(candidate)))
         throw withCleanupErrors(toError(error), rollbackErrors)
@@ -388,5 +427,31 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
     return disposePromise
   }
 
-  return { subscribe, registerToolCallGate, steer, prompt, abort, currentProviderId, switchBinding, deactivate, dispose }
+  const reasoning = {
+    capabilities: () => activeBinding?.binding.reasoningCapabilities ?? piReasoningCapabilities(harness.getModel()),
+    current: () => currentReasoningEffort(harness, reasoning.capabilities()),
+    set: async (effort: ReasoningEffort): Promise<void> => {
+      if (disposed || !activeBinding) throw new Error('Harness runtime is unavailable.')
+      if (promptActive || transitionActive) throw new Error('Wait for the current operation to finish.')
+      if (!reasoning.capabilities().efforts.includes(effort)) throw new Error('Unsupported reasoning effort.')
+      const finish = beginTransition()
+      try {
+        await harness.setThinkingLevel(effort === 'none' ? 'off' : effort)
+      } finally {
+        finish()
+      }
+    },
+  }
+  return {
+    reasoning,
+    subscribe,
+    registerToolCallGate,
+    steer,
+    prompt,
+    abort,
+    currentProviderId,
+    switchBinding,
+    deactivate,
+    dispose,
+  }
 }

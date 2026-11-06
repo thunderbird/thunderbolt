@@ -51,6 +51,7 @@ import {
   stream as openaiStream,
   streamSimple as openaiStreamSimple,
 } from '@earendil-works/pi-ai/api/openai-completions'
+import { applyReasoningEffort, reasoningEffortFormat, type ReasoningEffort } from '../reasoning-effort.ts'
 import { boundApiKeyAuth } from './bound-api-key-auth.ts'
 
 /** Fetch shape used by OpenAI's client, which dispatches a serialized URL. */
@@ -94,6 +95,9 @@ export type BuildOpenAiCompatModelOptions = {
   readonly supportsImages: boolean
   /** Provider-specific OpenAI compatibility behavior. */
   readonly compat?: Model<typeof apiName>['compat']
+  /** Current per-conversation override. Undefined preserves the existing profile behavior. */
+  readonly getReasoningEffort?: () => ReasoningEffort | undefined
+  readonly effortFormat?: 'openai' | 'openrouter' | 'tinfoil'
   /** Provider-specific mapping from Pi thinking levels to wire efforts. */
   readonly thinkingLevelMap?: Model<typeof apiName>['thinkingLevelMap']
 }
@@ -163,14 +167,26 @@ export const buildOpenAiCompatModel = (
 
   // Inject the api key on every call (Pi's openai client reads `options.apiKey`)
   // and bind the fetch only around client construction via the synchronous swap.
+  const withEffort = (options: Parameters<typeof openaiStream>[2]) => ({
+    ...options,
+    apiKey: opts.apiKey,
+    onPayload: async (payload: unknown, model: Model<Api>) => {
+      const transformed = await options?.onPayload?.(payload, model)
+      return applyReasoningEffort(
+        transformed ?? payload,
+        opts.getReasoningEffort?.(),
+        opts.effortFormat ?? reasoningEffortFormat(opts.providerId),
+      )
+    },
+  })
   const api: ProviderStreams = {
     stream: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        openaiStream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+        openaiStream(requireOpenAiCompletions(resolved), context, withEffort(options)),
       ),
     streamSimple: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        openaiStreamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+        openaiStreamSimple(requireOpenAiCompletions(resolved), context, withEffort(options)),
       ),
   }
 

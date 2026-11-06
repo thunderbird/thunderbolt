@@ -33,10 +33,22 @@ import { buildAnthropicModel, type AgentFetch } from './anthropic-model.ts'
 import { buildConfidentialModel, type ReceiptLifecycle } from './confidential-model.ts'
 import { buildOpenAiCompatModel } from './openai-compat-model.ts'
 import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
+import type { ReasoningEffort } from '../reasoning-effort.ts'
 import { mountAgentFs } from './browser-env/mount.ts'
 import { createBrowserCodingTools } from './coding-tools/index.ts'
 import { ensureBufferPolyfill } from './ensure-buffer.ts'
 import { buildSeedMessages, type SeedTurn } from './seed-history.ts'
+import {
+  createHarnessCompaction,
+  restoreCompaction,
+  type CompactionCheckpoint,
+  type HarnessCompaction,
+} from './compaction.ts'
+
+export type AppHarness = AgentHarness & {
+  compaction: HarnessCompaction
+  setReasoningEffort: (effort: ReasoningEffort | undefined, defaultLevel: ThinkingLevel) => Promise<void>
+}
 
 /** Mount-relative root under which every thread carves its isolated workspace. */
 const workspaceRoot = '/workspace'
@@ -137,6 +149,7 @@ export type BuildAppHarnessOptions = {
   /** Prior conversation turns to seed into the session before the first prompt,
    *  so the agent has multi-turn context. Omitted/empty starts a blank session. */
   readonly history?: readonly SeedTurn[]
+  readonly compaction?: CompactionCheckpoint
 }
 
 /** Remove the isolated browser workspace owned by a thread. */
@@ -197,7 +210,7 @@ export const writeAgentWorkspaceFiles = async (
  * @param options - model descriptor, prompt, thinking level, thread id, extra tools, history
  * @returns the constructed {@link AgentHarness}
  */
-export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<AgentHarness> => {
+export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<AppHarness> => {
   ensureBufferPolyfill()
   await mountAgentFs()
   const workspaceDir = workspaceDirFor(options.threadId)
@@ -207,6 +220,8 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     throw created.error
   }
   const session = await new InMemorySessionRepo().create({})
+  const effortState: { current: ReasoningEffort | undefined } = { current: undefined }
+  const getReasoningEffort = () => effortState.current
   const { models, model } =
     options.model.kind === 'anthropic'
       ? buildAnthropicModel({
@@ -218,8 +233,9 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
           modelId: options.model.modelId,
         })
       : options.model.kind === 'confidential'
-        ? buildConfidentialModel(options.model)
+        ? buildConfidentialModel({ ...options.model, getReasoningEffort })
         : buildOpenAiCompatModel({
+            getReasoningEffort,
             providerId: options.model.providerId,
             modelId: options.model.modelId,
             baseURL: options.model.baseURL,
@@ -248,9 +264,26 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
   // Seed prior turns into the (idle) session so the first prompt runs with full
   // conversational context. `appendMessage` writes straight to the session while
   // idle; `prompt` then reads them back via `session.buildContext()`.
+  if (options.compaction) {
+    await restoreCompaction(session, options.compaction)
+  }
   for (const message of buildSeedMessages(options.history)) {
     await harness.appendMessage(message)
   }
 
-  return harness
+  return Object.assign(harness, {
+    setReasoningEffort: async (effort: ReasoningEffort | undefined, defaultLevel: ThinkingLevel) => {
+      const level = effort === undefined ? defaultLevel : effort === 'none' ? 'off' : effort
+      if (harness.getThinkingLevel() !== level) {
+        await harness.setThinkingLevel(level)
+      }
+      effortState.current = effort
+    },
+    compaction: createHarnessCompaction(
+      harness,
+      session,
+      options.compaction,
+      options.model.kind === 'confidential' ? options.model.receipts : undefined,
+    ),
+  })
 }

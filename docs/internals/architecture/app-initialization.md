@@ -104,7 +104,7 @@ falls back to the global `hasSynced` and the gate quietly waits for everything.
 `hasCurrentDefaultsVersions` requires every `defaults_version.*` marker to exist **and**
 meet-or-exceed the version reconcile would apply on this boot: the bundled constant for tasks,
 skills and settings; for models, whichever source `pickModelsDefaults`
-([`src/lib/pick-defaults.ts:35`](../../../src/lib/pick-defaults.ts)) picks (the cached OTA payload only
+([`src/lib/pick-defaults.ts:42`](../../../src/lib/pick-defaults.ts)) picks (the cached OTA payload only
 when it declares a strictly higher version than the bundle and clears its sanity guards, the bundle
 otherwise). That value is computed once above step 2c and shared with step 4, so the two cannot
 disagree.
@@ -116,7 +116,7 @@ must take the slow path once.
 
 ### Invariant: a new reconciled table must join the probe
 
-`versionMarkerKeys` (`src/lib/reconcile-defaults.ts:34`) lists the four markers; the
+`versionMarkerKeys` (`src/lib/reconcile-defaults.ts:44`) lists the four markers; the
 `defaultsTargets` map at `src/hooks/use-app-initialization.ts:300-305`, typed
 `Record<VersionMarkerKey, number>`, must cover every one (a missing or typo'd key is a compile
 error). Miss the probe and that table's version bumps strand on every returning device, silently.

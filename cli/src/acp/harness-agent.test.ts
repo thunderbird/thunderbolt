@@ -25,6 +25,7 @@ import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from 
 import { createHarnessAgent } from './harness-agent.ts'
 import type { BuildServeHarness } from './harness-agent.ts'
 import type { SessionStore } from './session-store.ts'
+import type { ReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import type { CommandSyntaxServeConfig } from '../agent/types.ts'
 import type { PreparedPiBinding, ProviderRuntime } from '../provider-runtime/types.ts'
 import {
@@ -282,7 +283,13 @@ describe('createHarnessAgent (ACP server)', () => {
     let builds = 0
     const builder: BuildServeHarness = async () => {
       const id = builds++
+      const effort: ReasoningEffort = id === 0 ? 'low' : id === 1 ? 'medium' : 'high'
       return fakeHarness({
+        reasoning: {
+          capabilities: () => ({ efforts: ['low', 'medium', 'high'] }),
+          current: () => effort,
+          set: async () => {},
+        },
         abort: async () => {
           aborted.push(id)
         },
@@ -301,15 +308,17 @@ describe('createHarnessAgent (ACP server)', () => {
     const resume = controlled.agent.resumeSession!
     const sessionId = '44444444-4444-4444-8444-444444444444'
     const params = { sessionId, cwd: '/', mcpServers: [] }
-    await resume(params)
+    expect((await resume(params)).configOptions?.[0].currentValue).toBe('low')
     const first = resume(params)
     await retiring.promise
     const second = resume(params)
     await Promise.resolve()
     expect(builds).toBe(2)
-    await expect(controlled.agent.prompt({ sessionId, prompt: [] })).rejects.toThrow('resuming')
+    await expect(controlled.agent.prompt({ sessionId, prompt: [] })).rejects.toThrow('is changing')
     release.resolve()
-    await Promise.all([first, second])
+    const [firstResponse, secondResponse] = await Promise.all([first, second])
+    expect(firstResponse.configOptions?.[0].currentValue).toBe('medium')
+    expect(secondResponse.configOptions?.[0].currentValue).toBe('high')
     expect(builds).toBe(3)
     expect(disposed).toEqual([0, 1])
     expect(aborted).toEqual([0, 1])
@@ -758,5 +767,99 @@ describe('createHarnessAgent (ACP server)', () => {
     await client.cancel({ sessionId })
     const response = await pending
     expect(response.stopReason).toBe('cancelled')
+  })
+})
+
+describe('ACP effort options', () => {
+  test('finishes reasoning persistence before reopening a resumed history', async () => {
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const durable: { effort: ReasoningEffort } = { effort: 'low' }
+    const observed: ReasoningEffort[] = []
+    const store = fakeStore()
+    const openSession = store.openSession
+    store.openSession = (...args) => {
+      observed.push(durable.effort)
+      return openSession(...args)
+    }
+    const build: BuildServeHarness = async () => {
+      const state: { effort: ReasoningEffort } = { effort: durable.effort }
+      return fakeHarness({
+        reasoning: {
+          capabilities: () => ({ efforts: ['low', 'high'] }),
+          current: () => state.effort,
+          set: async (effort) => {
+            started.resolve()
+            await release.promise
+            state.effort = effort
+            durable.effort = effort
+          },
+        },
+      })
+    }
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, store, providerRuntime(), build),
+    )
+    const { sessionId } = await controlled.agent.newSession({ cwd: '.', mcpServers: [] })
+    const changing = controlled.agent.setSessionConfigOption!({
+      sessionId,
+      configId: 'reasoning_effort',
+      value: 'high',
+    })
+    await started.promise
+    const resuming = controlled.agent.resumeSession!({ sessionId, cwd: '.', mcpServers: [] })
+    await Promise.resolve()
+    expect(observed).toEqual([])
+    await expect(controlled.agent.prompt({ sessionId, prompt: [] })).rejects.toThrow('is changing')
+    release.resolve()
+    expect((await changing).configOptions[0].currentValue).toBe('high')
+    expect((await resuming).configOptions?.[0].currentValue).toBe('high')
+    expect(observed).toEqual(['high'])
+    controlled.close()
+    await controlled.closed
+  })
+
+  test('advertises native choices, validates opaque IDs, reports updates and isolates sessions', async () => {
+    const build: BuildServeHarness = async () => {
+      const state: { effort: ReasoningEffort } = {
+        effort: 'low',
+      }
+      return fakeHarness({
+        reasoning: {
+          capabilities: () => ({ efforts: ['low', 'high'] }),
+          current: () => state.effort,
+          set: async (effort) => {
+            state.effort = effort
+          },
+        },
+      })
+    }
+    const pair = connectPair(build)
+    await pair.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const first = await pair.client.newSession({ cwd: '.', mcpServers: [] })
+    const second = await pair.client.newSession({ cwd: '.', mcpServers: [] })
+    expect(first.configOptions?.[0].currentValue).toBe('low')
+    await expect(
+      pair.client.setSessionConfigOption({ sessionId: first.sessionId, configId: 'reasoning_effort', value: 'none' }),
+    ).rejects.toThrow('Unsupported')
+    const changed = await pair.client.setSessionConfigOption({
+      sessionId: first.sessionId,
+      configId: 'reasoning_effort',
+      value: 'high',
+    })
+    expect(changed.configOptions[0].currentValue).toBe('high')
+    expect(second.configOptions?.[0].currentValue).toBe('low')
+    expect(
+      pair.updates.some(
+        (update) => update.sessionId === first.sessionId && update.update.sessionUpdate === 'config_option_update',
+      ),
+    ).toBe(true)
+    await expect(
+      pair.client.setSessionConfigOption({
+        sessionId: first.sessionId,
+        configId: 'reasoning_effort',
+        value: 'default',
+      }),
+    ).rejects.toThrow('Unsupported')
   })
 })

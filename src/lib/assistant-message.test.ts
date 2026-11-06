@@ -219,3 +219,20 @@ describe('assistant-message utilities', () => {
     })
   })
 })
+
+it('keeps compaction events at their original position and splits surrounding tool groups', () => {
+  const event = {
+    type: 'data-acp-compaction' as const,
+    id: 'event',
+    data: { agentId: 'agent', sessionId: 's', compactionId: 'c', status: 'completed' },
+  }
+  const before = createToolPart('before')
+  const after = createToolPart('after')
+  const filtered = filterMessageParts([before, event, after])
+  expect(filtered).toEqual([before, event, after])
+  expect(groupMessageParts(filtered)).toEqual([
+    { type: 'reasoning_group', items: [{ type: 'tool', content: before, id: before.toolCallId }] },
+    event,
+    { type: 'reasoning_group', items: [{ type: 'tool', content: after, id: after.toolCallId }] },
+  ])
+})

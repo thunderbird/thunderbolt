@@ -10,6 +10,7 @@
  * commands cannot be confined to that workspace.
  */
 
+import { isReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import { AgentHarness, InMemorySessionRepo, toError } from '@earendil-works/pi-agent-core'
 import type { AgentTool, Session } from '@earendil-works/pi-agent-core'
 import { createModels } from '@earendil-works/pi-ai'
@@ -41,6 +42,10 @@ export const createHarnessRuntime = async (
 ): Promise<HarnessRuntime> => {
   try {
     const activeSession = session ?? (await new InMemorySessionRepo().create({}))
+    const savedThinking = (await activeSession.getBranch()).findLast((entry) => entry.type === 'thinking_level_change')
+    const savedLevel = savedThinking?.type === 'thinking_level_change' ? savedThinking.thinkingLevel : undefined
+    const thinkingLevel =
+      savedLevel === 'off' || (isReasoningEffort(savedLevel) && savedLevel !== 'none') ? savedLevel : config.thinking
     const models = createModels()
     installPreparedBinding(models, binding)
     const tools = createHarnessTools(config)
@@ -50,7 +55,7 @@ export const createHarnessRuntime = async (
       model: binding.piModel,
       tools,
       activeToolNames: tools.map((tool) => tool.name),
-      thinkingLevel: config.thinking,
+      thinkingLevel,
       systemPrompt: buildSystemPrompt({
         cwd: config.cwd,
         modelId: config.announceModel ? binding.wireModel : undefined,

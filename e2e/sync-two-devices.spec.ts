@@ -50,6 +50,7 @@ test('a chat created on one device appears on another without reloading', async 
 
     await page.getByTestId('model-selector-trigger').click()
     await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+    await page.keyboard.press('Escape')
     const title = `Sync check ${crypto.randomUUID().slice(0, 8)}`
     await sendChatPrompt(page, title)
     await expect(page.getByText(fakeProviderReply)).toBeVisible()

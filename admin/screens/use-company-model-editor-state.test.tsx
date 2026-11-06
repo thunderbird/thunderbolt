@@ -78,3 +78,25 @@ it('keeps identity and disabled state when editing an external provider without 
     model: { ...model, name: 'New name', supportsTools: false },
   })
 })
+
+it('reports clean again after reverting saved configuration, including controlled switches', () => {
+  const model: CompanyModel = {
+    id: 'saved',
+    name: 'Original',
+    provider: 'openai',
+    model: 'company-model',
+    url: null,
+    enabled: 1,
+    deletedAt: null,
+    supportsTools: true,
+  }
+  const { result, onDirtyChange } = setup(model)
+  act(() => result.current.form.setValue('name', 'Changed'))
+  expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+  act(() => result.current.form.setValue('name', 'Original'))
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false)
+  act(() => result.current.form.setValue('supportsTools', false))
+  expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+  act(() => result.current.form.setValue('supportsTools', true))
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false)
+})

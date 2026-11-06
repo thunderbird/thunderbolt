@@ -115,3 +115,26 @@ it('discards revoked group grants and saves an empty selection without granting 
     agent: expect.objectContaining({ groupIds: [] }),
   })
 })
+
+it.each(['wss://agents.demo.thunderbolt/finance', 'wss://agents.example/new'])(
+  'refreshes endpoint-owned features when saving %s',
+  (url) => {
+    const { agent, dispatch } = setupAgentEditor()
+    fireEvent.change(screen.getByLabelText('ACP URL'), { target: { value: url } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    const saved = dispatch.mock.calls.at(-1)?.[0]
+    expect(saved?.type).toBe('save-agent')
+    if (saved?.type !== 'save-agent') throw new Error('Expected an agent save')
+    expect(saved.agent.id).toBe(agent.id)
+    expect(saved.agent.groupIds).toEqual(agent.groupIds)
+    expect(saved.agent.integrations).not.toContain('Salesforce')
+    if (url.endsWith('/new')) {
+      expect(saved.agent.advertisedModels).toEqual([])
+      expect(saved.agent.capabilities).toEqual([])
+      expect(saved.agent.modes).toEqual([])
+      expect(saved.agent.agentSkillCount).toBe(0)
+    } else {
+      expect(saved.agent.mcpKinds).toContain('Finance knowledge base')
+    }
+  },
+)

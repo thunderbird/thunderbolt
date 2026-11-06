@@ -5,17 +5,27 @@
 import { useReducer } from 'react'
 import { useSearchParams } from 'react-router'
 
-type PageState = { dirty: boolean; pendingSelection: { id: string | null } | null; removeId: string | null }
+type PageState = {
+  selectedId: string | null
+  dirty: boolean
+  pendingSelection: { id: string | null } | null
+  removeId: string | null
+}
 
 /** Keep selected forms deep-linkable and protect local drafts when selecting or closing a form. */
 export const useResourcePageState = () => {
   const [params, setParams] = useSearchParams()
   const selectedId = params.get('edit')
   const [state, patch] = useReducer((current: PageState, update: Partial<PageState>) => ({ ...current, ...update }), {
+    selectedId,
     dirty: false,
     pendingSelection: null,
     removeId: null,
   })
+  // URL navigation can replace or close the editor without calling select().
+  if (state.selectedId !== selectedId) {
+    patch({ selectedId, dirty: false, pendingSelection: null })
+  }
   const select = (id: string | null) => {
     setParams(id === null ? {} : { edit: id })
     patch({ dirty: false, pendingSelection: null })

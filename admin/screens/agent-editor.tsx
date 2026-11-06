@@ -29,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { createCompanyAgent, type PreviewAgent } from '../data'
 import { originalAgentFixtures } from '../original-agent-fixtures'
 import type { AdminPreview } from '../use-admin-preview-state'
+import { agentEndpointFeatures } from './agent-endpoint-features'
 import { AgentAccessPanel } from './agent-access-panel'
 import { AgentCapabilities } from './agent-capabilities'
 import { PanelSections } from './panel-sections'
@@ -93,6 +94,7 @@ export const AgentEditor = ({
       agent: {
         ...base,
         ...draft,
+        ...agentEndpointFeatures(draft.acpUrl.trim(), agent),
         name: draft.name.trim() || editor.source?.name || '',
         acpUrl: draft.acpUrl.trim(),
         description: draft.description.trim(),

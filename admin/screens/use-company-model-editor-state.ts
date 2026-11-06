@@ -4,7 +4,7 @@
 
 import { useLingui } from '@lingui/react/macro'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { thunderboltModelCatalog } from '@/settings/models/model-catalog'
 import { catalogToComboboxItems, customModelItem } from '@/settings/models/use-model-catalog'
@@ -15,6 +15,17 @@ import {
 } from '@/settings/models/use-add-model-form'
 import type { CompanyModel } from '../data'
 import type { AdminPreview } from '../use-admin-preview-state'
+
+/** Compare only persisted model configuration, excluding picker buffers and credentials. */
+const modelConfiguration = (
+  values: Pick<AddModelFormValues, 'provider' | 'name' | 'model' | 'url' | 'supportsTools'>,
+) => ({
+  provider: values.provider,
+  name: values.name,
+  model: values.model,
+  url: values.provider === 'custom' ? values.url?.trim() || null : null,
+  supportsTools: values.supportsTools,
+})
 
 /** Local model configuration using the same provider catalog, schema and form as user settings. */
 export const useCompanyModelEditorState = ({
@@ -46,12 +57,32 @@ export const useCompanyModelEditorState = ({
       supportsTools: model?.supportsTools ?? true,
     },
   })
+  // RHF is an external store: inputs, controlled switches, reset and setValue all emit here.
+  useEffect(
+    () =>
+      form.subscribe({
+        formState: { values: true },
+        callback: ({ values }) =>
+          onDirtyChange(
+            JSON.stringify(modelConfiguration(values)) !==
+              JSON.stringify(
+                modelConfiguration({
+                  provider: model?.provider ?? 'thunderbolt',
+                  name: model?.name ?? '',
+                  model: model?.model ?? '',
+                  url: model?.url ?? '',
+                  supportsTools: model?.supportsTools ?? true,
+                }),
+              ),
+          ),
+      }),
+    [form, model, onDirtyChange],
+  )
   const provider = form.watch('provider')
   const catalog = provider === 'thunderbolt' ? thunderboltModelCatalog : []
   const modelItems = [...catalogToComboboxItems(catalog), customModelItem(i18n)]
   const changed = () => {
     setSubmitError(null)
-    onDirtyChange(true)
   }
   const onProviderChange = (provider: CompanyModel['provider']) => {
     form.reset({

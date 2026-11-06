@@ -62,6 +62,23 @@ fn read_file(path: PathBuf) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+/// Restore inputs atomically without truncating files edited between turns.
+fn restore_input(path: &std::path::Path, content: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(mut file) => file.write_all(content).map_err(|e| e.to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 #[tauri::command]
 pub async fn agent_pick_workspace(
     webview: tauri::Webview,
@@ -108,6 +125,7 @@ pub enum FileOperation {
     Resolve,
     Read,
     Write,
+    Restore,
     Temp,
 }
 
@@ -163,6 +181,10 @@ pub async fn agent_fs(
                     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
                 }
                 std::fs::write(path, content).map_err(|e| e.to_string())?;
+                Ok(Value::Null)
+            }
+            FileOperation::Restore => {
+                restore_input(&path, &content.ok_or("Missing file content")?)?;
                 Ok(Value::Null)
             }
             FileOperation::Temp => unreachable!(),
@@ -412,6 +434,17 @@ mod tests {
         let text = finish_capture(capture_task, output).await.unwrap();
         assert!(text.starts_with(&"x".repeat(4 * 1024 * 1024)));
         assert!(text.ends_with("[Output exceeded 4 MiB; truncated]"));
+    }
+
+    #[test]
+    fn restored_inputs_preserve_user_edits_and_existing_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("attachments/input.txt");
+        restore_input(&file, b"original").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"original");
+        std::fs::write(&file, b"edited").unwrap();
+        restore_input(&file, b"original").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"edited");
     }
 
     #[test]

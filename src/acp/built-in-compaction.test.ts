@@ -84,6 +84,7 @@ const fixture = (
     reconnectClient: async () => null,
     httpClient: createClient({ prefixUrl: 'https://backend.test' }),
     onAcpSessionId: async () => {},
+    requestPermission: async () => ({ outcome: { outcome: 'selected', optionId: 'allow' } }),
     onCompactionStatus: (value) => status.push(value),
     getProxyFetch: () =>
       Object.assign(

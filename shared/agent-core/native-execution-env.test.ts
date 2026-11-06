@@ -42,6 +42,17 @@ describe('native coding environment', () => {
     expect(calls.filter(({ args }) => (args.request as Record<string, unknown>)?.operation === 'read')).toHaveLength(2)
   })
 
+  it('restores attachments through the non-overwriting host operation', async () => {
+    const { invoke, calls } = bridge(() => undefined)
+    const env = new NativeExecutionEnv('/real', invoke)
+    expect((await env.restoreFile('attachments/a.txt', 'original')).ok).toBe(true)
+    expect(calls[0]?.args.request).toMatchObject({
+      operation: 'restore',
+      path: 'attachments/a.txt',
+      content: Array.from(new TextEncoder().encode('original')),
+    })
+  })
+
   it('keeps output logs owned by the chat across environment rebuilds and cleans them up explicitly', async () => {
     const { invoke, calls } = bridge((command, args) => {
       if (command === 'agent_fs' && args.operation === 'temp') {

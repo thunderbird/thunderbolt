@@ -8,4 +8,7 @@ import type { ExecutionEnv } from '@earendil-works/pi-agent-core'
 export type CodingEnvironment = Pick<
   ExecutionEnv,
   'absolutePath' | 'exec' | 'readBinaryFile' | 'writeFile' | 'createTempFile'
->
+> & {
+  /** Restore a supplied input without replacing an existing user file. */
+  restoreFile?: ExecutionEnv['writeFile']
+}

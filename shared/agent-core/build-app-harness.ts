@@ -195,7 +195,7 @@ export const writeAgentWorkspaceFiles = async (
   const encoder = new TextEncoder()
   const failures: WorkspaceWriteFailure[] = []
   for (const file of files) {
-    const written = await env.writeFile(file.path, encoder.encode(file.content))
+    const written = await (env.restoreFile ?? env.writeFile).call(env, file.path, encoder.encode(file.content))
     if (!written.ok) {
       failures.push({ path: file.path, error: written.error })
     }

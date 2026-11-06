@@ -49,6 +49,12 @@ export class NativeExecutionEnv implements CodingEnvironment {
     return this.file<void>('write', path, { content: Array.from(bytes) }, signal)
   }
 
+  /** Copy an attachment only on first use; later turns preserve host edits. */
+  restoreFile(path: string, content: string | Uint8Array, signal?: AbortSignal) {
+    const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content
+    return this.file<void>('restore', path, { content: Array.from(bytes) }, signal)
+  }
+
   createTempFile(options?: { prefix?: string; suffix?: string }) {
     return this.file<string>('temp', undefined, { prefix: options?.prefix, suffix: options?.suffix })
   }

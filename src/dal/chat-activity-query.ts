@@ -8,15 +8,15 @@ import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
 
 /** UUIDv7 ids order activity without loading message bodies or writing extra timestamps. */
 export const getChatActivityQuery = (db: AnyDrizzleDatabase, filter?: SQL) => {
-  const lastActivityId = sql<string>`max(${chatThreadsTable.id}, coalesce(max(${chatMessagesTable.id}), ${chatThreadsTable.id}))`
+  // A correlated lookup uses PowerSync's message index instead of rescanning its JSON view per chat.
+  const latestMessage = db
+    .select({ id: sql<string>`max(${chatMessagesTable.id})` })
+    .from(chatMessagesTable)
+    .where(and(eq(chatMessagesTable.chatThreadId, chatThreadsTable.id), isNull(chatMessagesTable.deletedAt)))
+  const lastActivityId = sql<string>`max(${chatThreadsTable.id}, coalesce((${latestMessage}), ${chatThreadsTable.id}))`
   return db
     .select({ ...getTableColumns(chatThreadsTable), lastActivityId: lastActivityId.as('last_activity_id') })
     .from(chatThreadsTable)
-    .leftJoin(
-      chatMessagesTable,
-      and(eq(chatMessagesTable.chatThreadId, chatThreadsTable.id), isNull(chatMessagesTable.deletedAt)),
-    )
     .where(and(isNull(chatThreadsTable.deletedAt), filter))
-    .groupBy(chatThreadsTable.id)
-    .orderBy(desc(lastActivityId), desc(chatThreadsTable.id))
+    .orderBy(({ lastActivityId }) => [desc(lastActivityId), desc(chatThreadsTable.id)])
 }

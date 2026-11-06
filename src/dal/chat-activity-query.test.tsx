@@ -7,10 +7,12 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { act, cleanup, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import { DatabaseProvider } from '@/contexts'
 import { getDb } from '@/db/database'
+import { AppSchema } from '@/db/powersync/schema'
 import { chatMessagesTable, chatThreadsTable, projectsTable } from '@/db/tables'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
@@ -29,6 +31,34 @@ beforeAll(setupTestDatabase)
 beforeEach(resetTestDatabase)
 afterEach(cleanup)
 afterAll(teardownTestDatabase)
+
+it('uses one indexed message lookup per chat on PowerSync JSON views', () => {
+  const sqlite = new Database(':memory:')
+  try {
+    // Plain test tables hide the planner regression caused by PowerSync's JSON-backed views.
+    for (const table of AppSchema.tables.filter(({ name }) => ['chat_threads', 'chat_messages'].includes(name))) {
+      const backingTable = table.internalName
+      sqlite.run(`CREATE TABLE "${backingTable}" (id TEXT PRIMARY KEY NOT NULL, data TEXT)`)
+      const columns = table.columns.map(
+        ({ name, type }) => `CAST(json_extract(data, '$.${name}') AS ${type}) AS "${name}"`,
+      )
+      sqlite.run(`CREATE VIEW "${table.name}" AS SELECT id, ${columns.join(', ')} FROM "${backingTable}"`)
+      for (const index of table.indexes) {
+        const expressions = index
+          .toJSON(table)
+          .columns.map(({ name, type }) => `CAST(json_extract(data, '$.${name}') AS ${type})`)
+        sqlite.run(`CREATE INDEX "${index.name}" ON "${backingTable}" (${expressions.join(', ')})`)
+      }
+    }
+    const query = getAllChatThreads(getDb()).toSQL()
+    const plan = sqlite.query<{ detail: string }, []>(`EXPLAIN QUERY PLAN ${query.sql}`).all()
+    const messageReads = plan.filter(({ detail }) => detail.includes('ps_data__chat_messages'))
+    expect(messageReads).toHaveLength(1)
+    expect(messageReads[0].detail).toStartWith('SEARCH ')
+  } finally {
+    sqlite.close()
+  }
+})
 
 /** Explicit times make recency assertions independent of the test clock. */
 const idAt = (second: number) => uuidv7({ msecs: Date.UTC(2026, 9, 21, 12, 0, second) })

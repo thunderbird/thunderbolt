@@ -3,10 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
-import { useDatabase, useHttpClient } from '@/contexts'
+import { useDatabase } from '@/contexts'
 import { saveIntegrationCredentials, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowLoopback } from '@/lib/oauth-loopback'
+import {
+  createIntegrationOAuthClient,
+  getIntegrationRelayUrl,
+  getIntegrationOAuthErrorMessage,
+} from '@/lib/integration-oauth-client'
 import { clearOAuthState, getOAuthState, setOAuthState } from '@/lib/oauth-state'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import type { ReturnContext } from '@/lib/oauth-state'
@@ -93,9 +98,8 @@ const getInitialConnectingState = (key: string | undefined): boolean => {
  * For web: Redirects to OAuth provider and processes callback on return.
  */
 export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthConnectResult => {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const db = useDatabase()
-  const httpClient = useHttpClient()
   const queryClient = useQueryClient()
   const {
     connectingKey,
@@ -121,6 +125,11 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     getUserInfo: getUser = getUserInfo,
   } = dependencies || {}
 
+  const describeError = (error: unknown) => {
+    const message = getIntegrationOAuthErrorMessage(error)
+    return message ? i18n._(message) : error instanceof Error ? error.message : t`Failed to complete authentication`
+  }
+
   const clearConnecting = (key: string) => {
     clearOAuthConnectingState(key)
     setIsConnecting(false)
@@ -140,8 +149,10 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     provider: OAuthProvider,
     tokens: { access_token: string; refresh_token?: string; expires_in: number },
     userInfo: { email: string; name: string; picture?: string },
+    oauthRelayUrl: string,
   ) => {
     const credentials = {
+      oauthRelayUrl,
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token || '',
       expires_at: Date.now() + tokens.expires_in * 1000,
@@ -195,6 +206,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     }
 
     startConnecting(key)
+    const oauthRelayUrl = getIntegrationRelayUrl()
+    const httpClient = createIntegrationOAuthClient(oauthRelayUrl)
+    clearOAuthState()
 
     try {
       if (isTauri()) {
@@ -212,6 +226,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
             provider,
             verifier: codeVerifier,
             returnContext,
+            oauthRelayUrl,
           })
 
           const authUrl = await buildAuthUrl(httpClient, provider, state, codeChallenge)
@@ -233,7 +248,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
             const { tokens, userInfo } = result
 
-            await saveCredentials(provider, tokens, userInfo)
+            await saveCredentials(provider, tokens, userInfo, oauthRelayUrl)
 
             clearConnecting(key)
             onSuccess?.()
@@ -244,7 +259,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       } else {
         // For web: Use redirect flow
         setOAuthState({ returnContext })
-        await redirect(httpClient, provider)
+        await redirect(httpClient, provider, oauthRelayUrl)
       }
     } catch (e: unknown) {
       // "Redirecting for OAuth" is thrown intentionally by redirectOAuthFlow to satisfy TypeScript's never return type
@@ -253,9 +268,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
         return
       }
       clearConnecting(key)
-      const message = e instanceof Error ? e.message : t`Failed to complete authentication`
+      const message = describeError(e)
       setError(message)
-      onError?.(e instanceof Error ? e : new Error(message))
+      onError?.(new Error(message, { cause: e }))
     }
   }
 
@@ -304,10 +319,11 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     }
 
     try {
-      const tokens = await exchangeTokens(httpClient, provider, code, codeVerifier)
+      const oauthRelayUrl = oauthState.oauthRelayUrl ?? getIntegrationRelayUrl()
+      const tokens = await exchangeTokens(createIntegrationOAuthClient(oauthRelayUrl), provider, code, codeVerifier)
       const userInfo = await getUser(provider, tokens.access_token)
 
-      await saveCredentials(provider, tokens, userInfo)
+      await saveCredentials(provider, tokens, userInfo, oauthRelayUrl)
 
       clearOAuthState()
 
@@ -316,9 +332,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       return true
     } catch (e: unknown) {
       cleanup()
-      const message = e instanceof Error ? e.message : 'Failed to complete authentication'
+      const message = describeError(e)
       setError(message)
-      onError?.(e instanceof Error ? e : new Error(message))
+      onError?.(new Error(message, { cause: e }))
       return false
     }
   }

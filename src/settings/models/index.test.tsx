@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { eq } from 'drizzle-orm'
+import { modelsTable } from '@/db/tables'
 import { i18n } from '@/i18n'
 import { createModel, getModel } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -44,6 +46,78 @@ describe('ModelsPage reactivity', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('filters by name, model ID, and provider, and restores the list when search closes', async () => {
+    await createModel(getDb(), {
+      id: 'search-model',
+      name: 'Work assistant',
+      provider: 'openrouter',
+      model: 'deepseek/flash',
+      apiKey: 'test',
+      enabled: 1,
+      isSystem: 0,
+    })
+    await createModel(getDb(), {
+      id: 'other-model',
+      name: 'Other assistant',
+      provider: 'openai',
+      model: 'other',
+      apiKey: 'test',
+      enabled: 1,
+      isSystem: 0,
+    })
+    renderModelsPage()
+    await waitForElement(() => screen.queryByRole('button', { name: 'Open Work assistant' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    const input = screen.getByPlaceholderText('Search models')
+    expect(input).toHaveFocus()
+    for (const query of ['  WORK  ', 'deepseek/flash', 'OpenRouter']) {
+      fireEvent.change(input, { target: { value: query } })
+      await act(async () => {
+        await getClock().tickAsync(100)
+      })
+      expect(screen.getByRole('button', { name: 'Open Work assistant' })).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Open Other assistant' })).toBeNull()
+    }
+    fireEvent.change(input, { target: { value: 'no match' } })
+    await act(async () => {
+      await getClock().tickAsync(100)
+    })
+    expect(screen.getByText('No matching models.')).toBeVisible()
+    expect(screen.queryByText('No models configured')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    expect(screen.getByRole('button', { name: 'Open Work assistant' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Open Other assistant' })).toBeVisible()
+  })
+
+  it('edits from the context menu and confirms removal before soft deleting', async () => {
+    const id = 'context-model'
+    await createModel(getDb(), {
+      id,
+      name: 'Menu model',
+      provider: 'openai',
+      model: 'test-model',
+      apiKey: 'test',
+      enabled: 1,
+      isSystem: 0,
+    })
+    renderModelsPage()
+    const row = await waitForElement(() => screen.queryByRole('button', { name: 'Open Menu model' }))
+    fireEvent.contextMenu(row)
+    fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Edit' })))
+    expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Edit Model' }))).toBeVisible()
+    fireEvent.contextMenu(row)
+    fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Remove' })))
+    expect(await waitForElement(() => screen.queryByRole('alertdialog'))).toHaveTextContent('Delete Model')
+    expect((await getModel(getDb(), id))?.deletedAt).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(await getModel(getDb(), id)).toBeNull()
+    const stored = await getDb().select().from(modelsTable).where(eq(modelsTable.id, id)).get()
+    expect(stored?.deletedAt).toBeTruthy()
   })
 
   it('shows only user models locally and restores hosted models after cloud sign-in', async () => {

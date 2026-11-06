@@ -12,6 +12,7 @@ import {
 const state = 's'.repeat(43)
 const deps = () => ({
   origin: () => 'https://app.example',
+  currentPath: () => '/settings/connections' as const,
   storage: () => sessionStorage,
   verifier: () => state,
   challenge: async () => 'challenge',
@@ -154,3 +155,23 @@ it('does not redirect an aborted request', async () => {
   ).rejects.toThrow()
   expect(dependencies.navigate).not.toHaveBeenCalled()
 })
+
+it.each(['openrouter', 'tinfoil'] as const)(
+  'returns %s to the initiating chat with query and fragment intact',
+  async (provider) => {
+    const dependencies = { ...deps(), currentPath: () => '/chats/new?project=work#composer' as const }
+    await startProviderBrowserConnection(
+      provider,
+      'connections',
+      { provider, revision: '1' },
+      new AbortController().signal,
+      dependencies,
+    )
+    const path = provider === 'openrouter' ? `/oauth/openrouter/${state}` : '/oauth/tinfoil'
+    const returned = captureProviderBrowserReturn(
+      new URL(`https://app.example${path}?code=code&state=${state}`),
+      dependencies,
+    )
+    expect(returned?.returnTo).toBe('/chats/new?project=work#composer')
+  },
+)

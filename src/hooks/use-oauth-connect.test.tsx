@@ -8,6 +8,7 @@ import { cleanupSessionStorage, mockOAuthCallbackData, mockOAuthErrorCallbackDat
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { getIntegrationRelayUrl } from '@/lib/integration-oauth-client'
 import { useOAuthConnect, type OAuthDependencies } from './use-oauth-connect'
 
 // Create mock functions for OAuth dependencies
@@ -16,12 +17,13 @@ const createMockDependencies = (): OAuthDependencies => ({
     // Return null to simulate user cancellation or error
     return null
   },
-  redirectOAuthFlow: async (_httpClient, provider) => {
+  redirectOAuthFlow: async (_httpClient, provider, oauthRelayUrl) => {
     // Simulate what the real redirectOAuthFlow does before redirecting
     setOAuthState({
       state: 'mock_state_12345',
       provider,
       verifier: 'mock_verifier_67890',
+      oauthRelayUrl,
     })
     // Throw to simulate the redirect
     throw new Error('Redirecting for OAuth')
@@ -177,6 +179,7 @@ describe('useOAuthConnect', () => {
       // Verify return context was stored in sessionStorage
       const oauthState = getOAuthState()
       expect(oauthState.returnContext).toBe('onboarding')
+      expect(oauthState.oauthRelayUrl).toBe(getIntegrationRelayUrl())
     })
   })
 
@@ -321,6 +324,7 @@ describe('useOAuthConnect', () => {
       // Verify return context was stored in sessionStorage
       const oauthState = getOAuthState()
       expect(oauthState.returnContext).toBe('onboarding')
+      expect(oauthState.oauthRelayUrl).toBe(getIntegrationRelayUrl())
     })
   })
 

@@ -200,6 +200,10 @@ msgstr "{verbPhrase}…"
 msgid "{wordCount}/24 words"
 msgstr "{wordCount}/24 palavras"
 
+#: src/settings/connections/provider-connection-form.tsx
+msgid "********"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "<0>Connect a model provider</0> or <1>add a model</1> to enable chat."
 msgstr ""
@@ -237,8 +241,8 @@ msgstr "Uma nova versão está disponível. Veja o aviso de atualização para i
 #~ msgstr "Um projeto reúne suas instruções em um só lugar, então cada conversa dentro dele começa com o mesmo contexto."
 
 #: src/settings/connections/provider-connection-form.tsx
-msgid "A sign-in connection already exists for {name}. Open it to manage this account, or use an API key for another connection."
-msgstr ""
+#~ msgid "A sign-in connection already exists for {name}. Open it to manage this account, or use an API key for another connection."
+#~ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
@@ -283,6 +287,10 @@ msgstr "Ações"
 
 #: src/settings/devices.tsx
 msgid "Active"
+msgstr ""
+
+#: src/settings/connections/chatgpt-account-picker.tsx
+msgid "Active account"
 msgstr ""
 
 #: src/projects/emoji-catalog.ts
@@ -338,6 +346,11 @@ msgstr "Adicionar agente"
 #: src/components/chat/chat-prompt-input.tsx
 #~ msgid "Add and select a model in Settings to start chatting."
 #~ msgstr ""
+
+#: src/settings/connections/provider-connection-form.tsx
+#: src/settings/connections/provider-connection-summary.tsx
+msgid "Add another instance via API key"
+msgstr ""
 
 #: src/components/chat/chat-model-setup.tsx
 #: src/settings/connections/connections-list.tsx
@@ -453,8 +466,20 @@ msgstr "Todos os agentes"
 msgid "All skills are pinned"
 msgstr "Todas as habilidades estão fixadas"
 
+#: src/settings/connections/provider-connection-summary.tsx
+msgid "Allow access to your ChatGPT plan to use its models. You can also add an API-key connection."
+msgstr ""
+
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Allow plan access"
+msgstr ""
+
 #: src/lib/openrouter-auth.ts
 #~ msgid "Allow popups to connect to OpenRouter, then try again."
+#~ msgstr ""
+
+#: src/settings/connections/provider-connected-state.tsx
+#~ msgid "Already connected to {name}"
 #~ msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
@@ -813,6 +838,14 @@ msgstr "Ações da conversa"
 msgid "Chat name"
 msgstr "Nome da conversa"
 
+#: src/providers/chatgpt-registration.ts
+#~ msgid "ChatGPT account"
+#~ msgstr ""
+
+#: src/settings/connections/provider-connection-form.tsx
+msgid "ChatGPT sign-in is available in the desktop app. You can use an OpenAI API key here."
+msgstr ""
+
 #: src/layout/sidebar/nav-toggle.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Chats"
@@ -911,6 +944,10 @@ msgstr "Escolha um ícone para {label}"
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "Choose an option"
 msgstr "Escolha uma opção"
+
+#: src/settings/connections/chatgpt-account-picker.tsx
+msgid "Choose ChatGPT account"
+msgstr ""
 
 #: src/components/server-connection/server-connection-modal.tsx
 msgid "Choose Cloud or Enterprise to connect your account."
@@ -1170,7 +1207,6 @@ msgstr "Conectar Google"
 msgid "Connect Microsoft"
 msgstr "Conectar Microsoft"
 
-#: src/settings/connections/connections-list.tsx
 #: src/settings/connections/provider-connection-detail.tsx
 msgid "Connect on this device"
 msgstr ""
@@ -1260,7 +1296,6 @@ msgstr ""
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/components/sidebar-footer.tsx
 #: src/settings/connections/mcp-server-detail.tsx
-#: src/settings/connections/provider-connection-detail.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected"
 msgstr "Conectado"
@@ -1285,6 +1320,10 @@ msgstr "Conectado ao {connectedProviderName} E-mail e Agenda"
 msgid "Connected to {integrationName}"
 msgstr "Conectado a {integrationName}"
 
+#: src/settings/connections/provider-connection-summary.tsx
+msgid "Connected to {name}"
+msgstr ""
+
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Connected to Otari"
 msgstr ""
@@ -1292,6 +1331,10 @@ msgstr ""
 #: src/components/otari-connection/use-otari-connection-state.ts
 msgid "Connected to Otari, but couldn't load your models. Please try again."
 msgstr ""
+
+#: src/settings/connections/provider-connection-form.tsx
+#~ msgid "Connected via OAuth."
+#~ msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
 msgid "Connected without tools"
@@ -1336,8 +1379,8 @@ msgid "Connection cancelled. You can connect to Otari whenever you're ready."
 msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
-msgid "Connection disabled"
-msgstr ""
+#~ msgid "Connection disabled"
+#~ msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Connection error"
@@ -1364,6 +1407,10 @@ msgstr "Conexão bem-sucedida!"
 
 #: src/hooks/use-model-connection-test.ts
 msgid "Connection test timed out. Please try again."
+msgstr ""
+
+#: src/settings/connections/new-connection-picker.tsx
+msgid "Connection type"
 msgstr ""
 
 #: src/settings/models/model-detail.tsx
@@ -1396,6 +1443,8 @@ msgstr "Janela de contexto excedida"
 #: src/components/sign-in/sign-in-success-step.tsx
 #: src/components/sync-setup/passkey-enroll-step.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/settings/connections/connection-setup-footer.tsx
+#: src/settings/connections/provider-connection-form.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Continue"
 msgstr "Continuar"
@@ -1411,6 +1460,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Continue setup without signing in"
+msgstr ""
+
+#: src/settings/connections/provider-connection-form.tsx
+msgid "Continue with ChatGPT"
 msgstr ""
 
 #: src/components/sign-in-modal.tsx
@@ -1543,6 +1596,10 @@ msgstr ""
 
 #: src/components/search-provider-setup/use-search-provider-setup.ts
 msgid "Could not disconnect this search provider. Please try again."
+msgstr ""
+
+#: src/providers/use-provider-authorization.ts
+msgid "Could not finish connecting or revoke the unused session. You can remove Thunderbolt’s access in ChatGPT Settings."
 msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -1893,14 +1950,12 @@ msgstr "Configuração padrão"
 
 #: src/components/chat/permission-dialog.tsx
 #: src/components/settings/detail-actions-menu.tsx
-#: src/components/settings/edit-delete-context-menu.tsx
 #: src/components/ui/chat-nav-button.tsx
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
-#: src/skills/library-row.tsx
 msgid "Delete"
 msgstr "Excluir"
 
@@ -2195,8 +2250,8 @@ msgstr "Desconectado"
 #~ msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
-msgid "Disconnecting keeps your models and connection settings."
-msgstr ""
+#~ msgid "Disconnecting keeps your models and connection settings."
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Disconnecting…"
@@ -2303,7 +2358,7 @@ msgstr "Login de acesso antecipado"
 #: src/components/settings/edit-delete-context-menu.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
-#: src/skills/library-row.tsx
+#: src/settings/connections/provider-connection-detail.tsx
 msgid "Edit"
 msgstr "Editar"
 
@@ -2636,6 +2691,10 @@ msgstr "Não foi possível atualizar o servidor MCP"
 
 #: src/settings/models/use-models-page-state.ts
 msgid "Failed to update the model."
+msgstr ""
+
+#: src/settings/connections/new-connection-picker.tsx
+msgid "Filter by type"
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
@@ -3155,8 +3214,8 @@ msgid "Manage integrations"
 msgstr "Gerenciar integrações"
 
 #: src/settings/connections/provider-connection-detail.tsx
-msgid "Manage models"
-msgstr ""
+#~ msgid "Manage models"
+#~ msgstr ""
 
 #: src/settings/models/edit-model-form.tsx
 msgid "Manage provider connection"
@@ -3183,7 +3242,6 @@ msgid "MCP server"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
-#: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr "Servidores MCP"
 
@@ -3314,7 +3372,6 @@ msgstr "Meu agente"
 #: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
-#: src/settings/connections/provider-connection-detail.tsx
 #: src/settings/connections/provider-connection-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
@@ -3363,6 +3420,7 @@ msgstr "Nova conversa"
 #~ msgid "New chat in this project"
 #~ msgstr "Nova conversa neste projeto"
 
+#: src/components/create-item/context.tsx
 #: src/settings/connections/connections-list.tsx
 #: src/settings/connections/index.tsx
 msgid "New Connection"
@@ -3456,8 +3514,13 @@ msgid "No matches"
 msgstr "Nenhuma correspondência"
 
 #: src/settings/connections/connections-list.tsx
+#: src/settings/search/index.tsx
 msgid "No matching connections."
 msgstr "Nenhuma conexão correspondente."
+
+#: src/settings/models/index.tsx
+msgid "No matching models."
+msgstr ""
 
 #: src/projects/index.tsx
 #~ msgid "No matching projects"
@@ -3653,9 +3716,9 @@ msgstr "Acesso ao OneDrive"
 msgid "Only available in private chats."
 msgstr "Disponível apenas em conversas privadas."
 
+#. placeholder {0}: agent.name
 #. placeholder {0}: connection.name
-#. placeholder {0}: existingSignIn.name
-#: src/settings/connections/provider-connection-form.tsx
+#: src/components/settings/agents/agent-row.tsx
 #: src/settings/search/index.tsx
 msgid "Open {0}"
 msgstr ""
@@ -4000,6 +4063,10 @@ msgstr "Privado"
 msgid "Processing…"
 msgstr "Processando…"
 
+#: src/settings/connections/new-connection-picker.tsx
+msgid "Productivity"
+msgstr ""
+
 #: src/projects/project-create-form.tsx
 msgid "Project name"
 msgstr ""
@@ -4127,10 +4194,21 @@ msgid "Reload"
 msgstr "Recarregar"
 
 #: src/components/remove-bridge-dialog.tsx
+#: src/components/settings/edit-delete-context-menu.tsx
+#: src/settings/connections/integration-detail.tsx
 #: src/settings/devices.tsx
 #: src/settings/encryption/passkey-section.tsx
 msgid "Remove"
 msgstr "Remover"
+
+#. placeholder {0}: connection.name
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Remove {0}?"
+msgstr ""
+
+#: src/settings/connections/integration-detail.tsx
+msgid "Remove {integrationName}?"
+msgstr ""
 
 #: src/settings/passkeys.tsx
 #~ msgid "Remove {name}"
@@ -4139,6 +4217,10 @@ msgstr "Remover"
 #: src/components/logout-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "Remover todas as conversas, configurações e dados em cache deste dispositivo."
+
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Remove connection"
+msgstr ""
 
 #: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
@@ -4329,6 +4411,7 @@ msgid "Save changes"
 msgstr "Salvar alterações"
 
 #: src/settings/connections/mcp-server-form.tsx
+#: src/settings/connections/provider-connection-form.tsx
 msgid "Save Changes"
 msgstr "Salvar alterações"
 
@@ -4341,8 +4424,8 @@ msgid "Save failed"
 msgstr "Falha ao salvar"
 
 #: src/settings/connections/provider-connection-detail.tsx
-msgid "Save name"
-msgstr ""
+#~ msgid "Save name"
+#~ msgstr ""
 
 #: src/app.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
@@ -4413,6 +4496,7 @@ msgstr "Buscar conversas…"
 
 #: src/settings/connections/connections-list.tsx
 #: src/settings/connections/new-connection-picker.tsx
+#: src/settings/search/index.tsx
 msgid "Search connections"
 msgstr "Buscar conexões"
 
@@ -4442,6 +4526,7 @@ msgid "Search locations…"
 msgstr "Buscar locais…"
 
 #: src/settings/models/add-provider-models.tsx
+#: src/settings/models/index.tsx
 msgid "Search models"
 msgstr ""
 
@@ -4470,8 +4555,8 @@ msgstr ""
 #~ msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
-msgid "Search settings"
-msgstr ""
+#~ msgid "Search settings"
+#~ msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 #: src/skills/skills-list.tsx
@@ -4487,8 +4572,12 @@ msgstr "Buscar tarefas…"
 #~ msgstr ""
 
 #: src/settings/search/index.tsx
-msgid "Search uses this connection’s API key. Manage its credentials in Connections."
+msgid "Search uses this connection. Manage its credentials in Connections."
 msgstr ""
+
+#: src/settings/search/index.tsx
+#~ msgid "Search uses this connection’s API key. Manage its credentials in Connections."
+#~ msgstr ""
 
 #: src/components/ui/combobox.tsx
 #: src/components/ui/searchable-menu/searchable-menu.tsx
@@ -4801,6 +4890,10 @@ msgstr "Entre na sua conta para ativar o proxy na nuvem."
 #~ msgid "Sign in to Otari and choose a workspace. Your provider keys stay in Otari."
 #~ msgstr ""
 
+#: src/settings/connections/provider-connection-form.tsx
+msgid "Sign in to reconnect {name} on this device."
+msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Sign in to sync your workspace and access more features."
 msgstr ""
@@ -4848,6 +4941,10 @@ msgstr "Login bem-sucedido"
 
 #: src/lib/sso-error-messages.ts
 msgid "Sign-in was cancelled, or your identity provider did not grant access."
+msgstr ""
+
+#: src/settings/connections/provider-connection-summary.tsx
+msgid "Signed in to {name}"
 msgstr ""
 
 #: src/components/signed-out.tsx
@@ -5232,6 +5329,10 @@ msgstr ""
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr "O servidor rejeitou a credencial. Verifique seu token Bearer ou sua chave de API."
 
+#: src/lib/integration-oauth-client.ts
+msgid "The sign-in service cannot be reached from this app. Check your connection; the server must also allow this app’s address."
+msgstr ""
+
 #: src/lib/device-grant.ts
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
 msgstr "O serviço de login está indisponível neste momento. Verifique sua conexão e tente novamente."
@@ -5319,6 +5420,10 @@ msgstr ""
 msgid "This device was signed out remotely and its local data has been cleared."
 msgstr ""
 
+#: src/settings/connections/integration-detail.tsx
+msgid "This disconnects your account on this device. Its tools will no longer be available."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a {appName} export."
 msgstr "Este arquivo não parece ser uma exportação do {appName}."
@@ -5402,6 +5507,10 @@ msgstr "este projeto"
 msgid "This removes the connection from {appName} only. Nothing on the remote server is changed."
 msgstr "Isso remove a conexão apenas do {appName}. Nada é alterado no servidor remoto."
 
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "This removes the connection from your devices. Models and search using it will become unavailable. Your chat history will be kept."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
 msgstr ""
@@ -5417,6 +5526,10 @@ msgstr "Este servidor não existe mais. Ele pode ter sido removido em outro disp
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "This server requires authorization. Click Authorize to connect."
 msgstr "Este servidor exige autorização. Clique em Autorizar para conectar."
+
+#: src/lib/integration-oauth-client.ts
+msgid "This server requires Thunderbolt sign-in for Google and Microsoft. Standalone connections must be enabled on the server."
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server uses OAuth. Add it and authorize to connect."
@@ -5556,32 +5669,32 @@ msgid "Tinfoil returned an empty web tool response."
 msgstr ""
 
 #: src/integrations/tinfoil-search/attested-fetch.ts
-msgid "Tinfoil search attestation could not be verified."
-msgstr ""
+#~ msgid "Tinfoil search attestation could not be verified."
+#~ msgstr ""
 
 #: src/integrations/tinfoil-search/attested-fetch.ts
-msgid "Tinfoil search encryption keys changed. Try again."
-msgstr ""
+#~ msgid "Tinfoil search encryption keys changed. Try again."
+#~ msgstr ""
 
 #: src/integrations/tinfoil-search/connection.ts
 #~ msgid "Tinfoil search is no longer connected or enabled."
 #~ msgstr ""
 
-#: src/integrations/tinfoil-search/attested-fetch.ts
+#: src/integrations/tinfoil-search/http-client.ts
 msgid "Tinfoil search refused an unencrypted request."
 msgstr ""
 
-#: src/integrations/tinfoil-search/attested-fetch.ts
+#: src/integrations/tinfoil-search/http-client.ts
 msgid "Tinfoil search refused an unexpected endpoint."
 msgstr ""
 
-#: src/integrations/tinfoil-search/attested-fetch.ts
+#: src/integrations/tinfoil-search/http-client.ts
 msgid "Tinfoil search refused an unsupported request method."
 msgstr ""
 
 #: src/integrations/tinfoil-search/attested-fetch.ts
-msgid "Tinfoil search returned an unencrypted response."
-msgstr ""
+#~ msgid "Tinfoil search returned an unencrypted response."
+#~ msgstr ""
 
 #: src/integrations/tinfoil-search/api.ts
 msgid "Tinfoil web search failed. Check your connection and subscription, then try again."
@@ -5751,8 +5864,8 @@ msgid "Up late?"
 msgstr "Ainda acordado?"
 
 #: src/settings/connections/provider-connection-detail.tsx
-msgid "Update credentials"
-msgstr ""
+#~ msgid "Update credentials"
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Update Defaults?"
@@ -5841,6 +5954,10 @@ msgstr ""
 #: src/lib/mcp-url-validation.ts
 msgid "Use an http:// or https:// URL"
 msgstr "Use uma URL http:// ou https://"
+
+#: src/settings/connections/chatgpt-account-picker.tsx
+msgid "Use another ChatGPT account"
+msgstr ""
 
 #: src/settings/connections/provider-connection-form.tsx
 msgid "Use API Key instead"

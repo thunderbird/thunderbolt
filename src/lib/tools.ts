@@ -102,10 +102,10 @@ export const getAvailableTools = async (
       })),
     )
   }
-  if (hasServer && integrationStatus.googleEnabled) {
+  if (integrationStatus.googleEnabled) {
     baseTools.push(...createGoogleConfigs(httpClient))
   }
-  if (hasServer && integrationStatus.microsoftEnabled) {
+  if (integrationStatus.microsoftEnabled) {
     baseTools.push(...createMicrosoftConfigs(httpClient))
   }
   return baseTools

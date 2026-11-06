@@ -10,13 +10,15 @@ import {
   getProviderConnectionRevision,
   resolveProviderConnection,
   saveProviderConnectionWithRevision,
+  updateProviderConnection,
 } from '@/dal/provider-connections'
 import { getAvailableModels } from '@/dal/models'
+import { canConnectChatGPT } from '@/providers/chatgpt-auth'
 import { useChatStore } from '@/chats/chat-store'
 import { loadOtariSearchStatus } from '@/integrations/otari-search/capabilities'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { getProviderDefinition } from '@/providers/registry'
-import type { ProviderAuthMethod, ProviderConnection, ProviderType } from '@/providers/types'
+import type { ProviderAuthMethod, ProviderConnection, ProviderType, OAuthProviderType } from '@/providers/types'
 import type { useProviderAuthorization } from '@/providers/use-provider-authorization'
 
 type FormState = { name: string; authMethod: ProviderAuthMethod; url: string; apiKey: string; customUrl: boolean }
@@ -26,13 +28,19 @@ type FormAction = { [Key in keyof FormState]: { field: Key; value: FormState[Key
 export const useProviderConnectionForm = ({
   provider,
   connection,
+  existingOAuth,
   authorization,
   onSaved,
+  mode = 'connect',
+  initialAuthMethod,
 }: {
   provider: ProviderType
   connection?: ProviderConnection
-  authorization: ReturnType<typeof useProviderAuthorization>
+  existingOAuth?: ProviderConnection
+  authorization: Omit<ReturnType<typeof useProviderAuthorization>, 'processMcpCallback'>
   onSaved: (id: string) => void
+  mode?: 'connect' | 'edit'
+  initialAuthMethod?: ProviderAuthMethod
 }) => {
   const { t } = useLingui()
   const db = useDatabase()
@@ -44,14 +52,31 @@ export const useProviderConnectionForm = ({
     (state: FormState, action: FormAction): FormState => ({ ...state, [action.field]: action.value }),
     {
       name: connection?.name ?? definition.name,
-      authMethod: connection?.authMethod ?? (definition.oauth ? 'oauth' : 'api_key'),
+      authMethod:
+        connection?.authMethod ??
+        initialAuthMethod ??
+        (definition.oauth && (provider !== 'openai' || canConnectChatGPT()) ? 'oauth' : 'api_key'),
       url: connection?.url ?? definition.defaultUrl ?? '',
       apiKey: '',
       customUrl: Boolean(connection?.url && connection.url !== definition.defaultUrl),
     },
   )
+  const editing = mode === 'edit'
+  const oauthLocked = editing && connection?.authMethod === 'oauth'
+  const urlChanged = state.url.trim() !== (connection?.url ?? definition.defaultUrl ?? '')
+  const credentialsChanged = !editing || (!oauthLocked && (Boolean(state.apiKey.trim()) || urlChanged))
   const mutation = useMutation({
     mutationFn: async (controller: AbortController) => {
+      if (editing && !credentialsChanged) {
+        controller.signal.throwIfAborted()
+        await updateProviderConnection(db, connection!.id, { name: state.name.trim() })
+        return {
+          id: connection!.id,
+          revision: (await getProviderConnectionRevision(db, connection!.id))!,
+          controller,
+          credentialsChanged: false,
+        }
+      }
       const saved = await saveProviderConnectionWithRevision(db, {
         id: connection?.id,
         provider,
@@ -62,9 +87,9 @@ export const useProviderConnectionForm = ({
         enabled: connection ? connection.enabled === 1 : true,
         signal: controller.signal,
       })
-      return { ...saved, controller }
+      return { ...saved, controller, credentialsChanged: true }
     },
-    onSuccess: async ({ id, revision, controller }) => {
+    onSuccess: async ({ id, revision, controller, credentialsChanged }) => {
       const assertCurrent = async () => {
         const current = await getProviderConnectionRevision(db, id)
         controller.signal.throwIfAborted()
@@ -73,10 +98,10 @@ export const useProviderConnectionForm = ({
         }
       }
       await assertCurrent()
-      if (provider === 'tinfoil') {
+      if (credentialsChanged && provider === 'tinfoil') {
         useSearchProviderStore.getState().configureProviderSearch(id, 'available', { select: false })
       }
-      if (provider === 'otari' && connection?.enabled !== 0) {
+      if (credentialsChanged && provider === 'otari' && connection?.enabled !== 0) {
         const resolved = await resolveProviderConnection(db, id)
         controller.signal.throwIfAborted()
         const status = await loadOtariSearchStatus(
@@ -103,13 +128,19 @@ export const useProviderConnectionForm = ({
   const valid =
     Boolean(state.name.trim()) &&
     (!definition.requiresUrl || Boolean(state.url.trim())) &&
-    (state.authMethod === 'oauth' || provider === 'custom' || Boolean(state.apiKey.trim()))
+    (!credentialsChanged || state.authMethod === 'oauth' || provider === 'custom' || Boolean(state.apiKey.trim())) &&
+    (!editing || state.name.trim() !== connection?.name || credentialsChanged)
   const submit = () => {
     if (!valid || busy || pending.current) {
       return
     }
-    if (state.authMethod === 'oauth' && (provider === 'otari' || provider === 'tinfoil' || provider === 'openrouter')) {
-      void authorization.authorize({ provider, name: state.name.trim(), url: state.url, id: connection?.id })
+    if (!editing && state.authMethod === 'oauth' && definition.oauth) {
+      void authorization.authorize({
+        provider: provider as OAuthProviderType,
+        name: existingOAuth?.name ?? state.name.trim(),
+        url: existingOAuth?.url ?? state.url,
+        id: existingOAuth?.id ?? connection?.id,
+      })
       return
     }
     const controller = new AbortController()
@@ -119,6 +150,9 @@ export const useProviderConnectionForm = ({
   return {
     ...state,
     definition,
+    editing,
+    oauthLocked,
+    urlChanged,
     busy,
     valid,
     dispatch,

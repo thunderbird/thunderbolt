@@ -14,8 +14,19 @@ export const credentialBinding = (connection: { provider: string; authMethod: st
   JSON.stringify([connection.provider, connection.authMethod, connection.url])
 
 export const providerCredentialBound = sql`${secrets.binding} = json_array(${connections.provider}, ${connections.authMethod}, ${connections.url})`
+/** Consent is device-local and distinct from both account sign-in and inference access. */
+export const providerCredentialNeedsConsent = sql<boolean>`COALESCE((
+  ${connections.deletedAt} IS NULL AND ${providerCredentialBound}
+  AND ${connections.provider} = 'openai' AND ${connections.authMethod} = 'oauth'
+  AND CASE WHEN json_valid(${secrets.credentials}) THEN
+    COALESCE(json_extract(${secrets.credentials}, '$.access_token'), '') != ''
+    AND COALESCE(json_extract(${secrets.credentials}, '$.oauth.subject'), '') != ''
+    AND instr(' ' || COALESCE(json_extract(${secrets.credentials}, '$.oauth.scope'), '') || ' ', ' chatgpt.tokens.use.direct ') = 0
+  ELSE 0 END), 0)`.mapWith(Boolean)
+
 export const providerCredentialConnected =
   sql<boolean>`COALESCE((${connections.deletedAt} IS NULL AND ${providerCredentialBound}
+  AND NOT ${providerCredentialNeedsConsent}
   AND CASE WHEN json_valid(${secrets.credentials}) THEN
     COALESCE(json_extract(${secrets.credentials}, '$.reauth_required'), 0) = 0
     AND (${connections.provider} = 'custom' OR COALESCE(json_extract(${secrets.credentials}, '$.apiKey'), json_extract(${secrets.credentials}, '$.access_token'), '') != '')

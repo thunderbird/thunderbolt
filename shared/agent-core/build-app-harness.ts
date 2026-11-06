@@ -89,6 +89,7 @@ export type PiModelDescriptor =
     }
   | {
       readonly kind: 'openai-compat'
+      readonly api?: 'openai-completions' | 'openai-responses'
       /** App provider name, also used as the Pi provider id. */
       readonly providerId: string
       /** Upstream model id sent on the wire. */
@@ -220,6 +221,7 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
       : options.model.kind === 'confidential'
         ? buildConfidentialModel(options.model)
         : buildOpenAiCompatModel({
+            api: options.model.api,
             providerId: options.model.providerId,
             modelId: options.model.modelId,
             baseURL: options.model.baseURL,

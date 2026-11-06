@@ -174,13 +174,15 @@ only after its gateway advertises direct search. Unavailable Otari search shows 
 explanation and keeps the optional search step. Existing named search connections
 can be reused without re-entering credentials. Each Tinfoil search or page
 retrieval opens and closes a short-lived MCP transport using the existing OAuth
-session or API key. On desktop, the attestation SDK verifies the enclave key and
-the public `ehbp` primitives encrypt/decrypt envelopes over native HTTP;
-plaintext result payloads are rejected. The optional GET event stream is disabled
-because a bodyless request cannot establish EHBP response keys. Tool results use
-encrypted POST responses, including streamed responses; only empty notification
-acknowledgments and payload-free session termination can bypass decryption. This
-avoids global-fetch overrides and the MCP endpoint's browser fetch-metadata restriction.
+session or API key. Tinfoil SDK 1.4's injected `fetch` sends encrypted envelopes
+through Thunderbolt's HTTP client. The SDK owns attestation, encryption, response
+decryption, and re-verification on key rotation; Thunderbolt does not implement
+EHBP. Desktop and mobile use native HTTP. The optional GET event stream is
+disabled because a bodyless request cannot establish EHBP response keys. Tool
+results use encrypted POST responses, including streamed responses. A small MCP
+adapter discards notification/termination response bodies and passes their empty
+acknowledgments around the SDK's requirement for a nonce on every successful
+response. Plaintext tool results are rejected by the SDK.
 
 Browsers send those encrypted envelopes through the fixed same-origin
 `/_tinfoil/search` relay (Vite dev/preview and the deployed frontend nginx
@@ -222,6 +224,57 @@ Legacy standalone search keys move from `thunderbolt-search-provider` into stabl
 The ID-only selection lives under `thunderbolt-search-selection`. An interrupted
 migration can retry without duplicating connections or restoring a disconnected
 credential, and explicit None/Cloud or a newer selection remains intact.
+
+### Additional provider sign-ins
+
+Exa and Tavily use their official MCP OAuth endpoints. The existing MCP discovery,
+PKCE, browser redirect, desktop loopback, and mobile callback flow saves tokens to
+provider connections rather than creating a duplicate MCP server. Search tools use
+`web_search_advanced_exa` / `web_fetch_exa` or `tavily_search` / `tavily_extract`.
+API-key connections continue to use each provider's REST API.
+
+Exa does not allow browser CORS on its OAuth endpoints. Browser discovery,
+registration, token exchange/refresh, and MCP tool calls use the frontend's
+`/_exa/` relay (Vite locally, nginx in production). The relay only accepts fixed
+Exa endpoints and methods, validates upstream TLS, strips browser cookies and app
+headers, and disables caching. OAuth issuer and resource identities remain the
+original Exa URLs. Unlike Tinfoil's encrypted search, this is a TLS relay: the
+frontend host can see Exa tokens and search requests. Native apps connect directly.
+
+OpenAI offers **Continue with ChatGPT** in the desktop app using the public OSS
+client-registration flow. Browser and mobile users can still add an OpenAI API key.
+ChatGPT sessions validate the signed identity separately from permission to use the
+account's plan. Declining plan permission keeps the account signed in but blocks
+model discovery and inference; the connection offers an explicit consent retry or
+an API-key connection. Issued client IDs survive failed token exchanges so retries
+reuse the registration instead of registering the app repeatedly.
+
+Account registrations are local metadata records in `provider_connection_secrets`
+under `chatgpt-registration:<clientId>`. They contain validated account labels and
+subjects, never access, refresh, or ID tokens. The single active `oauth:openai`
+connection holds the token set. Its account picker can reauthorize a saved
+registration or register another account; account identities are never mixed even
+when their email addresses match. Switching validates the selected identity and
+revokes the previous renewable session before replacing the active token set.
+Disconnect clears device tokens while retaining registration metadata.
+
+The active account's model catalog supplies display names. Requests use the public
+Responses API with streaming enabled and storage disabled, through native HTTP
+directly to OpenAI. Refresh is serialized across windows; late responses cannot
+restore a disabled or disconnected session. Plan scope removed during refresh also
+blocks further inference. These behaviors follow OpenAI's [registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+and [accounts and sessions](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)
+contracts.
+
+The connection picker pins MCP and OpenAI-compatible first, alphabetizes the rest,
+and combines text search with Models, Search, and Productivity checkboxes. Google
+and Microsoft are Productivity connections. Chat's empty-state Add connection
+button uses the shared create-item host to open this picker without navigating away.
+OAuth handshakes retain the initiating app route (including its query and fragment).
+Callbacks reopen the connection surface over that route and clear callback parameters
+after completion; onboarding keeps its own return flow. Settings rows share an
+Edit/Remove context menu. Search edits the underlying connection in the same aside,
+and removal reuses the connection's confirmation and soft-delete operation.
 
 ### Otari
 
@@ -363,3 +416,42 @@ tracking; it is not a release or notarization identity. See Apple's
 Do not delete the WebCrypto master key to suppress a prompt: existing persisted
 CryptoKeys may depend on it. Signing an updated app can still require a one-time
 user approval to access the key created by the previous unsigned build.
+
+## Google and Microsoft without cloud sign-in
+
+Google and Microsoft account connections are available in standalone mode. They
+use the selected server's integration OAuth relay, or `thunderboltCloudUrl` when
+no server is selected. This does not select a sync server, create a Thunderbolt
+account, or enable cloud tools. The Thunderbolt connection still requires a
+cloud session. Provider API requests use the user's Google/Microsoft token;
+standalone requests go directly to the provider rather than the general proxy.
+
+The relay operator must deploy the backend and explicitly set
+`INTEGRATION_OAUTH_ALLOW_PUBLIC=true`, alongside the existing Google/Microsoft
+OAuth client configuration and approved browser origins/redirects. The default
+is false, retaining the session requirement for existing deployments. Use
+integration-specific OAuth registrations; do not reuse an unrelated privileged
+application's credentials. Provider consent, API permissions, quotas and any
+provider verification requirements still apply.
+
+Public access covers only `/v1/auth/{google,microsoft}/{config,exchange,refresh}`.
+It never authorizes other API routes. Both providers share a 30-request/minute
+IP budget, enforced even when optional API rate limits are disabled. Configure
+`TRUSTED_PROXY` correctly behind a reverse proxy; unknown clients share a bounded
+bucket. The relay accepts JSON, limits grant sizes, checks redirect and browser
+origin allowlists, forwards the PKCE verifier to the provider, rejects upstream
+redirects, times out token requests, and returns `Cache-Control: no-store`.
+Provider error bodies and validation inputs are not echoed or logged.
+
+The client generates S256 PKCE and validates callback state. The provider checks
+the code/verifier binding; a public relay is not a substitute for PKCE or user
+consent. Refresh tokens remain bearer credentials: stealing one can permit
+refresh without a Thunderbolt login, so device credential protection matters.
+Neither CORS nor an app version header authenticates a native client.
+
+OAuth state and device-local `integrations_secrets` retain the issuing relay URL.
+Exchanges and refreshes bypass the general proxy and never send another server's
+Thunderbolt bearer token. Provider configuration is cached per relay client.
+Rotated refresh tokens replace old ones; a conditional write prevents a late
+refresh from overwriting a reconnect, disconnect, or disable. Existing credentials
+without relay metadata retain their previous transport until the next reconnect.

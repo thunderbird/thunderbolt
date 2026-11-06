@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, beforeEach, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeEach, expect, it, mock, spyOn } from 'bun:test'
+import * as native from '@/lib/native-fetch'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getAllModels, getModel, updateModel } from '@/dal/models'
@@ -10,13 +11,15 @@ import {
   deleteProviderConnection,
   disconnectProviderConnection,
   saveProviderConnection,
+  saveProviderConnectionInTransaction,
   updateProviderConnection,
 } from '@/dal/provider-connections'
 import { modelProfilesTable } from '@/db/tables'
-import { addProviderModels } from './models'
+import { addProviderModels, fetchProviderModels } from './models'
 
 beforeEach(resetTestDatabase)
 afterAll(teardownTestDatabase)
+afterEach(() => mock.restore())
 
 const connect = (provider: 'openai' | 'exa' = 'openai') =>
   saveProviderConnection(getDb(), {
@@ -67,5 +70,53 @@ it('does not add a model after its owning operation was canceled', async () => {
   const controller = new AbortController()
   controller.abort()
   await expect(addProviderModels(getDb(), id, [{ id: 'test' }], { signal: controller.signal })).rejects.toThrow()
+  expect(await getAllModels(getDb())).toEqual([])
+})
+
+it('discovers ChatGPT models through native OAuth HTTP and excludes hidden models', async () => {
+  const id = await getDb().transaction((tx) =>
+    saveProviderConnectionInTransaction(tx, {
+      provider: 'openai',
+      name: 'ChatGPT',
+      authMethod: 'oauth',
+      credentials: { access_token: 'plan-token' },
+    }),
+  )
+  const send = spyOn(native, 'nativeFetch').mockResolvedValue(
+    Response.json({
+      models: [
+        { slug: 'visible-model', display_name: 'Visible model', visibility: 'list' },
+        { slug: 'hidden-model', display_name: 'Hidden model', visibility: 'hidden' },
+      ],
+    }),
+  )
+  const getProxy = mock(() => {
+    throw new Error('OAuth must not use the cloud proxy')
+  })
+  expect(await fetchProviderModels(getDb(), id, getProxy)).toEqual([{ id: 'visible-model', name: 'Visible model' }])
+  const [url, init] = send.mock.calls[0]!
+  const request = new Request(url, init)
+  expect(request.url).toBe('https://api.openai.com/v1/models')
+  expect(request.headers.get('Authorization')).toBe('Bearer plan-token')
+  expect(request.redirect).toBe('error')
+  expect(request.credentials).toBe('omit')
+  expect(getProxy).not.toHaveBeenCalled()
+})
+
+it('rejects a malformed ChatGPT catalog instead of saving unusable models', async () => {
+  const id = await getDb().transaction((tx) =>
+    saveProviderConnectionInTransaction(tx, {
+      provider: 'openai',
+      name: 'ChatGPT',
+      authMethod: 'oauth',
+      credentials: { access_token: 'plan-token' },
+    }),
+  )
+  spyOn(native, 'nativeFetch').mockResolvedValue(
+    Response.json({
+      models: [{ slug: '', display_name: 'Invalid model', visibility: 'list' }],
+    }),
+  )
+  await expect(fetchProviderModels(getDb(), id)).rejects.toThrow()
   expect(await getAllModels(getDb())).toEqual([])
 })

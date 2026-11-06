@@ -90,13 +90,16 @@ it('fails closed on discovery errors and exposes fetch only when advertised', as
   expect((await getSearchConnectionApi(getDb(), id))?.fetchContent).toBeDefined()
   expect(fetch).toHaveBeenCalledTimes(3)
 })
-it.each(['disabled', 'disconnected', 'rotated', 'url', 'provider', 'deleted'] as const)(
+it.each(['disabled', 'reenabled', 'disconnected', 'rotated', 'url', 'provider', 'deleted'] as const)(
   'retires an active turn after %s without sending its query',
   async (change) => {
     const id = await connect()
     const api = await getSearchConnectionApi(getDb(), id)
-    if (change === 'disabled') {
+    if (change === 'disabled' || change === 'reenabled') {
       await updateProviderConnection(getDb(), id, { enabled: false })
+      if (change === 'reenabled') {
+        await updateProviderConnection(getDb(), id, { enabled: true })
+      }
     }
     if (change === 'disconnected') {
       await disconnectProviderConnection(getDb(), id)

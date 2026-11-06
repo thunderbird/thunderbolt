@@ -2,141 +2,192 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useState } from 'react'
-import { Link } from 'react-router'
-import { Trans } from '@lingui/react/macro'
+import { useRef, useState } from 'react'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { SquarePen, Trash2 } from 'lucide-react'
 import { DetailPanel } from '@/components/detail-panel'
+import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
+import { ConnectionSetupFooter } from './connection-setup-footer'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { getProviderDefinition } from '@/providers/registry'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import type { ProviderConnection } from '@/providers/types'
 import type { useProviderAuthorization } from '@/providers/use-provider-authorization'
 import { ProviderConnectionIcon } from './provider-connection-icon'
 import { ProviderConnectionForm } from './provider-connection-form'
+import { ProviderConnectionButton } from '@/components/provider-connection-button'
+import { ChatGPTAccountPicker } from './chatgpt-account-picker'
+import { canConnectChatGPT } from '@/providers/chatgpt-auth'
+import { ProviderConnectionSummary } from './provider-connection-summary'
 import type { useAiProviderConnections } from './use-ai-provider-connections'
 import { openExternalUrl } from '@/lib/open-external-url'
 import { tinfoilManageSubscriptionUrl } from '@/lib/tinfoil-auth'
 
 /** A durable connection stays visible when this device has no credentials. */
 export const ProviderConnectionDetail = ({
+  initialAction,
   connection,
   controls,
   authorization,
   onClose,
+  onBack,
+  onAddApiKey,
 }: {
+  initialAction?: 'edit' | 'remove'
   connection: ProviderConnection
   controls: ReturnType<typeof useAiProviderConnections>
-  authorization: ReturnType<typeof useProviderAuthorization>
+  authorization: Omit<ReturnType<typeof useProviderAuthorization>, 'processMcpCallback'>
   onClose: () => void
+  onBack?: () => void
+  onAddApiKey?: () => void
 }) => {
-  const [name, setName] = useState(connection.name)
-  const [credentialEditor, setCredentialEditor] = useState({
-    connected: connection.connected,
-    open: !connection.connected,
+  const { t } = useLingui()
+  const openingEditor = useRef(false)
+  const hasSession = connection.connected || Boolean(connection.needsConsent)
+  const [confirmRemoval, setConfirmRemoval] = useState(initialAction === 'remove')
+  const [editor, setEditor] = useState<{
+    hasSession: boolean
+    mode: 'details' | 'edit' | 'connect'
+  }>({
+    hasSession,
+    mode: initialAction === 'edit' ? 'edit' : hasSession ? 'details' : 'connect',
   })
-  if (credentialEditor.connected !== connection.connected) {
-    setCredentialEditor({
-      connected: connection.connected,
-      open: credentialEditor.open || !connection.connected,
+  if (editor.hasSession !== hasSession) {
+    setEditor({
+      hasSession,
+      mode: hasSession ? editor.mode : 'connect',
     })
   }
-  const definition = getProviderDefinition(connection.provider)
   // A reconnect publishes credentials before its discovery and refresh finish.
   // Keep its form mounted until onSaved, even when the live row becomes connected.
-  const showForm = !connection.connected || credentialEditor.open
-  const setEditingCredentials = (open: boolean) => setCredentialEditor({ connected: connection.connected, open })
+  const showForm = !hasSession || editor.mode !== 'details'
+  const setMode = (mode: typeof editor.mode) => setEditor({ hasSession, mode })
   return (
     <DetailPanel
       title={connection.name}
       icon={<ProviderConnectionIcon provider={connection.provider} />}
+      actions={
+        <DetailActionsMenu
+          onCloseAutoFocus={(event) => {
+            if (openingEditor.current) {
+              event.preventDefault()
+              openingEditor.current = false
+              // Mount the form after the menu releases focus so its autofocus can succeed.
+              setMode('edit')
+            }
+          }}
+        >
+          {!showForm && (
+            <DropdownMenuItem
+              disabled={controls.pending}
+              onClick={() => {
+                openingEditor.current = true
+              }}
+            >
+              <SquarePen />
+              <Trans>Edit</Trans>
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            disabled={controls.pending || authorization.isPending}
+            onClick={() => setConfirmRemoval(true)}
+          >
+            <Trash2 />
+            <Trans>Remove connection</Trans>
+          </DropdownMenuItem>
+        </DetailActionsMenu>
+      }
       onClose={onClose}
     >
       {showForm ? (
         <>
-          {!connection.connected && (
+          {!hasSession && (
             <p className="text-sm text-muted-foreground">
               <Trans>Connect on this device</Trans>
             </p>
           )}
           <ProviderConnectionForm
+            onBack={editor.mode !== 'edit' ? onBack : undefined}
+            onAddApiKey={onAddApiKey}
+            mode={editor.mode === 'edit' ? 'edit' : 'connect'}
             provider={connection.provider}
             connection={connection}
             authorization={authorization}
-            onSaved={() => setEditingCredentials(false)}
-            onCancel={() => (connection.connected ? setEditingCredentials(false) : onClose())}
+            onSaved={() => setMode('details')}
+            onCancel={() => (hasSession ? setMode('details') : onClose())}
           />
         </>
       ) : (
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">
-            {connection.enabled ? <Trans>Connected</Trans> : <Trans>Connection disabled</Trans>}
-          </p>
-          <form
-            className="flex flex-col gap-2"
-            onSubmit={(event) => {
-              event.preventDefault()
-              controls.rename(connection.id, name.trim())
-            }}
-          >
-            <Label htmlFor="saved-connection-name">
-              <Trans>Name</Trans>
-            </Label>
-            <Input
-              id="saved-connection-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
+        <ProviderConnectionSummary
+          connection={connection}
+          onAddApiKey={connection.authMethod === 'oauth' ? onAddApiKey : undefined}
+        >
+          {connection.needsConsent && (
+            <ProviderConnectionButton
+              isConnected={false}
+              isProcessing={authorization.isPending}
+              connectLabel={t`Allow plan access`}
               disabled={controls.pending}
+              onConnect={() =>
+                authorization.authorize({ provider: 'openai', id: connection.id, name: connection.name })
+              }
+              onCancel={authorization.cancel}
             />
-            <Button
-              type="submit"
-              variant="outline"
-              className="self-start"
-              disabled={!name.trim() || name.trim() === connection.name || controls.pending}
-            >
-              <Trans>Save name</Trans>
-            </Button>
-          </form>
-          {connection.url && <p className="break-all text-sm text-muted-foreground">{connection.url}</p>}
-          <div className="flex flex-wrap gap-2">
-            {connection.authMethod === 'api_key' && (
-              <Button variant="outline" onClick={() => setEditingCredentials(true)} disabled={controls.pending}>
-                <Trans>Update credentials</Trans>
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => controls.disconnect(connection.id)} disabled={controls.pending}>
-              <Trans>Disconnect this device</Trans>
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            <Trans>Disconnecting keeps your models and connection settings.</Trans>
-          </p>
+          )}
+          {authorization.error && (
+            <p role="alert" className="text-sm text-destructive">
+              {authorization.error}
+            </p>
+          )}
+          {connection.provider === 'openai' && connection.authMethod === 'oauth' && canConnectChatGPT() && (
+            <ChatGPTAccountPicker
+              isPending={authorization.isPending && !connection.needsConsent}
+              disabled={controls.pending || authorization.isPending}
+              onCancel={authorization.cancel}
+              onChoose={(chatGPTAccountId) =>
+                authorization.authorize({
+                  provider: 'openai',
+                  id: connection.id,
+                  name: connection.name,
+                  chatGPTAccountId,
+                })
+              }
+            />
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => controls.disconnect(connection.id)}
+            disabled={controls.pending || authorization.isPending}
+          >
+            <Trans>Disconnect this device</Trans>
+          </Button>
           {connection.provider === 'tinfoil' && connection.authMethod === 'oauth' && (
             <Button
               variant="link"
-              className="self-start px-0"
+              className="px-0 text-xs font-normal text-muted-foreground"
               onClick={() => openExternalUrl(tinfoilManageSubscriptionUrl)}
             >
               <Trans>Manage subscription</Trans>
             </Button>
           )}
-          {definition.capabilities.includes('models') && (
-            <Button asChild variant="outline">
-              <Link to="/settings/models">
-                <Trans>Manage models</Trans>
-              </Link>
-            </Button>
-          )}
-          {definition.capabilities.includes('search') && (
-            <Button asChild variant="outline">
-              <Link to="/settings/search">
-                <Trans>Search settings</Trans>
-              </Link>
-            </Button>
-          )}
-        </div>
+        </ProviderConnectionSummary>
       )}
+      {!showForm && onBack && (
+        <ConnectionSetupFooter onBack={onBack} onContinue={onClose} ready={connection.connected && !controls.pending} />
+      )}
+      <ConfirmActionDialog
+        open={confirmRemoval}
+        title={t`Remove ${connection.name}?`}
+        description={t`This removes the connection from your devices. Models and search using it will become unavailable. Your chat history will be kept.`}
+        confirmLabel={t`Remove connection`}
+        onCancel={() => setConfirmRemoval(false)}
+        onConfirm={() => {
+          setConfirmRemoval(false)
+          authorization.cancel()
+          controls.remove(connection.id, onClose)
+        }}
+      />
       {controls.error && (
         <p role="alert" className="text-sm text-destructive">
           {controls.error}

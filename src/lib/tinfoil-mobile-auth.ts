@@ -5,6 +5,7 @@
 import { msg } from '@lingui/core/macro'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { z } from 'zod'
+import { currentOAuthReturnPath, oauthReturnPath } from './oauth-return-route'
 import { i18n } from '@/i18n'
 import { mobileOAuthRedirectUri } from './oauth-redirect'
 import { generateCodeChallenge, generateCodeVerifier } from './pkce'
@@ -24,6 +25,7 @@ const flowSchema = z.object({
   state: nonce,
   verifier: nonce,
   context: z.enum(['onboarding', 'connections']),
+  returnTo: z.string().optional(),
   attempt: z.object({ provider: z.literal('tinfoil'), revision: z.string() }),
   createdAt: z.number().finite(),
 })
@@ -51,6 +53,7 @@ export const clearTinfoilMobileReturn = (id: string): void => {
 
 const defaultDependencies = {
   storage: () => localStorage,
+  currentPath: currentOAuthReturnPath,
   openUrl,
   verifier: generateCodeVerifier,
   challenge: generateCodeChallenge,
@@ -67,12 +70,20 @@ export const startTinfoilMobileConnection = async (
 ): Promise<void> => {
   const deps = { ...defaultDependencies, ...dependencies }
   signal.throwIfAborted()
+  const returnTo = deps.currentPath()
   const verifier = deps.verifier()
   const state = deps.verifier()
   const challenge = await deps.challenge(verifier)
   signal.throwIfAborted()
   const storage = deps.storage()
-  const storedFlow = JSON.stringify({ state, verifier, context, attempt, createdAt: deps.now() })
+  const storedFlow = JSON.stringify({
+    state,
+    verifier,
+    context,
+    returnTo,
+    attempt,
+    createdAt: deps.now(),
+  })
   storage.setItem(storageKey, storedFlow)
   try {
     await deps.openUrl(getTinfoilAuthorizationUrl({ challenge, state, redirectUri: mobileOAuthRedirectUri }))
@@ -136,7 +147,7 @@ export const captureTinfoilMobileReturn = (
   mobileReturn = {
     id: flow.data.state,
     context: flow.data.context,
-    returnTo: flow.data.context === 'onboarding' ? '/chats/new' : '/settings/connections',
+    returnTo: flow.data.context === 'onboarding' ? '/chats/new' : oauthReturnPath(flow.data.returnTo),
     attempt: flow.data.attempt,
     cancel: () => controller.abort(),
     complete: () => {

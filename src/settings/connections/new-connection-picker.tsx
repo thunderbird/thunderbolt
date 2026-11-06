@@ -3,9 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Plug } from 'lucide-react'
+import { Filter, Plug } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { providerDefinitions } from '@/providers/registry'
@@ -27,24 +34,44 @@ export const NewConnectionPicker = ({
   onIntegration?: (id: string) => void
   capability?: ProviderCapability
 }) => {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const [search, setSearch] = useState('')
+  const [types, setTypes] = useState<string[]>([])
+  const matchesType = (categories: readonly string[]) =>
+    types.length === 0 || categories.some((category) => types.includes(category))
+  const typeOptions = [
+    { id: 'models', label: t`Models` },
+    { id: 'search', label: t`Search` },
+    { id: 'productivity', label: t`Productivity` },
+  ]
   const query = search.trim().toLowerCase()
   /** Match the visible labels without making case or surrounding spaces significant. */
   const matchesSearch = (label: string) => label.toLowerCase().includes(query)
   const genericOptions = capability
     ? []
     : [
-        { id: 'mcp', label: t`MCP server`, icon: <Plug className="size-5" />, onSelect: onMcp },
+        {
+          id: 'mcp',
+          description: undefined as string | undefined,
+          label: t`MCP server`,
+          icon: <Plug className="size-5" />,
+          onSelect: onMcp,
+        },
         {
           id: 'custom',
+          description: undefined as string | undefined,
           label: t`OpenAI-compatible model provider`,
           icon: <ProviderConnectionIcon provider="custom" />,
           onSelect: () => onProvider('custom'),
         },
-      ].filter((option) => matchesSearch(option.label))
+      ].filter((option) => matchesSearch(option.label) && (option.id === 'mcp' || matchesType(['models'])))
   const providers = providerDefinitions
-    .filter((provider) => provider.id !== 'custom' && (!capability || provider.capabilities.includes(capability)))
+    .filter(
+      (provider) =>
+        provider.id !== 'custom' &&
+        (!capability || provider.capabilities.includes(capability)) &&
+        matchesType(provider.capabilities),
+    )
     .map((provider) => ({
       ...provider,
       description: provider.capabilities.includes('models')
@@ -54,62 +81,94 @@ export const NewConnectionPicker = ({
         : t`Search`,
     }))
     .filter((provider) => matchesSearch(`${provider.name} ${provider.description}`))
-  const visibleIntegrations = integrations.filter((integration) => matchesSearch(integration.name))
+  const options = [
+    ...providers.map((provider) => ({
+      id: `provider:${provider.id}`,
+      label: provider.name,
+      description: provider.description,
+      icon: <ProviderConnectionIcon provider={provider.id} />,
+      onSelect: () => onProvider(provider.id),
+    })),
+    ...integrations
+      .filter((integration) => {
+        const category = integration.provider === 'thunderbolt-pro' ? 'search' : 'productivity'
+        return (
+          matchesType([category]) &&
+          matchesSearch(`${integration.name} ${category === 'productivity' ? t`Productivity` : t`Search`}`)
+        )
+      })
+      .map((integration) => ({
+        id: `integration:${integration.id}`,
+        label: integration.name,
+        description: integration.provider === 'thunderbolt-pro' ? t`Search` : t`Productivity`,
+        icon: integration.icon,
+        onSelect: () => onIntegration?.(integration.id),
+      })),
+  ].sort((a, b) => a.label.localeCompare(b.label, i18n.locale, { sensitivity: 'base' }))
 
   return (
     <div className="flex flex-col gap-2">
-      <Input
-        type="search"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder={t`Search connections…`}
-        aria-label={t`Search connections`}
-        className="mb-2"
-        autoFocus
-      />
-      {genericOptions.length > 0 && (
-        <div className="mb-3 grid gap-2 border-b pb-4">
-          {genericOptions.map((option) => (
-            <Button
-              key={option.id}
-              type="button"
-              variant="secondary"
-              className="justify-start whitespace-normal text-left"
-              onClick={option.onSelect}
-            >
-              {option.icon}
-              {option.label}
-            </Button>
-          ))}
-        </div>
-      )}
-      {providers.map((provider) => (
+      <div className="mb-2 flex items-center gap-2">
+        <Input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t`Search connections…`}
+          aria-label={t`Search connections`}
+          className="min-w-0 flex-1"
+          autoFocus
+        />
+        {!capability && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label={t`Filter by type`}
+                className={types.length ? 'text-primary' : undefined}
+              >
+                <Filter />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>
+                <Trans>Connection type</Trans>
+              </DropdownMenuLabel>
+              {typeOptions.map((option) => (
+                <DropdownMenuCheckboxItem
+                  key={option.id}
+                  checked={types.includes(option.id)}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={(checked) =>
+                    setTypes((current) =>
+                      checked ? [...current, option.id] : current.filter((id) => id !== option.id),
+                    )
+                  }
+                >
+                  {option.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+      {[...genericOptions, ...options].map((option) => (
         <Button
-          key={provider.id}
+          key={option.id}
           type="button"
           variant="outline"
-          className="justify-start"
-          onClick={() => onProvider(provider.id)}
+          className="justify-start whitespace-normal text-left"
+          onClick={option.onSelect}
         >
-          <ProviderConnectionIcon provider={provider.id} />
-          <span className="flex-1 text-left">{provider.name}</span>
-          <span className="text-xs text-muted-foreground">{provider.description}</span>
+          <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">
+            {option.icon}
+          </span>
+          <span className="flex-1 text-left">{option.label}</span>
+          {option.description && <span className="text-xs text-muted-foreground">{option.description}</span>}
         </Button>
       ))}
-      {visibleIntegrations.map((integration) => (
-        <Button
-          key={integration.id}
-          type="button"
-          aria-label={integration.name}
-          variant="outline"
-          className="justify-start"
-          onClick={() => onIntegration?.(integration.id)}
-        >
-          <span className="flex size-5 items-center justify-center">{integration.icon}</span>
-          <span className="flex-1 text-left">{integration.name}</span>
-        </Button>
-      ))}
-      {genericOptions.length + providers.length + visibleIntegrations.length === 0 && (
+      {genericOptions.length + options.length === 0 && (
         <SettingsNoResults role="status">
           <Trans>No connections found.</Trans>
         </SettingsNoResults>

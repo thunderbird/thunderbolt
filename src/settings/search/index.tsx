@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useCreateItem } from '@/components/create-item/context'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Link } from 'react-router'
+import { useState } from 'react'
+import { PageSearch } from '@/components/ui/page-search'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import {
   SettingsListBody,
@@ -15,7 +19,7 @@ import { Button } from '@/components/ui/button'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { NewConnectionPicker } from '@/settings/connections/new-connection-picker'
 import { ProviderConnectionForm } from '@/settings/connections/provider-connection-form'
-import { providerDefinitions } from '@/providers/registry'
+import { getProviderDefinition, providerDefinitions } from '@/providers/registry'
 import { useProviderAuthorization } from '@/providers/use-provider-authorization'
 import { PageHeader } from '@/components/ui/page-header'
 import { PrivateBadge } from '@/components/ui/private-badge'
@@ -28,8 +32,15 @@ import { useSearchSettingsState } from './use-search-settings-state'
 
 const SearchSettingsPage = () => {
   const { t } = useLingui()
+  const { openCreateItem } = useCreateItem()
   const page = useSearchSettingsState()
-  const authorization = useProviderAuthorization({ onConnected: (id) => page.setPanel(id) })
+  const [search, setSearch] = useState('')
+  const query = search.trim().toLowerCase()
+  const filteredConnections = page.connections.filter((connection) =>
+    `${connection.name} ${getProviderDefinition(connection.provider).name}`.toLowerCase().includes(query),
+  )
+  const showCloud = page.cloudVisible && 'thunderbolt'.includes(query)
+  const authorization = useProviderAuthorization({ resumeReturn: false, onConnected: (id) => page.setPanel(id) })
   const adding = providerDefinitions.find((provider) => page.panel === `add:${provider.id}`)
   const active = page.connections.find(({ id }) => id === page.panel)
   const close = () => {
@@ -40,17 +51,29 @@ const SearchSettingsPage = () => {
     authorization.cancel()
     page.setPanel(panel)
   }
+  const openConnectionAction = (id: string, action: 'edit' | 'remove') => {
+    close()
+    openCreateItem({ kind: 'connection', connectionId: id, action })
+  }
   return (
     <div className="relative flex h-full">
       <div className="min-w-0 flex-1 overflow-hidden">
         <SettingsListPane className="gap-6 md:pb-12">
-          <PageHeader title={t`Search`}>
-            <PageCreateAction label={t`New Search Connection`} onClick={() => selectPanel('new')} />
-          </PageHeader>
+          <PageSearch onSearch={setSearch}>
+            <PageHeader title={t`Search`}>
+              <PageSearch.Button />
+              <PageCreateAction label={t`New Search Connection`} onClick={() => selectPanel('new')} />
+            </PageHeader>
+            <PageSearch.Input placeholder={t`Search connections`} onSearch={setSearch} />
+          </PageSearch>
           <SettingsListBody className={settingsListBodyRowsClass}>
-            {page.connections.map((connection) => (
+            {filteredConnections.map((connection) => (
               <SettingsSelectableRow
                 key={connection.id}
+                contextMenu={{
+                  onEdit: () => openConnectionAction(connection.id, 'edit'),
+                  onRemove: () => openConnectionAction(connection.id, 'remove'),
+                }}
                 title={
                   <span className="flex items-center gap-2">
                     <span className="truncate">{connection.name}</span>
@@ -80,8 +103,9 @@ const SearchSettingsPage = () => {
                 }
               />
             ))}
-            {page.cloudVisible && (
+            {showCloud && (
               <SettingsSelectableRow
+                contextMenu={{}}
                 title="Thunderbolt"
                 ariaLabel={t`Open Thunderbolt`}
                 isSelected={page.panel === 'cloud'}
@@ -96,6 +120,11 @@ const SearchSettingsPage = () => {
                   />
                 }
               />
+            )}
+            {query && filteredConnections.length === 0 && !showCloud && (
+              <SettingsNoResults>
+                <Trans>No matching connections.</Trans>
+              </SettingsNoResults>
             )}
           </SettingsListBody>
         </SettingsListPane>
@@ -141,7 +170,7 @@ const SearchSettingsPage = () => {
                     your search provider in Otari.
                   </Trans>
                 ) : active ? (
-                  <Trans>Search uses this connection’s API key. Manage its credentials in Connections.</Trans>
+                  <Trans>Search uses this connection. Manage its credentials in Connections.</Trans>
                 ) : (
                   <Trans>Search and page content are provided by your connected Thunderbolt server.</Trans>
                 )}

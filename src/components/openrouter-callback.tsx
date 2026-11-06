@@ -21,7 +21,16 @@ const OpenRouterCallback = () => {
     return <Loading />
   }
   if (destination) {
-    return <Navigate to={destination} replace />
+    return (
+      <Navigate
+        to={destination}
+        replace
+        state={{
+          connectionOAuthReturn:
+            getProviderBrowserReturn()?.context === 'connections' ? getProviderBrowserReturn()?.id : undefined,
+        }}
+      />
+    )
   }
   return <ProviderAuthorizationResult />
 }

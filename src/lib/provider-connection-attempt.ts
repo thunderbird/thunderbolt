@@ -7,23 +7,27 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { TinfoilCredentials } from './tinfoil-auth'
 import { connectionFingerprint, getProviderConnectionRevision } from '@/providers/revision'
 
-type Provider = 'openrouter' | 'tinfoil' | 'otari'
-export type ProviderConnectionAttempt = { provider: Provider; revision: string }
+import type { OAuthProviderType as Provider } from '@/providers/types'
+type LegacyProvider = 'openrouter' | 'tinfoil' | 'otari'
+export type ProviderConnectionAttempt<P extends Provider = LegacyProvider> = { provider: P; revision: string }
 export type ProviderAuthorization = {
   attempt: ProviderConnectionAttempt
   tinfoilCredentials?: TinfoilCredentials
 }
 
 /** Capture before authorization or verification, not when its result is ready to save. */
-export const getProviderConnectionAttempt = async (
+export const getProviderConnectionAttempt = async <P extends Provider>(
   db: AnyDrizzleDatabase,
-  provider: Provider,
-): Promise<ProviderConnectionAttempt> => {
+  provider: P,
+): Promise<ProviderConnectionAttempt<P>> => {
   const revision = await getProviderConnectionRevision(db, `oauth:${provider}`)
   if (revision) {
     return { provider, revision }
   }
-  const row = await getIntegrationCredentials(db, provider)
+  const row =
+    provider === 'openrouter' || provider === 'tinfoil' || provider === 'otari'
+      ? await getIntegrationCredentials(db, provider)
+      : null
   const legacy = row?.credentials.sessionRevision
     ? { revision: row.credentials.sessionRevision, enabled: row.enabled }
     : row
@@ -33,7 +37,7 @@ export const getProviderConnectionAttempt = async (
 /** Reject results superseded by another window's disconnect, toggle, or connection. */
 export const assertProviderConnectionAttemptCurrent = async (
   db: AnyDrizzleDatabase,
-  attempt: ProviderConnectionAttempt,
+  attempt: ProviderConnectionAttempt<Provider>,
 ) => {
   if ((await getProviderConnectionAttempt(db, attempt.provider)).revision !== attempt.revision) {
     throw new Error('Provider connection changed during authorization. Start a new connection.')
@@ -41,7 +45,7 @@ export const assertProviderConnectionAttemptCurrent = async (
 }
 
 /** Call in the connection mutation's transaction so even disconnected→connected→disconnected invalidates old work. */
-export const invalidateProviderConnectionAttempts = async (db: AnyDrizzleDatabase, provider: Provider) => {
+export const invalidateProviderConnectionAttempts = async (db: AnyDrizzleDatabase, provider: LegacyProvider) => {
   const row = await getIntegrationCredentials(db, provider)
   await saveIntegrationCredentials(
     db,

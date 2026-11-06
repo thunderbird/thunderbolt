@@ -26,8 +26,8 @@ export const waitForElement = async (getElement: () => HTMLElement | null, timeo
       // not found yet
     }
     await act(async () => {
-      clock.tick(50)
-      await clock.runAllAsync()
+      // Draining every timer would also run query-cache GC and skip this poll's deadline.
+      await clock.tickAsync(50)
     })
   }
   return getElement()!

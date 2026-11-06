@@ -12,15 +12,14 @@ import { useDatabase } from '@/contexts'
 import { getAvailableModels } from '@/dal'
 import {
   disconnectProviderConnection,
+  deleteProviderConnection,
   getProviderConnections,
   getModelProviderConnectionIds,
   updateProviderConnection,
 } from '@/dal/provider-connections'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 
-type ConnectionChange =
-  | { kind: 'update'; id: string; name?: string; enabled?: boolean }
-  | { kind: 'disconnect'; id: string }
+type ConnectionChange = { kind: 'update'; id: string; enabled: boolean } | { kind: 'disconnect' | 'remove'; id: string }
 
 /** Owns provider metadata controls independently of model and search preferences. */
 export const useAiProviderConnections = () => {
@@ -43,13 +42,16 @@ export const useAiProviderConnections = () => {
   const mutation = useMutation({
     mutationFn: async (change: ConnectionChange) => {
       if (change.kind === 'update') {
-        await updateProviderConnection(db, change.id, { name: change.name, enabled: change.enabled })
+        await updateProviderConnection(db, change.id, { enabled: change.enabled })
+      } else if (change.kind === 'remove') {
+        await deleteProviderConnection(db, change.id)
       } else {
         await disconnectProviderConnection(db, change.id)
       }
       const [models] = await Promise.all([
         getAvailableModels(db),
         queryClient.invalidateQueries({ queryKey: ['provider-connections'] }),
+        queryClient.invalidateQueries({ queryKey: ['chatgpt-accounts'] }),
         queryClient.invalidateQueries({ queryKey: ['models'] }),
       ])
       useChatStore.getState().setModels(models)
@@ -85,7 +87,7 @@ export const useAiProviderConnections = () => {
       mutation.mutate({ kind: 'update', id: disableId, enabled: false })
       setDisableId(null)
     },
-    rename: (id: string, name: string) => mutation.mutate({ kind: 'update', id, name }),
+    remove: (id: string, onSuccess: () => void) => mutation.mutate({ kind: 'remove', id }, { onSuccess }),
     disconnect: (id: string) => mutation.mutate({ kind: 'disconnect', id }),
   }
 }

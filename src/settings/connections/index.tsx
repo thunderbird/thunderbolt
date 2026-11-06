@@ -26,6 +26,8 @@ import { useMcpServerOAuth, type OAuthCardState } from '@/hooks/use-mcp-server-o
 import { getAuthToken } from '@/lib/auth-token'
 import { deriveOAuthCardDecision } from '@/lib/mcp-auth/auth-decision'
 import { McpOAuthNeedsReauthError } from '@/lib/mcp-auth/ensure-valid-token'
+import { getMcpSearchProvider } from '@/providers/mcp-search-auth'
+import { getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getOAuthState } from '@/lib/oauth-state'
 import { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import type { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
@@ -37,7 +39,7 @@ import type { StatusState } from '@/components/status-indicator'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { McpServer } from '@/types'
 import { useAiProviderConnections } from './use-ai-provider-connections'
-import { useProviderAuthorization } from '@/providers/use-provider-authorization'
+import { getProviderAuthorizationReturn, useProviderAuthorization } from '@/providers/use-provider-authorization'
 import { getProviderDefinition } from '@/providers/registry'
 import { ProviderConnectionDetail } from './provider-connection-detail'
 import { ProviderConnectionForm } from './provider-connection-form'
@@ -88,7 +90,21 @@ export type ConnectionsPageDeps = {
   enrollIroh?: () => Promise<void>
 }
 
-const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => {
+type ConnectionSurfaceProps = {
+  connectionId?: string
+  initialAction?: 'edit' | 'remove'
+  open: boolean
+  onClose: () => void
+  onCloseComplete: () => void
+}
+
+/** Opens the same connection flow over the current route. */
+export const CreateConnectionPanel = (surface: ConnectionSurfaceProps) => <ConnectionsPage surface={surface} />
+
+const ConnectionsPage = ({
+  deps = {},
+  surface,
+}: { deps?: ConnectionsPageDeps; surface?: ConnectionSurfaceProps } = {}) => {
   const { t } = useLingui()
   const probeTools = deps.probeMcpServerTools ?? probeMcpServerTools
   const classifyAuth = deps.classifyMcpServerAuth ?? classifyMcpServerAuth
@@ -108,11 +124,28 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     initialCallback.kind === 'integration',
     (processing): ConnectionsPageState => {
       const initialState = createConnectionsPageState(processing)
-      if (typeof location.state?.providerConnectionId === 'string') {
-        return { ...initialState, selected: { kind: 'provider', id: location.state.providerConnectionId } }
+      const providerReturn = getProviderAuthorizationReturn()
+      if (providerReturn) {
+        return { ...initialState, selected: { kind: 'add-provider', id: providerReturn.attempt.provider } }
       }
-      if (location.state?.addConnection === true) {
-        return { ...initialState, selected: { kind: 'new', id: '' }, shouldClearNavigationState: true }
+      const mcpProvider = getMcpSearchProvider(getMcpOAuthState().serverId)
+      if (initialCallback.kind === 'mcp' && mcpProvider) {
+        return { ...initialState, selected: { kind: 'add-provider', id: mcpProvider } }
+      }
+      if (surface?.connectionId) {
+        return {
+          ...initialState,
+          selected: { kind: 'provider', id: surface.connectionId, action: surface.initialAction },
+        }
+      }
+      if (typeof location.state?.providerConnectionId === 'string') {
+        return {
+          ...initialState,
+          selected: { kind: 'provider', id: location.state.providerConnectionId },
+        }
+      }
+      if (surface || location.state?.addConnection === true) {
+        return { ...initialState, selected: { kind: 'new', id: '' }, shouldClearNavigationState: !surface }
       }
       return initialState
     },
@@ -185,7 +218,15 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
 
   const providerConnections = useAiProviderConnections()
   const aiProviders = providerConnections.providers
-  const providerSaved = (id: string) => dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'provider', id } })
+  const providerSaved = (id: string) =>
+    dispatch({
+      type: 'SELECTION_CHANGED',
+      selection: {
+        kind: 'provider',
+        id,
+        fromPicker: true,
+      },
+    })
   const authorization = useProviderAuthorization({ onConnected: providerSaved })
 
   const integrationsController = useIntegrationsController({ db, dispatch })
@@ -277,7 +318,14 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   // everything else is an integrations (Google/Microsoft) callback.
   useConnectionsOAuthCallback({
     locationState: location.state,
-    processMcpCallback: processCallback,
+    processMcpCallback: async (callback) => {
+      if (getMcpSearchProvider(getMcpOAuthState().serverId)) {
+        await authorization.processMcpCallback(callback)
+        dispatch({ type: 'NAVIGATION_STATE_CONSUMED' })
+        return
+      }
+      return processCallback(callback)
+    },
     processIntegrationCallback: integrationsController.processCallback,
     getIntegrationProvider: getPendingIntegrationProvider,
     dispatch,
@@ -297,10 +345,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const renderPanel = () => {
     if (form.isAddFormOpen) {
       return (
-        <DetailPanel
-          title={form.editingServerId ? t`Edit MCP Server` : t`Add MCP Server`}
-          onClose={formController.cancel}
-        >
+        <DetailPanel title={form.editingServerId ? t`Edit MCP Server` : t`Add MCP Server`} onClose={closePanel}>
           <McpServerForm
             form={form}
             mode={mode}
@@ -316,7 +361,8 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
             isAddAuthorizePending={isAddAuthorizePending}
             isSavePending={formController.updateMutation.isPending || formController.addMutation.isPending}
             isImportPending={formController.importMutation.isPending}
-            onCancel={formController.cancel}
+            onCancel={closePanel}
+            onBack={!form.editingServerId ? backToPicker : undefined}
             onAddServer={formController.add}
             onUpdateServer={formController.update}
             onImportConfig={formController.importConfig}
@@ -330,19 +376,48 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       return (
         <DetailPanel title={t`New Connection`} onClose={closePanel}>
           <NewConnectionPicker
-            onProvider={(id) => dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'add-provider', id } })}
+            onProvider={(id) => {
+              const existing = aiProviders.find(
+                (connection) => connection.provider === id && connection.authMethod === 'oauth',
+              )
+              dispatch({
+                type: 'SELECTION_CHANGED',
+                selection: existing
+                  ? { kind: 'provider', id: existing.id, fromPicker: true }
+                  : { kind: 'add-provider', id },
+              })
+            }}
             onMcp={openAddForm}
             integrations={integrationsController.integrations}
-            onIntegration={(id) => dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'integration', id } })}
+            onIntegration={(id) =>
+              dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'integration', id, fromPicker: true } })
+            }
           />
         </DetailPanel>
+      )
+    }
+    const connection =
+      selected?.kind === 'provider' ? aiProviders.find((provider) => provider.id === selected.id) : undefined
+    if (connection) {
+      return (
+        <ProviderConnectionDetail
+          key={`${connection.id}:${selected?.kind === 'provider' ? selected.action : ''}`}
+          initialAction={selected?.kind === 'provider' ? selected.action : undefined}
+          onBack={selected?.kind === 'provider' && selected.fromPicker ? backToPicker : undefined}
+          connection={connection}
+          controls={providerConnections}
+          authorization={authorization}
+          onAddApiKey={() => selectConnection({ kind: 'add-provider', id: connection.provider, authMethod: 'api_key' })}
+          onClose={closePanel}
+        />
       )
     }
     if (selected?.kind === 'add-provider') {
       return (
         <DetailPanel title={getProviderDefinition(selected.id).name} onClose={closePanel}>
           <ProviderConnectionForm
-            key={selected.id}
+            key={`${selected.id}:${selected.authMethod ?? 'oauth'}`}
+            initialAuthMethod={selected.authMethod}
             provider={selected.id}
             existingOAuth={aiProviders.find(
               (connection) => connection.provider === selected.id && connection.authMethod === 'oauth',
@@ -350,35 +425,25 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
             authorization={authorization}
             onSaved={providerSaved}
             onCancel={closePanel}
+            onBack={backToPicker}
           />
         </DetailPanel>
       )
     }
-    if (selected?.kind === 'provider') {
-      const connection = aiProviders.find((provider) => provider.id === selected.id)
-      if (connection) {
-        return (
-          <ProviderConnectionDetail
-            key={connection.id}
-            connection={connection}
-            controls={providerConnections}
-            authorization={authorization}
-            onClose={closePanel}
-          />
-        )
-      }
-    }
     if (activeIntegration) {
       return (
         <IntegrationDetail
+          key={`${activeIntegration.id}:${selected?.kind === 'integration' ? selected.action : ''}`}
+          initialAction={selected?.kind === 'integration' ? selected.action : undefined}
           integration={activeIntegration}
+          onBack={selected?.kind === 'integration' && selected.fromPicker ? backToPicker : undefined}
           tools={integrationsController.toolsFor(activeIntegration)}
           isProcessingCallback={isProcessingCallback}
           error={integrationError}
           onGetPro={integrationsController.getPro}
           onDisconnect={() => integrationsController.disconnect(activeIntegration)}
           onError={(error) => dispatch({ type: 'INTEGRATION_FAILED', error: error.message })}
-          onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
+          onClose={closePanel}
         />
       )
     }
@@ -402,7 +467,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           onAuthorize={() => startAuthorize(activeServer)}
           onEdit={() => formController.edit(activeServer)}
           onDelete={() => dispatch({ type: 'DELETE_REQUESTED', server: activeServer })}
-          onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
+          onClose={closePanel}
         />
       )
     }
@@ -412,6 +477,10 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const closePanel = () => {
     authorization.cancel()
     dispatch({ type: 'INTEGRATION_ERROR_CLEARED' })
+    if (surface) {
+      surface.onClose()
+      return
+    }
     if (form.isAddFormOpen) {
       formController.cancel()
       return
@@ -419,15 +488,21 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     dispatch({ type: 'SELECTION_CHANGED', selection: null })
   }
 
-  const toggleSelection = (next: NonNullable<ConnectionSelection>) => {
+  const backToPicker = () => {
     authorization.cancel()
-    // Selecting a row supersedes an open add/edit form (same as the agents page).
     if (form.isAddFormOpen) {
       formController.cancel()
-      dispatch({ type: 'SELECTION_CHANGED', selection: next })
-      return
     }
-    const isReselected = selected?.kind === next.kind && selected.id === next.id
+    dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'new', id: '' } })
+  }
+
+  const selectConnection = (next: NonNullable<ConnectionSelection>, toggle = false) => {
+    authorization.cancel()
+    const isReselected = toggle && !form.isAddFormOpen && selected?.kind === next.kind && selected.id === next.id
+    // Row clicks and context-menu actions both supersede the current form and authorization.
+    if (form.isAddFormOpen) {
+      formController.cancel()
+    }
     dispatch({ type: 'SELECTION_CHANGED', selection: isReselected ? null : next })
   }
 
@@ -441,6 +516,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const withServer = (id: string, action: (server: McpServer) => void) => {
     const server = servers.find((s) => s.id === id)
     if (server) {
+      authorization.cancel()
       action(server)
     }
   }
@@ -449,35 +525,45 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const panelOpen = panel !== null
 
   return (
-    <div className="relative flex h-full">
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <ConnectionsList
-          aiProviders={aiProviders}
-          areProvidersReady={providerConnections.ready}
-          isProviderTogglePending={providerConnections.pending}
-          providerError={providerConnections.error ?? authorization.error}
-          onToggleProvider={providerConnections.toggle}
-          onSelectProvider={(id) => toggleSelection({ kind: 'provider', id })}
-          integrations={integrationsController.integrations.filter((integration) => integration.isConnected)}
-          areIntegrationsReady={integrationsController.areIntegrationsReady}
-          servers={servers}
-          areServersReady={areServersReady}
-          serverStatus={rowStatus}
-          activeKey={panelOpen && selected && !form.isAddFormOpen ? `${selected.kind}:${selected.id}` : null}
-          onAdd={() => {
-            authorization.cancel()
-            formController.cancel()
-            dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'new', id: '' } })
-          }}
-          onSelectIntegration={(id) => toggleSelection({ kind: 'integration', id })}
-          onSelectServer={(id) => toggleSelection({ kind: 'server', id })}
-          onToggleIntegration={integrationsController.toggle}
-          onToggleServer={(id, enabled) => formController.toggleMutation.mutate({ id, enabled })}
-          onEditServer={(id) => withServer(id, formController.edit)}
-          onDeleteServer={(id) => withServer(id, (server) => dispatch({ type: 'DELETE_REQUESTED', server }))}
-        />
-      </div>
-      <DetailPanelSurface open={panelOpen} onClose={closePanel}>
+    <div className={surface ? 'contents' : 'relative flex h-full'}>
+      {!surface && (
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <ConnectionsList
+            aiProviders={aiProviders}
+            areProvidersReady={providerConnections.ready}
+            isProviderTogglePending={providerConnections.pending}
+            providerError={providerConnections.error ?? authorization.error}
+            onToggleProvider={providerConnections.toggle}
+            onEditProvider={(id) => selectConnection({ kind: 'provider', id, action: 'edit' })}
+            onRemoveProvider={(id) => selectConnection({ kind: 'provider', id, action: 'remove' })}
+            onRemoveIntegration={(id) => selectConnection({ kind: 'integration', id, action: 'remove' })}
+            onSelectProvider={(id) => selectConnection({ kind: 'provider', id }, true)}
+            integrations={integrationsController.integrations.filter((integration) => integration.isConnected)}
+            areIntegrationsReady={integrationsController.areIntegrationsReady}
+            servers={servers}
+            areServersReady={areServersReady}
+            serverStatus={rowStatus}
+            activeKey={panelOpen && selected && !form.isAddFormOpen ? `${selected.kind}:${selected.id}` : null}
+            onAdd={() => {
+              authorization.cancel()
+              formController.cancel()
+              dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'new', id: '' } })
+            }}
+            onSelectIntegration={(id) => selectConnection({ kind: 'integration', id }, true)}
+            onSelectServer={(id) => selectConnection({ kind: 'server', id }, true)}
+            onToggleIntegration={integrationsController.toggle}
+            onToggleServer={(id, enabled) => formController.toggleMutation.mutate({ id, enabled })}
+            onEditServer={(id) => withServer(id, formController.edit)}
+            onDeleteServer={(id) => withServer(id, (server) => dispatch({ type: 'DELETE_REQUESTED', server }))}
+          />
+        </div>
+      )}
+      <DetailPanelSurface
+        open={surface ? surface.open : panelOpen}
+        onClose={closePanel}
+        onCloseComplete={surface?.onCloseComplete}
+        topInset={Boolean(surface)}
+      >
         {panel}
       </DetailPanelSurface>
       {providerConnections.pendingDisable && (
@@ -490,7 +576,13 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           onCancel={providerConnections.cancelDisable}
         />
       )}
-      {shouldClearNavigationState && location.state !== null && <Navigate to="." replace state={null} />}
+      {shouldClearNavigationState && location.state !== null && (!surface || location.state.oauth) && (
+        <Navigate
+          to={`${location.pathname}${location.search}${location.hash}`}
+          replace
+          state={surface ? { connectionOAuthReturn: location.state.connectionOAuthReturn } : null}
+        />
+      )}
       <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && dispatch({ type: 'DELETE_DISMISSED' })}

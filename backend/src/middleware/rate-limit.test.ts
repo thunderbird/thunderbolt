@@ -66,6 +66,19 @@ describe('Rate Limiting', () => {
 
   const enabledSettings: RateLimitSettings = { enabled: true }
 
+  it('limits public integration OAuth to 30 requests per minute, independently of app sessions', async () => {
+    const app = new Elysia()
+      .use(createIpTierRateLimit(database, { enabled: true, trustedProxy: 'cloudflare' }, 'integration-oauth'))
+      .get('/v1/test', () => ({ ok: true }))
+    for (let count = 0; count < 30; count++) {
+      expect((await app.handle(requestWithIp('203.0.113.10'))).status).toBe(200)
+    }
+    const limited = await app.handle(requestWithIp('203.0.113.10'))
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('Retry-After')).toBeTruthy()
+    expect((await app.handle(requestWithIp('203.0.113.11'))).status).toBe(200)
+  })
+
   describe('user-based rate limiting', () => {
     it('should allow requests under the limit for an authenticated user', async () => {
       const app = createTestApp(database, enabledSettings, 'inference', 'user-1')

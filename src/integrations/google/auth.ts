@@ -9,22 +9,23 @@ import type { AuthProviderBackendConfig } from '@/types'
 import type { GoogleUserInfo } from './types'
 import { googleAccountsUrl, googleApisUrl } from './utils'
 
-let cachedConfig: AuthProviderBackendConfig | null = null
+let cachedConfigs = new WeakMap<HttpClient, AuthProviderBackendConfig>()
 
 const fetchBackendConfig = async (httpClient: HttpClient): Promise<AuthProviderBackendConfig> => {
+  const cachedConfig = cachedConfigs.get(httpClient)
   if (cachedConfig) {
     return cachedConfig
   }
   const result = await httpClient.get('auth/google/config').json<AuthProviderBackendConfig>()
   if (result.configured) {
-    cachedConfig = result
+    cachedConfigs.set(httpClient, result)
   }
   return result
 }
 
 /** Test-only: clears the in-memory backend config cache so each test starts fresh. */
 export const resetBackendConfigCacheForTests = (): void => {
-  cachedConfig = null
+  cachedConfigs = new WeakMap()
 }
 
 export const getOAuthConfig = async (httpClient: HttpClient): Promise<OAuthConfig> => {

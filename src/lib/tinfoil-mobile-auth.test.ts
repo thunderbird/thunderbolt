@@ -18,6 +18,7 @@ const attempt = { provider: 'tinfoil' as const, revision: 'original-revision' }
 const tokens = { access_token: 'access', refresh_token: 'refresh', expires_at: 900_000 }
 const callback = (query = `code=code&state=${nonce}`, origin = mobileOAuthRedirectUri) => new URL(`${origin}?${query}`)
 const dependencies = () => ({
+  currentPath: () => '/settings/connections' as const,
   verifier: () => nonce,
   challenge: async () => 'challenge',
   now: () => 1000,
@@ -165,4 +166,10 @@ it('does not erase a newer handoff when an older browser-opening request fails',
   opening.reject(new Error('old opener failed'))
   await expect(old).rejects.toThrow('old opener failed')
   expect(captureTinfoilMobileReturn(callback(`code=code&state=${newerNonce}`), deps)?.context).toBe('connections')
+})
+
+it('restores the initiating chat after a mobile restart', async () => {
+  const deps = { ...dependencies(), currentPath: () => '/chats/new?project=work' as const }
+  await startTinfoilMobileConnection('connections', attempt, new AbortController().signal, deps)
+  expect(captureTinfoilMobileReturn(callback(), deps)?.returnTo).toBe('/chats/new?project=work')
 })

@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { z } from 'zod'
+import { http } from '@/lib/http'
+import { nativeFetch as desktopFetch } from '@/lib/native-fetch'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { modelsTable } from '@/db/tables'
@@ -23,6 +26,26 @@ export const fetchProviderModels = async (
   const { connection, apiKey } = await resolveProviderConnection(db, connectionId)
   if (!getProviderDefinition(connection.provider).capabilities.includes('models')) {
     throw new Error('This provider does not supply models')
+  }
+  if (connection.provider === 'openai' && connection.authMethod === 'oauth') {
+    const catalog = z
+      .object({
+        models: z.array(z.object({ slug: z.string().min(1), display_name: z.string().min(1), visibility: z.string() })),
+      })
+      .parse(
+        await http
+          .get('https://api.openai.com/v1/models', {
+            fetch: desktopFetch,
+            headers: { Authorization: `Bearer ${apiKey}` },
+            redirect: 'error',
+            credentials: 'omit',
+            signal: AbortSignal.timeout(30_000),
+          })
+          .json(),
+      )
+    return catalog.models
+      .filter((model) => model.visibility === 'list')
+      .map((model) => ({ id: model.slug, name: model.display_name }))
   }
   return fetchModelsForProvider(
     { provider: connection.provider as Model['provider'], apiKey, url: connection.url ?? undefined },

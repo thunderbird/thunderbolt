@@ -3,11 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, expect, it, mock, spyOn } from 'bun:test'
-import { render, screen, cleanup } from '@testing-library/react'
+import { act, render, screen, cleanup } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { I18nProvider } from '@lingui/react'
 import { i18n } from '@/i18n'
 import { startProviderBrowserConnection, cancelProviderBrowserConnection } from '@/lib/provider-browser-auth'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import OpenRouterCallback from './openrouter-callback'
 
 const originalLocation = window.location
@@ -29,6 +30,7 @@ it.each(['openrouter', 'tinfoil'] as const)(
       new AbortController().signal,
       {
         origin: () => 'https://app.test',
+        currentPath: () => '/settings/connections',
         verifier: () => nonce,
         challenge: async () => 'challenge',
         navigate: () => {},
@@ -41,17 +43,19 @@ it.each(['openrouter', 'tinfoil'] as const)(
     })
     const replace = spyOn(window.history, 'replaceState').mockImplementation(() => {})
     const close = spyOn(window, 'close').mockImplementation(() => {})
-    render(
-      <I18nProvider i18n={i18n}>
-        <MemoryRouter>
-          <Routes>
-            <Route path="/" element={<OpenRouterCallback />} />
-            <Route path="/settings/connections" element={<p>Connection setup</p>} />
-          </Routes>
-        </MemoryRouter>
-      </I18nProvider>,
-    )
-    expect(screen.getByText('Connection setup')).toBeInTheDocument()
+    await act(async () => {
+      render(
+        <I18nProvider i18n={i18n}>
+          <MemoryRouter>
+            <Routes>
+              <Route path="/" element={<OpenRouterCallback />} />
+              <Route path="/settings/connections" element={<p>Connection setup</p>} />
+            </Routes>
+          </MemoryRouter>
+        </I18nProvider>,
+      )
+    })
+    expect(await waitForElement(() => screen.queryByText('Connection setup'))).toBeInTheDocument()
     expect(replace).toHaveBeenCalledWith(window.history.state, '', new URL(callback).pathname)
     expect(close).not.toHaveBeenCalled()
   },

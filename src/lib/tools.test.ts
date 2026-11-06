@@ -355,22 +355,27 @@ describe('getAvailableTools with injected availability', () => {
     useSearchProviderStore.getState().clearSearchProvider()
     clearAuthToken()
   })
-  it.each(['signed-out', 'no-server'] as const)('does not expose server tools with %s', async (state) => {
-    if (state === 'signed-out') {
-      clearAuthToken()
-    } else {
-      useLocalSettingsStore.setState({ cloudUrl: '' })
-    }
-    const tools = await getAvailableTools(
-      stubHttpClient,
-      undefined,
-      context({
-        settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true },
-        integrationStatus: integrationStatus({ googleEnabled: true, microsoftEnabled: true }),
-      }),
-    )
-    expect(tools.map(({ name }) => name)).toEqual(['render_html'])
-  })
+  it.each(['signed-out', 'no-server'] as const)(
+    'keeps connected Google/Microsoft tools, but excludes cloud search with %s',
+    async (state) => {
+      if (state === 'signed-out') {
+        clearAuthToken()
+      } else {
+        useLocalSettingsStore.setState({ cloudUrl: '' })
+      }
+      const tools = await getAvailableTools(
+        stubHttpClient,
+        undefined,
+        context({
+          settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true },
+          integrationStatus: integrationStatus({ googleEnabled: true, microsoftEnabled: true }),
+        }),
+      )
+      expect(tools.some(({ name }) => name.startsWith('google'))).toBe(true)
+      expect(tools.some(({ name }) => name.startsWith('microsoft'))).toBe(true)
+      expect(tools.some(({ name }) => name === 'search' || name === 'fetch_content')).toBe(false)
+    },
+  )
   it('includes only render_html by default and task tools when enabled', async () => {
     expect((await getAvailableTools(stubHttpClient, undefined, context())).map(({ name }) => name)).toEqual([
       'render_html',

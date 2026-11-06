@@ -10,7 +10,15 @@ import OpenRouterCallback from './openrouter-callback'
 /** Remount the original setup surface after a native app link or same-tab browser return. */
 const TinfoilCallback = () => {
   const returned = isTauri() && isMobile() ? getTinfoilMobileReturn() : null
-  return returned ? <Navigate to={returned.returnTo} replace /> : <OpenRouterCallback />
+  return returned ? (
+    <Navigate
+      to={returned.returnTo}
+      replace
+      state={{ connectionOAuthReturn: returned.context === 'connections' ? returned.id : undefined }}
+    />
+  ) : (
+    <OpenRouterCallback />
+  )
 }
 
 export default TinfoilCallback

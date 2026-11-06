@@ -10,13 +10,27 @@ import {
   providerConnectionSecretsTable as secrets,
 } from '@/db/tables'
 import type { DrizzleQueryWithPromise } from '@/types'
-import type { ProviderAuthMethod, ProviderConnection, ProviderCredentials, ProviderType } from '@/providers/types'
-import { credentialBinding, providerCredentialConnected, writeProviderCredentials } from '@/providers/credentials'
+import type {
+  ProviderAuthMethod,
+  ProviderConnection,
+  ProviderCredentials,
+  ProviderType,
+  OAuthProviderType,
+} from '@/providers/types'
+import {
+  credentialBinding,
+  providerCredentialConnected,
+  providerCredentialNeedsConsent,
+  writeProviderCredentials,
+} from '@/providers/credentials'
 import { getProviderDefinition } from '@/providers/registry'
 import {
   assertProviderConnectionAttemptCurrent,
   type ProviderConnectionAttempt,
 } from '@/lib/provider-connection-attempt'
+import { revokeChatGPTSession } from '@/providers/chatgpt-auth'
+import { writeChatGPTRegistration } from '@/providers/chatgpt-registration'
+import { resolveOAuthAccessToken, withProviderOAuthLock } from '@/providers/oauth-session'
 import { tinfoilSession, withTinfoilSessionLock } from '@/lib/tinfoil-session'
 import { getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
 import { getProviderConnectionRevision } from '@/providers/revision'
@@ -25,12 +39,16 @@ export { getProviderConnectionRevision } from '@/providers/revision'
 /** Reactive metadata query; credentials never enter connection list components. */
 export const getProviderConnections = (db: AnyDrizzleDatabase) => {
   const query = db
-    .select({ ...getTableColumns(connections), connected: providerCredentialConnected })
+    .select({
+      ...getTableColumns(connections),
+      connected: providerCredentialConnected,
+      needsConsent: providerCredentialNeedsConsent,
+    })
     .from(connections)
     .leftJoin(secrets, eq(secrets.id, connections.id))
     .where(isNull(connections.deletedAt))
     .orderBy(connections.name)
-  return query as typeof query & DrizzleQueryWithPromise<ProviderConnection>
+  return query as DrizzleQueryWithPromise<ProviderConnection>
 }
 
 /** Connection references used by saved models, without reading device credentials. */
@@ -69,7 +87,7 @@ type SaveProviderConnection = {
   authMethod: ProviderAuthMethod
   credentials: ProviderCredentials
   enabled?: boolean
-  attempt?: ProviderConnectionAttempt
+  attempt?: ProviderConnectionAttempt<OAuthProviderType>
   signal?: AbortSignal
   expectedRevision?: string | null
 }
@@ -83,21 +101,55 @@ export const saveProviderConnectionWithRevision = (
   db: AnyDrizzleDatabase,
   input: SaveProviderConnection,
 ): Promise<{ id: string; revision: string }> => {
-  const save = () =>
+  const save = (next = input) =>
     db.transaction(async (tx) => {
-      const id = await saveProviderConnectionInTransaction(tx, input)
+      const id = await saveProviderConnectionInTransaction(tx, next)
       const revision = (await getProviderConnectionRevision(tx, id))!
-      input.signal?.throwIfAborted()
+      next.signal?.throwIfAborted()
       return { id, revision }
     })
-  return input.provider === 'tinfoil' && input.authMethod === 'oauth' ? withTinfoilSessionLock(save) : save()
+  if (input.authMethod !== 'oauth') {
+    return save()
+  }
+  if (input.provider === 'tinfoil') {
+    return withTinfoilSessionLock(save)
+  }
+  if (input.provider !== 'openai') {
+    return save()
+  }
+  return withProviderOAuthLock('oauth:openai', async () => {
+    const guarded = {
+      ...input,
+      expectedRevision:
+        input.expectedRevision === undefined
+          ? await getProviderConnectionRevision(db, 'oauth:openai')
+          : input.expectedRevision,
+    }
+    const { id } = await prepareProviderConnectionSave(db, guarded)
+    const stored = await db.select().from(secrets).where(eq(secrets.id, id)).get()
+    const previous = JSON.parse(stored?.credentials ?? '{}') as ProviderCredentials
+    if (previous.refresh_token && previous.oauth && previous.oauth.clientId !== input.credentials.oauth?.clientId) {
+      input.signal?.throwIfAborted()
+      await revokeChatGPTSession(previous)
+      // Revocation cannot be undone by cancelling the switch. Retire only that old session,
+      // preserving concurrent metadata edits and the generation used by the guarded replacement.
+      await db
+        .update(secrets)
+        .set({ credentials: sql`json_set(${secrets.credentials}, '$.reauth_required', json('true'))` })
+        .where(
+          and(
+            eq(secrets.id, id),
+            sql`json_extract(${secrets.credentials}, '$.refresh_token') = ${previous.refresh_token}`,
+            sql`json_extract(${secrets.credentials}, '$.oauth.clientId') = ${previous.oauth.clientId}`,
+          ),
+        )
+    }
+    return save(guarded)
+  })
 }
 
-/** Caller-owned transaction variant used by idempotent legacy migrations. */
-export const saveProviderConnectionInTransaction = async (
-  db: AnyDrizzleDatabase,
-  input: SaveProviderConnection,
-): Promise<string> => {
+/** Validate a save before external revocation and again inside the final write transaction. */
+const prepareProviderConnectionSave = async (db: AnyDrizzleDatabase, input: SaveProviderConnection) => {
   input.signal?.throwIfAborted()
   const definition = getProviderDefinition(input.provider)
   if (!input.name.trim()) {
@@ -132,6 +184,25 @@ export const saveProviderConnectionInTransaction = async (
   const existing = await db.select().from(connections).where(eq(connections.id, id)).get()
   if (existing && (existing.provider !== input.provider || existing.authMethod !== input.authMethod)) {
     throw new Error('A connection cannot change provider or authentication method')
+  }
+  return { id, url, existing }
+}
+
+/** Caller-owned transaction variant used by idempotent legacy migrations. */
+export const saveProviderConnectionInTransaction = async (
+  db: AnyDrizzleDatabase,
+  input: SaveProviderConnection,
+): Promise<string> => {
+  const { id, url, existing } = await prepareProviderConnectionSave(db, input)
+  if (input.provider === 'openai' && input.authMethod === 'oauth') {
+    const stored = await db.select().from(secrets).where(eq(secrets.id, id)).get()
+    const previous = JSON.parse(stored?.credentials ?? '{}') as ProviderCredentials
+    if (previous.oauth) {
+      await writeChatGPTRegistration(db, previous.oauth)
+    }
+    if (input.credentials.oauth) {
+      await writeChatGPTRegistration(db, input.credentials.oauth)
+    }
   }
   const now = nextConnectionTimestamp(existing?.updatedAt)
   const values = {
@@ -220,8 +291,8 @@ export const updateProviderConnection = async (
           updatedAt: nextConnectionTimestamp(previous?.updatedAt),
         })
         .where(and(eq(connections.id, id), isNull(connections.deletedAt)))
-      if (previous?.authMethod === 'oauth') {
-        // Local authorization does not determine the synced enabled preference.
+      if (previous && updates.enabled !== undefined && previous.enabled !== Number(updates.enabled)) {
+        // Re-enabling grants new turns access; a previously bound turn stays retired.
         await tx
           .update(secrets)
           .set({
@@ -238,6 +309,31 @@ export const disconnectProviderConnection = async (db: AnyDrizzleDatabase, id: s
   const row = await getProviderConnection(db, id)
   if (row?.provider === 'tinfoil' && row.authMethod === 'oauth') {
     await tinfoilSession.disconnect()
+    return
+  }
+  if (row?.provider === 'openai' && row.authMethod === 'oauth') {
+    await withProviderOAuthLock(id, async () => {
+      const stored = await db.select().from(secrets).where(eq(secrets.id, id)).get()
+      const credentials = JSON.parse(stored?.credentials ?? '{}') as ProviderCredentials
+      await revokeChatGPTSession(credentials)
+      const registration = credentials.oauth ? { ...credentials.oauth, idToken: undefined } : undefined
+      await db.transaction(async (tx) => {
+        const current = await tx.select().from(secrets).where(eq(secrets.id, id)).get()
+        const active = JSON.parse(current?.credentials ?? '{}') as ProviderCredentials
+        const sameSession =
+          active.oauth?.clientId === credentials.oauth?.clientId &&
+          (credentials.refresh_token
+            ? active.refresh_token === credentials.refresh_token
+            : active.access_token === credentials.access_token && !active.refresh_token)
+        if (!sameSession) {
+          throw new Error('ChatGPT session changed during disconnect')
+        }
+        if (registration) {
+          await writeChatGPTRegistration(tx, registration)
+        }
+        await writeProviderCredentials(tx, id, { sessionRevision: crypto.randomUUID(), oauth: registration }, null)
+      })
+    })
     return
   }
   await db.transaction(async (tx) => {
@@ -268,11 +364,13 @@ export const resolveProviderConnection = async (
   const { credentials: serialized, ...metadata } = row
   const connection = { ...metadata, connected: true } as ProviderConnection
   const credentials = JSON.parse(serialized) as ProviderCredentials
-  const apiKey =
-    connection.provider === 'tinfoil' && connection.authMethod === 'oauth'
+  const usesRefreshSession = connection.authMethod === 'oauth' && Boolean(credentials.oauth)
+  const apiKey = usesRefreshSession
+    ? await resolveOAuthAccessToken(db, id)
+    : connection.provider === 'tinfoil' && connection.authMethod === 'oauth'
       ? await tinfoilSession.getAccessToken()
       : (credentials.apiKey ?? credentials.access_token ?? '')
-  if (connection.provider === 'tinfoil' && connection.authMethod === 'oauth') {
+  if (usesRefreshSession || (connection.provider === 'tinfoil' && connection.authMethod === 'oauth')) {
     const current = await getProviderCredentials(db, id)
     if (!current || current.sessionRevision !== credentials.sessionRevision) {
       throw new Error('The provider connection changed during token refresh')

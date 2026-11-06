@@ -14,14 +14,28 @@ export const providerTypes = [
   'tavily',
 ] as const
 export type ProviderType = (typeof providerTypes)[number]
+export type OAuthProviderType = 'openrouter' | 'tinfoil' | 'otari' | 'openai' | 'exa' | 'tavily'
 export type ProviderAuthMethod = 'oauth' | 'api_key'
 export type ProviderCapability = 'models' | 'search'
+export type ChatGPTRegistration = { clientId: string; subject?: string; email?: string; name?: string }
 export type ProviderCredentials = {
   apiKey?: string
   access_token?: string
   refresh_token?: string
   expires_at?: number
   reauth_required?: boolean
+  oauth?: {
+    clientId: string
+    issuer: string
+    tokenEndpoint: string
+    resource: string
+    scope?: string
+    subject?: string
+    idToken?: string
+    email?: string
+    name?: string
+  }
+  chatGPTRegistration?: ChatGPTRegistration
   sessionRevision?: string
 }
 export type ProviderConnection = {
@@ -36,4 +50,5 @@ export type ProviderConnection = {
   deletedAt: string | null
   userId: string | null
   connected: boolean
+  needsConsent?: boolean
 }

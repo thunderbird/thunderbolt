@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { act, cleanup, fireEvent, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { act, cleanup, fireEvent, renderHook, screen } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn, mock } from 'bun:test'
 import { useChatStore } from '@/chats/chat-store'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { createModel, getAvailableModels } from '@/dal'
@@ -12,6 +12,8 @@ import { getDb } from '@/db/database'
 import { getClock } from '@/testing-library'
 import { renderWithReactivity } from '@/test-utils/powersync-reactivity-test'
 import { defaultModels } from '@shared/defaults/models'
+import * as dal from '@/dal'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { useModelsPageState } from './use-models-page-state'
 
 const MutationHarness = ({ id }: { id: string }) => {
@@ -53,8 +55,67 @@ describe('model settings update active chat availability', () => {
   })
   afterEach(() => {
     cleanup()
+    mock.restore()
     resetStore()
   })
+
+  it.each(['success', 'failure'] as const)(
+    'keeps the newly selected panel when an earlier edit settles with %s',
+    async (outcome) => {
+      const started = Promise.withResolvers<void>()
+      const finish = Promise.withResolvers<void>()
+      const update = dal.updateModel
+      spyOn(dal, 'updateModel').mockImplementationOnce(async (...args) => {
+        started.resolve()
+        await finish.promise
+        if (outcome === 'failure') {
+          throw new Error('Save failed')
+        }
+        return update(...args)
+      })
+      const { result } = renderHook(useModelsPageState, { wrapper: createTestProvider() })
+      act(() => result.current.openEditPanel('editable'))
+      act(() => result.current.submitEdit({ id: 'editable', name: 'Saved', model: 'old-model', toolUsage: 1 }))
+      await started.promise
+      act(() => result.current.selectActiveModel('another-model'))
+      await act(async () => {
+        finish.resolve()
+        await getClock().runAllAsync()
+      })
+      expect(result.current.panel).toEqual({ kind: 'detail', modelId: 'another-model' })
+      expect(result.current.mutationError).toBeNull()
+      expect((await dal.getModel(getDb(), 'editable'))?.name).toBe(outcome === 'success' ? 'Saved' : 'Original')
+    },
+  )
+
+  it.each(['success', 'failure'] as const)(
+    'keeps a newer deletion confirmation when an earlier delete settles with %s',
+    async (outcome) => {
+      const started = Promise.withResolvers<void>()
+      const finish = Promise.withResolvers<void>()
+      const remove = dal.deleteModel
+      spyOn(dal, 'deleteModel').mockImplementationOnce(async (...args) => {
+        started.resolve()
+        await finish.promise
+        if (outcome === 'failure') {
+          throw new Error('Delete failed')
+        }
+        return remove(...args)
+      })
+      const { result } = renderHook(useModelsPageState, { wrapper: createTestProvider() })
+      act(() => result.current.requestDelete('editable'))
+      act(() => result.current.confirmDelete())
+      await started.promise
+      act(() => result.current.requestDelete('another-model'))
+      await act(async () => {
+        finish.resolve()
+        await getClock().runAllAsync()
+      })
+      expect(result.current.deleteConfirmId).toBe('another-model')
+      expect(result.current.mutationError).toBeNull()
+      expect(Boolean(await dal.getModel(getDb(), 'editable'))).toBe(outcome === 'failure')
+    },
+  )
 
   it('removes disabled models immediately and restores them when enabled', async () => {
     renderWithReactivity(<MutationHarness id="editable" />, { tables: ['models'] })

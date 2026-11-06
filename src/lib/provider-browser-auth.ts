@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { z } from 'zod'
+import { currentOAuthReturnPath, oauthReturnPath } from './oauth-return-route'
 import { generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { exchangeOpenRouterCode } from './openrouter-auth'
 import { getTinfoilAuthorizationUrl, tinfoilAuth, type TinfoilCredentials } from './tinfoil-auth'
@@ -16,6 +17,7 @@ const nonce = z.string().regex(/^[A-Za-z0-9_-]{43}$/)
 const schema = z.object({
   provider: z.enum(['openrouter', 'tinfoil']),
   context: z.enum(['connections', 'onboarding']),
+  returnTo: z.string().optional(),
   state: nonce,
   verifier: nonce,
   redirectUri: z.string().url(),
@@ -35,6 +37,7 @@ let returned: BrowserReturn | null = null
 const defaults = {
   storage: () => sessionStorage,
   origin: () => window.location.origin,
+  currentPath: currentOAuthReturnPath,
   navigate: (url: string) => window.location.assign(url),
   verifier: generateCodeVerifier,
   challenge: generateCodeChallenge,
@@ -53,6 +56,7 @@ export const startProviderBrowserConnection = async (
 ) => {
   const deps = { ...defaults, ...overrides }
   signal.throwIfAborted()
+  const returnTo = deps.currentPath()
   const state = deps.verifier()
   const verifier = deps.verifier()
   const challenge = await deps.challenge(verifier)
@@ -72,9 +76,19 @@ export const startProviderBrowserConnection = async (
       state,
     }).toString()
   }
-  deps
-    .storage()
-    .setItem(key, JSON.stringify({ provider, context, state, verifier, redirectUri, attempt, createdAt: deps.now() }))
+  deps.storage().setItem(
+    key,
+    JSON.stringify({
+      provider,
+      context,
+      returnTo,
+      state,
+      verifier,
+      redirectUri,
+      attempt,
+      createdAt: deps.now(),
+    }),
+  )
   try {
     deps.navigate(url.toString())
   } catch (error) {
@@ -145,7 +159,7 @@ export const captureProviderBrowserReturn = (
     callbackUrl: flow.redirectUri,
     id: flow.state,
     context: flow.context,
-    returnTo: flow.context === 'onboarding' ? '/chats/new' : '/settings/connections',
+    returnTo: flow.context === 'onboarding' ? '/chats/new' : oauthReturnPath(flow.returnTo),
     attempt: flow.attempt,
     cancel: () => controller.abort(),
     complete: () =>

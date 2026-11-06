@@ -14,7 +14,7 @@ import { deleteModel, getAllModels, getAvailableModels, resetModelToDefault, upd
 import { useChatStore } from '@/chats/chat-store'
 import { defaultModels } from '@shared/defaults/models'
 import type { EditModelSubmission } from './edit-model-form'
-import { initialModelsPageState, modelsPageReducer, type ModelPanel } from './page-state'
+import { initialModelsPageState, modelsPageReducer, type ModelPanel, type ModelsPageAction } from './page-state'
 import { useAddProviderModels } from './use-add-provider-models'
 import { modelRequiresServer } from './model-policy'
 
@@ -41,11 +41,12 @@ export const useModelsPageState = () => {
     onClose: closeAddPanel,
   })
 
-  const failMutation = (message: string) => () => {
+  const reportFailure = (action: Extract<ModelsPageAction, { type: 'MUTATION_FAILED' }>) => {
     // Database errors can include the API key bound to an update statement.
-    console.error(message)
-    dispatch({ type: 'MUTATION_FAILED', error: message })
+    console.error(action.error)
+    dispatch(action)
   }
+  const failMutation = (message: string) => () => reportFailure({ type: 'MUTATION_FAILED', error: message })
   const refreshModels = async () => useChatStore.getState().setModels(await getAvailableModels(db))
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
@@ -57,23 +58,28 @@ export const useModelsPageState = () => {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteModel(db, id),
     onMutate: clearMutationError,
-    onSuccess: async () => {
+    onSuccess: async (_result, modelId) => {
       await refreshModels()
-      dispatch({ type: 'DELETE_DISMISSED' })
+      dispatch({ type: 'DELETE_COMPLETED', modelId })
     },
-    onError: failMutation(t`Failed to delete the model.`),
+    onError: (_error, modelId) =>
+      reportFailure({ type: 'MUTATION_FAILED', error: t`Failed to delete the model.`, expectedDeleteId: modelId }),
   })
   const editMutation = useMutation({
     mutationFn: async (values: EditModelSubmission) => {
       const { id, ...fields } = values
       await updateModel(db, id, fields)
     },
-    onMutate: clearMutationError,
-    onSuccess: async (_result, values) => {
-      await refreshModels()
-      dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'detail', modelId: values.id } })
+    onMutate: () => {
+      clearMutationError()
+      return panel
     },
-    onError: failMutation(t`Failed to save the model.`),
+    onSuccess: async (_result, values, expectedPanel) => {
+      await refreshModels()
+      dispatch({ type: 'EDIT_COMPLETED', modelId: values.id, expectedPanel })
+    },
+    onError: (_error, _values, expectedPanel) =>
+      reportFailure({ type: 'MUTATION_FAILED', error: t`Failed to save the model.`, expectedPanel }),
   })
   const resetMutation = useMutation({
     mutationFn: async (id: string) => {

@@ -7,9 +7,9 @@ import type { AddServerMode } from './mcp-server-form'
 import type { ProviderType } from '@/providers/types'
 
 export type ConnectionSelection =
-  | { kind: 'integration' | 'server' | 'provider'; id: string }
+  | { kind: 'integration' | 'server' | 'provider'; id: string; fromPicker?: boolean; action?: 'edit' | 'remove' }
   | { kind: 'new'; id: '' }
-  | { kind: 'add-provider'; id: ProviderType }
+  | { kind: 'add-provider'; id: ProviderType; authMethod?: 'api_key' }
   | null
 
 export type ConnectionsPageState = {

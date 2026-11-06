@@ -927,3 +927,15 @@ describe('useDeepLinkListener hook', () => {
     expect(true).toBe(true)
   })
 })
+
+it('restores native MCP OAuth to its originating route rather than the integration return slot', () => {
+  setMcpOAuthState({
+    serverId: 'oauth:exa',
+    stateNonce: 'native-nonce',
+    returnTo: '/chats/new?project=work#composer',
+    startedAt: Date.now(),
+  })
+  const oauth = { code: 'code', state: 'native-nonce', error: null, iss: null }
+  expect(determineNavigationTarget('integrations', oauth)).toEqual({ path: '/chats/new?project=work#composer', oauth })
+  clearMcpOAuthState()
+})

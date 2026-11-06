@@ -4,7 +4,7 @@
 
 import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { createOpenRouterAuth, type OpenRouterAuthDependencies } from './openrouter-auth'
+import { createOpenRouterAuth, createProviderAuthorization, type OpenRouterAuthDependencies } from './openrouter-auth'
 import { createTinfoilAuth } from './tinfoil-auth'
 
 /** Flushes the injected asynchronous platform boundaries without advancing timers. */
@@ -106,6 +106,25 @@ describe('Tinfoil OAuth', () => {
       fetch: async () => Response.json({ error: 'invalid_grant', error_description: 'secret' }, { status: 400 }),
     })
     await expect(rejected.refresh('refresh')).rejects.toThrow('Reconnect Tinfoil')
+  })
+})
+
+describe('provider loopback callback ownership', () => {
+  it('keeps the code and client registration from the same first valid callback', async () => {
+    const harness = createHarness()
+    const auth = createProviderAuthorization({ authorizationEndpoint: 'https://auth.example/authorize' }, harness.deps)
+    const pending = auth.startConnection()
+    await settle()
+    harness.state.loopbackHandler?.(`${successfulLoopback}&client_id=first-client`)
+    harness.state.loopbackHandler?.(
+      'http://localhost:17421/?code=second-code&state=expected-nonce&client_id=second-client',
+    )
+    expect(await pending).toEqual({
+      code: 'authorization-code',
+      clientId: 'first-client',
+      verifier: 'secret-verifier',
+      redirectUri: 'http://localhost:17421/',
+    })
   })
 })
 

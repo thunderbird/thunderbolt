@@ -16,12 +16,33 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ReactNode } from 'react'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import ConnectionsPage from '.'
-import { getProviderConnection, saveProviderConnection, disconnectProviderConnection } from '@/dal/provider-connections'
+import {
+  getProviderConnection,
+  saveProviderConnection,
+  saveProviderConnectionInTransaction,
+  disconnectProviderConnection,
+} from '@/dal/provider-connections'
 import { addProviderModels } from '@/providers/models'
 import { getModel, getAvailableModels } from '@/dal/models'
+import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { clearOAuthState, setOAuthState } from '@/lib/oauth-state'
+import { clearMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
+import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
+import {
+  startProviderBrowserConnection,
+  captureProviderBrowserReturn,
+  cancelProviderBrowserConnection,
+} from '@/lib/provider-browser-auth'
+import { cancelTinfoilMobileConnection } from '@/lib/tinfoil-mobile-auth'
+import { CreateItemProvider } from '@/components/create-item/context'
+import { LazyCreateItemHost } from '@/components/create-item/lazy-create-item-host'
+import * as otariBrowser from '@/lib/otari-browser-auth'
+import * as platform from '@/lib/platform'
+import * as chatgptAuth from '@/providers/chatgpt-auth'
 import { ChatModelSetup } from '@/components/chat/chat-model-setup'
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
@@ -61,6 +82,9 @@ const clickDetailMenuItem = async (label: string) => {
   })
   const item = await waitForElement(() => screen.queryByText(label))
   fireEvent.click(item)
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
 }
 
 describe('ConnectionsPage list', () => {
@@ -73,12 +97,22 @@ describe('ConnectionsPage list', () => {
   })
 
   beforeEach(async () => {
+    clearOAuthState()
+    clearMcpOAuthState()
+    cancelProviderBrowserConnection()
+    otariBrowser.cancelOtariBrowserConnection()
+    cancelTinfoilMobileConnection()
     await resetTestDatabase()
   })
 
   afterEach(() => {
     cleanup()
     mock.restore()
+    clearOAuthState()
+    clearMcpOAuthState()
+    cancelProviderBrowserConnection()
+    otariBrowser.cancelOtariBrowserConnection()
+    cancelTinfoilMobileConnection()
   })
 
   it('shows named connections independently of models and preserves per-model toggles when disabled or disconnected', async () => {
@@ -117,6 +151,89 @@ describe('ConnectionsPage list', () => {
     expect(await getModel(getDb(), modelId)).toMatchObject({ enabled: 1, deletedAt: null })
     triggerChange(['provider_connections', 'provider_connection_secrets'])
     expect(await waitForElement(() => screen.queryByLabelText('API key'))).toHaveValue('')
+  })
+
+  it.each(['add', 'existing'] as const)(
+    'opens the same OAuth details through %s and supports editing or another API-key instance',
+    async (entry) => {
+      await saveProviderConnection(getDb(), {
+        provider: 'otari',
+        name: 'Team account',
+        url: 'https://team.example/api/v1',
+        authMethod: 'oauth',
+        credentials: { access_token: 'local-token' },
+      })
+      renderWithReactivity(<ConnectionsPage />, {
+        tables: ['provider_connections', 'provider_connection_secrets'],
+        wrapper: McpProviderWrapper,
+      })
+      await waitForElement(() => screen.queryByRole('button', { name: 'Open Team account' }))
+      if (entry === 'add') {
+        fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+        fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Otari Models and search' })))
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: 'Open Team account' }))
+      }
+      expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Connected to Otari' }))).toBeVisible()
+      expect(screen.getByRole('status')).toHaveTextContent('https://team.example/api/v1')
+      expect(screen.getByRole('status')).not.toHaveTextContent('Team account')
+      expect(screen.getByRole('button', { name: 'Disconnect this device' })).toBeVisible()
+      expect(Boolean(screen.queryByRole('button', { name: 'Continue' }))).toBe(entry === 'add')
+      await clickDetailMenuItem('Edit')
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+      expect(screen.getByLabelText('Name')).toHaveValue('Team account')
+      expect(screen.queryByLabelText('API key')).toBeNull()
+      expect(screen.queryByLabelText('Server URL')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add another instance via API key' }))
+      expect(await waitForElement(() => screen.queryByLabelText('API key'))).toBeEnabled()
+      expect(screen.getByLabelText('API key')).toHaveValue('')
+      fireEvent.click(screen.getByRole('button', { name: 'Use sign-in instead' }))
+      expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Connected to Otari' }))).toBeVisible()
+      expect(screen.getByRole('button', { name: 'More' })).toBeVisible()
+    },
+  )
+
+  it.each([
+    'Otari Models and search',
+    'Tinfoil Models and search',
+    'OpenRouter Models',
+    'OpenAI Models',
+    'Google Productivity',
+    'Microsoft Productivity',
+    'MCP server',
+  ])('returns from %s to the connection picker', async (name) => {
+    renderWithReactivity(<ConnectionsPage />, { wrapper: McpProviderWrapper })
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' })))
+    fireEvent.click(screen.getByRole('button', { name }))
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Go back' }))).toBeVisible()
+    if (name !== 'MCP server') {
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
+    expect(screen.getByRole('heading', { name: 'New Connection' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Otari Models and search' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
+  })
+
+  it('continues after saving an API key and finishes setup without changing existing-detail navigation', async () => {
+    renderWithReactivity(<ConnectionsPage />, {
+      tables: ['provider_connections', 'provider_connection_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' })))
+    fireEvent.click(screen.getByRole('button', { name: 'OpenAI Models' }))
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'test-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect this device' }))
+    expect(screen.getByRole('button', { name: 'Go back' })).toBeVisible()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    })
+    expect(Boolean(screen.queryByRole('button', { name: 'Close details' }))).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Open OpenAI' }))
+    expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
   })
 
   it('opens a synced connection without device credentials and keeps two API-key accounts distinct', async () => {
@@ -168,13 +285,230 @@ describe('ConnectionsPage list', () => {
       tables: ['provider_connections', 'provider_connection_secrets'],
       wrapper: LinkedConnectionWrapper,
     })
+    expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Linked account' }))).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Disconnect this device' })).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Manage models' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
+    expect(screen.queryByLabelText('Name')).toBeNull()
+    await clickDetailMenuItem('Edit')
     expect(await waitForElement(() => screen.queryByLabelText('Name'))).toHaveValue('Linked account')
+  })
+
+  it('finishes a browser return in the chat aside without navigating to settings', async () => {
+    const nonce = 'n'.repeat(43)
+    const attempt = await getProviderConnectionAttempt(getDb(), 'openrouter')
+    const exchange = mock(async () => 'test-provider-key')
+    const deps = {
+      origin: () => 'https://app.example',
+      currentPath: () => '/chats/new?project=work' as const,
+      verifier: () => nonce,
+      challenge: async () => 'challenge',
+      navigate: () => {},
+      exchangeOpenRouter: exchange,
+    }
+    await startProviderBrowserConnection('openrouter', 'connections', attempt, new AbortController().signal, deps)
+    captureProviderBrowserReturn(
+      new URL(`https://app.example/oauth/openrouter/${nonce}?code=test&state=${nonce}`),
+      deps,
+    )
+    const RouteProbe = () => {
+      const location = useLocation()
+      return (
+        <p data-testid="return-path">
+          {location.pathname}
+          {location.search}
+        </p>
+      )
+    }
+    const ReturnWrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter
+        initialEntries={[{ pathname: '/chats/new', search: '?project=work', state: { connectionOAuthReturn: nonce } }]}
+      >
+        <HttpClientProvider httpClient={createMockHttpClient()}>
+          <MCPProvider createClient={neverResolves}>
+            <CreateItemProvider>
+              <RouteProbe />
+              {children}
+            </CreateItemProvider>
+          </MCPProvider>
+        </HttpClientProvider>
+      </MemoryRouter>
+    )
+    await act(async () => {
+      renderWithReactivity(<LazyCreateItemHost />, {
+        wrapper: ReturnWrapper,
+        tables: ['provider_connections', 'provider_connection_secrets'],
+      })
+    })
+    expect(await waitForElement(() => screen.queryByText('Connected to OpenRouter'))).toBeVisible()
+    expect(screen.getByTestId('return-path')).toHaveTextContent('/chats/new?project=work')
+    expect(exchange).toHaveBeenCalledTimes(1)
+    expect(await getProviderConnection(getDb(), 'oauth:openrouter')).toMatchObject({ connected: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
+    expect(screen.getByTestId('return-path')).toHaveTextContent('/chats/new?project=work')
+    expect(screen.queryByText('Connected to OpenRouter')).toBeNull()
+  })
+
+  it('consumes callback parameters without closing the restored aside or replaying an error', async () => {
+    setOAuthState({ provider: 'google', state: 'return-nonce', returnContext: '/chats/new' })
+    const RouteProbe = () => {
+      const location = useLocation()
+      return <p data-testid="callback-state">{JSON.stringify({ path: location.pathname, ...location.state })}</p>
+    }
+    const ReturnWrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/chats/new',
+            state: {
+              connectionOAuthReturn: 'return-nonce',
+              oauth: { state: 'return-nonce', error: 'Authorization denied' },
+            },
+          },
+        ]}
+      >
+        <HttpClientProvider httpClient={createMockHttpClient()}>
+          <MCPProvider createClient={neverResolves}>
+            <CreateItemProvider>
+              <RouteProbe />
+              {children}
+            </CreateItemProvider>
+          </MCPProvider>
+        </HttpClientProvider>
+      </MemoryRouter>
+    )
+    await act(async () => {
+      renderWithReactivity(<LazyCreateItemHost />, { wrapper: ReturnWrapper })
+    })
+    expect(await waitForElement(() => screen.queryByText('Authorization denied'))).toBeVisible()
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByRole('heading', { name: 'Google' })).toBeVisible()
+    expect(JSON.parse(screen.getByTestId('callback-state').textContent!)).toEqual({
+      path: '/chats/new',
+      connectionOAuthReturn: 'return-nonce',
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
+    expect(JSON.parse(screen.getByTestId('callback-state').textContent!)).toEqual({ path: '/chats/new' })
+  })
+
+  it('opens provider editing and removal confirmation from its context menu', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'exa',
+      name: 'Work Exa',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'test' },
+    })
+    renderWithReactivity(<ConnectionsPage />, {
+      wrapper: McpProviderWrapper,
+      tables: ['provider_connections', 'provider_connection_secrets'],
+    })
+    const row = await waitForElement(() => screen.queryByRole('button', { name: 'Open Work Exa' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'MCP server' }))
+    expect(screen.getByRole('heading', { name: 'Add MCP Server' })).toBeVisible()
+    fireEvent.contextMenu(row)
+    fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Edit' })))
+    expect(await waitForElement(() => screen.queryByLabelText('Name'))).toHaveValue('Work Exa')
+    fireEvent.contextMenu(row)
+    fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Remove' })))
+    expect(await waitForElement(() => screen.queryByRole('alertdialog'))).toHaveTextContent('Remove Work Exa?')
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ deletedAt: null })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ deletedAt: null })
+  })
+
+  it.each(['Edit', 'Remove'] as const)(
+    'cancels provider authorization when a context menu chooses %s',
+    async (action) => {
+      await saveProviderConnection(getDb(), {
+        provider: 'exa',
+        name: 'Saved search',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'test' },
+      })
+      spyOn(platform, 'isTauri').mockReturnValue(false)
+      const start = spyOn(otariBrowser, 'startOtariBrowserConnection').mockResolvedValue()
+      renderWithReactivity(<ConnectionsPage />, {
+        wrapper: McpProviderWrapper,
+        tables: ['provider_connections', 'provider_connection_secrets'],
+      })
+      const row = await waitForElement(() => screen.queryByRole('button', { name: 'Open Saved search' }))
+      fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Otari' }))
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(start).toHaveBeenCalledTimes(1)
+      const signal = start.mock.calls[0][2]
+      expect(signal.aborted).toBe(false)
+      fireEvent.contextMenu(row)
+      fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: action })))
+      expect(signal.aborted).toBe(true)
+    },
+  )
+
+  it('cancels an account switch when adding a separate API-key connection', async () => {
+    await getDb().transaction((tx) =>
+      saveProviderConnectionInTransaction(tx, {
+        provider: 'openai',
+        name: 'ChatGPT',
+        authMethod: 'oauth',
+        credentials: {
+          access_token: 'test',
+          oauth: {
+            issuer: 'https://auth.openai.com',
+            clientId: 'personal',
+            tokenEndpoint: 'https://auth.openai.com/oauth/token',
+            resource: 'https://api.openai.com/v1',
+            subject: 'person',
+            scope: 'chatgpt.tokens.use.direct',
+          },
+        },
+      }),
+    )
+    spyOn(chatgptAuth, 'canConnectChatGPT').mockReturnValue(true)
+    const connect = spyOn(chatgptAuth, 'connectChatGPT').mockImplementation(
+      async (_db, signal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        }),
+    )
+    renderWithReactivity(<ConnectionsPage />, {
+      wrapper: McpProviderWrapper,
+      tables: ['provider_connections', 'provider_connection_secrets'],
+    })
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open ChatGPT' })))
+    const picker = await waitForElement(() => screen.queryByRole('button', { name: 'Choose ChatGPT account' }))
+    await act(async () => {
+      fireEvent.pointerDown(picker, { button: 0 })
+    })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Use another ChatGPT account' }))
+    await act(async () => {
+      await getClock().tickAsync(50)
+    })
+    expect(connect).toHaveBeenCalledTimes(1)
+    const signal = connect.mock.calls[0][1]
+    expect(signal.aborted).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Add another instance via API key' }))
+    expect(signal.aborted).toBe(true)
+    expect(await waitForElement(() => screen.queryByLabelText('API key'))).toBeVisible()
   })
 
   it('opens the connection aside directly from empty chat and lets users choose a provider', async () => {
     renderWithReactivity(
       <Routes>
-        <Route path="/" element={<ChatModelSetup />} />
+        <Route
+          path="/"
+          element={
+            <CreateItemProvider>
+              <ChatModelSetup />
+              <LazyCreateItemHost />
+            </CreateItemProvider>
+          }
+        />
         <Route path="/settings/connections" element={<ConnectionsPage />} />
       </Routes>,
       {
@@ -182,16 +516,50 @@ describe('ConnectionsPage list', () => {
         wrapper: McpProviderWrapper,
       },
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Add connection' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add connection' }))
+      await getClock().runAllAsync()
+    })
     expect(await waitForElement(() => screen.queryByRole('heading', { name: 'New Connection' }))).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
     expect(await waitForElement(() => screen.queryByRole('button', { name: 'Connect Otari' }))).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
     expect(screen.queryByRole('button', { name: 'Connect Otari' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'New Connection' })).not.toBeInTheDocument()
   })
 
+  it.each([true, false])(
+    'hides cloud connections until sign-in and hides them again on sign-out (local mode: %s)',
+    async (localMode) => {
+      useLocalSettingsStore.setState({ cloudUrl: 'https://test-api.local/v1', localMode })
+      renderWithReactivity(<ConnectionsPage />, { wrapper: McpProviderWrapper })
+      expect(await waitForElement(() => screen.queryByRole('heading', { name: 'No connections yet' }))).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+      expect(screen.queryByRole('button', { name: 'Thunderbolt Search' })).toBeNull()
+      for (const name of ['Google Productivity', 'Microsoft Productivity']) {
+        expect(screen.getByRole('button', { name })).toBeVisible()
+      }
+      expect(screen.getByRole('button', { name: 'Otari Models and search' })).toBeVisible()
+      expect(screen.getByRole('button', { name: 'MCP server' })).toBeVisible()
+      await act(async () => {
+        setAuthToken('cloud-session')
+        await getClock().runAllAsync()
+      })
+      for (const name of ['Thunderbolt Search', 'Google Productivity', 'Microsoft Productivity']) {
+        expect(screen.getByRole('button', { name })).toBeVisible()
+      }
+      expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeVisible()
+      act(() => clearAuthToken())
+      expect(screen.queryByRole('button', { name: 'Thunderbolt Search' })).toBeNull()
+      for (const name of ['Google Productivity', 'Microsoft Productivity']) {
+        expect(screen.getByRole('button', { name })).toBeVisible()
+      }
+      expect(screen.queryByRole('button', { name: 'Open Thunderbolt' })).toBeNull()
+    },
+  )
+
   it('offers disconnected integrations in the create menu and updates MCP servers', async () => {
+    setAuthToken('cloud-session')
     const db = getDb()
 
     await createMcpServer(db, {
@@ -210,9 +578,9 @@ describe('ConnectionsPage list', () => {
     expect(screen.queryByText('Google')).not.toBeInTheDocument()
     expect(screen.queryByText('Microsoft')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
-    expect(screen.getByRole('button', { name: 'Google' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Microsoft' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Thunderbolt' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Google Productivity' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Microsoft Productivity' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Thunderbolt Search' })).toBeInTheDocument()
 
     await waitForElement(() => screen.queryByText('First Server'))
     expect(screen.getByText('First Server')).toBeInTheDocument()
@@ -750,9 +1118,9 @@ describe('ConnectionsPage probe lifecycle', () => {
   it('does not auto-probe after the add form is closed', async () => {
     const probeMcpServerTools = mock(async () => ['tool'])
     await renderAddForm({ probeMcpServerTools }, { url: 'https://late.example.com/mcp' })
-    // Close the form before the 700ms debounce fires.
+    // Leave the form before the 700ms debounce fires.
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
     })
     await flushAutoProbe()
 

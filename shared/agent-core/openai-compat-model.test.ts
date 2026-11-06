@@ -212,3 +212,53 @@ describe('buildOpenAiCompatModel — CLI options', () => {
     expect(thinking).toEqual(['thought'])
   })
 })
+
+it.each(['completed', 'failed', 'interrupted'] as const)(
+  'routes Responses API calls through injected fetch and handles %s streams',
+  async (outcome) => {
+    const requests: { url: string; body: Record<string, unknown> }[] = []
+    const events =
+      outcome === 'completed'
+        ? [
+            {
+              type: 'response.completed',
+              response: {
+                id: 'r',
+                status: 'completed',
+                output: [],
+                usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 },
+              },
+            },
+          ]
+        : outcome === 'failed'
+          ? [
+              {
+                type: 'response.failed',
+                response: { error: { code: 'subscription_sharing_usage_limit_exceeded', message: 'Limit reached' } },
+              },
+            ]
+          : []
+    const { models, model } = buildOpenAiCompatModel({
+      api: 'openai-responses',
+      providerId: 'openai',
+      modelId: 'gpt-test',
+      baseURL: 'https://api.openai.com/v1',
+      apiKey: 'access',
+      reasoning: false,
+      supportsImages: false,
+      fetch: async (input, init) => {
+        requests.push({ url: urlOf(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+        return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      },
+    })
+    const provider = models.getProvider('openai')!
+    const stream = provider.streamSimple(model, context)
+    const result = await stream.result()
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.url).toBe('https://api.openai.com/v1/responses')
+    expect(requests[0]?.body).toMatchObject({ stream: true, store: false })
+    expect(result.stopReason).toBe(outcome === 'completed' ? 'stop' : 'error')
+  },
+)

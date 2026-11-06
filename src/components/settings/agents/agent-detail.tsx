@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { canManageAgent } from './agent-permissions'
 import { useAppName } from '@/lib/branding-selectors'
 import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -45,6 +46,7 @@ import type { TestAcpConnectionFn } from './add-custom-agent-form'
 type TestState = 'idle' | 'testing' | { isReachable: boolean; testedAt: string; error?: string }
 
 type AgentDetailProps = {
+  initialAction?: 'edit' | 'remove'
   agent: Agent
   /** Gates the management affordances — only customs the current user owns are
    *  editable / removable. */
@@ -82,6 +84,7 @@ const agentFlavor = (agent: Agent): AgentFlavor => {
  */
 export const AgentDetail = ({
   agent,
+  initialAction,
   currentUserId,
   onClose,
   onRemoved,
@@ -93,8 +96,8 @@ export const AgentDetail = ({
   const agentName = agent.name
   const Icon = iconForAgent(agent)
   const flavor = agentFlavor(agent)
-  const isEditable = flavor === 'custom' && !!currentUserId && agent.userId === currentUserId
-  const [confirmOpen, setConfirmOpen] = useState(false)
+  const isEditable = canManageAgent(agent, currentUserId)
+  const [confirmOpen, setConfirmOpen] = useState(initialAction === 'remove' && isEditable)
   const [removeError, setRemoveError] = useState<string | null>(null)
 
   const handleRemove = async () => {

@@ -51,7 +51,7 @@ export const useConnectionsOAuthCallback = ({
       dispatch({ type: 'CALLBACK_STARTED' })
       const provider = getIntegrationProvider()
       if (provider) {
-        dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'integration', id: provider } })
+        dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'integration', id: provider, fromPicker: true } })
       }
       try {
         await processIntegrationCallback(callback.callback)

@@ -6,24 +6,17 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { Plug, Plus } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
-import { EditDeleteContextMenuContent } from '@/components/settings/edit-delete-context-menu'
 import { SettingsNoResults } from '@/components/settings/settings-empty-state'
-import {
-  SettingsListBody,
-  SettingsListPane,
-  SettingsSectionLabel,
-  SettingsSelectableRow,
-} from '@/components/settings/settings-list'
+import { SettingsListBody, SettingsListPane, SettingsSelectableRow } from '@/components/settings/settings-list'
 import { StatusIndicator, type StatusState } from '@/components/status-indicator'
 import { Button } from '@/components/ui/button'
-import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Switch } from '@/components/ui/switch'
 import type { McpServer } from '@/types'
-import { cleanServerUrl, serverDisplayName, serverMatchesQuery } from './display'
+import { serverDisplayName, serverMatchesQuery } from './display'
 import { ProviderConnectionIcon } from './provider-connection-icon'
 import { getProviderDefinition } from '@/providers/registry'
 import type { ProviderConnection } from '@/providers/types'
@@ -31,16 +24,16 @@ import type { Integration } from './types'
 
 /** Shared row shell for both integration and MCP-server rows. */
 const ConnectionRow = ({
+  contextMenu,
   title,
-  subtitle,
   leading,
   isActive,
   isDimmed,
   onSelect,
   trailing,
 }: {
+  contextMenu?: { onEdit?: () => void; onRemove?: () => void }
   title: string
-  subtitle?: string
   leading: ReactNode
   isActive: boolean
   /** Mutes the title (disabled integration / disabled server). */
@@ -52,8 +45,8 @@ const ConnectionRow = ({
 
   return (
     <SettingsSelectableRow
+      contextMenu={contextMenu}
       title={title}
-      subtitle={subtitle}
       leading={<span className="flex size-5 items-center justify-center">{leading}</span>}
       isSelected={isActive}
       isDimmed={isDimmed}
@@ -65,13 +58,15 @@ const ConnectionRow = ({
 }
 
 const IntegrationRow = ({
+  onRemove,
   integration,
   isActive,
   onSelect,
   onToggleEnabled,
   disabled = false,
 }: {
-  integration: Pick<Integration, 'name' | 'icon' | 'isEnabled' | 'isConnected' | 'userEmail'>
+  onRemove?: () => void
+  integration: Pick<Integration, 'provider' | 'name' | 'icon' | 'isEnabled' | 'isConnected'>
   disabled?: boolean
   isActive: boolean
   onSelect: () => void
@@ -83,8 +78,8 @@ const IntegrationRow = ({
   return (
     <li>
       <ConnectionRow
+        contextMenu={{ onEdit: integration.provider !== 'thunderbolt-pro' ? onSelect : undefined, onRemove }}
         title={integration.name}
-        subtitle={integration.isConnected ? integration.userEmail : undefined}
         leading={integration.icon}
         isActive={isActive}
         isDimmed={!integration.isConnected}
@@ -123,34 +118,24 @@ const ServerRow = ({
 }) => {
   const { t } = useLingui()
   const title = serverDisplayName(server)
-  const url = cleanServerUrl(server.url ?? '')
   const isEnabled = server.enabled === 1
   return (
     <li>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div>
-            <ConnectionRow
-              title={title}
-              // Hide the subtitle when the name IS the cleaned URL — no point
-              // printing the same string twice.
-              subtitle={title === url ? undefined : url}
-              leading={<StatusIndicator status={isEnabled ? status : 'neutral'} size="sm" />}
-              isActive={isActive}
-              isDimmed={!isEnabled}
-              onSelect={onSelect}
-              trailing={
-                <Switch
-                  checked={isEnabled}
-                  onCheckedChange={onToggleEnabled}
-                  aria-label={isEnabled ? t`Disable ${title}` : t`Enable ${title}`}
-                />
-              }
-            />
-          </div>
-        </ContextMenuTrigger>
-        <EditDeleteContextMenuContent onEdit={onEdit} onDelete={onDelete} />
-      </ContextMenu>
+      <ConnectionRow
+        contextMenu={{ onEdit, onRemove: onDelete }}
+        title={title}
+        leading={<StatusIndicator status={isEnabled ? status : 'neutral'} size="sm" />}
+        isActive={isActive}
+        isDimmed={!isEnabled}
+        onSelect={onSelect}
+        trailing={
+          <Switch
+            checked={isEnabled}
+            onCheckedChange={onToggleEnabled}
+            aria-label={isEnabled ? t`Disable ${title}` : t`Enable ${title}`}
+          />
+        }
+      />
     </li>
   )
 }
@@ -166,6 +151,9 @@ export const ConnectionsList = ({
   isProviderTogglePending,
   providerError,
   onSelectProvider,
+  onEditProvider,
+  onRemoveProvider,
+  onRemoveIntegration,
   integrations,
   areIntegrationsReady,
   servers,
@@ -186,6 +174,9 @@ export const ConnectionsList = ({
   isProviderTogglePending: boolean
   providerError: string | null
   onSelectProvider: (id: string) => void
+  onEditProvider: (id: string) => void
+  onRemoveProvider: (id: string) => void
+  onRemoveIntegration: (id: string) => void
   integrations: Integration[]
   /** True once the async sources behind the integrations' enabled state have
    *  resolved — used to remount the rows so their switches render directly in
@@ -205,7 +196,7 @@ export const ConnectionsList = ({
   onEditServer: (id: string) => void
   onDeleteServer: (id: string) => void
 }) => {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const [search, setSearch] = useState('')
   const query = search.trim()
 
@@ -251,60 +242,71 @@ export const ConnectionsList = ({
             {providerError}
           </p>
         )}
-        {(filteredIntegrations.length > 0 || filteredProviders.length > 0) && (
+        {!nothingMatches && (
           <ul className="flex flex-col gap-4">
-            {filteredIntegrations.map((integration) => (
-              <IntegrationRow
-                key={`${integration.id}:${areIntegrationsReady}`}
-                integration={integration}
-                isActive={activeKey === `integration:${integration.id}`}
-                onSelect={() => onSelectIntegration(integration.id)}
-                onToggleEnabled={(next) => onToggleIntegration(integration, next)}
-              />
-            ))}
-            {filteredProviders.map((provider) => (
-              <li key={`${provider.id}:${areProvidersReady}`}>
-                <ConnectionRow
-                  title={provider.name}
-                  subtitle={provider.connected ? undefined : t`Connect on this device`}
-                  leading={<ProviderConnectionIcon provider={provider.provider} />}
-                  isActive={activeKey === `provider:${provider.id}`}
-                  isDimmed={!provider.enabled || !provider.connected}
-                  onSelect={() => onSelectProvider(provider.id)}
-                  trailing={
-                    <Switch
-                      checked={provider.enabled === 1}
-                      onCheckedChange={(next) => onToggleProvider(provider.id, next)}
-                      disabled={!areProvidersReady || isProviderTogglePending}
-                      aria-label={provider.enabled ? t`Disable ${provider.name}` : t`Enable ${provider.name}`}
+            {[
+              ...filteredIntegrations.map((integration) => ({
+                name: integration.name,
+                row: (
+                  <IntegrationRow
+                    key={`${integration.id}:${areIntegrationsReady}`}
+                    integration={integration}
+                    onRemove={
+                      integration.provider !== 'thunderbolt-pro' && integration.isConnected
+                        ? () => onRemoveIntegration(integration.id)
+                        : undefined
+                    }
+                    isActive={activeKey === `integration:${integration.id}`}
+                    onSelect={() => onSelectIntegration(integration.id)}
+                    onToggleEnabled={(next) => onToggleIntegration(integration, next)}
+                  />
+                ),
+              })),
+              ...filteredProviders.map((provider) => ({
+                name: provider.name,
+                row: (
+                  <li key={`${provider.id}:${areProvidersReady}`}>
+                    <ConnectionRow
+                      contextMenu={{
+                        onEdit: () => onEditProvider(provider.id),
+                        onRemove: () => onRemoveProvider(provider.id),
+                      }}
+                      title={provider.name}
+                      leading={<ProviderConnectionIcon provider={provider.provider} />}
+                      isActive={activeKey === `provider:${provider.id}`}
+                      isDimmed={!provider.enabled || !provider.connected}
+                      onSelect={() => onSelectProvider(provider.id)}
+                      trailing={
+                        <Switch
+                          checked={provider.enabled === 1}
+                          onCheckedChange={(next) => onToggleProvider(provider.id, next)}
+                          disabled={!areProvidersReady || isProviderTogglePending}
+                          aria-label={provider.enabled ? t`Disable ${provider.name}` : t`Enable ${provider.name}`}
+                        />
+                      }
                     />
-                  }
-                />
-              </li>
-            ))}
+                  </li>
+                ),
+              })),
+              ...filteredServers.map((server) => ({
+                name: serverDisplayName(server),
+                row: (
+                  <ServerRow
+                    key={server.id}
+                    server={server}
+                    status={serverStatus(server)}
+                    isActive={activeKey === `server:${server.id}`}
+                    onSelect={() => onSelectServer(server.id)}
+                    onToggleEnabled={(next) => onToggleServer(server.id, next)}
+                    onEdit={() => onEditServer(server.id)}
+                    onDelete={() => onDeleteServer(server.id)}
+                  />
+                ),
+              })),
+            ]
+              .sort((a, b) => a.name.localeCompare(b.name, i18n.locale, { sensitivity: 'base' }))
+              .map(({ row }) => row)}
           </ul>
-        )}
-
-        {filteredServers.length > 0 && (
-          <div className="mt-5 flex flex-col gap-2">
-            <SettingsSectionLabel>
-              <Trans>MCP servers</Trans>
-            </SettingsSectionLabel>
-            <ul className="flex flex-col gap-4">
-              {filteredServers.map((server) => (
-                <ServerRow
-                  key={server.id}
-                  server={server}
-                  status={serverStatus(server)}
-                  isActive={activeKey === `server:${server.id}`}
-                  onSelect={() => onSelectServer(server.id)}
-                  onToggleEnabled={(next) => onToggleServer(server.id, next)}
-                  onEdit={() => onEditServer(server.id)}
-                  onDelete={() => onDeleteServer(server.id)}
-                />
-              ))}
-            </ul>
-          </div>
         )}
 
         {isEmpty && !query && (

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { nativeFetch } from '@/lib/native-fetch'
 import { getDb } from '@/db/database'
 import { resolveProviderConnection } from '@/dal/provider-connections'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -10,7 +11,12 @@ import type { Model } from '@/types'
 /** Bind an inference turn to one authorized connection, rechecking access before every request. */
 export const bindModelProvider = async (
   model: Model,
-): Promise<{ model: Model; wrapFetch: (fetch: FetchFn) => FetchFn; assertCurrent: () => Promise<void> }> => {
+): Promise<{
+  api?: 'openai-responses'
+  model: Model
+  wrapFetch: (fetch: FetchFn) => FetchFn
+  assertCurrent: () => Promise<void>
+}> => {
   const id = model.providerConnectionId
   if (!id) {
     return { model, wrapFetch: (fetch) => fetch, assertCurrent: async () => {} }
@@ -20,6 +26,7 @@ export const bindModelProvider = async (
   if (resolved.connection.provider !== model.provider) {
     throw new Error('The model provider connection changed')
   }
+  const isChatGPT = resolved.connection.provider === 'openai' && resolved.connection.authMethod === 'oauth'
   const resolveCurrent = async () => {
     const live = await resolveProviderConnection(db, id)
     if (
@@ -43,11 +50,30 @@ export const bindModelProvider = async (
         } else {
           headers.delete('Authorization')
         }
+        if (isChatGPT) {
+          const url = new URL(input instanceof Request ? input.url : input.toString())
+          if (url.href !== 'https://api.openai.com/v1/responses') {
+            throw new Error('ChatGPT plan access requires the public Responses API')
+          }
+          const body = JSON.parse(
+            typeof init?.body === 'string' ? init.body : await (input as Request).text(),
+          ) as Record<string, unknown>
+          if (body.stream !== true) {
+            throw new Error('ChatGPT plan access requires streaming')
+          }
+          return nativeFetch(input, {
+            ...init,
+            headers,
+            redirect: 'error',
+            body: JSON.stringify({ ...body, store: false }),
+          })
+        }
         return fetch(input, { ...init, headers })
       },
       { preconnect: fetch.preconnect },
     )
   return {
+    ...(isChatGPT ? { api: 'openai-responses' as const } : {}),
     model: { ...model, apiKey: resolved.apiKey, url: resolved.connection.url },
     wrapFetch,
     assertCurrent: async () => {

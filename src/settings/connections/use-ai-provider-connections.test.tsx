@@ -50,6 +50,41 @@ describe('AI provider connection disabling', () => {
   })
   afterAll(teardownTestDatabase)
 
+  it.each([true, false])(
+    'soft-removes a connection and preserves model/history references (connected: %s)',
+    async (connected) => {
+      const id = await createConnection()
+      const [modelId] = await addProviderModels(getDb(), id, [{ id: 'model' }])
+      if (!connected) {
+        await connections.disconnectProviderConnection(getDb(), id)
+      }
+      const onSuccess = mock(() => {})
+      const { result } = await setup()
+      act(() => result.current.remove(id, onSuccess))
+      await settle()
+      expect(result.current.providers).toHaveLength(0)
+      expect(await connections.getProviderConnection(getDb(), id)).toBeNull()
+      expect(await getModel(getDb(), modelId)).toMatchObject({
+        deletedAt: null,
+        providerConnectionId: id,
+        connectionReady: false,
+      })
+      expect(onSuccess).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('keeps the panel open and reports a failed removal', async () => {
+    const id = await createConnection()
+    spyOn(connections, 'deleteProviderConnection').mockRejectedValue(new Error('Storage unavailable'))
+    const onSuccess = mock(() => {})
+    const { result } = await setup()
+    act(() => result.current.remove(id, onSuccess))
+    await settle()
+    expect(result.current.providers).toHaveLength(1)
+    expect(result.current.error).toBe('Could not update the connection. Try again.')
+    expect(onSuccess).not.toHaveBeenCalled()
+  })
+
   it('warns for a named Otari account with saved models, supports cancel, and preserves model preferences on confirmation', async () => {
     const id = await createConnection()
     const [enabledId, disabledId] = await addProviderModels(getDb(), id, [{ id: 'enabled' }, { id: 'disabled' }])

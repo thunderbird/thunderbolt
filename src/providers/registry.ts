@@ -25,12 +25,12 @@ export const providerDefinitions: readonly ProviderDefinition[] = [
     defaultUrl: getOtariEndpoints(defaultOtariOrigin).inference,
   },
   { id: 'openrouter', name: 'OpenRouter', capabilities: ['models'], oauth: true, requiresUrl: false },
-  { id: 'openai', name: 'OpenAI', capabilities: ['models'], oauth: false, requiresUrl: false },
+  { id: 'openai', name: 'OpenAI', capabilities: ['models'], oauth: true, requiresUrl: false },
   { id: 'anthropic', name: 'Anthropic', capabilities: ['models'], oauth: false, requiresUrl: false },
   { id: 'custom', name: 'OpenAI-compatible', capabilities: ['models'], oauth: false, requiresUrl: true },
-  { id: 'exa', name: 'Exa', capabilities: ['search'], oauth: false, requiresUrl: false },
+  { id: 'exa', name: 'Exa', capabilities: ['search'], oauth: true, requiresUrl: false },
   { id: 'brave', name: 'Brave', capabilities: ['search'], oauth: false, requiresUrl: false },
-  { id: 'tavily', name: 'Tavily', capabilities: ['search'], oauth: false, requiresUrl: false },
+  { id: 'tavily', name: 'Tavily', capabilities: ['search'], oauth: true, requiresUrl: false },
 ]
 
 /** Capability metadata describes adapters available in this app, not account entitlements. */

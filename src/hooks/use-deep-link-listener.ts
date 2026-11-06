@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isMcpOAuthCallback, type OAuthCallbackParams } from '@/lib/mcp-auth/mcp-oauth-state'
+import { getMcpOAuthState, isMcpOAuthCallback, type OAuthCallbackParams } from '@/lib/mcp-auth/mcp-oauth-state'
+import { oauthReturnPath } from '@/lib/oauth-return-route'
 import { getOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { isSafeRelativePath } from '@/lib/safe-relative-path'
 import { isTauri } from '@/lib/platform'
@@ -52,11 +53,11 @@ export const determineNavigationTarget = (
   isMcpCallback: (callback: OAuthCallbackParams) => boolean = isMcpOAuthCallback,
 ): NavigateTarget => {
   if (isMcpCallback(oauth)) {
-    return { path: '/settings/connections', oauth }
+    return { path: oauthReturnPath(getMcpOAuthState().returnTo), oauth }
   }
 
   if (isSafeRelativePath(oauthReturnContext)) {
-    return { path: oauthReturnContext, oauth }
+    return { path: oauthReturnPath(oauthReturnContext), oauth }
   }
 
   if (oauthReturnContext === 'onboarding') {
@@ -197,7 +198,13 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
             const target = determineNavigationTarget(oauthState.returnContext, oauthData)
 
             navigate(target.path, {
-              state: { oauth: target.oauth },
+              state: {
+                oauth: target.oauth,
+                connectionOAuthReturn:
+                  isMcpOAuthCallback(oauthData) || oauthState.returnContext !== 'onboarding'
+                    ? oauthData.state || 'oauth-return'
+                    : undefined,
+              },
               replace: true,
             })
             continue

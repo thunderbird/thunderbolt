@@ -14,6 +14,7 @@ import {
   getProviderConnections,
   getProviderCredentials,
   saveProviderConnection,
+  saveProviderConnectionInTransaction,
   disconnectProviderConnection,
 } from '@/dal/provider-connections'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -38,7 +39,7 @@ const settle = async () => {
     await getClock().runAllAsync()
   })
   await waitForElement(() =>
-    screen.queryByRole('button', { name: 'Save connection' })?.getAttribute('aria-busy') === 'true'
+    screen.queryByRole('button', { name: /^(Save connection|Save Changes)$/ })?.getAttribute('aria-busy') === 'true'
       ? null
       : document.body,
   )
@@ -112,10 +113,185 @@ describe('provider connection form', () => {
     expect(await getProviderCredentials(getDb(), id)).toMatchObject({ apiKey: 'new-device-key' })
   })
 
+  it.each([
+    { provider: 'openai', authMethod: 'api_key' },
+    { provider: 'openrouter', authMethod: 'oauth' },
+    { provider: 'otari', authMethod: 'oauth' },
+  ] as const)(
+    'renames $provider without replacing credentials or signing in again',
+    async ({ provider, authMethod }) => {
+      const credentials =
+        authMethod === 'oauth'
+          ? { access_token: 'private-token', refresh_token: 'private-refresh' }
+          : { apiKey: 'private-key' }
+      const id = await saveProviderConnection(getDb(), {
+        provider,
+        name: 'Work',
+        authMethod,
+        credentials,
+      })
+      const connection = (await getProviderConnection(getDb(), id))!
+      const get = spyOn(http, 'get')
+      renderWithReactivity(
+        <ProviderConnectionForm
+          mode="edit"
+          provider={provider}
+          connection={connection}
+          authorization={authorization}
+          onSaved={onSaved}
+          onCancel={onCancel}
+        />,
+      )
+      expect(screen.queryByRole('button', { name: 'Use API Key instead' })).toBeNull()
+      if (authMethod === 'oauth') {
+        expect(screen.queryByLabelText('API key')).toBeNull()
+        expect(screen.queryByLabelText('Server URL')).toBeNull()
+      } else {
+        const key = screen.getByLabelText('API key')
+        expect(key).toHaveValue('')
+        expect(key).toHaveAttribute('type', 'password')
+        expect(key).toHaveAttribute('placeholder', '********')
+        expect(key).toBeEnabled()
+      }
+      expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  Research  ' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+      await settle()
+      expect(onSaved).toHaveBeenCalledWith(id)
+      expect(await getProviderConnection(getDb(), id)).toMatchObject({ name: 'Research', authMethod, connected: true })
+      expect(await getProviderCredentials(getDb(), id)).toMatchObject(credentials)
+      expect(authorization.authorize).not.toHaveBeenCalled()
+      expect(get).not.toHaveBeenCalled()
+    },
+  )
+
+  it('saves an updated name and API key together on the same connection', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Work',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'old-key' },
+    })
+    renderWithReactivity(
+      <ProviderConnectionForm
+        mode="edit"
+        provider="openai"
+        connection={(await getProviderConnection(getDb(), id))!}
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Personal' } })
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: ' new-key ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await settle()
+    expect(await getProviderConnections(getDb())).toHaveLength(1)
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ name: 'Personal', connected: true })
+    expect(await getProviderCredentials(getDb(), id)).toMatchObject({ apiKey: 'new-key' })
+    expect(onSaved).toHaveBeenCalledWith(id)
+  })
+
+  it('requires a new API key when changing an Otari server URL and never sends the saved key there', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'otari',
+      name: 'Work',
+      url: 'https://old.example/api/v1',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'private-old-key' },
+    })
+    const get = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+    renderWithReactivity(
+      <ProviderConnectionForm
+        mode="edit"
+        provider="otari"
+        connection={(await getProviderConnection(getDb(), id))!}
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'https://new.example' } })
+    expect(screen.getByLabelText('API key')).not.toHaveAttribute('placeholder')
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
+    expect(get).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'new-server-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await settle()
+    expect(get).toHaveBeenCalledWith(
+      'https://new.example/api/v1/tools',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer new-server-key' },
+      }),
+    )
+    expect(await getProviderCredentials(getDb(), id)).toMatchObject({ apiKey: 'new-server-key' })
+    expect(onSaved).toHaveBeenCalledWith(id)
+  })
+
+  it('can switch a compatible connection to an anonymous server without carrying its old key', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'custom',
+      name: 'Local',
+      url: 'http://localhost:1234/v1',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'private-old-key' },
+    })
+    renderWithReactivity(
+      <ProviderConnectionForm
+        mode="edit"
+        provider="custom"
+        connection={(await getProviderConnection(getDb(), id))!}
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'http://localhost:5678/v1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await settle()
+    expect(await getProviderCredentials(getDb(), id)).toMatchObject({ apiKey: '' })
+    expect(onSaved).toHaveBeenCalledWith(id)
+  })
+
+  it('keeps failed edits available for retry without changing the saved credentials', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Work',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'private-key' },
+    })
+    const update = spyOn(providerConnections, 'updateProviderConnection').mockRejectedValueOnce(
+      new Error('Unavailable'),
+    )
+    renderWithReactivity(
+      <ProviderConnectionForm
+        mode="edit"
+        provider="openai"
+        connection={(await getProviderConnection(getDb(), id))!}
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Personal' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await settle()
+    expect(await waitForElement(() => screen.queryByRole('alert'))).toHaveTextContent('Could not save the connection')
+    expect(screen.getByLabelText('Name')).toHaveValue('Personal')
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ name: 'Work' })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await settle()
+    expect(update).toHaveBeenCalledTimes(2)
+    expect(onSaved).toHaveBeenCalledWith(id)
+    expect(await getProviderCredentials(getDb(), id)).toMatchObject({ apiKey: 'private-key' })
+  })
+
   it('uses official Otari defaults and only shows a URL field after choosing a custom URL', async () => {
     renderWithReactivity(
       <ProviderConnectionForm provider="otari" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
     )
+    expect(screen.queryByLabelText('Name')).toBeNull()
     expect(screen.queryByLabelText('Server URL')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Custom URL' }))
     expect(screen.getByLabelText('Server URL')).toHaveFocus()
@@ -139,18 +315,21 @@ describe('provider connection form', () => {
         />,
       )
       expect(screen.queryByRole('radio')).not.toBeInTheDocument()
-      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'My account' } })
+      expect(screen.queryByLabelText('Name')).toBeNull()
       fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'My account' } })
       expect(screen.getByLabelText('API key')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Save connection' })).toBeDisabled()
       fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'test-key' } })
       expect(screen.getByRole('button', { name: 'Save connection' })).toBeEnabled()
       fireEvent.click(screen.getByRole('button', { name: 'Use sign-in instead' }))
       expect(screen.queryByLabelText('API key')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Name')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
       expect(screen.getByLabelText('Name')).toHaveValue('My account')
       expect(authorization.authorize).not.toHaveBeenCalled()
       expect(onSaved).not.toHaveBeenCalled()
-      expect(authorization.cancel).toHaveBeenCalledTimes(2)
+      expect(authorization.cancel).toHaveBeenCalledTimes(3)
     },
   )
 
@@ -292,7 +471,7 @@ describe('provider connection form', () => {
     expect(useSearchProviderStore.getState().connectionStatus?.status).toBe('not_configured')
     expect((await getProviderCredentials(getDb(), connection.id))?.apiKey).toBe('new-key')
     expect(onSaved).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent('Could not save the connection')
+    expect(await waitForElement(() => screen.queryByRole('alert'))).toHaveTextContent('Could not save the connection')
   })
 
   it.each(['openai', 'tinfoil'] as const)(
@@ -320,7 +499,7 @@ describe('provider connection form', () => {
       await settle()
       expect(onSaved).not.toHaveBeenCalled()
       expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
-      expect(screen.getByRole('alert')).toHaveTextContent('Could not save the connection')
+      expect(await waitForElement(() => screen.queryByRole('alert'))).toHaveTextContent('Could not save the connection')
     },
   )
 
@@ -379,7 +558,7 @@ describe('provider connection form', () => {
     })
     await settle()
     expect(save).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('alert')).toHaveTextContent('Could not save the connection')
+    expect(await waitForElement(() => screen.queryByRole('alert'))).toHaveTextContent('Could not save the connection')
     fireEvent.submit(form)
     await settle()
     expect(save).toHaveBeenCalledTimes(2)
@@ -416,29 +595,70 @@ describe('provider connection form', () => {
     expect(authorization.cancel).toHaveBeenCalledTimes(1)
   })
 
-  it('opens an existing OAuth account instead of renaming it or creating another sign-in connection', async () => {
+  it.each(['otari', 'tinfoil', 'openrouter'] as const)(
+    'shows an existing %s sign-in clearly and offers only a secondary API-key connection',
+    async (provider) => {
+      const id = await getDb().transaction((tx) =>
+        saveProviderConnectionInTransaction(tx, {
+          provider,
+          name: 'My account',
+          authMethod: 'oauth',
+          credentials: { access_token: 'oauth-key', refresh_token: 'refresh-key' },
+        }),
+      )
+      renderWithReactivity(
+        <ProviderConnectionForm
+          provider={provider}
+          existingOAuth={(await getProviderConnection(getDb(), id))!}
+          authorization={authorization}
+          onSaved={onSaved}
+          onCancel={onCancel}
+        />,
+      )
+      expect(screen.getByRole('status')).toHaveTextContent(/Connected to/)
+      expect(screen.getByRole('status')).not.toHaveTextContent('My account')
+      expect(screen.queryByLabelText('Name')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Open My account' })).toBeNull()
+      expect(screen.queryByRole('button', { name: /Connect / })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+      expect(screen.getByRole('status').closest('form')).toBeNull()
+      expect(onSaved).not.toHaveBeenCalled()
+      expect(authorization.authorize).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: 'Add another instance via API key' }))
+      expect(screen.queryByRole('status')).toBeNull()
+      expect(screen.getByLabelText('Name')).toBeInTheDocument()
+      expect(screen.getByLabelText('API key')).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Save connection' })).toBeDisabled()
+    },
+  )
+
+  it('reconnects a saved OAuth account on this device using its existing name and server', async () => {
     const id = await saveProviderConnection(getDb(), {
-      provider: 'openrouter',
-      name: 'My account',
+      provider: 'otari',
+      name: 'Team Otari',
+      url: 'https://team.example/api/v1',
       authMethod: 'oauth',
-      credentials: { access_token: 'oauth-key' },
+      credentials: { access_token: 'old-key' },
     })
-    const existingOAuth = await getProviderConnection(getDb(), id)
+    await disconnectProviderConnection(getDb(), id)
     renderWithReactivity(
       <ProviderConnectionForm
-        provider="openrouter"
-        existingOAuth={existingOAuth!}
+        provider="otari"
+        existingOAuth={(await getProviderConnection(getDb(), id))!}
         authorization={authorization}
         onSaved={onSaved}
         onCancel={onCancel}
       />,
     )
-    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Open My account' }))
-    expect(onSaved).toHaveBeenCalledWith(id)
-    expect(authorization.authorize).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
-    expect(screen.getByLabelText('Name')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save connection' })).toBeDisabled()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByText('Sign in to reconnect Otari on this device.')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Otari' }))
+    expect(authorization.authorize).toHaveBeenCalledWith({
+      provider: 'otari',
+      name: 'Team Otari',
+      url: 'https://team.example/api/v1',
+      id,
+    })
+    expect(onSaved).not.toHaveBeenCalled()
   })
 })

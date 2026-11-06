@@ -2,9 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { StrictMode } from 'react'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as mcpOAuth from '@/lib/mcp-auth/web-oauth-flow'
+import * as chatGPT from './chatgpt-auth'
+import * as oauthSession from './oauth-session'
+import { getMcpServerCredentials } from '@/dal/mcp-secrets'
 import * as opener from '@tauri-apps/plugin-opener'
 import * as platform from '@/lib/platform'
 import * as browserAuth from '@/lib/provider-browser-auth'
@@ -65,6 +70,77 @@ describe('provider authorization without a model', () => {
   })
   afterAll(teardownTestDatabase)
 
+  it.each([null, 'saved-client'] as const)(
+    'passes the selected ChatGPT registration through and presents declined consent: %s',
+    async (chatGPTAccountId) => {
+      spyOn(oauthSession, 'withProviderOAuthLock').mockImplementation(async (_id, work) => work())
+      const connect = spyOn(chatGPT, 'connectChatGPT').mockResolvedValue({
+        access_token: 'identity-access',
+        refresh_token: 'identity-refresh',
+        reauth_required: true,
+        oauth: {
+          clientId: 'saved-client',
+          issuer: 'https://auth.openai.com',
+          tokenEndpoint: 'https://auth.openai.com/token',
+          resource: 'https://api.openai.com/v1',
+          subject: 'account',
+          scope: 'openid',
+        },
+      })
+      const { result, onConnected } = setup()
+      await act(async () => result.current.authorize({ provider: 'openai', name: 'OpenAI', chatGPTAccountId }))
+      expect(connect.mock.calls[0]?.[3]).toBe(chatGPTAccountId)
+      expect(onConnected).toHaveBeenCalledWith('oauth:openai')
+      expect(result.current.error).toBeNull()
+      expect(result.current.isPending).toBe(false)
+      expect(await providerConnections.getProviderConnection(getDb(), 'oauth:openai')).toMatchObject({
+        connected: false,
+        needsConsent: true,
+      })
+      expect(await getProviderCredentials(getDb(), 'oauth:openai')).toBeNull()
+    },
+  )
+
+  it('revokes an issued ChatGPT grant when the guarded connection save fails', async () => {
+    const credentials = { access_token: 'new-access', refresh_token: 'new-refresh' }
+    spyOn(chatGPT, 'connectChatGPT').mockResolvedValue(credentials)
+    const discard = spyOn(chatGPT, 'discardChatGPTAuthorization').mockResolvedValue()
+    spyOn(providerConnections, 'saveProviderConnectionWithRevision').mockRejectedValue(new Error('Stale attempt'))
+    const { result, onConnected } = setup()
+    await act(async () => result.current.authorize({ provider: 'openai', name: 'ChatGPT' }))
+    expect(discard).toHaveBeenCalledWith(getDb(), credentials)
+    expect(onConnected).not.toHaveBeenCalled()
+    expect(result.current.error).toBe('Could not connect this provider. Please try again.')
+  })
+
+  it.each(['exa', 'tavily'] as const)(
+    'stores %s MCP OAuth as a provider connection without creating an MCP credential',
+    async (provider) => {
+      const start = spyOn(mcpOAuth, 'startMcpOAuthFlow').mockImplementation(async (args) => {
+        await args.saveCredentials!({
+          type: 'oauth',
+          access_token: 'access',
+          refresh_token: 'refresh',
+          clientId: 'registered',
+          issuer: 'https://auth.example',
+          tokenEndpoint: 'https://auth.example/token',
+          expires_at: Date.now() + 3600000,
+        })
+        return { status: 'completed' }
+      })
+      const { result, onConnected } = setup()
+      await act(async () => result.current.authorize({ provider, name: provider }))
+      expect(start.mock.calls[0]?.[0].serverId).toBe(`oauth:${provider}`)
+      expect(await getProviderCredentials(getDb(), `oauth:${provider}`)).toMatchObject({
+        access_token: 'access',
+        oauth: { clientId: 'registered' },
+      })
+      expect(await getMcpServerCredentials(getDb(), `oauth:${provider}`)).toBeNull()
+      expect(onConnected).toHaveBeenCalledWith(`oauth:${provider}`)
+      expect(result.current.isPending).toBe(false)
+    },
+  )
+
   it.each(['openrouter', 'tinfoil'] as const)(
     'redirects browser %s in the same tab without starting a popup flow',
     async (provider) => {
@@ -101,6 +177,34 @@ describe('provider authorization without a model', () => {
     expect(await getAllModels(getDb())).toEqual([])
     expect(result.current.isPending).toBe(false)
   })
+
+  it.each(['exa', 'tavily'] as const)(
+    'stores %s MCP OAuth as a provider connection without creating an MCP credential',
+    async (provider) => {
+      const start = spyOn(mcpOAuth, 'startMcpOAuthFlow').mockImplementation(async (args) => {
+        await args.saveCredentials!({
+          type: 'oauth',
+          access_token: 'access',
+          refresh_token: 'refresh',
+          clientId: 'registered',
+          issuer: 'https://auth.example',
+          tokenEndpoint: 'https://auth.example/token',
+          expires_at: Date.now() + 3600000,
+        })
+        return { status: 'completed' }
+      })
+      const { result, onConnected } = setup()
+      await act(async () => result.current.authorize({ provider, name: provider }))
+      expect(start.mock.calls[0]?.[0].serverId).toBe(`oauth:${provider}`)
+      expect(await getProviderCredentials(getDb(), `oauth:${provider}`)).toMatchObject({
+        access_token: 'access',
+        oauth: { clientId: 'registered' },
+      })
+      expect(await getMcpServerCredentials(getDb(), `oauth:${provider}`)).toBeNull()
+      expect(onConnected).toHaveBeenCalledWith(`oauth:${provider}`)
+      expect(result.current.isPending).toBe(false)
+    },
+  )
 
   it.each(['openrouter', 'tinfoil'] as const)(
     'rejects %s disabled immediately after the authorization save commits',
@@ -418,7 +522,8 @@ describe('provider authorization without a model', () => {
       cancel: () => {},
     })
     const { result, onConnected } = setup()
-    await act(async () => {})
+    await act(async () => getClock().runAllAsync())
+    await waitForElement(() => (result.current.error ? document.body : null))
     expect(complete).not.toHaveBeenCalled()
     expect(result.current.isPending).toBe(false)
     expect(result.current.error).toBe('Could not connect this provider. Please try again.')

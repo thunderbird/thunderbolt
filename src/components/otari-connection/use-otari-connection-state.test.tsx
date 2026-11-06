@@ -111,7 +111,7 @@ describe('Otari connection', () => {
     expect(result.current.isCustomUrl).toBe(true)
     await act(async () => {
       exchange.resolve('delegated-key')
-      await getClock().runAllAsync()
+      await getClock().tickAsync(0)
     })
     expect(result.current.selected).toBe('workspace/model')
     expect(result.current.key).toBe('delegated-key')
@@ -429,20 +429,28 @@ describe('Otari connection', () => {
 
   it('ignores a stale catalog after cancellation and a new connection', async () => {
     const stale = Promise.withResolvers<AvailableModel[]>()
+    const catalogStarted = Promise.withResolvers<void>()
     const deps = {
       connect: mock(async () => 'key'),
-      loadModels: mock(() => stale.promise),
+      loadModels: mock(() => {
+        catalogStarted.resolve()
+        return stale.promise
+      }),
     }
     const { result } = renderHook(() => useOtariConnectionState(undefined, deps), { wrapper: createTestProvider() })
+    let connecting: Promise<void>
     await act(async () => {
-      void result.current.connect()
-      await getClock().runAllAsync()
+      connecting = result.current.connect()
+      await catalogStarted.promise
     })
     act(() => result.current.cancel())
     await act(async () => result.current.reconnect())
     deps.loadModels.mockResolvedValue([{ id: 'current' }])
     await act(async () => result.current.connect())
-    await act(async () => stale.resolve([{ id: 'stale' }]))
+    await act(async () => {
+      stale.resolve([{ id: 'stale' }])
+      await connecting
+    })
     expect(result.current.selected).toBe('current')
     expect(result.current.busy).toBe(false)
   })
@@ -485,17 +493,25 @@ describe('Otari connection', () => {
     'rejects an old %s result when another window reconnects Otari to a different server',
     async (phase) => {
       const catalog = Promise.withResolvers<AvailableModel[]>()
+      const catalogStarted = Promise.withResolvers<void>()
       const verification = Promise.withResolvers<'supported'>()
       spyOn(modelProbe, 'createDefaultProbe').mockReturnValue(() => verification.promise)
       const deps = {
         connect: mock(async () => 'old-key'),
-        loadModels: mock(() => (phase === 'catalog' ? catalog.promise : Promise.resolve([{ id: 'old-model' }]))),
+        loadModels: mock(() => {
+          catalogStarted.resolve()
+          return phase === 'catalog' ? catalog.promise : Promise.resolve([{ id: 'old-model' }])
+        }),
       }
       const onSaved = mock(() => {})
       const { result } = renderHook(() => useOtariConnectionState(onSaved, deps), { wrapper: createTestProvider() })
+      let connecting: Promise<void>
       await act(async () => {
-        void result.current.connect()
-        await getClock().runAllAsync()
+        connecting = result.current.connect()
+        await catalogStarted.promise
+        if (phase === 'verification') {
+          await connecting
+        }
       })
       if (phase === 'verification') {
         act(() => {
@@ -512,7 +528,8 @@ describe('Otari connection', () => {
       await act(async () => {
         catalog.resolve([{ id: 'old-model' }])
         verification.resolve('supported')
-        await getClock().runAllAsync()
+        await connecting
+        await getClock().tickAsync(0)
       })
       expect(await getAllModels(getDb())).toEqual([])
       expect((await getProviderCredentials(getDb(), 'oauth:otari'))?.access_token).toBe('new-key')

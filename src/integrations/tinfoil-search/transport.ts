@@ -8,6 +8,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createTinfoilClientLifecycle, isTinfoilTransportWedgedError } from '@/ai/tinfoil-client'
 import { getUserCacheSecret } from '@/lib/auth-token'
+import {
+  createBrowserSearchClient,
+  createSearchNetworkFetch,
+  nativeSearchClient,
+  SearchAcknowledgment,
+} from './http-client'
 
 const lifecycle = createTinfoilClientLifecycle({
   createClient: async () => {
@@ -17,6 +23,9 @@ const lifecycle = createTinfoilClientLifecycle({
       enclaveURL: 'https://websearch.tinfoil.sh',
       configRepo: 'tinfoilsh/confidential-websearch',
       userCacheSecret: getUserCacheSecret(),
+      fetch: createSearchNetworkFetch(
+        isTauri() ? nativeSearchClient : createBrowserSearchClient(window.location.origin),
+      ),
     })
   },
   getCloudUrl: () => '',
@@ -37,18 +46,7 @@ type TransportDependencies = {
   evict: () => void
 }
 const transportDependencies: TransportDependencies = {
-  acquire: async () => {
-    const secure = await lifecycle.getTinfoilClient()
-    const [{ createAttestedSearchFetch }, { nativeSearchClient, createBrowserSearchClient }] = await Promise.all([
-      import('./attested-fetch'),
-      import('./http-client'),
-    ])
-    const client = isTauri() ? nativeSearchClient : createBrowserSearchClient(window.location.origin)
-    return {
-      fetch: await createAttestedSearchFetch(secure.getVerificationDocument(), client),
-      getBaseURL: () => secure.getBaseURL(),
-    }
-  },
+  acquire: lifecycle.getTinfoilClient,
   evict: lifecycle.evictUserTinfoilClient,
 }
 
@@ -61,11 +59,23 @@ export const createTinfoilToolCaller =
     const client = new Client({ name: 'thunderbolt-web-search', version: '1.0.0' })
     const transport = new StreamableHTTPClientTransport(endpoint, {
       fetch: async (input, init) => {
+        // A bodyless GET cannot authenticate an EHBP response. MCP permits disabling
+        // this optional event stream; results arrive on the encrypted POST instead.
+        if ((init?.method ?? (input instanceof Request ? input.method : 'GET')) === 'GET') {
+          return new Response(null, { status: 405 })
+        }
         const headers = new Headers(init?.headers)
         headers.set('Authorization', `Bearer ${await getApiKey()}`)
         headers.set('X-Tinfoil-Tool-PII-Check', 'true')
         headers.set('X-Tinfoil-Tool-Injection-Check', 'true')
-        return secure.fetch(input, { ...init, headers, credentials: 'omit' })
+        try {
+          return await secure.fetch(input, { ...init, headers, credentials: 'omit', redirect: 'error' })
+        } catch (error) {
+          if (error instanceof SearchAcknowledgment) {
+            return error.response
+          }
+          throw error
+        }
       },
     })
     try {

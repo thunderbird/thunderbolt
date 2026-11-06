@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { integrationsSecretsTable } from '../db/tables'
 import type { OAuthProvider } from '../lib/auth'
@@ -11,6 +11,7 @@ import { readOAuthCredentials, writeOAuthCredentials } from '@/providers/credent
 type CredentialProvider = OAuthProvider | 'tinfoil' | 'openrouter' | 'otari'
 
 type IntegrationCredentials = {
+  oauthRelayUrl?: string
   access_token: string
   refresh_token?: string
   expires_at?: number
@@ -99,17 +100,28 @@ export const saveIntegrationCredentials = async (
 
 /**
  * Update credentials for a provider without changing the enabled flag.
- * No-op if the provider has no existing row (only callable after a connect).
+ * Compare the credential snapshot so a refresh cannot overwrite a reconnect or restore a disconnected account.
  */
 export const updateIntegrationCredentials = async (
   db: AnyDrizzleDatabase,
   provider: CredentialProvider,
   credentials: IntegrationCredentials,
+  previous: IntegrationCredentials,
 ): Promise<void> => {
-  await db
+  const changed = await db
     .update(integrationsSecretsTable)
     .set({ credentials: JSON.stringify(credentials) })
-    .where(eq(integrationsSecretsTable.provider, provider))
+    .where(
+      and(
+        eq(integrationsSecretsTable.provider, provider),
+        eq(integrationsSecretsTable.credentials, JSON.stringify(previous)),
+        eq(integrationsSecretsTable.enabled, 1),
+      ),
+    )
+    .returning({ provider: integrationsSecretsTable.provider })
+  if (changed.length === 0) {
+    throw new Error('The integration changed during token refresh. Try again.')
+  }
 }
 
 /** Toggle the enabled flag for a provider without changing credentials. */

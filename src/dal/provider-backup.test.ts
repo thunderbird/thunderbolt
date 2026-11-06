@@ -127,7 +127,7 @@ const invalidMetadata: Array<[string, Record<string, unknown>]> = [
   ['URL query', { url: 'https://example.com/v1?key=secret' }],
   ['URL fragment', { url: 'https://example.com/v1#secret' }],
   ['unexpected fixed-provider URL', { provider: 'openai', url: 'https://example.com/v1' }],
-  ['unsupported OAuth provider', { provider: 'openai', authMethod: 'oauth', id: 'oauth:openai', url: null }],
+  ['unsupported OAuth provider', { provider: 'anthropic', authMethod: 'oauth', id: 'oauth:anthropic', url: null }],
   [
     'noncanonical OAuth identity',
     { provider: 'otari', authMethod: 'oauth', id: 'other', url: 'https://example.com/api/v1' },

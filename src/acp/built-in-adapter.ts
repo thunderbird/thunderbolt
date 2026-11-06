@@ -359,7 +359,7 @@ export const resolvePiModel = async (
   profile: ModelProfile | null,
   options: TinfoilClientOptions = {},
 ): Promise<ResolvedPiModel | null> => {
-  const { model, wrapFetch } = await bindModelProvider(context.selectedModel)
+  const { model, wrapFetch, api } = await bindModelProvider(context.selectedModel)
   const thinkingLevel = deriveThinkingLevel(profile)
   // Pi strips image blocks from text-only descriptors. Only models known not to
   // read images are text-only: the composer checks an unknown model before an
@@ -512,6 +512,7 @@ export const resolvePiModel = async (
   return {
     descriptor: {
       kind: 'openai-compat',
+      api,
       providerId: model.provider,
       modelId: model.model,
       baseURL: connection.baseURL,

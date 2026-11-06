@@ -51,6 +51,10 @@ import {
   stream as openaiStream,
   streamSimple as openaiStreamSimple,
 } from '@earendil-works/pi-ai/api/openai-completions'
+import {
+  stream as responsesStream,
+  streamSimple as responsesStreamSimple,
+} from '@earendil-works/pi-ai/api/openai-responses'
 import { boundApiKeyAuth } from './bound-api-key-auth.ts'
 
 /** Fetch shape used by OpenAI's client, which dispatches a serialized URL. */
@@ -71,6 +75,8 @@ const defaultMaxTokens = 8_192
 
 /** Inputs for {@link buildOpenAiCompatModel}. */
 export type BuildOpenAiCompatModelOptions = {
+  /** Public OpenAI wire protocol; ChatGPT plan tokens require Responses. */
+  readonly api?: 'openai-completions' | 'openai-responses'
   /** Pi provider id. Must equal the synthetic model's `provider` so
    * `MutableModels` dispatch resolves this provider. */
   readonly providerId: string
@@ -133,10 +139,10 @@ const requireOpenAiCompletions = (model: Model<Api>): Model<typeof apiName> => {
 /** Synthesize the Pi `Model<"openai-completions">` descriptor. These models live
  *  outside Pi's built-in catalog (custom URLs, backend-proxied ids), so we
  *  build the descriptor directly rather than resolving it. */
-const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof apiName> => ({
+const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<Api> => ({
   id: opts.modelId,
   name: opts.modelId,
-  api: apiName,
+  api: opts.api ?? apiName,
   provider: opts.providerId,
   baseUrl: opts.baseURL,
   reasoning: opts.reasoning,
@@ -166,11 +172,15 @@ export const buildOpenAiCompatModel = (
   const api: ProviderStreams = {
     stream: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        openaiStream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+        hasApi(resolved, 'openai-responses')
+          ? responsesStream(resolved, context, { ...options, apiKey: opts.apiKey })
+          : openaiStream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
       ),
     streamSimple: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        openaiStreamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+        hasApi(resolved, 'openai-responses')
+          ? responsesStreamSimple(resolved, context, { ...options, apiKey: opts.apiKey })
+          : openaiStreamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
       ),
   }
 

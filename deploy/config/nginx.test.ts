@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process'
 import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { exaRelayEndpoints } from '../../shared/exa-relay'
 
 const fixtureDir = mkdtempSync(join(tmpdir(), 'thunderbolt-nginx-'))
 const containerName = `thunderbolt-nginx-test-${process.pid}`
@@ -136,6 +137,24 @@ describe('encrypted search relay', () => {
           body: '{}',
         })
       ).status,
+    ).toBe(403)
+  })
+})
+
+describe('Exa browser relay', () => {
+  test('only maps the same fixed endpoints as the client and development relay', () => {
+    const config = docker('exec', containerName, 'cat', '/etc/nginx/conf.d/default.conf')
+    for (const [path, endpoint] of Object.entries(exaRelayEndpoints)) {
+      expect(config).toContain(`${path} ${endpoint.url};`)
+    }
+    expect(config).toContain('proxy_ssl_verify on;')
+    expect(config).toContain('proxy_pass_request_headers off;')
+  })
+  test('rejects unknown paths, wrong methods and cross-site callers before contacting Exa', async () => {
+    expect((await fetch(`${origin}/_exa/unknown`)).status).toBe(404)
+    expect((await fetch(`${origin}/_exa/register`)).status).toBe(405)
+    expect(
+      (await fetch(`${origin}/_exa/token`, { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } })).status,
     ).toBe(403)
   })
 })

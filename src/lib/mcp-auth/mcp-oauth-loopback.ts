@@ -36,6 +36,7 @@ type StartLoopbackArgs = {
    * authorization server and embedded in the authorization request.
    */
   buildAuthorizationUrl: (redirectUri: string) => Promise<URL>
+  signal?: AbortSignal
   timeoutMs?: number
   deps?: LoopbackDeps
 }
@@ -55,6 +56,7 @@ type StartLoopbackArgs = {
  */
 export const startMcpOAuthLoopback = async ({
   buildAuthorizationUrl,
+  signal,
   timeoutMs = loopbackTimeoutMs,
   deps = {},
 }: StartLoopbackArgs): Promise<LoopbackCallbackParams | null> => {
@@ -62,11 +64,13 @@ export const startMcpOAuthLoopback = async ({
   const listen = deps.listen ?? tauriListen
   const openUrl = deps.openUrl ?? tauriOpenUrl
 
+  signal?.throwIfAborted()
   const flowId = generateCodeVerifier()
   const port = await invoke<number>('start_oauth_server', { flowId })
   const redirectUri = `http://localhost:${port}`
 
   let unlisten: (() => void) | undefined
+  let abortWait: (() => void) | undefined
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   try {
     let resolveUrl!: (url: string) => void
@@ -84,12 +88,16 @@ export const startMcpOAuthLoopback = async ({
     })
 
     const authorizationUrl = await buildAuthorizationUrl(redirectUri)
+    signal?.throwIfAborted()
     await openUrl(authorizationUrl.toString())
+    signal?.throwIfAborted()
 
     const callbackUrl = await Promise.race([
       urlPromise,
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => reject(loopbackTimeout), timeoutMs)
+        abortWait = () => reject(signal?.reason)
+        signal?.addEventListener('abort', abortWait, { once: true })
       }),
     ])
 
@@ -106,6 +114,9 @@ export const startMcpOAuthLoopback = async ({
     }
     throw err
   } finally {
+    if (abortWait) {
+      signal?.removeEventListener('abort', abortWait)
+    }
     clearTimeout(timeoutId)
     unlisten?.()
     void invoke<void>('stop_oauth_server', { flowId }).catch(console.error)

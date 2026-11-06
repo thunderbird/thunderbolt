@@ -5,18 +5,22 @@
 import { afterEach, expect, it } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
+import { CreateItemProvider, useCreateItem } from '@/components/create-item/context'
 import { ChatModelSetup } from './chat-model-setup'
 
 const Destination = () => {
   const location = useLocation()
-  return <output>{JSON.stringify({ pathname: location.pathname, state: location.state })}</output>
+  const { request } = useCreateItem()
+  return <output>{JSON.stringify({ pathname: location.pathname, request: request?.kind })}</output>
 }
 
 const renderSetup = () =>
   render(
     <MemoryRouter initialEntries={['/chats/new']}>
-      <ChatModelSetup />
-      <Destination />
+      <CreateItemProvider>
+        <ChatModelSetup />
+        <Destination />
+      </CreateItemProvider>
     </MemoryRouter>,
   )
 
@@ -31,11 +35,11 @@ it('shows a title and one action without descriptive text', () => {
   expect(screen.getByRole('region').querySelector('p')).toBeNull()
 })
 
-it('opens the new connection picker in Connections', () => {
+it('opens the connection aside without leaving chat', () => {
   renderSetup()
   fireEvent.click(screen.getByRole('button', { name: 'Add connection' }))
   expect(JSON.parse(screen.getByRole('status').textContent ?? '')).toEqual({
-    pathname: '/settings/connections',
-    state: { addConnection: true },
+    pathname: '/chats/new',
+    request: 'connection',
   })
 })

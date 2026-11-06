@@ -9,6 +9,7 @@ import { loadOtariWebCapabilities } from '@/integrations/otari-search/capabiliti
 import { createTinfoilWebApi } from '@/integrations/tinfoil-search/api'
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
+import { createMcpSearchApi } from './mcp-api'
 import { createStandaloneWebApi } from './api'
 import { isSearchProvider } from './providers'
 import { canSupplySearch } from './eligibility'
@@ -54,6 +55,9 @@ export const getSearchConnectionApi = async (
       throw new Error('Search provider changed or was disconnected. Start a new turn to use the current provider.')
     }
     return apiKey
+  }
+  if (connection.authMethod === 'oauth' && (connection.provider === 'exa' || connection.provider === 'tavily')) {
+    return createMcpSearchApi(connection.provider, getApiKey)
   }
   if (connection.provider === 'tinfoil') {
     return createTinfoilWebApi(getApiKey)

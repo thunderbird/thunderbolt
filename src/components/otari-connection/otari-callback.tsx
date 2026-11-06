@@ -24,5 +24,14 @@ export const OtariCallback = () => {
   if (!destination) {
     return <ProviderAuthorizationResult />
   }
-  return <Navigate to={destination} replace />
+  return (
+    <Navigate
+      to={destination}
+      replace
+      state={{
+        connectionOAuthReturn:
+          getOtariBrowserReturn()?.context === 'connections' ? getOtariBrowserReturn()?.id : undefined,
+      }}
+    />
+  )
 }

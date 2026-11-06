@@ -12,6 +12,7 @@ import { isMobile, isTauri } from '@/lib/platform'
 
 export type ProviderAuthorizationConfig = {
   authorizationEndpoint: string
+  loopbackHostname?: 'localhost' | '127.0.0.1'
   buildUrl?: (challenge: string, redirectUri: string, state: string) => string
 }
 const openRouterConfig: ProviderAuthorizationConfig = {
@@ -143,7 +144,8 @@ const createConnectionScope = (externalSignal: AbortSignal | undefined, timeoutM
   }
 }
 
-type CallbackData = { code?: unknown; state?: unknown; error?: unknown }
+type CallbackData = { code?: unknown; state?: unknown; error?: unknown; clientId?: string | null }
+type CallbackGrant = { code: string; clientId?: string }
 
 /** Verifies the CSRF nonce before returning a code; provider error text is never surfaced. */
 const readCallbackCode = (data: CallbackData, expectedState: string): string => {
@@ -184,6 +186,7 @@ export const createProviderAuthorization = (
     code: string
     verifier: string
     redirectUri: string
+    clientId?: string
   }> => {
     if (signal?.aborted) {
       throw cancellationError()
@@ -211,17 +214,18 @@ export const createProviderAuthorization = (
         return port
       }
       const origin = `http://localhost:${await withAbort(startLoopback(), scope.signal)}`
-      const callbackUrl = `${origin}/`
+      const callbackUrl = `${origin.replace('localhost', config.loopbackHostname ?? 'localhost')}/`
 
       const authorizationUrl =
         config.buildUrl?.(challenge, callbackUrl, state) ??
         buildAuthorizationUrl(config.authorizationEndpoint, challenge, callbackUrl, state)
 
       let deliver!: (data: CallbackData) => void
-      const callback = new Promise<string>((resolve, reject) => {
+      const callback = new Promise<CallbackGrant>((resolve, reject) => {
         deliver = (data) => {
           try {
-            resolve(readCallbackCode(data, state))
+            const code = readCallbackCode(data, state)
+            resolve({ code, ...(data.clientId ? { clientId: data.clientId } : {}) })
           } catch (error) {
             reject(error)
           }
@@ -241,13 +245,15 @@ export const createProviderAuthorization = (
           if (
             url.pathname !== '/' ||
             url.searchParams.getAll('code').length > 1 ||
-            url.searchParams.getAll('state').length > 1
+            url.searchParams.getAll('state').length > 1 ||
+            url.searchParams.getAll('client_id').length > 1
           ) {
             deliver({ error: 'invalid_response' })
             return
           }
           deliver({
             code: url.searchParams.get('code'),
+            clientId: url.searchParams.get('client_id'),
             state: url.searchParams.get('state'),
             error: url.searchParams.get('error') || url.searchParams.get('error_description'),
           })
@@ -257,8 +263,8 @@ export const createProviderAuthorization = (
       await withAbort(register(), scope.signal)
       await withAbort(deps.openExternalUrl(authorizationUrl), scope.signal)
 
-      const code = await response
-      return { code, verifier, redirectUri: callbackUrl }
+      const grant = await response
+      return { ...grant, verifier, redirectUri: callbackUrl }
     } catch (error) {
       if (error instanceof OpenRouterConnectionError) {
         throw error

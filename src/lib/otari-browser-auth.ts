@@ -11,6 +11,7 @@ import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import type { ProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import { isMobile, isTauri } from '@/lib/platform'
 import { mobileOAuthRedirectUri } from '@/lib/oauth-redirect'
+import { parseOAuthReturnPath } from '@/lib/oauth-return-route'
 
 export type OtariReturnContext = 'onboarding' | 'models' | 'connections'
 const storageKey = 'thunderbolt.otari.authorization'
@@ -49,23 +50,6 @@ export const clearOtariBrowserReturn = (id: string): void => {
   if (browserReturn?.id === id) {
     browserReturn = null
   }
-}
-
-/** Reject external, encoded-host, and callback destinations, even in modified storage. */
-const safeReturnPath = (path: string, baseUrl: string): string | null => {
-  if (
-    !path.startsWith('/') ||
-    path.startsWith('//') ||
-    path.includes('\\') ||
-    [...path].some((character) => character.charCodeAt(0) <= 32)
-  ) {
-    return null
-  }
-  const target = new URL(path, baseUrl)
-  if (target.origin !== new URL(baseUrl).origin || target.pathname.startsWith('/oauth/')) {
-    return null
-  }
-  return `${target.pathname}${target.search}${target.hash}`
 }
 
 /** Native mobile uses the same external browser and verified app link as Google and Microsoft. */
@@ -149,7 +133,7 @@ export const startOtariBrowserConnection = async (
   const deps = { ...defaultDependencies, ...dependencies }
   const current = deps.currentUrl()
   const base = normalizeOtariOrigin(origin)
-  const returnTo = safeReturnPath(`${current.pathname}${current.search}${current.hash}`, current.href)
+  const returnTo = parseOAuthReturnPath(`${current.pathname}${current.search}${current.hash}`)
   if (!returnTo) {
     throw new Error('Invalid Otari return path')
   }
@@ -227,7 +211,7 @@ export const captureOtariBrowserReturn = (
   if (!flow) {
     return null
   }
-  const returnTo = safeReturnPath(flow.returnTo, url.href)
+  const returnTo = parseOAuthReturnPath(flow.returnTo)
   if (!returnTo || flow.redirectUri !== redirectUri) {
     return null
   }

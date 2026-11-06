@@ -138,7 +138,11 @@ export const refreshAccessToken = async (
 // Redirect flow (web only)
 // ---------------------------------------------------------------------------
 
-export const redirectOAuthFlow = async (httpClient: HttpClient, provider: OAuthProvider): Promise<never> => {
+export const redirectOAuthFlow = async (
+  httpClient: HttpClient,
+  provider: OAuthProvider,
+  oauthRelayUrl?: string,
+): Promise<never> => {
   if (isTauri()) {
     throw new Error('redirectOAuthFlow should only be used in the web environment')
   }
@@ -153,6 +157,7 @@ export const redirectOAuthFlow = async (httpClient: HttpClient, provider: OAuthP
     state,
     provider,
     verifier: codeVerifier,
+    oauthRelayUrl,
   })
 
   window.location.assign(authUrl)

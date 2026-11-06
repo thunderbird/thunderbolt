@@ -16,6 +16,9 @@ import type { SessionConfigOption } from '@agentclientprotocol/sdk'
 import { EffortSelector } from './effort-selector'
 import { useEffortSelectorState } from './use-effort-selector-state'
 import { http } from '@/lib/http'
+import { attestationStore } from '@/attestation/store'
+import { tinfoilAttestationKey } from '@/attestation/target'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 const model = createMockModel({ id: 'effort-model', provider: 'tinfoil', model: 'glm-5-3' })
 let catalogRequest: ReturnType<typeof spyOn<typeof http, 'get'>>
@@ -86,6 +89,8 @@ beforeEach(async () => {
   })
   await resetTestDatabase()
   resetStore()
+  attestationStore.clear(tinfoilAttestationKey('system', useLocalSettingsStore.getState().cloudUrl))
+  attestationStore.clear(tinfoilAttestationKey('user', ''))
   hydrateStore({
     id: 'effort-chat',
     chatInstance: createMockChatInstance(),
@@ -161,6 +166,31 @@ describe('effort selector state', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Manage models' }))
     })
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('shows the lock beside the model name and opens connection privacy from above effort', async () => {
+    await loadReasoningCapabilities(model)
+    useChatStore.getState().updateSession('effort-chat', {
+      selectedModel: { ...model, name: 'Private model', isConfidential: 1, isSystem: 1, apiKey: null },
+    })
+    renderWithReactivity(<EffortSelector modelPicker={() => <button>Choose model</button>} />, {
+      tables: ['settings'],
+    })
+
+    const trigger = screen.getByRole('button', { name: 'Private model' })
+    expect(trigger.querySelector('linearGradient')).not.toBeNull()
+    expect(trigger).toHaveTextContent('Private model')
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    const privacyRow = screen.getByRole('button', { name: 'Private inference' })
+    const reasoningLabel = await waitForElement(() => screen.queryByText('Reasoning effort'))
+    expect(privacyRow.compareDocumentPosition(reasoningLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await act(async () => {
+      fireEvent.click(privacyRow)
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Connection privacy')
   })
 
   it('preserves agent-advertised opaque values, including default', async () => {

@@ -62,6 +62,10 @@ msgstr "{0} is only available on desktop"
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} can't take attachments. Remove the attached files to send."
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
+msgstr "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
+
 #: src/settings/voice.tsx
 msgid "{appName} (hosted, private)"
 msgstr "{appName} (hosted, private)"
@@ -371,6 +375,10 @@ msgstr "Adding…"
 msgid "Advanced (JSON)"
 msgstr "Advanced (JSON)"
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Agent privacy"
+msgstr "Agent privacy"
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/routes/settings/agents/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -426,6 +434,10 @@ msgstr "Always ask"
 #: src/lib/sso-error-messages.ts
 msgid "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
 msgstr "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
+
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "An encrypted agent connection alone does not verify the agent or its model provider."
+msgstr "An encrypted agent connection alone does not verify the agent or its model provider."
 
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
@@ -986,6 +998,10 @@ msgstr "Complete the setup process to get started with {appName}"
 msgid "Completing…"
 msgstr "Completing…"
 
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Confidential hardware"
+#~ msgstr "Confidential hardware"
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
 msgstr "Configuration"
@@ -1081,6 +1097,10 @@ msgstr "Connecting…"
 msgid "Connection"
 msgstr "Connection"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Connection details"
+msgstr "Connection details"
+
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Connection error"
 msgstr "Connection error"
@@ -1091,6 +1111,14 @@ msgstr "Connection error"
 msgid "Connection failed"
 msgstr "Connection failed"
 
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection privacy"
+msgstr "Connection privacy"
+
+#: src/components/chat/attestation/attestation-control.tsx
+msgid "Connection privacy: {label}"
+msgstr "Connection privacy: {label}"
+
 #: src/components/chat/error-message.tsx
 msgid "Connection problem. Check your internet and try again."
 msgstr "Connection problem. Check your internet and try again."
@@ -1099,6 +1127,10 @@ msgstr "Connection problem. Check your internet and try again."
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Connection successful!"
 msgstr "Connection successful!"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Connection verified"
+msgstr "Connection verified"
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -1949,6 +1981,22 @@ msgstr "Enabled"
 msgid "Enables location-based responses"
 msgstr "Enables location-based responses"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave endpoint"
+msgstr "Enclave endpoint"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave fingerprint"
+msgstr "Enclave fingerprint"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave-bound encryption key"
+msgstr "Enclave-bound encryption key"
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Encrypted connection"
+#~ msgstr "Encrypted connection"
+
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
 msgstr "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
@@ -2243,6 +2291,10 @@ msgstr "Got it, working on that next."
 #: src/settings/preferences.tsx
 msgid "Haptic Feedback"
 msgstr "Haptic Feedback"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Hardware attestation"
+msgstr "Hardware attestation"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Having a problem with this chat?"
@@ -2610,6 +2662,10 @@ msgstr "Managed by your deployment — always available, no setup needed."
 #: src/widgets/map/widget.tsx
 msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
 msgstr "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Matching measurements"
+msgstr "Matching measurements"
 
 #: src/components/window-controls.tsx
 msgid "Maximize"
@@ -3332,6 +3388,10 @@ msgstr "Privacy"
 msgid "Private"
 msgstr "Private"
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Private inference"
+msgstr "Private inference"
+
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
 msgstr "Processing…"
@@ -3362,6 +3422,10 @@ msgstr "Provider"
 #: src/settings/preferences.tsx
 msgid "Proxying is required in the web app to bypass browser CORS restrictions."
 msgstr "Proxying is required in the web app to bypass browser CORS restrictions."
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Published code"
+#~ msgstr "Published code"
 
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
@@ -3448,6 +3512,10 @@ msgstr "Refreshing keys…"
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr "Registering this device and detecting your account status."
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Release digest"
+msgstr "Release digest"
 
 #: src/components/storage-unavailable-screen.tsx
 #: src/components/upgrade-required.tsx
@@ -4088,6 +4156,10 @@ msgstr "Sign-in successful"
 msgid "Sign-in was cancelled, or your identity provider did not grant access."
 msgstr "Sign-in was cancelled, or your identity provider did not grant access."
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Signed build provenance"
+msgstr "Signed build provenance"
+
 #: src/components/signed-out.tsx
 msgid "Signed Out"
 msgstr "Signed Out"
@@ -4169,6 +4241,10 @@ msgstr "Something went wrong. Please try again."
 #: src/components/chat/error-message.tsx
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 msgstr "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Source repository"
+msgstr "Source repository"
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"
@@ -4400,6 +4476,10 @@ msgstr "The chat will be retained by the {recipient} team."
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr "The CLI will be signed out and must sign in again before it can use your {appName} account."
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "The connection could not be verified. A verified connection is required before sending to this provider."
+msgstr "The connection could not be verified. A verified connection is required before sending to this provider."
+
 #: src/services/revoke-failure.ts
 msgid "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
@@ -4570,6 +4650,10 @@ msgstr "This model doesn't support tools, so chats will run without them. Tools 
 #: src/components/chat/error-message.tsx
 msgid "This model doesn't support tools."
 msgstr "This model doesn't support tools."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "This model is marked private, but this device cannot verify its provider yet."
+msgstr "This model is marked private, but this device cannot verify its provider yet."
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "This model or agent does not offer context compaction."
@@ -4798,6 +4882,7 @@ msgid "Trusted devices"
 msgstr "Trusted devices"
 
 #: src/components/auth-gate/browser-check.tsx
+#: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
@@ -4994,6 +5079,14 @@ msgstr "User Experience"
 msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "Verification covers model inference. Connected tools and external services have their own privacy boundaries."
+msgstr "Verification covers model inference. Connected tools and external services have their own privacy boundaries."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification failed"
+msgstr "Verification failed"
+
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
 msgstr "Verification Failed"
@@ -5004,6 +5097,26 @@ msgstr "Verification Failed"
 #: src/waitlist/use-waitlist-state.ts
 msgid "Verification failed. Please try again."
 msgstr "Verification failed. Please try again."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification timed out. A verified connection is required before sending to this provider."
+msgstr "Verification timed out. A verified connection is required before sending to this provider."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification unavailable"
+msgstr "Verification unavailable"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Verified on this device"
+msgstr "Verified on this device"
+
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "Verify connection"
+msgstr "Verify connection"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verifying connection…"
+msgstr "Verifying connection…"
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sync-setup/recovery-key-entry-step.tsx
@@ -5364,6 +5477,22 @@ msgstr "Your chats and settings will remain on this device for next time."
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"
 msgstr "Your deployment's server"
+
+#: src/components/chat/attestation/attestation-control.tsx
+#~ msgid "Your device checks the confidential hardware and published code before sending to {provider}."
+#~ msgstr "Your device checks the confidential hardware and published code before sending to {provider}."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
+msgstr "Your device checks the enclave hardware and signed build before sending to {provider}."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
+msgstr "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
+
+#: src/components/chat/attestation/attestation-control.tsx
+#~ msgid "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
+#~ msgstr "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."

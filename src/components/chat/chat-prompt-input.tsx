@@ -65,6 +65,7 @@ import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
 import { EffortSelector } from './effort-selector'
 import { ChatModelPicker } from './chat-model-picker'
+import { ChatAttestation } from './attestation'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { collapseTextSelectionToEnd } from '@/lib/focus'
 import { hasAssistantContent } from '@/lib/message-utils'
@@ -841,15 +842,21 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // The model picker sits in the footer's right cluster, next to the send
     // button; the connecting / connection-error status replaces it on the
     // left, so the right side only renders it in the healthy state.
-    const footerEndElements =
-      !isConnecting && !isConnectionError ? (
-        <EffortSelector
-          key={`${chatThreadId}:${selectedAgent.id}`}
-          modelPicker={
-            selectedAgent.type === 'built-in' ? (onClose) => <ChatModelPicker embedded onClose={onClose} /> : undefined
-          }
-        />
-      ) : undefined
+    const footerEndElements = (
+      <div className="flex min-w-0 items-center gap-0.5">
+        {selectedAgent.type !== 'built-in' && <ChatAttestation />}
+        {!isConnecting && !isConnectionError && (
+          <EffortSelector
+            key={`${chatThreadId}:${selectedAgent.id}`}
+            modelPicker={
+              selectedAgent.type === 'built-in'
+                ? (onClose) => <ChatModelPicker embedded onClose={onClose} />
+                : undefined
+            }
+          />
+        )}
+      </div>
+    )
 
     const handleAddChipFromBar = useCallback(
       (skill: Skill) => {

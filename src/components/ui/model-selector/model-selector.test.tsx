@@ -11,6 +11,20 @@ import { ModelSelector } from './model-selector'
 
 afterEach(cleanup)
 
+it('keeps the private lock in a standalone composer selector', () => {
+  const model = createMockModel({ isConfidential: 1, apiKey: 'test-key' })
+  render(
+    <ModelSelector
+      variant="composer"
+      models={[model]}
+      selectedModel={model}
+      chatThread={null}
+      onModelChange={() => {}}
+    />,
+  )
+  expect(screen.getByTestId('model-selector-trigger').querySelector('linearGradient')).not.toBeNull()
+})
+
 it('closes an embedded picker before opening model creation', () => {
   const model = createMockModel()
   const createModel = mock(() => {

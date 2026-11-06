@@ -418,12 +418,13 @@ describe('hydrateSessionFromCache', () => {
 })
 
 describe('subscribeSessionCachePersist', () => {
-  type Listener = (state: { data: unknown }) => void
+  type AtomState = { data: unknown; isPending?: boolean; isRefetching?: boolean; error?: unknown }
+  type Listener = (state: AtomState) => void
 
   const createFakeSubscribableAtom = () => {
     const listeners = new Set<Listener>()
     return {
-      emit: (state: { data: unknown }) => {
+      emit: (state: AtomState) => {
         listeners.forEach((l) => l(state))
       },
       subscribe: (l: Listener) => {
@@ -491,6 +492,30 @@ describe('subscribeSessionCachePersist', () => {
     atom.emit({ data: { user: null, session: null } })
 
     expect(getCachedSession()).toBeNull()
+  })
+
+  it.each([null, { user: null, session: null }])(
+    'clears cached authentication after a successful signed-out response: %j',
+    (data) => {
+      const atom = createFakeSubscribableAtom()
+      subscribeSessionCachePersist(createFakeClient(atom))
+      setCachedSession({ user: { id: 'u1' }, session: { expiresAt: new Date(Date.now() + 60_000) } })
+      atom.emit({ data, isPending: false, isRefetching: false, error: null })
+      expect(getCachedSession()).toBeNull()
+    },
+  )
+
+  it.each([
+    { isPending: true, isRefetching: false, error: null },
+    { isPending: false, isRefetching: true, error: null },
+    { isPending: false, isRefetching: false, error: new Error('Offline') },
+  ])('preserves offline authentication during an inconclusive session check: %j', (state) => {
+    const atom = createFakeSubscribableAtom()
+    subscribeSessionCachePersist(createFakeClient(atom))
+    const payload = { user: { id: 'u1' }, session: { expiresAt: new Date(Date.now() + 60_000).toISOString() } }
+    setCachedSession(payload)
+    atom.emit({ data: null, ...state })
+    expect(getCachedSession()).toEqual(payload)
   })
 
   it('unsubscribe stops further writes to the cache', () => {

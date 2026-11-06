@@ -20,6 +20,16 @@ tests:
       - matchRegex:
           path: data["config.yaml"]
           pattern: '(?s)user_essentials:.*user_id IN active_device_account.*user_data:.*user_id IN active_device_account'
+  - it: syncs provider metadata through the revocation-gated essentials stream
+    template: templates/configmaps.yaml
+    documentIndex: 0
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "(?s)user_essentials:.*SELECT \\* FROM powersync.provider_connections WHERE user_id IN active_device_account OR \\(user_id = auth.user_id\\(\\) AND auth.parameter\\('device_id'\\) IS NULL\\).*user_data:"
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: 'provider_connection_secrets'
   - it: runs the pinned PowerSync version the sync config was tested on
     template: templates/powersync.yaml
     documentSelector:

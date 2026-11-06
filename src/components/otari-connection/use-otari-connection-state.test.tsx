@@ -193,6 +193,11 @@ describe('Otari connection', () => {
     fireEvent.click(button)
     expect(screen.getByRole('button', { name: 'Checking model…' })).toBeDisabled()
     expect(probe).toHaveBeenCalledTimes(1)
+    expect(probe).toHaveBeenCalledWith(
+      expect.objectContaining({ providerConnectionId: 'oauth:otari' }),
+      expect.any(Function),
+      expect.any(AbortSignal),
+    )
     await act(async () => {
       verification.resolve('supported')
       await getClock().runAllAsync()

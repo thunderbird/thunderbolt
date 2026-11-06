@@ -83,6 +83,17 @@ const defaultDependencies = {
   exchange: exchangeOtariCode,
 }
 
+/** Explicit cancellation retires the handoff even when its tab or mobile storage cannot be cleared. */
+export const cancelOtariBrowserConnection = (): void => {
+  browserReturn?.cancel()
+  browserReturn = null
+  try {
+    defaultDependencies.storage().removeItem(storageKey)
+  } catch {
+    // Browser privacy settings may deny cleanup after authorization has already started.
+  }
+}
+
 /** Restore the setup surface after browser Back, without restarting authorization. */
 export const getOtariBrowserDraft = (
   context: OtariReturnContext,

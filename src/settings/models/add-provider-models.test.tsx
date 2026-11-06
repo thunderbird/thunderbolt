@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { act, cleanup, fireEvent, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getDb } from '@/db/database'
 import { modelsSecretsTable } from '@/db/tables'
@@ -12,6 +12,7 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import * as providerModels from '@/providers/models'
 import { getClock } from '@/testing-library'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
+import { createTestProvider } from '@/test-utils/test-provider'
 import { AddProviderModels } from './add-provider-models'
 import { useAddProviderModels } from './use-add-provider-models'
 
@@ -137,5 +138,77 @@ describe('connection model picker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add models' }))
     await settle()
     expect((await getAllModels(getDb()))[0]?.model).toBe('local-model')
+  })
+
+  it.each(['cancel', 'unmount', 'switch'] as const)('does not save queued selections after %s', async (action) => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Account',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'key' },
+    })
+    spyOn(providerModels, 'fetchProviderModels').mockResolvedValue([{ id: 'model' }])
+    const started = Promise.withResolvers<void>()
+    const proceed = Promise.withResolvers<void>()
+    const addModels = providerModels.addProviderModels
+    spyOn(providerModels, 'addProviderModels').mockImplementationOnce(async (...args) => {
+      started.resolve()
+      await proceed.promise
+      return addModels(...args)
+    })
+    const { result, unmount } = renderHook(() => useAddProviderModels({ isOpen: true, onClose: saved }), {
+      wrapper: createTestProvider(),
+    })
+    await settle()
+    act(() => result.current.changeConnection(id))
+    await settle()
+    act(() => result.current.toggleModel('model'))
+    act(() => result.current.submit())
+    await started.promise
+    if (action === 'unmount') {
+      unmount()
+    } else if (action === 'cancel') {
+      act(() => result.current.onCancel())
+    } else {
+      act(() => result.current.changeConnection('another-account'))
+    }
+    proceed.resolve()
+    await settle()
+    expect(await getAllModels(getDb())).toEqual([])
+    expect(saved).toHaveBeenCalledTimes(action === 'cancel' ? 1 : 0)
+    if (action === 'switch') {
+      expect(result.current.connectionId).toBe('another-account')
+    }
+  })
+
+  it('blocks adding a hidden stale selection while refreshing or after a failed refresh', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Account',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'key' },
+    })
+    const fetch = spyOn(providerModels, 'fetchProviderModels').mockResolvedValue([{ id: 'model' }])
+    const { result } = renderHook(() => useAddProviderModels({ isOpen: true, onClose: saved }), {
+      wrapper: createTestProvider(),
+    })
+    await settle()
+    act(() => result.current.changeConnection(id))
+    await settle()
+    act(() => result.current.toggleModel('model'))
+    expect(result.current.canSubmit).toBe(true)
+    const refresh = Promise.withResolvers<never>()
+    fetch.mockImplementationOnce(() => refresh.promise)
+    act(() => result.current.refresh())
+    await settle()
+    expect(result.current.isLoadingCatalog).toBe(true)
+    expect(result.current.canSubmit).toBe(false)
+    refresh.reject(new Error('Network unavailable'))
+    await settle()
+    expect(result.current.catalogError).toBeTruthy()
+    expect(result.current.canSubmit).toBe(false)
+    act(() => result.current.submit())
+    await settle()
+    expect(await getAllModels(getDb())).toEqual([])
   })
 })

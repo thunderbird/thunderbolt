@@ -465,6 +465,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
           serverStatus={rowStatus}
           activeKey={panelOpen && selected && !form.isAddFormOpen ? `${selected.kind}:${selected.id}` : null}
           onAdd={() => {
+            authorization.cancel()
             formController.cancel()
             dispatch({ type: 'SELECTION_CHANGED', selection: { kind: 'new', id: '' } })
           }}

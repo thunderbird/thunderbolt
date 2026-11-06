@@ -11,7 +11,7 @@ import {
   providerConnectionsTable,
   providerConnectionSecretsTable,
 } from '@/db/tables'
-import { normalizeOtariConnectionUrl, saveProviderConnectionInTransaction } from '@/dal/provider-connections'
+import { normalizeProviderConnectionUrl, saveProviderConnectionInTransaction } from '@/dal/provider-connections'
 import { getProviderDefinition } from '@/providers/registry'
 import { credentialBinding, writeProviderCredentials } from '@/providers/credentials'
 import type { ProviderAuthMethod, ProviderCredentials, ProviderType } from '@/providers/types'
@@ -110,17 +110,14 @@ export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promis
       }
       const oauth = secret?.oauthProvider === 'tinfoil'
       const hasLegacyKey = Boolean(secret?.apiKey || oauth)
-      const unauthenticatedCustom = !model.providerConnectionId && model.provider === 'custom' && model.url
+      const unauthenticatedCustom = model.provider === 'custom' && model.url
       if (!hasLegacyKey && !unauthenticatedCustom) {
         continue
       }
       const connectionId = model.providerConnectionId ?? (oauth ? 'oauth:tinfoil' : `legacy-model:${model.id}`)
       if (!oauth) {
         const definition = getProviderDefinition(model.provider)
-        const rawUrl = definition.requiresUrl
-          ? model.url?.trim().replace(/\/+$/, '') || definition.defaultUrl || null
-          : null
-        const url = model.provider === 'otari' && rawUrl ? normalizeOtariConnectionUrl(rawUrl) : rawUrl
+        const url = normalizeProviderConnectionUrl(model.provider, model.url)
         const moved = await migrateLegacyProviderCredential(tx, {
           id: connectionId,
           provider: model.provider,
@@ -134,8 +131,10 @@ export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promis
         }
       }
       // Retain the approved legacy URL until every device has migrated its own local key.
-      await tx.update(modelsTable).set({ providerConnectionId: connectionId }).where(eq(modelsTable.id, model.id))
-      if (secret) {
+      if (model.providerConnectionId !== connectionId) {
+        await tx.update(modelsTable).set({ providerConnectionId: connectionId }).where(eq(modelsTable.id, model.id))
+      }
+      if (secret && (hasLegacyKey || secret.providerDefault !== null)) {
         await tx
           .update(modelsSecretsTable)
           .set({ apiKey: null, oauthProvider: null, providerDefault: null })

@@ -65,8 +65,6 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
   const authorization = createProviderAuthorization(
     {
       authorizationEndpoint: 'https://dash.tinfoil.sh/oauth/authorize',
-      callbackPath: '/oauth/tinfoil',
-      fixedCallbackPath: true,
       buildUrl: (challenge, redirectUri, state) =>
         getTinfoilAuthorizationUrl({ challenge, redirectUri, state }, clientId),
     },

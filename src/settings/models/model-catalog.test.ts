@@ -6,17 +6,28 @@ import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { http } from '@/lib/http'
 import { stubJsonResponse } from '@/test-utils/http'
 import { defaultModels } from '@shared/defaults/models'
+import { i18n } from '@/i18n'
 import {
   canFetchCatalog,
   catalogRequestKey,
   isFetchableCatalogUrl,
   catalogRowSupportsImages,
   fetchModelsForProvider,
+  describeModelFetchError,
   thunderboltModelCatalog,
   type CatalogRequest,
 } from './model-catalog'
 
 const catalogResponse = () => Response.json({ data: [] })
+
+it('does not expose provider error text or reflected secrets in catalog errors', () => {
+  expect(describeModelFetchError(i18n, new Error('Authorization: Bearer private-key'))).toBe('Failed to load models')
+  expect(
+    describeModelFetchError(i18n, {
+      response: new Response(null, { status: 401, statusText: 'private-key rejected' }),
+    }),
+  ).toBe('Server responded with status 401.')
+})
 
 const stubProxyFetch = () =>
   Object.assign(

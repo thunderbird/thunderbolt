@@ -153,8 +153,7 @@ export const describeModelFetchError = (i18n: I18n, error: unknown): string => {
       return i18n._(msg`Server responded with an unknown error.`)
     }
     const status = response.status
-    const statusText = response.statusText
-    return i18n._(msg`Server responded with status ${status} ${statusText}`)
+    return i18n._(msg`Server responded with status ${status}.`)
   }
-  return error instanceof Error && error.message ? error.message : i18n._(msg`Failed to load models`)
+  return i18n._(msg`Failed to load models`)
 }

@@ -442,8 +442,8 @@ msgid "All skills are pinned"
 msgstr "Alle Skills sind angepinnt"
 
 #: src/lib/openrouter-auth.ts
-msgid "Allow popups to connect to OpenRouter, then try again."
-msgstr ""
+#~ msgid "Allow popups to connect to OpenRouter, then try again."
+#~ msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Always allow all actions of this kind"
@@ -478,8 +478,8 @@ msgid "An account with this email already exists but is not verified, so it cann
 msgstr ""
 
 #: src/lib/openrouter-auth.ts
-msgid "An OpenRouter connection is already in progress."
-msgstr ""
+#~ msgid "An OpenRouter connection is already in progress."
+#~ msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
@@ -1031,8 +1031,8 @@ msgid "Close reorder"
 msgstr "Sortierung schließen"
 
 #: src/components/provider-authorization-result.tsx
-msgid "Close this window"
-msgstr ""
+#~ msgid "Close this window"
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Cloud"
@@ -1316,8 +1316,8 @@ msgid "Connection"
 msgstr "Verbindung"
 
 #: src/components/provider-authorization-result.tsx
-msgid "Connection cancelled"
-msgstr ""
+#~ msgid "Connection cancelled"
+#~ msgstr ""
 
 #: src/lib/otari-browser-auth.ts
 msgid "Connection cancelled. You can connect to Otari whenever you're ready."
@@ -1349,6 +1349,10 @@ msgstr "Verbindungsproblem. Prüfen Sie Ihre Internetverbindung und versuchen Si
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Connection successful!"
 msgstr "Verbindung erfolgreich!"
+
+#: src/hooks/use-model-connection-test.ts
+msgid "Connection test timed out. Please try again."
+msgstr ""
 
 #: src/settings/models/model-detail.tsx
 msgid "Connection unavailable on this device."
@@ -1468,8 +1472,8 @@ msgid "Could not connect this provider. Please try again."
 msgstr ""
 
 #: src/lib/openrouter-auth.ts
-msgid "Could not connect to OpenRouter. Please try again with a new authorization code."
-msgstr ""
+#~ msgid "Could not connect to OpenRouter. Please try again with a new authorization code."
+#~ msgstr ""
 
 #: src/components/onboarding/use-onboarding-provider-state.ts
 msgid "Could not connect to OpenRouter. Try again, or use an API key."
@@ -1490,6 +1494,10 @@ msgstr "Verbindung zum Agenten nicht möglich."
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Could not connect to the MCP server. Please check the URL and try again."
 msgstr "Verbindung zum MCP-Server nicht möglich. Bitte prüfen Sie die URL und versuchen Sie es erneut."
+
+#: src/hooks/use-model-connection-test.ts
+msgid "Could not connect to the model. Check your connection and credentials, then try again."
+msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Could not connect to this server. Check the URL and that the server is reachable."
@@ -1521,6 +1529,10 @@ msgstr ""
 msgid "Could not disconnect this provider. Please try again."
 msgstr ""
 
+#: src/components/search-provider-setup/use-search-provider-setup.ts
+msgid "Could not disconnect this search provider. Please try again."
+msgstr ""
+
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Could not finish setup. Please try again."
 msgstr ""
@@ -1539,8 +1551,8 @@ msgid "Could not open link. Please try again or copy the URL."
 msgstr "Link konnte nicht geöffnet werden. Bitte versuchen Sie es erneut oder kopieren Sie die URL."
 
 #: src/lib/openrouter-auth.ts
-msgid "Could not open the OpenRouter connection. Please try again."
-msgstr ""
+#~ msgid "Could not open the OpenRouter connection. Please try again."
+#~ msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Could not read QR code"
@@ -2529,8 +2541,8 @@ msgid "Failed to connect to {agentName}"
 msgstr "Verbindung zu {agentName} fehlgeschlagen"
 
 #: src/hooks/use-model-connection-test.ts
-msgid "Failed to connect to model"
-msgstr "Verbindung zum Modell fehlgeschlagen"
+#~ msgid "Failed to connect to model"
+#~ msgstr "Verbindung zum Modell fehlgeschlagen"
 
 #: src/settings/account/use-delete-account.ts
 msgid "Failed to delete account."
@@ -2811,8 +2823,8 @@ msgid "I have saved my recovery phrase"
 msgstr "Ich habe meine Wiederherstellungsphrase gespeichert"
 
 #: src/components/provider-authorization-result.tsx
-msgid "If this window stays open, you can safely close the tab."
-msgstr ""
+#~ msgid "If this window stays open, you can safely close the tab."
+#~ msgstr ""
 
 #: src/components/storage-unavailable-screen.tsx
 msgid "If you are using iOS Lockdown Mode, exclude {appName} from the \"Configure Web Browsing\" setting, then reopen the app."
@@ -3738,16 +3750,16 @@ msgid "OpenRouter"
 msgstr ""
 
 #: src/lib/openrouter-auth.ts
-msgid "OpenRouter connection timed out. Please try again."
-msgstr ""
+#~ msgid "OpenRouter connection timed out. Please try again."
+#~ msgstr ""
 
 #: src/lib/openrouter-auth.ts
-msgid "OpenRouter connection was cancelled."
-msgstr ""
+#~ msgid "OpenRouter connection was cancelled."
+#~ msgstr ""
 
 #: src/lib/openrouter-auth.ts
-msgid "OpenRouter returned an invalid authorization response. Please try again."
-msgstr ""
+#~ msgid "OpenRouter returned an invalid authorization response. Please try again."
+#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
@@ -4036,8 +4048,8 @@ msgid "Reading {fileName}…"
 msgstr "{fileName} wird gelesen…"
 
 #: src/components/provider-authorization-result.tsx
-msgid "Ready to continue"
-msgstr ""
+#~ msgid "Ready to continue"
+#~ msgstr ""
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
@@ -4585,8 +4597,12 @@ msgid "Server responded with an unknown error."
 msgstr "Der Server hat mit einem unbekannten Fehler geantwortet."
 
 #: src/settings/models/model-catalog.ts
-msgid "Server responded with status {status} {statusText}"
-msgstr "Der Server hat mit Status {status} {statusText} geantwortet"
+#~ msgid "Server responded with status {status} {statusText}"
+#~ msgstr "Der Server hat mit Status {status} {statusText} geantwortet"
+
+#: src/settings/models/model-catalog.ts
+msgid "Server responded with status {status}."
+msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -5852,8 +5868,8 @@ msgstr "System verwenden"
 #~ msgstr ""
 
 #: src/lib/openrouter-auth.ts
-msgid "Use the authorization code option to connect to OpenRouter on this device."
-msgstr ""
+#~ msgid "Use the authorization code option to connect to OpenRouter on this device."
+#~ msgstr ""
 
 #: src/voice/speakable.ts
 msgid "Use the connection prompt on screen to continue."
@@ -6168,8 +6184,8 @@ msgid "You can return to your terminal."
 msgstr "Sie können zu Ihrem Terminal zurückkehren."
 
 #: src/components/provider-authorization-result.tsx
-msgid "You cancelled this connection. Return to Thunderbolt to try again whenever you're ready."
-msgstr ""
+#~ msgid "You cancelled this connection. Return to Thunderbolt to try again whenever you're ready."
+#~ msgstr ""
 
 #: src/components/signed-out.tsx
 msgid "You have been signed out successfully."
@@ -6214,8 +6230,8 @@ msgid "You're on the latest version."
 msgstr "Sie nutzen die neueste Version."
 
 #: src/components/provider-authorization-result.tsx
-msgid "You're ready for the next step. Return to Thunderbolt to finish connecting your account."
-msgstr ""
+#~ msgid "You're ready for the next step. Return to Thunderbolt to finish connecting your account."
+#~ msgstr ""
 
 #: src/settings/models/model-detail.tsx
 msgid "You've customized this model."

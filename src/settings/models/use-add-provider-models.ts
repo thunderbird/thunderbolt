@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useDeferredValue, useReducer } from 'react'
+import { useDeferredValue, useEffect, useReducer, useRef } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
@@ -63,6 +63,8 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
   const getProxyFetch = useProxyFetchGetter()
   const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(providerModelPickerReducer, initialState)
+  const pending = useRef<AbortController | null>(null)
+  useEffect(() => () => pending.current?.abort(), [])
   const { data: allConnections = [], isLoading } = usePowerSyncQuery({
     queryKey: ['provider-connections'],
     query: toCompilableQuery(getProviderConnections(db)),
@@ -96,20 +98,47 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
       : []
     : models.filter((model) => state.selected.includes(model.id) && !existingIds.has(model.id))
   const mutation = useMutation({
-    mutationFn: async ({ id, models, updatedAt }: { id: string; models: AvailableModel[]; updatedAt: string }) => {
-      await addProviderModels(db, id, models, { expectedUpdatedAt: updatedAt })
-      useChatStore.getState().setModels(await getAvailableModels(db))
+    mutationFn: async ({
+      id,
+      models,
+      updatedAt,
+      controller,
+    }: {
+      id: string
+      models: AvailableModel[]
+      updatedAt: string
+      controller: AbortController
+    }) => {
+      await addProviderModels(db, id, models, { expectedUpdatedAt: updatedAt, signal: controller.signal })
+      const availableModels = await getAvailableModels(db)
+      controller.signal.throwIfAborted()
+      useChatStore.getState().setModels(availableModels)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
     },
-    onSuccess: () => {
+    onSuccess: (_result, { controller }) => {
+      if (controller.signal.aborted) {
+        return
+      }
       dispatch({ type: 'reset' })
       onClose()
     },
+    onSettled: (_result, _error, { controller }) => {
+      if (pending.current === controller) {
+        pending.current = null
+      }
+    },
   })
   const resetForm = () => {
+    pending.current?.abort()
+    pending.current = null
     dispatch({ type: 'reset' })
     mutation.reset()
   }
+  const canSubmit =
+    canLoad &&
+    selectedModels.length > 0 &&
+    !mutation.isPending &&
+    (state.manual || (!catalog.isFetching && !catalog.isError))
   return {
     ...state,
     connections,
@@ -119,13 +148,13 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     visibleModels,
     existingIds,
     selectedCount: selectedModels.length,
-    isLoadingCatalog: canLoad && catalog.isPending,
+    isLoadingCatalog: canLoad && catalog.isFetching,
     catalogError: catalog.isError ? t`Could not load this connection's models. Try again.` : null,
     submitError: mutation.isError ? t`Could not add the models. Try again.` : null,
     isPending: mutation.isPending,
-    canSubmit: canLoad && selectedModels.length > 0 && !mutation.isPending,
+    canSubmit,
     changeConnection: (id: string) => {
-      mutation.reset()
+      resetForm()
       dispatch({ type: 'connection', id })
     },
     toggleModel: (id: string) => dispatch({ type: 'toggle', id }),
@@ -134,8 +163,10 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     setManualId: (value: string) => dispatch({ type: 'manualId', value }),
     refresh: () => void catalog.refetch(),
     submit: () => {
-      if (canLoad && connection && selectedModels.length > 0) {
-        mutation.mutate({ id: connection.id, models: selectedModels, updatedAt: connection.updatedAt })
+      if (canSubmit && connection && !pending.current) {
+        const controller = new AbortController()
+        pending.current = controller
+        mutation.mutate({ id: connection.id, models: selectedModels, updatedAt: connection.updatedAt, controller })
       }
     },
     onCancel: () => {

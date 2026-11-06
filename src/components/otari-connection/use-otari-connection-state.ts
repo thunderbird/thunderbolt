@@ -236,6 +236,7 @@ export const useOtariConnectionState = (
     update({ error: '', operation: 'save' })
     try {
       const connection = {
+        providerConnectionId: state.connectionId,
         provider: 'otari' as const,
         model: state.selected,
         url: getOtariEndpoints(state.origin).inference,

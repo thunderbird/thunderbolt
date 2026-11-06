@@ -11,6 +11,10 @@ import { getTableConfig, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm
 import { exportFormat, exportSchemaVersion, exportedTableNames, includedTables, type IncludedTableName } from './export'
 import { providerConnectionsTable } from '@/db/tables'
 import { credentialBinding } from '@/providers/credentials'
+import { providerTypes } from '@/providers/types'
+import { getProviderDefinition } from '@/providers/registry'
+import { normalizeProviderConnectionUrl } from './provider-connections'
+import { z } from 'zod'
 
 type PkSpec = {
   /** Drizzle column reference, used in `WHERE` clauses. */
@@ -89,6 +93,44 @@ export class ImportFormatError extends Error {
 const isIncludedTableName = (name: string): name is IncludedTableName =>
   (exportedTableNames as readonly string[]).includes(name)
 
+const importedProviderConnection = z.object({
+  id: z.string().min(1),
+  provider: z.enum(providerTypes),
+  name: z.string().refine((name) => name.trim().length > 0),
+  authMethod: z.enum(['oauth', 'api_key']),
+  url: z.string().nullable(),
+  enabled: z.union([z.literal(0), z.literal(1)]),
+  updatedAt: z
+    .string()
+    .refine((value) => Number.isFinite(Date.parse(value)))
+    .nullable()
+    .optional(),
+})
+
+/** Imported connections must satisfy the same routing policy as newly authorized ones. */
+const validateProviderConnectionForImport = (row: Record<string, unknown>): void => {
+  const result = importedProviderConnection.safeParse(row)
+  if (!result.success) {
+    throw new ImportFormatError('Invalid provider connection metadata.')
+  }
+  const connection = result.data
+  if (
+    (connection.authMethod === 'oauth' &&
+      (!getProviderDefinition(connection.provider).oauth || connection.id !== `oauth:${connection.provider}`)) ||
+    (connection.authMethod === 'api_key' && connection.id.startsWith('oauth:'))
+  ) {
+    throw new ImportFormatError('Invalid provider connection metadata.')
+  }
+  try {
+    if (connection.url !== normalizeProviderConnectionUrl(connection.provider, connection.url)) {
+      throw new ImportFormatError('Invalid provider connection metadata.')
+    }
+  } catch {
+    // URL parser errors may contain user-entered credentials.
+    throw new ImportFormatError('Invalid provider connection metadata.')
+  }
+}
+
 /** Restore only explicitly entered API keys; OAuth grants always require sign-in on this device. */
 const providerSecretForImport = async (db: AnyDrizzleDatabase, row: Record<string, unknown>, id: string) => {
   const connection = await db.select().from(providerConnectionsTable).where(eq(providerConnectionsTable.id, id)).get()
@@ -100,10 +142,18 @@ const providerSecretForImport = async (db: AnyDrizzleDatabase, row: Record<strin
     authMethod: connection.authMethod,
     url: connection.url,
   })
-  if (row.binding !== binding || typeof row.credentials !== 'string') {
+  const serialized = row.credentials
+  if (row.binding !== binding || typeof serialized !== 'string') {
     throw new ImportFormatError('Provider credentials do not match their connection.')
   }
-  const credentials: unknown = JSON.parse(row.credentials)
+  const credentials: unknown = (() => {
+    try {
+      return JSON.parse(serialized)
+    } catch {
+      // JSON syntax errors can include the credential text in their message.
+      throw new ImportFormatError('Invalid provider API key backup.')
+    }
+  })()
   if (!isRecord(credentials) || typeof credentials.apiKey !== 'string') {
     throw new ImportFormatError('Invalid provider API key backup.')
   }
@@ -275,6 +325,9 @@ export const importUserData = async (
         const pkValue = row[pkField]
         if (typeof pkValue !== 'string') {
           throw new ImportFormatError(`Row in "${tableName}" is missing string primary key "${pkField}".`)
+        }
+        if (tableName === 'provider_connections') {
+          validateProviderConnectionForImport(row)
         }
         const sanitized =
           tableName === 'provider_connection_secrets'

@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-import { afterEach, expect, it, mock } from 'bun:test'
+import { afterEach, expect, it, mock, spyOn } from 'bun:test'
 import {
   startProviderBrowserConnection,
   captureProviderBrowserReturn,
@@ -21,12 +21,44 @@ const deps = () => ({
   exchangeOpenRouter: mock(async () => 'key'),
 })
 afterEach(() => {
+  mock.restore()
   sessionStorage.removeItem('thunderbolt.provider.browser-authorization')
   const current = getProviderBrowserReturn()
   if (current) {
     clearProviderBrowserReturn(current.id)
   }
 })
+it.each(['getItem', 'removeItem'] as const)(
+  'rejects storage %s failure without starting a code exchange',
+  async (method) => {
+    const dependencies = deps()
+    await startProviderBrowserConnection(
+      'tinfoil',
+      'connections',
+      { provider: 'tinfoil', revision: '1' },
+      new AbortController().signal,
+      dependencies,
+    )
+    const storage: Storage = {
+      length: sessionStorage.length,
+      getItem: (key) => sessionStorage.getItem(key),
+      setItem: (key, value) => sessionStorage.setItem(key, value),
+      removeItem: (key) => sessionStorage.removeItem(key),
+      clear: () => sessionStorage.clear(),
+      key: (index) => sessionStorage.key(index),
+    }
+    spyOn(storage, method).mockImplementation(() => {
+      throw new DOMException('Storage unavailable', 'SecurityError')
+    })
+    expect(
+      captureProviderBrowserReturn(new URL(`https://app.example/oauth/tinfoil?code=code&state=${state}`), {
+        ...dependencies,
+        storage: () => storage,
+      }),
+    ).toBeNull()
+    expect(dependencies.exchangeTinfoil).not.toHaveBeenCalled()
+  },
+)
 it.each(['tinfoil', 'openrouter'] as const)(
   'redirects %s in the same tab and consumes its exchange once',
   async (provider) => {

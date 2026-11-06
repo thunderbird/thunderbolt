@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { updateSettings } from '@/dal'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, mock, spyOn } from 'bun:test'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import {
   saveProviderConnection,
@@ -17,6 +17,9 @@ import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-rea
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import SearchSettingsPage from './index'
+import * as otariBrowser from '@/lib/otari-browser-auth'
+import * as platform from '@/lib/platform'
+import { getClock } from '@/testing-library'
 
 beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
@@ -27,6 +30,7 @@ beforeEach(async () => {
 })
 afterEach(() => {
   cleanup()
+  mock.restore()
   clearAuthToken()
   useSearchProviderStore.getState().clearSearchProvider()
 })
@@ -99,6 +103,27 @@ it('offers adding a connection when none exists', () => {
   expect(screen.getByLabelText('API key')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'OpenAI Models' })).toBeNull()
 })
+
+it.each(['New Search Connection', 'Open Existing search'])(
+  'cancels pending Otari authorization when navigating to %s',
+  async (destination) => {
+    await save('exa', 'Existing search')
+    spyOn(platform, 'isTauri').mockReturnValue(false)
+    const start = spyOn(otariBrowser, 'startOtariBrowserConnection').mockResolvedValue()
+    renderPage()
+    await waitForElement(() => screen.queryByRole('button', { name: 'Open Existing search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New Search Connection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Otari' }))
+    await act(async () => getClock().runAllAsync())
+    expect(start).toHaveBeenCalledTimes(1)
+    const signal = start.mock.calls[0][2]
+    expect(signal.aborted).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: destination }))
+    expect(signal.aborted).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Cancel connection' })).not.toBeInTheDocument()
+  },
+)
 it.each([true, false])('keeps Cloud visible while its integration is enabled: %s', async (enabled) => {
   useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: false })
   setAuthToken('session')

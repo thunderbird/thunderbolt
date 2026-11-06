@@ -425,7 +425,8 @@ export const resolvePiModel = async (
         receiptHttpClient,
       }
     }
-    const apiKey = model.oauthProvider === 'tinfoil' ? await tinfoilSession.getAccessToken() : model.apiKey
+    const usesLegacySession = !model.providerConnectionId && model.oauthProvider === 'tinfoil'
+    const apiKey = usesLegacySession ? await tinfoilSession.getAccessToken() : model.apiKey
     if (!apiKey) {
       throw new Error('No API key provided for Tinfoil provider')
     }
@@ -445,7 +446,7 @@ export const resolvePiModel = async (
       // Long-running agent turns can outlive an access token. Refresh before each
       // encrypted request, not just when building the harness at turn start.
       const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
-      if (model.oauthProvider === 'tinfoil') {
+      if (usesLegacySession) {
         headers.set('Authorization', `Bearer ${await tinfoilSession.getAccessToken()}`)
       }
       const request = { ...init, headers }

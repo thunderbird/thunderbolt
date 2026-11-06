@@ -112,22 +112,27 @@ export const captureProviderBrowserReturn = (
   }
   const flow = (() => {
     try {
-      return schema.safeParse(JSON.parse(deps.storage().getItem(key) ?? 'null'))
+      const storage = deps.storage()
+      const parsed = schema.safeParse(JSON.parse(storage.getItem(key) ?? 'null'))
+      if (
+        !parsed.success ||
+        parsed.data.state !== state ||
+        parsed.data.attempt.provider !== parsed.data.provider ||
+        parsed.data.redirectUri !== `${url.origin}${url.pathname}`
+      ) {
+        return null
+      }
+      storage.removeItem(key)
+      return parsed.data
     } catch {
       return null
     }
   })()
-  if (
-    !flow?.success ||
-    flow.data.state !== state ||
-    flow.data.attempt.provider !== flow.data.provider ||
-    flow.data.redirectUri !== `${url.origin}${url.pathname}`
-  ) {
+  if (!flow) {
     return null
   }
-  deps.storage().removeItem(key)
   const code = url.searchParams.get('code')
-  const age = deps.now() - flow.data.createdAt
+  const age = deps.now() - flow.createdAt
   const invalid =
     age < 0 ||
     age > 10 * 60_000 ||
@@ -137,11 +142,11 @@ export const captureProviderBrowserReturn = (
   const controller = new AbortController()
   let completion: Promise<Credentials> | undefined
   returned = {
-    callbackUrl: flow.data.redirectUri,
-    id: flow.data.state,
-    context: flow.data.context,
-    returnTo: flow.data.context === 'onboarding' ? '/chats/new' : '/settings/connections',
-    attempt: flow.data.attempt,
+    callbackUrl: flow.redirectUri,
+    id: flow.state,
+    context: flow.context,
+    returnTo: flow.context === 'onboarding' ? '/chats/new' : '/settings/connections',
+    attempt: flow.attempt,
     cancel: () => controller.abort(),
     complete: () =>
       (completion ??= (async () => {
@@ -149,12 +154,12 @@ export const captureProviderBrowserReturn = (
         if (invalid) {
           throw new Error('Invalid or expired provider authorization')
         }
-        return flow.data.provider === 'tinfoil'
+        return flow.provider === 'tinfoil'
           ? deps.exchangeTinfoil(
-              { code: code!, verifier: flow.data.verifier, redirectUri: flow.data.redirectUri },
+              { code: code!, verifier: flow.verifier, redirectUri: flow.redirectUri },
               controller.signal,
             )
-          : { access_token: await deps.exchangeOpenRouter(code!, flow.data.verifier, controller.signal) }
+          : { access_token: await deps.exchangeOpenRouter(code!, flow.verifier, controller.signal) }
       })()),
   }
   return returned
@@ -162,7 +167,11 @@ export const captureProviderBrowserReturn = (
 
 /** Explicit cancellation discards pending tab authorization; unmount preserves redirects. */
 export const cancelProviderBrowserConnection = () => {
-  sessionStorage.removeItem(key)
   returned?.cancel()
   returned = null
+  try {
+    sessionStorage.removeItem(key)
+  } catch {
+    // Cancellation must still stop in-memory work when browser storage becomes unavailable.
+  }
 }

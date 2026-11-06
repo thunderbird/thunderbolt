@@ -14,14 +14,15 @@ export const credentialBinding = (connection: { provider: string; authMethod: st
   JSON.stringify([connection.provider, connection.authMethod, connection.url])
 
 export const providerCredentialBound = sql`${secrets.binding} = json_array(${connections.provider}, ${connections.authMethod}, ${connections.url})`
-export const providerCredentialConnected = sql<boolean>`(${connections.deletedAt} IS NULL AND ${providerCredentialBound}
+export const providerCredentialConnected =
+  sql<boolean>`COALESCE((${connections.deletedAt} IS NULL AND ${providerCredentialBound}
   AND CASE WHEN json_valid(${secrets.credentials}) THEN
     COALESCE(json_extract(${secrets.credentials}, '$.reauth_required'), 0) = 0
     AND (${connections.provider} = 'custom' OR COALESCE(json_extract(${secrets.credentials}, '$.apiKey'), json_extract(${secrets.credentials}, '$.access_token'), '') != '')
     AND (${connections.provider} != 'tinfoil' OR ${connections.authMethod} != 'oauth'
       OR COALESCE(json_extract(${secrets.credentials}, '$.refresh_token'), '') != ''
       OR COALESCE(json_extract(${secrets.credentials}, '$.expires_at'), 0) > (unixepoch('now') * 1000 + 60000))
-  ELSE 0 END)`.mapWith(Boolean)
+  ELSE 0 END), 0)`.mapWith(Boolean)
 
 /** Persist a local credential without relying on UPSERT, unsupported by PowerSync views. */
 export const writeProviderCredentials = async (

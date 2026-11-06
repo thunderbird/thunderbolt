@@ -104,25 +104,7 @@ export const saveProviderConnectionInTransaction = async (
   if (input.id && input.id !== id) {
     throw new Error('Only one OAuth connection is supported per provider')
   }
-  const requestedUrl = definition.requiresUrl
-    ? input.url?.trim().replace(/\/+$/, '') || definition.defaultUrl || null
-    : null
-  const url = input.provider === 'otari' && requestedUrl ? normalizeOtariConnectionUrl(requestedUrl) : requestedUrl
-  if (definition.requiresUrl && !url) {
-    throw new Error('A server URL is required')
-  }
-  if (url) {
-    const parsed = new URL(url)
-    if (
-      !['http:', 'https:'].includes(parsed.protocol) ||
-      parsed.username ||
-      parsed.password ||
-      parsed.search ||
-      parsed.hash
-    ) {
-      throw new Error('Invalid provider URL')
-    }
-  }
+  const url = normalizeProviderConnectionUrl(input.provider, input.url)
   if (input.provider !== 'custom' && !(input.credentials.apiKey || input.credentials.access_token)) {
     throw new Error('Provider credentials are required')
   }
@@ -159,6 +141,31 @@ export const saveProviderConnectionInTransaction = async (
   )
   input.signal?.throwIfAborted()
   return id
+}
+
+/** Use one endpoint policy for saved connections and imported credential bindings. */
+export const normalizeProviderConnectionUrl = (provider: ProviderType, value?: string | null): string | null => {
+  const definition = getProviderDefinition(provider)
+  const requestedUrl = definition.requiresUrl
+    ? value?.trim().replace(/\/+$/, '') || definition.defaultUrl || null
+    : null
+  const url = provider === 'otari' && requestedUrl ? normalizeOtariConnectionUrl(requestedUrl) : requestedUrl
+  if (definition.requiresUrl && !url) {
+    throw new Error('A server URL is required')
+  }
+  if (url) {
+    const parsed = new URL(url)
+    if (
+      !['http:', 'https:'].includes(parsed.protocol) ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      throw new Error('Invalid provider URL')
+    }
+  }
+  return url
 }
 
 /** Accept dashboard origins or the canonical inference endpoint for Otari. */

@@ -86,10 +86,12 @@ export const startTinfoilMobileConnection = async (
 
 /** Explicit cancellation forgets pending PKCE; unmount alone must survive a mobile app restart. */
 export const cancelTinfoilMobileConnection = (): void => {
-  localStorage.removeItem(storageKey)
   mobileReturn?.cancel()
-  if (mobileReturn) {
-    clearTinfoilMobileReturn(mobileReturn.id)
+  mobileReturn = null
+  try {
+    localStorage.removeItem(storageKey)
+  } catch {
+    // Storage cleanup is best-effort; the in-memory exchange must always be cancelled.
   }
 }
 

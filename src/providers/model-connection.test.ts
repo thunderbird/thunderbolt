@@ -82,3 +82,33 @@ it('does not route a connection credential through another provider protocol', a
   const { model } = await setup()
   await expect(bindModelProvider({ ...model, provider: 'openai' })).rejects.toThrow('provider connection changed')
 })
+
+it.each(['anthropic', 'custom'] as const)('uses the correct authentication headers for %s', async (provider) => {
+  const id = await saveProviderConnection(getDb(), {
+    provider,
+    name: 'Test',
+    authMethod: 'api_key',
+    url: provider === 'custom' ? 'http://localhost:1234/v1' : null,
+    credentials: provider === 'custom' ? {} : { apiKey: 'current-key' },
+  })
+  const [modelId] = await addProviderModels(getDb(), id, [{ id: 'test' }])
+  const bound = await bindModelProvider((await getModel(getDb(), modelId))!)
+  const send = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers)
+    expect(headers.get('Accept')).toBe('application/json')
+    expect(headers.get('Authorization')).toBeNull()
+    expect(headers.get('x-api-key')).toBe(provider === 'anthropic' ? 'current-key' : null)
+    return new Response('{}')
+  })
+  const input = new Request(
+    provider === 'custom' ? 'http://localhost:1234/v1/chat/completions' : 'https://api.anthropic.com/v1/messages',
+    {
+      headers:
+        provider === 'custom'
+          ? { Accept: 'application/json', Authorization: 'Bearer placeholder' }
+          : { Accept: 'application/json', 'x-api-key': 'stale-key' },
+    },
+  )
+  await bound.wrapFetch(Object.assign(send, { preconnect: async () => false }))(input)
+  expect(send).toHaveBeenCalledTimes(1)
+})

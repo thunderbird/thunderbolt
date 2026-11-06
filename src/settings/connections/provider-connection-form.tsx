@@ -176,9 +176,10 @@ export const ProviderConnectionForm = ({
             size="sm"
             className="px-0 text-xs font-normal text-muted-foreground"
             disabled={state.busy}
-            onClick={() =>
+            onClick={() => {
+              authorization.cancel()
               state.dispatch({ field: 'authMethod', value: state.authMethod === 'oauth' ? 'api_key' : 'oauth' })
-            }
+            }}
           >
             {state.authMethod === 'oauth' ? <Trans>Use API Key instead</Trans> : <Trans>Use sign-in instead</Trans>}
           </Button>

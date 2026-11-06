@@ -63,8 +63,6 @@ export const connectOtari = async (
   const flow = createProviderAuthorization(
     {
       authorizationEndpoint: `${endpoints.api}/oauth/apps/authorize`,
-      callbackPath: '/oauth/otari',
-      fixedCallbackPath: true,
       buildUrl: (challenge, redirectUri, state) => getOtariAuthorizationUrl(origin, { challenge, redirectUri, state }),
     },
     dependencies,

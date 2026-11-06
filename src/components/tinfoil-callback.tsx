@@ -7,7 +7,7 @@ import { getTinfoilMobileReturn } from '@/lib/tinfoil-mobile-auth'
 import { isMobile, isTauri } from '@/lib/platform'
 import OpenRouterCallback from './openrouter-callback'
 
-/** Remount the original setup surface after an app link; browser popups retain their existing relay. */
+/** Remount the original setup surface after a native app link or same-tab browser return. */
 const TinfoilCallback = () => {
   const returned = isTauri() && isMobile() ? getTinfoilMobileReturn() : null
   return returned ? <Navigate to={returned.returnTo} replace /> : <OpenRouterCallback />

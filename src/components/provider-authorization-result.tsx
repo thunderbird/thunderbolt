@@ -3,19 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { ArrowUpRight, CircleMinus, Monitor } from 'lucide-react'
+import { CircleMinus, Monitor } from 'lucide-react'
 import { Link } from 'react-router'
 import { AppLogo } from '@/components/app-logo'
 import { AppWordmark } from '@/components/app-wordmark'
 import { Button } from '@/components/ui/button'
-import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 
-type Props = { status: 'authorized' | 'cancelled' | 'invalid'; sameTab?: boolean }
-
-/** Shared fallback for an external authorization that cannot return automatically. */
-export const ProviderAuthorizationResult = ({ status, sameTab = false }: Props) => {
-  const isAuthorized = status === 'authorized'
-  const isCancelled = status === 'cancelled'
+/** Recovery for an invalid authorization return; successful flows resume setup directly. */
+export const ProviderAuthorizationResult = () => {
   return (
     <div className="relative isolate flex min-h-svh w-full min-w-0 flex-col overflow-hidden bg-background">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
@@ -38,60 +33,28 @@ export const ProviderAuthorizationResult = ({ status, sameTab = false }: Props) 
                 <AppLogo size={56} alt="" />
               </div>
               <div className="absolute -bottom-2 -right-2 rounded-full bg-card p-1.5">
-                {isAuthorized ? (
-                  <GradientCircleCheck className="size-7" />
-                ) : (
-                  <CircleMinus className="size-7 text-muted-foreground" />
-                )}
+                <CircleMinus className="size-7 text-muted-foreground" />
               </div>
             </div>
             <div className="flex flex-col items-center gap-3 text-center">
               <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                {isAuthorized ? (
-                  <Trans>Ready to continue</Trans>
-                ) : isCancelled ? (
-                  <Trans>Connection cancelled</Trans>
-                ) : (
-                  <Trans>Try connecting again</Trans>
-                )}
+                <Trans>Try connecting again</Trans>
               </p>
               <h1 id="callback-heading" className="text-balance font-heading text-3xl tracking-tight">
-                {isAuthorized ? <Trans>Return to Thunderbolt</Trans> : <Trans>Connection not completed</Trans>}
+                <Trans>Connection not completed</Trans>
               </h1>
               <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
-                {isAuthorized ? (
-                  <Trans>
-                    You're ready for the next step. Return to Thunderbolt to finish connecting your account.
-                  </Trans>
-                ) : isCancelled ? (
-                  <Trans>
-                    You cancelled this connection. Return to Thunderbolt to try again whenever you're ready.
-                  </Trans>
-                ) : (
-                  <Trans>
-                    This connection link is no longer valid. Return to Thunderbolt and start a new connection.
-                  </Trans>
-                )}
+                <Trans>
+                  This connection link is no longer valid. Return to Thunderbolt and start a new connection.
+                </Trans>
               </p>
             </div>
             <div className="flex w-full flex-col gap-3">
-              {sameTab ? (
-                <Button asChild className="w-full">
-                  <Link to="/chats/new" replace>
-                    <Trans>Return to Thunderbolt</Trans>
-                  </Link>
-                </Button>
-              ) : (
-                <>
-                  <Button onClick={() => window.close()} className="w-full">
-                    <Trans>Close this window</Trans>
-                    <ArrowUpRight className="ml-2 size-4" aria-hidden="true" />
-                  </Button>
-                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                    <Trans>If this window stays open, you can safely close the tab.</Trans>
-                  </p>
-                </>
-              )}
+              <Button asChild className="w-full">
+                <Link to="/chats/new" replace>
+                  <Trans>Return to Thunderbolt</Trans>
+                </Link>
+              </Button>
             </div>
           </div>
           <div className="flex items-center justify-center gap-2 border-t border-border/60 bg-muted/30 px-6 py-4 text-xs text-muted-foreground">

@@ -6,7 +6,11 @@ import { useEffect, useReducer, useRef } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDatabase } from '@/contexts'
-import { getProviderConnection, saveProviderConnection } from '@/dal/provider-connections'
+import {
+  getProviderConnectionRevision,
+  resolveProviderConnection,
+  saveProviderConnection,
+} from '@/dal/provider-connections'
 import { getAvailableModels } from '@/dal/models'
 import { useChatStore } from '@/chats/chat-store'
 import { loadOtariSearchStatus } from '@/integrations/otari-search/capabilities'
@@ -47,9 +51,7 @@ export const useProviderConnectionForm = ({
     },
   )
   const mutation = useMutation({
-    mutationFn: async () => {
-      const controller = new AbortController()
-      pending.current = controller
+    mutationFn: async (controller: AbortController) => {
       const id = await saveProviderConnection(db, {
         id: connection?.id,
         provider,
@@ -67,21 +69,30 @@ export const useProviderConnectionForm = ({
       if (provider === 'tinfoil') {
         useSearchProviderStore.getState().configureProviderSearch(id, 'available', { select: false })
       }
-      if (provider === 'otari') {
-        const connection = await getProviderConnection(db, id)
+      if (provider === 'otari' && connection?.enabled !== 0) {
+        const revision = await getProviderConnectionRevision(db, id)
+        const resolved = await resolveProviderConnection(db, id)
         const status = await loadOtariSearchStatus(
-          connection!.url!,
-          state.apiKey.trim(),
+          resolved.connection.url!,
+          resolved.apiKey,
           AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
         )
+        const currentRevision = await getProviderConnectionRevision(db, id)
         controller.signal.throwIfAborted()
-        useSearchProviderStore.getState().configureProviderSearch(id, status, { select: false })
+        if (currentRevision === revision) {
+          useSearchProviderStore.getState().configureProviderSearch(id, status, { select: false })
+        }
       }
       useChatStore.getState().setModels(await getAvailableModels(db))
       await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
       await queryClient.invalidateQueries({ queryKey: ['models'] })
       controller.signal.throwIfAborted()
       onSaved(id)
+    },
+    onSettled: (_result, _error, controller) => {
+      if (pending.current === controller) {
+        pending.current = null
+      }
     },
   })
   const busy = mutation.isPending || authorization.isPending
@@ -90,14 +101,16 @@ export const useProviderConnectionForm = ({
     (!definition.requiresUrl || Boolean(state.url.trim())) &&
     (state.authMethod === 'oauth' || provider === 'custom' || Boolean(state.apiKey.trim()))
   const submit = () => {
-    if (!valid || busy) {
+    if (!valid || busy || pending.current) {
       return
     }
     if (state.authMethod === 'oauth' && (provider === 'otari' || provider === 'tinfoil' || provider === 'openrouter')) {
       void authorization.authorize({ provider, name: state.name.trim(), url: state.url, id: connection?.id })
       return
     }
-    mutation.mutate()
+    const controller = new AbortController()
+    pending.current = controller
+    mutation.mutate(controller)
   }
   return {
     ...state,

@@ -22,7 +22,7 @@ export const OtariCallback = () => {
     return <Loading />
   }
   if (!destination) {
-    return <ProviderAuthorizationResult status="invalid" sameTab />
+    return <ProviderAuthorizationResult />
   }
   return <Navigate to={destination} replace />
 }

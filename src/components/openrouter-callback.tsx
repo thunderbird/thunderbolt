@@ -23,7 +23,7 @@ const OpenRouterCallback = () => {
   if (destination) {
     return <Navigate to={destination} replace />
   }
-  return <ProviderAuthorizationResult status="invalid" sameTab />
+  return <ProviderAuthorizationResult />
 }
 
 export default OpenRouterCallback

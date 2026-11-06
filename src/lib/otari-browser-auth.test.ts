@@ -9,6 +9,7 @@ import { setupI18n } from '@lingui/core'
 import {
   captureOtariBrowserReturn,
   captureOtariMobileReturn,
+  cancelOtariBrowserConnection,
   clearOtariBrowserReturn,
   getOtariBrowserReturn,
   getOtariBrowserDraft,
@@ -64,10 +65,22 @@ const callback = (query = `code=one-use&state=${nonce}`) => new URL(`https://app
 afterEach(() => {
   clearOtariBrowserReturn(nonce)
   localStorage.removeItem(key)
+  sessionStorage.removeItem(key)
   mock.restore()
 })
 
 describe('Otari same-tab authorization', () => {
+  test('explicit cancellation removes pending browser state after navigation has returned', async () => {
+    const { deps, exchange } = setup()
+    const browser = { ...deps, storage: () => sessionStorage, mobile: () => false }
+    await startOtariBrowserConnection('https://otari.ai', 'connections', new AbortController().signal, attempt, browser)
+    expect(sessionStorage.getItem(key)).not.toBeNull()
+    cancelOtariBrowserConnection()
+    expect(sessionStorage.getItem(key)).toBeNull()
+    expect(captureOtariBrowserReturn(callback(), browser)).toBeNull()
+    expect(exchange).not.toHaveBeenCalled()
+  })
+
   test('returns to the Connections page and restores its owning context', async () => {
     const { deps } = setup()
     const page = { ...deps, currentUrl: () => new URL('https://app.test/settings/connections') }

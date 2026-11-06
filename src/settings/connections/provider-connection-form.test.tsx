@@ -5,6 +5,9 @@
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getDb } from '@/db/database'
+import { eq } from 'drizzle-orm'
+import { providerConnectionsTable } from '@/db/tables'
+import * as providerConnections from '@/dal/provider-connections'
 import { getAllModels } from '@/dal'
 import {
   getProviderConnection,
@@ -142,12 +145,15 @@ describe('provider connection form', () => {
       expect(screen.getByLabelText('Name')).toHaveValue('My account')
       expect(authorization.authorize).not.toHaveBeenCalled()
       expect(onSaved).not.toHaveBeenCalled()
+      expect(authorization.cancel).toHaveBeenCalledTimes(2)
     },
   )
 
   it.each(['none', 'cloud', 'connection'] as const)(
     'discovers API-key Otari search at the normalized endpoint without replacing the %s search choice',
     async (selection) => {
+      const saved = Promise.withResolvers<void>()
+      onSaved.mockImplementationOnce(() => saved.resolve())
       const otherConnectionId = await saveProviderConnection(getDb(), {
         provider: 'exa',
         name: 'Existing search',
@@ -172,7 +178,7 @@ describe('provider connection form', () => {
         target: { value: ' local-key ' },
       })
       fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
-      await settle()
+      await act(async () => saved.promise)
 
       const connection = (await getProviderConnections(getDb())).find((item) => item.provider === 'otari')!
       expect(connection.url).toBe('http://localhost:8099/api/v1')
@@ -225,6 +231,124 @@ describe('provider connection form', () => {
       connectionId: null,
       connectionStatus: null,
     })
+  })
+
+  it('never sends a saved key to a server URL changed by sync before discovery', async () => {
+    const save = providerConnections.saveProviderConnection
+    spyOn(providerConnections, 'saveProviderConnection').mockImplementation(async (...args) => {
+      const id = await save(...args)
+      await getDb()
+        .update(providerConnectionsTable)
+        .set({ url: 'https://unapproved.example/api/v1' })
+        .where(eq(providerConnectionsTable.id, id))
+      return id
+    })
+    const get = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+    renderWithReactivity(
+      <ProviderConnectionForm provider="otari" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'private-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+    await settle()
+    expect(get).not.toHaveBeenCalled()
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save the connection. Try again.')
+  })
+
+  it('does not overwrite newer search capabilities with an earlier account discovery', async () => {
+    const saved = Promise.withResolvers<void>()
+    onSaved.mockImplementationOnce(() => saved.resolve())
+    const started = Promise.withResolvers<void>()
+    const response = Promise.withResolvers<unknown>()
+    const request = stubJsonResponse(null)
+    request.json = <T,>() => response.promise as Promise<T>
+    spyOn(http, 'get').mockImplementation(() => {
+      started.resolve()
+      return request
+    })
+    renderWithReactivity(
+      <ProviderConnectionForm provider="otari" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'old-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+    await act(async () => started.promise)
+    const connection = (await getProviderConnections(getDb()))[0]
+    await saveProviderConnection(getDb(), {
+      id: connection.id,
+      provider: 'otari',
+      name: 'New account',
+      url: connection.url,
+      authMethod: 'api_key',
+      credentials: { apiKey: 'new-key' },
+    })
+    useSearchProviderStore.getState().configureProviderSearch(connection.id, 'not_configured', { select: false })
+    response.resolve({ data: [{ id: 'otari_web_search', direct_available: true }] })
+    await act(async () => saved.promise)
+    expect(useSearchProviderStore.getState().connectionStatus?.status).toBe('not_configured')
+    expect((await getProviderCredentials(getDb(), connection.id))?.apiKey).toBe('new-key')
+  })
+
+  it('updates a disabled Otari account without using its credentials for discovery', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'otari',
+      name: 'Disabled',
+      url: 'https://otari.example/api/v1',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'old' },
+      enabled: false,
+    })
+    const connection = (await getProviderConnection(getDb(), id))!
+    const get = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+    renderWithReactivity(
+      <ProviderConnectionForm
+        provider="otari"
+        connection={connection}
+        authorization={authorization}
+        onSaved={onSaved}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'new-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+    await settle()
+    expect(get).not.toHaveBeenCalled()
+    expect(onSaved).toHaveBeenCalledWith(id)
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ enabled: 0, connected: true })
+  })
+
+  it('does not persist an API-key submission when its form immediately unmounts', async () => {
+    const view = renderWithReactivity(
+      <ProviderConnectionForm provider="openai" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
+    )
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'cancelled-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+    view.unmount()
+    await settle()
+    expect(await getProviderConnections(getDb())).toEqual([])
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('deduplicates immediate submissions and allows retry after a failed write', async () => {
+    const save = spyOn(providerConnections, 'saveProviderConnection').mockRejectedValueOnce(new Error('Unavailable'))
+    renderWithReactivity(
+      <ProviderConnectionForm provider="openai" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
+    )
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'key' } })
+    const form = screen.getByRole('button', { name: 'Save connection' }).closest('form')!
+    act(() => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
+    await settle()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save the connection')
+    fireEvent.submit(form)
+    await settle()
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(await getProviderConnections(getDb())).toHaveLength(1)
+    expect(onSaved).toHaveBeenCalledTimes(1)
   })
 
   it('allows an unauthenticated compatible endpoint but requires a server URL', async () => {

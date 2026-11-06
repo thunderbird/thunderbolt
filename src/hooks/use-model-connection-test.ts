@@ -274,15 +274,18 @@ export const useModelConnectionTest = (current: ModelConnectionConfig, probe: Co
         }
         dispatch({ type: 'SUCCESS', tested, toolSupport })
         return sameConfig(tested, latestConfigRef.current) ? toolSupport : null
-      } catch (err) {
-        console.error('Connection test error:', err)
+      } catch {
         if (!isCurrent()) {
           return null
         }
+        // Provider errors can echo credentials or include the full authenticated request.
+        console.error('Model connection test failed.')
         dispatch({
           type: 'FAILURE',
           tested,
-          error: err instanceof Error ? err.message : t`Failed to connect to model`,
+          error: timeoutSignal.aborted
+            ? t`Connection test timed out. Please try again.`
+            : t`Could not connect to the model. Check your connection and credentials, then try again.`,
         })
         return null
       }

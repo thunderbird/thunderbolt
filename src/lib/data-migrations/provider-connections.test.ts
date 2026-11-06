@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 import { afterAll, beforeEach, expect, it } from 'bun:test'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import {
@@ -15,6 +15,7 @@ import {
 import {
   getProviderCredentials,
   getProviderConnections,
+  disconnectProviderConnection,
   saveProviderConnectionInTransaction,
 } from '@/dal/provider-connections'
 import { credentialBinding } from '@/providers/credentials'
@@ -183,12 +184,71 @@ it('does not replace a newer OAuth grant with a legacy session', async () => {
   await migrateProviderConnections(getDb())
   expect((await getProviderCredentials(getDb(), 'oauth:tinfoil'))?.access_token).toBe('new-token')
 })
-it('migrates a keyless custom connection once', async () => {
-  await getDb()
-    .insert(modelsTable)
-    .values({ id: 'local', provider: 'custom', name: 'Local', model: 'test', url: 'http://localhost:1234/v1' })
+it.each([false, true])(
+  'migrates a keyless custom connection once, including already-linked models (%s)',
+  async (linked) => {
+    const customUrl = 'http://localhost:1234/v1'
+    await getDb()
+      .insert(modelsTable)
+      .values({
+        id: 'local',
+        provider: 'custom',
+        name: 'Local',
+        model: 'test',
+        url: customUrl,
+        providerConnectionId: linked ? 'legacy-model:local' : null,
+      })
+    if (linked) {
+      await syncedConnection('local', { provider: 'custom', url: customUrl })
+    }
+    await migrateProviderConnections(getDb())
+    const beforeRetry = await getDb().get<{ changes: number }>(sql`SELECT total_changes() AS changes`)
+    await migrateProviderConnections(getDb())
+    expect(await getDb().get(sql`SELECT total_changes() AS changes`)).toEqual(beforeRetry)
+    expect(await getProviderConnections(getDb())).toHaveLength(1)
+    expect((await getProviderConnections(getDb()))[0].connected).toBe(true)
+  },
+)
+
+it('does not authorize a keyless custom server whose synced URL changed', async () => {
+  await getDb().insert(modelsTable).values({
+    id: 'local',
+    provider: 'custom',
+    name: 'Local',
+    model: 'test',
+    url: 'http://localhost:1234/v1',
+    providerConnectionId: 'legacy-model:local',
+  })
+  await syncedConnection('local', { provider: 'custom', url: 'https://different.example/v1' })
   await migrateProviderConnections(getDb())
+  expect(await getDb().select().from(providerConnectionSecretsTable)).toHaveLength(0)
+  expect((await getProviderConnections(getDb()))[0].connected).toBe(false)
+})
+
+it('does not authorize a new synced keyless connection without a legacy model URL', async () => {
+  await getDb().insert(modelsTable).values({
+    id: 'new',
+    provider: 'custom',
+    name: 'New',
+    model: 'test',
+    providerConnectionId: 'new-connection',
+  })
+  await syncedConnection('new', { id: 'new-connection', provider: 'custom', url: 'https://new.example/v1' })
   await migrateProviderConnections(getDb())
-  expect(await getProviderConnections(getDb())).toHaveLength(1)
-  expect((await getProviderConnections(getDb()))[0].connected).toBe(true)
+  expect(await getDb().select().from(providerConnectionSecretsTable)).toHaveLength(0)
+  expect((await getProviderConnections(getDb()))[0].connected).toBe(false)
+})
+
+it('does not reconnect a migrated keyless server after a local disconnect', async () => {
+  await getDb().insert(modelsTable).values({
+    id: 'local',
+    provider: 'custom',
+    name: 'Local',
+    model: 'test',
+    url: 'http://localhost:1234/v1',
+  })
+  await migrateProviderConnections(getDb())
+  await disconnectProviderConnection(getDb(), 'legacy-model:local')
+  await migrateProviderConnections(getDb())
+  expect((await getProviderConnections(getDb()))[0].connected).toBe(false)
 })

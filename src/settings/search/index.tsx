@@ -36,12 +36,16 @@ const SearchSettingsPage = () => {
     authorization.cancel()
     page.setPanel(null)
   }
+  const selectPanel = (panel: string) => {
+    authorization.cancel()
+    page.setPanel(panel)
+  }
   return (
     <div className="relative flex h-full">
       <div className="min-w-0 flex-1 overflow-hidden">
         <SettingsListPane className="gap-6 md:pb-12">
           <PageHeader title={t`Search`}>
-            <PageCreateAction label={t`New Search Connection`} onClick={() => page.setPanel('new')} />
+            <PageCreateAction label={t`New Search Connection`} onClick={() => selectPanel('new')} />
           </PageHeader>
           <SettingsListBody className={settingsListBodyRowsClass}>
             {page.connections.map((connection) => (
@@ -56,7 +60,7 @@ const SearchSettingsPage = () => {
                 subtitle={canSupplySearch(connection) ? undefined : t`Connect or enable this connection to use search`}
                 ariaLabel={t`Open ${connection.name}`}
                 isSelected={page.panel === connection.id}
-                onSelect={() => page.setPanel(connection.id)}
+                onSelect={() => selectPanel(connection.id)}
                 leading={
                   isSearchProvider(connection.provider) ? (
                     <SearchProviderIconTile provider={connection.provider} />
@@ -81,7 +85,7 @@ const SearchSettingsPage = () => {
                 title="Thunderbolt"
                 ariaLabel={t`Open Thunderbolt`}
                 isSelected={page.panel === 'cloud'}
-                onSelect={() => page.setPanel('cloud')}
+                onSelect={() => selectPanel('cloud')}
                 leading={<ModelProviderIconTile model={{ provider: 'thunderbolt', isSystem: 1 }} />}
                 trailing={
                   <Switch
@@ -99,7 +103,7 @@ const SearchSettingsPage = () => {
       <DetailPanelSurface open={page.panel !== null} onClose={close}>
         {page.panel === 'new' && (
           <DetailPanel title={t`New Search Connection`} onClose={close}>
-            <NewConnectionPicker capability="search" onProvider={(id) => page.setPanel(`add:${id}`)} />
+            <NewConnectionPicker capability="search" onProvider={(id) => selectPanel(`add:${id}`)} />
             <Link
               to="/settings/connections"
               className="self-start text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
@@ -143,7 +147,7 @@ const SearchSettingsPage = () => {
                 )}
               </p>
               <Button variant="outline" asChild>
-                <Link to="/settings/connections">
+                <Link to="/settings/connections" state={active ? { providerConnectionId: active.id } : undefined}>
                   <Trans>Manage connection</Trans>
                 </Link>
               </Button>

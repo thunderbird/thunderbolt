@@ -49,14 +49,15 @@ export const migrateSearchProviderConnections = async (db: AnyDrizzleDatabase): 
     }
   })()
   const apiKey = legacy.apiKey?.trim() ?? ''
-  const customId = legacy.provider && apiKey ? `legacy-search:${legacy.provider}` : null
+  const provider = legacy.provider
+  const customId = provider && apiKey ? `legacy-search:${provider}` : null
   const migrated =
-    customId && legacy.provider
+    customId && provider
       ? await db.transaction((tx) =>
           migrateLegacyProviderCredential(tx, {
             id: customId,
-            provider: legacy.provider!,
-            name: searchProviders[legacy.provider!].name,
+            provider,
+            name: searchProviders[provider].name,
             url: null,
             authMethod: 'api_key',
             credentials: { apiKey },
@@ -73,16 +74,14 @@ export const migrateSearchProviderConnections = async (db: AnyDrizzleDatabase): 
         `legacy-model:${legacy.otariConnection.modelId}`)
       : null
     const selection = legacy.selection
-    const id =
-      selection === 'custom'
-        ? customId
-        : selection === 'tinfoil'
-          ? (tinfoil?.id ?? 'oauth:tinfoil')
-          : selection === 'otari'
-            ? (otariId ?? 'oauth:otari')
-            : selection === 'auto'
-              ? (customId ?? tinfoil?.id ?? otariId)
-              : null
+    const id = {
+      custom: customId,
+      tinfoil: tinfoil?.id ?? 'oauth:tinfoil',
+      otari: otariId ?? 'oauth:otari',
+      auto: customId ?? tinfoil?.id ?? otariId,
+      cloud: null,
+      none: null,
+    }[selection]
     useSearchProviderStore.setState({
       selection:
         id || ['custom', 'tinfoil', 'otari'].includes(selection)

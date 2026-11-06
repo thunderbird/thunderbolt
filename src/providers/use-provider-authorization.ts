@@ -6,11 +6,20 @@ import { useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useDatabase } from '@/contexts'
-import { normalizeOtariConnectionUrl, saveProviderConnection } from '@/dal/provider-connections'
+import {
+  normalizeOtariConnectionUrl,
+  getProviderConnection,
+  resolveProviderConnection,
+  saveProviderConnection,
+} from '@/dal/provider-connections'
 import { getAvailableModels } from '@/dal/models'
 import { useChatStore } from '@/chats/chat-store'
 import { useQueryClient } from '@tanstack/react-query'
-import { getProviderConnectionAttempt, type ProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
+import {
+  assertProviderConnectionAttemptCurrent,
+  getProviderConnectionAttempt,
+  type ProviderConnectionAttempt,
+} from '@/lib/provider-connection-attempt'
 import {
   cancelProviderBrowserConnection,
   startProviderBrowserConnection,
@@ -22,6 +31,7 @@ import {
   startOpenRouterConnection,
   prepareOpenRouterManualConnection,
   exchangeOpenRouterCode,
+  createOAuthRequestSignal,
   type OpenRouterManualConnection,
 } from '@/lib/openrouter-auth'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
@@ -32,17 +42,32 @@ import {
   cancelTinfoilMobileConnection,
 } from '@/lib/tinfoil-mobile-auth'
 import { connectOtari, defaultOtariOrigin, getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
-import { getOtariBrowserReturn, clearOtariBrowserReturn, startOtariBrowserConnection } from '@/lib/otari-browser-auth'
+import {
+  getOtariBrowserReturn,
+  clearOtariBrowserReturn,
+  startOtariBrowserConnection,
+  cancelOtariBrowserConnection,
+} from '@/lib/otari-browser-auth'
 import { loadOtariSearchStatus } from '@/integrations/otari-search/capabilities'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import type { ProviderCredentials } from './types'
 import { getProviderDefinition } from './registry'
+import { getProviderConnectionRevision } from './revision'
 
 type AuthorizationInput = { provider: 'openrouter' | 'tinfoil' | 'otari'; name: string; url?: string; id?: string }
 type Manual = { request: OpenRouterManualConnection; input: AuthorizationInput; attempt: ProviderConnectionAttempt }
 type State = { isPending: boolean; error: string | null; manual: Manual | null; code: string }
 const draftKey = 'thunderbolt-provider-authorization-draft'
 const draftStorage = () => (isTauri() && isMobile() ? localStorage : sessionStorage)
+
+/** Draft cleanup must not prevent cancellation or hide an already saved connection. */
+const clearAuthorizationDraft = () => {
+  try {
+    draftStorage().removeItem(draftKey)
+  } catch {
+    // Persistence is required to start a redirect, but removal is best-effort.
+  }
+}
 
 /** Use the authorization origin, keeping the official API hostname out of the sign-in flow. */
 const otariOrigin = (url?: string): string => {
@@ -80,32 +105,48 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
   ) => {
     controller.signal.throwIfAborted()
     const url = input.provider === 'otari' ? getOtariEndpoints(otariOrigin(input.url)).inference : undefined
+    const existing = await getProviderConnection(db, `oauth:${input.provider}`)
     const id = await saveProviderConnection(db, {
       ...input,
       url,
       authMethod: 'oauth',
       credentials,
+      enabled: existing?.enabled !== 0,
       attempt,
       signal: controller.signal,
     })
     controller.signal.throwIfAborted()
+    const revision = await getProviderConnectionRevision(db, id)
+    controller.signal.throwIfAborted()
+    const assertCurrent = async () => {
+      const current = await getProviderConnectionRevision(db, id)
+      controller.signal.throwIfAborted()
+      if (current !== revision) {
+        throw new Error('Provider connection changed after authorization')
+      }
+    }
     if (input.provider === 'tinfoil') {
       useSearchProviderStore.getState().configureProviderSearch(id, 'available', { select: false })
     }
-    if (input.provider === 'otari') {
-      const status = await loadOtariSearchStatus(
-        url!,
-        credentials.access_token ?? credentials.apiKey!,
-        controller.signal,
-      )
+    if (input.provider === 'otari' && existing?.enabled !== 0) {
+      const resolved = await resolveProviderConnection(db, id)
+      if (resolved.connection.url !== url || resolved.apiKey !== (credentials.access_token ?? credentials.apiKey)) {
+        throw new Error('Provider connection changed after authorization')
+      }
       controller.signal.throwIfAborted()
+      const status = await loadOtariSearchStatus(
+        resolved.connection.url!,
+        resolved.apiKey,
+        createOAuthRequestSignal(controller.signal),
+      )
+      await assertCurrent()
       useSearchProviderStore.getState().configureProviderSearch(id, status, { select: false })
     }
-    draftStorage().removeItem(draftKey)
+    clearAuthorizationDraft()
     useChatStore.getState().setModels(await getAvailableModels(db))
     await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
     await queryClient.invalidateQueries({ queryKey: ['models'] })
-    controller.signal.throwIfAborted()
+    await assertCurrent()
     update({ isPending: false, manual: null, code: '', error: null })
     onConnected(id)
   }
@@ -130,6 +171,8 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
         name: draft?.provider === provider ? draft.name : getProviderDefinition(provider).name,
         ...('origin' in returned ? { url: returned.origin } : {}),
       }
+      await assertProviderConnectionAttemptCurrent(db, returned.attempt)
+      controller.signal.throwIfAborted()
       const result = await returned.complete()
       await complete(
         input,
@@ -225,8 +268,9 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
       pending.current?.abort()
       returned?.cancel()
       cancelProviderBrowserConnection()
+      cancelOtariBrowserConnection()
       cancelTinfoilMobileConnection()
-      draftStorage().removeItem(draftKey)
+      clearAuthorizationDraft()
       update({ isPending: false, error: null, manual: null, code: '' })
     },
     manual: state.manual ? { code: state.code, setCode: (code: string) => update({ code }), submit } : null,

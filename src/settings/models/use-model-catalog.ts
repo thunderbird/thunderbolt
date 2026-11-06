@@ -85,7 +85,7 @@ export const useModelCatalog = () => {
       try {
         dispatch({ type: 'CATALOG_LOADED', requestKey, models: await fetchModelsForProvider(request, getProxyFetch) })
       } catch (error) {
-        console.error('Failed to fetch models:', error)
+        console.error('Failed to fetch models.')
         dispatch({ type: 'CATALOG_FAILED', requestKey, error: describeModelFetchError(i18n, error) })
       }
     },

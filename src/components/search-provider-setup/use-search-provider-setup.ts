@@ -13,7 +13,7 @@ import {
 } from '@/dal/provider-connections'
 import { testSearchProvider } from '@/integrations/standalone-search/api'
 import { searchProviders, type SearchProvider } from '@/integrations/standalone-search/providers'
-import { useSearchProviderStore } from '@/stores/search-provider-store'
+import { useSearchProviderStore, type SearchSelection } from '@/stores/search-provider-store'
 
 type State = {
   provider: SearchProvider | null
@@ -21,6 +21,12 @@ type State = {
   connectionId: string | null
   status: 'idle' | 'testing' | 'success' | 'error'
   error: string
+}
+
+/** Capability refreshes do not supersede the user's selected search route. */
+const isCurrentSearchSelection = (expected: { selection: SearchSelection; connectionId: string | null }) => {
+  const current = useSearchProviderStore.getState()
+  return current.selection === expected.selection && current.connectionId === expected.connectionId
 }
 
 /** Verifies onboarding credentials, then saves a reusable connection and selects it for search. */
@@ -72,7 +78,7 @@ export const useSearchProviderSetup = (
       if (controller.signal.aborted) {
         return
       }
-      if (useSearchProviderStore.getState() !== configuration) {
+      if (!isCurrentSearchSelection(configuration)) {
         update({ status: 'idle' })
         return
       }
@@ -86,21 +92,25 @@ export const useSearchProviderSetup = (
           signal: controller.signal,
           credentials: { apiKey: state.apiKey.trim() },
         })
-        if (controller.signal.aborted || useSearchProviderStore.getState() !== configuration) {
+        if (controller.signal.aborted || !isCurrentSearchSelection(configuration)) {
           throw new DOMException('Search setup canceled', 'AbortError')
         }
         return id
       })
       stored.selectSearchConnection(connectionId)
+      const savedConfiguration = useSearchProviderStore.getState()
       update({ status: 'success', connectionId, apiKey: '' })
       await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
+      if (controller.signal.aborted || !isCurrentSearchSelection(savedConfiguration)) {
+        return
+      }
       onReadyChange?.(true)
       onSaved?.()
     } catch {
       if (controller.signal.aborted) {
         return
       }
-      if (useSearchProviderStore.getState() !== configuration) {
+      if (!isCurrentSearchSelection(configuration)) {
         update({ status: 'idle' })
         return
       }
@@ -109,14 +119,25 @@ export const useSearchProviderSetup = (
   }
   const disconnect = async () => {
     pending.current?.abort()
-    if (state.connectionId) {
-      await disconnectProviderConnection(db, state.connectionId)
+    const controller = new AbortController()
+    pending.current = controller
+    try {
+      if (state.connectionId) {
+        await disconnectProviderConnection(db, state.connectionId)
+      }
+      if (!controller.signal.aborted) {
+        const current = useSearchProviderStore.getState()
+        if (state.connectionId && current.connectionId === state.connectionId) {
+          current.selectSearchProvider('none')
+        }
+        change({ apiKey: '', connectionId: null })
+      }
+      await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
+    } catch {
+      if (!controller.signal.aborted) {
+        update({ status: 'error', error: t`Could not disconnect this search provider. Please try again.` })
+      }
     }
-    if (stored.connectionId === state.connectionId) {
-      stored.selectSearchProvider('none')
-    }
-    change({ apiKey: '', connectionId: null })
-    await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
   }
   return {
     ...state,

@@ -21,8 +21,10 @@ import {
   getProviderConnections,
   getProviderCredentials,
   saveProviderConnection,
+  updateProviderConnection,
 } from '@/dal/provider-connections'
 import { getAllModels } from '@/dal/models'
+import { getIntegrationCredentials } from '@/dal/integrations'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -33,9 +35,11 @@ import { useProviderAuthorization } from './use-provider-authorization'
 
 /** Exercise real credential persistence while replacing external authorization transports. */
 const setup = () => {
-  const onConnected = mock((_id: string) => {})
+  const connected = Promise.withResolvers<string>()
+  const onConnected = mock((id: string) => connected.resolve(id))
   return {
     onConnected,
+    connected: connected.promise,
     ...renderHook(() => useProviderAuthorization({ onConnected }), { wrapper: createTestProvider() }),
   }
 }
@@ -241,8 +245,10 @@ describe('provider authorization without a model', () => {
       }),
       cancel: () => {},
     })
-    const { onConnected } = setup()
-    await act(async () => {})
+    const { onConnected, connected } = setup()
+    await act(async () => {
+      await connected
+    })
     expect(onConnected).toHaveBeenCalledWith('oauth:tinfoil')
     expect((await getProviderCredentials(getDb(), 'oauth:tinfoil'))?.refresh_token).toBe('refresh')
     expect((await getProviderConnections(getDb()))[0].name).toBe('Personal')
@@ -317,7 +323,8 @@ describe('provider authorization without a model', () => {
       cancel: () => {},
     })
     const Provider = createTestProvider()
-    const onConnected = mock((_id: string) => {})
+    const connected = Promise.withResolvers<string>()
+    const onConnected = mock((id: string) => connected.resolve(id))
     renderHook(() => useProviderAuthorization({ onConnected }), {
       wrapper: ({ children }) => (
         <StrictMode>
@@ -325,7 +332,10 @@ describe('provider authorization without a model', () => {
         </StrictMode>
       ),
     })
-    await act(async () => grant.resolve('returned-token'))
+    await act(async () => {
+      grant.resolve('returned-token')
+      await connected.promise
+    })
     expect(onConnected).toHaveBeenCalledTimes(1)
     expect((await getProviderConnections(getDb()))[0]).toMatchObject({
       id: 'oauth:otari',
@@ -333,5 +343,151 @@ describe('provider authorization without a model', () => {
       name: 'Work',
     })
     expect(await getAllModels(getDb())).toEqual([])
+  })
+
+  it('rejects a superseded browser return before minting another credential', async () => {
+    const attempt = await getProviderConnectionAttempt(getDb(), 'otari')
+    await saveProviderConnection(getDb(), {
+      provider: 'otari',
+      name: 'Current account',
+      authMethod: 'oauth',
+      url: 'https://otari.example.com/api/v1',
+      credentials: { access_token: 'current-token' },
+    })
+    const complete = mock(async () => 'stale-token')
+    spyOn(otariBrowser, 'getOtariBrowserReturn').mockReturnValue({
+      id: 'old-return',
+      origin: 'https://otari.example.com',
+      context: 'connections',
+      returnTo: '/settings/connections',
+      attempt,
+      error: null,
+      complete,
+      cancel: () => {},
+    })
+    const { result, onConnected } = setup()
+    await act(async () => {})
+    expect(complete).not.toHaveBeenCalled()
+    expect(result.current.isPending).toBe(false)
+    expect(result.current.error).toBe('Could not connect this provider. Please try again.')
+    expect(onConnected).not.toHaveBeenCalled()
+    expect((await getProviderCredentials(getDb(), 'oauth:otari'))?.access_token).toBe('current-token')
+  })
+
+  it('bounds capability discovery after OAuth even when response parsing stalls', async () => {
+    spyOn(otari, 'connectOtari').mockResolvedValue('otari-token')
+    const deadline = new AbortController()
+    const timeout = spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+    const started = Promise.withResolvers<AbortSignal>()
+    spyOn(capabilities, 'loadOtariSearchStatus').mockImplementation(async (_url, _key, signal) => {
+      started.resolve(signal)
+      return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    })
+    const { result, onConnected } = setup()
+    const connecting = result.current.authorize({ provider: 'otari', name: 'Otari' })
+    const signal = await started.promise
+    expect(timeout).toHaveBeenCalledWith(30_000)
+    await act(async () => {
+      deadline.abort(new DOMException('Discovery timed out', 'TimeoutError'))
+      await connecting
+    })
+    expect(signal.aborted).toBe(true)
+    expect(result.current.isPending).toBe(false)
+    expect(result.current.error).toBe('Could not connect this provider. Please try again.')
+    expect(onConnected).not.toHaveBeenCalled()
+    expect((await getProviderCredentials(getDb(), 'oauth:otari'))?.access_token).toBe('otari-token')
+  })
+
+  it('preserves an explicitly disabled Otari connection when reconnecting and skips discovery', async () => {
+    await saveProviderConnection(getDb(), {
+      provider: 'otari',
+      name: 'Work',
+      authMethod: 'oauth',
+      credentials: { access_token: 'old-token' },
+      enabled: false,
+    })
+    spyOn(otari, 'connectOtari').mockResolvedValue('new-token')
+    const discovery = spyOn(capabilities, 'loadOtariSearchStatus')
+    const { result, onConnected } = setup()
+    await act(async () => result.current.authorize({ provider: 'otari', name: 'Work', id: 'oauth:otari' }))
+    expect((await getProviderConnections(getDb()))[0]).toMatchObject({ enabled: 0, connected: true })
+    expect((await getIntegrationCredentials(getDb(), 'otari'))?.credentials.access_token).toBe('new-token')
+    expect(discovery).not.toHaveBeenCalled()
+    expect(onConnected).toHaveBeenCalledWith('oauth:otari')
+  })
+
+  it.each(['replace', 'disable', 'disconnect'] as const)(
+    'ignores capability results for a connection changed during discovery: %s',
+    async (change) => {
+      spyOn(otari, 'connectOtari').mockResolvedValue('old-token')
+      const started = Promise.withResolvers<void>()
+      const status = Promise.withResolvers<'available'>()
+      spyOn(capabilities, 'loadOtariSearchStatus').mockImplementation(() => {
+        started.resolve()
+        return status.promise
+      })
+      const { result, onConnected } = setup()
+      const connecting = result.current.authorize({ provider: 'otari', name: 'Original' })
+      await started.promise
+      if (change === 'replace') {
+        await saveProviderConnection(getDb(), {
+          provider: 'otari',
+          name: 'New account',
+          authMethod: 'oauth',
+          credentials: { access_token: 'new-token' },
+        })
+      } else if (change === 'disable') {
+        await updateProviderConnection(getDb(), 'oauth:otari', { enabled: false })
+      } else {
+        await disconnectProviderConnection(getDb(), 'oauth:otari')
+      }
+      await act(async () => {
+        status.resolve('available')
+        await connecting
+      })
+      expect(onConnected).not.toHaveBeenCalled()
+      expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+      expect(result.current.isPending).toBe(false)
+      expect(result.current.error).toBe('Could not connect this provider. Please try again.')
+    },
+  )
+
+  it('always cancels in-memory authorization when storage cleanup is denied', async () => {
+    const grant = Promise.withResolvers<string>()
+    const start = spyOn(openrouter, 'startOpenRouterConnection').mockImplementation(() => grant.promise)
+    const { result, onConnected } = setup()
+    const connecting = result.current.authorize({ provider: 'openrouter', name: 'OpenRouter' })
+    await act(async () => {})
+    const targets = [globalThis, window]
+    const originals = targets.flatMap((target) =>
+      (['sessionStorage', 'localStorage'] as const).map((key) => ({
+        target,
+        key,
+        descriptor: Object.getOwnPropertyDescriptor(target, key)!,
+      })),
+    )
+    try {
+      for (const { target, key } of originals) {
+        Object.defineProperty(target, key, {
+          configurable: true,
+          get: () => {
+            throw new DOMException('Storage denied', 'SecurityError')
+          },
+        })
+      }
+      act(() => result.current.cancel())
+      expect(result.current.isPending).toBe(false)
+      expect(start.mock.calls[0][0]?.signal?.aborted).toBe(true)
+    } finally {
+      for (const { target, key, descriptor } of originals) {
+        Object.defineProperty(target, key, descriptor)
+      }
+    }
+    await act(async () => {
+      grant.resolve('late-token')
+      await connecting
+    })
+    expect(onConnected).not.toHaveBeenCalled()
+    expect(await getProviderConnections(getDb())).toEqual([])
   })
 })

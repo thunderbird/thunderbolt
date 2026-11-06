@@ -211,7 +211,11 @@ model's connection reference. The legacy model URL is retained for this handoff:
 it is the routing identity that this device approved for that key. Existing local
 credentials and disconnect tombstones win over retries. A synced provider, auth
 method, or URL mismatch is never granted the legacy key; the old key remains local
-for recovery. Model IDs, profiles, enabled flags, and chat history are retained.
+for recovery. If devices used different authentication methods for the same model,
+the migration preserves the local key or OAuth reference for an explicit reconnect
+without overwriting the synced connection. An API key cannot claim an `oauth:` ID,
+even when that model reference arrives before the connection metadata. Model IDs,
+profiles, enabled flags, and chat history are retained.
 
 Legacy standalone search keys move from `thunderbolt-search-provider` into stable
 `legacy-search:<provider>` connections before the old storage entry is removed.

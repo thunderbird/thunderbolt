@@ -4,6 +4,7 @@
 
 import { resolveOpenAiCompatConnection, type OpenAiCompatConnection } from '@/ai/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import { bindModelProvider } from '@/providers/model-connection'
 import type { Model } from '@/types'
 import type { ImageSupport } from '@shared/defaults/models'
 import { z } from 'zod'
@@ -66,7 +67,7 @@ const postChatCompletion = (
  * When the provider rejects the request, a text-only follow-up confirms the
  * image was the problem rather than the key, the model id, or the endpoint.
  *
- * @param model - the model to test, with its connection settings and api key
+ * @param inputModel - the model to test, with its connection settings and api key
  * @param getProxyFetch - lazily resolved universal proxy fetch
  * @param signal - the caller's deadline, shared by the probe and its follow-up
  * @returns whether the model read the image
@@ -76,14 +77,16 @@ const postChatCompletion = (
  *   Either way the caller must not cache anything.
  */
 export const probeImageSupport = async (
-  model: Model,
+  inputModel: Model,
   getProxyFetch: () => FetchFn,
   signal: AbortSignal,
 ): Promise<ImageSupport> => {
-  const connection = resolveOpenAiCompatConnection(model, getProxyFetch)
-  if (!connection) {
+  const { model, wrapFetch } = await bindModelProvider(inputModel)
+  const resolved = resolveOpenAiCompatConnection(model, getProxyFetch)
+  if (!resolved) {
     throw new ImageSupportInconclusiveError(`No OpenAI-compatible connection for provider "${model.provider}"`)
   }
+  const connection = { ...resolved, fetch: wrapFetch(resolved.fetch) }
 
   const response = await postChatCompletion(
     connection,

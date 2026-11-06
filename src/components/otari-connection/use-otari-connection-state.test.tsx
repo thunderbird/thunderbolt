@@ -6,17 +6,18 @@ import { StrictMode } from 'react'
 import { msg } from '@lingui/core/macro'
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { getAllModels, getAvailableModels } from '@/dal'
+import { getAllModels, getAvailableModels, getSettings } from '@/dal'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import * as modelProbe from '@/hooks/use-model-connection-test'
 import * as otariBrowser from '@/lib/otari-browser-auth'
 import * as providerModels from '@/providers/models'
-import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
+import { getProviderConnectionAttempt, type ProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import {
   disconnectProviderConnection,
   getProviderCredentials,
   saveProviderConnection,
+  updateProviderConnection,
 } from '@/dal/provider-connections'
 import { http } from '@/lib/http'
 import { i18n } from '@/i18n'
@@ -108,7 +109,10 @@ describe('Otari connection', () => {
     expect(result.current.busy).toBe(true)
     expect(result.current.origin).toBe('http://localhost:8099')
     expect(result.current.isCustomUrl).toBe(true)
-    await act(async () => exchange.resolve('delegated-key'))
+    await act(async () => {
+      exchange.resolve('delegated-key')
+      await getClock().runAllAsync()
+    })
     expect(result.current.selected).toBe('workspace/model')
     expect(result.current.key).toBe('delegated-key')
     expect(result.current.busy).toBe(false)
@@ -285,6 +289,31 @@ describe('Otari connection', () => {
     expect(result.current.selected).toBe('provider/model')
   })
 
+  it('records discovered search capability without overriding a newer search selection', async () => {
+    const catalog = Promise.withResolvers<AvailableModel[]>()
+    const started = Promise.withResolvers<void>()
+    const deps = {
+      connect: mock(async () => 'key'),
+      loadModels: mock(() => {
+        started.resolve()
+        return catalog.promise
+      }),
+    }
+    const { result } = renderHook(() => useOtariConnectionState(undefined, deps), { wrapper: createTestProvider() })
+    const connecting = result.current.connect()
+    await started.promise
+    useSearchProviderStore.getState().selectSearchProvider('none')
+    await act(async () => {
+      catalog.resolve([{ id: 'model' }])
+      await connecting
+    })
+    expect(useSearchProviderStore.getState()).toMatchObject({
+      selection: 'none',
+      connectionId: null,
+      connectionStatus: { connectionId: 'oauth:otari', status: 'available' },
+    })
+  })
+
   it('ignores an Otari authorization completed after cancellation', async () => {
     const deferred = Promise.withResolvers<string>()
     const deps = { connect: mock(() => deferred.promise), loadModels: mock(async () => [{ id: 'model' }]) }
@@ -297,6 +326,71 @@ describe('Otari connection', () => {
     expect(result.current.key).toBe('')
     expect(deps.loadModels).not.toHaveBeenCalled()
     expect(result.current.busy).toBe(false)
+  })
+
+  it('clears pending browser PKCE when setup is explicitly cancelled after navigation starts', async () => {
+    const nonce = 'n'.repeat(43)
+    const currentUrl = () => new URL('https://app.example/chats/new')
+    const browser = {
+      currentUrl,
+      mobile: () => false,
+      storage: () => sessionStorage,
+      navigate: () => {},
+      verifier: () => nonce,
+    }
+    const deps = {
+      connect: async (
+        origin: string,
+        signal: AbortSignal,
+        context: otariBrowser.OtariReturnContext,
+        attempt: ProviderConnectionAttempt,
+      ) => {
+        await otariBrowser.startOtariBrowserConnection(origin, context, signal, attempt, browser)
+        return null
+      },
+      loadModels: mock(async () => []),
+    }
+    const { result } = renderHook(() => useOtariConnectionState(undefined, deps, 'onboarding'), {
+      wrapper: createTestProvider(),
+    })
+    await act(async () => result.current.connect())
+    expect(sessionStorage.getItem('thunderbolt.otari.authorization')).not.toBeNull()
+    act(() => result.current.cancel())
+    expect(sessionStorage.getItem('thunderbolt.otari.authorization')).toBeNull()
+    expect(
+      otariBrowser.captureOtariBrowserReturn(
+        new URL(`https://app.example/oauth/otari?code=late&state=${nonce}`),
+        browser,
+      ),
+    ).toBeNull()
+  })
+
+  it('rejects a superseded browser return before exchanging its authorization code', async () => {
+    const attempt = await getProviderConnectionAttempt(getDb(), 'otari')
+    await saveProviderConnection(getDb(), {
+      provider: 'otari',
+      name: 'New account',
+      authMethod: 'oauth',
+      credentials: { access_token: 'current-key' },
+    })
+    const complete = mock(async () => 'stale-key')
+    spyOn(otariBrowser, 'getOtariBrowserReturn').mockReturnValue({
+      id: 'stale-return',
+      origin: 'https://otari.ai',
+      context: 'onboarding',
+      returnTo: '/chats/new',
+      attempt,
+      error: null,
+      complete,
+      cancel: () => {},
+    })
+    const { result } = renderHook(() => useOtariConnectionState(undefined, undefined, 'onboarding'), {
+      wrapper: createTestProvider(),
+    })
+    await act(async () => getClock().runAllAsync())
+    expect(complete).not.toHaveBeenCalled()
+    expect(result.current.error).toBe('Could not connect to Otari. Please try again.')
+    expect((await getProviderCredentials(getDb(), 'oauth:otari'))?.access_token).toBe('current-key')
   })
 
   it.each(['http://example.com', 'https://user:password@example.com', 'not a URL'])(
@@ -464,6 +558,33 @@ describe('Otari connection', () => {
     expect(result.current.busy).toBe(false)
     expect(onSaved).not.toHaveBeenCalled()
   })
+
+  it.each(['cancel', 'disable', 'disconnect'] as const)(
+    'does not select or report a model after %s immediately following its save',
+    async (change) => {
+      spyOn(modelProbe, 'createDefaultProbe').mockReturnValue(async () => 'supported')
+      const deps = { connect: mock(async () => 'key'), loadModels: mock(async () => [{ id: 'model' }]) }
+      const onSaved = mock(() => {})
+      const { result } = renderHook(() => useOtariConnectionState(onSaved, deps), { wrapper: createTestProvider() })
+      await act(async () => result.current.connect())
+      const addModels = providerModels.addProviderModels
+      spyOn(providerModels, 'addProviderModels').mockImplementationOnce(async (...args) => {
+        const ids = await addModels(...args)
+        if (change === 'cancel') {
+          result.current.cancel()
+        } else if (change === 'disable') {
+          await updateProviderConnection(getDb(), 'oauth:otari', { enabled: false })
+        } else {
+          await disconnectProviderConnection(getDb(), 'oauth:otari')
+        }
+        return ids
+      })
+      await act(async () => result.current.save())
+      expect(await getAllModels(getDb())).toHaveLength(1)
+      expect((await getSettings(getDb(), { selected_model: '' })).selectedModel).toBe('')
+      expect(onSaved).not.toHaveBeenCalled()
+    },
+  )
 
   it.each(['server', 'credentials'] as const)(
     'refuses a catalog refresh after the %s changes elsewhere',

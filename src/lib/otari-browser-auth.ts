@@ -192,8 +192,14 @@ export const captureOtariBrowserReturn = (
 ): OtariBrowserReturn | null => {
   const deps = { ...defaultDependencies, ...dependencies }
   const state = url.searchParams.get('state')
-  const redirectUri = deps.mobile() ? mobileOAuthRedirectUri : `${url.origin}/oauth/otari`
-  if (`${url.origin}${url.pathname}` !== redirectUri || url.searchParams.getAll('state').length !== 1) {
+  const redirectUri = deps.mobile() ? mobileOAuthRedirectUri : `${deps.currentUrl().origin}/oauth/otari`
+  if (
+    `${url.origin}${url.pathname}` !== redirectUri ||
+    url.hash ||
+    url.username ||
+    url.password ||
+    url.searchParams.getAll('state').length !== 1
+  ) {
     return null
   }
   // React StrictMode can mount the callback twice; neither storage nor the one-use code is consumed twice.

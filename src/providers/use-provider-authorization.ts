@@ -10,7 +10,7 @@ import {
   normalizeOtariConnectionUrl,
   getProviderConnection,
   resolveProviderConnection,
-  saveProviderConnection,
+  saveProviderConnectionWithRevision,
 } from '@/dal/provider-connections'
 import { getAvailableModels } from '@/dal/models'
 import { useChatStore } from '@/chats/chat-store'
@@ -106,7 +106,7 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
     controller.signal.throwIfAborted()
     const url = input.provider === 'otari' ? getOtariEndpoints(otariOrigin(input.url)).inference : undefined
     const existing = await getProviderConnection(db, `oauth:${input.provider}`)
-    const id = await saveProviderConnection(db, {
+    const { id, revision } = await saveProviderConnectionWithRevision(db, {
       ...input,
       url,
       authMethod: 'oauth',
@@ -116,8 +116,6 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
       signal: controller.signal,
     })
     controller.signal.throwIfAborted()
-    const revision = await getProviderConnectionRevision(db, id)
-    controller.signal.throwIfAborted()
     const assertCurrent = async () => {
       const current = await getProviderConnectionRevision(db, id)
       controller.signal.throwIfAborted()
@@ -125,6 +123,7 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
         throw new Error('Provider connection changed after authorization')
       }
     }
+    await assertCurrent()
     if (input.provider === 'tinfoil') {
       useSearchProviderStore.getState().configureProviderSearch(id, 'available', { select: false })
     }
@@ -253,6 +252,8 @@ export const useProviderAuthorization = ({ onConnected }: { onConnected: (id: st
     pending.current = controller
     update({ isPending: true, error: null })
     try {
+      await assertProviderConnectionAttemptCurrent(db, state.manual.attempt)
+      controller.signal.throwIfAborted()
       const key = await exchangeOpenRouterCode(state.code.trim(), state.manual.request.verifier, controller.signal)
       await complete(state.manual.input, { access_token: key }, state.manual.attempt, controller)
     } catch {

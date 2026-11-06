@@ -252,3 +252,40 @@ it('does not reconnect a migrated keyless server after a local disconnect', asyn
   await migrateProviderConnections(getDb())
   expect((await getProviderConnections(getDb()))[0].connected).toBe(false)
 })
+
+it('does not create an API-key connection at another device’s synced OAuth identity', async () => {
+  await getDb().insert(modelsTable).values({
+    id: 'different-device-auth',
+    provider: 'tinfoil',
+    name: 'Tinfoil',
+    model: 'test',
+    providerConnectionId: 'oauth:tinfoil',
+  })
+  await getDb().insert(modelsSecretsTable).values({ modelId: 'different-device-auth', apiKey: 'device-b-key' })
+  await migrateProviderConnections(getDb())
+  expect(await getProviderConnections(getDb())).toEqual([])
+  expect((await getDb().select().from(modelsSecretsTable).get())?.apiKey).toBe('device-b-key')
+  await getDb().transaction((tx) =>
+    saveProviderConnectionInTransaction(tx, {
+      provider: 'tinfoil',
+      name: 'Tinfoil',
+      authMethod: 'oauth',
+      credentials: { access_token: 'later-oauth', expires_at: Date.now() + 3_600_000 },
+    }),
+  )
+  expect((await getProviderConnections(getDb()))[0].authMethod).toBe('oauth')
+})
+
+it('retains a legacy OAuth reference when another device has linked the model to an API-key connection', async () => {
+  await getDb().insert(modelsTable).values({
+    id: 'different-device-auth',
+    provider: 'tinfoil',
+    name: 'Tinfoil',
+    model: 'test',
+    providerConnectionId: 'legacy-model:different-device-auth',
+  })
+  await getDb().insert(modelsSecretsTable).values({ modelId: 'different-device-auth', oauthProvider: 'tinfoil' })
+  await syncedConnection('different-device-auth', { provider: 'tinfoil', url: null })
+  await migrateProviderConnections(getDb())
+  expect((await getDb().select().from(modelsSecretsTable).get())?.oauthProvider).toBe('tinfoil')
+})

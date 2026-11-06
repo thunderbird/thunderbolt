@@ -31,9 +31,21 @@ export const ProviderConnectionDetail = ({
   onClose: () => void
 }) => {
   const [name, setName] = useState(connection.name)
-  const [editingCredentials, setEditingCredentials] = useState(false)
+  const [credentialEditor, setCredentialEditor] = useState({
+    connected: connection.connected,
+    open: !connection.connected,
+  })
+  if (credentialEditor.connected !== connection.connected) {
+    setCredentialEditor({
+      connected: connection.connected,
+      open: credentialEditor.open || !connection.connected,
+    })
+  }
   const definition = getProviderDefinition(connection.provider)
-  const showForm = !connection.connected || editingCredentials
+  // A reconnect publishes credentials before its discovery and refresh finish.
+  // Keep its form mounted until onSaved, even when the live row becomes connected.
+  const showForm = !connection.connected || credentialEditor.open
+  const setEditingCredentials = (open: boolean) => setCredentialEditor({ connected: connection.connected, open })
   return (
     <DetailPanel
       title={connection.name}
@@ -52,7 +64,7 @@ export const ProviderConnectionDetail = ({
             connection={connection}
             authorization={authorization}
             onSaved={() => setEditingCredentials(false)}
-            onCancel={() => (editingCredentials ? setEditingCredentials(false) : onClose())}
+            onCancel={() => (connection.connected ? setEditingCredentials(false) : onClose())}
           />
         </>
       ) : (

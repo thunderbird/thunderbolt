@@ -21,7 +21,7 @@ import { getClock } from '@/testing-library'
 import { http } from '@/lib/http'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { stubJsonResponse } from '@/test-utils/http'
-import { renderWithReactivity } from '@/test-utils/powersync-reactivity-test'
+import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { ProviderConnectionForm } from './provider-connection-form'
 
 const authorization = {
@@ -37,6 +37,11 @@ const settle = async () => {
   await act(async () => {
     await getClock().runAllAsync()
   })
+  await waitForElement(() =>
+    screen.queryByRole('button', { name: 'Save connection' })?.getAttribute('aria-busy') === 'true'
+      ? null
+      : document.body,
+  )
 }
 
 describe('provider connection form', () => {
@@ -234,14 +239,14 @@ describe('provider connection form', () => {
   })
 
   it('never sends a saved key to a server URL changed by sync before discovery', async () => {
-    const save = providerConnections.saveProviderConnection
-    spyOn(providerConnections, 'saveProviderConnection').mockImplementation(async (...args) => {
-      const id = await save(...args)
+    const save = providerConnections.saveProviderConnectionWithRevision
+    spyOn(providerConnections, 'saveProviderConnectionWithRevision').mockImplementation(async (...args) => {
+      const saved = await save(...args)
       await getDb()
         .update(providerConnectionsTable)
         .set({ url: 'https://unapproved.example/api/v1' })
-        .where(eq(providerConnectionsTable.id, id))
-      return id
+        .where(eq(providerConnectionsTable.id, saved.id))
+      return saved
     })
     const get = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
     renderWithReactivity(
@@ -257,8 +262,6 @@ describe('provider connection form', () => {
   })
 
   it('does not overwrite newer search capabilities with an earlier account discovery', async () => {
-    const saved = Promise.withResolvers<void>()
-    onSaved.mockImplementationOnce(() => saved.resolve())
     const started = Promise.withResolvers<void>()
     const response = Promise.withResolvers<unknown>()
     const request = stubJsonResponse(null)
@@ -285,10 +288,41 @@ describe('provider connection form', () => {
     })
     useSearchProviderStore.getState().configureProviderSearch(connection.id, 'not_configured', { select: false })
     response.resolve({ data: [{ id: 'otari_web_search', direct_available: true }] })
-    await act(async () => saved.promise)
+    await settle()
     expect(useSearchProviderStore.getState().connectionStatus?.status).toBe('not_configured')
     expect((await getProviderCredentials(getDb(), connection.id))?.apiKey).toBe('new-key')
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save the connection')
   })
+
+  it.each(['openai', 'tinfoil'] as const)(
+    'does not announce a saved %s connection that was disconnected before its save returned',
+    async (provider) => {
+      const save = providerConnections.saveProviderConnectionWithRevision
+      spyOn(providerConnections, 'saveProviderConnectionWithRevision').mockImplementation(async (...args) => {
+        const saved = await save(...args)
+        await disconnectProviderConnection(getDb(), saved.id)
+        return saved
+      })
+      renderWithReactivity(
+        <ProviderConnectionForm
+          provider={provider}
+          authorization={authorization}
+          onSaved={onSaved}
+          onCancel={onCancel}
+        />,
+      )
+      if (provider === 'tinfoil') {
+        fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
+      }
+      fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'key' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+      await settle()
+      expect(onSaved).not.toHaveBeenCalled()
+      expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not save the connection')
+    },
+  )
 
   it('updates a disabled Otari account without using its credentials for discovery', async () => {
     const id = await saveProviderConnection(getDb(), {
@@ -331,7 +365,9 @@ describe('provider connection form', () => {
   })
 
   it('deduplicates immediate submissions and allows retry after a failed write', async () => {
-    const save = spyOn(providerConnections, 'saveProviderConnection').mockRejectedValueOnce(new Error('Unavailable'))
+    const save = spyOn(providerConnections, 'saveProviderConnectionWithRevision').mockRejectedValueOnce(
+      new Error('Unavailable'),
+    )
     renderWithReactivity(
       <ProviderConnectionForm provider="openai" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
     )

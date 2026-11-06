@@ -5,6 +5,7 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createModel, getAllModels, getAvailableModels, getModel, getSettings, updateSettings } from '@/dal'
+import * as modelDal from '@/dal/models'
 import { getProviderCredentials, saveProviderConnection } from '@/dal/provider-connections'
 import { addProviderModels } from '@/providers/models'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -176,6 +177,42 @@ describe('useOnboardingProviderState', () => {
     expect(result.current.error).toBeNull()
     expect(await getAvailableModels(getDb())).toEqual([])
   })
+
+  it.each(['cancel', 'unmount', 'change search'] as const)(
+    'does not replace search after a committed Tinfoil save when the user chooses to %s',
+    async (action) => {
+      const readingSavedModel = Promise.withResolvers<void>()
+      const finishReading = Promise.withResolvers<void>()
+      const readModel = modelDal.getModel
+      spyOn(modelDal, 'getModel').mockImplementationOnce(async (...args) => {
+        const model = await readModel(...args)
+        readingSavedModel.resolve()
+        await finishReading.promise
+        return model
+      })
+      const { result, unmount } = renderHook(() => useOnboardingProviderState([], makeDependencies()), {
+        wrapper: createTestProvider(),
+      })
+      const completion = act(async () => {
+        await result.current.connectTinfoil()
+      })
+      await readingSavedModel.promise
+      if (action === 'cancel') {
+        result.current.showChoices()
+      } else if (action === 'unmount') {
+        unmount()
+      }
+      useSearchProviderStore.getState().selectSearchProvider('none')
+      finishReading.resolve()
+      await completion
+
+      expect(useSearchProviderStore.getState().selection).toBe('none')
+      expect(useSearchProviderStore.getState().connectionId).toBeNull()
+      if (action !== 'change search') {
+        expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+      }
+    },
+  )
 
   it('discards the previous attempt when a newer connection wins', async () => {
     const first = Promise.withResolvers<string>()

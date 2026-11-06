@@ -162,6 +162,7 @@ export const useOnboardingProviderState = (
     controller: AbortController,
     authorization?: ProviderAuthorization,
   ) => {
+    const searchSelection = useSearchProviderStore.getState()
     try {
       const currentAuthorization = authorization ?? { attempt: await getProviderConnectionAttempt(db, provider) }
       await runProviderSetupStage('save', () =>
@@ -179,8 +180,14 @@ export const useOnboardingProviderState = (
           }),
         )
         const model = await getModel(db, saved.id)
-        if (provider === 'tinfoil' && model?.providerConnectionId) {
-          useSearchProviderStore.getState().configureProviderSearch(model.providerConnectionId, 'available')
+        controller.signal.throwIfAborted()
+        if (provider === 'tinfoil' && model?.providerConnectionId && model.connectionReady) {
+          const currentSearch = useSearchProviderStore.getState()
+          currentSearch.configureProviderSearch(model.providerConnectionId, 'available', {
+            select:
+              currentSearch.selection === searchSelection.selection &&
+              currentSearch.connectionId === searchSelection.connectionId,
+          })
         }
       }
     } catch (error) {

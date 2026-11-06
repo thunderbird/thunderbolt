@@ -117,9 +117,10 @@ describe('useImageSupportCheck', () => {
     const { result } = renderCheck({ detect })
     await flush()
 
-    settle.reject?.(new Error('Probe failed with status 401'))
+    settle.reject?.(new Error('Invalid JSON response containing secret-provider-key'))
     await flush()
     expect(result.current.notice).toBeUndefined()
+    expect(warn.mock.calls.flat().map(String).join(' ')).not.toContain('secret-provider-key')
     warn.mockRestore()
   })
 

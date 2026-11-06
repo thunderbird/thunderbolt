@@ -73,7 +73,7 @@ afterEach(() => {
 
 test('scrubs credentials and returns to the owning screen once under StrictMode', async () => {
   await prepareConnection()
-  renderCallback(`?code=one-use-code&state=${nonce}#private-fragment`)
+  renderCallback(`?code=one-use-code&state=${nonce}`)
   expect(screen.getByRole('status')).toHaveTextContent('Model setup')
   expect(window.location.search).toBe('')
   expect(window.location.hash).toBe('')
@@ -83,6 +83,15 @@ test('scrubs credentials and returns to the owning screen once under StrictMode'
     attempt: { provider: 'otari', revision: 'before-authorization' },
     error: null,
   })
+})
+
+test('scrubs and rejects a callback containing an unexpected fragment', async () => {
+  await prepareConnection()
+  renderCallback(`?code=one-use-code&state=${nonce}#private-fragment`)
+  expect(screen.getByRole('heading')).toHaveTextContent('Connection not completed')
+  expect(window.location.search).toBe('')
+  expect(window.location.hash).toBe('')
+  expect(getOtariBrowserReturn('models')).toBeNull()
 })
 
 test('returns a provider denial to setup without exposing its details', async () => {

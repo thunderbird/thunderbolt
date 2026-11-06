@@ -9,7 +9,7 @@ import { useDatabase } from '@/contexts'
 import {
   getProviderConnectionRevision,
   resolveProviderConnection,
-  saveProviderConnection,
+  saveProviderConnectionWithRevision,
 } from '@/dal/provider-connections'
 import { getAvailableModels } from '@/dal/models'
 import { useChatStore } from '@/chats/chat-store'
@@ -52,7 +52,7 @@ export const useProviderConnectionForm = ({
   )
   const mutation = useMutation({
     mutationFn: async (controller: AbortController) => {
-      const id = await saveProviderConnection(db, {
+      const saved = await saveProviderConnectionWithRevision(db, {
         id: connection?.id,
         provider,
         name: state.name.trim(),
@@ -62,31 +62,35 @@ export const useProviderConnectionForm = ({
         enabled: connection ? connection.enabled === 1 : true,
         signal: controller.signal,
       })
-      return { id, controller }
+      return { ...saved, controller }
     },
-    onSuccess: async ({ id, controller }) => {
-      controller.signal.throwIfAborted()
+    onSuccess: async ({ id, revision, controller }) => {
+      const assertCurrent = async () => {
+        const current = await getProviderConnectionRevision(db, id)
+        controller.signal.throwIfAborted()
+        if (current !== revision) {
+          throw new Error('Provider connection changed after saving')
+        }
+      }
+      await assertCurrent()
       if (provider === 'tinfoil') {
         useSearchProviderStore.getState().configureProviderSearch(id, 'available', { select: false })
       }
       if (provider === 'otari' && connection?.enabled !== 0) {
-        const revision = await getProviderConnectionRevision(db, id)
         const resolved = await resolveProviderConnection(db, id)
+        controller.signal.throwIfAborted()
         const status = await loadOtariSearchStatus(
           resolved.connection.url!,
           resolved.apiKey,
           AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
         )
-        const currentRevision = await getProviderConnectionRevision(db, id)
-        controller.signal.throwIfAborted()
-        if (currentRevision === revision) {
-          useSearchProviderStore.getState().configureProviderSearch(id, status, { select: false })
-        }
+        await assertCurrent()
+        useSearchProviderStore.getState().configureProviderSearch(id, status, { select: false })
       }
       useChatStore.getState().setModels(await getAvailableModels(db))
       await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
       await queryClient.invalidateQueries({ queryKey: ['models'] })
-      controller.signal.throwIfAborted()
+      await assertCurrent()
       onSaved(id)
     },
     onSettled: (_result, _error, controller) => {

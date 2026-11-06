@@ -6,8 +6,13 @@ import { useEffect, useReducer, useRef, useState, useEffectEvent } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { i18n } from '@/i18n'
 import { useDatabase } from '@/contexts'
-import { getProviderConnectionAttempt, type ProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import {
+  assertProviderConnectionAttemptCurrent,
+  getProviderConnectionAttempt,
+  type ProviderConnectionAttempt,
+} from '@/lib/provider-connection-attempt'
+import {
+  cancelOtariBrowserConnection,
   clearOtariBrowserReturn,
   getOtariBrowserReturn,
   getOtariBrowserDraft,
@@ -114,6 +119,7 @@ export const useOtariConnectionState = (
     controller: AbortController,
   ) => {
     controller.signal.throwIfAborted()
+    const searchSelection = useSearchProviderStore.getState()
     const connectionId =
       state.connectionId ??
       (await saveProviderConnection(db, {
@@ -141,7 +147,12 @@ export const useOtariConnectionState = (
         throw new Error('The provider connection changed while loading models.')
       }
       controller.signal.throwIfAborted()
-      useSearchProviderStore.getState().configureProviderSearch(connectionId, searchStatus)
+      const currentSearch = useSearchProviderStore.getState()
+      currentSearch.configureProviderSearch(connectionId, searchStatus, {
+        select:
+          currentSearch.selection === searchSelection.selection &&
+          currentSearch.connectionId === searchSelection.connectionId,
+      })
       update({
         models,
         modelsLoaded: true,
@@ -161,6 +172,8 @@ export const useOtariConnectionState = (
       return
     }
     try {
+      await assertProviderConnectionAttemptCurrent(db, returned.attempt)
+      controller.signal.throwIfAborted()
       const key = await returned.complete()
       await loadModels(returned.origin, key, returned.attempt, controller)
     } catch {
@@ -248,25 +261,35 @@ export const useOtariConnectionState = (
         AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
       )
       controller.signal.throwIfAborted()
-      if (!state.connectionId || !state.connectionUpdatedAt) {
+      const { connectionId, connectionUpdatedAt } = state
+      if (!connectionId || !connectionUpdatedAt) {
         throw new Error('Provider connection is missing')
+      }
+      const assertCurrent = async () => {
+        controller.signal.throwIfAborted()
+        const current = await resolveProviderConnection(db, connectionId)
+        controller.signal.throwIfAborted()
+        if (current.connection.updatedAt !== connectionUpdatedAt || current.apiKey !== state.key) {
+          throw new Error('The provider connection changed while saving its model.')
+        }
       }
       const [id] = await addProviderModels(
         db,
-        state.connectionId,
+        connectionId,
         [
           {
             ...(state.models.find((model) => model.id === state.selected) ?? { id: state.selected }),
             supports_tools: tools === 'supported',
           },
         ],
-        { expectedUpdatedAt: state.connectionUpdatedAt, signal: controller.signal },
+        { expectedUpdatedAt: connectionUpdatedAt, signal: controller.signal },
       )
+      await assertCurrent()
       await updateSettings(db, { selected_model: id })
       useChatStore.getState().setModels(await getAvailableModels(db))
       await queryClient.invalidateQueries({ queryKey: ['models'] })
       await queryClient.invalidateQueries({ queryKey: ['settings'] })
-      controller.signal.throwIfAborted()
+      await assertCurrent()
       resetConnection()
       onSaved?.()
     } catch {
@@ -304,6 +327,7 @@ export const useOtariConnectionState = (
     save,
     cancel: () => {
       returned?.cancel()
+      cancelOtariBrowserConnection()
       pending.current?.abort()
       pending.current = null
       update({ operation: null })

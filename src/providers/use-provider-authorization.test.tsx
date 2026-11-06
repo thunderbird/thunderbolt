@@ -14,6 +14,7 @@ import * as otariBrowser from '@/lib/otari-browser-auth'
 import * as tinfoilMobile from '@/lib/tinfoil-mobile-auth'
 import * as tinfoilSession from '@/lib/tinfoil-session'
 import * as capabilities from '@/integrations/otari-search/capabilities'
+import * as providerConnections from '@/dal/provider-connections'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
 import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import {
@@ -100,6 +101,29 @@ describe('provider authorization without a model', () => {
     expect(await getAllModels(getDb())).toEqual([])
     expect(result.current.isPending).toBe(false)
   })
+
+  it.each(['openrouter', 'tinfoil'] as const)(
+    'rejects %s disabled immediately after the authorization save commits',
+    async (provider) => {
+      spyOn(openrouter, 'startOpenRouterConnection').mockResolvedValue('new-token')
+      spyOn(tinfoilAuth, 'startConnection').mockResolvedValue({
+        access_token: 'new-token',
+        expires_at: Date.now() + 900_000,
+      })
+      const save = providerConnections.saveProviderConnectionWithRevision
+      spyOn(providerConnections, 'saveProviderConnectionWithRevision').mockImplementationOnce(async (...args) => {
+        const receipt = await save(...args)
+        await updateProviderConnection(getDb(), receipt.id, { enabled: false })
+        return receipt
+      })
+      const { result, onConnected } = setup()
+      await act(async () => result.current.authorize({ provider, name: provider }))
+      expect(onConnected).not.toHaveBeenCalled()
+      expect(result.current.error).toBe('Could not connect this provider. Please try again.')
+      expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+      expect((await getProviderConnections(getDb()))[0].enabled).toBe(0)
+    },
+  )
 
   it('records Tinfoil search capability and retains refresh credentials without changing search selection', async () => {
     spyOn(tinfoilAuth, 'startConnection').mockResolvedValue({
@@ -211,12 +235,17 @@ describe('provider authorization without a model', () => {
     })
     spyOn(opener, 'openUrl').mockResolvedValue()
     const completion = Promise.withResolvers<string>()
-    const exchange = spyOn(openrouter, 'exchangeOpenRouterCode').mockImplementation(() => completion.promise)
+    const started = Promise.withResolvers<void>()
+    const exchange = spyOn(openrouter, 'exchangeOpenRouterCode').mockImplementation(() => {
+      started.resolve()
+      return completion.promise
+    })
     const { result, onConnected } = setup()
     await act(async () => result.current.authorize({ provider: 'openrouter', name: 'Manual' }))
     act(() => result.current.manual!.setCode('code'))
-    act(() => {
+    await act(async () => {
       void result.current.manual!.submit()
+      await started.promise
     })
     act(() => result.current.cancel())
     expect(exchange.mock.calls[0][2]?.aborted).toBe(true)
@@ -224,6 +253,29 @@ describe('provider authorization without a model', () => {
     expect(await getProviderConnections(getDb())).toEqual([])
     expect(onConnected).not.toHaveBeenCalled()
     expect(result.current.manual).toBeNull()
+  })
+
+  it('rejects a superseded manual authorization before exchanging its code', async () => {
+    spyOn(platform, 'isMobile').mockReturnValue(true)
+    spyOn(openrouter, 'prepareOpenRouterManualConnection').mockResolvedValue({
+      authorizationUrl: 'https://openrouter.ai/auth',
+      verifier: 'verifier',
+    })
+    spyOn(opener, 'openUrl').mockResolvedValue()
+    const exchange = spyOn(openrouter, 'exchangeOpenRouterCode').mockResolvedValue('stale-token')
+    const { result, onConnected } = setup()
+    await act(async () => result.current.authorize({ provider: 'openrouter', name: 'Manual' }))
+    await saveProviderConnection(getDb(), {
+      provider: 'openrouter',
+      name: 'New account',
+      authMethod: 'oauth',
+      credentials: { access_token: 'current-token' },
+    })
+    act(() => result.current.manual!.setCode('code'))
+    await act(async () => result.current.manual!.submit())
+    expect(exchange).not.toHaveBeenCalled()
+    expect(onConnected).not.toHaveBeenCalled()
+    expect(result.current.error).toBe('Could not connect this provider. Please try again.')
   })
 
   it('resumes native Tinfoil credentials and records search capability without a model', async () => {

@@ -224,3 +224,36 @@ it.each([
     expect((await getProviderConnections(getDb()))[0].connected).toBe(connected)
   },
 )
+
+it.each(['metadata-only', 'disconnected'] as const)(
+  'preserves the synced OAuth enabled state when renaming a %s connection',
+  async (state) => {
+    const id = await connect('Otari', 'oauth')
+    if (state === 'metadata-only') {
+      await getDb().delete(providerConnectionSecretsTable).where(eq(providerConnectionSecretsTable.id, id))
+    } else {
+      await disconnectProviderConnection(getDb(), id)
+    }
+    await updateProviderConnection(getDb(), id, { name: 'Renamed' })
+    expect(await getProviderConnections(getDb())).toMatchObject([{ name: 'Renamed', enabled: 1, connected: false }])
+    if (state === 'metadata-only') {
+      expect(await getDb().select().from(providerConnectionSecretsTable)).toEqual([])
+    }
+    await updateProviderConnection(getDb(), id, { enabled: false })
+    await updateProviderConnection(getDb(), id, { enabled: true })
+    expect(await getProviderConnections(getDb())).toMatchObject([{ enabled: 1, connected: false }])
+  },
+)
+
+it('reserves canonical OAuth identities for OAuth authorizations', async () => {
+  await expect(
+    saveProviderConnection(getDb(), {
+      id: 'oauth:tinfoil',
+      provider: 'tinfoil',
+      name: 'BYOK',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'key' },
+    }),
+  ).rejects.toThrow('reserved')
+  expect(await getProviderConnections(getDb())).toEqual([])
+})

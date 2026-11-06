@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, eq, getTableColumns, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, getTableColumns, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import {
   modelsTable,
@@ -15,7 +15,6 @@ import { credentialBinding, providerCredentialConnected, writeProviderCredential
 import { getProviderDefinition } from '@/providers/registry'
 import {
   assertProviderConnectionAttemptCurrent,
-  invalidateProviderConnectionAttempts,
   type ProviderConnectionAttempt,
 } from '@/lib/provider-connection-attempt'
 import { tinfoilSession, withTinfoilSessionLock } from '@/lib/tinfoil-session'
@@ -76,8 +75,21 @@ type SaveProviderConnection = {
 }
 
 /** Save metadata and device credentials atomically, independently of any model. */
-export const saveProviderConnection = (db: AnyDrizzleDatabase, input: SaveProviderConnection): Promise<string> => {
-  const save = () => db.transaction((tx) => saveProviderConnectionInTransaction(tx, input))
+export const saveProviderConnection = async (db: AnyDrizzleDatabase, input: SaveProviderConnection): Promise<string> =>
+  (await saveProviderConnectionWithRevision(db, input)).id
+
+/** Capture the saved generation before another window can replace or disconnect it. */
+export const saveProviderConnectionWithRevision = (
+  db: AnyDrizzleDatabase,
+  input: SaveProviderConnection,
+): Promise<{ id: string; revision: string }> => {
+  const save = () =>
+    db.transaction(async (tx) => {
+      const id = await saveProviderConnectionInTransaction(tx, input)
+      const revision = (await getProviderConnectionRevision(tx, id))!
+      input.signal?.throwIfAborted()
+      return { id, revision }
+    })
   return input.provider === 'tinfoil' && input.authMethod === 'oauth' ? withTinfoilSessionLock(save) : save()
 }
 
@@ -95,6 +107,9 @@ export const saveProviderConnectionInTransaction = async (
     throw new Error('Provider does not support OAuth')
   }
   const id = input.authMethod === 'oauth' ? `oauth:${input.provider}` : (input.id ?? crypto.randomUUID())
+  if (input.authMethod === 'api_key' && id.startsWith('oauth:')) {
+    throw new Error('OAuth connection identities are reserved for OAuth authorization')
+  }
   if (
     input.expectedRevision !== undefined &&
     (await getProviderConnectionRevision(db, id)) !== input.expectedRevision
@@ -205,9 +220,14 @@ export const updateProviderConnection = async (
           updatedAt: nextConnectionTimestamp(previous?.updatedAt),
         })
         .where(and(eq(connections.id, id), isNull(connections.deletedAt)))
-      const row = await getProviderConnection(tx, id)
-      if (row?.authMethod === 'oauth') {
-        await invalidateProviderConnectionAttempts(tx, row.provider as 'otari' | 'tinfoil' | 'openrouter')
+      if (previous?.authMethod === 'oauth') {
+        // Local authorization does not determine the synced enabled preference.
+        await tx
+          .update(secrets)
+          .set({
+            credentials: sql`json_set(COALESCE(${secrets.credentials}, '{}'), '$.sessionRevision', ${crypto.randomUUID()})`,
+          })
+          .where(eq(secrets.id, id))
       }
     })
   return id === 'oauth:tinfoil' ? withTinfoilSessionLock(update) : update()

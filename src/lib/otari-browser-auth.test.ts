@@ -140,6 +140,24 @@ describe('Otari same-tab authorization', () => {
     expect(captureOtariBrowserReturn(callback(), deps)).toBeNull()
   })
 
+  test.each([
+    'https://user@app.test/oauth/otari',
+    'https://user:password@app.test/oauth/otari',
+    'https://app.test/oauth/otari#unexpected',
+    'https://other-app.test/oauth/otari',
+  ])('rejects a callback outside the exact redirect even after capture: %s', async (address) => {
+    const { deps, storage, exchange } = setup()
+    await startOtariBrowserConnection('https://otari.ai', 'models', new AbortController().signal, attempt, deps)
+    const invalid = new URL(address)
+    invalid.search = `code=one-use&state=${nonce}`
+    expect(captureOtariBrowserReturn(invalid, deps)).toBeNull()
+    expect(storage.length).toBe(1)
+    const valid = captureOtariBrowserReturn(callback(), deps)!
+    expect(captureOtariBrowserReturn(invalid, deps)).toBeNull()
+    expect(captureOtariBrowserReturn(callback(), deps)).toBe(valid)
+    expect(exchange).not.toHaveBeenCalled()
+  })
+
   test.each(['code=code&state=wrong', `code=code&state=${nonce}&state=duplicate`])(
     'rejects an unbound callback: %s',
     async (query) => {

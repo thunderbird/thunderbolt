@@ -31,6 +31,10 @@ export const migrateLegacyProviderCredential = async (
   db: AnyDrizzleDatabase,
   input: LegacyConnection,
 ): Promise<boolean> => {
+  if (input.authMethod === 'api_key' && input.id.startsWith('oauth:')) {
+    // Another device may have used OAuth for the same model; wait for its metadata.
+    return false
+  }
   const existing = await db
     .select()
     .from(providerConnectionsTable)
@@ -115,6 +119,10 @@ export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promis
         continue
       }
       const connectionId = model.providerConnectionId ?? (oauth ? 'oauth:tinfoil' : `legacy-model:${model.id}`)
+      if (oauth && connectionId !== 'oauth:tinfoil') {
+        // A synced API-key reference must not consume this device's OAuth marker.
+        continue
+      }
       if (!oauth) {
         const definition = getProviderDefinition(model.provider)
         const url = normalizeProviderConnectionUrl(model.provider, model.url)

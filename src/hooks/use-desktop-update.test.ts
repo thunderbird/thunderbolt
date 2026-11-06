@@ -4,9 +4,8 @@
 
 import { act, renderHook } from '@testing-library/react'
 import * as platform from '@/lib/platform'
-import * as updaterPlugin from '@tauri-apps/plugin-updater'
 import { getClock } from '@/testing-library'
-import { describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import {
   createDesktopUpdateStore,
   useDesktopUpdate,
@@ -353,36 +352,92 @@ describe('desktop update operations', () => {
 })
 
 describe('shared automatic update check', () => {
+  const setup = () => {
+    const check = mock(async (): Promise<UpdateState['update']> => null)
+    const store = createDesktopUpdateStore({
+      isDesktop: () => platform.isDesktop(),
+      check,
+      disconnect: async () => {},
+      relaunch: async () => {},
+    })
+    return { store, check }
+  }
+
+  beforeEach(() => {
+    spyOn(platform, 'isDesktop').mockReturnValue(true)
+  })
+
+  afterEach(() => mock.restore())
+
   it('cancels an early unmount and only checks once across mounted surfaces', async () => {
-    const desktop = spyOn(platform, 'isDesktop').mockReturnValue(true)
-    const check = spyOn(updaterPlugin, 'check').mockResolvedValue(null)
-    try {
-      const early = renderHook(useDesktopUpdate)
-      early.unmount()
-      await act(async () => {
-        await getClock().tickAsync(5000)
-      })
-      expect(check).not.toHaveBeenCalled()
-      const first = renderHook(useDesktopUpdate)
-      const second = renderHook(useDesktopUpdate)
-      await act(async () => {
-        await getClock().tickAsync(5000)
-      })
-      expect(check).toHaveBeenCalledTimes(1)
-      expect(first.result.current.status).toBe('idle')
-      expect(second.result.current.status).toBe('idle')
-      first.unmount()
-      second.unmount()
-      const later = renderHook(useDesktopUpdate)
-      await act(async () => {
-        await getClock().tickAsync(5000)
-      })
-      expect(check).toHaveBeenCalledTimes(1)
-      later.unmount()
-    } finally {
-      desktop.mockRestore()
-      check.mockRestore()
-    }
+    const { store, check } = setup()
+    const early = renderHook(() => useDesktopUpdate(store))
+    early.unmount()
+    await act(async () => {
+      await getClock().tickAsync(5000)
+    })
+    expect(check).not.toHaveBeenCalled()
+    const first = renderHook(() => useDesktopUpdate(store))
+    const second = renderHook(() => useDesktopUpdate(store))
+    await act(async () => {
+      await getClock().tickAsync(5000)
+    })
+    expect(check).toHaveBeenCalledTimes(1)
+    expect(first.result.current.status).toBe('idle')
+    expect(second.result.current.status).toBe('idle')
+    first.unmount()
+    second.unmount()
+    const later = renderHook(() => useDesktopUpdate(store))
+    await act(async () => {
+      await getClock().tickAsync(5000)
+    })
+    expect(check).toHaveBeenCalledTimes(1)
+    later.unmount()
+  })
+
+  it('does not repeat a manual check when the automatic delay expires', async () => {
+    const { store, check } = setup()
+    const view = renderHook(() => useDesktopUpdate(store))
+    await act(() => view.result.current.checkForUpdates())
+    expect(check).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      await getClock().tickAsync(5000)
+    })
+    expect(check).toHaveBeenCalledTimes(1)
+    view.unmount()
+  })
+
+  it('keeps automatic check failures visible across remounts until an explicit retry', async () => {
+    const { store, check } = setup()
+    check.mockRejectedValueOnce(new Error('offline'))
+    const first = renderHook(() => useDesktopUpdate(store))
+    await act(async () => {
+      await getClock().tickAsync(5000)
+    })
+    expect(first.result.current).toMatchObject({ status: 'error', errorPhase: 'check', error: 'offline' })
+    first.unmount()
+    const later = renderHook(() => useDesktopUpdate(store))
+    await act(async () => {
+      await getClock().tickAsync(5000)
+    })
+    expect(check).toHaveBeenCalledTimes(1)
+    expect(later.result.current.status).toBe('error')
+    await act(() => later.result.current.primaryAction())
+    expect(check).toHaveBeenCalledTimes(2)
+    expect(later.result.current.status).toBe('idle')
+    later.unmount()
+  })
+
+  it('does not schedule automatic checks on web', async () => {
+    spyOn(platform, 'isDesktop').mockReturnValue(false)
+    const { store, check } = setup()
+    const view = renderHook(() => useDesktopUpdate(store))
+    await act(async () => {
+      await getClock().tickAsync(5000)
+    })
+    expect(check).not.toHaveBeenCalled()
+    expect(view.result.current.status).toBe('initial')
+    view.unmount()
   })
 })
 

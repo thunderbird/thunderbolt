@@ -180,7 +180,11 @@ describe('DevicesSettingsPage reactivity', () => {
       expect(within(dialog).getByRole('alert')).toHaveTextContent(
         "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again.",
       )
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      const cancel = within(dialog).getByRole('button', { name: 'Cancel' })
+      // The dialog error renders before React Query publishes the settled mutation.
+      await waitForElement(() => (cancel.hasAttribute('disabled') ? null : cancel))
+      expect(cancel).toBeEnabled()
+      fireEvent.click(cancel)
       await act(async () => {
         await getClock().runAllAsync()
       })

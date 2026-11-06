@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import * as passkeys from '@/lib/passkey'
+import * as returningUserOnboarding from '@/lib/returning-user-onboarding'
+import { buildFetchOptions, type AuthClient } from '@/contexts/auth-context'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { settingsTable } from '@/db/tables'
@@ -17,6 +19,9 @@ import { useWaitlistState } from './use-waitlist-state'
 import type { FormEvent } from 'react'
 import { createClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
+import { createAuthClient } from 'better-auth/react'
+import { emailOTPClient } from 'better-auth/client/plugins'
+import { clearAuthToken, getAuthToken } from '@/lib/auth-token'
 
 /**
  * GH #1299: a sign-in path that forgets to mark a returning account as
@@ -67,6 +72,7 @@ describe('useWaitlistState — returning-user onboarding', () => {
     // singleton shared across every suite in the worker. Drain it so a
     // randomized run cannot leak `pending: true` into `welcome-dialog.test.ts`.
     useWelcomeStore.setState({ pending: false })
+    clearAuthToken()
   })
 
   it('marks onboarding complete for an account that already existed', async () => {
@@ -134,6 +140,164 @@ describe('useWaitlistState — returning-user onboarding', () => {
       await pending
     })
     expect(signIn).not.toHaveBeenCalled()
+  })
+
+  it.each(['reset', 'unmount'] as const)(
+    'aborts pending OTP authentication on %s before it can publish credentials',
+    async (end) => {
+      const response = Promise.withResolvers<Response>()
+      const requests: RequestInit[] = []
+      const authClient = createAuthClient({
+        baseURL: 'https://api.example.test',
+        plugins: [emailOTPClient()],
+        fetchOptions: {
+          ...buildFetchOptions('web'),
+          customFetchImpl: Object.assign(
+            (input: string | URL | Request, options?: RequestInit) => {
+              if (String(input).endsWith('/get-session')) {
+                return Promise.resolve(Response.json(null))
+              }
+              requests.push(options ?? {})
+              return response.promise
+            },
+            { preconnect: () => {} },
+          ),
+        },
+      }) as unknown as AuthClient
+      const { result, unmount } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+      act(() => result.current.actions.setEmail('test@example.com'))
+      let pending: Promise<void>
+      await act(async () => {
+        pending = result.current.actions.handleOtpComplete('12345678')
+        await getClock().tickAsync(0)
+      })
+      expect(requests).toHaveLength(1)
+      expect(requests[0]?.signal?.aborted).toBe(false)
+
+      if (end === 'reset') {
+        act(() => result.current.actions.reset())
+      } else {
+        unmount()
+      }
+      expect(requests[0]?.signal?.aborted).toBe(true)
+
+      await act(async () => {
+        response.resolve(
+          Response.json(
+            { user: { id: 'cancelled-user', email: 'test@example.com', isNew: false } },
+            { headers: { 'set-auth-token': 'cancelled.signature' } },
+          ),
+        )
+        await pending
+      })
+      expect(getAuthToken()).toBeNull()
+      expect(authClient.$store.atoms.session.get().data).toBeNull()
+      expect(await readOnboarding()).toBe('false')
+      expect(useWelcomeStore.getState().pending).toBe(false)
+      if (end === 'reset') {
+        expect(result.current.state.status).toBe('idle')
+      }
+    },
+  )
+
+  it('keeps committed OTP housekeeping alive after reset and an auth-driven unmount', async () => {
+    const onboarding = Promise.withResolvers<void>()
+    const markOnboarded = spyOn(returningUserOnboarding, 'markOnboardedForReturningUser').mockImplementation(
+      () => onboarding.promise,
+    )
+    const signIn = mock(async (_options: Parameters<AuthClient['signIn']['emailOtp']>[0]) => ({
+      data: { user: { id: 'returning-user', isNew: false } },
+      error: null,
+    }))
+    const authClient = createMockAuthClient({ signInEmailOtp: signIn })
+    const { result, unmount } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+    let pending: Promise<void>
+    try {
+      await act(async () => {
+        pending = result.current.actions.handleOtpComplete('12345678')
+        await getClock().tickAsync(0)
+      })
+      expect(markOnboarded).toHaveBeenCalledTimes(1)
+      const signal = signIn.mock.calls[0]?.[0].fetchOptions?.signal
+      act(() => result.current.actions.reset())
+      expect(result.current.state.status).toBe('verifying')
+      expect(signal?.aborted).toBe(false)
+      unmount()
+      expect(signal?.aborted).toBe(false)
+      await act(async () => {
+        onboarding.resolve()
+        await pending
+      })
+      expect(useWelcomeStore.getState().pending).toBe(true)
+    } finally {
+      markOnboarded.mockRestore()
+    }
+  })
+
+  it.each(['reset', 'unmount'] as const)(
+    'cancels an unfinished passkey sign-in on %s without showing a welcome',
+    async (end) => {
+      const ceremony = Promise.withResolvers<{ userId: string }>()
+      const signIn = spyOn(passkeys, 'signInWithPasskey').mockImplementation(() => ceremony.promise)
+      try {
+        const authClient = createMockAuthClient()
+        const { result, unmount } = renderHook(() => useWaitlistState({ authClient }), {
+          wrapper: createTestProvider(),
+        })
+        let pending: Promise<void>
+        await act(async () => {
+          pending = result.current.actions.handlePasskeySignIn()
+          await getClock().tickAsync(0)
+        })
+        const signal = signIn.mock.calls[0]?.[1]?.signal
+        expect(signal?.aborted).toBe(false)
+        if (end === 'reset') {
+          act(() => result.current.actions.reset())
+        } else {
+          unmount()
+        }
+        expect(signal?.aborted).toBe(true)
+        await act(async () => {
+          ceremony.resolve({ userId: 'cancelled-user' })
+          await pending
+        })
+        expect(useWelcomeStore.getState().pending).toBe(false)
+        if (end === 'reset') {
+          expect(result.current.state.status).toBe('idle')
+        }
+      } finally {
+        signIn.mockRestore()
+      }
+    },
+  )
+
+  it('finishes a committed passkey sign-in after the auth redirect unmounts the page', async () => {
+    const completion = Promise.withResolvers<{ userId: string }>()
+    const signIn = spyOn(passkeys, 'signInWithPasskey').mockImplementation((_client, options) => {
+      options?.onAuthenticated?.()
+      return completion.promise
+    })
+    try {
+      const authClient = createMockAuthClient()
+      const { result, unmount } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+      let pending: Promise<void>
+      await act(async () => {
+        pending = result.current.actions.handlePasskeySignIn()
+        await getClock().tickAsync(0)
+      })
+      const signal = signIn.mock.calls[0]?.[1]?.signal
+      act(() => result.current.actions.reset())
+      expect(result.current.state.passkeyPending).toBe(true)
+      unmount()
+      expect(signal?.aborted).toBe(false)
+      await act(async () => {
+        completion.resolve({ userId: 'returning-user' })
+        await pending
+      })
+      expect(useWelcomeStore.getState().pending).toBe(true)
+    } finally {
+      signIn.mockRestore()
+    }
   })
 
   it('recovers from a passkey analytics failure before opening the browser prompt', async () => {

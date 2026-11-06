@@ -4100,6 +4100,10 @@ msgstr ""
 msgid "Signed Out"
 msgstr ""
 
+#: src/components/sign-in/sign-in-form.tsx
+msgid "Signing in…"
+msgstr ""
+
 #: src/components/revoked-device-modal.tsx
 #~ msgid "Signing out…"
 #~ msgstr ""

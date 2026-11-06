@@ -15,7 +15,7 @@ import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { isPasskeyCancellation, signInWithPasskey } from '@/lib/passkey'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
-import { useAsyncAttempt } from '@/hooks/use-async-attempt'
+import { useAuthAttempt } from '@/hooks/use-auth-attempt'
 
 const joinFailed = msg`Something went wrong. Please try again.`
 const verifyFailed = msg`Verification failed. Please try again.`
@@ -97,7 +97,7 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const analytics = useAnonymousPromotionAnalytics()
   const [state, dispatch] = useReducer(reducer, initialState)
-  const operation = useAsyncAttempt()
+  const operation = useAuthAttempt()
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
 
@@ -117,15 +117,15 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
 
     try {
       const { challengeToken } = await httpClient
-        .post('waitlist/join', { json: { email: trimmedEmail } })
+        .post('waitlist/join', { json: { email: trimmedEmail }, signal: attempt.signal })
         .json<{ success: boolean; challengeToken?: string }>()
 
       if (attempt.isCurrent()) {
         dispatch({ type: 'JOIN_SUCCESS', payload: challengeToken ?? '' })
       }
     } catch (error) {
-      console.error('Waitlist join error:', error)
       if (attempt.isCurrent()) {
+        console.error('Waitlist join error:', error)
         dispatch({ type: 'JOIN_ERROR', payload: i18n._(joinFailed) })
       }
     } finally {
@@ -153,7 +153,13 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
         email: state.email.trim(),
         otp: value,
         challengeToken: state.challengeToken,
+        signal: attempt.signal,
+        onAuthenticated: attempt.commit,
       })
+
+      if (!attempt.isCurrent() && !attempt.isCommitted()) {
+        return
+      }
 
       if (result.error) {
         if (attempt.isCurrent()) {
@@ -169,8 +175,8 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
         useWelcomeStore.getState().trigger()
       }
     } catch (error) {
-      console.error('OTP verification error:', error)
       if (attempt.isCurrent()) {
+        console.error('OTP verification error:', error)
         dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
       }
     } finally {
@@ -190,7 +196,14 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
       if (!attempt.isCurrent()) {
         return
       }
-      const { userId } = await signInWithPasskey(authClient)
+      const { userId } = await signInWithPasskey(authClient, {
+        signal: attempt.signal,
+        onAuthenticated: attempt.commit,
+      })
+
+      if (!attempt.isCurrent() && !attempt.isCommitted()) {
+        return
+      }
 
       analytics.onPromotionSuccess(userId)
 
@@ -202,8 +215,8 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
         }
         return
       }
-      console.error('Passkey sign-in error:', error)
       if (attempt.isCurrent()) {
+        console.error('Passkey sign-in error:', error)
         dispatch({ type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
       }
     } finally {
@@ -214,7 +227,9 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
   const setEmail = (email: string) => dispatch({ type: 'SET_EMAIL', payload: email })
   const setOtp = (otp: string) => dispatch({ type: 'SET_OTP', payload: otp })
   const reset = () => {
-    operation.cancel()
+    if (!operation.cancel()) {
+      return
+    }
     dispatch({ type: 'RESET' })
   }
 

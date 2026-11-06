@@ -4112,6 +4112,10 @@ msgstr ""
 msgid "Signed Out"
 msgstr "Sesión cerrada"
 
+#: src/components/sign-in/sign-in-form.tsx
+msgid "Signing in…"
+msgstr ""
+
 #: src/components/revoked-device-modal.tsx
 #~ msgid "Signing out…"
 #~ msgstr "Cerrando sesión…"

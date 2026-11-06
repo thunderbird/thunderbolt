@@ -12,6 +12,8 @@ import { SignInEmailStep } from './sign-in-email-step'
 import { SignInOtpStep } from './sign-in-otp-step'
 import { SignInSuccessStep } from './sign-in-success-step'
 import { useSignInFormState } from './use-sign-in-form-state'
+import { Trans } from '@lingui/react/macro'
+import { Loader2 } from 'lucide-react'
 
 type SignInFormProps = {
   /**
@@ -53,10 +55,7 @@ type SignInFormProps = {
  * Reusable sign-in form component.
  * Can be used inside a modal or as a standalone page.
  *
- * Handles three states:
- * - idle/sending/error: Email input
- * - sent/verifying: OTP verification
- * - success: Welcome message
+ * After authentication is accepted, session setup finishes before the welcome step.
  */
 export const SignInForm = ({
   variant,
@@ -85,8 +84,9 @@ export const SignInForm = ({
   })
 
   const handleGoBack = useCallback(() => {
-    actions.goBack()
-    onGoBack?.()
+    if (actions.goBack()) {
+      onGoBack?.()
+    }
   }, [actions, onGoBack])
 
   // Expose goBack to parent via ref (for page variant where back button is external).
@@ -99,8 +99,17 @@ export const SignInForm = ({
     return <SignInSuccessStep displayName={displayName} onContinue={() => onSuccess?.()} variant={variant} />
   }
 
+  if (state.status === 'completing') {
+    return (
+      <div role="status" className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <Trans>Signing in…</Trans>
+      </div>
+    )
+  }
+
   // OTP entry state
-  if (state.status === 'sent' || state.status === 'verifying') {
+  if (state.status === 'sent' || state.status === 'resending' || state.status === 'verifying') {
     return (
       <div className="relative h-full w-full">
         {/* Optional back button slot - parent can render here if needed */}

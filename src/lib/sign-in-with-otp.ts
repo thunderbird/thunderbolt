@@ -12,10 +12,12 @@ type SignInWithOtpArgs = {
   otp: string
   /**
    * Omit (or pass `undefined`) to send no challenge-token header at all. An
-   * empty string still sends the header, which is what the sign-in modal does
-   * when it was opened straight into the OTP step without a token.
+   * empty string still sends the header.
    */
   challengeToken?: string
+  signal?: AbortSignal
+  /** The credentials were accepted; cancellation can no longer undo this sign-in. */
+  onAuthenticated?: () => void
 }
 
 /**
@@ -36,18 +38,27 @@ type SignInWithOtpArgs = {
  */
 export const signInWithOtp = async (
   authClient: AuthClient,
-  { email, otp, challengeToken }: SignInWithOtpArgs,
+  { email, otp, challengeToken, signal, onAuthenticated }: SignInWithOtpArgs,
 ): Promise<Awaited<ReturnType<AuthClient['signIn']['emailOtp']>>> => {
+  signal?.throwIfAborted()
   const result = await authClient.signIn.emailOtp({
     email,
     otp,
-    fetchOptions:
-      challengeToken === undefined
-        ? undefined
-        : { headers: authRequestHeaders({ [challengeTokenHeader]: challengeToken }) },
+    fetchOptions: {
+      signal,
+      ...(challengeToken === undefined
+        ? {}
+        : { headers: authRequestHeaders({ [challengeTokenHeader]: challengeToken }) }),
+      // Better Auth invokes the per-call callback before notifying session
+      // listeners; its client-wide hook separately guards token persistence.
+      onSuccess: () => signal?.throwIfAborted(),
+    },
   })
 
   if (!result.error) {
+    onAuthenticated?.()
+    // Success has already committed through the auth hooks. Finish housekeeping
+    // even when that successful sign-in removes this form from the page.
     await markOnboardedForReturningUser(result.data?.user)
   }
 

@@ -4100,6 +4100,10 @@ msgstr "Sign-in was cancelled, or your identity provider did not grant access."
 msgid "Signed Out"
 msgstr "Signed Out"
 
+#: src/components/sign-in/sign-in-form.tsx
+msgid "Signing in…"
+msgstr "Signing in…"
+
 #: src/components/revoked-device-modal.tsx
 #~ msgid "Signing out…"
 #~ msgstr "Signing out…"

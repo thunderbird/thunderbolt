@@ -12,7 +12,7 @@ import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { isPasskeyCancellation, signInWithPasskey } from '@/lib/passkey'
 import { isValidEmailFormat } from '@/lib/utils'
-import { useAsyncAttempt } from '@/hooks/use-async-attempt'
+import { useAuthAttempt } from '@/hooks/use-auth-attempt'
 import { useReducer, type FormEvent } from 'react'
 
 const sendFailed = msg`Failed to send verification code. Please check your connection.`
@@ -36,7 +36,16 @@ const getServerErrorMessage = async (error: unknown, fallback: string): Promise<
   return fallback
 }
 
-type FormStatus = 'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error' | 'passkey'
+type FormStatus =
+  | 'idle'
+  | 'sending'
+  | 'sent'
+  | 'resending'
+  | 'verifying'
+  | 'completing'
+  | 'success'
+  | 'error'
+  | 'passkey'
 
 type State = {
   email: string
@@ -49,15 +58,15 @@ type State = {
 type Action =
   | { type: 'SET_EMAIL'; payload: string }
   | { type: 'SET_OTP'; payload: string }
-  | { type: 'START_SENDING' }
+  | { type: 'START_SENDING'; resend: boolean }
   | { type: 'SEND_SUCCESS'; payload: string }
-  | { type: 'SEND_ERROR'; payload: string }
+  | { type: 'SEND_ERROR'; payload: string; resend: boolean }
   | { type: 'START_VERIFYING' }
+  | { type: 'AUTHENTICATED' }
   | { type: 'VERIFY_SUCCESS' }
   | { type: 'VERIFY_ERROR'; payload: string }
   | { type: 'RESET' }
   | { type: 'GO_BACK' }
-  | { type: 'SET_ERROR'; payload: string }
   | { type: 'PASSKEY_START' }
   | { type: 'PASSKEY_ERROR'; payload: string }
   | { type: 'PASSKEY_CANCEL' }
@@ -77,13 +86,15 @@ const reducer = (state: State, action: Action): State => {
     case 'SET_OTP':
       return { ...state, otp: action.payload }
     case 'START_SENDING':
-      return { ...state, status: 'sending', errorMessage: '' }
+      return { ...state, status: action.resend ? 'resending' : 'sending', otp: '', errorMessage: '' }
     case 'SEND_SUCCESS':
       return { ...state, status: 'sent', challengeToken: action.payload, otp: '', errorMessage: '' }
     case 'SEND_ERROR':
-      return { ...state, status: 'error', errorMessage: action.payload }
+      return { ...state, status: action.resend ? 'sent' : 'error', errorMessage: action.payload }
     case 'START_VERIFYING':
       return { ...state, status: 'verifying', errorMessage: '' }
+    case 'AUTHENTICATED':
+      return { ...state, status: 'completing', errorMessage: '' }
     case 'VERIFY_SUCCESS':
       return { ...state, status: 'success' }
     case 'VERIFY_ERROR':
@@ -92,8 +103,6 @@ const reducer = (state: State, action: Action): State => {
       return initialState
     case 'GO_BACK':
       return { ...state, status: 'idle', otp: '', errorMessage: '' }
-    case 'SET_ERROR':
-      return { ...state, errorMessage: action.payload }
     case 'PASSKEY_START':
       return { ...state, status: 'passkey', errorMessage: '' }
     case 'PASSKEY_ERROR':
@@ -130,7 +139,7 @@ export const useSignInFormState = ({
     email: initialEmail ?? '',
   })
 
-  const operation = useAsyncAttempt()
+  const operation = useAuthAttempt()
   const analytics = useAnonymousPromotionAnalytics()
   const isValidEmail = isValidEmailFormat(state.email.trim())
 
@@ -143,12 +152,10 @@ export const useSignInFormState = ({
     if (!attempt) {
       return false
     }
-    if (!resend) {
-      dispatch({ type: 'START_SENDING' })
-    }
+    dispatch({ type: 'START_SENDING', resend })
     try {
       const { challengeToken } = await httpClient
-        .post('waitlist/join', { json: { email } })
+        .post('waitlist/join', { json: { email }, signal: attempt.signal })
         .json<{ success: boolean; challengeToken?: string }>()
       if (!attempt.isCurrent()) {
         return false
@@ -164,7 +171,7 @@ export const useSignInFormState = ({
         return false
       }
       console.error('Failed to send verification OTP:', error)
-      dispatch({ type: resend ? 'SET_ERROR' : 'SEND_ERROR', payload: message })
+      dispatch({ type: 'SEND_ERROR', payload: message, resend })
       return false
     } finally {
       attempt.finish()
@@ -194,6 +201,13 @@ export const useSignInFormState = ({
         email: state.email.trim(),
         otp: value,
         challengeToken: state.challengeToken,
+        signal: attempt.signal,
+        onAuthenticated: () => {
+          attempt.commit()
+          if (attempt.isCurrent()) {
+            dispatch({ type: 'AUTHENTICATED' })
+          }
+        },
       })
       if (!attempt.isCurrent()) {
         return
@@ -228,7 +242,15 @@ export const useSignInFormState = ({
       if (!attempt.isCurrent()) {
         return
       }
-      const { userId } = await signInWithPasskey(authClient)
+      const { userId } = await signInWithPasskey(authClient, {
+        signal: attempt.signal,
+        onAuthenticated: () => {
+          attempt.commit()
+          if (attempt.isCurrent()) {
+            dispatch({ type: 'AUTHENTICATED' })
+          }
+        },
+      })
       if (!attempt.isCurrent()) {
         return
       }
@@ -250,15 +272,20 @@ export const useSignInFormState = ({
   }
 
   const handleCancel = () => {
-    operation.cancel()
+    if (!operation.cancel()) {
+      return
+    }
     dispatch({ type: 'RESET' })
     onCancel?.()
   }
   const setEmail = (email: string) => dispatch({ type: 'SET_EMAIL', payload: email })
   const setOtp = (otp: string) => dispatch({ type: 'SET_OTP', payload: otp })
   const goBack = () => {
-    operation.cancel()
+    if (!operation.cancel()) {
+      return false
+    }
     dispatch({ type: 'GO_BACK' })
+    return true
   }
   const handleResend = () => sendCode(true)
 

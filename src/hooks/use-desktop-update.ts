@@ -5,7 +5,7 @@
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useEffect } from 'react'
-import { create } from 'zustand'
+import { create, useStore, type StoreApi } from 'zustand'
 import type { Update } from '@tauri-apps/plugin-updater'
 import { isDesktop } from '@/lib/platform'
 import { getPowerSyncInstance } from '@/db/powersync/sync-state'
@@ -287,24 +287,19 @@ const useUpdateStore = createDesktopUpdateStore({
   },
 })
 
-let didAutoCheck = false
-
 /** Subscribe to the shared desktop updater and schedule one automatic check per session. */
-export const useDesktopUpdate = (): DesktopUpdateState => {
-  const state = useUpdateStore()
-  const { checkForUpdates } = state
+export const useDesktopUpdate = (store: StoreApi<DesktopUpdateState> = useUpdateStore): DesktopUpdateState => {
+  const state = useStore(store)
   useEffect(() => {
-    if (!isDesktop() || didAutoCheck) {
+    if (!isDesktop() || state.status !== 'initial') {
       return
     }
     const timeout = setTimeout(() => {
-      if (didAutoCheck) {
-        return
+      if (store.getState().status === 'initial') {
+        void store.getState().checkForUpdates()
       }
-      didAutoCheck = true
-      void checkForUpdates()
     }, 5000)
     return () => clearTimeout(timeout)
-  }, [checkForUpdates])
+  }, [store, state.status])
   return state
 }

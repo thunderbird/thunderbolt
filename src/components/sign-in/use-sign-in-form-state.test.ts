@@ -9,6 +9,7 @@ import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as passkeys from '@/lib/passkey'
+import * as onboarding from '@/lib/returning-user-onboarding'
 import { eq } from 'drizzle-orm'
 import type { FormEvent } from 'react'
 import type { HttpClient } from '@/lib/http'
@@ -194,6 +195,36 @@ describe('useSignInFormState', () => {
   })
 
   describe('handleResend cooldown error', () => {
+    it('clears a completed code while resending, then accepts re-entry after a failed resend', async () => {
+      const resend = Promise.withResolvers<Response>()
+      const { httpClient } = createSpyHttpClient(
+        mock()
+          .mockResolvedValueOnce(jsonResponse(waitlistResponse))
+          .mockImplementationOnce(() => resend.promise),
+      )
+      const verify = mock(async () => ({ error: { code: 'INVALID_OTP', message: 'Invalid code' } }))
+      authClient = createMockAuthClient({ signInEmailOtp: verify })
+      const { result } = renderFormHook(httpClient)
+      await submitEmail(result)
+      act(() => result.current.actions.setOtp('12345678'))
+      let pending!: Promise<boolean>
+      act(() => {
+        pending = result.current.actions.handleResend()
+        void result.current.actions.handleOtpComplete('12345678')
+      })
+      expect(result.current.state.status).toBe('resending')
+      expect(result.current.state.otp).toBe('')
+      expect(verify).not.toHaveBeenCalled()
+      await act(async () => {
+        resend.resolve(jsonResponse({ message: 'Try again later' }, 429))
+        expect(await pending).toBe(false)
+      })
+      expect(result.current.state.status).toBe('sent')
+      expect(result.current.state.challengeToken).toBe(challengeToken)
+      await act(async () => result.current.actions.handleOtpComplete('12345678'))
+      expect(verify).toHaveBeenCalledTimes(1)
+    })
+
     it('surfaces the server cooldown message on 429', async () => {
       const cooldownMessage = 'A verification code was recently sent. Please wait before requesting a new one.'
       let callCount = 0
@@ -276,7 +307,10 @@ describe('useSignInFormState', () => {
       expect.objectContaining({
         email: 'test@example.com',
         otp: '12345678',
-        fetchOptions: { headers: expect.objectContaining({ 'x-challenge-token': challengeToken }) },
+        fetchOptions: expect.objectContaining({
+          headers: expect.objectContaining({ 'x-challenge-token': challengeToken }),
+          signal: expect.any(AbortSignal),
+        }),
       }),
     )
     expect(result.current.state.status).toBe('success')
@@ -341,6 +375,40 @@ describe('useSignInFormState', () => {
 })
 
 describe('sign-in attempt lifetime', () => {
+  it('refuses Cancel and Back after credentials commit, and finishes housekeeping after unmount', async () => {
+    const housekeeping = Promise.withResolvers<void>()
+    const markOnboarded = spyOn(onboarding, 'markOnboardedForReturningUser').mockReturnValue(housekeeping.promise)
+    const onCancel = mock(() => {})
+    const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
+    const { result, unmount } = renderHook(() =>
+      useSignInFormState({
+        authClient: createMockAuthClient({ signInEmailOtp: async () => ({ error: null }) }),
+        httpClient,
+        initialEmail: 'test@example.com',
+        onCancel,
+      }),
+    )
+    try {
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.actions.handleOtpComplete('12345678')
+      })
+      expect(result.current.state.status).toBe('completing')
+      act(() => {
+        result.current.actions.handleCancel()
+        expect(result.current.actions.goBack()).toBe(false)
+      })
+      expect(result.current.state.status).toBe('completing')
+      expect(onCancel).not.toHaveBeenCalled()
+      unmount()
+      housekeeping.resolve()
+      await pending
+      expect(markOnboarded).toHaveBeenCalledTimes(1)
+    } finally {
+      markOnboarded.mockRestore()
+    }
+  })
+
   it.each(['back', 'cancel', 'unmount'] as const)('ignores a code response after %s', async (action) => {
     const response = Promise.withResolvers<Response>()
     const { httpClient } = createSpyHttpClient(() => response.promise)

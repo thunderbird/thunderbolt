@@ -23,11 +23,14 @@
   --tb-text-muted: #716a62;
   --tb-text-dim: #7f7870;
   --tb-primary: #393530;
-  --tb-brand: #c12d6c;
-  --tb-brand-2: #ab5e17;
+  --tb-brand-raspberry: #c12d6c;
+  --tb-brand-amber: #ab5e17;
+  --tb-brand: var(--tb-brand-raspberry);
+  --tb-brand-2: var(--tb-brand-amber);
   --tb-link: var(--tb-brand);
   --tb-on-brand: #faf8f5;
-  --tb-gradient-brand: linear-gradient(90deg, var(--tb-brand-2), var(--tb-brand));
+  /* Keep the app ramp independent of theme-specific link colors. */
+  --tb-gradient-brand: linear-gradient(90deg, var(--tb-brand-amber), var(--tb-brand-raspberry));
   --tb-shadow: 0 16px 48px -20px rgb(38 33 32 / 14%);
   --tb-radius-control: 0.625rem;
   --tb-radius-panel: 1rem;

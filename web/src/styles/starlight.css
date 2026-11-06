@@ -380,7 +380,7 @@ nav.sidebar ul:not(.top-level) details summary .large {
 /* Actions share the marketing typography and rounded controls. */
 .sl-link-button.primary,
 .sl-link-button.variant-primary {
-  background: var(--spark-red);
+  background: var(--tb-gradient-brand);
   color: var(--tb-on-brand);
   border: 1px solid transparent;
   border-radius: var(--tb-radius-control);
@@ -397,7 +397,7 @@ nav.sidebar ul:not(.top-level) details summary .large {
 }
 .sl-link-button.primary:hover,
 .sl-link-button.variant-primary:hover {
-  background: var(--spark-red);
+  background: var(--tb-gradient-brand);
   box-shadow: 0 4px 16px rgb(193 45 108 / 20%);
 }
 
@@ -464,9 +464,13 @@ site-search dialog {
 #starlight__search .pagefind-ui__button {
   border-radius: var(--tb-radius-control) !important;
 }
-/* Hairline input border in brand color */
+/* Inputs need a visible boundary in both themes. */
 #starlight__search .pagefind-ui__search-input {
-  border: 1px solid var(--tb-border);
+  border: 1px solid var(--tb-border-strong);
+}
+#starlight__search .pagefind-ui__search-input::placeholder {
+  color: var(--spark-muted);
+  opacity: 1;
 }
 #starlight__search .pagefind-ui__search-input:focus-visible {
   outline: 1px solid var(--tb-text-secondary);

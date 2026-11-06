@@ -79,13 +79,13 @@
     transition:
       box-shadow 150ms,
       background-color 150ms;
-    background: var(--tb-primary);
+    background: var(--tb-gradient-brand);
     color: var(--tb-on-brand);
     box-shadow: 0 2px 4px rgb(38 33 32 / 6%);
   }
 
   .button-primary:hover {
-    background: var(--tb-text);
+    background: linear-gradient(#00000014, #00000014), var(--tb-gradient-brand);
     box-shadow: 0 4px 16px rgb(38 33 32 / 12%);
   }
 }

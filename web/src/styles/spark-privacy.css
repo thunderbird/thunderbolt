@@ -222,7 +222,6 @@
 }
 .privacy-training-mark {
   width: 144px;
-  color: var(--spark-yellow);
   transform: rotate(-8deg);
 }
 .privacy-training-mark svg {

@@ -94,7 +94,7 @@ export const ContactPage = () => {
 
           <div>
             <label htmlFor="contact-email" className={labelClass}>
-              Email Address <span className="text-red-500">*</span>
+              Email Address <span className="text-brand">*</span>
             </label>
             <input
               type="email"

@@ -56,7 +56,8 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
             ref={triggerRef}
             onClick={toggleNavigation}
           >
-            More
+            <span className="spark-nav-label-more">More</span>
+            <span className="spark-nav-label-explore">Explore</span>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path
                 d="m4 6 4 4 4-4"

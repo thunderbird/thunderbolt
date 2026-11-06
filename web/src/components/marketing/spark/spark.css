@@ -101,7 +101,18 @@
   letter-spacing: -0.045em;
 }
 .spark-hero h1 > span {
+  display: inline-block;
   color: var(--spark-red);
+  background: var(--spark-heading-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+@media (forced-colors: active) {
+  .spark-hero h1 > span {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
 }
 .spark-hero-heading > p {
   max-width: 700px;
@@ -131,14 +142,14 @@
   padding: 17px 25px;
   font-size: 14px;
   font-weight: 550;
-  background: var(--spark-fill);
+  background: var(--tb-gradient-brand);
   color: var(--spark-on-fill) !important;
   transition:
     background 160ms,
     transform 160ms;
 }
 .spark-button:hover {
-  background: var(--spark-fill-hover);
+  background: linear-gradient(#00000014, #00000014), var(--tb-gradient-brand);
   transform: translateY(-2px);
 }
 .spark-text-link {
@@ -177,7 +188,6 @@
   top: -24px;
   right: max(16px, calc(50% - 610px));
   transform: rotate(10deg);
-  color: var(--spark-yellow);
 }
 .spark-preview-stage {
   display: grid;
@@ -535,14 +545,13 @@
   font-size: clamp(36px, 4vw, 54px);
 }
 .spark-manifesto h2 span {
-  color: var(--spark-yellow);
+  color: #ffe4a3;
 }
 .spark-manifesto-burst {
   display: block;
   width: 104px;
   height: 104px;
   margin-top: 32px;
-  color: var(--spark-yellow);
 }
 .spark-manifesto-copy p {
   font-size: 18px;
@@ -550,11 +559,11 @@
 }
 .spark-manifesto-copy p + p {
   margin-top: 24px;
-  color: #f4d7dc;
+  color: #faf8f5;
 }
 .spark-manifesto-copy a {
   margin-top: 32px;
-  border-bottom: 1px solid #e4a1b9;
+  border-bottom: 1px solid #d8b177;
   padding-bottom: 8px;
 }
 .spark-manifesto :is(a, button):focus-visible {
@@ -646,7 +655,7 @@
   color: var(--spark-background) !important;
 }
 .spark-closing .spark-button:hover {
-  background: var(--spark-fill);
+  background: var(--tb-gradient-brand);
   color: var(--spark-on-fill) !important;
 }
 .spark-other-platforms {

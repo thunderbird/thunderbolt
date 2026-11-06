@@ -6,19 +6,21 @@
   --spark-background: #faf5eb;
   --spark-surface: #fffaf1;
   --spark-hover: #f2e9da;
-  --spark-red: #a72456;
+  --spark-red: #aa430b;
   --spark-yellow: #f5c65c;
-  --spark-ink: #292722;
+  --spark-badge-fill: #e8bc7d;
+  --spark-badge-ink: #51412f;
+  --spark-ink: #38352f;
   --spark-muted: #6b655c;
   --spark-border: #dcd4c6;
-  --spark-border-strong: #bcb1a4;
+  --spark-border-strong: #8c8172;
   --spark-secondary: #625d55;
   --spark-section: #f0eade;
   --spark-card: #faf7f0;
-  --spark-fill: #a72456;
-  --spark-on-fill: #fffaf2;
-  --spark-fill-hover: #842144;
-  --spark-manifesto: #a72456;
+  --spark-fill: #c12d6c;
+  --spark-on-fill: #faf8f5;
+  --spark-heading-gradient: var(--tb-gradient-brand);
+  --spark-manifesto: var(--tb-gradient-brand);
   --spark-amber: #a36a2f;
   --spark-amber-soft: #e8d3af;
   --spark-closing: #efe2c7;
@@ -27,7 +29,6 @@
   --spark-landscape-outer: #e8c995;
   --spark-landscape-inner: #dcb17c;
   --spark-landscape-line: #91683c;
-  --spark-graphic-ink: #292722;
   --spark-device-shell: #f5f0e6;
   --spark-device-border: #c6bcad;
   --spark-device-highlight: #fffaf4;
@@ -42,14 +43,19 @@
   --spark-muted: #b6b7aa;
   --spark-border: #44473d;
   --spark-border-strong: #777a6c;
-  --spark-red: #ed91b2;
+  --spark-red: #ff9b36;
   --spark-secondary: #d0cfc1;
   --spark-section: #262823;
   --spark-card: #2e302a;
-  --spark-fill: #e991b0;
-  --spark-on-fill: #251c20;
-  --spark-fill-hover: #f2acc5;
-  --spark-manifesto: #66273f;
+  --spark-fill: #c12d6c;
+  --spark-on-fill: #faf8f5;
+  /* Lift only display text for contrast; buttons retain the exact app gradient. */
+  --spark-heading-gradient: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--tb-brand-amber) 76%, #faf8f5),
+    color-mix(in srgb, var(--tb-brand-raspberry) 76%, #faf8f5)
+  );
+  --spark-manifesto: linear-gradient(#20211f66, #20211f66), var(--tb-gradient-brand);
   --spark-amber: #e4bf77;
   --spark-amber-soft: #4c432f;
   --spark-closing: #272620;

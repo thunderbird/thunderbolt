@@ -85,6 +85,9 @@
 .spark-nav-disclosure {
   position: relative;
 }
+.spark-nav-label-explore {
+  display: none;
+}
 .spark-nav-trigger {
   display: flex;
   align-items: center;
@@ -316,6 +319,12 @@
   }
 }
 @media (width < 40rem) {
+  .spark-nav-label-more {
+    display: none;
+  }
+  .spark-nav-label-explore {
+    display: inline;
+  }
   .spark-nav-direct[data-nav-page='Privacy'] {
     display: none;
   }

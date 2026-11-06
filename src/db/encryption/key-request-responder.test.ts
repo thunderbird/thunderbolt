@@ -125,7 +125,7 @@ describe('prime — startup staging + key_version polling', () => {
     const hub = await setup()
     await setupKeyring(['0'], '0')
 
-    const stage = mock(async () => {})
+    const stage = mock(async () => storeKeyVersion(3))
     const responder = createKeyRequestResponder({
       stageKeyring: stage,
       refreshAK: failIfCalled('refreshAK'),
@@ -145,7 +145,7 @@ describe('prime — startup staging + key_version polling', () => {
     await setupKeyring(['0'], '0')
     await storeKeyVersion(1)
 
-    const refresh = mock(async () => {})
+    const refresh = mock(async () => storeKeyVersion(2))
     const responder = createKeyRequestResponder({
       stageKeyring: failIfCalled('stageKeyring'),
       refreshAK: refresh,
@@ -287,7 +287,7 @@ describe('key-request handling (integration with the real codec)', () => {
     const hub = await setup()
     await setupKeyring(['0'], '0')
 
-    const stage = mock(async () => {})
+    const stage = mock(async () => storeKeyVersion(1))
     const refresh = mock(async () => {})
     const versions = [1, 2]
     const responder = createKeyRequestResponder({
@@ -519,5 +519,80 @@ describe('startKeyRequestResponder', () => {
 
     expect(firstStage).not.toHaveBeenCalled()
     second.stop()
+  })
+})
+
+describe('shared keyring ownership', () => {
+  it('keeps the verified service version when the earlier metadata probe is stale', async () => {
+    const hub = await setup()
+    await setupKeyring(['0'], '0')
+    const responder = createKeyRequestResponder({
+      stageKeyring: () => storeKeyVersion(7),
+      refreshAK: failIfCalled('refreshAK'),
+      fetchMetadata: async () => ({ key_version: 3 }),
+      channel: hub.createPort(),
+    })
+    await responder.ready
+    expect(await getKeyVersion()).toBe(7)
+    responder.stop()
+  })
+
+  it('serializes distinct key requests and preserves an unwrap escalation during staging', async () => {
+    const hub = await setup()
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const calls: string[] = []
+    const stage = mock(async () => {
+      calls.push('stage-start')
+      entered.resolve()
+      await release.promise
+      calls.push('stage-end')
+    })
+    const refresh = mock(async () => {
+      calls.push('refresh')
+    })
+    const responder = createKeyRequestResponder({
+      stageKeyring: stage,
+      refreshAK: refresh,
+      fetchMetadata: async () => ({ key_version: 1 }),
+      channel: hub.createPort(),
+    })
+    await responder.ready
+    const worker = hub.createPort()
+    worker.postMessage({ type: 'key-request', keyId: '1', reason: 'unknown-key' })
+    await entered.promise
+    worker.postMessage({ type: 'key-request', keyId: '2', reason: 'unknown-key' })
+    worker.postMessage({ type: 'key-request', keyId: '1', reason: 'unwrap-failed' })
+    expect(stage).toHaveBeenCalledTimes(1)
+    expect(refresh).not.toHaveBeenCalled()
+    release.resolve()
+    await waitFor(() => refresh.mock.calls.length === 1)
+    expect(calls).toEqual(['stage-start', 'stage-end', 'stage-start', 'stage-end', 'refresh'])
+    expect(hub.posted).toContainEqual({ type: 'ak-refreshed' })
+    responder.stop()
+  })
+
+  it('does not start staging or announce keys after stopping during a metadata request', async () => {
+    const hub = await setup()
+    const entered = Promise.withResolvers<void>()
+    const response = Promise.withResolvers<{ key_version: number }>()
+    const stage = mock(async () => {})
+    const responder = createKeyRequestResponder({
+      stageKeyring: stage,
+      refreshAK: failIfCalled('refreshAK'),
+      fetchMetadata: () => {
+        entered.resolve()
+        return response.promise
+      },
+      channel: hub.createPort(),
+    })
+    await responder.ready
+    hub.createPort().postMessage({ type: 'key-request', keyId: '1', reason: 'unknown-key' })
+    await entered.promise
+    responder.stop()
+    response.resolve({ key_version: 1 })
+    await flushAsync()
+    expect(stage).not.toHaveBeenCalled()
+    expect(hub.posted.filter((message) => message.type !== 'key-request')).toEqual([])
   })
 })

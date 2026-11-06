@@ -363,17 +363,9 @@ export const initializeRequestSchema = envelopeSchema.extend({
      * {@link miniAppHostMethods.identify} needs to answer "is the handshake I am
      * holding the live document's?".
      *
-     * Optional, and absence is handled rather than rejected: this rides the
-     * handshake, so a guest on an SDK copy that predates it must still be able
-     * to connect. The host falls back to its older, best-effort ordering guess
-     * for those — see `handleFrameLoad`.
-     *
-     * No `min` either, for the same reason one notch further out. A floor
-     * *rejects*, and rejecting a field on `initialize` drops the handshake
-     * itself — so a third-party guest that sends an empty string, the way a
-     * defaulted field does, would be unable to connect at all and see only a
-     * timeout. The host reads empty as absent instead, which lands it on the
-     * same fallback as a guest that sent nothing.
+     * Parsed as optional so the host can reply to older guests with an explicit
+     * SDK upgrade error instead of silently dropping their handshake. A usable
+     * document id is required before the host accepts the connection.
      */
     documentId: clampedString(64).optional(),
     capabilities: miniAppGuestCapabilitiesSchema,

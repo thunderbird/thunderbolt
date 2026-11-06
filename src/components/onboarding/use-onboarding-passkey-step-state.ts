@@ -7,6 +7,7 @@ import { accountPasskeyQueryKey, isPasskeyCancellation, registerPasskey } from '
 import { getDeviceDisplayName } from '@/lib/platform'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 
 type Status = 'idle' | 'registering' | 'error'
 
@@ -15,8 +16,13 @@ export const useOnboardingPasskeyStepState = () => {
   const authClient = useAuth()
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<Status>('idle')
+  const operation = useAsyncAttempt()
 
   const register = async () => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     setStatus('registering')
     try {
       await registerPasskey(authClient, getDeviceDisplayName())
@@ -24,12 +30,17 @@ export const useOnboardingPasskeyStepState = () => {
       // so the spinner stays up until then.
       await queryClient.invalidateQueries({ queryKey: accountPasskeyQueryKey })
     } catch (error) {
+      if (!attempt.isCurrent()) {
+        return
+      }
       if (isPasskeyCancellation(error)) {
         setStatus('idle')
         return
       }
       console.error('Passkey registration failed:', error)
       setStatus('error')
+    } finally {
+      attempt.finish()
     }
   }
 

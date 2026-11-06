@@ -601,6 +601,7 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
   const prepareManaged = async (
     selection: InvocationSelection,
     signal?: AbortSignal,
+    advisorySignal?: AbortSignal,
   ): Promise<PreparedPiBinding> => {
     const preparedGeneration = accountGeneration
     const preparedIdentity = effectiveManagedCredentialIdentity
@@ -683,6 +684,7 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
           credential: registeredCredential as SessionCredential,
           model,
           onStoredSessionRejected,
+          advisorySignal,
         })
       }
       return dependencies.createManagedDirectBinding({
@@ -724,9 +726,13 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
     return prepared
   }
 
-  const prepare = async (selection: InvocationSelection, signal?: AbortSignal): Promise<PreparedPiBinding> => {
+  const prepare = async (
+    selection: InvocationSelection,
+    signal?: AbortSignal,
+    advisorySignal?: AbortSignal,
+  ): Promise<PreparedPiBinding> => {
     const owner = selectedOwner(selection)
-    if (owner === 'thunderbolt') return prepareManaged(selection, signal)
+    if (owner === 'thunderbolt') return prepareManaged(selection, signal, advisorySignal)
     return prepareByok(owner.profile, selection, owner.stage)
   }
 

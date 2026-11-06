@@ -19,7 +19,7 @@ import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Agent } from '@/types/acp'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { ChatModelPicker } from './chat-model-picker'
@@ -199,6 +199,21 @@ describe('ChatModelPicker', () => {
     fireEvent.click(await screen.findByText('Add Model'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
+  })
+
+  it('opens model creation directly from the embedded header and closes its parent', () => {
+    setupWithAgent(builtInAgent)
+    const close = mock()
+    render(
+      <>
+        <ChatModelPicker embedded onClose={close} />
+        <CreateRequestProbe />
+      </>,
+      { wrapper: TestWrapper },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Add Model' }))
+    expect(close).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
   })
 

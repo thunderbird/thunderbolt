@@ -62,9 +62,10 @@ seconds, and retain up to 4 MiB per output stream. App-created output logs are
 owned by the adapter and removed after its chats stop, including after
 environment switches; user files are never included in this cleanup. Reads accept regular files up
 to 25 MiB. Unix commands run in their own process group, terminated on Stop,
-timeout, and completion. Cleanup freezes and kills the live descendant tree,
-including children that create a new session. Already reparented daemons are
-outside that tree; this is host access, not OS isolation. Output draining
+timeout, and completion. Stop and timeout additionally freeze and kill the live
+Unix descendant tree, including children that create a new session. Normal
+completion signals only the original process group; detached sessions can survive.
+Already reparented daemons are outside that tree; this is host access, not OS isolation. Output draining
 is bounded so detached pipes cannot block Stop. Persistent background servers
 are not supported. Windows requires `bash` on PATH and uses `taskkill /T` for cancellation;
 the prototype's native tests exercise macOS/Unix.

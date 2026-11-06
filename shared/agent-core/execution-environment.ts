@@ -9,6 +9,8 @@ export type CodingEnvironment = Pick<
   ExecutionEnv,
   'absolutePath' | 'exec' | 'readBinaryFile' | 'writeFile' | 'createTempFile'
 > & {
+  /** Default shell deadline in seconds, when the host enforces one. */
+  defaultCommandTimeout?: number
   /** Restore a supplied input without replacing an existing user file. */
   restoreFile?: ExecutionEnv['writeFile']
 }

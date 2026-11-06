@@ -9,8 +9,12 @@ import type { CodingEnvironment } from './execution-environment.ts'
 export type NativeInvoke = <T>(command: string, args: Record<string, unknown>) => Promise<T>
 type ShellOutput = { stdout: string; stderr: string; exitCode: number; failure?: 'aborted' | 'timeout' }
 
+export const nativeCommandTimeoutSeconds = 120
+
 /** Real filesystem and shell operations, available only through desktop IPC. */
 export class NativeExecutionEnv implements CodingEnvironment {
+  readonly defaultCommandTimeout = nativeCommandTimeoutSeconds
+
   constructor(
     readonly cwd: string,
     private readonly invoke: NativeInvoke,
@@ -84,7 +88,7 @@ export class NativeExecutionEnv implements CodingEnvironment {
         command,
         cwd: options?.cwd ?? this.cwd,
         env: options?.env ?? {},
-        timeout: options?.timeout ?? 120,
+        timeout: options?.timeout ?? this.defaultCommandTimeout,
       })
       options?.onStdout?.(output.stdout)
       options?.onStderr?.(output.stderr)
@@ -92,7 +96,7 @@ export class NativeExecutionEnv implements CodingEnvironment {
         return err(
           new ExecutionError(
             output.failure,
-            output.failure === 'timeout' ? `timeout:${options?.timeout ?? 120}` : 'aborted',
+            output.failure === 'timeout' ? `timeout:${options?.timeout ?? this.defaultCommandTimeout}` : 'aborted',
           ),
         )
       }

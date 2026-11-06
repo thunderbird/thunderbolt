@@ -191,7 +191,7 @@ export const writeAgentWorkspaceFiles = async (
   files: readonly WorkspaceFile[],
   execution?: BuildAppHarnessOptions['execution'],
 ): Promise<WorkspaceWriteFailure[]> => {
-  const { env } = execution ?? (await createBrowserEnvironment(threadId))
+  const { env }: { env: CodingEnvironment } = execution ?? (await createBrowserEnvironment(threadId))
   const encoder = new TextEncoder()
   const failures: WorkspaceWriteFailure[] = []
   for (const file of files) {

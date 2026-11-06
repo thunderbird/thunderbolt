@@ -65,6 +65,13 @@ fn read_file(path: PathBuf) -> Result<Vec<u8>, String> {
 /// Restore inputs atomically without truncating files edited between turns.
 fn restore_input(path: &std::path::Path, content: &[u8]) -> Result<(), String> {
     use std::io::Write;
+    // Existing host inputs are authoritative; the no-clobber publication below still
+    // handles another writer creating the destination after this check.
+    match path.try_exists() {
+        Ok(true) => return Ok(()),
+        Ok(false) => {}
+        Err(error) => return Err(error.to_string()),
+    }
     let parent = path.parent().ok_or("Missing input directory")?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
@@ -441,6 +448,21 @@ mod tests {
         assert_eq!(std::fs::read(&file).unwrap(), b"original");
         std::fs::write(&file, b"edited").unwrap();
         restore_input(&file, b"original").unwrap();
+        assert_eq!(std::fs::read(&file).unwrap(), b"edited");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_inputs_do_not_require_a_writable_directory() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("input.txt");
+        std::fs::write(&file, b"edited").unwrap();
+        let original = std::fs::metadata(dir.path()).unwrap().permissions();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o500)).unwrap();
+        let restored = restore_input(&file, b"original");
+        std::fs::set_permissions(dir.path(), original).unwrap();
+        restored.unwrap();
         assert_eq!(std::fs::read(&file).unwrap(), b"edited");
     }
 

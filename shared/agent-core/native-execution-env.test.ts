@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { NativeExecutionEnv, type NativeInvoke } from './native-execution-env'
+import { NativeExecutionEnv, nativeCommandTimeoutSeconds, type NativeInvoke } from './native-execution-env'
 import { createCodingTools } from './coding-tools'
 
 /** Records native IPC without giving a unit-test model access to the host. */
@@ -51,6 +51,15 @@ describe('native coding environment', () => {
       path: 'attachments/a.txt',
       content: Array.from(new TextEncoder().encode('original')),
     })
+  })
+
+  it('advertises the same default command timeout that native execution applies', async () => {
+    const { invoke, calls } = bridge(() => ({ stdout: 'ok', stderr: '', exitCode: 0 }))
+    const env = new NativeExecutionEnv('/real', invoke)
+    const [bash] = createCodingTools(env, { cwd: '/real' })
+    expect(JSON.stringify(bash.parameters)).toContain(`defaults to ${nativeCommandTimeoutSeconds} seconds`)
+    await env.exec('pwd')
+    expect(calls.find(({ command }) => command === 'agent_exec')?.args.timeout).toBe(nativeCommandTimeoutSeconds)
   })
 
   it('keeps output logs owned by the chat across environment rebuilds and cleans them up explicitly', async () => {

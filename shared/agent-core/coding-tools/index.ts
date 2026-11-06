@@ -77,10 +77,19 @@ const resolveToolPath = async (env: CodingEnvironment, path: string): Promise<st
 // bash
 // ---------------------------------------------------------------------------
 
-const bashSchema = Type.Object({
-  command: Type.String({ description: 'Bash command to execute' }),
-  timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds (optional, no default timeout)' })),
-})
+/** Describe the selected environment's actual default deadline to the model. */
+const bashSchema = (defaultTimeout?: number) =>
+  Type.Object({
+    command: Type.String({ description: 'Bash command to execute' }),
+    timeout: Type.Optional(
+      Type.Number({
+        description:
+          defaultTimeout === undefined
+            ? 'Timeout in seconds (optional, no default timeout)'
+            : `Timeout in seconds (optional, defaults to ${defaultTimeout} seconds)`,
+      }),
+    ),
+  })
 
 /** Persist captured bash output to a temporary file in the selected environment so the model can
  *  `cat` it; returns the path, or undefined if the write failed. */
@@ -116,13 +125,13 @@ const formatBashOutput = async (env: CodingEnvironment, output: string, emptyTex
 /** `${text}\n\n${status}`, or just `status` when there is no captured output. */
 const appendStatus = (text: string, status: string): string => `${text ? `${text}\n\n` : ''}${status}`
 
-const buildBashTool = (env: CodingEnvironment, cwd: string): AgentTool<typeof bashSchema> => {
+const buildBashTool = (env: CodingEnvironment, cwd: string): AgentTool<ReturnType<typeof bashSchema>> => {
   const operations = createBashOperations(env)
   return {
     name: 'bash',
     label: 'bash',
     description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${defaultMaxLines} lines or ${defaultMaxBytes / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
-    parameters: bashSchema,
+    parameters: bashSchema(env.defaultCommandTimeout),
     // Mutates the shared ZenFS mount (redirects, file writes); serialize the batch.
     executionMode: 'sequential',
     async execute(_toolCallId, { command, timeout }, signal) {

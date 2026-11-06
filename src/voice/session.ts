@@ -51,6 +51,7 @@ export type VoiceSessionOptions = {
 }
 
 export type VoiceSession = {
+  /** A session owns one audio lifetime; create a fresh session after stopping. */
   start: () => Promise<void>
   stop: () => Promise<void>
   readonly state: SessionState
@@ -71,11 +72,8 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
   let state: SessionState = 'idle'
   let turn: AbortController | null = null
   let vadGate: Awaited<ReturnType<typeof createVadGate>> | null = null
-  // Guards a stop() that lands mid-startup: start() awaits engine.load() and gate
-  // creation before assigning vadGate, so a stop during 'Starting…' would no-op
-  // (vadGate still null) and then start() would resume and open an orphaned mic
-  // with no session reference. start() checks this after each await and tears down.
-  let stopped = false
+  let phase: 'new' | 'starting' | 'running' | 'stopped' = 'new'
+  const isStopped = () => phase === 'stopped'
 
   const setState = (next: SessionState) => {
     state = next
@@ -94,7 +92,7 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
    * buffered, so it commits via onUtterance as the next turn (no lost onset).
    */
   const onSpeechStart = () => {
-    if (state !== 'thinking' && state !== 'speaking') {
+    if (phase !== 'running' || (state !== 'thinking' && state !== 'speaking')) {
       return
     }
     turn?.abort()
@@ -103,6 +101,9 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
   }
 
   const onUtterance = async (audio: Float32Array) => {
+    if (phase !== 'running') {
+      return
+    }
     turn?.abort() // supersede any in-flight turn
     const ac = new AbortController()
     turn = ac
@@ -222,7 +223,10 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
   }
 
   const start = async () => {
-    stopped = false
+    if (phase !== 'new') {
+      throw new Error('Voice session already started or stopped')
+    }
+    phase = 'starting'
     const gate = createVadGate({ onSpeechStart, onUtterance, onLevel })
     // Born muted, because racing the two halves means the mic can go live while the
     // engine is still loading. The gate pumps frames to the endpointer the instant
@@ -236,23 +240,32 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
     // attestation), and opening the mic is a permission prompt. Run in sequence
     // the user waits for the sum of the two, and on a first run doesn't even see
     // the prompt until attestation comes back.
-    // Settled rather than `all`: racing means either half can fail with the other
-    // still in flight, and tearing down mid-flight destroys a gate that hasn't
-    // acquired the mic yet — a no-op. The pending `getUserMedia` then resolves
-    // into a live mic nothing holds a reference to, because `vadGate` is never
-    // assigned and the caller's `stop()` only destroys that. Waiting for both to
-    // settle means destroy always runs against the gate's final state.
-    const outcomes = await Promise.allSettled([engine.load(), gate.start()])
-    const failure = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected')
-    if (failure) {
-      await gate.destroy()
-      throw failure.reason
+    const openGate = async () => {
+      try {
+        await gate.start()
+      } catch (error) {
+        await gate.destroy()
+        throw error
+      }
+      if (isStopped()) {
+        await gate.destroy()
+        return
+      }
+      // Own the muted microphone immediately, even while engine loading is
+      // pending, so stop() can release it without waiting for the network.
+      vadGate = gate
     }
-    if (stopped) {
-      await gate.destroy()
+    try {
+      await Promise.all([(async () => engine.load())(), openGate()])
+    } catch (error) {
+      await stop()
+      throw error
+    }
+    // stop() may have run while either startup operation was pending.
+    if (isStopped()) {
       return
     }
-    vadGate = gate
+    phase = 'running'
     setState('listening')
     // The one transition the user cannot anticipate. Every other route back to
     // 'listening' follows something they can already perceive — the assistant's
@@ -262,16 +275,20 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
   }
 
   const stop = async () => {
-    stopped = true
+    if (phase === 'stopped') {
+      return
+    }
+    phase = 'stopped'
     turn?.abort()
+    setState('idle')
     // Release every audio resource: VAD mic/ctx, the playback ctx, and the
     // engine's decode ctx. Missing any leaks an AudioContext per start/stop and
     // the browser cap (~6) breaks voice after a few toggles.
     playback.close()
     engine.dispose()
-    await vadGate?.destroy()
+    const gate = vadGate
     vadGate = null
-    setState('idle')
+    await gate?.destroy()
   }
 
   return {

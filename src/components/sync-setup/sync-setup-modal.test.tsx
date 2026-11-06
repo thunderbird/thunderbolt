@@ -6,8 +6,11 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
-import { act, cleanup, render } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { act, cleanup, render, renderHook } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as setupHook from '@/hooks/use-sync-setup'
+import * as encryption from '@/services/encryption'
+import { getClock } from '@/testing-library'
 import { SyncSetupModal } from './sync-setup-modal'
 
 const fireMigration = () => act(() => dispatchMigrationRecoveryKey('word '.repeat(24).trim()))
@@ -35,6 +38,33 @@ describe('SyncSetupModal', () => {
     })
     return { onOpenChange, onComplete }
   }
+
+  it('stops approval polling when the waiting modal closes', async () => {
+    const wrapper = createTestProvider()
+    const hook = renderHook(() => setupHook.useSyncSetup(), { wrapper })
+    const setup = { ...hook.result.current, step: 'approval-waiting' as const, reset: () => {} }
+    hook.unmount()
+    const useSetup = spyOn(setupHook, 'useSyncSetup').mockReturnValue(setup)
+    const check = spyOn(encryption, 'checkApprovalAndUnwrap').mockResolvedValue(false)
+    try {
+      const props = { onOpenChange: mock(), onComplete: mock() }
+      const view = render(<SyncSetupModal {...props} open />, { wrapper })
+      await act(async () => {
+        await getClock().tickAsync(6000)
+      })
+      expect(check).toHaveBeenCalled()
+      view.rerender(<SyncSetupModal {...props} open={false} />)
+      const calls = check.mock.calls.length
+      await act(async () => {
+        await getClock().tickAsync(10000)
+      })
+      expect(check).toHaveBeenCalledTimes(calls)
+      view.unmount()
+    } finally {
+      useSetup.mockRestore()
+      check.mockRestore()
+    }
+  })
 
   describe('yielding to the seamless v1→v2 migration', () => {
     it('completes setup rather than just closing', () => {

@@ -47,7 +47,7 @@ const frameDecoder = new TextDecoder()
  * per WebSocket frame. Resolves when stdout closes (the process exited or was
  * killed). A trailing object without a final newline is flushed at close.
  */
-const pumpStdoutToSocket = async (proc: BridgeProc, ws: BridgeSocket): Promise<void> => {
+const pumpStdoutToSocket = async (proc: BridgeProc, ws: Pick<BridgeSocket, 'send'>): Promise<void> => {
   // Per-pump decoder: `{ stream: true }` retains partial-multibyte state, which
   // would corrupt other connections if shared. Each connection gets its own.
   const decoder = new TextDecoder()
@@ -67,6 +67,21 @@ const pumpStdoutToSocket = async (proc: BridgeProc, ws: BridgeSocket): Promise<v
   buffer += decoder.decode()
   const trailing = buffer.trim()
   if (trailing) ws.send(trailing)
+}
+
+/** Drain final stdout before closing the socket, including output buffered when the process exits. */
+export const forwardProcessToSocket = async (
+  proc: BridgeProc,
+  ws: Pick<BridgeSocket, 'send' | 'close'>,
+): Promise<void> => {
+  try {
+    await pumpStdoutToSocket(proc, ws)
+    const code = await proc.exited
+    ws.close(code === 0 ? 1000 : 1011, `agent exited (code ${code})`)
+  } catch (err) {
+    process.stderr.write(`thunderbolt bridge: stdout pump error: ${err instanceof Error ? err.message : String(err)}\n`)
+    ws.close(1011, 'agent stdout failed')
+  }
 }
 
 /**
@@ -283,22 +298,7 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
         activeProcs.add(proc)
         void proc.exited.then(() => activeProcs.delete(proc))
         ws.data.proc = proc
-        void (async () => {
-          try {
-            await pumpStdoutToSocket(proc, ws)
-          } catch (err) {
-            process.stderr.write(
-              `thunderbolt bridge: stdout pump error: ${err instanceof Error ? err.message : String(err)}\n`,
-            )
-          }
-        })()
-        void (async () => {
-          const code = await proc.exited
-          // 1000 (normal) only on a clean exit; a non-zero/killed exit is an
-          // abnormal close (1011) so the app surfaces it instead of seeing
-          // a successful shutdown.
-          ws.close(code === 0 ? 1000 : 1011, `agent exited (code ${code})`)
-        })()
+        void forwardProcessToSocket(proc, ws)
       },
       message(ws, message) {
         const proc = ws.data.proc

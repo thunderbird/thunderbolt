@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, beforeEach, afterEach, afterAll, mock, spyOn } from 'bun:test'
+import { withKeyStoreLock } from '@/crypto/key-store-lock'
+import { invalidateEncryptionOperations, EncryptionOperationCancelledError } from '@/crypto/key-storage-lifetime'
 import { getAuthToken } from '@/lib/auth-token'
 import { setCachedSession, clearCachedSession } from '@/lib/session-cache'
 import { createAuthenticatedClient, type HttpClient } from '@/lib/http'
@@ -713,6 +715,193 @@ describe('encryption service (v2)', () => {
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
     clearCachedSession()
+  })
+
+  describe('account and reset ownership', () => {
+    /** Hold one successful response after the server has finished processing it. */
+    const delayedClient = (server: FakeServer, path: string) => {
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const client = createAuthenticatedClient('http://test-api.local', getAuthToken, {
+        fetch: (async (request: Request) => {
+          const response = await server.fetch(request)
+          if (new URL(request.url).pathname === path) {
+            entered.resolve()
+            await release.promise
+          }
+          return response
+        }) as typeof fetch,
+      })
+      return { client, entered: entered.promise, release: release.resolve }
+    }
+
+    it('refuses encrypted sync before making requests when Web Locks is unavailable', async () => {
+      const server = createFakeServer()
+      const previous = navigator.locks
+      try {
+        Object.defineProperty(navigator, 'locks', { configurable: true, value: {} })
+        await expect(registerThisDevice(clientFor(server))).rejects.toThrow(
+          'Encrypted sync requires Web Locks in a secure context',
+        )
+        await expect(ensureV2Encryption(clientFor(server))).rejects.toThrow(
+          'Encrypted sync requires Web Locks in a secure context',
+        )
+        expect(server.requests).toEqual([])
+        expect(keyWrites).toEqual({ ak: 0, dek: 0, primary: 0, version: 0, witness: 0 })
+      } finally {
+        Object.defineProperty(navigator, 'locks', { configurable: true, value: previous })
+      }
+    })
+
+    for (const [name, run] of Object.entries({
+      stageKeyring,
+      refreshAK,
+      checkApprovalAndUnwrap,
+      followToV2,
+      ensureV2Encryption,
+    })) {
+      it(`discards ${name} results after the key-store lifetime ends`, async () => {
+        const server = createFakeServer()
+        storedKeyPair = await generateFullKeyPair()
+        await seedV2Account(server, storedKeyPair, await generateDEK(true))
+        const delayed = delayedClient(
+          server,
+          name === 'refreshAK' || name === 'checkApprovalAndUnwrap' ? '/devices/me/envelope' : '/encryption/canary',
+        )
+        const pending = run(delayed.client)
+        const outcome = pending.then(
+          () => null,
+          (error: unknown) => error,
+        )
+        await delayed.entered
+        invalidateEncryptionOperations()
+        delayed.release()
+        expect(await outcome).toBeInstanceOf(EncryptionOperationCancelledError)
+        expect(keyWrites).toEqual({ ak: 0, dek: 0, primary: 0, version: 0, witness: 0 })
+      })
+    }
+
+    it('releases the writer lock on reset even if the old transport never settles', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      await seedV2Account(server, storedKeyPair, await generateDEK(true))
+      const delayed = delayedClient(server, '/devices/me/envelope')
+      const result = refreshAK(delayed.client).then(
+        () => null,
+        (error: unknown) => error,
+      )
+      await delayed.entered
+      invalidateEncryptionOperations()
+      // This must complete before the transport is released, so cleanup can wipe keys.
+      await withKeyStoreLock(async () => {})
+      expect(await result).toBeInstanceOf(EncryptionOperationCancelledError)
+      delayed.release()
+      await Promise.resolve()
+      expect(keyWrites).toEqual({ ak: 0, dek: 0, primary: 0, version: 0, witness: 0 })
+    })
+
+    it('serializes foreground refresh behind background staging of the same vault', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      await seedV2Account(server, storedKeyPair, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const delayed = delayedClient(server, '/encryption/canary')
+      const staging = stageKeyring(delayed.client)
+      await delayed.entered
+      const requests = [...server.requests]
+      const refreshing = refreshAK(clientFor(server))
+      await Promise.resolve()
+      expect(server.requests).toEqual(requests)
+      delayed.release()
+      await Promise.all([staging, refreshing])
+      expect(server.requests).toContain('GET /devices/me/envelope')
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
+      expect(await unwrapDEK(storedDEKs.get('0')!, storedAK!, '0')).toBeDefined()
+    })
+
+    it('rejects queued operations from a reset lifetime without beginning their requests', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      await seedV2Account(server, storedKeyPair, await generateDEK(true))
+      const delayed = delayedClient(server, '/encryption/canary')
+      const staging = stageKeyring(delayed.client).then(
+        () => null,
+        (error: unknown) => error,
+      )
+      await delayed.entered
+      const requests = [...server.requests]
+      const refreshing = refreshAK(clientFor(server)).then(
+        () => null,
+        (error: unknown) => error,
+      )
+      invalidateEncryptionOperations()
+      delayed.release()
+      expect(await staging).toBeInstanceOf(EncryptionOperationCancelledError)
+      expect(await refreshing).toBeInstanceOf(EncryptionOperationCancelledError)
+      expect(server.requests).toEqual(requests)
+    })
+
+    it('refuses a previous account response even without an explicit store reset', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      await seedV2Account(server, storedKeyPair, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const writes = { ...keyWrites }
+      const delayed = delayedClient(server, '/encryption/canary')
+      const pending = stageKeyring(delayed.client)
+      const outcome = pending.then(
+        () => null,
+        (error: unknown) => error,
+      )
+      await delayed.entered
+      setCachedSession({
+        user: { id: 'replacement-account' },
+        session: { expiresAt: new Date(Date.now() + 3_600_000) },
+      })
+      delayed.release()
+      expect(await outcome).toBeInstanceOf(EncryptionOperationCancelledError)
+      expect(keyWrites).toEqual(writes)
+    })
+
+    it('does not restore old account keys or run repair after a committed rotation returns late', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      await seedV2Account(server, storedKeyPair, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const writes = { ...keyWrites }
+      const delayed = delayedClient(server, '/encryption/rotate')
+      const pending = changeRecoveryPhrase(delayed.client, {
+        listTrustedDevices: async () => [await deviceKeysFor(storedKeyPair!, 'test-device-id')],
+      })
+      const outcome = pending.then(
+        () => null,
+        (error: unknown) => error,
+      )
+      await delayed.entered
+      const requests = [...server.requests]
+      invalidateEncryptionOperations()
+      delayed.release()
+      expect(await outcome).toBeInstanceOf(EncryptionOperationCancelledError)
+      expect(server.requests).toEqual(requests)
+      expect(keyWrites).toEqual(writes)
+    })
+
+    it('does not restore keys or publish a phrase after a committed migration returns late', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      await seedV1Account(server, storedKeyPair)
+      const delayed = delayedClient(server, '/encryption/upgrade')
+      const pending = migrateToV2(delayed.client)
+      const outcome = pending.then(
+        () => null,
+        (error: unknown) => error,
+      )
+      await delayed.entered
+      invalidateEncryptionOperations()
+      delayed.release()
+      expect(await outcome).toBeInstanceOf(EncryptionOperationCancelledError)
+      expect(keyWrites).toEqual({ ak: 0, dek: 0, primary: 0, version: 0, witness: 0 })
+    })
   })
 
   describe('ensureSessionBound (THU-873)', () => {

@@ -725,6 +725,7 @@ msgstr ""
 msgid "Change your recovery phrase?"
 msgstr ""
 
+#: src/hooks/use-mcp-server-oauth.ts
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Les modifications ont été enregistrées, mais la reconnexion a échoué. Veuillez réessayer."
@@ -754,7 +755,7 @@ msgstr ""
 msgid "Chats in a project inherit its instructions."
 msgstr "Les conversations d'un projet héritent de ses instructions."
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
 msgstr "Rechercher des mises à jour"
@@ -798,8 +799,7 @@ msgid "Checking your session."
 msgstr "Vérification de votre session."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
-#: src/components/upgrade-required.tsx
-#: src/settings/app-version-section.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Checking…"
 msgstr "Vérification…"
 
@@ -1298,6 +1298,10 @@ msgstr "Impossible d'afficher le code d'association."
 #: src/projects/project-form.tsx
 msgid "Could not save the project."
 msgstr "Impossible d'enregistrer le projet."
+
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "Could not start authorization. Please try again."
+msgstr ""
 
 #: src/settings/passkeys.tsx
 #~ msgid "Couldn't add a passkey. Please try again."
@@ -1861,7 +1865,7 @@ msgstr "Télécharger l'application"
 msgid "Download HTML"
 msgstr "Télécharger le HTML"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Download update"
 msgstr "Télécharger la mise à jour"
 
@@ -1873,7 +1877,7 @@ msgstr "Téléchargement de la mise à jour…"
 msgid "Downloading update… {downloadProgress}%"
 msgstr "Téléchargement de la mise à jour… {downloadProgress} %"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Downloading…"
 msgstr "Téléchargement…"
 
@@ -2644,8 +2648,8 @@ msgid "Location"
 msgstr "Position"
 
 #: src/components/onboarding/onboarding-location-step.tsx
-msgid "Location is required."
-msgstr "La position est requise."
+#~ msgid "Location is required."
+#~ msgstr "La position est requise."
 
 #: src/components/logout-modal.tsx
 #: src/components/sidebar-footer.tsx
@@ -2831,7 +2835,6 @@ msgstr "Mon agent"
 msgid "Name"
 msgstr "Nom"
 
-#: src/components/onboarding/onboarding-name-step.tsx
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Name is required."
@@ -3101,8 +3104,8 @@ msgid "OAuth state mismatch — possible CSRF, authorization rejected."
 msgstr "État OAuth non concordant — CSRF possible, autorisation refusée."
 
 #: src/hooks/use-oauth-connect.ts
-msgid "OAuth validation failed"
-msgstr "La validation OAuth a échoué"
+#~ msgid "OAuth validation failed"
+#~ msgstr "La validation OAuth a échoué"
 
 #: src/projects/emoji-catalog.ts
 msgid "Objects"
@@ -3347,8 +3350,8 @@ msgid "Please choose one of the options on screen."
 msgstr "Veuillez choisir l'une des options à l'écran."
 
 #: src/components/onboarding/onboarding-location-step.tsx
-msgid "Please select a location from the dropdown to get coordinates."
-msgstr "Veuillez sélectionner un lieu dans la liste pour obtenir les coordonnées."
+#~ msgid "Please select a location from the dropdown to get coordinates."
+#~ msgstr "Veuillez sélectionner un lieu dans la liste pour obtenir les coordonnées."
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Please store your recovery key somewhere safe. You'll need it to access your data if you ever lose all your devices."
@@ -3514,6 +3517,10 @@ msgstr "Échec de la récupération"
 msgid "Recovery phrase"
 msgstr "Phrase de récupération"
 
+#: src/hooks/use-sync-setup.ts
+msgid "Recovery phrase must be 24 words (you entered {wordCount})."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
 msgstr ""
@@ -3654,7 +3661,7 @@ msgstr "Réinitialisation…"
 msgid "Restart Now"
 msgstr "Redémarrer maintenant"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
 msgstr "Redémarrer pour mettre à jour"
 
@@ -3670,7 +3677,7 @@ msgstr "Récupération des données…"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Retry"
 msgstr "Réessayer"
 
@@ -4177,6 +4184,10 @@ msgstr ""
 msgid "Signed Out"
 msgstr "Déconnecté"
 
+#: src/components/sign-in/sign-in-form.tsx
+msgid "Signing in…"
+msgstr ""
+
 #: src/components/revoked-device-modal.tsx
 #~ msgid "Signing out…"
 #~ msgstr "Déconnexion…"
@@ -4545,6 +4556,10 @@ msgstr "La demande a été refusée. Vous pouvez fermer cette page en toute séc
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr "Le serveur a rejeté les identifiants. Vérifiez votre jeton Bearer ou votre clé API."
 
+#: src/lib/encryption-error-message.ts
+msgid "The server took too long to respond. Please try again."
+msgstr ""
+
 #: src/lib/device-grant.ts
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
 msgstr "Le service de connexion est actuellement indisponible. Vérifiez votre connexion et réessayez."
@@ -4647,6 +4662,10 @@ msgstr "Ce lien n'est pas valide. Veuillez en demander un nouveau."
 #: src/hooks/use-external-link-dialog.ts
 msgid "This link uses an address the app cannot open."
 msgstr "Cette adresse ne peut pas être ouverte par l'application."
+
+#: src/mini-apps/mini-app-frame.tsx
+msgid "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
+msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
@@ -4843,6 +4862,10 @@ msgstr "Format de l'heure"
 #: src/components/sync-setup/confirm-identity-step.tsx
 msgid "To continue, we’ll email you a verification code."
 msgstr "Pour continuer, nous allons vous envoyer un code de vérification par e-mail."
+
+#: src/lib/encrypted-sync-support.ts
+msgid "To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system."
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"

@@ -1,8 +1,7 @@
 # Projects
 
-A **project** is a workspace: durable instructions every chat inside it
-inherits, plus a view of what those chats produced. Modelled on Claude Desktop's
-Projects, minus the document set ([why](#knowledge-and-why-it-isnt-here)).
+A **project** groups chats and supplies durable instructions every chat inside it
+inherits. It has no document set ([why](#knowledge-and-why-it-isnt-here)).
 
 ## Mental model
 
@@ -35,8 +34,8 @@ assistant-written notes, or prompt budget. Rebuilding it means rebuilding:
 - `<document>` sandboxing, so a knowledge document carrying third-party text
   cannot close its own delimiter.
 
-Chats in a project stay **searchable** (never dependent on knowledge), and
-artifacts are still aggregated because they derive from message JSON.
+Chats in a project stay **searchable** (never dependent on knowledge). Artifacts
+remain in their source chats.
 
 ## Prompt injection
 
@@ -173,8 +172,7 @@ include/exclude on any future table.
   action menu (long-press on mobile, right-click or `⋯` on desktop), which opens
   `MoveChatToProjectDialog`. The sidebar owns one dialog instance rather than one
   per row, since the list is virtualized and hundreds of rows long.
-- **E2EE has not been exercised.** The artifact query (`parts LIKE`) and the FTS
-  index both assume message JSON is plaintext locally.
+- **E2EE has not been exercised.** The FTS index assumes message JSON is plaintext locally.
 - **The pinned emoji category label is an overlay, not `position: sticky`.**
   `virtua` unmounts offscreen rows, so a sticky in-flow heading disappears
   exactly when it should stick. The label derives from the scroll offset

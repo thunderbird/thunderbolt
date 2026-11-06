@@ -7,6 +7,14 @@ import { LayoutGrid, MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'l
 import { ContextMenuItem, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 
+export type ProjectActionHandlers = {
+  onNewChat: () => void
+  onEdit: () => void
+  onTogglePin: () => void
+  onDelete: () => void
+  onOpenArtifacts?: () => void
+}
+
 /** Keep the folder's context menu and overflow menu in sync. */
 export const ProjectActionMenuItems = ({
   context = false,
@@ -19,7 +27,7 @@ export const ProjectActionMenuItems = ({
 }: {
   context?: boolean
   onNewChat: () => void
-  onOpenArtifacts: () => void
+  onOpenArtifacts?: () => void
   onEdit: () => void
   onTogglePin: () => void
   pinned: boolean
@@ -33,13 +41,15 @@ export const ProjectActionMenuItems = ({
         <MessageCirclePlus />
         <Trans>New chat</Trans>
       </Item>
-      <Item onSelect={onOpenArtifacts} className="cursor-pointer">
-        <LayoutGrid />
-        <Trans>Artifacts</Trans>
-      </Item>
+      {onOpenArtifacts && (
+        <Item onSelect={onOpenArtifacts} className="cursor-pointer">
+          <LayoutGrid />
+          <Trans>Artifacts</Trans>
+        </Item>
+      )}
       <Item onSelect={onTogglePin} className="cursor-pointer">
         {pinned ? <PinOff /> : <Pin />}
-        {pinned ? <Trans>Unpin project</Trans> : <Trans>Pin project</Trans>}
+        {pinned ? <Trans>Unpin</Trans> : <Trans>Pin</Trans>}
       </Item>
       <Separator />
       <Item onSelect={onEdit} className="cursor-pointer">

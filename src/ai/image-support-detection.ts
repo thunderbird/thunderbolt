@@ -36,6 +36,7 @@ const untilAborted = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> =
 const catalogImageSupport = async (
   model: Model,
   fetchCatalog: typeof fetchModelsForProvider,
+  getProxyFetch: () => FetchFn,
   signal: AbortSignal,
 ): Promise<ImageSupport | undefined> => {
   if (!modalityCatalogProviders.has(model.provider)) {
@@ -44,7 +45,10 @@ const catalogImageSupport = async (
   try {
     // Neither catalog request has its own timeout, so the deadline bounds it here.
     const catalog = await untilAborted(
-      fetchCatalog({ provider: model.provider, apiKey: model.apiKey ?? undefined, url: model.url ?? undefined }),
+      fetchCatalog(
+        { provider: model.provider, apiKey: model.apiKey ?? undefined, url: model.url ?? undefined },
+        getProxyFetch,
+      ),
       signal,
     )
     const supportsImages = catalog.find((entry) => entry.id === model.model)?.supports_images
@@ -87,7 +91,8 @@ export const detectImageSupport = async (
     return known
   }
   const support =
-    (await catalogImageSupport(model, fetchCatalog, signal)) ?? (await probe(model, getProxyFetch, signal))
+    (await catalogImageSupport(model, fetchCatalog, getProxyFetch, signal)) ??
+    (await probe(model, getProxyFetch, signal))
   setCachedImageSupport(model, support)
   return support
 }

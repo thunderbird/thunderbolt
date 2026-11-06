@@ -10,6 +10,8 @@ Offline-first sync between the backend (PostgreSQL) and clients (SQLite), scoped
 
 The frontend never hard-codes the PowerSync URL; `/powersync/token` returns it, so URL changes stay transparent.
 
+PowerSync's Postgres storage never compacts parameter history: every write to a row a stream lookup reads (here `devices`) adds a version, and each checkpoint scans them all. To rebuild the storage from scratch, bump `PS_SYNC_CONFIG_VERSION` on the Render `powersync` service and redeploy; it feeds `version_label` in `deploy/config/powersync-config.yaml`. Every device then downloads its data again.
+
 ---
 
 ## 2. Synced Tables
@@ -108,16 +110,16 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid,
 
 Defined in [backend/src/db/powersync-schema.ts](../../../backend/src/db/powersync-schema.ts), mirrored in [src/db/tables.ts](../../../src/db/tables.ts) with booleans as SQLite integers and without `app_version` (server-written for operators, never read back).
 
-| Column                           | Meaning                                                                                     |
-| -------------------------------- | ------------------------------------------------------------------------------------------- |
-| `id`, `user_id`                  | device id and owner; the `bridge-` and `cli-` id namespaces are server-reserved             |
-| `name`, `app_version`            | from `X-Device-Name` and `X-App-Version` on the token request, length-capped                |
-| `last_seen`, `created_at`        | `last_seen` refreshed by `upsertDevice` on every token request; `created_at` only on insert |
-| `trusted`, `approval_pending`    | drive the approve/deny queue in Settings > Devices                                          |
-| `public_key`, `mlkem_public_key` | public keys for envelope wrapping ([e2e-encryption.md](e2e-encryption.md))                  |
-| `revoked_at`                     | soft revoke; set by the revoke route, never cleared                                         |
-| `device_type`                    | `normal`, `bridge` or `cli`, one shared revocation lifecycle                                |
-| `node_id`, `node_id_attested_at` | iroh P2P identity, written only by the section 6 routes, never by a sync upload             |
+| Column                           | Meaning                                                                            |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| `id`, `user_id`                  | device id and owner; the `bridge-` and `cli-` id namespaces are server-reserved    |
+| `name`, `app_version`            | from `X-Device-Name` and `X-App-Version` on the token request, length-capped       |
+| `last_seen`, `created_at`        | `last_seen` refreshed by `touchDevice` at most hourly; `created_at` only on insert |
+| `trusted`, `approval_pending`    | drive the approve/deny queue in Settings > Devices                                 |
+| `public_key`, `mlkem_public_key` | public keys for envelope wrapping ([e2e-encryption.md](e2e-encryption.md))         |
+| `revoked_at`                     | soft revoke; set by the revoke route, never cleared                                |
+| `device_type`                    | `normal`, `bridge` or `cli`, one shared revocation lifecycle                       |
+| `node_id`, `node_id_attested_at` | iroh P2P identity, written only by the section 6 routes, never by a sync upload    |
 
 **There is no `status` column.** State is three independent fields, so every check spells out the combination:
 
@@ -132,7 +134,9 @@ Bridge and CLI rows share the shape and lifecycle, so the DAL guards carry the d
 
 Trust-sensitive columns are server-managed. `revoked_at`, `trusted`, `approval_pending`, `public_key`, `mlkem_public_key`, `app_version`, `device_type`, `node_id` and `node_id_attested_at` sit in `uploadDenyColumns`, stripped from any `PUT`/`PATCH`; `devices` sits in `uploadDenyDelete`, so a sync `DELETE` is rejected and a row goes only through the section 6 route ([backend/src/dal/powersync.ts](../../../backend/src/dal/powersync.ts), full gate in [powersync-upload-authorization.md](powersync-upload-authorization.md)). How `trusted`, `approval_pending` and `public_key` feed encryption setup and device approval: [e2e-encryption.md](e2e-encryption.md).
 
-Three routes write `node_id` / `node_id_attested_at`: canary-gated `POST /devices/:deviceId/node-id`, session-pinned `POST /devices/me/node-id`, and bridge registration (`registerBridgeDevice`). Revoke and deny clear them so a removed device stops being dialable.
+Three routes set `node_id` / `node_id_attested_at`: canary-gated `POST /devices/:deviceId/node-id`, session-pinned `POST /devices/me/node-id`, and bridge registration (`registerBridgeDevice`). Revoke and deny clear them so a removed device stops being dialable.
+
+During a legacy encryption upgrade through `POST /encryption/upgrade`, trusted, non-revoked regular app devices other than the migrator return to pending approval, and their node IDs and attestation timestamps are cleared. Other device states remain unchanged.
 
 ### Settings > Devices
 
@@ -161,7 +165,7 @@ Both live in `localStorage` under fixed keys ([src/lib/auth-token.ts](../../../s
 
 ### PowerSync Token (`GET /powersync/token`)
 
-- **Session path:** `validateDeviceForSync` validates, then the route issues a JWT and upserts the device (id, user_id, name, last_seen, `app_version` from `X-App-Version`).
+- **Session path:** `validateDeviceForSync` validates, then the route issues a JWT and `touchDevice` updates the device's name, `last_seen` and `app_version` (from `X-App-Version`). It skips the write unless the name or version changed or `last_seen` is over an hour old: every device-row write adds a version to PowerSync's parameter history, which its Postgres storage never compacts.
 - **Bearer token only (e.g. credential refresh):** the signed token resolves to a persisted session. A missing user row (account deleted) gives **410 Gone** `ACCOUNT_DELETED`; otherwise validation and issuance run as above.
 - `X-Device-ID` is required on both paths, so a revoked device cannot buy a token by omitting the header.
 - With `POWERSYNC_JWT_SECRET` unset, `createPowerSyncRoutes` returns an empty Elysia instance and mounts neither route, so requests 404. Secret set, `POWERSYNC_URL` empty: `/token` answers **503**.
@@ -296,7 +300,7 @@ A hard delete, deliberately narrow: only a **revoked bridge** device (**409** ot
 
 ### Managed Catalog Privacy
 
-`GET /v1/config` publishes managed models through `defaults.models`: versioned `SharedModel` rows without `apiKey`, plus `defaultModelId`. Price tables, quota internals, credentials and other deployment secrets stay backend-only. Mandatory old-client-safe rollout order: [CLI Device Rollout](../../self-hosting/configuration.md#command-line-client-rollout).
+`GET /v1/config` publishes managed models through `defaults.models`: versioned `SharedModel` rows without `apiKey`, plus `defaultModelId` and the rows' image-support declarations. Price tables, quota internals, credentials and other deployment secrets stay backend-only. Mandatory old-client-safe rollout order: [CLI Device Rollout](../../self-hosting/configuration.md#command-line-client-rollout).
 
 ### Encryption API Endpoints
 

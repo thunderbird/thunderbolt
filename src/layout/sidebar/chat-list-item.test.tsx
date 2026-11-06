@@ -35,11 +35,10 @@ const renderWithProviders = (props: ChatListItemProps) => render(chatListItemWit
 const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps => ({
   thread: { id: 'thread-1', title: 'My Chat', isEncrypted: 0, projectId: null, miniAppId: null },
   isActive: false,
-  isCollapsed: false,
   isMobile: false,
-  deleteChatMutation: { mutate: mock(), isPending: false } as never,
+  deleteChatMutation: { mutate: mock(), isPending: false },
   threadIdRef: { current: null },
-  deleteChatDialogRef: { current: { open: mock(), close: mock() } } as never,
+  deleteChatDialogRef: { current: { open: mock(), close: mock() } },
   onChatClick: mock(),
   onRename: mock(),
   onMoveToProject: mock(),
@@ -58,34 +57,34 @@ afterEach(() => {
 describe('ChatListItem in minimal mode', () => {
   const dragRow = () => document.querySelector('[data-sidebar="menu-item"]')
 
-  it('offers Move to project and a live drag handle by default', async () => {
+  it('offers Move and a live drag handle by default', async () => {
     renderWithProviders(createProps())
     expect(dragRow()).toHaveAttribute('aria-disabled', 'false')
 
     fireEvent.contextMenu(screen.getByText('My Chat'))
     await waitForElement(() => screen.queryByText('Rename'))
-    expect(screen.getByText('Move to project')).toBeInTheDocument()
+    expect(screen.getByText('Move')).toBeInTheDocument()
   })
 
-  it('drops Move to project from the context menu and disables dragging', async () => {
+  it('drops Move from the context menu and disables dragging', async () => {
     useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
     renderWithProviders(createProps())
     expect(dragRow()).toHaveAttribute('aria-disabled', 'true')
 
     fireEvent.contextMenu(screen.getByText('My Chat'))
     await waitForElement(() => screen.queryByText('Rename'))
-    expect(screen.queryByText('Move to project')).not.toBeInTheDocument()
+    expect(screen.queryByText('Move')).not.toBeInTheDocument()
     expect(screen.getByText('Delete')).toBeInTheDocument()
   })
 
-  it('drops Move to project from the mobile action sheet', async () => {
+  it('drops Move from the mobile action sheet', async () => {
     forceMobileViewport()
     useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
     renderWithProviders(createProps({ isMobile: true }))
 
     fireEvent.contextMenu(screen.getByText('My Chat'))
     await waitForElement(() => screen.queryByText('Rename'))
-    expect(screen.queryByText('Move to project')).not.toBeInTheDocument()
+    expect(screen.queryByText('Move')).not.toBeInTheDocument()
   })
 })
 
@@ -95,7 +94,7 @@ describe('ChatListItem', () => {
     renderWithProviders(createProps({ onChatClick }))
     fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' })
     expect(await waitForElement(() => screen.queryByText('Rename'))).toBeInTheDocument()
-    expect(screen.getByText('Move to project')).toBeInTheDocument()
+    expect(screen.getByText('Move')).toBeInTheDocument()
     expect(onChatClick).not.toHaveBeenCalled()
   })
 
@@ -173,11 +172,5 @@ describe('ChatListItem', () => {
     // The row passes its own `miniAppId` up, so the sidebar doesn't have to
     // find the thread again to learn where the click should land.
     expect(onChatClick).toHaveBeenCalledWith('thread-1', null)
-  })
-
-  it('renders icon-only view when collapsed', () => {
-    renderWithProviders(createProps({ isCollapsed: true }))
-    expect(screen.queryByText('My Chat')).not.toBeInTheDocument()
-    expect(screen.queryByText('Rename')).not.toBeInTheDocument()
   })
 })

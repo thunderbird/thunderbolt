@@ -24,6 +24,8 @@ export type AgentSelectorProps = {
    *  The label and paddings transition, so toggling this mid-mount morphs the
    *  pill smoothly instead of swapping shapes. */
   collapsed?: boolean
+  /** Share the mobile header capsule's background when docked beside the project. */
+  mobileJoined?: boolean
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
 }
@@ -82,6 +84,7 @@ export const AgentSelector = ({
   onAddAgent,
   disabled = false,
   collapsed = false,
+  mobileJoined = false,
   side,
   align,
 }: AgentSelectorProps) => {
@@ -178,6 +181,8 @@ export const AgentSelector = ({
             'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 motion-reduce:transition-none max-md:group-active:bg-muted-foreground/20 md:hidden',
             mobileHeaderControlFillClass,
             collapsed ? 'pointer-events-auto opacity-100' : 'opacity-0',
+            mobileJoined &&
+              'max-md:rounded-l-full max-md:rounded-r-none max-md:bg-transparent max-md:dark:bg-transparent max-md:backdrop-blur-none max-md:group-hover:bg-muted-foreground/10',
           )}
         >
           <Icon className="max-w-none size-[var(--icon-size-default)] text-muted-foreground" />
@@ -216,12 +221,13 @@ export const AgentSelector = ({
       searchPlaceholder={t`Search agents`}
       emptyMessage={t`No agents found`}
       mobileTitle={t`Choose agent`}
+      showDesktopTitle
       mobileSide="top"
       trigger={renderTrigger}
       renderItem={renderAgentItem}
       footerAction={footerAction}
       width={240}
-      maxHeight={340}
+      maxHeight={300}
       side={side}
       align={align}
       open={disabled ? false : open}

@@ -24,10 +24,13 @@ import { join } from 'path'
 
 type VersionType = 'major' | 'minor' | 'patch' | 'auto'
 
+const platforms = ['all', 'ios', 'android', 'desktop'] as const
+type Platform = (typeof platforms)[number]
+
 type Args = {
   version?: string
   type?: VersionType
-  platform?: 'all' | 'ios' | 'android' | 'desktop'
+  platform?: Platform
   dryRun?: boolean
   push?: boolean
   help?: boolean
@@ -39,10 +42,10 @@ const versionPackagePaths = ['package.json', 'cli/package.json'] as const
 /**
  * Execute a shell command and return the output
  */
-// nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
-// Safe: commands are constructed from hardcoded strings and locally-parsed CLI args, not from untrusted input
 const exec = (command: string, silent = false): string => {
   try {
+    // Safe: commands are built from hardcoded strings plus a version and platform that main() validates
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
     const result = execSync(command, {
       cwd: repoRoot,
       encoding: 'utf8',
@@ -79,7 +82,7 @@ const parseArgs = (): Args => {
     } else if (arg === '--type' || arg === '-t') {
       args.type = process.argv[++i] as VersionType
     } else if (arg === '--platform') {
-      args.platform = process.argv[++i] as Args['platform']
+      args.platform = process.argv[++i] as Platform
     } else if (arg === '--dry-run' || arg === '-d') {
       args.dryRun = true
     } else if (arg === '--push' || arg === '-p') {
@@ -434,6 +437,17 @@ const main = () => {
   // Validate arguments
   if (args.version && args.type) {
     console.error('❌ Error: Cannot specify both --version and --type')
+    process.exit(1)
+  }
+
+  // Both values reach shell commands (git tag, git-cliff), and version-bump.yml passes them from free-text inputs
+  if (args.version && !/^\d+\.\d+\.\d+$/.test(args.version)) {
+    console.error(`❌ Error: Invalid version "${args.version}". Expected X.Y.Z format.`)
+    process.exit(1)
+  }
+
+  if (args.platform && !platforms.includes(args.platform)) {
+    console.error(`❌ Error: Invalid platform "${args.platform}". Expected one of: ${platforms.join(', ')}`)
     process.exit(1)
   }
 

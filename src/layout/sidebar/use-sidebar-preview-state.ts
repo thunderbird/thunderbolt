@@ -4,11 +4,16 @@
 
 import { useState } from 'react'
 const previewCount = 5
+export const recentChatsPreviewCount = 20
 
 /** Keep sidebar sections compact without hiding their current project or chat. */
-export const useSidebarPreviewState = <T extends { id: string }>(items: T[], activeId?: string | null) => {
-  const [visibleCount, setVisibleCount] = useState(previewCount)
-  const hasOverflow = items.length > previewCount
+export const useSidebarPreviewState = <T extends { id: string }>(
+  items: T[],
+  activeId?: string | null,
+  initialCount = previewCount,
+) => {
+  const [visibleCount, setVisibleCount] = useState(initialCount)
+  const hasOverflow = items.length > initialCount
   const showAll = visibleCount >= items.length
   const activeIndex = items.findIndex((item) => item.id === activeId)
   const preview =
@@ -20,6 +25,6 @@ export const useSidebarPreviewState = <T extends { id: string }>(items: T[], act
     items: preview,
     hasOverflow,
     showAll,
-    toggle: () => setVisibleCount((previous) => (previous >= items.length ? previewCount : previous + previewCount)),
+    toggle: () => setVisibleCount((previous) => (previous >= items.length ? initialCount : previous + previewCount)),
   }
 }

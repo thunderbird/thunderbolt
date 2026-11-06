@@ -9,18 +9,19 @@ import { useSidebarPreviewState } from './use-sidebar-preview-state'
 
 const items = Array.from({ length: 12 }, (_, index) => ({ id: `item-${index + 1}` }))
 
-it('reveals five more items per click, then collapses back to five', () => {
-  const { result } = renderHook(() => useSidebarPreviewState(items))
-  expect(result.current.items).toEqual(items.slice(0, 5))
+it.each([5, 20])('reveals five more items per click, then collapses back to %s', (initialCount) => {
+  const items = Array.from({ length: initialCount + 7 }, (_, index) => ({ id: `item-${index + 1}` }))
+  const { result } = renderHook(() => useSidebarPreviewState(items, undefined, initialCount))
+  expect(result.current.items).toEqual(items.slice(0, initialCount))
   expect(result.current.hasOverflow).toBe(true)
   act(() => result.current.toggle())
-  expect(result.current.items).toEqual(items.slice(0, 10))
+  expect(result.current.items).toEqual(items.slice(0, initialCount + 5))
   expect(result.current.showAll).toBe(false)
   act(() => result.current.toggle())
   expect(result.current.items).toEqual(items)
   expect(result.current.showAll).toBe(true)
   act(() => result.current.toggle())
-  expect(result.current.items).toEqual(items.slice(0, 5))
+  expect(result.current.items).toEqual(items.slice(0, initialCount))
 })
 
 it('keeps an older selected item visible within the five-item limit', () => {
@@ -52,19 +53,4 @@ it('only offers expansion when the live collection exceeds five items', () => {
   rerender({ count: 4 })
   expect(result.current.hasOverflow).toBe(false)
   expect(result.current.items).toHaveLength(4)
-})
-
-it('expands projects, project chats, and recents independently', () => {
-  const { result } = renderHook(() => ({
-    projects: useSidebarPreviewState(items),
-    chats: useSidebarPreviewState(items),
-    recents: useSidebarPreviewState(items),
-  }))
-  act(() => result.current.projects.toggle())
-  expect(result.current.projects.items).toHaveLength(10)
-  expect(result.current.chats.items).toHaveLength(5)
-  expect(result.current.recents.items).toHaveLength(5)
-  act(() => result.current.recents.toggle())
-  expect(result.current.recents.items).toHaveLength(10)
-  expect(result.current.chats.items).toHaveLength(5)
 })

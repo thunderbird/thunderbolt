@@ -55,7 +55,7 @@ const Switch = ({ className, onCheckedChange, ...props }: ComponentProps<typeof 
         className={cn(
           'pointer-events-none block size-[var(--switch-thumb-size)] rounded-full bg-background shadow-sm ring-0 transition-transform',
           'data-[state=unchecked]:translate-x-0 data-[state=checked]:translate-x-[var(--switch-thumb-translate)]',
-          'data-[state=checked]:bg-white',
+          'data-[state=checked]:bg-brand-foreground',
           'dark:data-[state=unchecked]:bg-foreground',
         )}
       />

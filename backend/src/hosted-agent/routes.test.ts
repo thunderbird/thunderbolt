@@ -20,7 +20,7 @@ import { createMockAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/
 import { createTestSettings } from '@/test-utils/settings'
 import { getRegisteredProviders, resetAgentProvidersForTesting } from '@/agents/discovery'
 import { currentDateTimeLine } from '@shared/i18n/current-date-time'
-import { APICallError, dynamicTool, jsonSchema, simulateReadableStream, type ToolSet } from 'ai'
+import { APICallError, dynamicTool, jsonSchema, RetryError, simulateReadableStream, type ToolSet } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
@@ -594,6 +594,59 @@ describe('createHostedAgentRoutes', () => {
     )
   })
 
+  describe('service tier pricing', () => {
+    const storedPrice: InferencePrice = {
+      provider: 'fireworks',
+      model: fireworksModel,
+      inputNanoUsdPerToken: 1400n,
+      outputNanoUsdPerToken: 4400n,
+      cacheReadNanoUsdPerToken: 260n,
+    }
+
+    const priorityPrice = {
+      ...storedPrice,
+      inputNanoUsdPerToken: 1750n,
+      outputNanoUsdPerToken: 5500n,
+      cacheReadNanoUsdPerToken: 325n,
+    }
+
+    const recordedPrice = async (
+      agentFireworksServiceTier: Settings['agentFireworksServiceTier'],
+      upstreamTimeoutMs?: number,
+    ) => {
+      checkAdmission.mockImplementation(async () => ({ outcome: 'allowed', price: storedPrice }))
+      const settings = { ...fireworksSettings, agentFireworksServiceTier }
+      const app = createApp({ settings, model, checkAdmission, recordUsage, logger, upstreamTimeoutMs })
+      await (await postChat(app)).text()
+      await settleRun()
+      expect(recordUsage).toHaveBeenCalledTimes(1)
+      return recordUsage.mock.calls[0][1].price
+    }
+
+    it('records a Priority reply at the Priority rate', async () => {
+      expect(await recordedPrice('priority')).toEqual(priorityPrice)
+    })
+
+    it('records the estimate for a timed-out Priority run at the Priority rate', async () => {
+      model = new MockLanguageModelV3({
+        doStream: async ({ abortSignal }) => ({
+          stream: new ReadableStream<StreamPart>({
+            start: (controller) => abortSignal?.addEventListener('abort', () => controller.error(abortSignal.reason)),
+          }),
+        }),
+      })
+      expect(await recordedPrice('priority', 50)).toEqual(priorityPrice)
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'agent_usage_estimated', reason: 'timeout' }),
+        'Agent usage estimated',
+      )
+    })
+
+    it('records a Standard reply at the stored price', async () => {
+      expect(await recordedPrice('standard')).toEqual(storedPrice)
+    })
+  })
+
   describe('reply language', () => {
     it('falls back to the app language named from X-App-Language', async () => {
       const system = await sentSystemPrompt(createMockedApp(), model, { 'X-App-Language': 'de' })
@@ -1025,6 +1078,48 @@ describe('createHostedAgentRoutes', () => {
     )
     expect(JSON.stringify(context)).not.toContain('echoes the conversation')
     expect(recordUsage).not.toHaveBeenCalled()
+  })
+
+  describe('upstream failures in the stream', () => {
+    const upstreamError = (statusCode: number) =>
+      new APICallError({
+        message: 'sentinel-upstream-message',
+        url: 'https://api.fireworks.ai/sentinel-url',
+        requestBodyValues: {},
+        statusCode,
+        responseBody: 'sentinel-upstream-body',
+        isRetryable: false,
+      })
+
+    const streamFailure = async (error: Error) => {
+      model = new MockLanguageModelV3({
+        doStream: async () => {
+          throw error
+        },
+      })
+      const body = await (await postChat(createMockedApp())).text()
+      expect(body).not.toContain('sentinel')
+      return body
+    }
+
+    const rateLimitErrorText = `"errorText":${JSON.stringify(JSON.stringify({ error: 'Too many requests', status: 429 }))}`
+
+    it('streams an upstream 429 in the shape the app reads as a rate limit', async () => {
+      const body = await streamFailure(upstreamError(429))
+      expect(body).toContain(rateLimitErrorText)
+    })
+
+    it('streams a 429 that survived the SDK retries the same way', async () => {
+      const body = await streamFailure(
+        new RetryError({ message: 'sentinel-retry', reason: 'maxRetriesExceeded', errors: [upstreamError(429)] }),
+      )
+      expect(body).toContain(rateLimitErrorText)
+    })
+
+    it('keeps the generic text for any other failure', async () => {
+      const body = await streamFailure(upstreamError(500))
+      expect(body).toContain('"errorText":"An error occurred."')
+    })
   })
 
   it('skips the ledger and logs when the provider reports no usage', async () => {

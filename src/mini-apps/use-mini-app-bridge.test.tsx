@@ -163,7 +163,7 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
 
   const Harness = () => {
     bridge.current = useMiniAppBridge({ app, owner: 'test', onChatOpen })
-    return <iframe ref={bridge.current.frameRef} title={app.name} src="about:blank" />
+    return <iframe ref={bridge.current.frameRef} title={app.name} srcDoc="" />
   }
 
   const { unmount } = render(

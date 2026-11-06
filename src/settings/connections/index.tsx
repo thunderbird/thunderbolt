@@ -31,7 +31,7 @@ import type { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web
 import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 import { probeMcpServerTools } from '@/lib/mcp-connection-test'
 import { useMCP } from '@/lib/mcp-provider'
-import { computeEffectiveProxyEnabled, createProxyFetch } from '@/lib/proxy-fetch'
+import { createProxyFetch } from '@/lib/proxy-fetch'
 import type { StatusState } from '@/components/status-indicator'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { McpServer } from '@/types'
@@ -110,13 +110,12 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     shouldClearNavigationState,
   } = state
 
-  // Web OAuth discovery/exchange share the universal proxy fetch the transport
-  // uses, so SSRF stays covered by `/v1/proxy` and the path matches production.
+  // OAuth discovery/exchange share the transport's platform/toggle-aware fetch;
+  // hosted requests use `/v1/proxy` and its SSRF checks.
   const buildOAuthFetch = () =>
     createProxyFetch({
       cloudUrl,
       getProxyAuthToken: getAuthToken,
-      getProxyEnabled: () => computeEffectiveProxyEnabled(),
     })
 
   const {

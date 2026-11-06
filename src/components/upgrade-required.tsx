@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AppLogo } from '@/components/app-logo'
+import { AppWordmark } from '@/components/app-wordmark'
+import { useAppName } from '@/lib/branding-selectors'
 import { Button } from '@/components/ui/button'
 import { useDesktopUpdate, type UpdateStatus } from '@/hooks/use-desktop-update'
 import { isDesktop } from '@/lib/platform'
@@ -55,31 +56,32 @@ const UpgradeAction = () => {
   )
 }
 
-export const UpgradeRequired = ({ currentVersion, minVersion }: UpgradeRequiredProps) => (
-  <div className="flex flex-col items-center justify-center w-full h-dvh">
-    <div className="flex flex-col items-center gap-8 text-center">
-      <div className="flex items-center gap-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
-        <AppLogo size={16} />
-        <span>Thunderbolt</span>
-      </div>
+export const UpgradeRequired = ({ currentVersion, minVersion }: UpgradeRequiredProps) => {
+  const appName = useAppName()
 
-      <div className="flex flex-col items-center gap-2">
-        <h1 className="text-4xl font-semibold tracking-tight">
-          <Trans>Update required</Trans>
-        </h1>
-        <p className="text-muted-foreground max-w-md">
-          <Trans>
-            This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing.
-          </Trans>
-        </p>
-        <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-          <Trans>
-            Installed: {currentVersion} · Minimum required: {minVersion}
-          </Trans>
-        </p>
-      </div>
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-dvh">
+      <div className="flex flex-col items-center gap-8 text-center">
+        <AppWordmark className="text-[length:var(--font-size-sm)]" />
 
-      <UpgradeAction />
+        <div className="flex flex-col items-center gap-2">
+          <h1 className="text-4xl font-semibold tracking-tight">
+            <Trans>Update required</Trans>
+          </h1>
+          <p className="text-muted-foreground max-w-md">
+            <Trans>
+              This version of {appName} is no longer supported. Update the app to keep chatting and syncing.
+            </Trans>
+          </p>
+          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+            <Trans>
+              Installed: {currentVersion} · Minimum required: {minVersion}
+            </Trans>
+          </p>
+        </div>
+
+        <UpgradeAction />
+      </div>
     </div>
-  </div>
-)
+  )
+}

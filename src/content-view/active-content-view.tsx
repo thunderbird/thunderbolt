@@ -8,6 +8,7 @@ import { useContentView } from './context'
 import { ObjectSidebarContent } from './object-sidebar-content'
 import { SidebarWebview } from './sidebar-webview'
 import { Sideview } from './sideview'
+import { CompactionSummaryContent } from '@/components/context-usage'
 
 // The panel's chrome and navigation are needed only when an artifact is opened there.
 const ArtifactSidebarContent = lazy(() =>
@@ -30,6 +31,7 @@ export const ActiveContentView = () => {
       {state.type === 'preview' && <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />}
       {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
       {state.type === 'sideview' && <Sideview />}
+      {state.type === 'compaction-summary' && <CompactionSummaryContent checkpoint={state.data} onClose={close} />}
       {state.type === 'artifact' && (
         <Suspense fallback={<PageFallback />}>
           <ArtifactSidebarContent data={state.data} onClose={close} />

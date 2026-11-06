@@ -15,6 +15,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { useBrandingLinks } from '@/lib/branding-selectors'
+import { supportHref } from '@/lib/support-href'
 import type { HandleError } from '@/types/handle-errors'
 
 /**
@@ -40,26 +42,26 @@ const generateSupportEmail = (error: HandleError) => {
 
 type AppErrorScreenProps = {
   error: HandleError
-  isClearingDatabase: boolean
   onClearDatabase: () => void
 }
 
-export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: AppErrorScreenProps) => {
+export const AppErrorScreen = ({ error, onClearDatabase }: AppErrorScreenProps) => {
   const isDatabaseError = error.code === 'MIGRATION_FAILED' || error.code === 'DATABASE_INIT_FAILED'
+  const links = useBrandingLinks()
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[100vh] p-4">
-      <div className="text-red-500 text-center mb-4">
+      <div className="text-destructive text-center mb-4">
         <Trans>Failed to initialize app</Trans>
       </div>
-      <div className="text-sm text-gray-500 text-center mb-6">{error.message}</div>
+      <div className="text-sm text-muted-foreground text-center mb-6">{error.message}</div>
 
       <div className="flex flex-col gap-3">
         {isDatabaseError && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isClearingDatabase}>
-                {isClearingDatabase ? <Trans>Clearing Database…</Trans> : <Trans>Clear Local Database</Trans>}
+              <Button variant="destructive">
+                <Trans>Clear Local Database</Trans>
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -89,10 +91,9 @@ export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: A
 
         <Button
           variant="outline"
-          onClick={() => {
-            const { subject, body } = generateSupportEmail(error)
-            window.open(`mailto:support@thunderbird.net?subject=${subject}&body=${body}`)
-          }}
+          onClick={() =>
+            window.open(supportHref(links.support, generateSupportEmail(error)), '_blank', 'noopener,noreferrer')
+          }
         >
           <Trans>Contact Support</Trans>
         </Button>

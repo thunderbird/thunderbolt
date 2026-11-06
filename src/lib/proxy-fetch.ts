@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Universal proxy client. Hosted mode (web) routes cross-origin requests
+ * Universal proxy client. Hosted mode routes cross-origin requests
  * through `${cloudUrl}/v1/proxy`, mapping caller headers to `X-Proxy-Passthrough-*`.
- * Standalone mode (Tauri) calls the upstream directly via Tauri's HTTP plugin.
+ * Web always uses Hosted mode. Tauri calls upstream via the native HTTP adapter with
+ * Use Cloud Proxy off, or for loopback targets; other targets use Hosted mode with it on.
  *
  * The helper hides the difference so call sites — AI SDKs, MCP transports,
  * favicon fetches — look like normal `fetch` calls.
@@ -17,7 +18,7 @@
  * requires non-trivial sign-in scaffolding.
  */
 
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import type { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import {
   finalUrlHeader,
   passthroughPrefix,
@@ -31,7 +32,9 @@ import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from 
 import { appVersionHeader } from './app-version'
 import { handleAppVersionUnsupported } from './app-version-unsupported'
 import { getAuthToken } from './auth-token'
-import { getCapabilities, isTauri } from './platform'
+import { isLoopbackHost } from './mcp-url-validation'
+import { isTauri } from './platform'
+import { nativeFetch } from './native-fetch'
 import { handleSessionRejected } from './session-rejected'
 
 const defaultIsStandalone = isTauri
@@ -109,8 +112,11 @@ const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: R
     method,
     headers: proxyHeaders,
     body: body as BodyInit | null,
-    credentials: init?.credentials ?? (input instanceof Request ? input.credentials : 'include'),
-    signal: init?.signal,
+    // Not inherited from a `Request` input: its browser default ('same-origin') was
+    // chosen for the upstream, and this hop goes to our backend, where cookie-only
+    // SSO needs the session cookie even when the backend is cross-origin.
+    credentials: init?.credentials ?? 'include',
+    signal: init?.signal !== undefined ? init.signal : input instanceof Request ? input.signal : undefined,
     // @ts-expect-error -- Bun/Tauri/modern browsers support duplex:'half' for streaming uploads
     duplex: 'half',
   })
@@ -178,43 +184,22 @@ export type ProxyFetchOptions = {
   isStandalone?: () => boolean
   /** Optional Tauri fetch override — defaults to `@tauri-apps/plugin-http` fetch.
    *  Tests inject a stub. */
-  tauriFetch?: typeof fetch
-  /** Effective `proxy_enabled` value. Defaults to `() => true`, which preserves
-   *  Hosted-mode (web) behaviour for callers that don't wire the user setting.
-   *
-   *  Web always proxies (browser CORS forces it — the toggle is disabled in the
-   *  UI). Tauri respects the user toggle; when off, requests go upstream-direct
-   *  via the Tauri HTTP plugin so the user's IP is hidden from us. Callers that
-   *  want to honour the toggle (the React provider and the module-scoped cache
-   *  in `src/ai/fetch.ts`) pass a getter that reads the `proxy_enabled` localStorage
-   *  key + derives the effective value per platform. */
+  tauriFetch?: typeof tauriFetch
+  /** Effective setting getter, read per request. Defaults to computeEffectiveProxyEnabled. */
   getProxyEnabled?: () => boolean
-  /** Whether `tauri-plugin-http` is registered in the current build. Defaults
-   *  to `getCapabilities()` (memoised) — tests inject a stub. When false, the
-   *  Tauri-direct path is unreachable (the plugin's JS shim would throw
-   *  "plugin http not found"), so we fall through to the hosted proxy even on
-   *  Tauri with `proxy_enabled=false`. Universal Proxy (THU-467) is the
-   *  intended path; this guard makes the toggle a no-op in builds that ship
-   *  without the native fetch capability. */
-  getNativeFetchCapability?: () => Promise<boolean>
 }
 
-/** Build a fetch implementation that hides Hosted/Standalone mode from callers. */
+/** Build a fetch implementation that hides Hosted/Standalone mode from callers.
+ *  Tauri uses native HTTP with Use Cloud Proxy off or for loopback targets.
+ *  Web always uses the backend proxy. */
 export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
   const proxyUrl = `${options.cloudUrl.replace(/\/$/, '')}/proxy`
-  const readNativeFetchCapability =
-    options.getNativeFetchCapability ?? (() => getCapabilities().then((c) => c.native_fetch))
   const proxyFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const standalone = (options.isStandalone ?? isTauri)()
-    const proxyEnabled = options.getProxyEnabled?.() ?? true
-    if (standalone && !proxyEnabled && (await readNativeFetchCapability())) {
-      // Standalone + toggle off + plugin compiled in: hit the upstream directly
-      // through Tauri's HTTP plugin. Builds without `--features native_fetch`
-      // fall through to the hosted proxy (THU-467 Universal Proxy is the
-      // canonical path; the Tauri-direct branch is opt-in for builds that
-      // want to keep the user's IP off our backend).
-      const tFetch = options.tauriFetch ?? (tauriFetch as unknown as typeof fetch)
-      return tFetch(input as RequestInfo, init ?? {}) as unknown as Response
+    const proxyEnabled = options.getProxyEnabled?.() ?? computeEffectiveProxyEnabled(options.isStandalone)
+    const targetUrl = input instanceof Request ? input.url : input.toString()
+    if (standalone && (!proxyEnabled || isLoopbackHost(new URL(targetUrl).hostname))) {
+      return nativeFetch(input, init, options.tauriFetch)
     }
 
     const proxyRequest = buildHostedRequest(proxyUrl, input as RequestInfo | URL, init)
@@ -253,7 +238,8 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
  *  default request logs (URL/Referer do). The server validates the bearer via
  *  the same signed-bearer path REST uses.
  *
- *  Standalone: returns a real WebSocket to the upstream URL directly.
+ *  Tauri: follows the same routing as createProxyFetch — direct with Use Cloud Proxy
+ *  off (the default), or for loopback targets. With it on, other targets use the hosted path.
  *
  *  Returns a *sync* factory `(url, protocols?) => WebSocket` so callers keep
  *  the synchronous `(url) => WebSocketLike` contract used by the ACP transport.
@@ -270,7 +256,7 @@ export const createProxyWebSocket = (options: {
 
   return (url: string, protocols?: string[]): WebSocket => {
     const standalone = standaloneCheck()
-    if (standalone) {
+    if (standalone && (!computeEffectiveProxyEnabled(standaloneCheck) || isLoopbackHost(new URL(url).hostname))) {
       return new WebSocket(url, protocols)
     }
     const wsBase = options.cloudUrl.replace(/^http/, 'ws').replace(/\/$/, '')

@@ -8,7 +8,7 @@
  *
  */
 
-import { and, asc, desc, eq, getTableColumns, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, getTableColumns, inArray, isNull, sql, type SQL } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useLingui } from '@lingui/react/macro'
@@ -23,7 +23,7 @@ import { renderHtmlToolName } from '@/artifacts/constants'
 import { collectProjectArtifacts, type ArtifactMessageRow } from '@/projects/project-artifacts-data'
 import { useArtifactPresentation } from '@/artifacts/use-artifact-presentation'
 import type { Project } from '../types'
-import { getChatActivityQuery } from './chat-activity-query'
+import { getChatActivityQuery, getChatLastActivityId } from './chat-activity-query'
 
 export const maxProjectNameLength = 100
 export const maxProjectInstructionsLength = 20_000
@@ -66,15 +66,17 @@ const assertValidName = (name: string): string => {
 }
 
 /** Pinned projects first, then latest live chat activity, with project creation as the floor. */
-const getAllProjectsQuery = (db: AnyDrizzleDatabase) => {
-  const chatActivity = getChatActivityQuery(db).as('project_chat_activity')
-  const lastActivityId = sql<string>`max(${projectsTable.id}, coalesce(max(${chatActivity.lastActivityId}), ${projectsTable.id}))`
+export const getAllProjectsQuery = (db: AnyDrizzleDatabase) => {
+  // Correlated per project so the chat lookup uses PowerSync's project index instead of scanning every chat.
+  const latestChatActivity = db
+    .select({ id: sql<string>`max(${getChatLastActivityId(db)})` })
+    .from(chatThreadsTable)
+    .where(and(eq(chatThreadsTable.projectId, projectsTable.id), isNull(chatThreadsTable.deletedAt)))
+  const lastActivityId = sql<string>`max(${projectsTable.id}, coalesce((${latestChatActivity}), ${projectsTable.id}))`
   return db
     .select(getTableColumns(projectsTable))
     .from(projectsTable)
-    .leftJoin(chatActivity, eq(chatActivity.projectId, projectsTable.id))
     .where(isNull(projectsTable.deletedAt))
-    .groupBy(projectsTable.id)
     .orderBy(
       // NULL pin orders sort first in SQLite unless explicitly placed last.
       sql`CASE WHEN ${projectsTable.pinnedOrder} IS NULL THEN 1 ELSE 0 END`,
@@ -139,14 +141,29 @@ export const updateProject = async (db: AnyDrizzleDatabase, id: string, patch: U
  * take a user's conversations with it; removing the chats too is a separate,
  * explicit action.
  */
-export const softDeleteProject = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+const softDeleteProjects = async (db: AnyDrizzleDatabase, target: SQL): Promise<void> => {
   const deletedAt = nowIso()
-  await db.update(projectsTable).set({ deletedAt }).where(eq(projectsTable.id, id))
-  await db
-    .update(chatThreadsTable)
-    .set({ projectId: null })
-    .where(and(eq(chatThreadsTable.projectId, id), isNull(chatThreadsTable.deletedAt)))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(chatThreadsTable)
+      .set({ projectId: null })
+      .where(
+        and(
+          isNull(chatThreadsTable.deletedAt),
+          inArray(chatThreadsTable.projectId, tx.select({ id: projectsTable.id }).from(projectsTable).where(target)),
+        ),
+      )
+    await tx.update(projectsTable).set({ deletedAt }).where(target)
+  })
 }
+
+/** Remove one project while keeping its chats as ordinary chats. */
+export const softDeleteProject = (db: AnyDrizzleDatabase, id: string): Promise<void> =>
+  softDeleteProjects(db, and(isNull(projectsTable.deletedAt), eq(projectsTable.id, id))!)
+
+/** Remove every live project atomically, keeping all chats and their messages. */
+export const softDeleteAllProjects = (db: AnyDrizzleDatabase): Promise<void> =>
+  softDeleteProjects(db, isNull(projectsTable.deletedAt))
 
 /** Pin (or unpin, with `null`) a project to the top of the list. */
 export const setProjectPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {
@@ -159,13 +176,25 @@ export const setProjectPinned = async (db: AnyDrizzleDatabase, id: string, order
 export const getProjectChatThreads = async (db: AnyDrizzleDatabase, projectId: string) =>
   getChatActivityQuery(db, eq(chatThreadsTable.projectId, projectId))
 
-/** Move a chat into a project, or out of every project with `null`. */
+/** Move a chat into a live project, or out with `null`. Returns false when the
+ * target disappeared, so callers also leave the live session unchanged. */
 export const setChatThreadProject = async (
   db: AnyDrizzleDatabase,
   chatThreadId: string,
   projectId: string | null,
-): Promise<void> => {
-  await db.update(chatThreadsTable).set({ projectId }).where(eq(chatThreadsTable.id, chatThreadId))
+): Promise<boolean> => {
+  const availableProject = db
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, projectId ?? ''), isNull(projectsTable.deletedAt)))
+  // Check inside the UPDATE so a synced deletion cannot race a separate read.
+  const updated = await db
+    .update(chatThreadsTable)
+    .set({ projectId })
+    .where(and(eq(chatThreadsTable.id, chatThreadId), projectId === null ? undefined : exists(availableProject)))
+    .returning({ id: chatThreadsTable.id })
+  // Drafts have no row yet, but their session assignment still needs validation.
+  return updated.length > 0 || projectId === null || (await availableProject).length > 0
 }
 
 // ── Live hooks ───────────────────────────────────────────────────────────────

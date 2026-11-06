@@ -2,33 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useRef, useState, useTransition } from 'react'
-import { useDatabase } from '@/contexts'
-import { setProjectPinned } from '@/dal/projects'
+import { useRef, useState } from 'react'
 import { useLongPress } from '@/hooks/use-long-press'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { loadProjectArtifactsDialog } from './load-project-artifacts-dialog'
 
-type ProjectActionsStateProps = {
-  projectId: string
-  pinned: boolean
-  onNewChat: () => void
-  onOpenArtifacts: () => void
-}
+import type { ProjectActionHandlers } from './project-action-menu-items'
+
+type ProjectActionsStateProps = ProjectActionHandlers & { onOpenArtifacts: () => void }
 
 /** Coordinate project actions, focus restoration, and mobile long-press behavior. */
-export const useProjectActionsState = ({ projectId, pinned, onNewChat, onOpenArtifacts }: ProjectActionsStateProps) => {
-  const db = useDatabase()
+export const useProjectActionsState = ({
+  onNewChat,
+  onOpenArtifacts,
+  onTogglePin,
+  onEdit,
+  onDelete,
+}: ProjectActionsStateProps) => {
   const { isMobile } = useIsMobile()
-  const [dialog, setDialog] = useState<'edit' | 'delete' | null>(null)
-  const [, startTransition] = useTransition()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const openingDialog = useRef(false)
   const longPressFired = useRef(false)
-  const openDialog = (next: 'edit' | 'delete') => {
-    openingDialog.current = !isMobile
-    setDialog(next)
-  }
   const handleCloseAutoFocus = (event: Event) => {
     if (openingDialog.current) {
       event.preventDefault()
@@ -65,17 +59,18 @@ export const useProjectActionsState = ({ projectId, pinned, onNewChat, onOpenArt
       openingDialog.current = !isMobile
       onOpenArtifacts()
     },
-    onTogglePin: () => {
-      startTransition(async () => {
-        await setProjectPinned(db, projectId, pinned ? null : 0)
-      })
+    onTogglePin,
+    onEdit: () => {
+      openingDialog.current = !isMobile
+      onEdit()
     },
-    onEdit: () => openDialog('edit'),
-    onDelete: () => openDialog('delete'),
+    onDelete: () => {
+      openingDialog.current = !isMobile
+      onDelete()
+    },
   }
   return {
     isMobile,
-    dialog,
     mobileMenuOpen,
     longPressFired,
     longPressHandlers,
@@ -83,6 +78,5 @@ export const useProjectActionsState = ({ projectId, pinned, onNewChat, onOpenArt
     handleOpenChange,
     handleCloseAutoFocus,
     handleMobileOpenChange,
-    closeDialog: () => setDialog(null),
   }
 }

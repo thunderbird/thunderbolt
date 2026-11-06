@@ -2,109 +2,160 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * "You are in this project" marker for the chat header, sitting beside the agent
- * picker. Clicking it opens the project settings.
- *
- * Reads the id off the chat session (already there — it's what stamps the thread
- * row on first send) and resolves the name/icon from the live projects list, so
- * this costs no additional query and updates the instant the project is renamed
- * or its emoji changes.
- */
-
-import { lazy, Suspense, useState } from 'react'
-import { useLingui } from '@lingui/react/macro'
-
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
-import { useChatStore } from '@/chats/chat-store'
+import { lazy, Suspense, useRef } from 'react'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { ChevronDown, FolderMinus, Settings } from 'lucide-react'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
-import { useProjects } from '@/dal/projects'
+import { SearchableMenu, searchableMenuRowClass } from '@/components/ui/searchable-menu'
 import { cn } from '@/lib/utils'
 import { ProjectIcon } from './project-icon'
+import { useProjectBadgeState } from './use-project-badge-state'
 
+// Project configuration stays off the chat's critical loading path.
 const ProjectEditorDialog = lazy(async () => {
   const module = await import('./project-editor-dialog')
   return { default: module.ProjectEditorDialog }
 })
 
-/**
- * The badge for a given chat, or null when the chat has no project.
- *
- * `iconOnly` is the mobile presentation: a circle carrying just the project's
- * icon, styled as the agent circle it sits beside. There is no room for a name
- * there, and two labelled pills in a 3-column header would collide.
- */
-export const ProjectBadge = ({
-  chatThreadId,
-  iconOnly = false,
-  className,
-}: {
+const ProjectCreateDialog = lazy(async () => {
+  const module = await import('./project-create-dialog')
+  return { default: module.ProjectCreateDialog }
+})
+
+type ProjectBadgeProps = {
   chatThreadId: string | null
   iconOnly?: boolean
   className?: string
-}) => {
-  const { t } = useLingui()
-  const [editing, setEditing] = useState(false)
-  const projectId = useChatStore((state) => (chatThreadId ? state.sessions.get(chatThreadId)?.projectId : null))
-  const projects = useProjects()
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+}
 
-  const project = projectId ? projects.find((candidate) => candidate.id === projectId) : undefined
-  // Minimal mode has no project management, so the badge goes too. The chat
-  // keeps its project and the instructions it inherits.
-  if (!project || minimalMode) {
+/** Scope menus and dialogs to their chat so navigation cannot retarget an open form. */
+export const ProjectBadge = (props: ProjectBadgeProps) => <ProjectBadgeContent key={props.chatThreadId} {...props} />
+
+/** Choose a chat's project, with a separate settings action for each project. */
+const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: ProjectBadgeProps) => {
+  const { t } = useLingui()
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const {
+    projects,
+    project,
+    isVisible,
+    dialog,
+    openCreate,
+    openEdit,
+    closeDialog,
+    isPending,
+    selectProject,
+    requestProjectChange,
+  } = useProjectBadgeState(chatThreadId)
+  if (!isVisible) {
     return null
   }
 
-  const openProject = () => setEditing(true)
-  const editor = editing ? (
-    <Suspense fallback={null}>
-      <ProjectEditorDialog project={project} onClose={() => setEditing(false)} />
-    </Suspense>
-  ) : null
-
-  if (iconOnly) {
-    return (
-      <>
-        <button
-          type="button"
-          onClick={openProject}
-          aria-label={t`In project: ${project.name}`}
-          title={t`In project: ${project.name}`}
-          className={cn(
-            // Matched to the agent selector's collapsed circle: same size token,
-            // same resting fill, so the pair reads as one set of controls.
-            'flex size-[var(--touch-height-lg)] shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:bg-muted-foreground/20',
-            mobileHeaderControlFillClass,
-            className,
-          )}
-        >
-          <ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] text-[1.05rem]" />
-        </button>
-        {editor}
-      </>
-    )
-  }
+  const compact = iconOnly || !project
+  const label = project ? t`In project: ${project.name}` : t`Choose project`
+  const items = projects.map((candidate) => ({
+    id: candidate.id,
+    label: candidate.name,
+    icon: <ProjectIcon icon={candidate.icon} className="size-4 shrink-0 text-muted-foreground" />,
+    disabled: isPending,
+    action: {
+      label: t`Configure ${candidate.name}`,
+      icon: <Settings className="size-4" />,
+      onAction: () => openEdit(candidate),
+    },
+  }))
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={openProject}
-        title={t`In project: ${project.name}`}
-        className={cn(
-          // Matched to the agent selector's trigger, which it sits beside: same
-          // height, `rounded-full`, and no chrome at rest — the background appears
-          // on hover only. It previously read as a bordered card, which made the
-          // two neighbouring controls look like different kinds of thing.
-          'flex h-[var(--touch-height-sm)] min-w-0 max-w-[14rem] cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 text-[length:var(--font-size-body)] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-accent-foreground dark:hover:bg-secondary/50',
-          className,
+    <div ref={triggerRef} className="contents">
+      <SearchableMenu
+        items={items}
+        value={project?.id}
+        onValueChange={requestProjectChange}
+        searchable={projects.length > 10}
+        searchPlaceholder={t`Search projects`}
+        emptyMessage={t`No matching projects.`}
+        mobileTitle={t`Choose project`}
+        showDesktopTitle
+        mobileSide="top"
+        footerAction={[
+          ...(project
+            ? [
+                {
+                  label: t`Remove from project`,
+                  icon: <FolderMinus className="size-[var(--icon-size-default)]" />,
+                  onAction: () => selectProject(null),
+                },
+              ]
+            : []),
+          { label: t`Create Project`, onAction: openCreate },
+        ]}
+        width={240}
+        maxHeight={300}
+        align={iconOnly ? 'end' : 'start'}
+        renderItem={(item) => (
+          <div className={cn(searchableMenuRowClass, isPending && 'cursor-wait opacity-60')}>
+            {item.icon}
+            <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+          </div>
         )}
-      >
-        <ProjectIcon icon={project.icon} className="size-4 text-[0.9rem]" />
-        <span className="truncate">{project.name}</span>
-      </button>
-      {editor}
-    </>
+        trigger={(_selected, open) => (
+          <div
+            title={label}
+            className={cn(
+              'flex shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors',
+              compact
+                ? cn(
+                    'size-[var(--touch-height-sm)] max-md:size-[var(--touch-height-lg)] hover:bg-accent active:bg-muted-foreground/20',
+                    mobileHeaderControlFillClass,
+                  )
+                : 'h-[var(--touch-height-sm)] min-w-0 max-w-[14rem] gap-1.5 px-3 text-[length:var(--font-size-body)] hover:bg-accent hover:text-accent-foreground dark:hover:bg-secondary/50',
+              open && 'bg-secondary',
+              className,
+            )}
+          >
+            <ProjectIcon
+              icon={project?.icon}
+              className={iconOnly ? 'size-[var(--icon-size-default)] text-[1.05rem]' : 'size-4 text-[0.9rem]'}
+            />
+            {compact ? (
+              <span className="sr-only">{label}</span>
+            ) : (
+              <>
+                <span className="truncate">{project?.name}</span>
+                <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
+              </>
+            )}
+          </div>
+        )}
+      />
+      {dialog?.type === 'move' && (
+        <ConfirmActionDialog
+          open
+          title={t`Move session?`}
+          description={
+            <Trans>
+              This will move the session to <strong>{dialog.project.name}</strong>.
+            </Trans>
+          }
+          confirmLabel={t`Move`}
+          confirmVariant="default"
+          onCancel={closeDialog}
+          onConfirm={() => {
+            selectProject(dialog.project.id)
+            closeDialog()
+          }}
+        />
+      )}
+      {dialog && dialog.type !== 'move' && (
+        <Suspense fallback={null}>
+          {dialog.type === 'edit' ? (
+            <ProjectEditorDialog project={dialog.project} onClose={closeDialog} />
+          ) : (
+            <ProjectCreateDialog onClose={closeDialog} onCreated={selectProject} returnFocusRef={triggerRef} />
+          )}
+        </Suspense>
+      )}
+    </div>
   )
 }

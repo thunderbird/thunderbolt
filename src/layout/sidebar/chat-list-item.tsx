@@ -15,7 +15,7 @@ import { useLongPress } from '@/hooks/use-long-press'
 import { useDraggable } from '@dnd-kit/core'
 import { chatDragId, type ChatDragData } from '@/projects/chat-drop'
 import { cn } from '@/lib/utils'
-import { FolderInput, Loader2, MessageCircle, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { FolderInput, Loader2, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import { memo, useReducer, useRef, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
@@ -112,7 +112,7 @@ const ChatItemActions = ({
     {onMove && (
       <Item onClick={onMove} className="cursor-pointer">
         <FolderInput className="size-4 mr-2" />
-        <Trans>Move to project</Trans>
+        <Trans>Move</Trans>
       </Item>
     )}
     <Item onClick={onDelete} disabled={isDeletePending} className="cursor-pointer">
@@ -125,7 +125,6 @@ export const ChatListItem = memo(
   ({
     thread,
     isActive,
-    isCollapsed,
     isMobile,
     deleteChatMutation,
     threadIdRef,
@@ -172,24 +171,9 @@ export const ChatListItem = memo(
     }
 
     const showSpinner = status === 'streaming'
-    const chatIcon = showSpinner ? (
+    const streamingIcon = (
       <Loader2 aria-hidden className="size-[var(--icon-size-default)] shrink-0 animate-spin text-muted-foreground" />
-    ) : (
-      <MessageCircle aria-hidden className="size-[var(--icon-size-default)] shrink-0 text-muted-foreground" />
     )
-
-    if (isCollapsed) {
-      return (
-        <SidebarMenuButton
-          onClick={() => onChatClick(thread.id, thread.miniAppId)}
-          isActive={isActive}
-          className="cursor-pointer"
-          tooltip={chatTitleLabel(i18n, thread.title)}
-        >
-          {chatIcon}
-        </SidebarMenuButton>
-      )
-    }
 
     const startRename = () => {
       isOpeningDialogRef.current = true
@@ -265,7 +249,7 @@ export const ChatListItem = memo(
           )}
         >
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            {showSpinner && chatIcon}
+            {showSpinner && streamingIcon}
             {thread.miniAppId && <MiniAppChatBadge appId={thread.miniAppId} />}
             <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
           </div>
@@ -290,7 +274,7 @@ export const ChatListItem = memo(
                 ? []
                 : [
                     {
-                      label: t`Move to project`,
+                      label: t`Move`,
                       icon: <FolderInput className="size-4" />,
                       onSelect: startMove,
                     },
@@ -338,7 +322,7 @@ export const ChatListItem = memo(
                   )}
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {showSpinner && chatIcon}
+                    {showSpinner && streamingIcon}
                     {thread.miniAppId && <MiniAppChatBadge appId={thread.miniAppId} />}
                     <span className="truncate flex-1 min-w-0">{displayTitle}</span>
                   </div>

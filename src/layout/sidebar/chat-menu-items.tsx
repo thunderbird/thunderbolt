@@ -14,9 +14,10 @@ export const ChatMenuItems = ({
   chatThreads,
   currentChatThreadId,
   onChatClick,
-}: Pick<ChatListProps, 'chatThreads' | 'currentChatThreadId' | 'onChatClick'>) => {
+  initialCount,
+}: Pick<ChatListProps, 'chatThreads' | 'currentChatThreadId' | 'onChatClick'> & { initialCount?: number }) => {
   const { i18n } = useLingui()
-  const preview = useSidebarPreviewState(chatThreads, currentChatThreadId)
+  const preview = useSidebarPreviewState(chatThreads, currentChatThreadId, initialCount)
 
   return (
     <>
@@ -37,7 +38,7 @@ export const ChatMenuItems = ({
       )}
       {preview.hasOverflow && (
         <DropdownMenuItem
-          className="cursor-pointer text-muted-foreground"
+          className="cursor-pointer text-[length:var(--font-size-sm)] text-muted-foreground"
           onSelect={(event) => {
             event.preventDefault()
             preview.toggle()

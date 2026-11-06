@@ -4,6 +4,7 @@
 
 // Runs only against a deployed preview.
 import { defineConfig, devices } from '@playwright/test'
+import { getChromeLaunchOptions } from './scripts/chrome'
 
 export default defineConfig({
   testDir: './e2e',
@@ -14,6 +15,7 @@ export default defineConfig({
   reporter: 'list',
   use: {
     ...devices['Desktop Chrome'],
+    launchOptions: getChromeLaunchOptions(),
     baseURL: process.env.PREVIEW_APP_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',

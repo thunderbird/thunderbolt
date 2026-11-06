@@ -18,6 +18,8 @@ import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { useShallow } from 'zustand/react/shallow'
 import { resolveSessionAgent, type AgentPreference } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
+import type { CompactionStatus } from '@shared/agent-core'
+import type { AgentAdapterContext } from '@/types/acp'
 
 /** Outstanding ACP permission request awaiting user response. The promise
  *  resolver lives here so the dialog UI can complete it via a store action;
@@ -80,7 +82,16 @@ const getToolAllowanceKey = (agentId: string, toolKey: string): string => `${age
 export type ConnectionStatus = 'idle' | 'connecting' | 'ready' | 'error'
 
 export type ChatSession = {
-  chatInstance: Chat<ThunderboltUIMessage>
+  /** Local settings write that the next send must observe before resolving its effort. */
+  configurationChange?: Promise<void>
+  chatInstance: Chat<ThunderboltUIMessage> & {
+    compactContext?: (instructions?: string) => Promise<void>
+    getAcpCompactions?: AgentAdapterContext['getAcpCompactions']
+    onAcpSessionEvent?: AgentAdapterContext['onAcpSessionEvent']
+  }
+  compactionStatus?: CompactionStatus
+  /** Opened with no messages while the device was still syncing; the chat shows a loader, not the empty state. */
+  awaitingSyncedMessages?: boolean
   chatThread: ChatThread | null
   connectionStatus: ConnectionStatus
   connectionError: Error | null

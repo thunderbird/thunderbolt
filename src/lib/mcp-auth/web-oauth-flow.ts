@@ -245,18 +245,16 @@ const prepareAuthorization = async (
     // cryptic registration failure (mirrors `classifyMcpServerAuth`'s token-only case).
     throw new Error('This server requires a personal access token. Add it as the credential to connect.')
   }
+  // The new client_id rides in the handshake; writing it to the stored credential now would pair it with
+  // the old refresh token if the user abandons the flow, breaking every refresh until remove + re-add.
   const clientInformation = useCimd
     ? { client_id: provider.clientMetadataUrl! }
-    : await (async () => {
-        const full = await register(authorizationServerUrl, {
-          metadata,
-          clientMetadata: provider.clientMetadata,
-          scope,
-          fetchFn,
-        })
-        await provider.saveClientInformation(full)
-        return full
-      })()
+    : await register(authorizationServerUrl, {
+        metadata,
+        clientMetadata: provider.clientMetadata,
+        scope,
+        fetchFn,
+      })
 
   const stateNonce = uuidv4()
   const resource = resourceUrlFromServerUrl(serverUrl)

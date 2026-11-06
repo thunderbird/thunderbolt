@@ -674,12 +674,15 @@ export const completeStepUpCode = async (page: Page, email: string): Promise<voi
  * the notification, then a confirmation. Extracted from multi-device.spec.ts so
  * attack specs can reach full trust without restating the sequence.
  */
-export const approvePendingDevice = async (adminPage: Page): Promise<void> => {
+export const approvePendingDevice = async (adminPage: Page, pendingPage: Page): Promise<void> => {
+  const fingerprint = pendingPage.getByLabel('Device fingerprint', { exact: true })
+  await expect(fingerprint).toHaveText(/^(?:[A-F0-9]{4}-){15}[A-F0-9]{4}$/)
   const notification = adminPage.getByRole('dialog').filter({ hasText: 'New device waiting' })
   await expect(notification).toBeVisible({ timeout: 30_000 })
   await notification.getByRole('button', { name: 'Approve' }).click()
   const confirmation = adminPage.getByRole('alertdialog')
   await expect(confirmation.getByText('Approve this device?')).toBeVisible()
+  await confirmation.getByLabel('Device fingerprint', { exact: true }).fill((await fingerprint.textContent())!)
   await confirmation.getByRole('button', { name: 'Approve' }).click()
 }
 
@@ -710,7 +713,7 @@ export const trustAdditionalDevice = async (
   const deviceId = await getDeviceId(device.page)
   await waitForDeviceState(userId, deviceId, (state) => state.approvalPending && !state.trusted)
 
-  await approvePendingDevice(adminPage)
+  await approvePendingDevice(adminPage, device.page)
   await waitForConsumedChallenge(userId, 'approve')
   await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
   await finishAdditionalDeviceSetup(device.page)

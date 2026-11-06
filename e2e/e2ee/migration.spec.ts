@@ -18,7 +18,7 @@
  *  - legacy rows STILL decrypt on the migrator, on a later-joining follower, and
  *    after a fresh recovery-from-phrase (dual-read `"v1"` slot, no AAD);
  *  - a follower that joins AFTER the flip reads BOTH formats (v1 legacy + v2 new);
- *  - two concurrent migrators resolve by CAS — one wins, the loser follows;
+ *  - two concurrent migrators resolve by CAS — one wins, the loser awaits verified approval;
  *  - a below-min client is 426'd on the sync-token route (hard-cutover guard).
  */
 
@@ -35,6 +35,7 @@ import {
 import { expect, test } from './fixtures'
 import {
   acknowledgeRecoveryPhrase,
+  approvePendingDevice,
   createE2eeEmail,
   createIsolatedDevice,
   createTask,
@@ -114,10 +115,7 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
       const followerId = await getDeviceId(follower.page)
       await waitForDeviceState(userId, followerId, (state) => state.approvalPending)
 
-      const notification = page.getByRole('dialog').filter({ hasText: 'New device waiting' })
-      await expect(notification).toBeVisible({ timeout: 30_000 })
-      await notification.getByRole('button', { name: 'Approve' }).click()
-      await page.getByRole('alertdialog').getByRole('button', { name: 'Approve' }).click()
+      await approvePendingDevice(page, follower.page)
       await waitForDeviceState(userId, followerId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(follower.page)
 
@@ -154,7 +152,10 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
     }
   })
 
-  test('resolves concurrent migrators via CAS — one wins, the loser follows', async ({ browser, page }) => {
+  test('resolves concurrent migrators via CAS — one wins, the loser requires verified approval', async ({
+    browser,
+    page,
+  }) => {
     const email = createE2eeEmail()
     await loginViaConsumerOtp(page, email)
     const userId = await waitForUserId(email)
@@ -171,8 +172,7 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
       const seeded = await seedV1Account(userId, deviceKeys)
       const keyVersionBefore = (await getEncryptionServerSnapshot(userId)).keyVersion
 
-      // Kick both app-init migration checks concurrently via reload; the winner
-      // flips (dispatches the new recovery phrase), the loser 409s and follows.
+      // Reload both: the winner gets a new recovery phrase; the loser waits for approval.
       await Promise.all([page.reload(), second.page.reload()])
 
       // Exactly one upgrade wins: the account flips once to a single keyring.
@@ -184,12 +184,9 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
       // would mean the loser rotated the AK instead of following the winner.
       expect(snapshot.keyVersion).toBe(keyVersionBefore + 1)
 
-      // Both devices converge to a readable state (winner migrated, loser followed).
-      for (const device of [page, second.page]) {
-        await expect
-          .poll(() => getEncryptionKeyNames(device))
-          .toEqual(expect.arrayContaining(['thunderbolt_ak', 'thunderbolt_dek_0', 'thunderbolt_dek_v1']))
-      }
+      expect(Object.keys(snapshot.envelopes)).toHaveLength(1)
+      const winner = snapshot.envelopes[await getDeviceId(page)] ? page : second.page
+      const follower = winner === page ? second.page : page
 
       // Exactly ONE device minted a phrase — the CAS winner. That is the whole
       // point of the race, and it has to be acknowledged: every mint marks the
@@ -205,10 +202,16 @@ test.describe('PowerSync E2EE v1 → v2 migration', () => {
         }
       }
 
-      // Both devices dismissed the wizard in `registerDeviceOnly`, so sync is
-      // still off: the headless migrator provisions keys, it does not opt a
-      // device into syncing. Turn it on now that both hold the keyring, so the
-      // seeded legacy rows actually reach them.
+      await enableSyncWithoutWizard(winner)
+      await startAdditionalDeviceSetup(follower)
+      await approvePendingDevice(winner, follower)
+      await finishAdditionalDeviceSetup(follower)
+      for (const device of [page, second.page]) {
+        await expect
+          .poll(() => getEncryptionKeyNames(device))
+          .toEqual(expect.arrayContaining(['thunderbolt_ak', 'thunderbolt_dek_0', 'thunderbolt_dek_v1']))
+      }
+
       for (const device of [page, second.page]) {
         await enableSyncWithoutWizard(device)
       }

@@ -144,7 +144,7 @@ export const MoveChatToProjectPicker = ({
 }: MoveChatToProjectPickerProps) => {
   const { t } = useLingui()
   const { isMobile } = useIsMobile()
-  const title = t`Move to project`
+  const title = t`Move`
   const description = t`Chats in a project inherit its instructions.`
 
   // Selecting always dismisses: the sheet is a picker, not a settings surface.

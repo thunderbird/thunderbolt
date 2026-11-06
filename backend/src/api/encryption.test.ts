@@ -446,6 +446,10 @@ describe('Encryption API', () => {
       await createUserAndSession(p('u-me2'), p('tok-me2'), undefined, p('d-me2'))
       await insertDevice(p('d-me2'), p('u-me2'), { trusted: true })
       await insertEnvelope(p('d-me2'), p('u-me2'), 'my-wrapped-ck')
+      await db
+        .update(envelopesTable)
+        .set({ attestation: 'stored-recipient-attestation' })
+        .where(eq(envelopesTable.deviceId, p('d-me2')))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/me/envelope`, {
@@ -460,6 +464,7 @@ describe('Encryption API', () => {
       const body = await response.json()
       expect(body.trusted).toBe(true)
       expect(body.wrappedCK).toBe('my-wrapped-ck')
+      expect(body.attestation).toBe('stored-recipient-attestation')
     })
 
     it('returns 404 when device belongs to different user', async () => {

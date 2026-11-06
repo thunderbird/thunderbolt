@@ -144,12 +144,11 @@ export const ChatSidebarContent = ({
       <SidebarNavToggle vertical={vertical} activeSection={activeSection} onSectionChange={onSectionChange} />
     ) : null
 
-  const headerControls =
-    showProjects && !isCollapsed ? (
-      <SidebarHeaderActions onSearchClick={onSearchClick}>{sectionControl()}</SidebarHeaderActions>
-    ) : (
-      sectionControl()
-    )
+  const headerControls = !isCollapsed ? (
+    <SidebarHeaderActions onSearchClick={onSearchClick}>{sectionControl()}</SidebarHeaderActions>
+  ) : (
+    sectionControl()
+  )
 
   const handleDragStart = ({ active }: DragStartEvent) => {
     setDraggingChat((active.data.current as ChatDragData | undefined) ?? { title: null, projectId: null })
@@ -213,17 +212,13 @@ export const ChatSidebarContent = ({
         <SidebarHeader onToggle={toggleSidebar} navToggle={headerControls} />
         <div
           ref={sharedScrollRef}
-          data-slot={showProjects ? 'sidebar-navigation-scroll' : undefined}
-          className={
-            showProjects
-              ? 'min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide touch-pan-y [overflow-anchor:none]'
-              : 'contents'
-          }
+          data-slot="sidebar-navigation-scroll"
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide touch-pan-y [overflow-anchor:none]"
         >
           <div
             className={cn(
-              showProjects ? 'flex flex-col gap-2 pb-2' : 'contents',
-              showProjects && isMobile && 'pb-[calc(var(--touch-height-lg)+0.5rem+var(--mobile-sidebar-footer-inset))]',
+              'flex flex-col gap-2 pb-2',
+              isMobile && 'pb-[calc(var(--touch-height-lg)+0.5rem+var(--mobile-sidebar-footer-inset))]',
             )}
           >
             {!isMobile && (
@@ -263,7 +258,7 @@ export const ChatSidebarContent = ({
               </SidebarGroup>
             )}
             <ChatList
-              sharedScrollRef={showProjects ? sharedScrollRef : undefined}
+              scrollRef={sharedScrollRef}
               chatThreads={
                 showProjects
                   ? chatThreads.filter(
@@ -294,7 +289,6 @@ export const ChatSidebarContent = ({
               onChatClick={onChatClick}
               onRename={onRename}
               onMoveToProject={(chatThreadId, projectId) => setMoveTarget({ chatThreadId, projectId })}
-              onSearchClick={onSearchClick}
             />
           </div>
         </div>

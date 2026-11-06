@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { ChevronDown, ChevronUp } from 'lucide-react'
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 
@@ -13,15 +12,13 @@ export const SidebarListToggle = ({
   onToggle,
   controls,
   label,
-  isCollapsed = false,
-  iconPosition = 'start',
+  className,
 }: {
   showAll: boolean
   onToggle: () => void
   controls: string
   label: string
-  isCollapsed?: boolean
-  iconPosition?: 'start' | 'end'
+  className?: string
 }) => (
   <SidebarMenuButton
     onClick={onToggle}
@@ -29,16 +26,8 @@ export const SidebarListToggle = ({
     aria-controls={controls}
     aria-label={label}
     tooltip={label}
-    className={cn(
-      'cursor-pointer gap-2 text-muted-foreground',
-      iconPosition === 'end' && !isCollapsed && 'flex-row-reverse justify-end',
-    )}
+    className={cn('cursor-pointer text-[length:var(--font-size-sm)] text-muted-foreground', className)}
   >
-    {showAll ? (
-      <ChevronUp className="size-[var(--icon-size-default)] shrink-0" />
-    ) : (
-      <ChevronDown className="size-[var(--icon-size-default)] shrink-0" />
-    )}
-    {!isCollapsed && (showAll ? <Trans>Show less</Trans> : <Trans>Show more</Trans>)}
+    {showAll ? <Trans>Show less</Trans> : <Trans>Show more</Trans>}
   </SidebarMenuButton>
 )

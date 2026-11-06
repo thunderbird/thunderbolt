@@ -51,8 +51,17 @@ server {
     # Cache static assets aggressively
     location /assets/ {
         include /etc/nginx/snippets/security-headers.conf;
+        # A rolling deploy can briefly send a new chunk request to an old task.
+        # Do not let a CDN preserve that temporary 404 after the rollout settles.
+        error_page 404 = @missing_asset;
         expires 1y;
         add_header Cache-Control "public, immutable";
+    }
+
+    location @missing_asset {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-store" always;
+        return 404;
     }
 
     # Block source maps (they are uploaded to PostHog for error tracking, not served publicly)
@@ -63,6 +72,7 @@ server {
     # SPA fallback — serve index.html for all non-file routes
     location / {
         include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
         try_files $uri $uri/ /index.html;
     }
 }

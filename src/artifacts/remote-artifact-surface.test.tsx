@@ -40,6 +40,10 @@ const mount = (owner: string, onChatOpen = (_prompt?: string) => {}, autoHeight 
     </ThemeProvider>,
   )
   const frame = result.container.querySelector('iframe')!
+  // Keep the guest local so Happy DOM cannot navigate its window during the protocol fixture.
+  frame.setAttribute('srcdoc', '')
+  // The simulated guest records replies; Happy DOM cannot deliver to a remote origin.
+  frame.contentWindow!.postMessage = () => {}
   const send = async (data: Record<string, unknown>) => {
     await act(async () => {
       window.dispatchEvent(
@@ -87,6 +91,11 @@ describe('RemoteArtifactSurface', () => {
   it('keeps a runtime error confined to the frame that reported it', async () => {
     const first = mount('first')
     const second = mount('second')
+    await first.send({
+      id: 1,
+      method: 'ui/initialize',
+      params: { protocolVersion: miniAppProtocolVersion, documentId: 'first-doc', capabilities: {} },
+    })
     await first.send({ method: 'ui/notifications/error', params: { message: 'First chart failed' } })
     expect(first.container.textContent).toContain('First chart failed')
     expect(second.container.textContent).not.toContain('First chart failed')

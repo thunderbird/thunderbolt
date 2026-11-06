@@ -4,11 +4,10 @@
 
 import { useDroppable } from '@dnd-kit/core'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useNavigate } from 'react-router'
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar'
-import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { cn } from '@/lib/utils'
 import { projectDropId } from '@/projects/chat-drop'
+import type { ProjectActionHandlers } from '@/projects/project-action-menu-items'
 import { ProjectActions } from '@/projects/project-actions'
 import { ProjectIcon } from '@/projects/project-icon'
 import { useProjectArtifactsDialog } from '@/projects/use-project-artifacts-dialog'
@@ -41,46 +40,42 @@ export type ProjectTreeProps = Pick<
 
 type ProjectTreeRowProps = ProjectTreeProps & {
   project: Project
+  actions: ProjectActionHandlers
   chats: ChatThread[]
   expanded: boolean
   active: boolean
   onToggle: () => void
 }
 
-export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...props }: ProjectTreeRowProps) => {
+export const ProjectTreeRow = ({
+  project,
+  actions,
+  chats,
+  expanded,
+  active,
+  onToggle,
+  ...props
+}: ProjectTreeRowProps) => {
   const { t } = useLingui()
   const chatList = useSidebarPreviewState(chats, props.currentChatThreadId)
-  const navigate = useNavigate()
-  const createNewChat = useCreateNewChat()
   const artifactsDialog = useProjectArtifactsDialog()
   const { setOpen, closeMobileSidebar } = useSidebar()
   const { setNodeRef, isOver } = useDroppable({
     id: projectDropId(project.id),
     disabled: props.draggingFromProjectId === project.id,
   })
-  const startChat = async () => {
-    if (props.isMobile) {
-      await closeMobileSidebar()
-    }
-    createNewChat(project.id)
-  }
 
   return (
     <SidebarMenuItem>
       <ProjectActions
         project={project}
-        onNewChat={startChat}
+        handlers={actions}
         triggerClassName={projectRowActionClass}
         onOpenArtifacts={async () => {
           if (props.isMobile) {
             await closeMobileSidebar()
           }
           artifactsDialog.open(project.id)
-        }}
-        onDeleted={() => {
-          if (active) {
-            navigate('/chats/new')
-          }
         }}
       >
         {(menu) => (
@@ -121,7 +116,6 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
                 <ChatListItem
                   thread={thread}
                   isActive={thread.id === props.currentChatThreadId}
-                  isCollapsed={false}
                   isMobile={props.isMobile}
                   deleteChatMutation={props.deleteChatMutation}
                   deleteChatDialogRef={props.deleteChatDialogRef}
@@ -135,7 +129,6 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
             {chatList.hasOverflow && (
               <SidebarMenuItem>
                 <SidebarListToggle
-                  iconPosition="end"
                   onToggle={chatList.toggle}
                   showAll={chatList.showAll}
                   controls={`project-chats-${project.id}`}

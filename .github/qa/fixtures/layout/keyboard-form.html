@@ -1,0 +1,19 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Keyboard form</title>
+  </head>
+  <body>
+    <form>
+      <input placeholder="Email" />
+      <!-- No dialog is open, so the focused field's form decides which buttons count. This one is pinned under the
+           keyboard. -->
+      <button style="position: fixed; bottom: 20px; left: 0">Subscribe</button>
+    </form>
+    <script src="fake-keyboard.js"></script>
+  </body>
+</html>

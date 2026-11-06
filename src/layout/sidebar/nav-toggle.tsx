@@ -107,7 +107,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
           the row reads as one line. Mobile is full-bleed so the thumb's
           diameter matches those controls exactly; desktop keeps a 2px
           inset for a more compact thumb in the header. Square segments +
-          gap-0.5 mirror the ChatActions search/clear-all pair, so both icon
+          gap-0.5 keep the section controls compact, so both icon
           duos sit the same distance apart. */}
       <div className="flex h-[var(--touch-height-lg)] w-fit items-center gap-0.5 md:h-[var(--touch-height-default)] md:p-0.5">
         {sections.map(renderSegment)}

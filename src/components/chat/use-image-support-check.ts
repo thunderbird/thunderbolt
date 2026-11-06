@@ -2,13 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getKnownImageSupport, imageSupportKey, setCachedImageSupport } from '@/ai/image-support'
+import {
+  getKnownImageSupport,
+  getStaticImageSupport,
+  imageSupportKey,
+  pickImageSupportLineup,
+  setCachedImageSupport,
+} from '@/ai/image-support'
+import { useConfigStore } from '@/api/config-store'
 import { defaultDeliveryMode } from '@/files/transformers'
 import { getAttachments } from '@/lib/attachments'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { AttachmentData, Model, ThunderboltUIMessage } from '@/types'
-import { type ImageSupport, staticImageSupport } from '@shared/defaults/models'
+import type { ImageSupport } from '@shared/defaults/models'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
@@ -77,6 +84,10 @@ export const useImageSupportCheck = ({
     [messages],
   )
   const isCheckNeeded = enabled && (hasDraftImage || (hasHistoryImage && hasDraft))
+  // Subscribed so a declaration arriving with `/config` mid-session replaces the
+  // query's answer, which is seeded once and never refetched.
+  const serverModels = useConfigStore((state) => state.config.defaults?.models)
+  const staticSupport = getStaticImageSupport(model, pickImageSupportLineup(serverModels))
 
   const query = useQuery({
     queryKey,
@@ -102,20 +113,22 @@ export const useImageSupportCheck = ({
   if (!isCheckNeeded) {
     return noCheck
   }
-  if (!query.data) {
+  const support = staticSupport ?? query.data
+  if (!support) {
     return query.isError ? noCheck : { notice: 'checking', tryAnyway: undefined }
   }
-  if (query.data === 'supported' || !hasDraftImage) {
+  if (support === 'supported' || !hasDraftImage) {
     return noCheck
   }
-  const isOverridable = staticImageSupport(model) === undefined
   return {
     notice: 'unsupported',
-    tryAnyway: isOverridable
-      ? () => {
-          setCachedImageSupport(model, 'supported')
-          queryClient.setQueryData(queryKey, 'supported')
-        }
-      : undefined,
+    // Only a detected verdict can be overruled, never a declared one.
+    tryAnyway:
+      staticSupport === undefined
+        ? () => {
+            setCachedImageSupport(model, 'supported')
+            queryClient.setQueryData(queryKey, 'supported')
+          }
+        : undefined,
   }
 }

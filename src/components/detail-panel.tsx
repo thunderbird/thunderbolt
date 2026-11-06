@@ -50,6 +50,8 @@ type DetailPanelProps = {
   bodyClassName?: string
   /** Embedded chat composers reserve their own keyboard space. */
   handlesKeyboardInset?: boolean
+  /** Hide when the containing modal supplies its own close control. */
+  showCloseButton?: boolean
   children: ReactNode
 }
 
@@ -67,6 +69,7 @@ export const DetailPanel = ({
   onClose,
   bodyClassName,
   handlesKeyboardInset = false,
+  showCloseButton = true,
   children,
 }: DetailPanelProps) => {
   const { t } = useLingui()
@@ -102,15 +105,17 @@ export const DetailPanel = ({
               mobile shell instead splits them across the top corners. */}
           <div className="absolute -right-4 -top-0.5 flex shrink-0 items-center gap-0.5">
             {actions}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              aria-label={t`Close details`}
-              className={mutedIconButtonClass}
-            >
-              <X />
-            </Button>
+            {showCloseButton && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                aria-label={t`Close details`}
+                className={mutedIconButtonClass}
+              >
+                <X />
+              </Button>
+            )}
           </div>
         </header>
       )}

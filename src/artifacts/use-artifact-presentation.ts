@@ -30,9 +30,14 @@ export const useArtifactPresentation = <T extends { id: string; title: string; l
   const loadedKeys = new Set(records.map((record) => record.key))
   return {
     artifacts: applyArtifactPresentation(
-      artifacts.filter((artifact) =>
-        artifactPresentationIds(artifact).every((id) => loadedKeys.has(artifactPresentationKeys(id).deletedAt)),
-      ),
+      artifacts.filter((artifact) => {
+        const loaded = artifactPresentationIds(artifact).every((id) =>
+          loadedKeys.has(artifactPresentationKeys(id).deletedAt),
+        )
+        // A first source save adds aliases without changing the open artifact's identity.
+        // Keep its checked canonical presentation while those extra preferences load.
+        return loaded || (query.isPlaceholderData && loadedKeys.has(artifactPresentationKeys(artifact.id).deletedAt))
+      }),
       records,
     ),
     loading: query.isLoading,

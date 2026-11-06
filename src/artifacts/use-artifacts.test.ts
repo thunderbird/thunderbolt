@@ -180,6 +180,48 @@ describe('unified artifact queries', () => {
     expect(view.read()).toBe(pending)
   })
 
+  it('keeps an open artifact present when its first save adds presentation aliases', async () => {
+    const pending: Artifact = {
+      ...htmlSnapshot,
+      id: artifactId({ kind: 'html', messageId: 'pending', toolCallId: 'call' }),
+      reference: { kind: 'html', messageId: 'pending', toolCallId: 'call' },
+    }
+    const renders: (Artifact | null)[] = []
+    const view = mountHook(() => {
+      const artifact = usePresentedArtifact(pending)
+      renders.push(artifact)
+      return artifact
+    })
+    await settle()
+    renders.length = 0
+    await getDb()
+      .insert(chatMessagesTable)
+      .values({
+        id: 'pending',
+        role: 'assistant',
+        chatThreadId: 'chat',
+        parts: [
+          {
+            type: 'dynamic-tool',
+            toolName: 'render_html',
+            toolCallId: 'call',
+            state: 'output-available',
+            input: { title: 'Saved app', html: '<p>Original</p>' },
+            output: { ok: true },
+          },
+        ],
+      })
+    view.triggerChange(['chat_messages'])
+    await settle()
+    expect(view.read()?.legacyIds).toContain('pending-0')
+    expect(renders.length).toBeGreaterThan(0)
+    expect(renders.every((artifact) => artifact?.id === pending.id)).toBe(true)
+    await softDeleteProjectArtifact(getDb(), 'pending-0')
+    view.triggerChange(['settings'])
+    await settle()
+    expect(view.read()).toBeNull()
+  })
+
   it('resolves generated and configured sources through the same identity API', async () => {
     const view = mountHook(() => ({ html: useArtifact(htmlId), remote: useArtifact(remoteId) }))
     await settle()

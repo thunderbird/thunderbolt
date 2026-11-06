@@ -21,7 +21,9 @@ describe('startOAuthFlowLoopback', () => {
   beforeEach(() => {
     unlistenFn = mock()
 
-    spyOn(tauriCore, 'invoke').mockImplementation(async () => 17421 as never)
+    spyOn(tauriCore, 'invoke')
+      .mockClear()
+      .mockImplementation(async () => 17421 as never)
     listenSpy = spyOn(tauriEvent, 'listen').mockImplementation(async () => () => {})
     spyOn(opener, 'openUrl').mockImplementation(async () => {})
     spyOn(auth, 'buildAuthUrl').mockImplementation(
@@ -141,6 +143,7 @@ describe('startOAuthFlowLoopback', () => {
     const start = (tauriCore.invoke as ReturnType<typeof mock>).mock.calls.find(
       ([command]) => command === 'start_oauth_server',
     )
+    expect(start).toBeDefined()
     expect(tauriCore.invoke).toHaveBeenCalledWith('stop_oauth_server', start?.[1])
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })

@@ -1,6 +1,9 @@
 # Single stage: Bun runtime with source
 FROM oven/bun:1.4.4
 
+# The base image can lag Debian's security fixes; take them at build time (nightly-images.yml rebuilds daily).
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app/backend
 
 # Install runtime deps only. Dev tooling (e.g. the react-email preview server) carries CVEs we never execute,

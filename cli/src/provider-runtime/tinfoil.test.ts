@@ -279,13 +279,22 @@ describe('createTinfoilBinding', () => {
     }
   })
 
-  test.each([0, 300])(
-    'prepares and runs a manager-selected model despite hanging discovery after %dms of required work',
-    async (requiredDelay) => {
+  test.each(['before discovery starts', 'while discovery is pending'] as const)(
+    'prepares and runs a manager-selected model when the advisory deadline expires %s',
+    async (expiry) => {
       const pending = Promise.withResolvers<ReasoningCapabilities>()
-      const loadReasoningCapabilities = mock(async () => pending.promise)
+      const discoveryStarted = Promise.withResolvers<void>()
+      const requiredStarted = Promise.withResolvers<void>()
+      const requiredReady = Promise.withResolvers<void>()
+      const overallDeadline = new AbortController()
+      const advisoryDeadline = new AbortController()
+      const loadReasoningCapabilities = mock(async () => {
+        discoveryStarted.resolve()
+        return pending.promise
+      })
       const warn = spyOn(console, 'warn').mockImplementation(() => {})
       const catalog = { version: 1, defaultModelId: confidentialModel.id, data: [confidentialModel] }
+      const loadCatalog = mock(async () => catalog)
       const { runtime: providerRuntime } = await createTestProviderRuntime({
         loadConfig: async () => ({
           version: 3,
@@ -294,10 +303,7 @@ describe('createTinfoilBinding', () => {
           providers: [],
         }),
         resolveAccountCredential: async () => sessionCredential(),
-        loadCatalog: async () => {
-          await Bun.sleep(requiredDelay)
-          return catalog
-        },
+        loadCatalog,
         createTinfoilBinding: (options) =>
           createTinfoilBinding({
             ...bindingOptions(),
@@ -320,17 +326,46 @@ describe('createTinfoilBinding', () => {
           'models',
         )
         if (outcome.kind !== 'switch') throw new Error('Expected the model manager to select a binding')
-        const binding = await prepareProviderBinding(providerRuntime, outcome.selection, { timeoutMs: 500 })
-        const runtime = await createRuntime(binding, 'medium')
+        loadCatalog.mockImplementation(async () => {
+          requiredStarted.resolve()
+          await requiredReady.promise
+          return catalog
+        })
+        const timeout = spyOn(AbortSignal, 'timeout')
+          .mockReturnValueOnce(overallDeadline.signal)
+          .mockReturnValueOnce(advisoryDeadline.signal)
+        const preparation = prepareProviderBinding(providerRuntime, outcome.selection, { timeoutMs: 500 })
+        let runtime: HarnessRuntime | undefined
         try {
+          await requiredStarted.promise
+          expect(timeout).toHaveBeenNthCalledWith(1, 500)
+          expect(timeout).toHaveBeenNthCalledWith(2, 250)
+          expect(timeout).toHaveBeenCalledTimes(2)
+          if (expiry === 'while discovery is pending') {
+            requiredReady.resolve()
+            await discoveryStarted.promise
+          }
+          advisoryDeadline.abort(new DOMException('Advisory deadline expired', 'TimeoutError'))
+          requiredReady.resolve()
+          const binding = await preparation
+          timeout.mockRestore()
+          runtime = await createRuntime(binding, 'medium')
+          expect(overallDeadline.signal.aborted).toBe(false)
           expect(runtime.reasoning.capabilities()).toEqual(noReasoningEffort)
           expect((await runtime.prompt('Continue working')).stopReason).toBe('stop')
-          expect(loadReasoningCapabilities).toHaveBeenCalledTimes(requiredDelay === 0 ? 1 : 0)
+          expect(loadReasoningCapabilities).toHaveBeenCalledTimes(expiry === 'while discovery is pending' ? 1 : 0)
         } finally {
-          await runtime.dispose()
+          requiredReady.resolve()
+          pending.resolve(noReasoningEffort)
+          try {
+            const [result] = await Promise.allSettled([preparation])
+            if (runtime) await runtime.dispose()
+            else if (result.status === 'fulfilled') await result.value.dispose()
+          } finally {
+            timeout.mockRestore()
+          }
         }
       } finally {
-        pending.resolve(noReasoningEffort)
         warn.mockRestore()
       }
     },

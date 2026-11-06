@@ -181,9 +181,11 @@ export const createSearchIndex = async (
     await transaction.execute(`CREATE TABLE IF NOT EXISTS ${searchMetaTable} (version INTEGER)`)
 
     const [meta] = await transaction.getAll<{ version: number }>(`SELECT version FROM ${searchMetaTable} LIMIT 1`)
-    const indexRows = await transaction.getAll(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, [
-      searchIndexTable,
-    ])
+    // Every trigger reads the key map, so without it every indexed write throws and sync stalls.
+    const tableRows = await transaction.getAll(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (?, ?)`,
+      [searchIndexTable, searchKeysTable],
+    )
     // Also confirm the per-entity triggers still exist: PowerSync can drop/recreate
     // its internal ps_data__* tables (resync, schema update), which silently takes
     // our triggers with them while the search_index table survives. Without this
@@ -192,7 +194,7 @@ export const createSearchIndex = async (
       `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'`,
     )
     const expectedTriggerCount = searchEntities.length * 3
-    if (indexRows.length > 0 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
+    if (tableRows.length === 2 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
       return
     }
 

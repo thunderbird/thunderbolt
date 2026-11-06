@@ -416,6 +416,28 @@ describe('createSearchIndex transactions', () => {
     }
   })
 
+  it('rebuilds when the key map is missing so indexed writes stop failing', async () => {
+    const entity = searchEntities[0]
+    const table = AppSchema.tables.find((candidate) => candidate.name === entity.tableName)!
+    const { sqlite, powerSync } = makeDatabase(async () => {})
+    const insert = (id: string) =>
+      sqlite.run(`INSERT INTO ${table.internalName} (id, data) VALUES (?, ?)`, [id, JSON.stringify({ item: id })])
+    try {
+      insert('original')
+      await createSearchIndex(powerSync)
+      sqlite.run('DROP TABLE search_index_keys')
+      expect(() => insert('blocked')).toThrow('no such table')
+      await createSearchIndex(powerSync)
+      insert('subsequent')
+      expect(sqlite.query('SELECT id FROM search_index ORDER BY id').all()).toEqual([
+        { id: 'original' },
+        { id: 'subsequent' },
+      ])
+    } finally {
+      sqlite.close()
+    }
+  })
+
   it('validates inside the write lock so concurrent callers build only once', async () => {
     const entered = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()

@@ -26,6 +26,7 @@ import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
 import { DatabaseProvider } from '@/contexts/database-context'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { getClock } from '@/testing-library'
 
 /**
  * Helper function to create a system model (required for getDefaultModelForThread)
@@ -485,6 +486,98 @@ describe('useHydrateChatStore', () => {
       await hydrateNewChat()
 
       expect(getCurrentSession()?.selectedAgent).toMatchObject({ id: 'hosted-agent', type: 'managed-http' })
+    })
+  })
+
+  describe('messages that sync after the chat opens', () => {
+    /** Opens `threadId` while the device is still downloading; resolve the returned promise when it lands. */
+    const openDuringDownload = async (threadId: string) => {
+      const download = Promise.withResolvers<void>()
+      const { result } = renderHook(
+        () => useHydrateChatStore({ id: threadId, isNew: false, waitForSyncCatchUp: () => download.promise }),
+        { wrapper: TestWrapper },
+      )
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      const finishDownload = async () => {
+        await act(async () => {
+          download.resolve()
+          await getClock().runAllAsync()
+        })
+      }
+      return finishDownload
+    }
+
+    const messageIds = () => getCurrentSession()?.chatInstance.messages.map((message) => message.id)
+
+    it('shows the messages of a chat opened before they were downloaded', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      expect(messageIds()).toEqual([])
+
+      const synced = [createTestMessage(), createTestMessage({ role: 'assistant' })]
+      await saveMessagesWithContextUpdate(getDb(), threadId, synced)
+      await finishDownload()
+
+      expect(messageIds()).toEqual(synced.map((message) => message.id))
+    })
+
+    it('appends the messages that arrived after the ones the chat opened with', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const opened = createTestMessage()
+      await saveMessagesWithContextUpdate(getDb(), threadId, [opened])
+      const finishDownload = await openDuringDownload(threadId)
+
+      const synced = [createTestMessage({ role: 'assistant' }), createTestMessage()]
+      await saveMessagesWithContextUpdate(getDb(), threadId, synced)
+      await finishDownload()
+
+      expect(messageIds()).toEqual([opened.id, ...synced.map((message) => message.id)])
+    })
+
+    it('shows a synced failed turn as failed, like a chat opened after it landed', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [
+        createTestMessage(),
+        createTestMessage({ role: 'assistant', parts: [] }),
+      ])
+      await finishDownload()
+
+      expect(messageIds()).toHaveLength(2)
+      expect(getCurrentSession()?.retriesExhausted).toBe(true)
+    })
+
+    it('leaves a chat alone once it no longer matches the start of the saved messages', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      // The user wrote in the empty-looking chat before its history landed.
+      const typed = createTestMessage()
+      getCurrentSession()!.chatInstance.messages = [typed]
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [
+        createTestMessage(),
+        createTestMessage({ role: 'assistant' }),
+      ])
+      await finishDownload()
+
+      expect(messageIds()).toEqual([typed.id])
+    })
+
+    it.each([
+      ['the user is stopping a reply', { stopping: true }],
+      ['its context is being compacted', { compactionStatus: 'compacting' as const }],
+    ])('leaves a chat alone while %s', async (_, busy) => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      useChatStore.getState().updateSession(threadId, busy)
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [createTestMessage()])
+      await finishDownload()
+
+      expect(messageIds()).toEqual([])
     })
   })
 

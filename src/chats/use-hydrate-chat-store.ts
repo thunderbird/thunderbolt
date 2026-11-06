@@ -40,6 +40,7 @@ import { createChatInstance } from './chat-instance'
 import { resolveSessionAgent } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
+import { waitForSyncCatchUp as defaultWaitForSyncCatchUp } from '@/db/powersync/sync-state'
 
 type UseHydrateChatStoreParams = {
   id: string
@@ -69,6 +70,8 @@ type UseHydrateChatStoreParams = {
    * recorded.
    */
   onCreated?: (chatThreadId: string) => void
+  /** Injected for tests; see {@link defaultWaitForSyncCatchUp}. */
+  waitForSyncCatchUp?: () => Promise<void> | null
 }
 
 /**
@@ -80,6 +83,15 @@ const trackChatReadyOnce = () => {
   if (chatReadyMs !== null) {
     trackEvent('app_chat_ready', { chat_ready_ms: Math.round(chatReadyMs) })
   }
+}
+
+/**
+ * A saved empty reply is a turn that already failed. The session marks its retries
+ * exhausted so it shows as failed rather than as a recovery still in progress.
+ */
+const endsWithEmptyReply = (messages: ThunderboltUIMessage[]): boolean => {
+  const last = messages.at(-1)
+  return last?.role === 'assistant' && !last.parts?.length
 }
 
 /**
@@ -101,6 +113,7 @@ export const useHydrateChatStore = ({
   projectId: newChatProjectId = null,
   miniAppId: newChatMiniAppId = null,
   onCreated,
+  waitForSyncCatchUp = defaultWaitForSyncCatchUp,
 }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
   const httpClient = useHttpClient()
@@ -191,6 +204,35 @@ export const useHydrateChatStore = ({
     [db],
   )
 
+  /**
+   * A chat opened before its messages finished downloading read only part of them, and
+   * the session keeps that copy. Append what has landed once the sync completes — only
+   * while the chat is idle and still matches the start of the saved list, so nothing the
+   * user did meanwhile is overwritten.
+   */
+  const appendMessagesSyncedAfterOpen = async (syncCatchUp: Promise<void>) => {
+    await syncCatchUp
+    const saved = await getChatMessages(db, id)
+    const session = useChatStore.getState().sessions.get(id)
+    if (
+      !session ||
+      session.stopping ||
+      session.compactionStatus === 'compacting' ||
+      session.chatInstance.status !== 'ready'
+    ) {
+      return
+    }
+    const current = session.chatInstance.messages
+    if (saved.length <= current.length || current.some((message, index) => message.id !== saved[index].id)) {
+      return
+    }
+    const synced = saved.slice(current.length).map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
+    session.chatInstance.messages = [...current, ...synced]
+    if (endsWithEmptyReply(synced)) {
+      useChatStore.getState().updateSession(id, { retriesExhausted: true })
+    }
+  }
+
   const hydrateChatStore = async () => {
     const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModels } =
       useChatStore.getState()
@@ -222,6 +264,9 @@ export const useHydrateChatStore = ({
 
       return
     }
+
+    // Taken before the reads below, so a sync that lands while they run is still caught.
+    const syncCatchUp = isNew ? null : waitForSyncCatchUp()
 
     // New IDs are minted locally and have no history. Read the selected model
     // directly, and start independent reads together instead of gating on settings.
@@ -284,8 +329,7 @@ export const useHydrateChatStore = ({
     const initialUiMessages = initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
     const chatInstance = createChatInstance(id, initialUiMessages, saveMessages, httpClient, getProxyFetch)
 
-    const lastInitialMessage = initialUiMessages[initialUiMessages.length - 1]
-    const hydratedTrailingEmptyTurn = lastInitialMessage?.role === 'assistant' && !lastInitialMessage.parts?.length
+    const hydratedTrailingEmptyTurn = endsWithEmptyReply(initialUiMessages)
 
     createSession({
       chatInstance,
@@ -319,6 +363,10 @@ export const useHydrateChatStore = ({
     setIsReady(true)
     trackChatReadyOnce()
     maybePrewarmBuiltInAgent(selectedAgent, selectedModel)
+
+    if (syncCatchUp) {
+      void appendMessagesSyncedAfterOpen(syncCatchUp)
+    }
   }
 
   return { hydrateChatStore, isReady, saveMessages, saveStreamingMessage }

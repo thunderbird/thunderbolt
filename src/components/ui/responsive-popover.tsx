@@ -73,7 +73,9 @@ export const ResponsivePopover = ({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent {...desktopMenu}>{children}</PopoverContent>
+      <PopoverContent aria-label={title} {...desktopMenu}>
+        {children}
+      </PopoverContent>
     </Popover>
   )
 }

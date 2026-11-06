@@ -39,10 +39,10 @@ describe.each([desktopWidth, mobileWidth])('ContextUsageIndicator at %dpx', (wid
     fireEvent.click(trigger)
     expect(screen.queryByRole('tooltip')).toBeNull()
     const menu = screen.getByRole('dialog')
+    expect(menu).toHaveAccessibleName('Context usage')
     expect(menu).toHaveAttribute('data-slot', width === mobileWidth ? 'drawer-content' : 'popover-content')
     expect(within(menu).queryByText(/context window/i)).toBeNull()
     if (width === mobileWidth) {
-      expect(menu).toHaveAccessibleName('Context usage')
       expect(menu).toHaveAttribute('data-swipe-direction', 'down')
     }
     expect(screen.getByLabelText('Compaction instructions (optional)')).toBeInTheDocument()

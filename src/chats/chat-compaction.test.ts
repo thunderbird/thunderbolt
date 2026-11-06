@@ -19,6 +19,8 @@ import type { CompactionCheckpoint } from '@shared/agent-core'
 import { createChatInstance } from './chat-instance'
 import { useChatStore } from './chat-store'
 import { stoppedReplyMarker } from '@shared/agent-core/stopped-reply'
+import type { ChatInit } from 'ai'
+import { getClock } from '@/testing-library'
 
 afterEach(resetStore)
 
@@ -49,6 +51,7 @@ const fixture = (
     ensureSession: async () => {},
     disconnect: () => {},
   }
+  const callbacks: { current?: ChatInit<ThunderboltUIMessage> } = {}
   const instance = createChatInstance(
     'chat',
     messages,
@@ -58,7 +61,10 @@ const fixture = (
     {
       getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => adapter,
-      createChat: () => createMockChatInstance(messages),
+      createChat: (init) => {
+        callbacks.current = init
+        return createMockChatInstance(messages)
+      },
       trackEvent: () => {},
     },
   )
@@ -69,10 +75,125 @@ const fixture = (
     selectedModel: createMockModel(),
     triggerData: null,
   })
-  return { instance, saved, adapterCompact, adapter, messages }
+  const finish = (message = messages[1], isAbort = false) =>
+    callbacks.current!.onFinish!({
+      message,
+      messages: instance.messages,
+      isAbort,
+      isDisconnect: false,
+      isError: false,
+    })
+  return { instance, saved, adapterCompact, adapter, messages, finish }
 }
 
 describe('chat compaction control', () => {
+  it('releases a rejected final save so compaction can be retried', async () => {
+    const finalSave = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    const f = fixture(undefined, async () => {
+      entered.resolve()
+      await finalSave.promise
+    })
+    const finishing = f.finish()
+    await entered.promise
+    const compacting = f.instance.compactContext()
+    const settled = Promise.allSettled([finishing, compacting])
+    const failure = new Error('disk full')
+    finalSave.reject(failure)
+    expect(await settled).toEqual([
+      { status: 'rejected', reason: failure },
+      { status: 'rejected', reason: failure },
+    ])
+    expect(f.adapterCompact).not.toHaveBeenCalled()
+    f.saved.mockImplementation(async () => {})
+    await f.instance.compactContext()
+    expect(f.instance.messages.at(-1)?.metadata?.contextCompaction).toEqual(checkpoint)
+  })
+
+  it('also waits for a reply save that begins while compaction is waiting on an older save', async () => {
+    const firstSave = Promise.withResolvers<void>()
+    const secondSave = Promise.withResolvers<void>()
+    const firstEntered = Promise.withResolvers<void>()
+    const secondEntered = Promise.withResolvers<void>()
+    const f = fixture(undefined, async () => {
+      if (f.saved.mock.calls.length === 1) {
+        firstEntered.resolve()
+        await firstSave.promise
+      } else if (f.saved.mock.calls.length === 2) {
+        secondEntered.resolve()
+        await secondSave.promise
+      }
+    })
+    const firstFinish = f.finish()
+    await firstEntered.promise
+    const compacting = f.instance.compactContext()
+    const nextReply = { ...f.messages[1], id: 'next-reply' }
+    await f.instance.sendMessage({ text: 'Follow-up' })
+    f.instance.messages = [
+      ...f.messages,
+      { id: 'next-user', role: 'user', parts: [{ type: 'text', text: 'Follow-up' }] },
+      nextReply,
+    ]
+    const secondFinish = f.finish(nextReply)
+    await secondEntered.promise
+    firstSave.resolve()
+    await firstFinish
+    await getClock().tickAsync(0)
+    const callsBeforeSecondSave = f.adapterCompact.mock.calls.length
+    secondSave.resolve()
+    await Promise.all([secondFinish, compacting])
+    expect(callsBeforeSecondSave).toBe(0)
+    expect(f.saved.mock.calls.at(-1)?.[0].messages[0].id).toBe('next-reply')
+  })
+
+  it('waits for an older reply save even after a newer stopped turn has finished', async () => {
+    const finalSave = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    const f = fixture(undefined, async ({ messages }) => {
+      if (messages[0].id === 'assistant' && !messages[0].metadata?.contextCompaction) {
+        entered.resolve()
+        await finalSave.promise
+      }
+    })
+    const firstFinish = f.finish()
+    await entered.promise
+    await f.instance.sendMessage({ text: 'Follow-up' })
+    f.instance.messages = [
+      ...f.messages,
+      { id: 'next-user', role: 'user', parts: [{ type: 'text', text: 'Follow-up' }] },
+    ]
+    await f.finish({ id: 'stopped', role: 'assistant', parts: [] }, true)
+    const compacting = f.instance.compactContext()
+    await getClock().tickAsync(0)
+    const callsBeforeFinalSave = f.adapterCompact.mock.calls.length
+    finalSave.resolve()
+    await Promise.all([firstFinish, compacting])
+    expect(callsBeforeFinalSave).toBe(0)
+    expect(f.saved.mock.calls.at(-1)?.[0].messages[0].metadata?.contextCompaction).toEqual(checkpoint)
+  })
+
+  it('waits for the completed reply to be saved before replacing its context checkpoint', async () => {
+    const finalSave = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    const persisted: ThunderboltUIMessage[] = []
+    const f = fixture(undefined, async ({ messages }) => {
+      if (!messages[0].metadata?.contextCompaction) {
+        entered.resolve()
+        await finalSave.promise
+      }
+      persisted.push(messages[0])
+    })
+    const finishing = f.finish()
+    await entered.promise
+    const compacting = f.instance.compactContext()
+    await getClock().tickAsync(0)
+    const callsBeforeFinalSave = f.adapterCompact.mock.calls.length
+    finalSave.resolve()
+    await Promise.all([finishing, compacting])
+    expect(callsBeforeFinalSave).toBe(0)
+    expect(persisted.at(-1)?.metadata?.contextCompaction).toEqual(checkpoint)
+  })
+
   it('includes the cancellation marker for the latest reasoning-only reply in a manual summary', async () => {
     const f = fixture()
     const pending: ThunderboltUIMessage[] = [

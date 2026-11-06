@@ -139,6 +139,7 @@ describe('effort selector state', () => {
       fireEvent.click(trigger)
     })
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Model and reasoning effort')
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Manage models' }))
     })
@@ -388,6 +389,7 @@ describe('effort selector state', () => {
       fireEvent.click(trigger)
     })
     const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Reasoning effort')
     expect(slider.getAttribute('data-selected')).toBe('false')
     expect(slider.getAttribute('aria-valuetext')).toBe('Choose effort')
     expect(screen.queryByRole('button', { name: 'Default' })).toBeNull()

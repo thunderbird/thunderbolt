@@ -520,7 +520,9 @@ const hashSecret = (value: string): string => {
 
 /** Fingerprint every input baked into a thread's harness at build time — the
  *  descriptor (provider / model id / api key / base url / reasoning / context
- *  window), thinking level, stable system prompt, and regeneration revision.
+ *  window), thinking level, stable system prompt, regeneration revision, and
+ *  durable checkpoint. Another device can replace that checkpoint without
+ *  adding a user turn, so the local harness must notice that change too.
  *  When it changes mid-thread (a model, provider, key, system-prompt,
  *  thinking, or MCP-server switch) the cached harness is stale and
  *  {@link getOrBuildHarness} rebuilds it; an unchanged signature reuses the live
@@ -530,6 +532,7 @@ export const harnessSignature = (
   resolved: ResolvedPiModel,
   stableSystemPrompt: string,
   regenerationRevision = 0,
+  compaction?: CompactionCheckpoint,
 ): string => {
   const d = resolved.descriptor
   const vendor = d.kind === 'confidential' ? (d.vendor ?? '') : ''
@@ -538,7 +541,7 @@ export const harnessSignature = (
     d.kind === 'anthropic'
       ? `anthropic|${d.modelId}|${d.catalogModelId ?? ''}|${d.baseURL ?? ''}|${d.contextWindow ?? ''}|${hashSecret(d.apiKey)}`
       : `${d.kind}|${d.providerId}|${d.modelId}|${vendor}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}|${clientId}`
-  return `${model}|${resolved.thinkingLevel}|${stableSystemPrompt}|regenerate:${regenerationRevision}`
+  return JSON.stringify([model, resolved.thinkingLevel, stableSystemPrompt, regenerationRevision, compaction])
 }
 
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
@@ -838,7 +841,7 @@ const fetchViaHarness = async (
   // every later turn whose config signature is unchanged, and rebuild it when the
   // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
   context.telemetry?.startPhase('harness_build')
-  const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
+  const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision, compaction)
   const lastUserIndex = messages.findLastIndex((message) => message.role === 'user')
   const previousUserId = messages.slice(0, lastUserIndex).findLast((message) => message.role === 'user')?.id
   const cached = getOrBuildHarness(cache, context.threadId, signature, previousUserId, () =>
@@ -1024,7 +1027,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     const supersededCallIds =
       config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
     const { history, files, compaction } = await prepareBuiltInHistory(messages, { workspace: config.supportsTools })
-    const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
+    const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision, compaction)
     const lastUserId = messages.findLast((message) => message.role === 'user')?.id
     const cached = getOrBuildHarness(harnessCache, context.threadId, signature, lastUserId, () =>
       buildHarnessRecord(agentCore, context, resolved, history, config, compaction),

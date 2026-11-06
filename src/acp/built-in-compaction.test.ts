@@ -302,14 +302,75 @@ describe('built-in compaction integration', () => {
     }
   })
 
-  it('keeps live tool evidence when manually compacting an unchanged transcript', async () => {
+  it.each([false, true])('keeps live tool evidence with an unchanged transcript (checkpoint: %s)', async (restored) => {
     const f = fixture({ toolSteps: 1, toolTokens: 120, toolOutput: 'Unique live tool evidence' })
     const adapter = f.adapter()
     const first = user('Look up the detail')
+    const history: ThunderboltUIMessage[] = restored
+      ? [
+          {
+            ...assistant('Previous task'),
+            metadata: {
+              contextCompaction: {
+                version: 1,
+                summary: 'Previous saved summary',
+                tokensBefore: 100,
+                contextTokens: 20,
+                retainedTail: [],
+              },
+            },
+          },
+        ]
+      : []
     try {
-      await metadata(await adapter.fetch(body([first]), f.context))
-      await adapter.compact!(body([first, assistant('Finished the task.')]), f.context)
+      await metadata(await adapter.fetch(body([...history, first]), f.context))
+      await adapter.compact!(body([...history, first, assistant('Finished the task.')]), f.context)
       expect(JSON.stringify(f.requests.filter(isSummary))).toContain('Unique live tool evidence')
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
+  it.each([
+    ['added', 'send'],
+    ['replaced', 'send'],
+    ['removed', 'send'],
+    ['added', 'compact'],
+    ['replaced', 'compact'],
+    ['removed', 'compact'],
+  ] as const)('reloads a checkpoint %s by another device before %s', async (change, operation) => {
+    const f = fixture()
+    const adapter = f.adapter()
+    const checkpoint: CompactionCheckpoint = {
+      version: 1,
+      summary: 'Original saved summary',
+      tokensBefore: 100,
+      contextTokens: 20,
+      retainedTail: [],
+    }
+    const boundary = assistant('Earlier answer')
+    boundary.metadata = change === 'added' ? undefined : { contextCompaction: checkpoint }
+    const messages = [user('Original uncompacted fact'), boundary, user('Current task')]
+    try {
+      await metadata(await adapter.fetch(body(messages), f.context))
+      boundary.metadata =
+        change === 'removed'
+          ? undefined
+          : { contextCompaction: { ...checkpoint, summary: 'Summary updated on another device' } }
+      const completed = [...messages, assistant('Finished the task.')]
+      if (operation === 'compact') {
+        await adapter.compact!(body(completed), f.context)
+      } else {
+        await metadata(await adapter.fetch(body([...completed, user('Continue')]), f.context))
+      }
+      const request = JSON.stringify(f.requests.at(-1))
+      expect(request).not.toContain('Original saved summary')
+      if (change === 'removed') {
+        expect(request).toContain('Original uncompacted fact')
+      } else {
+        expect(request).toContain('Summary updated on another device')
+        expect(request).not.toContain('Original uncompacted fact')
+      }
     } finally {
       adapter.disconnect()
     }

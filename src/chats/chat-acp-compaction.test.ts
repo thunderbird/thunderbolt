@@ -355,4 +355,38 @@ describe('ACP compaction chat lifecycle', () => {
     expect(f.instance.getAcpCompactions()).toEqual([compaction])
     expect(f.saved.mock.calls[0][0].messages[0].id).toBe(f.saved.mock.calls[1][0].messages[0].id)
   })
+
+  it('waits for an older finish and its deferred ACP writes after a newer finish has settled', async () => {
+    const firstSave = Promise.withResolvers<void>()
+    const firstEntered = Promise.withResolvers<void>()
+    const eventSave = Promise.withResolvers<void>()
+    const eventEntered = Promise.withResolvers<void>()
+    const f = fixture(async () => {
+      if (f.saved.mock.calls.length === 1) {
+        firstEntered.resolve()
+        await firstSave.promise
+      } else if (f.saved.mock.calls.length === 3) {
+        eventEntered.resolve()
+        await eventSave.promise
+      }
+    })
+    const firstFinish = f.finish()
+    await firstEntered.promise
+    const secondReply = { ...reply, id: 'second-reply' }
+    f.instance.messages = [reply, secondReply]
+    await f.finish(secondReply)
+    f.instance.onAcpSessionEvent({ type: 'compaction', compaction }, false)
+    const sending = f.instance.sendMessage({ text: 'Next question' })
+    await getClock().tickAsync(0)
+    expect(f.send).not.toHaveBeenCalled()
+    expect(f.instance.getAcpCompactions()).toEqual([])
+
+    firstSave.resolve()
+    await eventEntered.promise
+    expect(f.send).not.toHaveBeenCalled()
+    eventSave.resolve()
+    await Promise.all([firstFinish, sending])
+    expect(f.instance.getAcpCompactions()).toEqual([compaction])
+    expect(f.send).toHaveBeenCalledTimes(1)
+  })
 })

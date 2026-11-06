@@ -888,7 +888,7 @@ export const createChatInstance = (
 
   const pendingAcpEvents: AcpSessionEvent[] = []
   let acpSave: Promise<void> | undefined
-  let pendingFinishes = 0
+  const pendingFinishes = new Set<Promise<void>>()
   let lastFinish = Promise.resolve()
   /** A replaced agent/session must not overwrite the current context meter. */
   const acceptsAcpEvent = (event: AcpSessionEvent): boolean => {
@@ -923,7 +923,7 @@ export const createChatInstance = (
     // The stream may still be draining after the remote prompt settles. Apply
     // late patches after onFinish, once the SDK has stopped replacing its message.
     const streamDraining = instance.status === 'streaming' || instance.status === 'submitted'
-    const deferred = pendingFinishes > 0 || (!inPrompt && !replaying && streamDraining)
+    const deferred = pendingFinishes.size > 0 || (!inPrompt && !replaying && streamDraining)
     if (!deferred) {
       return saveAcpEvent(event, inPrompt)
     }
@@ -936,27 +936,33 @@ export const createChatInstance = (
   const finishWithAcpEvents =
     (finish: ChatOnFinishCallback<ThunderboltUIMessage>): ChatOnFinishCallback<ThunderboltUIMessage> =>
     (result) => {
-      pendingFinishes++
-      lastFinish = (async () => {
+      const finishing: Promise<void> = Promise.resolve(finish(result)).finally(async () => {
         try {
-          await finish(result)
-        } finally {
-          while (pendingFinishes === 1 && pendingAcpEvents.length > 0) {
+          while (pendingFinishes.size === 1 && pendingAcpEvents.length > 0) {
             for (const event of pendingAcpEvents.splice(0)) {
               saveAcpEvent(event, false)
             }
             await acpSave
           }
-          pendingFinishes--
+        } finally {
+          pendingFinishes.delete(finishing)
         }
-      })()
-      return lastFinish
+      })
+      pendingFinishes.add(finishing)
+      lastFinish = finishing
+      return finishing
     }
+  /** Older turns may still be saving after a newer turn has already finished. */
+  const waitForFinishes = async (): Promise<void> => {
+    while (pendingFinishes.size > 0) {
+      await Promise.all(pendingFinishes)
+    }
+  }
   /** Keep replay/idle event writes before the next user turn in the saved timeline. */
   const waitForSessionUpdates = async (): Promise<void> => {
     const hasAcpEvents = pendingAcpEvents.length > 0 || getAcpCompactions(instance.messages).length > 0
-    if (pendingFinishes > 0 && hasAcpEvents) {
-      await lastFinish
+    if (hasAcpEvents) {
+      await waitForFinishes()
     }
     await acpSave
   }
@@ -1262,7 +1268,16 @@ export const createChatInstance = (
 
   const compactContext = async (instructions?: string): Promise<void> => {
     assertNotCompacting()
-    await waitForSessionUpdates()
+    // The SDK marks a reply ready before its final save settles. Compaction
+    // rewrites that same row. Recheck here, without another await before taking
+    // ownership, because a new save can start while earlier writes settle.
+    for (;;) {
+      const latestAcpSave = acpSave
+      await Promise.all([...pendingFinishes, latestAcpSave])
+      if (pendingFinishes.size === 0 && acpSave === latestAcpSave) {
+        break
+      }
+    }
     assertNotCompacting()
     if (instance.status === 'streaming' || instance.status === 'submitted' || retryTimeout) {
       throw new Error('Wait for the current response to finish before compacting')

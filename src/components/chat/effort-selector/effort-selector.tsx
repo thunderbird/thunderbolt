@@ -61,7 +61,7 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
         open={open}
         onOpenChange={setOpen}
         trigger={trigger}
-        title={t`Model and reasoning effort`}
+        title={modelPicker ? t`Model and reasoning effort` : t`Reasoning effort`}
         mobileMenu={{ side: 'bottom', showTitle: !modelPicker }}
         desktopMenu={{
           side: !chatThread ? 'bottom' : 'top',

@@ -2,81 +2,71 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { PERF_BACKEND_PORT, PERF_BACKEND_URL, PERF_BASE_URL, PERF_FRONTEND_PORT, backendEnv, frontendEnv, resolveSecret } from './env'
+import { http } from '../../../../../src/lib/http'
+import { backendEnv, frontendEnv, resolveSecret } from './env'
+import { allocateStack } from './stack-allocation'
 
-/**
- * Boots the Docker-free perf stack: a pglite backend and a Vite frontend on
- * dedicated ports, both configured for the anonymous auto-session. Returns a
- * teardown that kills both. Idempotent-ish: if the ports are already serving
- * (a warm stack from a previous run), we reuse them instead of respawning.
- */
 export type BootedStack = { baseUrl: string; teardown: () => Promise<void> }
 
-const waitForUrl = async (url: string, timeoutMs: number): Promise<boolean> => {
+/** Wait for this run's own server, bounding each request as well as total startup time. */
+const waitForUrl = async (url: string, timeoutMs: number): Promise<void> => {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url)
-      if (res.ok || res.status === 401 || res.status === 404) return true
+      await http.get(url, { timeout: 1_000 })
+      return
     } catch {
-      // not up yet
+      // Connection failures are expected while the child is starting.
     }
-    await new Promise((r) => setTimeout(r, 500))
+    await Bun.sleep(500)
   }
-  return false
+  throw new Error(`perf-hunt: server did not become ready at ${url}`)
 }
 
-const isServing = async (url: string): Promise<boolean> => {
-  try {
-    const res = await fetch(url)
-    return res.ok || res.status === 401 || res.status === 404
-  } catch {
-    return false
-  }
-}
-
+/** Boot an isolated stack; one scout's teardown never stops another run's servers or database. */
 export const bootStack = async (repoRoot: string): Promise<BootedStack> => {
-  const backendHealth = `${PERF_BACKEND_URL}/v1/health`
-  const already = (await isServing(backendHealth)) && (await isServing(PERF_BASE_URL))
-  if (already) {
-    return { baseUrl: PERF_BASE_URL, teardown: async () => {} }
+  const stack = await allocateStack()
+  const children: Bun.Subprocess[] = []
+  const teardown = async () => {
+    for (const child of children) child.kill()
+    await Promise.all(children.map((child) => child.exited))
+    await stack.cleanup()
   }
-
-  const secret = resolveSecret()
-  const backend = Bun.spawn(['bun', 'src/index.ts'], {
-    cwd: `${repoRoot}/backend`,
-    env: { ...process.env, ...backendEnv(secret) },
-    // Readiness is polled via waitForUrl, and nothing consumes these streams —
-    // 'pipe' would let the ~64KB OS buffer fill and hang the chatty dev server.
-    stdout: 'ignore',
-    stderr: 'ignore',
-  })
-  const backendOk = await waitForUrl(backendHealth, 120_000)
-  if (!backendOk) {
-    backend.kill()
-    throw new Error(`perf-hunt: backend did not become healthy on :${PERF_BACKEND_PORT}`)
-  }
-
-  const frontend = Bun.spawn(['bun', 'run', 'dev', '--', '--port', String(PERF_FRONTEND_PORT), '--strictPort'], {
-    cwd: repoRoot,
-    env: { ...process.env, ...frontendEnv() },
-    // Readiness is polled via waitForUrl, and nothing consumes these streams —
-    // 'pipe' would let the ~64KB OS buffer fill and hang the chatty dev server.
-    stdout: 'ignore',
-    stderr: 'ignore',
-  })
-  const frontendOk = await waitForUrl(PERF_BASE_URL, 120_000)
-  if (!frontendOk) {
-    frontend.kill()
-    backend.kill()
-    throw new Error(`perf-hunt: frontend did not become ready on :${PERF_FRONTEND_PORT}`)
-  }
-
-  return {
-    baseUrl: PERF_BASE_URL,
-    teardown: async () => {
-      frontend.kill()
-      backend.kill()
-    },
+  try {
+    stack.releaseBackendPort()
+    children.push(
+      Bun.spawn(['bun', 'src/index.ts'], {
+        cwd: `${repoRoot}/backend`,
+        env: { ...process.env, ...backendEnv(resolveSecret(), stack) },
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }),
+    )
+    await waitForUrl(`${stack.backendUrl}/v1/health`, 120_000)
+    stack.releaseFrontendPort()
+    children.push(
+      Bun.spawn(
+        [
+          'bun',
+          './node_modules/vite/bin/vite.js',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          String(stack.frontendPort),
+          '--strictPort',
+        ],
+        {
+          cwd: repoRoot,
+          env: { ...process.env, ...frontendEnv(stack) },
+          stdout: 'ignore',
+          stderr: 'ignore',
+        },
+      ),
+    )
+    await waitForUrl(stack.baseUrl, 120_000)
+    return { baseUrl: stack.baseUrl, teardown }
+  } catch (error) {
+    await teardown()
+    throw error
   }
 }

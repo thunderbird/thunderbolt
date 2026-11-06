@@ -24,7 +24,7 @@ makes iteration cheap). You read only the JSON, never raw traces.
 ## Operating rules (low freedom — always)
 
 - **The deterministic layer owns the numbers; you own attribution, verification, and fixes.** Never eyeball a screenshot and declare a metric — run the probe and cite its output.
-- **Separate finding from dismissing.** The agent that fixes must not be the one that verified a finding is real. Verification is adversarial: default to *refuted* unless reproduced AND attributed to a source location. See `references/verification-rubric.md`.
+- **Separate finding from dismissing.** The agent that fixes must not be the one that verified a finding is real. Verification is adversarial: default to _refuted_ unless reproduced AND attributed to a source location. See `references/verification-rubric.md`.
 - **Warm before you measure.** Vite transpiles a route on first hit; a cold first navigation is not a real metric. Every scenario is warmed once before the measured pass (the probes handle this; never bypass it).
 - **Fixes are architectural, never band-aids** (CLAUDE.md core principle). Follow the repo's React/`useEffect` discipline and route code-splitting rules. Soft-delete only; never hard-delete.
 - **Every fix carries a before/after number** from re-running the exact focus probe. No number → not a fix.
@@ -52,29 +52,32 @@ PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-arm64 bun node_modules/playwright-
 
 If Playwright browsers cannot be installed at all on the host, the **Firefox path still works** via the `firefox-devtools` MCP + system Firefox (Marionette) — see `references/gecko-profiler.md`. Chromium-only metrics (LoAF, CDP heap) are unavailable in that fallback.
 
-The harness boots its own stack on dedicated ports (frontend :1431, backend :8010, pglite, anonymous auto-session) — it will not collide with `make dev` (:1420/:8000) or the e2e suite. It reuses an already-serving stack if one is up.
+Each invocation boots its own stack with OS-assigned frontend/backend ports, a private temporary PGlite directory, and an anonymous auto-session. Parallel scouts own separate servers and data; teardown removes only that invocation’s stack.
 
 ## Inputs & modes
 
 Pick the narrowest mode that answers the question:
 
-| Mode | Command | When |
-| --- | --- | --- |
-| `diff` (default on a branch) | `bun scripts/run.ts --mode diff --changed <files>` | Reviewing a PR/branch — probes only the scenarios that exercise changed files. Fast + cheap. |
-| `focus` | `bun scripts/run.ts --mode focus --focus chat-landing` | Deep-dive one surface, or re-measure after a fix (before/after). |
-| `sweep` | `bun scripts/run.ts --mode sweep` | Full audit across all scenarios × both browsers. |
+| Mode                         | Command                                                | When                                                                                         |
+| ---------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `diff` (default on a branch) | `bun scripts/run.ts --mode diff --changed <files>`     | Reviewing a PR/branch — probes only the scenarios that exercise changed files. Fast + cheap. |
+| `focus`                      | `bun scripts/run.ts --mode focus --focus chat-landing` | Deep-dive one surface, or re-measure after a fix (before/after).                             |
+| `sweep`                      | `bun scripts/run.ts --mode sweep`                      | Full audit across all scenarios × both browsers.                                             |
 
 Scripts live in `scripts/` under this skill dir; run them from the repo root with the skill path, e.g. `bun .claude/skills/thunder-perf-hunt/scripts/run.ts ...`.
 
 ## Workflow (follow in order — copy this checklist)
 
 ### 1. SETUP
+
 - Ensure browsers installed (if `~/.cache/ms-playwright` lacks them, run `bun node_modules/playwright-core/cli.js install chromium firefox` — **not** `bunx playwright`; see Prerequisites for why).
 - Choose mode. On a branch/PR: `diff` using the changed files (`git diff --name-only main...HEAD`). On explicit "audit everything": `sweep`. For a single surface or a re-measure: `focus`.
 - Choose browsers: default both (`chromium,firefox`); Chromium-only for a quick pass.
 
 ### 2. SCOUT (recall pass — run the probes)
+
 Run the lenses the request needs (all of them for a full hunt):
+
 - **Perf + a11y + console/crash:** `bun scripts/run.ts --mode <mode> [flags]` → prints the `report.json` path. Then `bun scripts/report.ts <report.json>` → writes `findings.json` + `summary.md` (recall-biased candidates with thresholds already applied).
 - **Bug/exploration lens:** `bun scripts/explore.ts [--browsers chromium] [--steps 40]` → curiosity-driven state-graph crawl → `explore/explore-findings.json` (crashes, console errors, dead-ends) + per-state screenshots. See `references/state-exploration.md`.
 - **Bundle lens:** `bun scripts/analyze-bundle.ts` → `bundle-report.json` (entry-chunk + largest chunks vs size-limit budgets).
@@ -83,35 +86,44 @@ Run the lenses the request needs (all of them for a full hunt):
 Read `summary.md` + the findings JSONs — never the raw traces. That is the whole candidate set.
 
 ### 3. TRIAGE
+
 - Merge duplicates (the report already merges the same issue across browsers). Cluster related findings that would share a fix (`clusterId`).
 - Drop exclusion-category noise per `references/verification-rubric.md`.
 - Rank by severity × confidence. Carry forward the top findings; note (don't silently drop) anything cut for volume.
 
 ### 4. VERIFY (precision pass — adversarial, parallel sub-agents)
+
 For each surviving finding, dispatch a **separate verifier sub-agent** (see execution model). The verifier:
+
 - Re-runs the exact `focus` probe (or Gecko profile for Firefox) to **reproduce** the number.
 - **Attributes to a source location** (`file:line` or component) — reading the LoAF `sourceURL:charPosition`, the render component name, the a11y selector, the crash stack.
 - Tries to **refute** it (is it expected? third-party? cold-cache artifact? StrictMode?). Returns a structured `VerdictReport` (`reproduced`, `isReal`, `rationale`, `sourceAttribution`, `correctedSeverity`).
 - For ambiguous perf findings, use a **2-of-3 vote**.
-Only `confirmed` findings with a source attribution proceed.
+  Only `confirmed` findings with a source attribution proceed.
 
 ### 5. FIX (per confirmed cluster)
+
 For each cluster, in its own git branch:
+
 - Consult `references/fix-playbook.md` (+ `react-rerender-playbook.md` for renders) and implement the **architectural** fix, obeying CLAUDE.md React/`useEffect`/code-splitting rules.
 - Re-run `focus` on the affected scenario(s) in the affected browser(s): capture the **before** (from the original run) and **after** numbers. If the metric didn't move, the fix is wrong — iterate.
 - **Hard cap: 3–5 fix↔measure iterations**, then stop and escalate the finding as `deferred` with notes (per `references/harness-tuning.md`).
 - Run `thundercheck` until green.
 
 ### 6. PR (autonomous — one per cluster)
+
 - Use `/thunderpush` to branch/commit/push, then open a PR (via `/thunderpush`'s PR flow or `gh pr create`). One PR per cluster.
 - PR body from `assets/pr-template.md`: what was wrong, the fix, a **BEFORE/AFTER metric table**, how it was verified (probe/scenario/browser), reviewer checklist.
 - Fully autonomous per project config — no pause. Keep each PR single-concern so review stays trivial.
 
 ### 7. REPORT
+
 Emit a concise summary to the user: findings by severity, which were confirmed vs refuted (with the false-positive reasons — this is signal), the PRs opened with links, and the before/after table per fix. Link the run dir (`.perf-hunt/runs/<runId>/`).
 
 ### 8. REFLECT (self-improve — bounded)
+
 Make the harness a little better using signals from THIS run — but only in ways that add signal, never complexity. Read `references/self-improve.md` and follow it exactly. In short:
+
 - Read the run signals (probe errors/empty outputs, scenario timeouts, verifier-confirmed false positives, crawler-discovered routes, attribution gaps, cost).
 - **Auto-apply at most 3 SAFE changes:** suppress a confirmed false positive (`calibration.json` `excludeSignatures`, with a reason), add a discovered route (`calibration.json` `extraScenarios`), fix a broken probe, or tune one threshold by one step (only with ≥2-run evidence).
 - **Propose-only** (log to `LEARNINGS.md`, do NOT apply): anything that adds a dependency, abstraction, file, probe type, or cost.

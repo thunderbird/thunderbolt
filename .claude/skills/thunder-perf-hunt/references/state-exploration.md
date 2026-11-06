@@ -2,13 +2,13 @@
 
 `scripts/explore.ts` is the harness's functional bug-finder. Where the scenario
 sweep (`scripts/run.ts`) drives a fixed list of routes to measure performance,
-the explorer *wanders* the app to find things that are simply broken: uncaught
+the explorer _wanders_ the app to find things that are simply broken: uncaught
 errors, console errors, crashes, dead-ends, and unexpected navigations to
 `/not-found`.
 
-It runs against the same Docker-free anonymous stack as the sweep (frontend
-`:1431`, backend `:8010` — see `scripts/lib/env.ts`) and reuses a warm stack if
-one is already serving.
+It boots a Docker-free anonymous stack like the sweep, using its own OS-assigned
+ports and private temporary database. Concurrent explorer and sweep runs do not
+share servers or data.
 
 ## Live state graph, not random clicking
 
@@ -23,10 +23,10 @@ see:
 - **Edges** = actions taken (click this button, fill this field, open this menu)
   and the state they led to.
 - **Frontier** = the set of interactive elements in the current state that the
-  crawler has *not* yet exercised. Each step it picks an unvisited action,
+  crawler has _not_ yet exercised. Each step it picks an unvisited action,
   performs it, snapshots the resulting state, and adds a new node/edge.
 
-Because every action is informed by observed state, the crawl is *directed*:
+Because every action is informed by observed state, the crawl is _directed_:
 it prefers unexplored affordances, backtracks out of dead-ends, and stops
 revisiting equivalent screens. This finds real reachable bugs far faster than
 random input, and every bug comes with the exact path that produced it.
@@ -54,7 +54,7 @@ reproduce it. Each one records:
 
 - **Click path** — the ordered list of actions from the entry route to the
   failing state (e.g. `/chats/new → click "Settings" → click "Devices" → click
-  "Revoke"`). This is the `repro` field.
+"Revoke"`). This is the `repro` field.
 - **Evidence** — the error message, console text, or the "expected a transition,
   got none" note, with numbers where relevant.
 - **Screenshot** — the per-state PNG captured at the moment of failure, written
@@ -75,7 +75,7 @@ visual coverage.
 
 The crawl is capped at **~60 distinct states** by default so cost stays
 bounded — the state-collapsing key is what makes this cap meaningful (60
-*unique* screens, not 60 clicks). When the cap is hit the crawler stops and
+_unique_ screens, not 60 clicks). When the cap is hit the crawler stops and
 reports coverage.
 
 - Raise the budget with `--steps <n>` for a deeper crawl.

@@ -5,8 +5,8 @@ attribution probes — Long Animation Frames (LoAF) and heap deltas — are buil
 Chromium/CDP APIs (`scripts/lib/collect.ts` only collects `heap` when
 `browserName === 'chromium'`, and LoAF via the `PerformanceObserver` LoAF entry
 type is Chromium-only). So when jank is **Firefox-specific**, Playwright's
-Firefox driver can *measure* it (vitals, long tasks, renders) but can't
-*attribute* it to a function.
+Firefox driver can _measure_ it (vitals, long tasks, renders) but can't
+_attribute_ it to a function.
 
 For that attribution, use the **Gecko profiler** through the connected
 `firefox-devtools` MCP server. This path drives real system Firefox (v153 beta,
@@ -36,7 +36,10 @@ a Firefox-only regression, and you need to name the function responsible.
 
 ### (a) Launch system Firefox with Marionette, headless
 
-Point it at the already-serving perf stack (`http://localhost:1431`). Use a
+Start an independent interactive backend/frontend stack with matching anonymous
+auth configuration from `scripts/lib/env.ts`; the examples below assume its
+frontend is at `http://localhost:1431`. Automated scouts allocate private ports
+and stop their own stack on completion. Use a
 throwaway profile dir so nothing leaks between runs, and confirm port 2828 is
 free first.
 

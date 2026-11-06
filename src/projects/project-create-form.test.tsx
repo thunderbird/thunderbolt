@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@/testing-library'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { expect, it, mock, spyOn } from 'bun:test'
 import { useRef } from 'react'
 import { useProjectCreateState, type ProjectCreateValues } from './use-project-create-state'
@@ -65,4 +65,34 @@ it('keeps the draft on failure and allows retrying without duplicate pending sub
   } finally {
     log.mockRestore()
   }
+})
+
+it('reserves creation synchronously before the transition renders', async () => {
+  const pending = Promise.withResolvers<void>()
+  const onSubmit = mock(() => pending.promise)
+  const { result } = renderHook(() => useProjectCreateState(onSubmit))
+  act(() => result.current.setName('Research'))
+  act(() => {
+    result.current.submit()
+    result.current.submit()
+  })
+  expect(onSubmit).toHaveBeenCalledTimes(1)
+  await act(async () => {
+    pending.resolve()
+    await pending.promise
+  })
+})
+
+it('does not navigate to a project created after its dialog was dismissed', async () => {
+  const pending = Promise.withResolvers<string>()
+  const onCreated = mock(() => {})
+  const { result, unmount } = renderHook(() => useProjectCreateState(() => pending.promise, onCreated))
+  act(() => result.current.setName('Research'))
+  act(() => result.current.submit())
+  unmount()
+  await act(async () => {
+    pending.resolve('project-id')
+    await pending.promise
+  })
+  expect(onCreated).not.toHaveBeenCalled()
 })

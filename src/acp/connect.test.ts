@@ -31,6 +31,7 @@ import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createSpyHttpClient } from '@/test-utils/http-client-spy'
+import type { AiFetchStreamingResponseFn } from './built-in-adapter'
 import { connectToAgent } from './connect'
 
 const builtInAgent: Agent = {
@@ -79,9 +80,9 @@ const baseAdapterContext = (overrides: Partial<AgentAdapterContext> = {}): Agent
 })
 
 describe('connectToAgent — built-in dispatch', () => {
-  it('returns adapter whose fetch calls the injected aiFetch with correct args', async () => {
-    const aiFetch = mock(async () => new Response('done'))
-    const adapter = await connectToAgent(builtInAgent, { httpClient, getProxyFetch }, { aiFetch: aiFetch as never })
+  it('forwards request fields and an adapter-owned cancellation signal to the injected aiFetch', async () => {
+    const aiFetch = mock<AiFetchStreamingResponseFn>(async () => new Response('done'))
+    const adapter = await connectToAgent(builtInAgent, { httpClient, getProxyFetch }, { aiFetch })
 
     expect(adapter.agent).toBe(builtInAgent)
     expect(adapter.capabilities).toBeNull()
@@ -92,18 +93,16 @@ describe('connectToAgent — built-in dispatch', () => {
     })
     await adapter.fetch(init, ctx)
     expect(aiFetch).toHaveBeenCalledTimes(1)
-    const call = (aiFetch.mock.calls[0] as unknown as [Record<string, unknown>])[0]
+    const call = aiFetch.mock.calls[0]![0]
     expect(call.modelId).toBe('gpt')
-    expect(call.init).toBe(init)
-  })
+    expect(call.init).toEqual({ ...init, signal: expect.any(AbortSignal) })
+    expect(call.init.signal?.aborted).toBe(false)
 
-  it('disconnect is a no-op for built-in', async () => {
-    const adapter = await connectToAgent(
-      builtInAgent,
-      { httpClient, getProxyFetch },
-      { aiFetch: (async () => new Response('ok')) as never },
-    )
+    adapter.disconnect()
+    expect(call.init.signal?.aborted).toBe(true)
     expect(() => adapter.disconnect()).not.toThrow()
+    await expect(adapter.fetch(init, ctx)).rejects.toThrow('aborted')
+    expect(aiFetch).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { Connection, Incoming } from '@number0/iroh'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BridgeConfig } from '../agent/types.ts'
@@ -227,6 +227,35 @@ describe('handleConnection — the allowlist gate', () => {
     port: 0,
     command: ['__nonexistent_binary_xyzzy__'],
   }
+
+  it.each(['allowlist', 'stream'] as const)(
+    'closes the connection when %s setup fails after its handshake',
+    async (phase) => {
+      if (phase === 'allowlist') {
+        await mkdir(join(home, 'iroh', 'allowlist'), { recursive: true })
+      } else {
+        await add('known-peer')
+      }
+      const connection = {
+        remoteId: () => ({ toString: () => 'known-peer' }),
+        acceptBi: mock(async () => {
+          throw new Error('stream rejected')
+        }),
+        close: mock(() => {}),
+      } as unknown as Connection
+      const incoming = { accept: async () => ({ connect: async () => connection }) } as unknown as Incoming
+      const activeProcs = new Set<BridgeProc>()
+      const release = mock(() => {})
+
+      await expect(handleConnection(incoming, config, activeProcs, { release })).rejects.toThrow()
+
+      expect(release).toHaveBeenCalledTimes(1)
+      expect(connection.acceptBi).toHaveBeenCalledTimes(phase === 'stream' ? 1 : 0)
+      expect(connection.close).toHaveBeenCalledTimes(1)
+      expect(connection.close).toHaveBeenCalledWith(closeRefused, bytesOf('bridge setup failed'))
+      expect(activeProcs.size).toBe(0)
+    },
+  )
 
   it('refuses a non-allowlisted peer: closes with closeRefused, never opens a stream or spawns', async () => {
     const acceptBi = mock(async () => ({ recv: {}, send: {} }))
@@ -762,7 +791,10 @@ describe('startAccountTrust — degradation boundary', () => {
   })
 
   it('reports revoked registration, disables auto-trust, and keeps the manual allowlist active', async () => {
-    await writeFile(join(home, 'auth.json'), JSON.stringify({ token: 'session-token', cloudUrl: 'https://api.test/v1' }))
+    await writeFile(
+      join(home, 'auth.json'),
+      JSON.stringify({ token: 'session-token', cloudUrl: 'https://api.test/v1' }),
+    )
     await add('manual-peer')
     const fetchFn: FetchFn = async () =>
       new Response(JSON.stringify({ error: 'Bridge device revoked' }), {

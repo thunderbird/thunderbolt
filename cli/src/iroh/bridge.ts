@@ -371,74 +371,73 @@ export const handleConnection = async (
   options: HandleConnectionOptions = {},
 ): Promise<void> => {
   const connection = await handshake(incoming, guard)
-  const remoteId = connection.remoteId().toString()
+  try {
+    const remoteId = connection.remoteId().toString()
 
-  if (!(await isConnectionAllowed(remoteId, options.accountAllowlist))) {
-    process.stderr.write(`⚡ iroh bridge: refused ${remoteId} (not allowlisted)\n`)
-    connection.close(closeRefused, reasonBytes('not allowlisted'))
-    return
-  }
+    if (!(await isConnectionAllowed(remoteId, options.accountAllowlist))) {
+      process.stderr.write(`⚡ iroh bridge: refused ${remoteId} (not allowlisted)\n`)
+      connection.close(closeRefused, reasonBytes('not allowlisted'))
+      return
+    }
 
-  // Commit a subprocess only once the client actually opens the data stream, so
-  // an allowlisted-but-idle peer can't pin a spawned agent, and the agent never
-  // runs before its data plane exists. The wait is bounded: a peer that completes
-  // the handshake (and passes the allowlist) but never opens the stream is closed
-  // rather than left to pin the connection forever.
-  const bi = await acceptBidiStream(connection, options.acceptTimeoutMs ?? defaultAcceptTimeoutMs)
-  if (!bi) {
-    process.stderr.write(`⚡ iroh bridge: closed ${remoteId} (idle: no data stream)\n`)
-    return
-  }
+    // Commit a subprocess only once the client actually opens the data stream, so
+    // an allowlisted-but-idle peer can't pin a spawned agent, and the agent never
+    // runs before its data plane exists. The wait is bounded: a peer that completes
+    // the handshake (and passes the allowlist) but never opens the stream is closed
+    // rather than left to pin the connection forever.
+    const bi = await acceptBidiStream(connection, options.acceptTimeoutMs ?? defaultAcceptTimeoutMs)
+    if (!bi) {
+      process.stderr.write(`⚡ iroh bridge: closed ${remoteId} (idle: no data stream)\n`)
+      return
+    }
 
-  // Cap concurrently-live agents: the allowlist authorizes a *peer*, not a fixed
-  // number of sessions, so one allowlisted peer holding many connections open
-  // would otherwise spawn unbounded agents. At the ceiling we refuse rather than spawn.
-  if (atProcCapacity(activeProcs)) {
-    process.stderr.write(`⚡ iroh bridge: refused ${remoteId} (at capacity, ${activeProcs.size} live agents)\n`)
-    connection.close(closeRefused, reasonBytes('bridge at capacity'))
-    return
-  }
+    // Cap concurrently-live agents: the allowlist authorizes a *peer*, not a fixed
+    // number of sessions, so one allowlisted peer holding many connections open
+    // would otherwise spawn unbounded agents. At the ceiling we refuse rather than spawn.
+    if (atProcCapacity(activeProcs)) {
+      process.stderr.write(`⚡ iroh bridge: refused ${remoteId} (at capacity, ${activeProcs.size} live agents)\n`)
+      connection.close(closeRefused, reasonBytes('bridge at capacity'))
+      return
+    }
 
-  const proc = spawnAgent(config.command)
-  if (!proc) {
-    connection.close(closeRefused, reasonBytes(`failed to spawn '${config.command[0]}'`))
-    return
-  }
-  activeProcs.add(proc)
-  const openConnections = options.openConnections
-  if (openConnections) {
-    const open: OpenConnection = { remoteId, connection }
-    openConnections.add(open)
-    const removeOpenConnection = (): boolean => openConnections.delete(open)
-    void (async () => {
-      try {
-        await connection.closed()
-      } catch {
-        // A rejected closed() still means the connection is gone; prune regardless.
-      } finally {
-        removeOpenConnection()
-      }
-    })()
-  }
-  void proc.exited.then(() => activeProcs.delete(proc))
-  // A dropped connection kills the agent and removes the heartbeat registry entry.
-  // The reverse (agent exit) is signalled by finishing the send stream below —
-  // never by an active connection close — so the final JSON-RPC response can't be
-  // truncated mid-flight; the client tears the connection down once it has drained
-  // that stream.
-  killProcessWhenConnectionCloses(connection, proc)
-  process.stdout.write(`⚡ iroh bridge: accepted ${remoteId} → spawned ${redactArgv(config.command)}\n`)
+    const proc = spawnAgent(config.command)
+    if (!proc) {
+      connection.close(closeRefused, reasonBytes(`failed to spawn '${config.command[0]}'`))
+      return
+    }
+    activeProcs.add(proc)
+    const openConnections = options.openConnections
+    if (openConnections) {
+      const open: OpenConnection = { remoteId, connection }
+      openConnections.add(open)
+      const removeOpenConnection = (): boolean => openConnections.delete(open)
+      void (async () => {
+        try { await connection.closed() } finally { removeOpenConnection() }
+      })().catch(() => {})
+    }
+    void (async () => { await proc.exited; activeProcs.delete(proc) })()
+    // A dropped connection kills the agent and removes the heartbeat registry entry.
+    // The reverse (agent exit) is signalled by finishing the send stream below —
+    // never by an active connection close — so the final JSON-RPC response can't be
+    // truncated mid-flight; the client tears the connection down once it has drained
+    // that stream.
+    killProcessWhenConnectionCloses(connection, proc)
+    process.stdout.write(`⚡ iroh bridge: accepted ${remoteId} → spawned ${redactArgv(config.command)}\n`)
 
-  // `.finally` (not `.then`) so the agent always gets stdin EOF, even if the
-  // recv pump errors as the connection tears down. `writeToStdin` awaits the
-  // flush (backpressure) and logs an EPIPE loudly rather than swallowing it.
-  const toAgent = forwardFromRecv(bi.recv, (chunk) => writeToStdin(proc.stdin, chunk, 'bridge')).finally(() =>
-    proc.stdin.end(),
-  )
-  const fromAgent = forwardToSend(proc.stdout, bi.send)
-  // A pump rejecting here is the expected end-of-session (the stream errors as
-  // the connection closes); the lifecycle hooks above have already cleaned up.
-  await Promise.allSettled([toAgent, fromAgent])
+    // `.finally` (not `.then`) so the agent always gets stdin EOF, even if the
+    // recv pump errors as the connection tears down. `writeToStdin` awaits the
+    // flush (backpressure) and logs an EPIPE loudly rather than swallowing it.
+    const toAgent = forwardFromRecv(bi.recv, (chunk) => writeToStdin(proc.stdin, chunk, 'bridge')).finally(() =>
+      proc.stdin.end(),
+    )
+    const fromAgent = forwardToSend(proc.stdout, bi.send)
+    // A pump rejecting here is the expected end-of-session (the stream errors as
+    // the connection closes); the lifecycle hooks above have already cleaned up.
+    await Promise.allSettled([toAgent, fromAgent])
+  } catch (error) {
+    connection.close(closeRefused, reasonBytes('bridge setup failed'))
+    throw error
+  }
 }
 
 /** Live same-account trust for a running bridge: the cached account allowlist and a

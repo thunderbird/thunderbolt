@@ -44,22 +44,40 @@ import {
   createBuiltInAdapter,
   composeAppHarnessSystemPrompt,
   harnessSignature,
-  installAppContextSupersede,
-  isPiModelCandidate,
+  supersedeHarnessAppContext,
   readProfileThinkingLevel,
   resolvePiModel,
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
 } from './built-in-adapter'
+import { isPiModelCandidate } from './built-in-model-support'
+import type { AppHarness } from '@shared/agent-core'
 import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
 import { createReceiptLifecycle, type BuildAppHarnessOptions, type PiModelDescriptor } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { createPromptParts, type PromptParams } from '@/ai/prompt'
-import { FileError, type AgentHarness, type AgentHarnessEvent, type AgentTool } from '@earendil-works/pi-agent-core'
+import {
+  FileError,
+  type AgentHarness,
+  type AgentHarnessEvent,
+  type AgentMessage,
+  type AgentTool,
+} from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import type { SecureClient } from 'tinfoil'
 
 const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
+const compactionStub = {
+  setReasoningEffort: async () => {},
+  subscribe: () => () => {},
+  getActiveTools: () => [],
+  compaction: {
+    revision: 0,
+    prepareRequest: async (messages: AgentMessage[]) => messages,
+    checkpoint: async () => undefined,
+    abort: () => {},
+  },
+}
 
 const anthropic = (overrides: Partial<Extract<PiModelDescriptor, { kind: 'anthropic' }>> = {}): ResolvedPiModel => ({
   descriptor: { kind: 'anthropic', modelId: 'claude-opus-4-8', apiKey: 'sk-a', fetch: noopFetch, ...overrides },
@@ -97,6 +115,20 @@ describe('isPiModelCandidate', () => {
 })
 
 describe('readProfileThinkingLevel', () => {
+  it.each(['high', 'max'] as const)('preserves adaptive Anthropic profile effort %s', (effort) => {
+    expect(readProfileThinkingLevel({ thinking: { type: 'adaptive' }, effort })).toBe(effort)
+  })
+
+  it('keeps disabled Anthropic thinking off despite a stored effort', () => {
+    expect(readProfileThinkingLevel({ thinking: { type: 'disabled' }, effort: 'max' })).toBe('off')
+  })
+
+  it('prefers native effort fields and ignores malformed adaptive effort', () => {
+    expect(readProfileThinkingLevel({ reasoningEffort: 'low', effort: 'max' })).toBe('low')
+    expect(readProfileThinkingLevel({ reasoning: { effort: 'high' }, effort: 'max' })).toBe('high')
+    expect(readProfileThinkingLevel({ effort: 'unsupported', thinking: { budgetTokens: 4096 } })).toBe('low')
+  })
+
   it('ignores a non-object JSON value from the synced profile column', () => {
     expect(readProfileThinkingLevel(['high'] as never)).toBeNull()
   })
@@ -505,6 +537,7 @@ describe('resolvePiModel — Tinfoil', () => {
 
     await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
     expect(evictSystemTinfoilClient).toHaveBeenCalledTimes(1)
+    expect(evictSystemTinfoilClient).toHaveBeenCalledWith(client)
   })
 
   it.each(['high', 'max'] as const)('resolves BYOK with %s effort directly without receipts', async (effort) => {
@@ -548,6 +581,7 @@ describe('resolvePiModel — Tinfoil', () => {
     })
     await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
     expect(evictUserTinfoilClient).toHaveBeenCalledTimes(1)
+    expect(evictUserTinfoilClient).toHaveBeenCalledWith(client)
   })
 
   it('rejects a BYOK model without an API key', async () => {
@@ -762,6 +796,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       buildAppHarness: async (options: BuildAppHarnessOptions) => {
         buildCalls.push(options)
         return {
+          ...compactionStub,
           getTools: () => [],
           setTools: async () => {},
           prompt: async () => {
@@ -829,6 +864,7 @@ describe('createBuiltInAdapter persistent harness', () => {
         const descriptor = options.model
         const events = createHarnessEvents()
         const harness = {
+          ...compactionStub,
           ...events.harness,
           getTools: () => [],
           setTools: async () => {},
@@ -908,6 +944,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     } satisfies PreparedAiRequestConfig
     const activeToolNames: Array<string[] | undefined> = []
     const harness = {
+      ...compactionStub,
       getTools: () => [{ name: 'read' } as AgentTool],
       setTools: async (_tools: AgentTool[], active?: string[]) => void activeToolNames.push(active),
       prompt: async () => {},
@@ -1000,7 +1037,8 @@ describe('createBuiltInAdapter persistent harness', () => {
       const setToolsForHarness: Array<{ tools: AgentTool[]; activeToolNames: string[] | undefined }> = []
       let toolResultHandler: (() => Promise<void> | void) | undefined
       setToolsCalls.push(setToolsForHarness)
-      const harness: AgentHarness = {
+      const harness: AppHarness = {
+        ...compactionStub,
         getTools: () => [{ name: 'read' } as AgentTool],
         getActiveTools: () => [{ name: 'read' } as AgentTool],
         steer,
@@ -1522,6 +1560,7 @@ describe('createBuiltInAdapter stop', () => {
       embeddedSurface: null,
     }
     const harness = {
+      ...compactionStub,
       getTools: () => [],
       setTools: async () => {},
       setActiveTools: async () => {},
@@ -1723,7 +1762,7 @@ describe('research promotion through the real Pi adapter', () => {
 })
 
 describe('Mini App reads on the persistent harness', () => {
-  type ContextHandler = (event: { messages: unknown[] }) => { messages: unknown[] }
+  type ContextHandler = (event: { messages: unknown[] }) => { messages: unknown[] } | Promise<{ messages: unknown[] }>
 
   const appContextRead = (toolCallId: string, text: string) => ({
     role: 'toolResult' as const,
@@ -1734,7 +1773,7 @@ describe('Mini App reads on the persistent harness', () => {
     timestamp: 0,
   })
 
-  /** Only the hook registry: `installAppContextSupersede` touches nothing else. */
+  /** Minimal context-hook registry for the adapter's request transformation. */
   const hookRegistry = () => {
     const hooks: { context?: ContextHandler } = {}
     const harness = {
@@ -1750,21 +1789,14 @@ describe('Mini App reads on the persistent harness', () => {
     return { harness, hooks }
   }
 
-  it('supersedes the listed reads in the request without touching the stored ones', () => {
-    const { harness, hooks } = hookRegistry()
-    const remove = installAppContextSupersede(harness, new Set(['earlier']))
+  it('supersedes the listed reads in the request without touching the stored ones', async () => {
     const earlier = appContextRead('earlier', 'Currently viewing: Q2')
     const current = appContextRead('current', 'Currently viewing: Q3')
-
-    const { messages } = hooks.context!({ messages: [earlier, current] })
+    const messages = [earlier, current].map((message) => supersedeHarnessAppContext(message, new Set(['earlier'])))
 
     expect(messages[0]).toEqual({ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] })
     expect(messages[1]).toBe(current)
     expect(earlier.content[0].text).toBe('Currently viewing: Q2')
-
-    remove()
-
-    expect(hooks.context).toBeUndefined()
   })
 
   /** The rewrite the legacy path applies to the request history, carried to the harness's own session. */
@@ -1787,11 +1819,12 @@ describe('Mini App reads on the persistent harness', () => {
     let requested: unknown[] = []
     let toolCallMetadata: Record<string, unknown> | undefined
     const harness = {
+      ...compactionStub,
       ...(registry as object),
       getTools: () => [],
       setTools: async () => {},
       prompt: async () => {
-        requested = hooks.context?.({ messages: [earlier] }).messages ?? []
+        requested = (await hooks.context?.({ messages: [earlier] }))?.messages ?? []
       },
       waitForIdle: async () => {},
       abort: async () => ({ aborted: true }),
@@ -1877,6 +1910,7 @@ describe('attachments in the harness workspace', () => {
     const written: realAgentCore.WorkspaceFile[][] = []
     const prompts: string[] = []
     const harness = {
+      ...compactionStub,
       getTools: () => [],
       setTools: async () => {},
       prompt: async (text: string) => {

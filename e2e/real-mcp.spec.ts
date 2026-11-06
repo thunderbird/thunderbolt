@@ -41,6 +41,7 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   await expect(page.locator('textarea')).toBeVisible()
   await page.getByTestId('model-selector-trigger').click()
   await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await page.keyboard.press('Escape')
   const marker = `blue-heron-${crypto.randomUUID().slice(0, 8)}`
   await sendChatPrompt(page, `Use the Test Echo echo tool with message "${marker}". Quote its result exactly.`)
 

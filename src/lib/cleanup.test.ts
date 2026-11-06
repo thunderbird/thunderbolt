@@ -16,6 +16,7 @@ import * as authToken from './auth-token'
 import * as fileBlobStorage from './file-blob-storage'
 import * as fs from './fs'
 import { clearIdentityScopedMemory } from './identity-memory'
+import { attestationStore } from '@/attestation/store'
 
 describe('clearLocalData', () => {
   const llava = { provider: 'custom', model: 'llava', url: 'http://localhost:11434/v1', vendor: null } as const
@@ -89,5 +90,23 @@ describe('clearIdentityScopedMemory', () => {
     clearIdentityScopedMemory()
 
     expect(getDebugTranscriptNotes('thread-1')).toEqual([])
+  })
+
+  it('revokes inference evidence and pending reporters when the identity changes', () => {
+    const key = 'tinfoil:user'
+    const reporter = attestationStore.open(key)
+    const evidence = {
+      provider: 'Tinfoil',
+      endpoint: 'inference.tinfoil.sh',
+      verifiedAt: 0,
+      checks: [] as const,
+      details: [],
+    }
+    reporter.publish({ status: 'verified', evidence })
+
+    clearIdentityScopedMemory()
+    expect(attestationStore.getSnapshot(key)).toEqual({ status: 'idle' })
+    reporter.publish({ status: 'verified', evidence })
+    expect(attestationStore.getSnapshot(key)).toEqual({ status: 'idle' })
   })
 })

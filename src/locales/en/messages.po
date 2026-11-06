@@ -62,6 +62,10 @@ msgstr "{0} is only available on desktop"
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} can't take attachments. Remove the attached files to send."
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
+msgstr "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
+
 #: src/settings/voice.tsx
 msgid "{appName} (hosted, private)"
 msgstr "{appName} (hosted, private)"
@@ -179,6 +183,10 @@ msgid "Imported # row. The app may take a moment to reflect new chats."
 msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] "Imported # row. The app may take a moment to reflect new chats."
 msgstr[1] "Imported # rows. The app may take a moment to reflect new chats."
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr "{usedTokensLabel} of {maxTokensLabel} Context Window"
 
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
@@ -331,6 +339,10 @@ msgstr "Add Model"
 msgid "Add Server"
 msgstr "Add Server"
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Add summary instructions (optional)"
+msgstr "Add summary instructions (optional)"
+
 #: src/components/chat/chat-add-menu.tsx
 #: src/skills/suggestion-chip.tsx
 msgid "Add to chat"
@@ -362,6 +374,10 @@ msgstr "Adding…"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Advanced (JSON)"
 msgstr "Advanced (JSON)"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Agent privacy"
+msgstr "Agent privacy"
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/routes/settings/agents/index.tsx
@@ -419,6 +435,10 @@ msgstr "Always ask"
 msgid "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
 msgstr "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
 
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "An encrypted agent connection alone does not verify the agent or its model provider."
+msgstr "An encrypted agent connection alone does not verify the agent or its model provider."
+
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr "Analyzing…"
@@ -460,6 +480,7 @@ msgstr "API Key (Optional)"
 msgid "API Key is required for this provider"
 msgstr "API Key is required for this provider"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx
@@ -531,6 +552,10 @@ msgstr "Ask about this"
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "Ask me anything…"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Assistant"
+msgstr "Assistant"
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
@@ -782,6 +807,11 @@ msgstr "Choose an icon for {label}"
 msgid "Choose an option"
 msgstr "Choose an option"
 
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Choose effort"
+msgstr "Choose effort"
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Choose model"
 msgstr "Choose model"
@@ -912,6 +942,46 @@ msgstr "Command / arguments"
 msgid "Command Palette"
 msgstr "Command Palette"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Command result"
+msgstr "Command result"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compact now"
+msgstr "Compact now"
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacted"
+msgstr "Compacted"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compacting context…"
+msgstr "Compacting context…"
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacting…"
+msgstr "Compacting…"
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction"
+msgstr "Compaction"
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction cancelled"
+msgstr "Compaction cancelled"
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction failed"
+msgstr "Compaction failed"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compaction instructions (optional)"
+msgstr "Compaction instructions (optional)"
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Compaction summary"
+msgstr "Compaction summary"
+
 #: src/tasks/index.tsx
 msgid "Complete {taskItem}"
 msgstr "Complete {taskItem}"
@@ -927,6 +997,10 @@ msgstr "Complete the setup process to get started with {appName}"
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
 msgstr "Completing…"
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Confidential hardware"
+#~ msgstr "Confidential hardware"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
@@ -1023,6 +1097,10 @@ msgstr "Connecting…"
 msgid "Connection"
 msgstr "Connection"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Connection details"
+msgstr "Connection details"
+
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Connection error"
 msgstr "Connection error"
@@ -1033,6 +1111,14 @@ msgstr "Connection error"
 msgid "Connection failed"
 msgstr "Connection failed"
 
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection privacy"
+msgstr "Connection privacy"
+
+#: src/components/chat/attestation/attestation-control.tsx
+msgid "Connection privacy: {label}"
+msgstr "Connection privacy: {label}"
+
 #: src/components/chat/error-message.tsx
 msgid "Connection problem. Check your internet and try again."
 msgstr "Connection problem. Check your internet and try again."
@@ -1041,6 +1127,10 @@ msgstr "Connection problem. Check your internet and try again."
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Connection successful!"
 msgstr "Connection successful!"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Connection verified"
+msgstr "Connection verified"
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -1053,6 +1143,22 @@ msgstr "Connections"
 #: src/components/app-error-screen.tsx
 msgid "Contact Support"
 msgstr "Contact Support"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Context"
+msgstr "Context"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Context compaction is available with supported built-in models."
+#~ msgstr "Context compaction is available with supported built-in models."
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage"
+msgstr "Context usage"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage is not available."
+msgstr "Context usage is not available."
 
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
@@ -1121,9 +1227,21 @@ msgstr "Copy URL"
 msgid "Could not bind the pairing code"
 msgstr "Could not bind the pairing code"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Could not change reasoning effort"
+msgstr "Could not change reasoning effort"
+
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr "Could not check whether a removed device still holds your account key. Reload to try again."
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Could not compact context. Please try again."
+msgstr "Could not compact context. Please try again."
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Could not compact context. Your chat history is safe. Please try again."
+#~ msgstr "Could not compact context. Your chat history is safe. Please try again."
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -1412,6 +1530,10 @@ msgstr "Data is stored securely on your device."
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
 msgstr "Debug transcript sharing is turned off on this server."
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+#~ msgid "Default"
+#~ msgstr "Default"
 
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
@@ -1859,6 +1981,22 @@ msgstr "Enabled"
 msgid "Enables location-based responses"
 msgstr "Enables location-based responses"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave endpoint"
+msgstr "Enclave endpoint"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave fingerprint"
+msgstr "Enclave fingerprint"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave-bound encryption key"
+msgstr "Enclave-bound encryption key"
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Encrypted connection"
+#~ msgstr "Encrypted connection"
+
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
 msgstr "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
@@ -1946,6 +2084,10 @@ msgstr "Exporting…"
 #: src/settings/preferences.tsx
 msgid "External Links"
 msgstr "External Links"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Extra high"
+msgstr "Extra high"
 
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
@@ -2150,6 +2292,10 @@ msgstr "Got it, working on that next."
 msgid "Haptic Feedback"
 msgstr "Haptic Feedback"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Hardware attestation"
+msgstr "Hardware attestation"
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Having a problem with this chat?"
 msgstr "Having a problem with this chat?"
@@ -2191,6 +2337,14 @@ msgstr "Hide QR"
 msgid "Hide QR code for {deviceName}"
 msgstr "Hide QR code for {deviceName}"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "High"
+msgstr "High"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
+#~ msgstr "Higher effort can improve difficult answers but takes more time and tokens."
+
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
 msgstr "How {appName} salutes you"
@@ -2218,6 +2372,10 @@ msgstr "If you have access, we've sent an 8-digit code to <0>{email}</0>"
 #: src/waitlist/waitlist-page.tsx
 msgid "If you received a code to log in, enter it here:"
 msgstr "If you received a code to log in, enter it here:"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Image retained"
+msgstr "Image retained"
 
 #: src/i18n/unit-labels.ts
 msgid "Imperial"
@@ -2453,6 +2611,7 @@ msgstr "Loading preview…"
 msgid "Loading this app's pairing identity…"
 msgstr "Loading this app's pairing identity…"
 
+#: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 #: src/widgets/connect-integration/widget.tsx
@@ -2485,6 +2644,10 @@ msgstr "Log out"
 msgid "Logging out…"
 msgstr "Logging out…"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Low"
+msgstr "Low"
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr "Mainly clear"
@@ -2501,14 +2664,26 @@ msgstr "Managed by your deployment — always available, no setup needed."
 msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
 msgstr "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Matching measurements"
+msgstr "Matching measurements"
+
 #: src/components/window-controls.tsx
 msgid "Maximize"
 msgstr "Maximize"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Maximum"
+msgstr "Maximum"
 
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr "MCP servers"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Medium"
+msgstr "Medium"
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -2535,6 +2710,10 @@ msgstr "Mini Apps are only available on desktop"
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 #~ msgstr "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Minimal"
+msgstr "Minimal"
+
 #: src/components/window-controls.tsx
 msgid "Minimize"
 msgstr "Minimize"
@@ -2543,11 +2722,16 @@ msgstr "Minimize"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "Missing CSRF state — restart the authorization."
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
 msgid "Model"
 msgstr "Model"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
+msgstr "Model and reasoning effort"
 
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
@@ -2557,6 +2741,14 @@ msgstr "Model"
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Model name is required."
 msgstr "Model name is required."
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}"
+msgstr "Model: {modelName}"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}. Reasoning effort: {effortName}"
+msgstr "Model: {modelName}. Reasoning effort: {effortName}"
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -2864,6 +3056,10 @@ msgstr "Nothing completed the handshake at {0}. Check that the app is running, a
 #~ msgid "Nothing to ask about there. Try covering some content."
 #~ msgstr "Nothing to ask about there. Try covering some content."
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Nothing to compact yet."
+msgstr "Nothing to compact yet."
+
 #: src/services/revoke-failure.ts
 msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
@@ -2900,6 +3096,10 @@ msgstr "OAuth validation failed"
 msgid "Objects"
 msgstr "Objects"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Off"
+msgstr "Off"
+
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
@@ -2911,6 +3111,10 @@ msgstr "Off sends own-key model and MCP requests directly from this device. On r
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "Offline. Changes will sync when back online."
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "On"
+msgstr "On"
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Onboarding Wizard"
@@ -3180,9 +3384,14 @@ msgstr "Preview webview is only available in the desktop app"
 msgid "Privacy"
 msgstr "Privacy"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "Private"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Private inference"
+msgstr "Private inference"
 
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
@@ -3214,6 +3423,10 @@ msgstr "Provider"
 #: src/settings/preferences.tsx
 msgid "Proxying is required in the web app to bypass browser CORS restrictions."
 msgstr "Proxying is required in the web app to bypass browser CORS restrictions."
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Published code"
+#~ msgstr "Published code"
 
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
@@ -3250,6 +3463,15 @@ msgstr "Ready to submit"
 #: src/content-view/context.tsx
 msgid "Reasoning"
 msgstr "Reasoning"
+
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort"
+msgstr "Reasoning effort"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort: {effortName}"
+msgstr "Reasoning effort: {effortName}"
 
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."
@@ -3291,6 +3513,10 @@ msgstr "Refreshing keys…"
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr "Registering this device and detecting your account status."
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Release digest"
+msgstr "Release digest"
 
 #: src/components/storage-unavailable-screen.tsx
 #: src/components/upgrade-required.tsx
@@ -3400,6 +3626,10 @@ msgstr "Reset Database"
 msgid "Reset Local Database?"
 msgstr "Reset Local Database?"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Reset reasoning effort"
+#~ msgstr "Reset reasoning effort"
+
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr "Reset to Default"
@@ -3415,6 +3645,10 @@ msgstr "Restart Now"
 #: src/components/upgrade-required.tsx
 msgid "Restart to update"
 msgstr "Restart to update"
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Retained messages and tool results"
+msgstr "Retained messages and tool results"
 
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
@@ -3923,6 +4157,10 @@ msgstr "Sign-in successful"
 msgid "Sign-in was cancelled, or your identity provider did not grant access."
 msgstr "Sign-in was cancelled, or your identity provider did not grant access."
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Signed build provenance"
+msgstr "Signed build provenance"
+
 #: src/components/signed-out.tsx
 msgid "Signed Out"
 msgstr "Signed Out"
@@ -4005,6 +4243,10 @@ msgstr "Something went wrong. Please try again."
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 msgstr "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Source repository"
+msgstr "Source repository"
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"
 msgstr "Speaking"
@@ -4070,6 +4312,10 @@ msgstr "Successfully got a response from the model."
 #: src/projects/emoji-picker.tsx
 msgid "Suggested"
 msgstr "Suggested"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Summary"
+msgstr "Summary"
 
 #: src/settings/models/supports-tools-switch.tsx
 msgid "Supports tools"
@@ -4230,6 +4476,10 @@ msgstr "The chat will be retained by the {recipient} team."
 #: src/components/revoke-device-dialog.tsx
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr "The CLI will be signed out and must sign in again before it can use your {appName} account."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "The connection could not be verified. A verified connection is required before sending to this provider."
+msgstr "The connection could not be verified. A verified connection is required before sending to this provider."
 
 #: src/services/revoke-failure.ts
 msgid "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
@@ -4401,6 +4651,14 @@ msgstr "This model doesn't support tools, so chats will run without them. Tools 
 #: src/components/chat/error-message.tsx
 msgid "This model doesn't support tools."
 msgstr "This model doesn't support tools."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "This model is marked private, but this device cannot verify its provider yet."
+msgstr "This model is marked private, but this device cannot verify its provider yet."
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "This model or agent does not offer context compaction."
+msgstr "This model or agent does not offer context compaction."
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."
@@ -4600,6 +4858,10 @@ msgstr "Too many requests. Please try again in a moment."
 msgid "Tool input"
 msgstr "Tool input"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Tool result"
+msgstr "Tool result"
+
 #: src/components/share-debug-transcript/share-debug-transcript-toast.tsx
 msgid "Transcript sent — thank you."
 msgstr "Transcript sent — thank you."
@@ -4621,6 +4883,7 @@ msgid "Trusted devices"
 msgstr "Trusted devices"
 
 #: src/components/auth-gate/browser-check.tsx
+#: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
@@ -4813,9 +5076,17 @@ msgstr "Use your fingerprint, face, or device PIN to sign in instead of an email
 msgid "User Experience"
 msgstr "User Experience"
 
-#: src/components/context-usage-indicator.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
 msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "Verification covers model inference. Connected tools and external services have their own privacy boundaries."
+msgstr "Verification covers model inference. Connected tools and external services have their own privacy boundaries."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification failed"
+msgstr "Verification failed"
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
@@ -4827,6 +5098,26 @@ msgstr "Verification Failed"
 #: src/waitlist/use-waitlist-state.ts
 msgid "Verification failed. Please try again."
 msgstr "Verification failed. Please try again."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification timed out. A verified connection is required before sending to this provider."
+msgstr "Verification timed out. A verified connection is required before sending to this provider."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification unavailable"
+msgstr "Verification unavailable"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Verified on this device"
+msgstr "Verified on this device"
+
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "Verify connection"
+msgstr "Verify connection"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verifying connection…"
+msgstr "Verifying connection…"
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sync-setup/recovery-key-entry-step.tsx
@@ -4858,6 +5149,11 @@ msgstr "View install guide"
 msgid "View quote"
 msgstr "View quote"
 
+#: src/components/context-usage/compaction-notice.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "View summary"
+msgstr "View summary"
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View your schedule and upcoming events."
 msgstr "View your schedule and upcoming events."
@@ -4879,6 +5175,10 @@ msgstr "Voice engine"
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Voice mode: {status}"
 msgstr "Voice mode: {status}"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Wait for the current response to finish before compacting."
+msgstr "Wait for the current response to finish before compacting."
 
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
@@ -5044,6 +5344,10 @@ msgstr "Write down these 24 words in order and store them somewhere safe. You'll
 msgid "wss://example.com/ws or paste an iroh ticket"
 msgstr "wss://example.com/ws or paste an iroh ticket"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "You"
+msgstr "You"
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
 msgstr "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
@@ -5174,6 +5478,22 @@ msgstr "Your chats and settings will remain on this device for next time."
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"
 msgstr "Your deployment's server"
+
+#: src/components/chat/attestation/attestation-control.tsx
+#~ msgid "Your device checks the confidential hardware and published code before sending to {provider}."
+#~ msgstr "Your device checks the confidential hardware and published code before sending to {provider}."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
+msgstr "Your device checks the enclave hardware and signed build before sending to {provider}."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
+msgstr "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
+
+#: src/components/chat/attestation/attestation-control.tsx
+#~ msgid "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
+#~ msgstr "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."

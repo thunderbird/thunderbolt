@@ -214,6 +214,20 @@ describe('OIDC Integration', () => {
   // OIDC Discovery requires stripping it before appending the well-known path;
   // concatenating produced a double slash and a 404.
   describe('issuer with a trailing slash', () => {
+    // Such a provider publishes the slash in its discovery document too, and Better Auth requires the
+    // discovered issuer to match the configured one exactly.
+    const trailingSlashIdpFetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        const url = input instanceof Request ? input.url : input.toString()
+        requestedDiscoveryUrls.push(url)
+        if (url !== `${oidcPathIssuerUrl}/.well-known/openid-configuration`) {
+          throw new Error(`Unexpected OIDC request: ${url}`)
+        }
+        return Response.json({ ...discoveryDocumentFor(oidcPathIssuerUrl), issuer: `${oidcPathIssuerUrl}/` })
+      },
+      { preconnect: () => {} },
+    ) as unknown as typeof fetch
+
     beforeEach(() => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
         ...baseSettings,
@@ -240,7 +254,7 @@ describe('OIDC Integration', () => {
 
         expect(requestedDiscoveryUrls).toEqual([`${oidcPathIssuerUrl}/.well-known/openid-configuration`])
         expect(res.ok).toBe(true)
-      })
+      }, trailingSlashIdpFetch)
     })
   })
 

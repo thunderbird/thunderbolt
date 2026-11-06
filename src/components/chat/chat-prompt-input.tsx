@@ -27,6 +27,8 @@ import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import { useAgentCommands } from '@/acp/agent-commands-store'
+import { useAcpSessionStore } from '@/acp/session-state-store'
+import { sessionConfigKey } from '@/acp/session-config-store'
 import { useWarmAcpCommands as useWarmAcpCommands_default } from '@/chats/use-warm-acp-commands'
 import {
   useEnabledSkills as useEnabledSkills_default,
@@ -58,11 +60,15 @@ import { useLocation as useLocation_default, useNavigate as useNavigate_default 
 import { ChatAddMenu } from './chat-add-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
-import { ContextUsageIndicator } from '../context-usage-indicator'
+import { ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
+import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
+import { EffortSelector } from './effort-selector'
 import { ChatModelPicker } from './chat-model-picker'
+import { ChatAttestation } from './attestation'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { collapseTextSelectionToEnd } from '@/lib/focus'
+import { hasAssistantContent } from '@/lib/message-utils'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
@@ -255,6 +261,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       retryCount,
       retriesExhausted,
       stopping,
+      compactionStatus,
       selectedAgent,
       selectedModel,
     } = useCurrentChatSession()
@@ -272,6 +279,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       chat: chatInstance,
       experimental_throttle: messageBookkeepingThrottleMs,
     })
+    const summaryView = useCompactionSummaryState(messages)
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
@@ -319,7 +327,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     // Show the Stop button whenever the thread is busy — the same signal
     // `ChatMessages` uses for its loading spinner, so the two stay in sync.
-    const { isActive: isBusy, isStopping } = getTurnActivity({
+    const { isActive, isStopping } = getTurnActivity({
       status,
       lastMessage: messages[messages.length - 1],
       hasChatError: chatError != null,
@@ -327,6 +335,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       retryCount,
       stopRequested: stopping,
     })
+    const compacting = compactionStatus === 'compacting'
+    const isBusy = isActive || compacting
+    const builtIn = isBuiltInAgent(selectedAgent)
+    const acpSession = useAcpSessionStore((state) =>
+      state.sessions.get(sessionConfigKey(selectedAgent.id, chatThreadId)),
+    )
+    const compactCommand = acpSession?.commands.find((command) => command.name === 'compact')
+    const canCompact =
+      !!chatInstance.compactContext && (builtIn ? supportsPiCompaction(selectedModel) : !!compactCommand)
     const isConnecting = connectionStatus === 'connecting'
     const isConnectionError = connectionStatus === 'error' && connectionError != null
 
@@ -598,13 +615,27 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       return total
     }, [normalizedInput, enabledInstructionBySlug, quotes])
 
-    const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
+    const builtInContext = useContextTracking({
       model: selectedModel,
       chatThreadId,
       currentInput: normalizedInput,
       additionalInputTokens,
       onOverflow: () => handleShowOverflowModal(selectedModel, normalizedInput.trim().length, messages.length + 1),
     })
+
+    const acpSessionId =
+      acpSession?.sessionId ?? (chatThread?.agentId === selectedAgent.id ? chatThread.acpSessionId : undefined)
+    const savedAcpUsage = acpSessionId
+      ? messages.findLast(
+          (message) =>
+            message.metadata?.acpContextUsage?.sessionId === acpSessionId &&
+            message.metadata.acpContextUsage.agentId === selectedAgent.id,
+        )?.metadata?.acpContextUsage
+      : undefined
+    const acpUsage = acpSession?.usage ?? savedAcpUsage
+    const usedTokens = builtIn ? builtInContext.usedTokens : (acpUsage?.used ?? null)
+    const maxTokens = builtIn ? builtInContext.maxTokens : (acpUsage?.size ?? null)
+    const isContextKnown = builtIn ? builtInContext.isContextKnown : acpUsage !== undefined
 
     // Store dropped/picked PDFs locally (IndexedDB) and add reference-only
     // attachments. Bytes never enter a message part — only the localFileId ref.
@@ -697,7 +728,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           return
         }
 
-        if (isOverflowing) {
+        if (builtIn && builtInContext.isOverflowing && !canCompact) {
           handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)
           return
         }
@@ -792,8 +823,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </span>
           </div>
         ) : null}
-        {isContextKnown && !isMobile && (
-          <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
+        {(isContextKnown || (canCompact && (!builtIn || messages.length > 0)) || !!summaryView.onViewSummary) && (
+          <ContextUsageIndicator
+            key={`${chatThreadId}:${selectedAgent.id}`}
+            usedTokens={usedTokens}
+            maxTokens={maxTokens}
+            onCompact={canCompact ? chatInstance.compactContext : undefined}
+            supportsInstructions={builtIn || compactCommand?.inputHint !== undefined}
+            busy={isActive}
+            compacting={compacting}
+            hasHistory={!builtIn || messages.some(hasAssistantContent)}
+            onViewSummary={summaryView.onViewSummary}
+          />
         )}
       </div>
     )
@@ -801,7 +842,21 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // The model picker sits in the footer's right cluster, next to the send
     // button; the connecting / connection-error status replaces it on the
     // left, so the right side only renders it in the healthy state.
-    const footerEndElements = !isConnecting && !isConnectionError ? <ChatModelPicker /> : undefined
+    const footerEndElements = (
+      <div className="flex min-w-0 items-center gap-0.5">
+        {selectedAgent.type !== 'built-in' && <ChatAttestation />}
+        {!isConnecting && !isConnectionError && (
+          <EffortSelector
+            key={`${chatThreadId}:${selectedAgent.id}`}
+            modelPicker={
+              selectedAgent.type === 'built-in'
+                ? (onClose) => <ChatModelPicker embedded onClose={onClose} />
+                : undefined
+            }
+          />
+        )}
+      </div>
+    )
 
     const handleAddChipFromBar = useCallback(
       (skill: Skill) => {

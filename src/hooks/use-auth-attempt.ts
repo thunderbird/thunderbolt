@@ -5,7 +5,10 @@
 import { useEffect, useRef } from 'react'
 import { useAsyncAttempt } from './use-async-attempt'
 
-/** Cancel pending credentials work, while allowing accepted sign-ins to finish after navigation. */
+/**
+ * Cancel pending credentials work, while allowing accepted sign-ins to finish after navigation.
+ * Failed completion releases admission for retry; successful authentication stays terminal.
+ */
 export const useAuthAttempt = () => {
   const operation = useAsyncAttempt()
   const request = useRef<{ controller: AbortController; committed: boolean } | null>(null)
@@ -35,9 +38,13 @@ export const useAuthAttempt = () => {
         current.committed = true
       },
       isCommitted: () => current.committed,
-      finish: () => {
+      isCancellation: (error: unknown) =>
+        !current.committed &&
+        current.controller.signal.aborted &&
+        (error === current.controller.signal.reason || (error instanceof Error && error.name === 'AbortError')),
+      finish: (outcome: 'succeeded' | 'failed' = 'succeeded') => {
         attempt.finish()
-        if (request.current === current && !current.committed) {
+        if (request.current === current && (!current.committed || outcome === 'failed')) {
           request.current = null
         }
       },

@@ -124,10 +124,13 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
         dispatch({ type: 'JOIN_SUCCESS', payload: challengeToken ?? '' })
       }
     } catch (error) {
-      if (attempt.isCurrent()) {
+      if (!attempt.isCancellation(error)) {
         console.error('Waitlist join error:', error)
+      }
+      if (attempt.isCurrent()) {
         dispatch({ type: 'JOIN_ERROR', payload: i18n._(joinFailed) })
       }
+      attempt.finish('failed')
     } finally {
       attempt.finish()
     }
@@ -175,10 +178,13 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
         useWelcomeStore.getState().trigger()
       }
     } catch (error) {
-      if (attempt.isCurrent()) {
+      if (!attempt.isCancellation(error)) {
         console.error('OTP verification error:', error)
+      }
+      if (attempt.isCurrent()) {
         dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
       }
+      attempt.finish('failed')
     } finally {
       attempt.finish()
     }
@@ -209,16 +215,14 @@ export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
 
       useWelcomeStore.getState().trigger()
     } catch (error) {
-      if (isPasskeyCancellation(error)) {
-        if (attempt.isCurrent()) {
-          dispatch({ type: 'PASSKEY_CANCEL' })
-        }
-        return
+      const cancelled = !attempt.isCommitted() && (isPasskeyCancellation(error) || attempt.isCancellation(error))
+      if (!cancelled) {
+        console.error('Passkey sign-in error:', error)
       }
       if (attempt.isCurrent()) {
-        console.error('Passkey sign-in error:', error)
-        dispatch({ type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
+        dispatch(cancelled ? { type: 'PASSKEY_CANCEL' } : { type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
       }
+      attempt.finish('failed')
     } finally {
       attempt.finish()
     }

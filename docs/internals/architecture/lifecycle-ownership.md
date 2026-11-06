@@ -32,6 +32,8 @@ Asynchronous work must have an owner that decides when it may start, publish a r
 | Shared event streams         | [`Pi-to-AI-SDK translation`](../../../shared/agent-core/pi-to-aisdk-stream.ts)                                                                                                  | Consumer cancellation uses the Stop finalizer and preserves partial replies without waiting for tool teardown.                                                                                                                                                           |
 | Native resources             | [`sidebar webview`](../../../src/content-view/use-sidebar-webview.ts), [`native OAuth listener`](../../../src-tauri/src/oauth_server.rs)                                        | Resource generations own listener registration and close. Late registrations self-clean; callback listeners enforce state validation and bounded waits.                                                                                                                  |
 
+Authentication completion has two terminal outcomes. Success prevents another attempt in the completed form; failure releases its reservation so Retry, Cancel and Back stay actionable. Unexpected errors are logged even after the form unmounts.
+
 These are ownership boundaries, not a requirement to introduce a general state-machine framework. A small reducer, queue, generation token or terminal latch is often sufficient. Keep the model beside its implementation and regression tests when extending a lifecycle.
 
 ## Reviewing a change

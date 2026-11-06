@@ -10,6 +10,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as passkeys from '@/lib/passkey'
 import * as onboarding from '@/lib/returning-user-onboarding'
+import * as promotionAnalytics from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { eq } from 'drizzle-orm'
 import type { FormEvent } from 'react'
 import type { HttpClient } from '@/lib/http'
@@ -375,6 +376,193 @@ describe('useSignInFormState', () => {
 })
 
 describe('sign-in attempt lifetime', () => {
+  it.each([new DOMException('cancelled', 'AbortError'), new Error('late send failure')])(
+    'logs only unexpected send failures after unmount: %p',
+    async (error) => {
+      const response = Promise.withResolvers<Response>()
+      const { httpClient } = createSpyHttpClient(() => response.promise)
+      const log = spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const { result, unmount } = renderHook(() =>
+          useSignInFormState({
+            authClient: createMockAuthClient(),
+            httpClient,
+            initialEmail: 'test@example.com',
+          }),
+        )
+        let pending!: Promise<void>
+        await act(async () => {
+          pending = result.current.actions.handleSubmit({ preventDefault() {} } as FormEvent)
+        })
+        unmount()
+        response.reject(error)
+        await pending
+        if (error.name === 'AbortError') {
+          expect(log).not.toHaveBeenCalled()
+        } else {
+          expect(log).toHaveBeenCalledWith('Failed to send verification OTP:', error)
+        }
+      } finally {
+        log.mockRestore()
+      }
+    },
+  )
+
+  it.each([
+    ['otp', 'retry'],
+    ['otp', 'back'],
+    ['otp', 'cancel'],
+    ['passkey', 'retry'],
+    ['passkey', 'back'],
+    ['passkey', 'cancel'],
+  ] as const)('allows %s %s after a committed failure', async (method, action) => {
+    const failure =
+      method === 'passkey'
+        ? new DOMException('Auth session changed while finishing passkey sign-in', 'AbortError')
+        : new Error('Promotion analytics failed')
+    const onPromotionSuccess = mock(() => {})
+    if (method === 'otp') {
+      onPromotionSuccess.mockImplementationOnce(() => {
+        throw failure
+      })
+    }
+    const analytics = spyOn(promotionAnalytics, 'useAnonymousPromotionAnalytics').mockReturnValue({
+      captureAnonId: async () => {},
+      persistForSso: () => {},
+      onPromotionSuccess,
+    })
+    const signIn = spyOn(passkeys, 'signInWithPasskey').mockImplementation(async (_client, options) => {
+      options?.onAuthenticated?.()
+      return { userId: 'user' }
+    })
+    signIn.mockImplementationOnce(async (_client, options) => {
+      options?.onAuthenticated?.()
+      throw failure
+    })
+    const markOnboarded = spyOn(onboarding, 'markOnboardedForReturningUser').mockResolvedValue()
+    const log = spyOn(console, 'error').mockImplementation(() => {})
+    const onCancel = mock(() => {})
+    const otp = mock(async () => ({ data: { user: { id: 'user', isNew: true } }, error: null }))
+    const { httpClient } = createSpyHttpClient(undefined, { success: true, challengeToken: 'fresh-challenge' })
+    try {
+      const { result } = renderHook(() =>
+        useSignInFormState({
+          authClient: createMockAuthClient({ signInEmailOtp: otp }),
+          httpClient,
+          initialEmail: 'test@example.com',
+          onCancel,
+        }),
+      )
+      const run = () =>
+        method === 'otp'
+          ? result.current.actions.handleOtpComplete('12345678')
+          : result.current.actions.handlePasskeySignIn()
+      await act(run)
+      expect(result.current.state.status).toBe(method === 'otp' ? 'sent' : 'error')
+      expect(result.current.state.errorMessage).not.toBe('')
+      expect(log).toHaveBeenCalledWith(method === 'otp' ? 'OTP verification error:' : 'Passkey sign-in error:', failure)
+      if (action === 'retry') {
+        if (method === 'otp') {
+          await act(async () => expect(await result.current.actions.handleResend()).toBe(true))
+          await act(() => result.current.actions.handleOtpComplete('87654321'))
+          expect(otp).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+              otp: '87654321',
+              fetchOptions: expect.objectContaining({
+                headers: expect.objectContaining({ 'x-challenge-token': 'fresh-challenge' }),
+              }),
+            }),
+          )
+        } else {
+          await act(run)
+        }
+        expect(method === 'otp' ? otp : signIn).toHaveBeenCalledTimes(2)
+        expect(result.current.state.status).toBe('success')
+        act(() => result.current.actions.handleCancel())
+        expect(onCancel).not.toHaveBeenCalled()
+      } else if (action === 'back') {
+        act(() => expect(result.current.actions.goBack()).toBe(true))
+        expect(result.current.state.status).toBe('idle')
+      } else {
+        act(() => result.current.actions.handleCancel())
+        expect(onCancel).toHaveBeenCalledTimes(1)
+        expect(result.current.state.status).toBe('idle')
+      }
+    } finally {
+      log.mockRestore()
+      markOnboarded.mockRestore()
+      signIn.mockRestore()
+      analytics.mockRestore()
+    }
+  })
+
+  it.each([
+    { committed: true, error: new Error('postcommit failure'), logged: true },
+    { committed: true, error: new DOMException('account changed', 'AbortError'), logged: true },
+    { committed: true, error: new DOMException('unexpected after commit', 'NotAllowedError'), logged: true },
+    { committed: false, error: new DOMException('cancelled', 'AbortError'), logged: false },
+    { committed: false, error: new DOMException('dismissed', 'NotAllowedError'), logged: false },
+    { committed: false, error: new Error('unexpected late failure'), logged: true },
+  ])('handles an unmounted passkey failure: %j', async ({ committed, error, logged }) => {
+    const response = Promise.withResolvers<{ userId: string }>()
+    const signIn = spyOn(passkeys, 'signInWithPasskey').mockImplementation((_client, options) => {
+      if (committed) {
+        options?.onAuthenticated?.()
+      }
+      return response.promise
+    })
+    const log = spyOn(console, 'error').mockImplementation(() => {})
+    const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
+    try {
+      const { result, unmount } = renderHook(() =>
+        useSignInFormState({ authClient: createMockAuthClient(), httpClient }),
+      )
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.actions.handlePasskeySignIn()
+      })
+      expect(signIn).toHaveBeenCalledTimes(1)
+      unmount()
+      response.reject(error)
+      await pending
+      if (logged) {
+        expect(log).toHaveBeenCalledWith('Passkey sign-in error:', error)
+      } else {
+        expect(log).not.toHaveBeenCalled()
+      }
+    } finally {
+      log.mockRestore()
+      signIn.mockRestore()
+    }
+  })
+
+  it('logs an unexpected OTP completion exception after unmount', async () => {
+    const completion = Promise.withResolvers<void>()
+    const failure = new Error('Unexpected completion exception')
+    // Housekeeping normally handles its own errors. Keep the outer boundary
+    // observable if a future implementation throws unexpectedly after commit.
+    const markOnboarded = spyOn(onboarding, 'markOnboardedForReturningUser').mockReturnValue(completion.promise)
+    const log = spyOn(console, 'error').mockImplementation(() => {})
+    const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
+    try {
+      const { result, unmount } = renderHook(() =>
+        useSignInFormState({ authClient: createMockAuthClient(), httpClient }),
+      )
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.actions.handleOtpComplete('12345678')
+      })
+      expect(result.current.state.status).toBe('completing')
+      unmount()
+      completion.reject(failure)
+      await pending
+      expect(log).toHaveBeenCalledWith('OTP verification error:', failure)
+    } finally {
+      log.mockRestore()
+      markOnboarded.mockRestore()
+    }
+  })
+
   it('refuses Cancel and Back after credentials commit, and finishes housekeeping after unmount', async () => {
     const housekeeping = Promise.withResolvers<void>()
     const markOnboarded = spyOn(onboarding, 'markOnboardedForReturningUser').mockReturnValue(housekeeping.promise)

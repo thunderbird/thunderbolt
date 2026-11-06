@@ -166,12 +166,14 @@ export const useSignInFormState = ({
       }
       return true
     } catch (error) {
-      const message = await getServerErrorMessage(error, i18n._(resend ? resendFailed : sendFailed))
-      if (!attempt.isCurrent()) {
-        return false
+      if (!attempt.isCancellation(error)) {
+        console.error('Failed to send verification OTP:', error)
       }
-      console.error('Failed to send verification OTP:', error)
-      dispatch({ type: 'SEND_ERROR', payload: message, resend })
+      const message = await getServerErrorMessage(error, i18n._(resend ? resendFailed : sendFailed))
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'SEND_ERROR', payload: message, resend })
+      }
+      attempt.finish('failed')
       return false
     } finally {
       attempt.finish()
@@ -221,11 +223,13 @@ export const useSignInFormState = ({
       }
       dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (error) {
-      if (!attempt.isCurrent()) {
-        return
+      if (!attempt.isCancellation(error)) {
+        console.error('OTP verification error:', error)
       }
-      console.error('OTP verification error:', error)
-      dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
+      }
+      attempt.finish('failed')
     } finally {
       attempt.finish()
     }
@@ -257,15 +261,14 @@ export const useSignInFormState = ({
       analytics.onPromotionSuccess(userId)
       dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (error) {
-      if (!attempt.isCurrent()) {
-        return
+      const cancelled = !attempt.isCommitted() && (isPasskeyCancellation(error) || attempt.isCancellation(error))
+      if (!cancelled) {
+        console.error('Passkey sign-in error:', error)
       }
-      if (isPasskeyCancellation(error)) {
-        dispatch({ type: 'PASSKEY_CANCEL' })
-        return
+      if (attempt.isCurrent()) {
+        dispatch(cancelled ? { type: 'PASSKEY_CANCEL' } : { type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
       }
-      console.error('Passkey sign-in error:', error)
-      dispatch({ type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
+      attempt.finish('failed')
     } finally {
       attempt.finish()
     }

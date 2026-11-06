@@ -39,4 +39,35 @@ describe('auth attempt ownership', () => {
     unmount()
     expect(attempt.signal.aborted).toBe(false)
   })
+
+  it('releases failed committed work without letting its final cleanup release a replacement', () => {
+    const { result } = renderHook(useAuthAttempt)
+    const failed = result.current.begin()!
+    failed.commit()
+    failed.finish('failed')
+    expect(result.current.cancel()).toBe(true)
+    const replacement = result.current.begin()!
+    replacement.commit()
+    failed.finish()
+    failed.finish('failed')
+    expect(replacement.isCurrent()).toBe(true)
+    expect(result.current.begin()).toBeNull()
+    expect(result.current.cancel()).toBe(false)
+    replacement.finish('failed')
+    expect(result.current.begin()).not.toBeNull()
+  })
+
+  it('recognizes only its own precommit cancellation as an expected error', () => {
+    const { result } = renderHook(useAuthAttempt)
+    const cancelled = result.current.begin()!
+    const abort = new DOMException('aborted transport', 'AbortError')
+    expect(cancelled.isCancellation(abort)).toBe(false)
+    result.current.cancel()
+    expect(cancelled.isCancellation(abort)).toBe(true)
+    expect(cancelled.isCancellation(cancelled.signal.reason)).toBe(true)
+    expect(cancelled.isCancellation(new Error('unexpected failure'))).toBe(false)
+    const committed = result.current.begin()!
+    committed.commit()
+    expect(committed.isCancellation(abort)).toBe(false)
+  })
 })

@@ -14,7 +14,7 @@ import { probeImageSupport } from './image-support-probe'
 export const imageSupportTimeoutMs = 30_000
 
 /** Providers whose model catalogs report image support per model. */
-const modalityCatalogProviders: ReadonlySet<Model['provider']> = new Set(['tinfoil', 'openrouter'])
+const modalityCatalogProviders: ReadonlySet<Model['provider']> = new Set(['tinfoil', 'openrouter', 'trustedrouter'])
 
 export type DetectImageSupportOptions = {
   /** Ends the check; defaults to a {@link imageSupportTimeoutMs} deadline. */

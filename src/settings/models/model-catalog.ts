@@ -128,10 +128,15 @@ export const fetchModelsForProvider = async (
     return []
   }
 
+  // TrustedRouter's catalog is public; sending the key would add a CORS
+  // preflight its API doesn't answer, and the keyless listing needs no gateway
+  // attestation. It stays key-gated in the form only so the large catalog loads
+  // once the user has committed to the provider.
+  const isTrustedRouter = provider === 'trustedrouter'
   const response = await http
     .get(`${connection.baseURL}/models`, {
-      headers: connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {},
-      fetch: connection.fetch,
+      headers: connection.apiKey && !isTrustedRouter ? { Authorization: `Bearer ${connection.apiKey}` } : {},
+      fetch: isTrustedRouter ? getProxyFetch() : connection.fetch,
     })
     .json<{ data: ModalityCatalogRow[] }>()
   return response.data

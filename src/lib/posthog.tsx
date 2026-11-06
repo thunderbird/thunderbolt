@@ -243,6 +243,7 @@ export type EventType =
   | 'chat_delete'
   | 'chat_clear_all'
   | 'tinfoil_attestation'
+  | 'trustedrouter_attestation'
   // Model & Settings
   | 'model_select'
   | 'mode_select'

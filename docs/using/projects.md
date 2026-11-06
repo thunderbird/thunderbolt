@@ -8,7 +8,7 @@ A project's instructions are always on for every chat inside it. Guidance you wa
 
 ## Create a project
 
-Click **+** beside **Projects** in the sidebar. Four fields, one of them required.
+Open **Project options → New project** beside **Projects** in the sidebar, or long-press the **Projects** heading on mobile. Choose a name and an optional emoji. After creating the project, use its **⋯ → Edit** action to add a description and instructions.
 
 | Field        | Required | Limit             | What it does                                               |
 | ------------ | -------- | ----------------- | ---------------------------------------------------------- |

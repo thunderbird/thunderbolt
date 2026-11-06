@@ -58,7 +58,7 @@ export const ProjectArtifactContextMenu = ({
             <ArrowUpRight />
             <Trans>Open artifact</Trans>
           </ContextMenuItem>
-          <ContextMenuItem onSelect={() => navigate(`/chats/${artifact.chatThreadId}`)}>
+          <ContextMenuItem onSelect={() => navigate(`/chats/${artifact.chatThreadId}?view=chat`)}>
             <MessageCircle />
             <Trans>Open source chat</Trans>
           </ContextMenuItem>

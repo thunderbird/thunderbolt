@@ -5,13 +5,24 @@
 import '@/testing-library'
 import { act, fireEvent, render } from '@testing-library/react'
 import { afterAll, beforeAll, expect, it, mock } from 'bun:test'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { ProjectArtifactActionsProvider } from './project-artifact-actions-provider'
 import { ProjectArtifactCard } from './project-artifact-card'
 import { DatabaseProvider } from '@/contexts'
 import { getDb } from '@/db/database'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { mockIntersectionObserver } from '@/test-utils/mock-intersection-observer'
+
+/** Exposes the destination selected by context menu actions. */
+const LocationProbe = () => {
+  const location = useLocation()
+  return (
+    <output data-testid="destination">
+      {location.pathname}
+      {location.search}
+    </output>
+  )
+}
 
 beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
@@ -24,6 +35,7 @@ it('previews offline without scripts or focus, and keeps pinning separate from n
     <DatabaseProvider db={getDb()}>
       <MemoryRouter>
         <ProjectArtifactActionsProvider>
+          <LocationProbe />
           <ProjectArtifactCard
             projectId="p1"
             artifact={{
@@ -62,4 +74,7 @@ it('previews offline without scripts or focus, and keeps pinning separate from n
   expect(getByRole('menuitem', { name: 'Open source chat' })).toBeTruthy()
   fireEvent.click(pin)
   expect(onTogglePin).toHaveBeenCalledTimes(1)
+  fireEvent.contextMenu(getByRole('link', { name: 'Open Chart' }), { clientX: 100, clientY: 100 })
+  fireEvent.click(getByRole('menuitem', { name: 'Open source chat' }))
+  expect(container.querySelector('[data-testid="destination"]')).toHaveTextContent('/chats/c1?view=chat')
 })

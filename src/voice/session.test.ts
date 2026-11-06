@@ -7,6 +7,7 @@ import type { PlaybackQueue } from '@/voice/audio/playback'
 import type { VadGate, VadHandlers } from '@/voice/audio/vad'
 import type { AudioChunk, PcmFrame, Transcript, VoiceEngine } from '@/voice/engine/types'
 import type { ReplyFn, SessionState } from '@/voice/session'
+import { getClock } from '@/testing-library'
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 // The session creates its VAD gate and playback queue internally; mock both so a
@@ -51,6 +52,7 @@ mock.module('@/voice/audio/vad', () => ({
 }))
 
 let enqueued: AudioChunk[] = []
+let playbackRunning = false
 mock.module('@/voice/audio/playback', () => ({
   createPlaybackQueue: (): PlaybackQueue =>
     ({
@@ -58,10 +60,8 @@ mock.module('@/voice/audio/playback', () => ({
       flush: () => {},
       close: () => {},
       getLevel: () => 0,
-      // Always drained so the session's "wait for playback" loop exits at once
-      // (the real loop polls a timer we don't want to run in tests).
       get isPlaying() {
-        return false
+        return playbackRunning
       },
     }) as unknown as PlaybackQueue,
 }))
@@ -122,6 +122,7 @@ describe('createVoiceSession', () => {
   beforeEach(() => {
     resetVad()
     enqueued = []
+    playbackRunning = false
   })
 
   test('runs a full turn: listen → think → speak → listen and reports both transcripts', async () => {
@@ -235,6 +236,148 @@ describe('createVoiceSession', () => {
     expect(gateDestroyCalls).toBe(1)
     expect(session.state).toBe('idle')
   })
+
+  test('stop releases an open mic while engine warmup is still pending', async () => {
+    const loading = Promise.withResolvers<void>()
+    const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
+      engine: makeEngine('hi', { load: () => loading.promise }),
+      reply: makeReply(['hi']),
+    })
+    const starting = session.start()
+    await drainMicrotasks()
+    expect(gateStartCalls).toBe(1)
+    expect(gateDestroyCalls).toBe(0)
+    await session.stop()
+    expect(gateDestroyCalls).toBe(1)
+    expect(session.state).toBe('idle')
+    loading.resolve()
+    await starting
+    expect(gateDestroyCalls).toBe(1)
+    expect(listeningLog).not.toContain(true)
+  })
+
+  test('releases partial mic resources after a gate failure without waiting for engine warmup', async () => {
+    const loading = Promise.withResolvers<void>()
+    const gateStart = Promise.withResolvers<void>()
+    pendingGateStart = gateStart.promise
+    const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
+      engine: makeEngine('hi', { load: () => loading.promise }),
+      reply: makeReply(['hi']),
+    })
+    const starting = session.start()
+    gateStart.reject(new Error('worklet failed'))
+    await expect(starting).rejects.toThrow('worklet failed')
+    expect(gateDestroyCalls).toBe(1)
+    loading.resolve()
+    await drainMicrotasks()
+    expect(gateDestroyCalls).toBe(1)
+    expect(session.state).toBe('idle')
+  })
+
+  test('does not process late utterances or restart after stop', async () => {
+    const { earcons, played } = makeEarcons()
+    const transcripts: string[] = []
+    const session = createVoiceSession({
+      earcons,
+      engine: makeEngine('late utterance'),
+      reply: makeReply(['should not run']),
+      onTranscript: (text) => transcripts.push(text),
+    })
+    await session.start()
+    await session.stop()
+    await vadHandlers!.onUtterance(new Float32Array(16000))
+    vadHandlers!.onSpeechStart?.()
+    await expect(session.start()).rejects.toThrow('already started or stopped')
+    await session.stop()
+    expect(played).toEqual(['listening'])
+    expect(transcripts).toEqual([])
+    expect(enqueued).toEqual([])
+    expect(session.state).toBe('idle')
+    expect(gateDestroyCalls).toBe(1)
+  })
+
+  test('rejects duplicate starts without creating a second microphone gate', async () => {
+    const loading = Promise.withResolvers<void>()
+    const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
+      engine: makeEngine('hi', { load: () => loading.promise }),
+      reply: makeReply(['hi']),
+    })
+    const starting = session.start()
+    await expect(session.start()).rejects.toThrow('already started or stopped')
+    loading.resolve()
+    await starting
+    await expect(session.start()).rejects.toThrow('already started or stopped')
+    expect(vadGateCalls).toBe(1)
+    await session.stop()
+  })
+
+  test('reports a failed turn and keeps listening for the next utterance', async () => {
+    const error = new Error('transcription failed')
+    const errors: unknown[] = []
+    const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
+      engine: makeEngine('hi', {
+        transcribe: async function* () {
+          yield { text: await Promise.reject<string>(error), isFinal: true }
+        },
+      }),
+      reply: makeReply(['unused']),
+      onError: (failure) => errors.push(failure),
+    })
+    await session.start()
+    await vadHandlers!.onUtterance(new Float32Array(16000))
+    expect(errors).toEqual([error])
+    expect(session.state).toBe('listening')
+    await session.stop()
+  })
+
+  test('ignores a transcription rejection after the session stopped', async () => {
+    const transcript = Promise.withResolvers<string>()
+    const errors: unknown[] = []
+    const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
+      engine: makeEngine('hi', {
+        transcribe: async function* () {
+          yield { text: await transcript.promise, isFinal: true }
+        },
+      }),
+      reply: makeReply(['unused']),
+      onError: (error) => errors.push(error),
+    })
+    await session.start()
+    const turn = vadHandlers!.onUtterance(new Float32Array(16000))
+    await session.stop()
+    transcript.reject(new Error('request aborted'))
+    await turn
+    expect(errors).toEqual([])
+    expect(session.state).toBe('idle')
+  })
+
+  for (const stopBeforeDrain of [false, true]) {
+    test(`waits for queued playback and ${stopBeforeDrain ? 'stays idle after stop' : 'then returns to listening'}`, async () => {
+      playbackRunning = true
+      const session = createVoiceSession({
+        earcons: makeEarcons().earcons,
+        engine: makeEngine('hi'),
+        reply: makeReply(['A complete reply.']),
+      })
+      await session.start()
+      const turn = vadHandlers!.onUtterance(new Float32Array(16000))
+      await drainMicrotasks()
+      expect(session.state).toBe('speaking')
+      if (stopBeforeDrain) {
+        await session.stop()
+      }
+      playbackRunning = false
+      await getClock().tickAsync(80)
+      await turn
+      expect(session.state).toBe(stopBeforeDrain ? 'idle' : 'listening')
+      await session.stop()
+    })
+  }
 
   test('barge-in: onSpeechStart while speaking aborts the turn and returns to listening', async () => {
     const transcripts: Array<[string, string]> = []
@@ -425,15 +568,14 @@ describe('createVoiceSession', () => {
       })
       const session = createVoiceSession({ earcons: makeEarcons().earcons, engine, reply: makeReply(['ok']) })
 
-      // Attestation fails fast while the user is still deciding whether to click
-      // Allow. Tearing down now would destroy a gate that hasn't acquired the mic
-      // yet, and the stream getUserMedia hands over afterwards would be orphaned.
+      // Surface the engine failure immediately. The pending gate owns its own
+      // late cleanup when the user subsequently accepts the permission prompt.
       const starting = session.start()
-      await drainMicrotasks()
+      await expect(starting).rejects.toThrow('attestation failed')
       expect(gateDestroyCalls).toBe(0)
 
       allowMic()
-      await expect(starting).rejects.toThrow('attestation failed')
+      await drainMicrotasks()
 
       expect(gateDestroyCalls).toBe(1)
     })

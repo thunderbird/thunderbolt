@@ -3,41 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { OnboardingNameStep } from '@/components/onboarding/onboarding-name-step'
-import type { OnboardingState } from '@/hooks/use-onboarding-state'
+import { useState } from 'react'
 
 export const OnboardingNameStepWrapper = () => {
-  const mockState: OnboardingState = {
-    currentStep: 3 as const,
-    privacyAgreed: true,
-    isProviderConnected: true,
-    isConnecting: false,
-    processingOAuth: false,
-    nameValue: '',
-    isNameValid: false,
-    isSubmittingName: false,
-    locationValue: '',
-    isLocationValid: false,
-    isSubmittingLocation: false,
-    canGoBack: true,
-    canGoNext: false,
-    canSkip: false,
-  }
-
-  const mockActions = {
-    setNameValue: (value: string) => console.log('setNameValue:', value),
-    setNameValid: (valid: boolean) => console.log('setNameValid:', valid),
-    setSubmittingName: (submitting: boolean) => console.log('setSubmittingName:', submitting),
-    submitName: async (name: string) => {
-      console.log('submitName:', name)
-    },
-    nextStep: async () => console.log('nextStep'),
-    prevStep: async () => console.log('prevStep'),
-    skipStep: async () => console.log('skipStep'),
-  }
+  const [nameValue, setNameValue] = useState('')
 
   return (
     <div className="w-[400px] h-[500px] border rounded-lg p-4">
-      <OnboardingNameStep state={mockState} actions={mockActions} />
+      <OnboardingNameStep state={{ nameValue, isSubmittingName: false }} actions={{ setNameValue }} />
     </div>
   )
 }

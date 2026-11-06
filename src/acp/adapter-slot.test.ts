@@ -64,6 +64,19 @@ describe('AdapterSlot', () => {
     await expect(Promise.all([first, second])).resolves.toEqual([adapter, adapter])
   })
 
+  it('reuses a live adapter and refuses every connection attempt after disposal', async () => {
+    const slot = new AdapterSlot<FakeAdapter>()
+    const adapter = buildAdapter('ready')
+    await slot.getOrConnect(async () => adapter)
+    const unusedConnect = mock(async () => buildAdapter('unused'))
+    expect(await slot.getOrConnect(unusedConnect)).toBe(adapter)
+    expect(unusedConnect).not.toHaveBeenCalled()
+    await slot.dispose()
+    await expect(slot.getOrConnect(unusedConnect)).rejects.toThrow('disposed')
+    expect(unusedConnect).not.toHaveBeenCalled()
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1)
+  })
+
   it('ignores a stale generation termination after its replacement is ready', async () => {
     const firstClosed = deferred<void>()
     const slot = new AdapterSlot<FakeAdapter>()
@@ -103,4 +116,41 @@ describe('AdapterSlot', () => {
     expect(slot.status).toBe('ready')
     expect(slot.generation).toBe(2)
   })
+})
+
+it('returns to terminated after a connector throws synchronously', async () => {
+  const slot = new AdapterSlot<{ disconnect: () => void }>()
+  await expect(
+    slot.getOrConnect(() => {
+      throw new Error('invalid connector')
+    }),
+  ).rejects.toThrow('invalid connector')
+  expect(slot.status).toBe('terminated')
+  const replacement = { disconnect: () => {} }
+  expect(await slot.getOrConnect(async () => replacement)).toBe(replacement)
+  await slot.dispose()
+})
+
+it('every dispose caller waits for the pending connection to be retired', async () => {
+  const slot = new AdapterSlot<{ disconnect: () => void }>()
+  const pending = Promise.withResolvers<{ disconnect: () => void }>()
+  const connection = slot.getOrConnect(() => pending.promise)
+  const rejected = connection.catch((error: unknown) => error)
+  const first = slot.dispose()
+  let disposed = false
+  const second = slot.dispose().then(() => {
+    disposed = true
+  })
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(disposed).toBe(false)
+  let disconnected = false
+  pending.resolve({
+    disconnect: () => {
+      disconnected = true
+    },
+  })
+  await Promise.all([first, second])
+  expect(await rejected).toBeInstanceOf(Error)
+  expect(disconnected).toBe(true)
 })

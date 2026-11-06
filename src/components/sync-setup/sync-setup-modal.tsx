@@ -150,7 +150,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     // Paused while a passkey unlock (or a manual check) is in flight, so no new poll
     // starts staging keys alongside it. A check already in flight still finishes;
     // it can only stage the same account's keys.
-    enabled: setup.step === 'approval-waiting' && !setup.isLoading,
+    enabled: open && setup.step === 'approval-waiting' && !setup.isLoading,
     checkApproval: () => checkApprovalAndUnwrap(httpClient),
     onApproved: () => showSuccess(),
     onRevoked: handleRevoked,
@@ -198,6 +198,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         <button
           type="button"
           onClick={setup.chooseAdditionalDevice}
+          disabled={setup.isLoading}
           className="absolute left-4 top-4 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ArrowLeft className="size-[var(--icon-size-default)]" />

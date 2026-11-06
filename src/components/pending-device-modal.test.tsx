@@ -237,6 +237,7 @@ describe('PendingDeviceModal', () => {
       await envelopeRequested.promise
     })
     await waitForElement(() => screen.queryByRole('alert'))
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't approve this device. Please try again.")
     expect(requests).toContain('/devices/me/envelope')
     expect(requests.filter((path) => path === '/devices/me/envelope')).toHaveLength(1)
   }, 5000)

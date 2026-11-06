@@ -11,6 +11,7 @@ import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandList } 
 import { useSidebar } from '@/components/ui/sidebar'
 import { useDatabase } from '@/contexts'
 import { getModel } from '@/dal'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
 import { useSettings } from '@/hooks/use-settings'
@@ -89,6 +90,7 @@ export const SearchPalette = ({
   // No-op on desktop / when the drawer is closed; on mobile it dismisses the
   // sidebar drawer sitting behind the palette before we navigate.
   const { closeMobileSidebar } = useSidebar()
+  const navigation = useAsyncAttempt()
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebounce(query, debounceMs)
   const trimmedQuery = debouncedQuery.trim()
@@ -159,42 +161,69 @@ export const SearchPalette = ({
 
   const handleSelect = useCallback(
     async (to: string, entityType: SearchEntityType, id: string) => {
-      handleOpenChange(false)
-      // System-only models can't be edited, so skip the edit intent and just
-      // land on the models page. Entities with an inline editor (non-system
-      // models, skills, agents) open straight into their edit panel; everything
-      // else navigates to its page (messages also carry a scroll-to-message intent).
-      const isSystemModel = entityType === 'model' && (await getModel(db, id).catch(() => null))?.isSystem === 1
-      const editNav = isSystemModel ? null : buildActionNav(entityType, { type: 'edit', id })
-      // Dismiss the mobile sidebar drawer behind the palette before navigating.
-      await closeMobileSidebar()
-      if (editNav) {
-        trackEvent('search_result_select', { entityType, jumpToMessage: false })
-        navigate(editNav.to, { state: editNav.state })
+      navigation.cancel()
+      const attempt = navigation.begin()
+      if (!attempt) {
         return
       }
-      const jumpToMessage = entityType === 'message'
-      trackEvent('search_result_select', { entityType, jumpToMessage })
-      navigate(to, jumpToMessage ? { state: { [scrollToMessageStateKey]: id } } : undefined)
+      try {
+        handleOpenChange(false)
+        // System-only models can't be edited, so skip the edit intent and just
+        // land on the models page. Entities with an inline editor (non-system
+        // models, skills, agents) open straight into their edit panel; everything
+        // else navigates to its page (messages also carry a scroll-to-message intent).
+        const isSystemModel = entityType === 'model' && (await getModel(db, id).catch(() => null))?.isSystem === 1
+        if (!attempt.isCurrent()) {
+          return
+        }
+        const editNav = isSystemModel ? null : buildActionNav(entityType, { type: 'edit', id })
+        // Dismiss the mobile sidebar drawer behind the palette before navigating.
+        await closeMobileSidebar()
+        if (!attempt.isCurrent()) {
+          return
+        }
+        if (editNav) {
+          trackEvent('search_result_select', { entityType, jumpToMessage: false })
+          navigate(editNav.to, { state: editNav.state })
+          return
+        }
+        const jumpToMessage = entityType === 'message'
+        trackEvent('search_result_select', { entityType, jumpToMessage })
+        navigate(to, jumpToMessage ? { state: { [scrollToMessageStateKey]: id } } : undefined)
+      } finally {
+        attempt.finish()
+      }
     },
-    [handleOpenChange, navigate, trackEvent, db, closeMobileSidebar],
+    [handleOpenChange, navigate, trackEvent, db, closeMobileSidebar, navigation],
   )
 
   const handleCommand = useCallback(
     async (command: PaletteCommand) => {
-      handleOpenChange(false)
-      trackEvent('search_command_run', { commandId: command.id })
-      if ('to' in command) {
-        // Dismiss the mobile sidebar drawer before navigating (go to page, create…).
-        await closeMobileSidebar()
-        navigate(command.to, command.state ? { state: command.state } : undefined)
+      navigation.cancel()
+      const attempt = navigation.begin()
+      if (!attempt) {
         return
       }
-      void Promise.resolve(command.run()).catch((error) => {
-        console.error(`[search] command '${command.id}' failed`, error)
-      })
+      try {
+        handleOpenChange(false)
+        trackEvent('search_command_run', { commandId: command.id })
+        if ('to' in command) {
+          // Dismiss the mobile sidebar drawer before navigating (go to page, create…).
+          await closeMobileSidebar()
+          if (!attempt.isCurrent()) {
+            return
+          }
+          navigate(command.to, command.state ? { state: command.state } : undefined)
+          return
+        }
+        void Promise.resolve(command.run()).catch((error) => {
+          console.error(`[search] command '${command.id}' failed`, error)
+        })
+      } finally {
+        attempt.finish()
+      }
     },
-    [handleOpenChange, navigate, trackEvent, closeMobileSidebar],
+    [handleOpenChange, navigate, trackEvent, closeMobileSidebar, navigation],
   )
 
   const handleClearAllChatsConfirm = useCallback(async () => {

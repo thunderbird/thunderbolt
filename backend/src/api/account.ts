@@ -32,7 +32,8 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import { challengeOperations } from '@shared/e2ee-types'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
-import { burnStepUpCode, requireStepUpCode, sendStepUpCode } from './step-up'
+import { requireStepUpCode, sendStepUpCode } from './step-up'
+import { consumeStepUpOtp } from '@/lib/step-up-otp'
 
 /** Hardcoded at module scope so a client can never pick what its step-up code buys. */
 const stepUpAction = 'account-deletion' satisfies StepUpAction
@@ -408,15 +409,20 @@ export const createAccountRoutes = (
           set.status = anonymousRefusal.status
           return anonymousRefusal.body
         }
-        const refusal = await requireStepUpCode(database, stepUpAction, user.email, body?.stepUpOtp)
+        const refusal = await database.transaction(async (tx) => {
+          const refusal = await requireStepUpCode(tx, stepUpAction, user.email, body?.stepUpOtp)
+          if (refusal) {
+            return refusal
+          }
+          // The account and its single-use authorization commit together.
+          await deleteUser(tx, user.id)
+          await consumeStepUpOtp(tx, stepUpAction, user.email)
+          return null
+        })
         if (refusal) {
           set.status = refusal.status
           return refusal.body
         }
-
-        // tables have cascade delete on user_id and they will be deleted automatically
-        await deleteUser(database, user.id)
-        await burnStepUpCode(database, stepUpAction, user.email)
 
         set.status = 204
       },

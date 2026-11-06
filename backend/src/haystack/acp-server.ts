@@ -109,7 +109,7 @@ const isTransientPipelineWake = (status: number, bodyText: string): boolean => {
 const persistentSearchSessionsCap = 1_000
 
 /**
- * Module-level mapping of ACP session id → Deepset `search_session_id`. This
+ * Module-level mapping of `[userId, pipelineId, sessionId]` → Deepset `search_session_id`. This
  * survives individual WebSocket connections so `session/load` can restore the
  * upstream history after a transport-level reconnect. Tests get a fresh map
  * via `HaystackAcpDeps.persistentSearchSessions` (DI).
@@ -153,6 +153,8 @@ export type HaystackAcpDeps = {
 
 export type HaystackAcpServerOptions = {
   send: Sender
+  /** Authenticated owner of every session created or resumed on this connection. */
+  userId: string
   /** Deepset pipeline UUID — used as `pipeline_id` body when creating a search session. */
   pipelineId: string
   /** Deepset pipeline URL slug — used in the `/pipelines/${pipelineName}/chat-stream` path. */
@@ -197,6 +199,7 @@ export type HaystackAcpServerOptions = {
 export class HaystackAcpServer {
   private readonly sessions = new Map<string, HaystackSessionContext>()
   private readonly send: Sender
+  private readonly userId: string
   private readonly pipelineId: string
   private readonly pipelineName: string
   private readonly supportsFiles: boolean
@@ -208,6 +211,7 @@ export class HaystackAcpServer {
 
   constructor(opts: HaystackAcpServerOptions) {
     this.send = opts.send
+    this.userId = opts.userId
     this.pipelineId = opts.pipelineId
     this.pipelineName = opts.pipelineName
     this.supportsFiles = opts.supportsFiles ?? false
@@ -330,6 +334,11 @@ export class HaystackAcpServer {
       this.sendError(req.id, rpcErrors.invalidRequest, 'session/load requires sessionId')
       return
     }
+    // Loading an already attached session must retain its active turn owner.
+    if (this.sessions.has(params.sessionId)) {
+      this.sendResult(req.id, {} satisfies LoadSessionResponse)
+      return
+    }
     // File-capable (generative) pipelines never bootstrap a Deepset
     // `search_session_id` — each turn re-uploads its files to `temporary_files`
     // and runs `search-stream` statelessly — so they're absent from the
@@ -342,7 +351,7 @@ export class HaystackAcpServer {
       this.sendResult(req.id, {} satisfies LoadSessionResponse)
       return
     }
-    const searchSessionId = this.persistentSearchSessions.get(params.sessionId)
+    const searchSessionId = this.persistentSearchSessions.get(this.persistentSessionKey(params.sessionId))
     if (!searchSessionId) {
       this.sendError(req.id, rpcErrors.resourceNotFound, `unknown session: ${params.sessionId}`)
       return
@@ -364,18 +373,24 @@ export class HaystackAcpServer {
   }
 
   /**
-   * Record `(acpSessionId → deepsetSearchSessionId)` in the persistent map so
+   * Record the user/pipeline-scoped session in the persistent map so
    * future `session/load` requests on a different WebSocket can resume this
    * session. Evicts the oldest entry once the soft cap is reached.
    */
   private rememberSearchSession(acpSessionId: string, searchSessionId: string): void {
-    if (this.persistentSearchSessions.size >= persistentSearchSessionsCap) {
+    const key = this.persistentSessionKey(acpSessionId)
+    if (!this.persistentSearchSessions.has(key) && this.persistentSearchSessions.size >= persistentSearchSessionsCap) {
       const oldest = this.persistentSearchSessions.keys().next().value
       if (oldest !== undefined) {
         this.persistentSearchSessions.delete(oldest)
       }
     }
-    this.persistentSearchSessions.set(acpSessionId, searchSessionId)
+    this.persistentSearchSessions.set(key, searchSessionId)
+  }
+
+  /** Scope the resume capability to its authenticated owner and upstream pipeline. */
+  private persistentSessionKey(sessionId: string): string {
+    return JSON.stringify([this.userId, this.pipelineId, sessionId])
   }
 
   /**

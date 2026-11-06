@@ -16,6 +16,25 @@ describe('async lifecycle helpers', () => {
     await expect(result).rejects.toMatchObject({ name: 'AbortError' })
   })
 
+  test('prioritizes an existing cancellation and observes a later operation rejection', async () => {
+    const controller = new AbortController()
+    controller.abort(new DOMException('already cancelled', 'AbortError'))
+    const pending = Promise.withResolvers<void>()
+    const result = abortable(pending.promise, controller.signal)
+    await expect(result).rejects.toMatchObject({ name: 'AbortError' })
+    pending.reject(new Error('late transport failure'))
+    // An unobserved rejection fails the Bun test process on the following turn.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  })
+
+  test('prioritizes existing cancellation over an already-settled operation', async () => {
+    const signal = AbortSignal.abort(new DOMException('already cancelled', 'AbortError'))
+    await expect(abortable(Promise.resolve('finished'), signal)).rejects.toMatchObject({ name: 'AbortError' })
+    await expect(abortable(Promise.reject(new Error('transport failed')), signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+  })
+
   test('serializes operations after an earlier rejection', async () => {
     const queue = createSerialQueue()
     const events: string[] = []

@@ -47,31 +47,32 @@ export const dispatchE2eeProvisioningSettled = (): void => {
  * settle under `renderHook` in this test harness — so that shape would ship
  * this regression's own fix with no test to hold it.
  */
-export const useE2eeReady = (): boolean => {
+export const useE2eeReady = (readReady: () => Promise<boolean> = isE2eeReady): boolean => {
   const [ready, setReady] = useState(false)
 
   // Legitimate useEffect: an async read on mount plus a DOM event subscription,
   // both with cleanup.
   useEffect(() => {
-    let cancelled = false
+    let generation = 0
     const check = async () => {
+      const attempt = ++generation
       // A key store this device cannot read is not a ready one. Swallowing to
       // `false` rather than rejecting keeps an unavailable IndexedDB (blocked
       // storage, private browsing) from surfacing as an unhandled rejection in
       // whatever settings surface happens to mount this — the app already has a
       // dedicated screen for genuinely unusable storage.
-      const value = await isE2eeReady().catch(() => false)
-      if (!cancelled) {
+      const value = await readReady().catch(() => false)
+      if (attempt === generation) {
         setReady(value)
       }
     }
     void check()
     window.addEventListener(e2eeProvisioningSettledEvent, check)
     return () => {
-      cancelled = true
+      generation += 1
       window.removeEventListener(e2eeProvisioningSettledEvent, check)
     }
-  }, [])
+  }, [readReady])
 
   return ready
 }

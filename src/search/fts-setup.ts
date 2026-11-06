@@ -38,6 +38,7 @@ const triggerNames = (type: SearchEntityType) => ({
   insert: `search_index_ai_${type}`,
   update: `search_index_au_${type}`,
   delete: `search_index_ad_${type}`,
+  replace: `search_index_bi_${type}`,
 })
 
 /** `json_extract` of a single field from a row's JSON `data` blob. */
@@ -105,13 +106,13 @@ const ftsRowid = (cfg: SearchEntityConfig, idExpr: string): string =>
   `(SELECT fts_rowid FROM ${searchKeysTable} WHERE entity_type = '${cfg.type}' AND id = ${idExpr})`
 
 /**
- * The three `AFTER INSERT/UPDATE/DELETE` triggers that keep {@link searchIndexTable}
+ * The `BEFORE INSERT` and `AFTER INSERT/UPDATE/DELETE` triggers that keep {@link searchIndexTable}
  * in sync with one entity's internal backing table. Index rows are found through
  * {@link searchKeysTable}, scoped by the literal `entity_type` so deletes never
  * touch another entity's hits. The insert is conditional on {@link notSoftDeleted}
  * (a `SELECT … WHERE` yields zero rows for a soft-deleted record), so on UPDATE the
  * delete-then-insert pair hard-deletes the index entry when `deleted_at` becomes
- * set, and re-adds it if it's cleared. The INSERT trigger removes first too:
+ * set, and re-adds it if it's cleared. The BEFORE INSERT trigger removes an indexed id first:
  * PowerSync applies synced rows with `REPLACE INTO`, which replaces an existing
  * row without firing the DELETE trigger.
  * @param internalName - The `ps_data__*` / `ps_data_local__*` backing table.
@@ -129,9 +130,10 @@ export const buildTriggerSql = (cfg: SearchEntityConfig, internalName: string): 
   const indexed = (dataExpr: string) =>
     `(${parentExpr(cfg, dataExpr)}, ${titleExpr(cfg, dataExpr)}, ${bodyExpr(cfg, dataExpr)}, ${notSoftDeleted(dataExpr)})`
   return [
-    `CREATE TRIGGER ${names.insert} AFTER INSERT ON ${internalName} BEGIN ${remove('NEW.id')}; ${insert}; END`,
+    `CREATE TRIGGER ${names.insert} AFTER INSERT ON ${internalName} BEGIN ${insert}; END`,
     `CREATE TRIGGER ${names.update} AFTER UPDATE ON ${internalName} WHEN ${indexed('OLD.data')} IS NOT ${indexed('NEW.data')} BEGIN ${remove('OLD.id')}; ${insert}; END`,
     `CREATE TRIGGER ${names.delete} AFTER DELETE ON ${internalName} BEGIN ${remove('OLD.id')}; END`,
+    `CREATE TRIGGER ${names.replace} BEFORE INSERT ON ${internalName} WHEN EXISTS (SELECT 1 FROM ${searchKeysTable} WHERE entity_type = '${cfg.type}' AND id = NEW.id) BEGIN ${remove('NEW.id')}; END`,
   ]
 }
 
@@ -152,7 +154,7 @@ export const buildBackfillSql = (cfg: SearchEntityConfig, internalName: string):
 export const buildDropSql = (): string[] => {
   const dropTriggers = searchEntities.flatMap((cfg) => {
     const names = triggerNames(cfg.type)
-    return [names.insert, names.update, names.delete].map((name) => `DROP TRIGGER IF EXISTS ${name}`)
+    return Object.values(names).map((name) => `DROP TRIGGER IF EXISTS ${name}`)
   })
   return [...dropTriggers, `DROP TABLE IF EXISTS ${searchKeysTable}`, `DROP TABLE IF EXISTS ${searchIndexTable}`]
 }
@@ -193,9 +195,9 @@ export const createSearchIndex = async (
     // our triggers with them while the search_index table survives. Without this
     // check the version gate would short-circuit and the index would go stale.
     const triggerRows = await transaction.getAll(
-      `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'`,
+      `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_%'`,
     )
-    const expectedTriggerCount = searchEntities.length * 3
+    const expectedTriggerCount = searchEntities.length * 4
     if (tableRows.length === 2 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
       return
     }

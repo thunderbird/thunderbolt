@@ -53,8 +53,10 @@ describe('buildTriggerSql', () => {
   const removeOldChatRow = `DELETE FROM search_index WHERE rowid = (SELECT fts_rowid FROM search_index_keys WHERE entity_type = 'chat' AND id = OLD.id)`
 
   it('emits insert/update/delete triggers on the given internal table', () => {
-    const [insert, update, remove] = buildTriggerSql(configOf('chat'), 'ps_data__chat_threads')
+    const [insert, update, remove, replace] = buildTriggerSql(configOf('chat'), 'ps_data__chat_threads')
     expect(insert).toContain('CREATE TRIGGER search_index_ai_chat AFTER INSERT ON ps_data__chat_threads')
+    expect(insert).not.toContain('DELETE')
+    expect(replace).toContain('CREATE TRIGGER search_index_bi_chat BEFORE INSERT ON ps_data__chat_threads WHEN EXISTS')
     expect(update).toContain('CREATE TRIGGER search_index_au_chat AFTER UPDATE ON ps_data__chat_threads')
     expect(remove).toContain('CREATE TRIGGER search_index_ad_chat AFTER DELETE ON ps_data__chat_threads')
   })
@@ -155,6 +157,7 @@ describe('buildDropSql', () => {
       expect(statements).toContain(`DROP TRIGGER IF EXISTS search_index_ai_${cfg.type}`)
       expect(statements).toContain(`DROP TRIGGER IF EXISTS search_index_au_${cfg.type}`)
       expect(statements).toContain(`DROP TRIGGER IF EXISTS search_index_ad_${cfg.type}`)
+      expect(statements).toContain(`DROP TRIGGER IF EXISTS search_index_bi_${cfg.type}`)
     }
     expect(statements.slice(-2)).toEqual([
       'DROP TABLE IF EXISTS search_index_keys',
@@ -162,8 +165,8 @@ describe('buildDropSql', () => {
     ])
   })
 
-  it('drops 3 triggers per entity plus two table statements', () => {
-    expect(statements).toHaveLength(searchEntities.length * 3 + 2)
+  it('drops 4 triggers per entity plus two table statements', () => {
+    expect(statements).toHaveLength(searchEntities.length * 4 + 2)
   })
 })
 
@@ -409,7 +412,7 @@ describe('createSearchIndex transactions', () => {
       sqlite.run(`INSERT INTO ${table.internalName} (id, data) VALUES (?, ?)`, [id, JSON.stringify({ item: id })])
     const indexedIds = () => sqlite.query('SELECT id FROM search_index ORDER BY id').all()
     const triggerCount = () =>
-      sqlite.query("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'").all().length
+      sqlite.query("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_%'").all().length
     try {
       insert('original')
       await createSearchIndex(powerSync)
@@ -419,13 +422,13 @@ describe('createSearchIndex transactions', () => {
 
       await expect(createSearchIndex(powerSync)).rejects.toThrow('Interrupted last backfill')
       expect(indexedIds()).toEqual([{ id: 'original' }])
-      expect(triggerCount()).toBe(searchEntities.length * 3 - 1)
+      expect(triggerCount()).toBe(searchEntities.length * 4 - 1)
       expect(sqlite.query('SELECT version FROM search_index_meta').all()).toEqual([{ version: searchIndexVersion }])
 
       failure.enabled = false
       await createSearchIndex(powerSync)
       expect(indexedIds()).toEqual([{ id: 'missed' }, { id: 'original' }])
-      expect(triggerCount()).toBe(searchEntities.length * 3)
+      expect(triggerCount()).toBe(searchEntities.length * 4)
       insert('subsequent')
       expect(indexedIds()).toEqual([{ id: 'missed' }, { id: 'original' }, { id: 'subsequent' }])
     } finally {
@@ -477,8 +480,8 @@ describe('createSearchIndex transactions', () => {
       expect(creates).toHaveLength(1)
       expect(sqlite.query('SELECT version FROM search_index_meta').all()).toEqual([{ version: searchIndexVersion }])
       expect(
-        sqlite.query("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'").all(),
-      ).toHaveLength(searchEntities.length * 3)
+        sqlite.query("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_%'").all(),
+      ).toHaveLength(searchEntities.length * 4)
     } finally {
       release.resolve()
       sqlite.close()

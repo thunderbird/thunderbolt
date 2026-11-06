@@ -317,13 +317,13 @@ const fetchTinfoil = async (
   client: SecureClient,
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  evictClient: () => void,
+  evictClient: (client: SecureClient) => void,
 ): Promise<Response> => {
   try {
     return await client.fetch(input, init)
   } catch (error) {
     if (isTinfoilTransportWedgedError(error)) {
-      evictClient()
+      evictClient(client)
     }
     throw error
   }

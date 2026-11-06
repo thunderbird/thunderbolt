@@ -53,16 +53,19 @@ export const resolveSessionAgent = (
   allAgents: Agent[],
   candidates: AgentPreference & { threadAgentId?: string | null; discoveredDefaultAgent?: Agent },
 ): Agent => {
-  const findAgent = (agentId: string | null | undefined) =>
-    agentId ? allAgents.find((a) => a.id === agentId) : undefined
   if (candidates.threadAgentId) {
-    return findAgent(candidates.threadAgentId) ?? unavailableAgent(candidates.threadAgentId)
+    return (
+      allAgents.find((agent) => agent.id === candidates.threadAgentId) ?? unavailableAgent(candidates.threadAgentId)
+    )
   }
+  const availableAgents = allAgents.filter((agent) => agent.enabled === 1 && !agent.deletedAt)
+  const findAgent = (agentId: string | null | undefined) =>
+    agentId ? availableAgents.find((agent) => agent.id === agentId) : undefined
   return (
     findAgent(candidates.lastUsedAgentId) ??
     (candidates.hasModelPick ? findAgent(builtInAgent.id) : undefined) ??
     findAgent(candidates.discoveredDefaultAgent?.id) ??
-    allAgents.find((agent) => agent.enabled === 1 && !agent.deletedAt) ??
+    availableAgents[0] ??
     unavailableAgent(builtInAgent.id)
   )
 }

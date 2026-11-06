@@ -42,6 +42,7 @@ const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
   return {
     id: agent.id,
     label: agent.name,
+    disabled: agent.enabled !== 1 || Boolean(agent.deletedAt),
     description: agent.description ?? undefined,
     // The logo reads slightly smaller than the lucide glyphs at equal box
     // size, so it gets a half-step bump.

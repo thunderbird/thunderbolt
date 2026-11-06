@@ -125,6 +125,25 @@ describe('AgentSelector', () => {
     expect(onSelect.mock.calls[0][0].id).toBe(customAgent.id)
   })
 
+  it.each([{ enabled: 0 }, { deletedAt: '2026-01-01' }])(
+    'prevents selecting an unavailable agent (%j)',
+    (unavailable) => {
+      const onSelect = mock(() => {})
+      render(
+        <AgentSelector
+          selectedAgent={builtInAgent}
+          agents={[builtInAgent, { ...customAgent, ...unavailable }]}
+          onSelect={onSelect}
+        />,
+      )
+      fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+      const option = screen.getByText(customAgent.name).closest('button')
+      expect(option).toBeDisabled()
+      fireEvent.click(screen.getByText(customAgent.name))
+      expect(onSelect).not.toHaveBeenCalled()
+    },
+  )
+
   it('describes each agent in the menu without a separate Private label', () => {
     render(<AgentSelector selectedAgent={zeusAgent} agents={[builtInAgent, zeusAgent]} onSelect={() => {}} />)
     expect(screen.queryByText('Private')).toBeNull()

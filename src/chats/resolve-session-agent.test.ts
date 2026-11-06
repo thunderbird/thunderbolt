@@ -54,6 +54,33 @@ describe('resolveSessionAgent', () => {
     expect(resolveSessionAgent(agentsWithoutBuiltIn, candidates)).toMatchObject({ id: 'deleted', enabled: 0 })
   })
 
+  for (const unavailable of [{ enabled: 0 }, { deletedAt: '2026-01-01' }] as const) {
+    it(`skips unavailable new-chat preferences (${JSON.stringify(unavailable)}) but retains saved owners`, () => {
+      const lastUsed = { ...agentWithId('last-used'), ...unavailable }
+      const builtIn = { ...builtInAgent, ...unavailable }
+      const discovered = { ...agentWithId('discovered'), ...unavailable }
+      const fallback = agentWithId('available')
+      const allAgents = [lastUsed, builtIn, discovered, fallback]
+      expect(
+        resolveSessionAgent(allAgents, {
+          lastUsedAgentId: lastUsed.id,
+          hasModelPick: true,
+          discoveredDefaultAgent: discovered,
+        }),
+      ).toBe(fallback)
+      for (const agent of [lastUsed, builtIn, discovered]) {
+        expect(resolveSessionAgent(allAgents, { threadAgentId: agent.id })).toBe(agent)
+      }
+      expect(
+        resolveSessionAgent([lastUsed, builtIn, discovered], {
+          lastUsedAgentId: lastUsed.id,
+          hasModelPick: true,
+          discoveredDefaultAgent: discovered,
+        }),
+      ).toMatchObject({ id: builtInAgent.id, enabled: 0 })
+    })
+  }
+
   it('holds the chat when no agent is available', () => {
     expect(resolveSessionAgent([], { lastUsedAgentId: 'gone' })).toMatchObject({ id: builtInAgent.id, enabled: 0 })
   })

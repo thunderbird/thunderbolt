@@ -4,7 +4,7 @@
 
 import { useProductPreviewState } from './use-product-preview-state'
 import { SparkBurst } from './spark-burst'
-import { ThemedScreenshot } from './themed-screenshot'
+import { ProductDemo } from './product-demo'
 
 const WindowChrome = ({ title }: { title: string }) => (
   <div className="spark-window-chrome" aria-hidden="true">
@@ -36,49 +36,23 @@ export const ProductPreview = () => {
           <div className="spark-product-frame">
             <WindowChrome title="Thunderbolt" />
             <div className="spark-product-view">
-              <ThemedScreenshot platform="desktop" />
+              <ProductDemo platform="desktop" />
             </div>
           </div>
         )}
         {platform === 'Mobile' && (
           <div className="spark-phone">
             <div className="spark-phone-camera" aria-hidden="true" />
-            <ThemedScreenshot platform="mobile" />
+            <ProductDemo platform="mobile" />
           </div>
         )}
         {platform === 'Terminal' && (
-          <div className="spark-terminal-window" aria-label="Illustrative Thunderbolt CLI session">
-            <WindowChrome title="book-club — zsh" />
-            <div className="spark-terminal-content">
-              <p className="spark-terminal-path">~/projects/book-club</p>
-              <p className="spark-terminal-command">
-                <span className="spark-terminal-prompt">❯</span> thunderbolt{' '}
-                <span className="spark-terminal-string">"fix the failing test"</span>
-              </p>
-              <p className="spark-terminal-response">I’ll find the failure, make the fix, and run the tests.</p>
-              <div className="spark-terminal-tools">
-                <p>
-                  <span className="spark-terminal-tool">read</span> src/picks.ts
-                </p>
-                <p>
-                  <span className="spark-terminal-tool">edit</span> src/picks.ts
-                </p>
-                <div className="spark-terminal-diff">
-                  <p>− return books[index + 1]</p>
-                  <p>+ return books[index]</p>
-                </div>
-                <p>
-                  <span className="spark-terminal-tool">bash</span> bun test
-                </p>
-                <p className="spark-terminal-success">✓ 12 pass · 0 fail</p>
-              </div>
-              <p className="spark-terminal-response">Fixed the index. All tests pass.</p>
-              <p className="spark-terminal-input">
-                <span className="spark-terminal-prompt">❯</span>{' '}
-                <span className="spark-terminal-cursor" aria-hidden="true" />
-              </p>
-              <p className="spark-terminal-note">Illustrative session</p>
-            </div>
+          <div
+            className="spark-terminal-window"
+            aria-label="Thunderbolt CLI building and running a focus-planning tool"
+          >
+            <WindowChrome title="focus — thunderbolt" />
+            <ProductDemo platform="terminal" />
           </div>
         )}
       </div>

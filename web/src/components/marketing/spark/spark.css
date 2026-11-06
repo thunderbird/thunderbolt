@@ -239,18 +239,57 @@
   overflow: hidden;
   background: var(--spark-device-shell);
 }
-.spark-themed-screenshot {
-  display: block;
+.spark-demo {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--spark-device-shell);
 }
-.spark-themed-screenshot img {
+.spark-demo-poster,
+.spark-demo-poster picture,
+.spark-demo-poster img {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
-/* The development theme override can differ from the system preference. */
-:root:not([data-theme='dark']) .spark-themed-screenshot [data-screenshot-theme='dark'],
-:root[data-theme='dark'] .spark-themed-screenshot [data-screenshot-theme='light'] {
+.spark-demo-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  pointer-events: none;
+}
+.spark-demo-video.is-visible {
+  opacity: 1;
+}
+:root:not([data-theme='dark']) .spark-demo [data-screenshot-theme='dark'],
+:root[data-theme='dark'] .spark-demo [data-screenshot-theme='light'] {
   display: none;
+}
+.spark-demo-toggle {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--spark-device-border);
+  border-radius: 50%;
+  background: var(--spark-surface);
+  color: var(--spark-ink);
+  box-shadow: 0 2px 8px #00000015;
+  cursor: pointer;
+}
+.spark-demo-toggle:hover {
+  background: var(--spark-hover);
+}
+.spark-demo-toggle:focus-visible {
+  outline: 2px solid var(--spark-ink);
+  outline-offset: 3px;
 }
 .spark-phone {
   position: relative;
@@ -265,11 +304,18 @@
     inset 0 1px 0 var(--spark-device-highlight);
   transform: rotate(2.5deg);
 }
-.spark-phone img {
-  display: block;
-  width: 100%;
-  height: auto;
+.spark-phone .spark-demo {
   border-radius: 22px;
+  overflow: visible;
+}
+.spark-phone .spark-demo-poster,
+.spark-phone .spark-demo-video {
+  border-radius: inherit;
+  overflow: hidden;
+}
+.spark-phone .spark-demo-toggle {
+  right: -50px;
+  bottom: 4px;
 }
 .spark-phone-camera {
   position: absolute;
@@ -285,7 +331,7 @@
   border: 1px solid #4a4b42;
   border-radius: 13px;
   overflow: hidden;
-  background: #252620;
+  background: #121a27;
   color: #e7e6dc;
   box-shadow:
     0 3px 5px #29272220,
@@ -293,7 +339,7 @@
   transform: rotate(-1.5deg);
 }
 .spark-terminal-window .spark-window-chrome {
-  background: #33342d;
+  background: #18202d;
   color: #c1c2b6;
   border-bottom: 1px solid #ffffff0b;
   min-height: 38px;
@@ -314,68 +360,13 @@
 .spark-terminal-window .spark-window-chrome i:nth-child(3) {
   background: #92b780;
 }
-.spark-terminal-content {
-  padding: 26px 30px 20px;
-  font: 13px/1.65 var(--tb-font-mono);
+.spark-terminal-window .spark-demo,
+.spark-terminal-window .spark-demo-toggle {
+  background: #121a27;
+  color: #e7e6dc;
 }
-.spark-terminal-content p {
-  line-height: 1.65;
-}
-.spark-terminal-path {
-  color: #9c9f8f;
-  font-size: 12px;
-}
-.spark-terminal-command {
-  margin-top: 4px !important;
-  overflow-wrap: anywhere;
-}
-.spark-terminal-prompt {
-  color: #dbbc77;
-}
-.spark-terminal-string {
-  color: #c4d5a0;
-}
-.spark-terminal-response {
-  margin-top: 22px !important;
-}
-.spark-terminal-tools {
-  margin-top: 22px;
-  display: grid;
-  gap: 10px;
-}
-.spark-terminal-tool {
-  display: inline-block;
-  min-width: 42px;
-  color: #b6c9db;
-}
-.spark-terminal-diff {
-  padding: 3px 0 3px 16px;
-  border-left: 1px solid #5b5c51;
-}
-.spark-terminal-diff p:first-child {
-  color: #d99388;
-}
-.spark-terminal-diff p:last-child {
-  color: #b9d28f;
-}
-.spark-terminal-success {
-  color: #b9d28f;
-  padding-left: 46px;
-}
-.spark-terminal-input {
-  margin-top: 18px !important;
-}
-.spark-terminal-cursor {
-  display: inline-block;
-  width: 7px;
-  height: 14px;
-  background: #d9ddcb;
-  vertical-align: -2px;
-}
-.spark-terminal-note {
-  margin-top: 20px !important;
-  font-size: 10px;
-  color: #999c8b;
+.spark-terminal-window .spark-demo-toggle {
+  border-color: #4a5362;
 }
 .spark-device-options {
   display: grid;
@@ -837,8 +828,7 @@
     min-height: 480px;
   }
   .spark-preview-stage[data-platform='Terminal'] {
-    aspect-ratio: auto;
-    min-height: 400px;
+    min-height: 240px;
   }
   .spark-product-frame {
     padding: 0 5px 5px;
@@ -863,13 +853,6 @@
   .spark-phone {
     width: 208px;
   }
-  .spark-terminal-content {
-    padding: 22px 20px 18px;
-    font-size: 11px;
-  }
-  .spark-terminal-path {
-    font-size: 10px;
-  }
   .spark-terminal-window .spark-window-chrome {
     font-size: 10px;
     min-height: 34px;
@@ -877,12 +860,6 @@
   .spark-terminal-window .spark-window-chrome i {
     width: 7px;
     height: 7px;
-  }
-  .spark-terminal-response {
-    margin-top: 18px !important;
-  }
-  .spark-terminal-note {
-    font-size: 9px;
   }
   .spark-device-options {
     margin-top: 24px;

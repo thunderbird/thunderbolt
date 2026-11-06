@@ -264,13 +264,17 @@ describe('FTS SQL end-to-end against real SQLite', () => {
     db.close()
   })
 
-  it('keeps one index row when a synced REPLACE rewrites a row, and drops it on a later delete', () => {
+  it('keeps the index in step with synced REPLACE (live → live, live → deleted, deleted → live) and a later delete', () => {
     const db = makeDb()
     insertRow(db, 'm1', { name: 'Alpha', deleted_at: null })
     // PowerSync applies a synced PUT as REPLACE INTO, which does not fire the DELETE trigger.
     db.run(`REPLACE INTO ${internalName}(id, data) VALUES (?, ?)`, ['m1', JSON.stringify({ name: 'Beta' })])
 
     expect(search(db, 'alpha')).toHaveLength(0)
+    expect(search(db, 'beta').map((row) => row.id)).toEqual(['m1'])
+    db.run(`REPLACE INTO ${internalName}(id, data) VALUES (?, ?)`, ['m1', '{"name":"Beta","deleted_at":"yes"}'])
+    expect(search(db, 'beta')).toHaveLength(0)
+    db.run(`REPLACE INTO ${internalName}(id, data) VALUES (?, ?)`, ['m1', JSON.stringify({ name: 'Beta' })])
     expect(search(db, 'beta').map((row) => row.id)).toEqual(['m1'])
 
     db.run(`DELETE FROM ${internalName} WHERE id = ?`, ['m1'])

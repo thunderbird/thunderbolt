@@ -4,9 +4,11 @@
 
 import { isMintableKeyId, type KeyId, type WrappedKeyEntry } from '@shared/e2ee-types'
 
+import { supportsKeyStoreLock, withKeyStoreLock, type KeyStoreLock } from './key-store-lock'
 import { StorageError } from './errors'
 import { type KeyringAnchor } from './keyring-anchor'
 import { decryptBytes, deriveMlKemAtRestKey, encryptBytes, type EncryptedBytes } from './primitives'
+import { captureKeyStorageLifetime, invalidateEncryptionOperations } from './key-storage-lifetime'
 
 const dbName = 'thunderbolt-keys'
 const storeName = 'keys'
@@ -62,10 +64,26 @@ const openDB = (): Promise<IDBDatabase> =>
     request.onerror = () => reject(new StorageError('Failed to open IndexedDB', { cause: request.error }))
   })
 
+/** Open a writer only while the reset lifetime captured before awaiting is current. */
+const openCurrentDB = async (assertCurrent: () => void): Promise<IDBDatabase> => {
+  const db = await openDB()
+  try {
+    assertCurrent()
+    return db
+  } catch (error) {
+    db.close()
+    throw error
+  }
+}
+
 type StorableValue = CryptoKey | Uint8Array | EncryptedBytes | KeyringAnchor | string
 
-const putValue = async (id: string, value: StorableValue): Promise<void> => {
-  const db = await openDB()
+const putValue = async (
+  id: string,
+  value: StorableValue,
+  assertCurrent = captureKeyStorageLifetime(),
+): Promise<void> => {
+  const db = await openCurrentDB(assertCurrent)
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     tx.objectStore(storeName).put(value, id)
@@ -113,8 +131,11 @@ const getEntries = async <T extends StorableValue>(ids: string[]): Promise<Array
   })
 }
 
-const putEntries = async (entries: Array<{ id: string; value: StorableValue }>): Promise<void> => {
-  const db = await openDB()
+const putEntries = async (
+  entries: Array<{ id: string; value: StorableValue }>,
+  assertCurrent = captureKeyStorageLifetime(),
+): Promise<void> => {
+  const db = await openCurrentDB(assertCurrent)
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     const store = tx.objectStore(storeName)
@@ -154,14 +175,18 @@ export const storeKeyPair = async (
   mlkemPublicKey: Uint8Array,
   mlkemSecretKey: Uint8Array,
 ): Promise<void> => {
+  const assertCurrent = captureKeyStorageLifetime()
   const atRestKey = await deriveMlKemAtRestKey(ecdhPublicKey, ecdhPrivateKey)
   const encryptedSecret = await encryptBytes(mlkemSecretKey, atRestKey)
-  return putEntries([
-    { id: privateKeyId, value: ecdhPrivateKey },
-    { id: publicKeyId, value: ecdhPublicKey },
-    { id: mlkemPublicKeyId, value: mlkemPublicKey },
-    { id: mlkemSecretKeyId, value: encryptedSecret },
-  ])
+  return putEntries(
+    [
+      { id: privateKeyId, value: ecdhPrivateKey },
+      { id: publicKeyId, value: ecdhPublicKey },
+      { id: mlkemPublicKeyId, value: mlkemPublicKey },
+      { id: mlkemSecretKeyId, value: encryptedSecret },
+    ],
+    assertCurrent,
+  )
 }
 
 /**
@@ -169,11 +194,12 @@ export const storeKeyPair = async (
  * key is missing.
  *
  * WS1.5 read-migration: v1 stored the ML-KEM secret as PLAINTEXT bytes. When a
- * raw `Uint8Array` is found (formerly-v1 device on a v2 build), it is used as-is
- * and re-encrypted in place in the v2 at-rest format, so subsequent reads take
- * the encrypted path. v2-written secrets are `EncryptedBytes` and get decrypted.
+ * raw `Uint8Array` is found, reads use it as-is. Passing the held origin-wide
+ * lock also migrates it to encrypted-at-rest storage. Ordinary readers cannot
+ * race a key-store wipe by silently publishing a delayed read migration.
  */
-export const getKeyPair = async (): Promise<StoredKeyPair | null> => {
+export const getKeyPair = async (lock?: KeyStoreLock): Promise<StoredKeyPair | null> => {
+  const assertCurrent = captureKeyStorageLifetime()
   const [ecdhPrivateKey, ecdhPublicKey, mlkemPublicKey, storedSecret] = await getEntries<StorableValue>([
     privateKeyId,
     publicKeyId,
@@ -186,8 +212,10 @@ export const getKeyPair = async (): Promise<StoredKeyPair | null> => {
   const atRestKey = await deriveMlKemAtRestKey(ecdhPublicKey as CryptoKey, ecdhPrivateKey as CryptoKey)
 
   if (storedSecret instanceof Uint8Array) {
-    const encryptedSecret = await encryptBytes(storedSecret, atRestKey)
-    await putValue(mlkemSecretKeyId, encryptedSecret)
+    if (lock) {
+      const encryptedSecret = await encryptBytes(storedSecret, atRestKey)
+      await putValue(mlkemSecretKeyId, encryptedSecret, assertCurrent)
+    }
     return {
       ecdhPrivateKey: ecdhPrivateKey as CryptoKey,
       ecdhPublicKey: ecdhPublicKey as CryptoKey,
@@ -282,13 +310,14 @@ export const listDEKs = async (): Promise<WrappedKeyEntry[]> => {
  * that cannot remove it either, so it just re-fails on a cooldown (THU-871).
  */
 export const pruneStagedDEKs = async (keepKeyIds: KeyId[]): Promise<void> => {
+  const assertCurrent = captureKeyStorageLifetime()
   const keep = new Set(keepKeyIds.map(dekEntryId))
   const staged = await listDEKs()
   const stale = staged.map(({ keyId }) => dekEntryId(keyId)).filter((id) => !keep.has(id))
   if (stale.length === 0) {
     return
   }
-  const db = await openDB()
+  const db = await openCurrentDB(assertCurrent)
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     const store = tx.objectStore(storeName)
@@ -364,7 +393,13 @@ export const getKeyringAnchor = async (): Promise<KeyringAnchor | null> => getVa
  * store rather than deleting a static id list — DEK entries are dynamically
  * named (`thunderbolt_dek_{keyId}`) and would leak otherwise.
  */
-export const clearAllKeys = async (): Promise<void> => {
+export const clearAllKeys = (lock?: KeyStoreLock): Promise<void> => {
+  invalidateEncryptionOperations()
+  // Cleanup remains available on runtimes where encrypted-sync writers are disabled.
+  return lock || !supportsKeyStoreLock() ? clearKeyStore() : withKeyStoreLock(clearKeyStore)
+}
+
+const clearKeyStore = async (): Promise<void> => {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')

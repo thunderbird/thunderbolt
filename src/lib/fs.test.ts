@@ -3,7 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { resetAppDir } from './fs'
+import { createAppDir, resetAppDir, runAppStorageOperation } from './fs'
+import * as database from '@/db/database'
+import { getClock } from '@/testing-library'
+import * as platform from './platform'
+import * as path from '@tauri-apps/api/path'
+import * as fs from '@tauri-apps/plugin-fs'
 
 /** An in-memory OPFS root holding the named files. */
 const fakeOpfsRoot = (...names: string[]) => {
@@ -72,6 +77,33 @@ describe('resetAppDir', () => {
     }
   })
 
+  it('keeps ownership after a reset deadline until the actual close and wipe finish', async () => {
+    const { root, entries } = fakeOpfsRoot('old-file')
+    const { idb } = fakeIndexedDb()
+    install(root, idb)
+    const closing = Promise.withResolvers<void>()
+    const close = spyOn(database, 'resetDatabase').mockImplementation(() => closing.promise)
+    const state = { booted: false }
+    try {
+      const reset = resetAppDir().catch((error: unknown) => error)
+      await getClock().tickAsync(30_000)
+      expect(await reset).toBeInstanceOf(Error)
+      const boot = runAppStorageOperation(async () => {
+        state.booted = true
+      })
+      await Promise.resolve()
+      expect(state.booted).toBe(false)
+      expect(entries.has('old-file')).toBe(true)
+      closing.resolve()
+      await boot
+      expect(state.booted).toBe(true)
+      expect(entries.has('old-file')).toBe(false)
+    } finally {
+      closing.resolve()
+      close.mockRestore()
+    }
+  })
+
   it('wipes OPFS, leaves an empty database file for the next start and deletes the IndexedDB database', async () => {
     const { root, entries } = fakeOpfsRoot('old-file')
     const { idb, deleted } = fakeIndexedDb()
@@ -94,5 +126,26 @@ describe('resetAppDir', () => {
 
     expect(entries.has('thunderbolt-sync.db')).toBe(true)
     expect(consoleError).toHaveBeenCalled()
+  })
+})
+
+describe('app directory creation', () => {
+  it('owns native module references per call, including concurrent calls and retry after failure', async () => {
+    const native = spyOn(platform, 'isTauri').mockReturnValue(true)
+    const appDataDir = spyOn(path, 'appDataDir').mockResolvedValue('/app-data')
+    const mkdir = spyOn(fs, 'mkdir').mockRejectedValueOnce(new Error('permission denied')).mockResolvedValue()
+    try {
+      const results = await Promise.allSettled([createAppDir(), createAppDir()])
+      expect(results).toEqual([
+        { status: 'rejected', reason: expect.objectContaining({ message: 'permission denied' }) },
+        { status: 'fulfilled', value: '/app-data' },
+      ])
+      await expect(createAppDir()).resolves.toBe('/app-data')
+      expect(mkdir).toHaveBeenCalledTimes(3)
+    } finally {
+      native.mockRestore()
+      appDataDir.mockRestore()
+      mkdir.mockRestore()
+    }
   })
 })

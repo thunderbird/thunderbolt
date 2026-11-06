@@ -10,6 +10,7 @@ import { getInitTimingPayload, resetInitTiming } from '@/lib/init-timing'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { createClient } from '@/lib/http'
 import { TrayManager } from '@/lib/tray'
+import * as encryption from '@/services/encryption'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -163,6 +164,66 @@ describe('useAppInitialization', () => {
     }
   })
 
+  it('allows database reset while an obsolete native readiness call remains pending', async () => {
+    const nativeReady = Promise.withResolvers<{ tray: undefined; window: undefined }>()
+    const initializeNative = spyOn(TrayManager, 'initIfSupported').mockImplementation(() => nativeReady.promise)
+    const database = getCurrentDatabase()!
+    const close = spyOn(database, 'close').mockRejectedValue(new Error('test reset reached database'))
+    const client = createMockHttpClient(mockPostHogConfig)
+    const { result, unmount } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    try {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(initializeNative).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        await result.current.clearDatabase()
+      })
+      expect(close).toHaveBeenCalledTimes(1)
+      expect(result.current.initError?.code).toBe('DATABASE_INIT_FAILED')
+      await act(async () => {
+        nativeReady.resolve({ tray: undefined, window: undefined })
+        await getClock().runAllAsync()
+      })
+      expect(result.current.initData).toBeUndefined()
+      expect(result.current.initError?.code).toBe('DATABASE_INIT_FAILED')
+    } finally {
+      unmount()
+      initializeNative.mockRestore()
+      close.mockRestore()
+    }
+  })
+
+  it('releases local boot ownership when session binding stays offline', async () => {
+    const binding = Promise.withResolvers<void>()
+    const bind = spyOn(encryption, 'ensureSessionBound').mockImplementation(() => binding.promise)
+    const client = createMockHttpClient(mockPostHogConfig)
+    const { result, unmount } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    try {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(bind).toHaveBeenCalledTimes(1)
+      expect(result.current.initData).toBeDefined()
+      expect(result.current.isInitializing).toBe(false)
+      await act(async () => {
+        const retry = result.current.retry()
+        await getClock().runAllAsync()
+        await retry
+      })
+      expect(bind).toHaveBeenCalledTimes(2)
+      expect(result.current.initData).toBeDefined()
+    } finally {
+      binding.resolve()
+      unmount()
+      bind.mockRestore()
+    }
+  })
+
   it('releases core content while analytics is still pending', async () => {
     const { client, responses } = createPendingAnalyticsClient()
     const { result } = renderHook(() => useAppInitialization(client), {
@@ -278,6 +339,7 @@ describe('useAppInitialization', () => {
       act(() => {
         clearing = result.current.clearDatabase()
       })
+      await act(async () => {})
       expect(close).toHaveBeenCalledTimes(2)
       expect(result.current.initError).toBeUndefined()
       expect(result.current.initData).toBeUndefined()
@@ -296,7 +358,7 @@ describe('useAppInitialization', () => {
     }
   })
 
-  it('does not replace a successful retry with an earlier database-reset failure', async () => {
+  it('waits for an earlier reset before retrying and ignores its obsolete failure', async () => {
     const database = getCurrentDatabase()!
     const closing = Promise.withResolvers<void>()
     const close = spyOn(database, 'close').mockImplementation(() => closing.promise)
@@ -312,20 +374,22 @@ describe('useAppInitialization', () => {
       act(() => {
         clearing = result.current.clearDatabase()
       })
+      await act(async () => {})
       expect(close).toHaveBeenCalledTimes(1)
       expect(result.current.isInitializing).toBe(true)
 
+      let retry: Promise<void> = Promise.resolve()
       await act(async () => {
-        await result.current.retry()
+        retry = result.current.retry()
       })
-      const currentInitData = result.current.initData
-      expect(currentInitData).toBeDefined()
-
+      expect(result.current.initData).toBeUndefined()
+      expect(result.current.isInitializing).toBe(true)
       await act(async () => {
         closing.reject(new Error('Database close failed'))
         await clearing
+        await retry
       })
-      expect(result.current.initData).toBe(currentInitData)
+      expect(result.current.initData).toBeDefined()
       expect(result.current.initError).toBeUndefined()
       expect(result.current.isInitializing).toBe(false)
     } finally {
@@ -350,6 +414,7 @@ describe('useAppInitialization', () => {
       act(() => {
         clearing = result.current.clearDatabase()
       })
+      await act(async () => {})
       const initRun = getInitTimingPayload().init_run
       unmount()
 

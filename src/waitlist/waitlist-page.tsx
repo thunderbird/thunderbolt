@@ -40,7 +40,7 @@ export const WaitlistPage = () => {
   if (state.status === 'checkEmail' || state.status === 'verifying') {
     return (
       <WaitlistCard>
-        <BackButton onClick={actions.reset} className="absolute left-6 top-6" />
+        <BackButton disabled={isVerifying} onClick={actions.reset} className="absolute left-6 top-6" />
 
         <div className="flex w-full flex-1 flex-col items-center p-4">
           <WaitlistHeader />

@@ -9,7 +9,8 @@ import { deleteMcpServer } from '@/dal'
 import { clearMcpOAuthState, getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { useReducer, useRef } from 'react'
+import { useReducer } from 'react'
+import { useAsyncAttempt } from './use-async-attempt'
 
 /**
  * Per-server OAuth UI state. `needs-auth` / `authorized` are derived from the
@@ -202,10 +203,9 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
     completeMcpOAuthFlow: completeFlow = completeMcpOAuthFlow,
   } = options
   const [state, dispatch] = useReducer(oauthReducer, initialState)
-  // Synchronous re-entry guard for Add & Authorize: a double-click (or Enter +
-  // click) fires before the reducer's pending flag flushes, so the rendered flag
-  // alone can't block the second call.
-  const addAuthorizeInFlightRef = useRef(false)
+  // Discovery yields before the OAuth nonce is persisted. All entry points
+  // share one reservation so no second flow can overwrite that handshake.
+  const operation = useAsyncAttempt()
 
   const setCard = (serverId: string, card: OAuthCardState | null) => {
     if (!card) {
@@ -229,6 +229,10 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
    * guard surfaces, not a generic one.
    */
   const startAuthorize = async (server: { id: string; url?: string | null }) => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     setCard(server.id, { phase: 'authorizing' })
     try {
       const result = await startFlow({
@@ -237,16 +241,20 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
         serverUrl: server.url ?? '',
         fetchFn: buildOAuthFetch(),
       })
-      if (result.status === 'completed') {
+      if (attempt.isCurrent() && result.status === 'completed') {
         setCard(server.id, null)
         await reconnectServer(server.id)
       }
     } catch (error) {
       console.error('Failed to start MCP OAuth flow:', error)
-      setCard(server.id, {
-        phase: 'error',
-        message: errorMessage(error, 'Could not start authorization. Please try again.'),
-      })
+      if (attempt.isCurrent()) {
+        setCard(server.id, {
+          phase: 'error',
+          message: errorMessage(error, i18n._(msg`Could not start authorization. Please try again.`)),
+        })
+      }
+    } finally {
+      attempt.finish()
     }
   }
 
@@ -258,19 +266,37 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
    * row and surfaces the failure in the dialog (which stays open).
    */
   const startAddAndAuthorize = async ({ serverId, serverUrl, createRow }: AddAndAuthorizeArgs): Promise<boolean> => {
-    if (addAuthorizeInFlightRef.current) {
+    const attempt = operation.begin()
+    if (!attempt) {
       return false
     }
-    addAuthorizeInFlightRef.current = true
     dispatch({ type: 'clear-dialog-error' })
     dispatch({ type: 'set-add-authorize-pending', pending: true })
     try {
       await createRow()
-      const result = await startFlow({ db, serverId, serverUrl, fetchFn: buildOAuthFetch() })
-      if (result.status === 'completed') {
-        await reconnectServer(serverId)
+      if (!attempt.isCurrent()) {
+        return false
       }
-      return true
+      const result = await startFlow({ db, serverId, serverUrl, fetchFn: buildOAuthFetch() })
+      if (!attempt.isCurrent()) {
+        return false
+      }
+      if (result.status === 'completed') {
+        // Authorization has committed. A runtime reconnect failure must keep
+        // the server and its credentials so the user can retry the connection.
+        try {
+          await reconnectServer(serverId)
+        } catch (error) {
+          console.error('Failed to reconnect authorized MCP server:', error)
+          if (attempt.isCurrent()) {
+            setCard(serverId, {
+              phase: 'error',
+              message: errorMessage(error, i18n._(msg`Changes were saved, but reconnecting failed. Please retry.`)),
+            })
+          }
+        }
+      }
+      return attempt.isCurrent()
     } catch (error) {
       console.error('Failed to start MCP OAuth flow:', error)
       try {
@@ -278,25 +304,46 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
       } catch (rollbackError) {
         console.error('Failed to roll back MCP server after authorization error:', rollbackError)
       }
-      dispatch({
-        type: 'set-dialog-error',
-        message: errorMessage(error, 'Could not start authorization. Please try again.'),
-      })
+      if (attempt.isCurrent()) {
+        dispatch({
+          type: 'set-dialog-error',
+          message: errorMessage(error, i18n._(msg`Could not start authorization. Please try again.`)),
+        })
+      }
       return false
     } finally {
-      addAuthorizeInFlightRef.current = false
-      dispatch({ type: 'set-add-authorize-pending', pending: false })
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'set-add-authorize-pending', pending: false })
+      }
+      attempt.finish()
     }
   }
 
-  const processCallback = (oauth: McpOAuthCallback | undefined) =>
-    handleMcpOAuthCallback(oauth, db, {
-      completeMcpOAuthFlow: completeFlow,
-      reconnectServer,
-      fetchFn: buildOAuthFetch(),
-      setCard,
-      clearNavState,
-    })
+  const processCallback = async (oauth: McpOAuthCallback | undefined) => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
+    try {
+      await handleMcpOAuthCallback(oauth, db, {
+        completeMcpOAuthFlow: completeFlow,
+        reconnectServer: async (serverId) => {
+          if (attempt.isCurrent()) {
+            await reconnectServer(serverId)
+          }
+        },
+        fetchFn: buildOAuthFetch(),
+        setCard: (serverId, card) => {
+          if (attempt.isCurrent()) {
+            setCard(serverId, card)
+          }
+        },
+        clearNavState,
+      })
+    } finally {
+      attempt.finish()
+    }
+  }
 
   return {
     cardStateFor: (serverId) => state.cards[serverId] ?? null,

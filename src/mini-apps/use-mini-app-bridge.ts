@@ -139,7 +139,7 @@ export const identifyTimeoutMs = 500
  */
 const tokenMintTimeoutMs = 3_000
 
-export type MiniAppBridgeStatus = 'connecting' | 'ready' | 'unreachable'
+export type MiniAppBridgeStatus = 'connecting' | 'ready' | 'unreachable' | 'unsupported'
 
 /**
  * The frame's connection lifecycle, in one place.
@@ -183,6 +183,7 @@ type ConnectionState = {
 type ConnectionAction =
   /** The guest introduced itself — a new document is live and speaking. */
   | { type: 'HANDSHAKED' }
+  | { type: 'HANDSHAKE_REJECTED' }
   /** A document committed in the frame without handshaking. */
   | { type: 'DOCUMENT_CHANGED' }
   /** No `initialize` arrived before the deadline. */
@@ -220,7 +221,12 @@ const connectionReducer = (state: ConnectionState, action: ConnectionAction): Co
       // an error strip pinned over a working app is worse than none. Artifacts
       // clear theirs on document change; this is the same moment.
       return { status: 'ready', handshakeEpoch: state.handshakeEpoch + 1, toolsEpoch: 0, runtimeError: null }
+    case 'HANDSHAKE_REJECTED':
+      return { ...state, status: 'unsupported', toolsEpoch: 0, runtimeError: null }
     case 'DOCUMENT_CHANGED':
+      if (state.status === 'unsupported') {
+        return state
+      }
       // Same reasoning as `HANDSHAKED`: the error belonged to the document that
       // just went away, and leaving it pinned over the one now loading blames
       // the new page for the old page's failure.
@@ -370,17 +376,9 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
    * drifted to `{ tools, selection }` and omitted `auth`, which is exactly how a
    * capability ends up declared but never consulted. */
   const guestCapabilitiesRef = useRef<MiniAppGuestCapabilities>({})
-  /*
-   * Whether *any* document in this frame has introduced itself yet.
-   *
-   * Only ever asks "is there a handshake to protect at all". Which document it
-   * belongs to is `documentIdRef`'s job, because that question cannot be
-   * answered by watching the order things arrive in — see `handleFrameLoad`.
-   */
-  const hasHandshakedRef = useRef(false)
   /**
-   * The id the handshaked guest minted for its document, or `null` for a guest
-   * whose SDK predates the field.
+   * The id the handshaked guest minted for its document, or null before a
+   * supported guest introduces itself.
    *
    * This is what makes a repeat `initialize` recognisable. React's StrictMode
    * double-invokes the effect that calls `connect()`, so the second handshake is
@@ -399,6 +397,20 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
    * on a document two generations old.
    */
   const loadGenerationRef = useRef(0)
+  const documentGenerationRef = useRef(0)
+  // Correlation, timeouts and always-settling are shared with artifacts — see
+  // `pending-requests.ts`. Only the envelope and the trust check differ.
+
+  /** End one guest document before accepting another document's state or requests. */
+  const resetDocument = useCallback(() => {
+    documentGenerationRef.current += 1
+    documentIdRef.current = null
+    guestCapabilitiesRef.current = {}
+    answerDownloadRef.current?.('navigated')
+    pending.abortAll()
+    setSelection(null)
+    resetGuest()
+  }, [pending, resetGuest])
 
   const post = useCallback(
     (message: MiniAppHostMessage) => {
@@ -495,7 +507,6 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
           return
         }
         const capabilities = message.params.capabilities
-        guestCapabilitiesRef.current = capabilities
         /*
          * The same document introducing itself twice is not a new document. It
          * still gets a full reply — it is waiting on one, and a second
@@ -503,21 +514,32 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
          * nothing is torn down and no epoch is bumped, so the tool list and the
          * capabilities it already published survive.
          */
-        // `||`, not `??`: an empty string is a guest with no id to give, and
-        // the protocol lets one through rather than dropping the handshake over
-        // it. Treating it as absent puts it on the same fallback path.
-        const documentId = message.params.documentId || null
-        const isRepeatHandshake = documentId !== null && documentId === documentIdRef.current
-        if (!isRepeatHandshake) {
-          resetGuest()
+        const documentId = message.params.documentId
+        if (!documentId?.trim()) {
+          resetDocument()
+          dispatch({ type: 'HANDSHAKE_REJECTED' })
+          post({
+            jsonrpc: '2.0',
+            protocol: miniAppProtocolMarker,
+            id: message.id,
+            error: {
+              code: miniAppRpcErrors.invalidRequest,
+              message: 'documentId is required; update the mini app SDK and redeploy',
+            },
+          })
+          return
         }
+        const isRepeatHandshake = documentId === documentIdRef.current
+        if (!isRepeatHandshake) {
+          resetDocument()
+        }
+        const generation = documentGenerationRef.current
+        guestCapabilitiesRef.current = capabilities
         documentIdRef.current = documentId
-        hasHandshakedRef.current = true
 
         // Only minted when the guest declared the capability — an app that never
         // asked shouldn't cause a credential to exist. Bounded, because this
         // blocks the reply: see `tokenMintTimeoutMs`.
-        const revision = guestRevisionRef.current
         const auth = capabilities.auth
           ? await fetchMiniAppToken(
               httpClient,
@@ -526,12 +548,9 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
             )
           : null
 
-        // An auth response belongs to the document that requested it. Navigation
-        // while the HTTP request is pending must not revive that old handshake.
-        if (lifetime.signal.aborted || revision !== guestRevisionRef.current) {
+        if (lifetime.signal.aborted || generation !== documentGenerationRef.current) {
           return
         }
-
         const result: MiniAppInitializeResult = {
           protocolVersion: miniAppProtocolVersion,
           hostName: getAppName(),
@@ -560,6 +579,18 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
         return
       }
 
+      if (documentIdRef.current === null && message.method !== miniAppGuestMethods.runtimeError) {
+        if ('id' in message) {
+          post({
+            jsonrpc: '2.0',
+            protocol: miniAppProtocolMarker,
+            id: message.id,
+            error: { code: miniAppRpcErrors.invalidRequest, message: 'a supported document handshake is required' },
+          })
+        }
+        return
+      }
+
       if (message.method === miniAppGuestMethods.selectionChanged) {
         // Gated on the declaration, which is what makes it a capability rather
         // than a comment: an app that said it doesn't report selections has no
@@ -583,9 +614,9 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
           })
           return
         }
-        const revision = guestRevisionRef.current
+        const generation = documentGenerationRef.current
         const refreshed = await fetchMiniAppToken(httpClient, app.id, lifetime.signal)
-        if (lifetime.signal.aborted || revision !== guestRevisionRef.current) {
+        if (lifetime.signal.aborted || generation !== documentGenerationRef.current) {
           return
         }
         post(
@@ -616,13 +647,19 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
       }
 
       if (message.method === miniAppGuestMethods.downloadFile) {
-        const reject = (reason: string) =>
+        const generation = documentGenerationRef.current
+        const isCurrentDocument = () => !lifetime.signal.aborted && generation === documentGenerationRef.current
+        const reject = (reason: string) => {
+          if (!isCurrentDocument()) {
+            return
+          }
           post({
             jsonrpc: '2.0',
             protocol: miniAppProtocolMarker,
             id: message.id,
             error: { code: miniAppRpcErrors.downloadRejected, message: reason },
           })
+        }
         // Both checks come before the request is parsed, so a frame cannot make
         // the host decode one large file after another while a prompt is open.
         // One prompt at a time: queueing would stack up prompts to dismiss.
@@ -640,6 +677,9 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
           return
         }
         const answer = await confirmDownload(prepared.download.name)
+        if (!isCurrentDocument()) {
+          return
+        }
         if (answer === 'declined' || answer === 'expired') {
           downloadCooldownUntilRef.current = Date.now() + downloadRepromptDelayMs
         }
@@ -649,6 +689,9 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
         }
         try {
           await downloadFile(prepared.download)
+          if (!isCurrentDocument()) {
+            return
+          }
           post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: {} })
         } catch (error) {
           // The platform's own message: a missing grant and a full disk call for
@@ -714,7 +757,8 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
     return () => {
       window.removeEventListener('message', handleMessage)
       lifetime.abort()
-      guestRevisionRef.current += 1
+      documentGenerationRef.current += 1
+      loadGenerationRef.current += 1
       // Resolve rather than leak: a caller awaiting a query when the user
       // navigates away should get an empty answer, not a promise that never settles.
       pending.abortAll()
@@ -724,7 +768,7 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
     // settings load a beat after first render. Re-subscribing is cheap — but
     // only for things that genuinely change identity, which is why `theme` is a
     // ref above rather than listed here.
-  }, [app.id, app.origin, httpClient, pending, post, resetGuest])
+  }, [app.id, app.origin, httpClient, pending, post, resetDocument])
 
   /**
    * Fail visibly when the guest never handshakes — an app that isn't running
@@ -903,20 +947,9 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
 
     // Nothing to protect: either this is the first document, or the last one
     // never introduced itself.
-    if (!hasHandshakedRef.current) {
-      resetGuest()
-      dispatch({ type: 'DOCUMENT_CHANGED' })
-      return
-    }
-
-    /*
-     * A guest whose SDK predates `documentId` cannot be asked, so it keeps the
-     * old best-effort guess. Wrong for a React app that navigates, right for
-     * everything else, and strictly better than resetting a live document on
-     * every load — which is what asking a guest that will never answer would do.
-     */
     if (documentIdRef.current === null) {
-      hasHandshakedRef.current = false
+      resetDocument()
+      dispatch({ type: 'DOCUMENT_CHANGED' })
       return
     }
 
@@ -949,13 +982,11 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
       if (identified !== null && identified === documentIdRef.current) {
         return
       }
-      hasHandshakedRef.current = false
-      documentIdRef.current = null
-      resetGuest()
+      resetDocument()
       dispatch({ type: 'DOCUMENT_CHANGED' })
     }
     void confirm()
-  }, [request, resetGuest])
+  }, [request, resetDocument])
 
   /**
    * Load the app again after it failed to arrive.
@@ -966,8 +997,6 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
    * that visibly does nothing for a second reads as broken.
    */
   const reloadFrame = useCallback(() => {
-    hasHandshakedRef.current = false
-    documentIdRef.current = null
     /*
      * Claims the generation, so a confirmation still in flight from the load
      * this replaces cannot reset the document we are about to ask for.
@@ -977,12 +1006,12 @@ export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOpt
      * the trust check and there is nothing left to observe.
      */
     loadGenerationRef.current += 1
-    resetGuest()
+    resetDocument()
     dispatch({ type: 'RELOAD_REQUESTED' })
     if (frameRef.current) {
       frameRef.current.src = app.url
     }
-  }, [app.url, resetGuest])
+  }, [app.url, resetDocument])
 
   /**
    * Ask the app what the user is looking at, right now.

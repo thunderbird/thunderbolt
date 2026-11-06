@@ -363,10 +363,15 @@ unambiguous:
 | says nothing in 500ms       | no bridge running yet, or none at all        | reset, await its handshake |
 
 The asymmetry is deliberate: a spurious reset costs a re-handshake the guest performs
-anyway, while a spurious _keep_ is the bug above. A guest whose SDK predates `documentId`
-cannot be asked at all, and keeps the old best-effort guess — wrong for a React app that
-navigates, right for everything else, and better than resetting a live document on every
-load, which is what asking a guest that will never answer would do.
+anyway, while a spurious _keep_ is the bug above. A nonempty `documentId` and the
+`ui/identify` handler are required. The host rejects an older guest's handshake with
+an explicit upgrade response and shows an SDK-update message; it never guesses document
+ownership from event ordering. Other bridge actions remain unavailable until a supported
+guest introduces itself.
+
+Operators with apps built from an older SDK or template must update their guest bridge
+and redeploy the remote app. Registry entries, app URLs, and existing chats need no
+migration. Apps already sending `documentId` and answering `ui/identify` are unaffected.
 
 The id earns its keep a second way: a repeat `initialize` from the same document is now
 recognisable and answered without tearing anything down. React's StrictMode

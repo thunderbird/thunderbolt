@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getKeyVersion, storeKeyVersion } from '@/crypto'
+import { getKeyVersion } from '@/crypto'
 import type { KeyId } from '@shared/e2ee-types'
 import { needsSyncSetupWizard } from './config'
 import { createBroadcastKeysSyncChannel, type KeyRequestReason, type KeysSyncChannel } from './codec'
@@ -90,27 +90,33 @@ export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyReq
   const channel = deps.channel !== undefined ? deps.channel : (ownedChannel?.channel ?? null)
 
   let active = true
-  let lastKeyVersion: number | null = null
+  let work: Promise<void> = Promise.resolve()
   const inflight = new Map<KeyId, Promise<void>>()
   const lastAttempts = new Map<KeyId, { action: ResponderAction; at: number }>()
 
-  /**
-   * A polled key_version strictly newer than the last one applied means the AK
-   * was rotated. An unknown baseline (a key-request landing before `prime`
-   * resolves) takes the stage-only branch, which is safe: `stageKeyring` refuses
-   * to write a keyring the stored AK cannot open and adopts the rotated AK
-   * itself.
-   */
-  const isVersionBump = (version: number): boolean => lastKeyVersion !== null && version > lastKeyVersion
+  /** Serialize writers of the shared account keyring, including startup staging. */
+  const enqueue = (run: () => Promise<void>): Promise<void> => {
+    const pending = work.then(async () => {
+      if (active) {
+        await run()
+      }
+    })
+    work = pending.catch(() => {})
+    return pending
+  }
 
-  const recordKeyVersion = async (version: number): Promise<void> => {
-    lastKeyVersion = version
-    await storeKeyVersion(version)
+  /** Compare the probe to the verified key version persisted by encryption services. */
+  const isVersionBump = async (): Promise<boolean> => {
+    const currentVersion = await getKeyVersion()
+    const metadata = await fetchMetadata()
+    return currentVersion !== null && metadata.key_version > currentVersion
   }
 
   const refreshAndAnnounce = async (): Promise<void> => {
     await refreshAK()
-    channel?.postMessage({ type: 'ak-refreshed' })
+    if (active) {
+      channel?.postMessage({ type: 'ak-refreshed' })
+    }
   }
 
   /**
@@ -151,27 +157,35 @@ export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyReq
 
   const runKeyRequest = async (keyId: KeyId, reason: KeyRequestReason): Promise<void> => {
     lastAttempts.set(keyId, { action: reason === 'unwrap-failed' ? 'refresh' : 'stage', at: now() })
-    const metadata = await fetchMetadata()
-    if (reason === 'unwrap-failed' || isVersionBump(metadata.key_version)) {
+    const versionBumped = await isVersionBump()
+    if (!active) {
+      return
+    }
+    if (reason === 'unwrap-failed' || versionBumped) {
       lastAttempts.set(keyId, { action: 'refresh', at: now() })
       await refreshAndAnnounce()
     } else {
       await stageKeyring()
-      channel?.postMessage({ type: 'key-staged', keyId })
+      if (active) {
+        channel?.postMessage({ type: 'key-staged', keyId })
+      }
     }
-    await recordKeyVersion(metadata.key_version)
   }
 
   const handleKeyRequest = (keyId: KeyId, reason: KeyRequestReason): Promise<void> => {
+    if (!active) {
+      return Promise.resolve()
+    }
     pruneExpiredAttempts()
     const pending = inflight.get(keyId)
     if (pending) {
-      return pending
+      // A stage already in flight cannot satisfy a newly reported unwrap failure.
+      return reason === 'unwrap-failed' ? pending.then(() => handleKeyRequest(keyId, reason)) : pending
     }
     if (isOnCooldown(keyId, reason)) {
       return Promise.resolve()
     }
-    const run = runKeyRequest(keyId, reason)
+    const run = enqueue(() => runKeyRequest(keyId, reason))
       .catch((err: unknown) => {
         console.warn(`[keys-sync] key-request for key_id '${keyId}' (${reason}) failed:`, err)
       })
@@ -191,14 +205,15 @@ export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyReq
     if (await needsSyncSetupWizard()) {
       return
     }
-    lastKeyVersion = await getKeyVersion()
-    const metadata = await fetchMetadata()
-    if (isVersionBump(metadata.key_version)) {
+    const versionBumped = await isVersionBump()
+    if (!active) {
+      return
+    }
+    if (versionBumped) {
       await refreshAndAnnounce()
     } else {
       await stageKeyring()
     }
-    await recordKeyVersion(metadata.key_version)
   }
 
   channel?.onMessage((message) => {
@@ -208,7 +223,7 @@ export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyReq
     void handleKeyRequest(message.keyId, message.reason)
   })
 
-  const ready = prime().catch((err: unknown) => {
+  const ready = enqueue(prime).catch((err: unknown) => {
     console.warn('[keys-sync] startup keyring staging failed:', err)
   })
 

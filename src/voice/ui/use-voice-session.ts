@@ -15,7 +15,9 @@ import { builtInAgent } from '@/defaults/agents'
 import { getSettings } from '@/dal'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ReplyChat } from '@/voice/chat-reply'
-import type { SessionState, VoiceSession } from '@/voice/session'
+import type { SessionState } from '@/voice/session'
+import { toVoiceErrorMessage } from '@/voice/voice-error'
+import { createSessionLifecycle } from './session-lifecycle'
 import { setVoiceModeActive } from '@/voice/voice-mode'
 import type { Chat } from '@ai-sdk/react'
 import { i18n, type MessageDescriptor } from '@lingui/core'
@@ -86,55 +88,87 @@ export const toReplyChat = (chat: Chat<ThunderboltUIMessage>, chatThreadId: stri
   stop: () => chat.stop(),
 })
 
-type VoiceUiState = {
-  active: boolean
-  state: SessionState
-  error: string | null
-}
+type VoiceUiState =
+  | { phase: 'closed' | 'starting' }
+  | { phase: 'running'; state: SessionState; error: string | null }
+  | { phase: 'failed'; error: string }
 
-const initial: VoiceUiState = { active: false, state: 'idle', error: null }
+type VoiceUiAction =
+  | { type: 'START' }
+  | { type: 'STOP' }
+  | { type: 'STATE'; state: SessionState }
+  | { type: 'ERROR' | 'START_FAILED'; error: string }
+
+/** UI transitions follow the currently owned voice attempt only. */
+export const voiceUiReducer = (state: VoiceUiState, action: VoiceUiAction): VoiceUiState => {
+  switch (action.type) {
+    case 'START':
+      return { phase: 'starting' }
+    case 'STOP':
+      return { phase: 'closed' }
+    case 'STATE':
+      if (state.phase === 'closed' || state.phase === 'failed') {
+        return state
+      }
+      return { phase: 'running', state: action.state, error: state.phase === 'running' ? state.error : null }
+    case 'START_FAILED':
+      return { phase: 'failed', error: action.error }
+    case 'ERROR':
+      if (state.phase === 'closed') {
+        return state
+      }
+      return state.phase === 'running' ? { ...state, error: action.error } : { phase: 'failed', error: action.error }
+  }
+}
 
 export const useVoiceSession = () => {
   const session = useCurrentChatSession()
   const db = useDatabase()
-  const [ui, patch] = useReducer((s: VoiceUiState, p: Partial<VoiceUiState>): VoiceUiState => ({ ...s, ...p }), initial)
-  const sessionRef = useRef<VoiceSession | null>(null)
+  const [ui, dispatch] = useReducer(voiceUiReducer, { phase: 'closed' })
   // Live mic level, updated ~30×/s. A ref (not state) so the waveform can read it
   // in a rAF loop without re-rendering the composer on every frame.
   const levelRef = useRef(0)
-  // Live TTS output level for the speaking-state waveform. A stable object whose
-  // getter pulls from the current session's playback analyser on each rAF read
-  // (pull, not push — mirrors how `levelRef` carries the mic level via onLevel).
-  const outputLevelRef = useMemo<{ readonly current: number }>(
+  const lifecycle = useMemo(
+    () =>
+      createSessionLifecycle({
+        onStarting: () => dispatch({ type: 'START' }),
+        onStopped: () => {
+          levelRef.current = 0
+          dispatch({ type: 'STOP' })
+        },
+        onState: (state) => dispatch({ type: 'STATE', state }),
+        onError: (error, terminal) => {
+          console.error('[voice]', error)
+          dispatch({
+            type: terminal ? 'START_FAILED' : 'ERROR',
+            error: error instanceof PrivateChatHeldError ? toVoiceOverlayError(error) : toVoiceErrorMessage(error),
+          })
+        },
+        onLevel: (level) => {
+          levelRef.current = level
+        },
+        onActiveChange: setVoiceModeActive,
+      }),
+    [],
+  )
+  const outputLevelRef = useMemo(
     () => ({
       get current() {
-        return sessionRef.current?.getOutputLevel() ?? 0
+        return lifecycle.getOutputLevel()
       },
     }),
-    [],
+    [lifecycle],
   )
 
-  // Tear the session down when the composer unmounts (chat navigation, HMR).
-  // Without this the mic/VAD/AudioContext survive as an orphan bound to the old
-  // chat — start again elsewhere and one utterance hits two chats at once.
   useEffect(
     () => () => {
-      void sessionRef.current?.stop()
-      sessionRef.current = null
-      setVoiceModeActive(false)
+      void lifecycle.stop()
     },
-    [],
+    [lifecycle],
   )
 
-  const start = async () => {
-    if (sessionRef.current) {
-      return
-    } // already running — never stack a second session
-    patch({ active: true, error: null, state: 'idle' })
-    // Flag voice as active so the chat send path injects the voice self-context
-    // system note (see `voice-mode.ts`); cleared on stop / startup failure.
-    setVoiceModeActive(true)
-    try {
+  const start = () =>
+    lifecycle.start(async (callbacks) => {
       // Lazy-load the voice runtime (session + engines + VAD/playback/aggregator
       // graph) only when the user actually starts voice — it's a non-critical
       // feature and must stay out of the always-mounted chat composer's entry
@@ -148,42 +182,20 @@ export const useVoiceSession = () => {
           import('@/voice/chat-reply'),
           getSettings(db, { experimental_feature_voice: false }),
         ])
-      const voice = createVoiceSession({
+      return createVoiceSession({
         engine: createVoiceEngine(experimentalFeatureVoice),
-        // The transcript + reply render as normal chat bubbles via sendMessage, so
-        // the UI itself only needs the session state.
         reply: createChatReply(toReplyChat(session.chatInstance, session.id)),
-        onState: (state) => patch({ state }),
-        onError: (error) => {
-          console.error('[voice]', error)
-          patch({ error: toVoiceOverlayError(error) })
-        },
-        onLevel: (level) => {
-          levelRef.current = level
-        },
+        ...callbacks,
       })
-      sessionRef.current = voice
-      await voice.start()
-    } catch (error) {
-      // Startup failures are usually getUserMedia (mic blocked / missing / in use)
-      // — surface an actionable message instead of a raw DOMException name. Tear
-      // the partial session down (its playback ctx already exists) and clear the
-      // ref so the mic button can start a fresh one.
-      console.error('[voice]', error)
-      await sessionRef.current?.stop()
-      sessionRef.current = null
-      setVoiceModeActive(false)
-      const { toVoiceErrorMessage } = await import('@/voice/voice-error')
-      patch({ error: toVoiceErrorMessage(error) })
-    }
-  }
+    })
 
-  const stop = async () => {
-    await sessionRef.current?.stop()
-    sessionRef.current = null
-    setVoiceModeActive(false)
-    patch({ active: false, state: 'idle' })
+  return {
+    active: ui.phase !== 'closed',
+    state: ui.phase === 'running' ? ui.state : ('idle' as const),
+    error: ui.phase === 'failed' || ui.phase === 'running' ? ui.error : null,
+    start,
+    stop: lifecycle.stop,
+    levelRef,
+    outputLevelRef,
   }
-
-  return { ...ui, start, stop, levelRef, outputLevelRef }
 }

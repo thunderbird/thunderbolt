@@ -64,6 +64,10 @@ msgstr ""
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} n'accepte pas les pièces jointes. Retirez les fichiers joints pour envoyer."
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "{appName} (hosted, private)"
 msgstr "{appName} (hébergé, privé)"
@@ -383,6 +387,10 @@ msgstr "Ajout…"
 msgid "Advanced (JSON)"
 msgstr "Avancé (JSON)"
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Agent privacy"
+msgstr ""
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/routes/settings/agents/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -437,6 +445,10 @@ msgstr "Toujours demander"
 
 #: src/lib/sso-error-messages.ts
 msgid "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
+msgstr ""
+
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "An encrypted agent connection alone does not verify the agent or its model provider."
 msgstr ""
 
 #: src/lib/tool-metadata.ts
@@ -998,6 +1010,10 @@ msgstr "Terminez la configuration pour commencer avec {appName}"
 msgid "Completing…"
 msgstr "Finalisation…"
 
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Confidential hardware"
+#~ msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
 msgstr "Configuration"
@@ -1093,6 +1109,10 @@ msgstr "Connexion…"
 msgid "Connection"
 msgstr "Connexion"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Connection details"
+msgstr ""
+
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Connection error"
 msgstr "Erreur de connexion"
@@ -1103,6 +1123,14 @@ msgstr "Erreur de connexion"
 msgid "Connection failed"
 msgstr "Échec de la connexion"
 
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection privacy"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-control.tsx
+msgid "Connection privacy: {label}"
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "Connection problem. Check your internet and try again."
 msgstr "Problème de connexion. Vérifiez votre connexion Internet et réessayez."
@@ -1111,6 +1139,10 @@ msgstr "Problème de connexion. Vérifiez votre connexion Internet et réessayez
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Connection successful!"
 msgstr "Connexion réussie !"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Connection verified"
+msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -1961,6 +1993,22 @@ msgstr "Activé"
 msgid "Enables location-based responses"
 msgstr "Permet des réponses basées sur la localisation"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave endpoint"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave fingerprint"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave-bound encryption key"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Encrypted connection"
+#~ msgstr ""
+
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
 msgstr ""
@@ -2255,6 +2303,10 @@ msgstr "C'est noté, je m'en occupe ensuite."
 #: src/settings/preferences.tsx
 msgid "Haptic Feedback"
 msgstr "Retour haptique"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Hardware attestation"
+msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Having a problem with this chat?"
@@ -2623,6 +2675,10 @@ msgstr "Géré par votre déploiement — toujours disponible, aucune configurat
 #: src/widgets/map/widget.tsx
 msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
 msgstr "Les cartes ne peuvent pas s’afficher ici — WebGL est désactivé ou indisponible dans ce navigateur."
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Matching measurements"
+msgstr ""
 
 #: src/components/window-controls.tsx
 msgid "Maximize"
@@ -3345,6 +3401,10 @@ msgstr "Confidentialité"
 msgid "Private"
 msgstr "Privé"
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Private inference"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
 msgstr "Traitement…"
@@ -3375,6 +3435,10 @@ msgstr "Fournisseur"
 #: src/settings/preferences.tsx
 msgid "Proxying is required in the web app to bypass browser CORS restrictions."
 msgstr "Le proxy est nécessaire dans l'application web pour contourner les restrictions CORS du navigateur."
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Published code"
+#~ msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
@@ -3461,6 +3525,10 @@ msgstr ""
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr "Enregistrement de cet appareil et détection de l'état de votre compte."
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Release digest"
+msgstr ""
 
 #: src/components/storage-unavailable-screen.tsx
 #: src/components/upgrade-required.tsx
@@ -4101,6 +4169,10 @@ msgstr "Connexion réussie"
 msgid "Sign-in was cancelled, or your identity provider did not grant access."
 msgstr ""
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Signed build provenance"
+msgstr ""
+
 #: src/components/signed-out.tsx
 msgid "Signed Out"
 msgstr "Déconnecté"
@@ -4182,6 +4254,10 @@ msgstr "Une erreur est survenue. Veuillez réessayer."
 #: src/components/chat/error-message.tsx
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 msgstr "Une erreur est survenue. Nouvelle tentative ({retryCount}/{maxRetries})…"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Source repository"
+msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"
@@ -4413,6 +4489,10 @@ msgstr ""
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr ""
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "The connection could not be verified. A verified connection is required before sending to this provider."
+msgstr ""
+
 #: src/services/revoke-failure.ts
 msgid "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr ""
@@ -4582,6 +4662,10 @@ msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This model doesn't support tools."
+msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "This model is marked private, but this device cannot verify its provider yet."
 msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
@@ -4811,6 +4895,7 @@ msgid "Trusted devices"
 msgstr "Appareils de confiance"
 
 #: src/components/auth-gate/browser-check.tsx
+#: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
@@ -5007,6 +5092,14 @@ msgstr "Expérience utilisateur"
 msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "{usedTokensLabel} sur {maxTokensLabel} de la fenêtre de contexte utilisés"
 
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "Verification covers model inference. Connected tools and external services have their own privacy boundaries."
+msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification failed"
+msgstr ""
+
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
 msgstr "Échec de la vérification"
@@ -5017,6 +5110,26 @@ msgstr "Échec de la vérification"
 #: src/waitlist/use-waitlist-state.ts
 msgid "Verification failed. Please try again."
 msgstr "Échec de la vérification. Veuillez réessayer."
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification timed out. A verified connection is required before sending to this provider."
+msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification unavailable"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Verified on this device"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "Verify connection"
+msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verifying connection…"
+msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sync-setup/recovery-key-entry-step.tsx
@@ -5377,6 +5490,22 @@ msgstr "Vos conversations et vos paramètres resteront sur cet appareil pour la 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"
 msgstr "Le serveur de votre déploiement"
+
+#: src/components/chat/attestation/attestation-control.tsx
+#~ msgid "Your device checks the confidential hardware and published code before sending to {provider}."
+#~ msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
+msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
+msgstr ""
+
+#: src/components/chat/attestation/attestation-control.tsx
+#~ msgid "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
+#~ msgstr ""
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."

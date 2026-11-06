@@ -537,6 +537,7 @@ describe('resolvePiModel — Tinfoil', () => {
 
     await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
     expect(evictSystemTinfoilClient).toHaveBeenCalledTimes(1)
+    expect(evictSystemTinfoilClient).toHaveBeenCalledWith(client)
   })
 
   it.each(['high', 'max'] as const)('resolves BYOK with %s effort directly without receipts', async (effort) => {
@@ -580,6 +581,7 @@ describe('resolvePiModel — Tinfoil', () => {
     })
     await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
     expect(evictUserTinfoilClient).toHaveBeenCalledTimes(1)
+    expect(evictUserTinfoilClient).toHaveBeenCalledWith(client)
   })
 
   it('rejects a BYOK model without an API key', async () => {

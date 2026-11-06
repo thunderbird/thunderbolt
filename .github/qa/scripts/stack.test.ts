@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { stackURLs } from '../ports'
+import { Browser, Cache } from '@puppeteer/browsers'
 
 const stack = join(import.meta.dir, 'stack.sh')
 const work = mkdtempSync(join(tmpdir(), 'qa-stack-test-'))
@@ -99,11 +100,14 @@ test('stack URLs fall back to the defaults', () => {
 
 test('the replay config takes its base URL from QA_FRONTEND_PORT', () => {
   const repoRoot = join(import.meta.dir, '../../..')
+  // Config loading resolves the installed Stable alias without launching a browser.
+  const browsers = join(work, 'replay-browser-cache')
+  new Cache(join(browsers, 'stable-chrome')).writeMetadata(Browser.CHROME, { aliases: { stable: '156.0.8078.80' } })
   const { stdout, stderr } = Bun.spawnSync(
     ['bun', '-e', "import c from './.github/qa/playwright.config.ts'; console.log(c.use?.baseURL)"],
     {
       cwd: repoRoot,
-      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', QA_FRONTEND_PORT: '2424' },
+      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', QA_FRONTEND_PORT: '2424', PLAYWRIGHT_BROWSERS_PATH: browsers },
       timeout: 10_000,
     },
   )

@@ -147,7 +147,7 @@ describe('effort selector state', () => {
     renderWithReactivity(<EffortSelector modelPicker={(close) => <button onClick={close}>Manage models</button>} />, {
       tables: ['settings'],
     })
-    const trigger = screen.getByRole('button', { name: 'Model and reasoning effort' })
+    const trigger = screen.getByRole('button', { name: 'Private model' })
     expect(screen.getByTestId('model-selector-trigger')).toBe(trigger)
     expect(trigger.textContent).toContain('Private model')
     expect(trigger.getAttribute('aria-description')).toContain('Model: Private model')
@@ -334,7 +334,7 @@ describe('effort selector state', () => {
       tables: ['settings'],
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Model and reasoning effort' }))
+      fireEvent.click(screen.getByRole('button', { name: `API key not configured ${model.name}` }))
     })
     await act(async () => {
       fireEvent.change(screen.getByRole('slider'), { target: { value: '1' } })
@@ -388,11 +388,11 @@ describe('effort selector state', () => {
     useChatStore.getState().updateSession('effort-chat', { selectedModel: { ...model, model: 'llama3-3-70b' } })
     renderWithReactivity(<EffortSelector modelPicker={() => <button>Choose model</button>} />, { tables: ['settings'] })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Model and reasoning effort' }))
+      fireEvent.click(screen.getByRole('button', { name: `API key not configured ${model.name}` }))
     })
     expect(screen.getByRole('button', { name: 'Choose model' })).toBeDefined()
     expect(screen.queryByRole('slider')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Model and reasoning effort' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: `API key not configured ${model.name}` })).toHaveAttribute(
       'aria-description',
       `Model: ${model.name}`,
     )

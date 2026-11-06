@@ -39,7 +39,8 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
       type="button"
       data-testid={modelPicker ? 'model-selector-trigger' : undefined}
       aria-haspopup="dialog"
-      aria-label={modelPicker ? t`Model and reasoning effort` : t`Reasoning effort`}
+      // With the model picker the visible model name is the accessible name, so voice control can say it.
+      aria-label={modelPicker ? undefined : t`Reasoning effort`}
       title={choices.length ? effortDescription : selectedModel.name}
       aria-description={accessibleDescription}
       className="flex shrink-0 cursor-pointer items-center gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)] font-medium text-muted-foreground transition-colors hover:bg-accent/50 data-[state=open]:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"

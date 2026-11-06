@@ -7,6 +7,7 @@ import { useCallback, useReducer } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { isWidgetSkillId } from '@/defaults/skills'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useConsumeNavState } from '@/hooks/use-consume-nav-state'
 import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
 import { DeleteSkillDialog } from './delete-skill-dialog'
@@ -34,6 +35,7 @@ export const SkillsView = () => {
   const { isEnabled, setEnabled } = useEnabledSkills()
   const trackSkillEvent = useSkillTelemetry()
 
+  const submission = useAsyncAttempt()
   const [state, dispatch] = useReducer(skillsViewReducer, initialSkillsViewState)
   const {
     mode,
@@ -52,8 +54,14 @@ export const SkillsView = () => {
   // `editSkill` selects an existing skill; `startEditSkill` lands directly in
   // its edit form, except widget contracts remain on read-only detail.
   // Composer create/edit actions use route-preserving CreateItemContext.
-  useConsumeNavState('editSkill', (id) => dispatch({ type: 'SELECT_SKILL', id }))
-  useConsumeNavState('startEditSkill', (id) => dispatch({ type: 'START_EDIT', id }))
+  useConsumeNavState('editSkill', (id) => {
+    submission.cancel()
+    dispatch({ type: 'SELECT_SKILL', id })
+  })
+  useConsumeNavState('startEditSkill', (id) => {
+    submission.cancel()
+    dispatch({ type: 'START_EDIT', id })
+  })
 
   // No first-skill fallback: the detail panel only opens when the user
   // explicitly selects a skill (or a deep link does), matching the
@@ -105,10 +113,11 @@ export const SkillsView = () => {
       if ((mode === 'create' || mode === 'edit') && isDirty) {
         dispatch({ type: 'REQUEST_LEAVE', leave })
       } else {
+        submission.cancel()
         dispatch({ type: 'PERFORM_LEAVE', leave })
       }
     },
-    [mode, isDirty],
+    [mode, isDirty, submission],
   )
 
   const onSelectSkill = (id: string) => {
@@ -121,6 +130,7 @@ export const SkillsView = () => {
 
   const onConfirmDiscard = () => {
     if (pendingLeave) {
+      submission.cancel()
       dispatch({ type: 'PERFORM_LEAVE', leave: pendingLeave })
     }
   }
@@ -181,24 +191,37 @@ export const SkillsView = () => {
   }
 
   const handleSubmit = async (values: SkillFormValues) => {
+    const attempt = submission.begin()
+    if (!attempt) {
+      return
+    }
     try {
       if (mode === 'create') {
         const created = await createSkillTracked(values)
-        dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
+        if (attempt.isCurrent()) {
+          dispatch({ type: 'SUBMIT_SUCCESS', activeId: created.id })
+        }
       } else if (activeSkill) {
         const renamed = values.name !== activeSkill.name
         await updateSkill({ id: activeSkill.id, patch: values })
         trackSkillEvent('skill_edited', activeSkill.id, { renamed })
-        dispatch({ type: 'SUBMIT_SUCCESS', activeId: activeSkill.id })
+        if (attempt.isCurrent()) {
+          dispatch({ type: 'SUBMIT_SUCCESS', activeId: activeSkill.id })
+        }
       }
     } catch (error) {
       // Unexpected persistence failure: the form stays open with the user's
       // input intact — tell them why nothing happened instead of failing
       // silently as an unhandled rejection.
+      if (!attempt.isCurrent()) {
+        return
+      }
       handleSkillSaveError(error, {
         onSlugRejected: (message) => dispatch({ type: 'SLUG_REJECTED', message }),
         onFailed: () => dispatch({ type: 'SUBMIT_FAILED', message: skillSaveFailedMessage }),
       })
+    } finally {
+      attempt.finish()
     }
   }
 

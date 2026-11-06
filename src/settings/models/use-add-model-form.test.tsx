@@ -6,6 +6,7 @@ import { i18n } from '@lingui/core'
 import { getModel } from '@/dal'
 import { modelsTable } from '@/db/schema'
 import { mockProxyFetch } from '@/test-utils/proxy-fetch'
+import * as modelsDal from '@/dal/models'
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -155,6 +156,44 @@ describe('useAddModelForm', () => {
       expect(JSON.stringify(syncedRows)).not.toContain('tk-user')
     } finally {
       getSpy.mockRestore()
+    }
+  })
+
+  it.each(['resolve', 'reject'] as const)('keeps a replacement draft when an abandoned add %s', async (outcome) => {
+    const pending = Promise.withResolvers<void>()
+    const create = spyOn(modelsDal, 'createModel').mockImplementation(() => pending.promise)
+    const onClose = mock(() => {})
+    try {
+      const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
+        wrapper: createTestProvider(),
+      })
+      const values = { provider: 'otari' as const, name: 'Original', model: 'original', supportsTools: true }
+      const first = result.current.onSubmit(values)
+      await result.current.onSubmit(values)
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(create).toHaveBeenCalledTimes(1)
+      act(() => {
+        result.current.onCancel()
+        result.current.prepareForOpen()
+        result.current.form.setValue('name', 'Replacement')
+      })
+      onClose.mockClear()
+      await act(async () => {
+        if (outcome === 'resolve') {
+          pending.resolve()
+        } else {
+          pending.reject(new Error('old add failed'))
+        }
+        await first
+        await getClock().runAllAsync()
+      })
+      expect(result.current.form.getValues('name')).toBe('Replacement')
+      expect(result.current.submitError).toBeNull()
+      expect(onClose).not.toHaveBeenCalled()
+    } finally {
+      create.mockRestore()
     }
   })
 

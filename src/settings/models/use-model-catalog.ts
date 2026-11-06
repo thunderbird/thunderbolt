@@ -5,7 +5,7 @@
 import { useLingui } from '@lingui/react/macro'
 import type { I18n } from '@lingui/core'
 import { customProviderLabel } from './model-presentation'
-import { useCallback, useEffect, useReducer } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 
 import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -77,21 +77,40 @@ export const useModelCatalog = () => {
   const { i18n } = useLingui()
   const getProxyFetch = useProxyFetchGetter()
   const [state, dispatch] = useReducer(modelCatalogReducer, initialModelCatalogState)
+  // Inputs identify the catalog; the generation identifies a particular attempt.
+  // A → B → A, or invalidate → retry A, must not accept the first A's result.
+  const generation = useRef(0)
+  useEffect(
+    () => () => {
+      generation.current += 1
+    },
+    [],
+  )
 
   const fetchCatalog = useCallback(
     async (request: CatalogRequest) => {
+      const attempt = ++generation.current
       const requestKey = catalogRequestKey(request)
       dispatch({ type: 'CATALOG_REQUESTED', requestKey })
       try {
-        dispatch({ type: 'CATALOG_LOADED', requestKey, models: await fetchModelsForProvider(request, getProxyFetch) })
+        const models = await fetchModelsForProvider(request, getProxyFetch)
+        if (generation.current === attempt) {
+          dispatch({ type: 'CATALOG_LOADED', requestKey, models })
+        }
       } catch (error) {
+        if (generation.current !== attempt) {
+          return
+        }
         console.error('Failed to fetch models:', error)
         dispatch({ type: 'CATALOG_FAILED', requestKey, error: describeModelFetchError(i18n, error) })
       }
     },
     [i18n, getProxyFetch],
   )
-  const invalidateCatalog = useCallback(() => dispatch({ type: 'CATALOG_INVALIDATED' }), [])
+  const invalidateCatalog = useCallback(() => {
+    generation.current += 1
+    dispatch({ type: 'CATALOG_INVALIDATED' })
+  }, [])
 
   return {
     models: state.models,

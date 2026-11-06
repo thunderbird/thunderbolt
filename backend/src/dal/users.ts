@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { db as DbType } from '@/db/client'
+import type { QueryableDatabase, db as DbType } from '@/db/client'
 import { session, user } from '@/db/auth-schema'
 import { inferenceUsage } from '@/db/inference-usage-schema'
 import { and, eq, gt, gte, inArray, lt, notExists, or } from 'drizzle-orm'
@@ -28,7 +28,8 @@ export const getUserByEmail = async (database: typeof DbType, email: string) =>
     .then((rows) => rows[0] ?? null)
 
 /** Hard-delete a user. Cascades to all related tables via FK constraints. */
-export const deleteUser = async (database: typeof DbType, id: string) => database.delete(user).where(eq(user.id, id))
+export const deleteUser = async (database: QueryableDatabase, id: string) =>
+  database.delete(user).where(eq(user.id, id))
 
 /** Mark a user as no longer new (after first sign-in). */
 export const markUserNotNew = async (database: typeof DbType, id: string) =>

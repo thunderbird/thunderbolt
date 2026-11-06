@@ -27,6 +27,7 @@ export const useSidebarWebview = (
 ) => {
   const [isInitialized, setIsInitialized] = useState(false)
   const webviewRef = useRef<Webview | null>(null)
+  const closingWebviewRef = useRef<Webview | null>(null)
   const hiddenRef = useRef(hidden)
   hiddenRef.current = hidden
   const resizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
@@ -34,8 +35,9 @@ export const useSidebarWebview = (
   const windowRef = useRef<ReturnType<typeof getCurrentWindow> | null>(null)
   const unloadListenerRegisteredRef = useRef<boolean>(false)
 
+  const url = config?.url
   useEffect(() => {
-    if (!config || !containerRef.current) {
+    if (!url || !containerRef.current) {
       return
     }
 
@@ -58,6 +60,9 @@ export const useSidebarWebview = (
 
       try {
         await currentWebview.setPosition(new LogicalPosition(Math.floor(rect.left) + borderOffset, webviewTop))
+        if (!isActive || webviewRef.current !== currentWebview) {
+          return
+        }
         await currentWebview.setSize(new LogicalSize(Math.floor(rect.width) - borderOffset, webviewHeight))
       } catch (error) {
         // Silently ignore errors if webview was closed
@@ -108,7 +113,7 @@ export const useSidebarWebview = (
         const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
 
         const webviewOptions: WebviewOptions = {
-          url: config.url,
+          url,
           x: Math.floor(rect.left) + borderOffset,
           y: webviewTop,
           width: Math.floor(rect.width) - borderOffset,
@@ -116,7 +121,7 @@ export const useSidebarWebview = (
           incognito: true, // Use incognito mode for privacy and to prevent keychain access for WebCrypto API
         }
 
-        const webviewLabel = `sidebar-webview-${Date.now()}`
+        const webviewLabel = `sidebar-webview-${crypto.randomUUID()}`
         webview = new Webview(windowRef.current, webviewLabel, webviewOptions)
 
         webview.once('tauri://error', (error) => {
@@ -155,10 +160,18 @@ export const useSidebarWebview = (
           requestPositionUpdate()
         })
 
+        if (!isActive) {
+          unlistenResize()
+          return
+        }
+
         // Listen for window move events
         unlistenMove = await windowRef.current.onMoved(() => {
           requestPositionUpdate()
         })
+        if (!isActive) {
+          unlistenMove()
+        }
       } catch (error) {
         console.error('Failed to initialize sidebar webview:', error)
       }
@@ -184,7 +197,7 @@ export const useSidebarWebview = (
         unlistenMove()
       }
       // Only close if not already closed by closeWebview()
-      if (webview && webviewRef.current) {
+      if (webview && webviewRef.current === webview && closingWebviewRef.current !== webview) {
         webview.close().catch(console.error)
       }
       webviewRef.current = null
@@ -198,7 +211,7 @@ export const useSidebarWebview = (
       }
       cleanupWebview()
     }
-  }, [config?.url]) // Re-initialize if URL changes
+  }, [url, containerRef])
 
   // Hide/show the native webview when overlaid by DOM elements (e.g. dialogs)
   useEffect(() => {
@@ -215,22 +228,28 @@ export const useSidebarWebview = (
   }, [hidden])
 
   const closeWebview = async () => {
-    if (webviewRef.current) {
-      // Cancel any pending position updates
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-        animationFrameRef.current = undefined
-      }
-
-      try {
-        await webviewRef.current.close()
+    const closing = webviewRef.current
+    if (!closing || closingWebviewRef.current === closing) {
+      return
+    }
+    closingWebviewRef.current = closing
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = undefined
+    }
+    try {
+      await closing.close()
+      // Closing an older URL must not clear or dismiss its replacement.
+      if (webviewRef.current === closing) {
         webviewRef.current = null
         setIsInitialized(false)
-        if (config?.onClose) {
-          config.onClose()
-        }
-      } catch (error) {
-        console.error('Error closing webview:', error)
+        config?.onClose?.()
+      }
+    } catch (error) {
+      console.error('Error closing webview:', error)
+    } finally {
+      if (closingWebviewRef.current === closing) {
+        closingWebviewRef.current = null
       }
     }
   }

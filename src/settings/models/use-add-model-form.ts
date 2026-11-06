@@ -16,6 +16,7 @@ import { useChatStore } from '@/chats/chat-store'
 import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
 import { createModel, getAvailableModels } from '@/dal'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
@@ -112,6 +113,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   const [state, dispatch] = useReducer(addModelReducer, initialState)
   const { selectedModelId, submitError } = state
   const catalog = useModelCatalog()
+  const submission = useAsyncAttempt()
   const form = useForm<AddModelFormValues>({
     resolver: zodResolver(createAddModelFormSchema(i18n)),
     mode: 'onChange',
@@ -135,6 +137,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   useAutoCatalogFetch({ armed: isOpen, request: catalogRequest, catalog })
 
   const reset = () => {
+    submission.cancel()
     form.reset()
     form.clearErrors()
     connection.reset()
@@ -161,26 +164,35 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
       })
       return getAvailableModels(db)
     },
-    onMutate: () => {
-      onMutationStart?.()
-      dispatch({ type: 'MUTATION_STARTED' })
-    },
     onSuccess: async (models) => {
       useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
-      close()
-    },
-    onError: (error: unknown) => {
-      console.error('Failed to add the model.', error)
-      dispatch({ type: 'MUTATION_FAILED' })
     },
   })
 
   const resolveModelId = (values: AddModelFormValues) =>
     selectedModelId === 'custom' && values.customModel ? values.customModel : values.model
 
-  const submit = (values: AddModelFormValues) => {
-    addMutation.mutate({ ...values, model: resolveModelId(values) })
+  const submit = async (values: AddModelFormValues) => {
+    const attempt = submission.begin()
+    if (!attempt) {
+      return
+    }
+    try {
+      onMutationStart?.()
+      dispatch({ type: 'MUTATION_STARTED' })
+      await addMutation.mutateAsync({ ...values, model: resolveModelId(values) })
+      if (attempt.isCurrent()) {
+        close()
+      }
+    } catch (error) {
+      console.error('Failed to add the model.', error)
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'MUTATION_FAILED' })
+      }
+    } finally {
+      attempt.finish()
+    }
   }
 
   const testConnection = async () => {
@@ -260,6 +272,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     resetForm: reset,
     /** Clears leftover probe/error state when the add panel opens. */
     prepareForOpen: () => {
+      submission.cancel()
       connection.reset()
       dispatch({ type: 'PANEL_OPENED' })
     },

@@ -446,6 +446,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
  *  wires the translator into. The stream closes when `close()` is called. */
 export const createTranslatorStream = (
   options: TranslateOptions = {},
+  onCancel?: () => void,
 ): { body: ReadableStream<Uint8Array>; translator: Translator; close: () => void } => {
   let controller: ReadableStreamDefaultController<Uint8Array>
   let closed = false
@@ -457,10 +458,10 @@ export const createTranslatorStream = (
     },
     // The consumer (AI SDK) stopped reading — e.g. the user hit Stop. Mark the
     // stream closed so any in-flight translator emit or a late `close()` becomes
-    // a safe no-op regardless of teardown ordering. The adapter wires the actual
-    // remote `session/cancel` off the request's abort signal.
+    // a safe no-op before the owner cancels the remote turn and detaches its handlers.
     cancel() {
       closed = true
+      onCancel?.()
     },
   })
 

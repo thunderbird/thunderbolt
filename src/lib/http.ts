@@ -14,7 +14,7 @@
 import { getActiveLocale } from '@/i18n/active-locale'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
-import { getDeviceId } from '@/lib/auth-token'
+import { captureAuthRequestLifetime, getDeviceId, isCurrentAuthRequest } from '@/lib/auth-token'
 import { getDeviceDisplayName } from '@/lib/platform'
 
 export class HttpError extends Error {
@@ -176,7 +176,7 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
   }
 }
 
-/** Create an authenticated client that attaches a Bearer token from localStorage on each request.
+/** Create a client that attaches the current Bearer token only to app backend requests.
  * Skips setting the token if the caller already provided an Authorization header.
  * Dispatches `powersync_credentials_invalid` (reason: `session_expired`) when an authenticated
  * request to the app backend returns 401, so the app can prompt the user to re-authenticate,
@@ -188,6 +188,7 @@ export const createAuthenticatedClient = (
   getToken: () => string | null,
   config: Pick<HttpClientConfig, 'fetch' | 'credentials'> = {},
 ): HttpClient => {
+  const requestLifetimes = new WeakMap<Request, () => boolean>()
   const backendUrl =
     prefixUrl.startsWith('http://') || prefixUrl.startsWith('https://')
       ? new URL(prefixUrl)
@@ -199,27 +200,27 @@ export const createAuthenticatedClient = (
     hooks: {
       beforeRequest: [
         (request) => {
+          if (!isBackendRequest(request.url, backendUrl)) {
+            return
+          }
+          requestLifetimes.set(request, captureAuthRequestLifetime())
           if (!request.headers.has('Authorization')) {
             const token = getToken()
             if (token) {
               request.headers.set('Authorization', `Bearer ${token}`)
             }
           }
-          // Inject device identity headers only for app backend requests (not external APIs).
-          // Uses the same prefix guard as the afterResponse 401 handler below.
-          if (isBackendRequest(request.url, backendUrl)) {
-            const deviceId = getDeviceId()
-            if (deviceId) {
-              request.headers.set('X-Device-ID', deviceId)
-              request.headers.set('X-Device-Name', getDeviceDisplayName())
-            }
-            for (const [key, value] of Object.entries(appVersionHeader())) {
-              request.headers.set(key, value)
-            }
-            // A single resolved tag, not a preference list — the client has already
-            // negotiated, so the backend forwards rather than re-negotiates.
-            request.headers.set('X-App-Language', getActiveLocale())
+          const deviceId = getDeviceId()
+          if (deviceId) {
+            request.headers.set('X-Device-ID', deviceId)
+            request.headers.set('X-Device-Name', getDeviceDisplayName())
           }
+          for (const [key, value] of Object.entries(appVersionHeader())) {
+            request.headers.set(key, value)
+          }
+          // A single resolved tag, not a preference list — the client has already
+          // negotiated, so the backend forwards rather than re-negotiates.
+          request.headers.set('X-App-Language', getActiveLocale())
         },
       ],
       afterResponse: [
@@ -238,7 +239,8 @@ export const createAuthenticatedClient = (
             handleAppVersionUnsupported(response.status)
             return
           }
-          if (response.status === 401 && request.headers.has('Authorization')) {
+          const isCurrent = () => requestLifetimes.get(request)!() && isCurrentAuthRequest(request.headers, getToken())
+          if (response.status === 401 && request.headers.has('Authorization') && isCurrent()) {
             window.dispatchEvent(
               new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
             )
@@ -251,7 +253,11 @@ export const createAuthenticatedClient = (
               .clone()
               .json()
               .catch(() => null)) as { code?: string } | null
-            if (body?.code === 'DEVICE_DISCONNECTED') {
+            if (
+              body?.code === 'DEVICE_DISCONNECTED' &&
+              isCurrent() &&
+              request.headers.get('X-Device-ID') === getDeviceId()
+            ) {
               window.dispatchEvent(
                 new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'device_revoked' } }),
               )

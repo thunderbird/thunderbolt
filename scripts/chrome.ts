@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Browser, BrowserTag, computeExecutablePath } from '@puppeteer/browsers'
+import { Browser, BrowserTag, Cache, computeExecutablePath } from '@puppeteer/browsers'
 
 /** Keep Stable Chrome alongside Playwright's other engines, including shared QA caches. */
 export const getChromeCacheDir = (
@@ -32,8 +32,13 @@ export const getChromeCacheDir = (
 }
 
 /** Resolve the installed Stable alias without network access or a fallback to bundled Chromium. */
-export const getChromeExecutablePath = (cacheDir = getChromeCacheDir()): string =>
-  computeExecutablePath({ cacheDir, browser: Browser.CHROME, buildId: BrowserTag.STABLE })
+export const getChromeExecutablePath = (cacheDir = getChromeCacheDir()): string => {
+  const buildId = new Cache(cacheDir).resolveAlias(Browser.CHROME, BrowserTag.STABLE)
+  if (!buildId) {
+    throw new Error('Chrome for Testing Stable is not installed. Run `bun run browsers:install`.')
+  }
+  return computeExecutablePath({ cacheDir, browser: Browser.CHROME, buildId })
+}
 
 /** Use the independently refreshed Chrome Stable build in Playwright launches. */
 export const getChromeLaunchOptions = () => ({ executablePath: getChromeExecutablePath() })

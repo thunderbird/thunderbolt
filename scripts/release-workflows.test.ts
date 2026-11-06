@@ -16,7 +16,14 @@ type Step = {
 type Workflow = {
   on: { workflow_call: { inputs: object }; workflow_dispatch: { inputs: object } }
   env?: { RELEASE_TAG?: string }
-  jobs: { [name: string]: { needs?: string | string[]; with?: { tag?: string }; steps?: Step[] } }
+  jobs: {
+    [name: string]: {
+      needs?: string | string[]
+      with?: { tag?: string }
+      steps?: Step[]
+      concurrency?: { group: string; 'cancel-in-progress': boolean }
+    }
+  }
 }
 
 /** Parses a workflow file from `.github/workflows/`. */
@@ -29,6 +36,16 @@ const allSteps = (workflow: Workflow) => Object.values(workflow.jobs).flatMap((j
 // A single-platform release tags vX.Y.Z-<platform>-rc, so a child that rebuilds the tag from the
 // version checks out a missing or older commit (THU-958).
 describe('release tag wiring', () => {
+  it('serializes version writers and checks out the current branch instead of the triggering commit', () => {
+    const workflow = loadWorkflow('version-bump.yml')
+    expect(workflow.jobs.version_bump.concurrency).toEqual({
+      group: 'version-bump-${{ github.ref }}',
+      'cancel-in-progress': false,
+    })
+    const checkout = allSteps(workflow).find((step) => step.uses?.startsWith('actions/checkout@'))
+    expect(checkout?.with?.ref).toBe('${{ github.ref_name }}')
+  })
+
   it.each([
     ['desktop', 'desktop-release.yml', 'draft'],
     ['ios', 'ios-release.yml', 'build_and_deploy_ios'],

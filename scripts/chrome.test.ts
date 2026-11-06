@@ -7,8 +7,11 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getChromeCacheDir, getChromeExecutablePath } from './chrome'
+import { Browser, Cache } from '@puppeteer/browsers'
 
 const cacheDir = mkdtempSync(join(tmpdir(), 'thunderbolt-chrome-'))
+const installedCacheDir = join(cacheDir, 'stable-chrome')
+new Cache(installedCacheDir).writeMetadata(Browser.CHROME, { aliases: { stable: '156.0.8078.80' } })
 afterAll(() => rmSync(cacheDir, { recursive: true, force: true }))
 
 describe('Chrome cache', () => {
@@ -50,9 +53,9 @@ describe('Chrome cache', () => {
     expect(getChromeExecutablePath(cacheDir)).toContain('156.0.8078.81')
   })
 
-  test('the CLI fails instead of printing a path to a missing Chrome', () => {
+  test.each(['empty', '.'])('the CLI explains how to install Chrome when its cache is %s', (directory) => {
     const result = Bun.spawnSync(['bun', join(import.meta.dir, 'chrome.ts')], {
-      env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(cacheDir, 'empty') },
+      env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(cacheDir, directory) },
     })
     expect(result.exitCode).toBe(1)
     expect(result.stdout.toString()).toBe('')
@@ -73,6 +76,7 @@ describe('Chrome cache', () => {
         cwd: join(import.meta.dir, '..'),
         env: {
           ...process.env,
+          PLAYWRIGHT_BROWSERS_PATH: cacheDir,
           EXTENDED_PLATFORM: platform,
           EXTENDED_DATABASE_URL: 'postgresql://test@localhost/test',
           EXTENDED_POWERSYNC_URL: 'http://localhost:8080',
@@ -84,7 +88,7 @@ describe('Chrome cache', () => {
     expect(projects.length).toBeGreaterThan(0)
     for (const project of projects) {
       if (project.name.includes('chromium')) {
-        expect(project.executablePath).toBe(getChromeExecutablePath())
+        expect(project.executablePath).toBe(getChromeExecutablePath(installedCacheDir))
       } else {
         expect(project.executablePath).toBeUndefined()
       }

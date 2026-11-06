@@ -21,6 +21,7 @@
 import { execSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { pushRelease, updateReleaseBranch } from './release-git'
 
 type VersionType = 'major' | 'minor' | 'patch' | 'auto'
 
@@ -402,9 +403,7 @@ const commitAndTag = (version: string, platform: string, shouldPush: boolean) =>
 
   if (shouldPush) {
     console.log('\n📤 Pushing to remote...')
-    const currentBranch = exec('git branch --show-current', true)
-    exec(`git push origin ${currentBranch}`)
-    exec(`git push origin ${tagName}`)
+    pushRelease(tagName)
     console.log('  ✓ Pushed to remote')
 
     console.log(`\n✅ Tag ${tagName} created and pushed`)
@@ -465,6 +464,8 @@ const main = () => {
     console.error('Please commit or stash your changes first')
     process.exit(1)
   }
+
+  if (args.push && !args.dryRun) updateReleaseBranch()
 
   // Determine new version
   const currentVersion = getCurrentVersion()

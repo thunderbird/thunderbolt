@@ -51,7 +51,12 @@ FROM nginxinc/nginx-unprivileged:alpine
 
 # The base image can lag Alpine's security fixes; take them at build time (nightly-images.yml rebuilds daily).
 USER root
-RUN apk upgrade --no-cache
+# Retry transient mirror failures, but still fail if security updates cannot be installed.
+RUN for attempt in 1 2 3; do \
+      apk upgrade --no-cache && break; \
+      if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+      sleep 5; \
+    done
 
 # Backend upstream — resolved at container start via the official nginx
 # image's `envsubst` entrypoint over /etc/nginx/templates/*.template.

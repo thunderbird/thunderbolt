@@ -184,10 +184,15 @@ describe('PendingDeviceModal', () => {
       mlkemPublicKey,
     })
     const requests: string[] = []
+    const envelopeRequested = Promise.withResolvers<void>()
     const httpClient = createClient({
       prefixUrl: 'http://test-api.local',
       fetch: async (request) => {
-        requests.push(new URL(request instanceof Request ? request.url : String(request)).pathname)
+        const path = new URL(request instanceof Request ? request.url : String(request)).pathname
+        requests.push(path)
+        if (path === '/devices/me/envelope') {
+          envelopeRequested.resolve()
+        }
         return Response.json({ error: 'Test stops at the envelope boundary' }, { status: 404 })
       },
     })
@@ -227,7 +232,10 @@ describe('PendingDeviceModal', () => {
       await getClock().runAllAsync()
     })
     fireEvent.change(screen.getByLabelText('Device fingerprint'), { target: { value: fingerprint } })
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+      await envelopeRequested.promise
+    })
     await waitForElement(() => screen.queryByRole('alert'))
     expect(requests).toContain('/devices/me/envelope')
     expect(requests.filter((path) => path === '/devices/me/envelope')).toHaveLength(1)

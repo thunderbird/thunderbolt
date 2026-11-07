@@ -6,7 +6,7 @@ import { getClock } from '@/testing-library'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { tool } from 'ai'
 import { z } from 'zod'
-import type { PreparedAiRequestConfig } from '@/ai/fetch'
+import type { PreparedAiRequestConfig, prepareAiRequestConfig } from '@/ai/fetch'
 import { builtInAgent } from '@/defaults/agents'
 import { defaultModelProfileOpus55 } from '@/defaults/model-profiles'
 import { createClient } from '@/lib/http'
@@ -72,8 +72,8 @@ const fixture = (
       }),
     },
   }
-  const adapter = () =>
-    createBuiltInAdapter(builtInAgent, { prepareConfig: async () => ({ ...config, model: context.selectedModel }) })
+  const prepareConfig = mock<typeof prepareAiRequestConfig>(async () => ({ ...config, model: context.selectedModel }))
+  const adapter = () => createBuiltInAdapter(builtInAgent, { prepareConfig })
   const context: AgentAdapterContext = {
     threadId: crypto.randomUUID(),
     chatThread: null,
@@ -84,6 +84,7 @@ const fixture = (
     reconnectClient: async () => null,
     httpClient: createClient({ prefixUrl: 'https://backend.test' }),
     onAcpSessionId: async () => {},
+    requestPermission: async () => ({ outcome: { outcome: 'selected', optionId: 'allow' } }),
     onCompactionStatus: (value) => status.push(value),
     getProxyFetch: () =>
       Object.assign(
@@ -133,7 +134,7 @@ const fixture = (
         { preconnect: async () => false },
       ),
   }
-  return { adapter, context, requests, providerRequests, status, config }
+  return { adapter, context, requests, providerRequests, status, config, prepareConfig }
 }
 
 const user = (text: string): ThunderboltUIMessage => ({
@@ -184,6 +185,20 @@ describe('built-in compaction integration', () => {
         await adapter.fetch(body([first, assistant('Done'), next, assistant('Done'), user('Use default')]), f.context),
       )
       expect(f.providerRequests.at(-1)?.reasoning_effort).toBe('high')
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
+  it('keeps approval ownership identical for sends and explicit Mini App compaction', async () => {
+    const f = fixture({ embeddedSurface: 'mini-app' })
+    const adapter = f.adapter()
+    const first = user('Remember the app task')
+    try {
+      await metadata(await adapter.fetch(body([first]), f.context))
+      await adapter.compact!(body([first, assistant('Done')]), f.context)
+      expect(f.prepareConfig).toHaveBeenCalledTimes(2)
+      expect(f.prepareConfig.mock.calls.every(([request]) => request.toolApprovalHandled === true)).toBe(true)
     } finally {
       adapter.disconnect()
     }

@@ -64,6 +64,7 @@ import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
 import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
+import { AgentExecutionControls } from '../agent-execution-controls'
 import { EffortSelector } from './effort-selector'
 import { ChatModelPicker } from './chat-model-picker'
 import { ChatAttestation } from './attestation'
@@ -805,6 +806,9 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
           onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
         />
+        {isBuiltInAgent(selectedAgent) && (
+          <AgentExecutionControls key={chatThreadId} threadId={chatThreadId} disabled={isBusy || isConnecting} />
+        )}
         {isConnecting ? (
           <div
             role="status"

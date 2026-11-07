@@ -273,8 +273,11 @@ export const createDesktopUpdateStore = (services: UpdateServices) => {
   return store
 }
 
+/** Development builds have no updater endpoint and use the local source tree. */
+export const isDesktopUpdateEnabled = (): boolean => !import.meta.env.DEV && isDesktop()
+
 const useUpdateStore = createDesktopUpdateStore({
-  isDesktop: () => isDesktop(),
+  isDesktop: isDesktopUpdateEnabled,
   check: async () => {
     // Keep desktop-only plugins out of the web entry bundle.
     const { check } = await import('@tauri-apps/plugin-updater')
@@ -291,7 +294,7 @@ const useUpdateStore = createDesktopUpdateStore({
 export const useDesktopUpdate = (store: StoreApi<DesktopUpdateState> = useUpdateStore): DesktopUpdateState => {
   const state = useStore(store)
   useEffect(() => {
-    if (!isDesktop() || state.status !== 'initial') {
+    if (!isDesktopUpdateEnabled() || state.status !== 'initial') {
       return
     }
     const timeout = setTimeout(() => {

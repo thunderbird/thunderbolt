@@ -16,11 +16,10 @@
  */
 
 import { apiBaseUrl } from '../auth/config.ts'
+import type { FetchFn } from '../auth/http-transport.ts'
 import type { BridgeCredential } from '../auth/token-store.ts'
 
-/** The subset of `fetch` this client uses; injected so the wire contract is
- *  unit-testable without a real network (mirrors {@link auth/http-transport}). */
-export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>
+export type { FetchFn } from '../auth/http-transport.ts'
 
 /** `GET /devices/allowlist` 200 body: one row per trusted, non-revoked device that
  *  has bound an iroh identity. `nodeId` is non-null in practice (the query filters

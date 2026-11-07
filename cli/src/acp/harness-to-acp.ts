@@ -26,9 +26,10 @@ import type { StopReason as PiStopReason } from '@earendil-works/pi-ai'
 import type { AgentHarnessEvent } from '@earendil-works/pi-agent-core'
 import type { SessionUpdate, StopReason, ToolCallContent } from '@agentclientprotocol/sdk'
 import { toAcpToolKind } from '../../../shared/agent-tool-permissions.ts'
+import { webFetchToolName } from '../agent/webfetch.ts'
 
 /** Map a built-in tool name to its ACP {@link ToolKind}. */
-export const toToolKind = (toolName: string) => (toolName === 'webfetch' ? 'fetch' : toAcpToolKind(toolName))
+export const toToolKind = (toolName: string) => (toolName === webFetchToolName ? 'fetch' : toAcpToolKind(toolName))
 
 /**
  * Map a Pi {@link PiStopReason} to the ACP {@link StopReason} returned from

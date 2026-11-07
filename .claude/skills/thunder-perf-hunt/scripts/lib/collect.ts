@@ -19,6 +19,7 @@ import type {
 import type { ScenarioDef } from './scenarios'
 import { collectA11y } from '../probes/a11y'
 import { collectHeapDelta } from '../probes/heap'
+import { collectNetwork } from './network'
 
 const NAV_TIMEOUT = 45_000
 const TAURI_NOISE = ['__TAURI__', 'tauri', '__TAURI_INTERNALS__', 'convertFileSrc']
@@ -34,16 +35,22 @@ type SnapshotShape = {
 export const launchBrowser = (name: BrowserName): Promise<Browser> =>
   (name === 'firefox' ? firefox : chromium).launch({ headless: true })
 
-/** Keep the biggest, unique requests — enough to spot bloat without flooding the report. */
+/** Retain failures before the biggest unique requests so the report cap cannot hide network errors. */
 const dedupeNetwork = (samples: NetworkSample[]): NetworkSample[] => {
   const seen = new Set<string>()
   const unique = samples.filter((s) => {
-    const key = `${s.method} ${s.url}`
+    const key = `${s.method} ${s.url} ${s.status}`
     if (seen.has(key)) return false
     seen.add(key)
     return true
   })
-  return unique.sort((a, b) => b.transferSizeBytes - a.transferSizeBytes).slice(0, 60)
+  return unique
+    .sort((a, b) => {
+      const aFailed = a.status === 0 || a.status >= 400
+      const bFailed = b.status === 0 || b.status >= 400
+      return Number(bFailed) - Number(aFailed) || b.transferSizeBytes - a.transferSizeBytes
+    })
+    .slice(0, 60)
 }
 
 const readSnapshot = async (page: Page): Promise<SnapshotShape> => (await page.evaluate(READ_SNAPSHOT)) as SnapshotShape
@@ -57,6 +64,7 @@ export const collectScenario = async (
   runDir: string,
 ): Promise<ScenarioReport> => {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+  let networkRecorder: ReturnType<typeof collectNetwork> | undefined
   try {
     const url = baseUrl + scenario.path
     // Warm Vite's transforms and lazy route chunks in a separate document; the
@@ -72,7 +80,8 @@ export const collectScenario = async (
 
     const consoleSamples: ConsoleSample[] = []
     const pageErrors: string[] = []
-    const network: NetworkSample[] = []
+    const network = collectNetwork(page)
+    networkRecorder = network
 
     page.on('console', (msg) => {
       const level = msg.type()
@@ -84,20 +93,6 @@ export const collectScenario = async (
     page.on('pageerror', (err) => {
       if (TAURI_NOISE.some((n) => err.message.includes(n))) return
       pageErrors.push(err.message.slice(0, 500))
-    })
-    page.on('response', (res) => {
-      const req = res.request()
-      const headers = res.headers()
-      const size = Number(headers['content-length'] ?? 0)
-      network.push({
-        url: res.url().slice(0, 300),
-        method: req.method(),
-        status: res.status(),
-        resourceType: req.resourceType(),
-        transferSizeBytes: Number.isFinite(size) ? size : 0,
-        durationMs: Math.max(0, req.timing().responseEnd),
-        renderBlocking: req.resourceType() === 'script' || req.resourceType() === 'stylesheet',
-      })
     })
 
     const startedAt = new Date().toISOString()
@@ -163,7 +158,7 @@ export const collectScenario = async (
       longTasks: snap.longTasks,
       renders: snap.renders,
       noiseRenders: noise.renders,
-      network: dedupeNetwork(network),
+      network: dedupeNetwork(await network.finish()),
       console: consoleSamples,
       heap,
       a11y,
@@ -172,6 +167,7 @@ export const collectScenario = async (
       screenshotPath,
     }
   } finally {
+    networkRecorder?.dispose()
     await context.close()
   }
 }

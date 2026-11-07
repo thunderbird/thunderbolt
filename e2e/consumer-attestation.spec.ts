@@ -51,7 +51,10 @@ for (const viewport of [
       await page.getByTestId('agent-selector-trigger').click()
       await page.getByText('Zeus', { exact: true }).click()
       await selector.click()
-      await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+      await page
+        .getByRole('dialog', { name: 'Model and reasoning effort', exact: true })
+        .getByRole('button', { name: defaultModelOpus55.name, exact: true })
+        .click()
       await expect(
         page.getByRole('button', { name: /Verification failed|Connection verified|Private inference/ }),
       ).toHaveCount(0)
@@ -94,7 +97,10 @@ test('an ACP agent explains its own boundary without inheriting the local model 
   })
   await loginViaEmailCode(page)
   await page.getByTestId('agent-selector-trigger').click()
-  await page.getByRole('button', { name: 'Privacy test agent', exact: true }).click()
+  await page
+    .getByRole('dialog', { name: 'Choose agent', exact: true })
+    .getByText('Privacy test agent', { exact: true })
+    .click()
   await page.getByRole('button', { name: 'Connection privacy: Agent privacy', exact: true }).click()
 
   const modal = page.getByRole('dialog', { name: 'Connection privacy', exact: true })

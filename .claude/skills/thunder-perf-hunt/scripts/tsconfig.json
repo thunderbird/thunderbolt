@@ -1,4 +1,5 @@
 {
+  "extends": "../../../../tsconfig.json",
   "compilerOptions": {
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -11,5 +12,5 @@
     "allowImportingTsExtensions": true,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts", "../../../../src/**/*.d.ts"]
 }

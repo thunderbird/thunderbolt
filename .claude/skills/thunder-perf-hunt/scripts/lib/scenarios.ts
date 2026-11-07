@@ -130,18 +130,18 @@ export const SCENARIOS: ScenarioDef[] = [
 
 /**
  * Maps a changed source path to the scenarios that exercise it, for diff mode.
- * Falls back to the full sweep when nothing matches (unknown blast radius).
+ * Falls back to the full sweep when any file has unknown coverage.
  */
 export const scenariosForChangedFiles = (files: string[]): ScenarioDef[] => {
-  const matched = new Set<ScenarioDef>()
-  for (const f of files) {
-    const p = f.toLowerCase()
-    for (const s of SCENARIOS) {
-      if (s.tags.some((t) => p.includes(t)) || p.includes(s.name)) matched.add(s)
-    }
-    if (p.includes('chat') || p.includes('layout') || p.includes('app.tsx')) {
-      matched.add(SCENARIOS[0])
-    }
-  }
-  return matched.size > 0 ? [...matched] : SCENARIOS
+  const covered = files.map((file) => {
+    const path = file.toLowerCase()
+    return SCENARIOS.filter(
+      (scenario, index) =>
+        scenario.tags.some((tag) => path.includes(tag)) ||
+        path.includes(scenario.name) ||
+        (index === 0 && ['chat', 'layout', 'app.tsx'].some((part) => path.includes(part))),
+    )
+  })
+  if (covered.length === 0 || covered.some((scenarios) => scenarios.length === 0)) return SCENARIOS
+  return [...new Set(covered.flat())]
 }

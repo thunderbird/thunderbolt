@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 type GitCommand = (args: string[]) => string
 
@@ -10,7 +11,11 @@ export type ReleaseTarget = { branch?: string; expectedSha?: string }
 
 /** Run Git without shell interpolation, preserving diagnostics on stderr. */
 const runGit: GitCommand = (args) =>
-  execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim()
+  execFileSync('git', args, {
+    cwd: fileURLToPath(new URL('..', import.meta.url)),
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+  }).trim()
 
 /** Refresh manual releases, or skip a nightly whose tested revision is no longer current. */
 export const updateReleaseBranch = (target: ReleaseTarget = {}, git: GitCommand = runGit): boolean => {

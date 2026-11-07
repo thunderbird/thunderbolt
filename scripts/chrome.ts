@@ -33,10 +33,9 @@ export const getChromeCacheDir = (
 
 /** Resolve the installed Stable alias without network access or a fallback to bundled Chromium. */
 export const getChromeExecutablePath = (cacheDir = getChromeCacheDir()): string => {
-  const buildId = new Cache(cacheDir).resolveAlias(Browser.CHROME, BrowserTag.STABLE)
-  if (!buildId) {
-    throw new Error('Chrome for Testing Stable is not installed. Run `bun run browsers:install`.')
-  }
+  // Configuration may be imported by WebKit/Firefox-only runs without Chrome installed.
+  // An unresolved alias stays a missing Stable path, so Chromium fails at launch instead.
+  const buildId = new Cache(cacheDir).resolveAlias(Browser.CHROME, BrowserTag.STABLE) ?? BrowserTag.STABLE
   return computeExecutablePath({ cacheDir, browser: Browser.CHROME, buildId })
 }
 

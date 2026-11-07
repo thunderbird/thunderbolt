@@ -62,6 +62,28 @@ describe('Chrome cache', () => {
     expect(result.stderr.toString()).toContain('bun run browsers:install')
   })
 
+  test('imports WebKit-only extended projects with no Chrome installation', () => {
+    const result = Bun.spawnSync(
+      [
+        process.execPath,
+        '-e',
+        `import config from './playwright.extended.config.ts'; console.log(JSON.stringify(config.projects.map(project => project.use?.defaultBrowserType)))`,
+      ],
+      {
+        cwd: join(import.meta.dir, '..'),
+        env: {
+          ...process.env,
+          PLAYWRIGHT_BROWSERS_PATH: join(cacheDir, 'empty-webkit-cache'),
+          EXTENDED_PLATFORM: 'darwin',
+        },
+      },
+    )
+    expect(result.exitCode).toBe(0)
+    const browsers = JSON.parse(result.stdout.toString()) as string[]
+    expect(browsers.length).toBeGreaterThan(0)
+    expect(browsers.every((browser) => browser === 'webkit')).toBe(true)
+  })
+
   test.each(['darwin', 'linux'])('extended %s projects keep Chrome launch options out of other engines', (platform) => {
     const result = Bun.spawnSync(
       [

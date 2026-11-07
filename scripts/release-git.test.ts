@@ -193,8 +193,8 @@ describe('nightly tested revision', () => {
       writeFileSync(join(checkout, '.git/info/exclude'), 'scripts/\n')
       const output = join(directory, 'output')
       const summary = join(directory, 'summary')
-      const result = Bun.spawnSync([process.execPath, 'scripts/create-release.ts', '--push'], {
-        cwd: checkout,
+      const result = Bun.spawnSync([process.execPath, join(checkout, 'scripts/create-release.ts'), '--push'], {
+        cwd: directory,
         env: {
           ...process.env,
           RELEASE_BRANCH: target.branch,

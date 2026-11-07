@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'bun:test'
 import { Globe, Server, Sparkles } from 'lucide-react'
 import { AppLogo } from '@/components/app-logo'
-import { builtInAgent } from '@/defaults/agents'
+import { GradientLock } from '@/components/ui/gradient-lock'
+import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 import { iconForAgent } from './agent-icon'
 
@@ -28,8 +29,9 @@ describe('iconForAgent', () => {
     expect(iconForAgent({ ...hostedAgent, icon: null })).toBe(Server)
   })
 
-  it('ignores the icon field on a user-added agent and on the built-in', () => {
+  it('ignores the icon field on a user-added agent and uses the built-in identity', () => {
     expect(iconForAgent({ ...hostedAgent, type: 'remote-acp', isSystem: 0, icon: 'sparkles' })).toBe(Globe)
-    expect(iconForAgent({ ...builtInAgent, icon: 'sparkles' })).toBe(AppLogo)
+    expect(iconForAgent({ ...builtInAgent, icon: 'sparkles' })).toBe(GradientLock)
+    expect(iconForAgent(zeusAgent)).toBe(AppLogo)
   })
 })

@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultModelDeepSeekV41Flash, defaultModelGlm53, defaultModelOpus55 } from '@shared/defaults/models'
 import { getSettings } from '@/dal'
 import { getChatThread } from '@/dal/chat-threads'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { chatThreadsTable } from '@/db/tables'
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 import type { ChatThread } from '@/types'
 import {
@@ -175,10 +176,10 @@ describe('chat-store', () => {
       await expect(session?.chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow('No selected model')
     })
 
-    it('should throw error when chatThread encryption does not match model confidentiality', async () => {
+    it('rejects a non-Tinfoil model for Thunderbolt even if its confidentiality flag says private', async () => {
       const chatInstance = createMockChatInstanceWithValidation()
       const encryptedThread = createMockChatThread({ isEncrypted: 1 })
-      const nonConfidentialModel = createMockModel({ isConfidential: 0 })
+      const nonConfidentialModel = createMockModel({ provider: 'thunderbolt', model: 'opus-5-5', isConfidential: 1 })
 
       hydrateStore({
         chatInstance,
@@ -192,28 +193,17 @@ describe('chat-store', () => {
 
       const session = getCurrentSession()
       await expect(session?.chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
-        'This model is not available for encrypted conversations.',
+        'This model is not available for the selected agent',
       )
     })
 
-    it('should throw error when unencrypted thread is used with confidential model', async () => {
+    it('rejects Tinfoil for Zeus independently of the thread privacy flag', async () => {
       const chatInstance = createMockChatInstanceWithValidation()
-      const unencryptedThread = createMockChatThread({ isEncrypted: 0 })
-      const confidentialModel = createMockModel({ isConfidential: 1 })
-
-      hydrateStore({
-        chatInstance,
-        chatThread: unencryptedThread,
-        id: 'test-id',
-        mcpClients: [],
-        models: [confidentialModel],
-        selectedModel: confidentialModel,
-        triggerData: null,
-      })
-
-      const session = getCurrentSession()
-      await expect(session?.chatInstance?.sendMessage({ text: 'test message' })).rejects.toThrow(
-        'This model is not available for unencrypted conversations.',
+      const model = createMockModel()
+      hydrateStore({ chatInstance, chatThread: null, id: 'test-id', selectedModel: model, triggerData: null })
+      useChatStore.getState().updateSession('test-id', { selectedAgent: zeusAgent })
+      await expect(chatInstance.sendMessage({ text: 'hi' })).rejects.toThrow(
+        'This model is not available for the selected agent',
       )
     })
 
@@ -281,45 +271,26 @@ describe('chat-store', () => {
   })
 
   describe('setModels', () => {
-    it('re-resolves only a built-in session the private-chat lock holds, leaving the rest untouched', () => {
-      const hostedAgent: Agent = { ...builtInAgent, id: 'hosted-agent', type: 'managed-http', transport: 'http' }
-      const confidentialModel = createMockModel({
-        id: 'confidential',
-        provider: 'tinfoil',
-        isSystem: 1,
-        isConfidential: 1,
+    it('re-resolves a model outside the agent policy without changing the agent', () => {
+      const wrong = createMockModel({ id: defaultModelOpus55.id, provider: 'thunderbolt', model: 'opus-5-5' })
+      const fitting = createMockModel({ id: defaultModelDeepSeekV41Flash.id })
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'test-id',
+        selectedModel: wrong,
+        triggerData: null,
       })
-      const fittingModel = createMockModel({ id: 'fitting', provider: 'thunderbolt' })
-      const addedModel = createMockModel({ id: 'added', provider: 'thunderbolt' })
-      const seed = (id: string, agent: Agent, selectedModel: Model) => {
-        hydrateStore({
-          chatInstance: createMockChatInstanceWithValidation(),
-          chatThread: createMockChatThread({ id, isEncrypted: 0 }),
-          id,
-          models: [confidentialModel],
-          selectedModel,
-          triggerData: null,
-        })
-        useChatStore.getState().updateSession(id, { selectedAgent: agent })
-      }
-      seed('hosted', hostedAgent, confidentialModel)
-      seed('fits', builtInAgent, fittingModel)
-      seed('blocked', builtInAgent, confidentialModel)
-      const before = useChatStore.getState().sessions
-
-      useChatStore.getState().setModels([confidentialModel, addedModel])
-
-      const after = useChatStore.getState().sessions
-      expect(after.get('hosted')).toBe(before.get('hosted'))
-      expect(after.get('fits')).toBe(before.get('fits'))
-      expect(after.get('blocked')?.selectedModel.id).toBe(addedModel.id)
+      useChatStore.getState().setModels([wrong, fitting])
+      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+      expect(getCurrentSession()?.selectedModel.id).toBe(fitting.id)
     })
   })
 
   describe('setSelectedModel', () => {
     it('should throw error when model is not found', async () => {
-      const model1 = createMockModel({ id: 'model-1' })
-      const model2 = createMockModel({ id: 'model-2' })
+      const model1 = createMockModel({ id: defaultModelDeepSeekV41Flash.id })
+      const model2 = createMockModel({ id: defaultModelGlm53.id })
 
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -337,8 +308,8 @@ describe('chat-store', () => {
     })
 
     it('should set selected model and update settings', async () => {
-      const model1 = createMockModel({ id: 'model-1', name: 'Model 1' })
-      const model2 = createMockModel({ id: 'model-2', name: 'Model 2' })
+      const model1 = createMockModel({ id: defaultModelDeepSeekV41Flash.id, name: 'Model 1' })
+      const model2 = createMockModel({ id: defaultModelGlm53.id, name: 'Model 2' })
 
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -350,19 +321,19 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await useChatStore.getState().setSelectedModel('test-id', 'model-2')
+      await useChatStore.getState().setSelectedModel('test-id', defaultModelGlm53.id)
 
       const session = getCurrentSession()
       expect(session?.selectedModel).toBe(model2)
-      expect(session?.selectedModel?.id).toBe('model-2')
+      expect(session?.selectedModel?.id).toBe(defaultModelGlm53.id)
 
       // Verify updateSettings was called by checking the database
       const settings = await getSettings(getDb(), { selected_model: String })
-      expect(settings.selectedModel).toBe('model-2')
+      expect(settings.selectedModel).toBe(defaultModelGlm53.id)
     })
 
     it('should update settings with correct model id', async () => {
-      const model = createMockModel({ id: 'custom-model-id' })
+      const model = createMockModel({ id: defaultModelGlm53.id })
 
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -374,15 +345,15 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await useChatStore.getState().setSelectedModel('test-id', 'custom-model-id')
+      await useChatStore.getState().setSelectedModel('test-id', defaultModelGlm53.id)
 
       // Verify updateSettings was called by checking the database
       const settings = await getSettings(getDb(), { selected_model: String })
-      expect(settings.selectedModel).toBe('custom-model-id')
+      expect(settings.selectedModel).toBe(defaultModelGlm53.id)
     })
 
     it('should complete without errors when setting model', async () => {
-      const model = createMockModel({ id: 'tracked-model' })
+      const model = createMockModel({ id: defaultModelDeepSeekV41Flash.id })
 
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -396,14 +367,14 @@ describe('chat-store', () => {
 
       // trackEvent is called but we don't verify it to avoid module mocking
       // The function is safe to call and won't throw even if posthogClient is null
-      await useChatStore.getState().setSelectedModel('test-id', 'tracked-model')
+      await useChatStore.getState().setSelectedModel('test-id', defaultModelDeepSeekV41Flash.id)
 
       const session = getCurrentSession()
-      expect(session?.selectedModel?.id).toBe('tracked-model')
+      expect(session?.selectedModel?.id).toBe(defaultModelDeepSeekV41Flash.id)
     })
 
     it('invokes the prewarm wrapper with the selected model (wrapper owns the tinfoil/system guard)', async () => {
-      const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
+      const model = createMockModel({ id: defaultModelDeepSeekV41Flash.id, provider: 'tinfoil', isSystem: 1 })
       const prewarmSystemModel = mock(async () => {})
 
       hydrateStore({
@@ -423,7 +394,7 @@ describe('chat-store', () => {
     })
 
     it('does not propagate prewarm errors into model selection', async () => {
-      const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
+      const model = createMockModel({ id: defaultModelDeepSeekV41Flash.id, provider: 'tinfoil', isSystem: 1 })
       const prewarmFailure = Promise.reject(new Error('attestation failed'))
       void prewarmFailure.catch(() => undefined)
       const prewarmSystemModel = mock(() => prewarmFailure)
@@ -462,7 +433,7 @@ describe('chat-store', () => {
     }
 
     /** Seeds a persisted thread and matching hydrated chat session. */
-    const seedThreadSession = async (id: string, agent: Agent, acpSessionId: string): Promise<ChatThread> => {
+    const seedThreadSession = async (id: string, agent: Agent, acpSessionId: string | null): Promise<ChatThread> => {
       const model = createMockModel()
       const chatThread = createMockChatThread({ id, agentId: agent.id, acpSessionId })
       await getDb().insert(chatThreadsTable).values({ id, title: 'x', agentId: agent.id, acpSessionId })
@@ -497,18 +468,40 @@ describe('chat-store', () => {
       expect(session?.selectedAgent.id).toBe(customAgent.id)
     })
 
-    it('switches the thread agent and clears its ACP session in memory and storage', async () => {
-      const chatThread = await seedThreadSession('thread-persist', builtInAgent, 'session-from-previous-agent')
-
-      await useChatStore.getState().setSelectedAgent(chatThread.id, customAgent)
-
-      const session = getCurrentSession()
-      const stored = await getChatThread(getDb(), chatThread.id)
-      expect(session?.chatThread?.agentId).toBe(customAgent.id)
-      expect(session?.chatThread?.acpSessionId).toBeNull()
-      expect(stored?.agentId).toBe(customAgent.id)
-      expect(stored?.acpSessionId).toBeNull()
+    it('rejects agent changes for a persisted chat without altering its ACP session or preference', async () => {
+      const chatThread = await seedThreadSession('thread-persist', builtInAgent, 'previous-session')
+      await expect(useChatStore.getState().setSelectedAgent(chatThread.id, customAgent)).rejects.toThrow(
+        'Cannot change the agent',
+      )
+      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+      expect((await getChatThread(getDb(), chatThread.id))?.acpSessionId).toBe('previous-session')
+      expect((await getChatThread(getDb(), chatThread.id))?.agentId).toBe(builtInAgent.id)
     })
+
+    it.each(['messages', 'submitted', 'streaming', 'voice'] as const)(
+      'locks the agent before persistence during %s',
+      async (kind) => {
+        const chatInstance = createMockChatInstanceWithValidation(
+          kind === 'messages' ? [{ id: 'm', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] : [],
+        )
+        if (kind === 'submitted' || kind === 'streaming') {
+          Object.assign(chatInstance, { status: kind })
+        }
+        hydrateStore({
+          chatInstance,
+          chatThread: null,
+          id: 'pending',
+          selectedModel: createMockModel(),
+          triggerData: null,
+        })
+        if (kind === 'voice') {
+          useChatStore.getState().updateSession('pending', { agentLocked: true })
+        }
+        await expect(useChatStore.getState().setSelectedAgent('pending', customAgent)).rejects.toThrow(
+          'Cannot change the agent',
+        )
+      },
+    )
 
     it('preserves the ACP session when selecting the current agent', async () => {
       const chatThread = await seedThreadSession('thread-same-agent', customAgent, 'current-session')
@@ -526,6 +519,22 @@ describe('chat-store', () => {
 
       expect(getCurrentSession()?.selectedAgent.url).toBe('wss://new.example.test/ws')
       expect(getCurrentSession()?.chatThread?.acpSessionId).toBeNull()
+    })
+
+    it('recovers only matching available identities after discovery has finished', async () => {
+      await seedThreadSession('late-sync', { ...customAgent, enabled: 0, url: null }, 'saved-session')
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
+      useChatStore.getState().recoverUnavailableAgents([{ ...customAgent, id: 'other' }])
+      expect(getCurrentSession()?.selectedAgent.enabled).toBe(0)
+      useChatStore.getState().recoverUnavailableAgents([{ ...customAgent, enabled: 0 }])
+      expect(getCurrentSession()?.selectedAgent.enabled).toBe(0)
+      useChatStore.getState().recoverUnavailableAgents([customAgent])
+      expect(getCurrentSession()?.selectedAgent).toBe(customAgent)
+      expect(getCurrentSession()?.chatThread?.agentId).toBe(customAgent.id)
+      expect(getCurrentSession()?.chatThread?.acpSessionId).toBe('saved-session')
+      const sessions = useChatStore.getState().sessions
+      useChatStore.getState().recoverUnavailableAgents([customAgent])
+      expect(useChatStore.getState().sessions).toBe(sessions)
     })
 
     describe('applyDiscoveredDefaultAgent', () => {
@@ -601,6 +610,13 @@ describe('chat-store', () => {
         })
 
         expect(agentOf('synced-pick')).toBe(syncedPick.id)
+      })
+
+      it('recovers a saved unavailable agent only when that same identity arrives', async () => {
+        await seedThreadSession('waiting', { ...customAgent, enabled: 0, url: null }, null)
+        useChatStore.getState().applyDiscoveredDefaultAgent(hostedDefault, [hostedDefault, customAgent], {})
+        expect(getCurrentSession()?.selectedAgent).toBe(customAgent)
+        expect(getCurrentSession()?.chatThread?.agentId).toBe(customAgent.id)
       })
 
       it('records the discovered default for chats that hydrate later, and forgets it on null', () => {
@@ -683,60 +699,24 @@ describe('chat-store', () => {
       expect(settings.selectedAgent).toBe(customAgent.id)
     })
 
-    describe('model on a switch to the built-in agent', () => {
-      const hostedAgent: Agent = { ...customAgent, id: 'hosted-agent', type: 'managed-http', transport: 'http' }
-      const confidentialModel = createMockModel({
-        id: 'confidential',
-        provider: 'tinfoil',
-        isSystem: 1,
-        isConfidential: 1,
+    it('selects Opus when choosing Zeus before starting a chat', async () => {
+      const tinfoil = createMockModel()
+      const opus = createMockModel({
+        id: defaultModelOpus55.id,
+        provider: 'thunderbolt',
+        model: 'opus-5-5',
+        isConfidential: 0,
       })
-      const standardModel = createMockModel({ id: 'standard', provider: 'thunderbolt', isConfidential: 0 })
-
-      /** A hosted-agent thread (never private) whose session holds `selectedModel`. */
-      const seedHostedThread = async (models: Model[], selectedModel: Model) => {
-        await getDb().insert(chatThreadsTable).values({ id: 'hosted-thread', title: 'x', agentId: hostedAgent.id })
-        hydrateStore({
-          chatInstance: createMockChatInstanceWithValidation(),
-          chatThread: createMockChatThread({ id: 'hosted-thread', agentId: hostedAgent.id, isEncrypted: 0 }),
-          id: 'hosted-thread',
-          mcpClients: [],
-          models,
-          selectedModel,
-          triggerData: null,
-        })
-        useChatStore.getState().updateSession('hosted-thread', { selectedAgent: hostedAgent })
-      }
-
-      it('swaps a confidential model for a compatible one so the next send goes through', async () => {
-        await seedHostedThread([confidentialModel, standardModel], confidentialModel)
-
-        await useChatStore.getState().setSelectedAgent('hosted-thread', builtInAgent)
-
-        expect(getCurrentSession()?.selectedModel.id).toBe(standardModel.id)
-        const chatInstance = getCurrentSession()!.chatInstance as ReturnType<
-          typeof createMockChatInstanceWithValidation
-        >
-        await chatInstance.sendMessage({ text: 'hello' })
-        expect(chatInstance._originalSendMessage).toHaveBeenCalledTimes(1)
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'new',
+        selectedModel: tinfoil,
+        models: [tinfoil, opus],
+        triggerData: null,
       })
-
-      it('leaves a model that already matches the thread alone', async () => {
-        const otherStandard = createMockModel({ id: 'other-standard', provider: 'thunderbolt' })
-        await seedHostedThread([standardModel, otherStandard], otherStandard)
-
-        await useChatStore.getState().setSelectedAgent('hosted-thread', builtInAgent)
-
-        expect(getCurrentSession()?.selectedModel.id).toBe(otherStandard.id)
-      })
-
-      it('keeps the model when no compatible one exists, for the composer to hold the send', async () => {
-        await seedHostedThread([confidentialModel], confidentialModel)
-
-        await useChatStore.getState().setSelectedAgent('hosted-thread', builtInAgent)
-
-        expect(getCurrentSession()?.selectedModel.id).toBe(confidentialModel.id)
-      })
+      await useChatStore.getState().setSelectedAgent('new', zeusAgent)
+      expect(getCurrentSession()?.selectedModel.id).toBe(opus.id)
     })
 
     it('throws when the session is missing', async () => {

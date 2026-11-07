@@ -20,7 +20,7 @@ import { attestationStore } from '@/attestation/store'
 import { tinfoilAttestationKey } from '@/attestation/target'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
-const model = createMockModel({ id: 'effort-model', provider: 'tinfoil', model: 'glm-5-3' })
+const model = createMockModel({ id: 'effort-model', provider: 'tinfoil', model: 'glm-5-3', isSystem: 0, apiKey: null })
 let catalogRequest: ReturnType<typeof spyOn<typeof http, 'get'>>
 const Probe = () => {
   const { choices, value, busy, choose } = useEffortSelectorState()

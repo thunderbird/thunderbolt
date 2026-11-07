@@ -949,13 +949,13 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
                   hasModifications={experimentalFeatureVoice.isModified}
                   onReset={experimentalFeatureVoice.reset}
                 >
-                  <Trans>Custom voice provider</Trans>
+                  <Trans>Agent voice settings</Trans>
                 </ModificationIndicator>
               </div>
               <Switch
                 checked={experimentalFeatureVoice.value}
                 onCheckedChange={(value) => experimentalFeatureVoice.setValue(value)}
-                aria-label={t`Custom voice provider`}
+                aria-label={t`Agent voice settings`}
               />
             </div>
           </div>

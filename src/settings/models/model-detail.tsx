@@ -11,7 +11,6 @@ import { ModificationIndicator } from '@/components/modification-indicator'
 import { DetailActionsMenu, DetailEditDeleteMenuItems } from '@/components/settings/detail-actions-menu'
 import { DetailField } from '@/components/settings/detail-field'
 import { needsApiKey } from './model-policy'
-import { PrivateBadge } from '@/components/ui/private-badge'
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import { useAppName } from '@/lib/branding-selectors'
@@ -58,13 +57,6 @@ export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: Model
         {model.url && (
           <DetailField label={t`URL`}>
             <p className="truncate text-base text-foreground">{model.url}</p>
-          </DetailField>
-        )}
-        {!!model.isConfidential && (
-          <DetailField label={t`Privacy`}>
-            <div>
-              <PrivateBadge />
-            </div>
           </DetailField>
         )}
       </div>

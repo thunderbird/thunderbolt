@@ -16,9 +16,10 @@ type VoiceModeButtonProps = {
   onStart: () => void
   /** Set while the composer holds every send, so voice cannot get around it. */
   disabled?: boolean
+  disabledReason?: string | null
 }
 
-export const VoiceModeButton = ({ onStart, disabled = false }: VoiceModeButtonProps) => {
+export const VoiceModeButton = ({ onStart, disabled = false, disabledReason }: VoiceModeButtonProps) => {
   const { t } = useLingui()
 
   return (
@@ -28,7 +29,7 @@ export const VoiceModeButton = ({ onStart, disabled = false }: VoiceModeButtonPr
       onClick={onStart}
       disabled={disabled}
       aria-label={t`Start voice mode`}
-      title={t`Start voice mode`}
+      title={disabledReason ?? t`Start voice mode`}
       className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
     >
       <AudioLines className="size-[var(--icon-size-default)]" />

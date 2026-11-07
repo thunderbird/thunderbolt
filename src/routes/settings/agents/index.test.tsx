@@ -82,9 +82,9 @@ describe('AgentsSettingsPage — availability', () => {
     // Nothing selected — the built-in detail heading only exists in the panel.
     expect(screen.queryByRole('button', { name: 'Close details' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Thunderbolt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Vesta' }))
 
-    expect(screen.getByRole('heading', { name: 'Thunderbolt' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Vesta' })).toBeInTheDocument()
     expect(screen.getByText(/built into the app — always here/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }))

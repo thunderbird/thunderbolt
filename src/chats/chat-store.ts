@@ -4,7 +4,7 @@
 
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 import { updateSettings } from '@/dal'
-import { updateChatThread } from '@/dal/chat-threads'
+import { isModelAvailableForAgent } from '@/defaults/agents'
 import { getDb } from '@/db/database'
 import { type NamedMCPClient, type ReconnectClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
@@ -91,6 +91,8 @@ export type ChatSession = {
   /** Opened with no messages while the device was still syncing; the chat shows a loader, not the empty state. */
   awaitingSyncedMessages?: boolean
   chatThread: ChatThread | null
+  /** First send or voice start fixes the agent before persistence finishes. */
+  agentLocked?: boolean
   connectionStatus: ConnectionStatus
   connectionError: Error | null
   id: string
@@ -159,6 +161,7 @@ type ChatStoreActions = {
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
   applyAgentWireIdentityChange(agent: Agent): void
+  recoverUnavailableAgents(agents: Agent[]): void
   /** Record what discovery reported as the default agent (null when it names
    *  none, or answered 401/403) and re-run `resolveSessionAgent` for every chat
    *  that is brand-new, unstarted and still on the agent the fallback chain gave
@@ -261,11 +264,36 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     }
   },
 
+  recoverUnavailableAgents: (agents) => {
+    const recovered = [...get().sessions.values()].flatMap((session) => {
+      if (session.selectedAgent.enabled !== 0) {
+        return []
+      }
+      const agent = agents.find(
+        (agent) => agent.id === session.selectedAgent.id && agent.enabled === 1 && !agent.deletedAt,
+      )
+      return agent ? [{ ...session, selectedAgent: agent }] : []
+    })
+    if (recovered.length === 0) {
+      return
+    }
+    const sessions = new Map(get().sessions)
+    for (const session of recovered) {
+      sessions.set(session.id, session)
+    }
+    set({ sessions })
+  },
+
   applyDiscoveredDefaultAgent: (defaultAgent, agents, preference) => {
     const nextSessions = new Map(get().sessions)
     for (const session of get().sessions.values()) {
-      const isUnstartedNewChat = !session.chatThread && session.chatInstance.messages.length === 0
+      const isUnstartedNewChat =
+        !session.agentLocked && !session.chatThread && session.chatInstance.messages.length === 0
       if (!isUnstartedNewChat || session.agentChosenByUser) {
+        const selectedAgent = agents.find((agent) => agent.id === session.selectedAgent.id)
+        if (selectedAgent && session.selectedAgent.enabled === 0) {
+          nextSessions.set(session.id, { ...session, selectedAgent })
+        }
         continue
       }
       const selectedAgent = resolveSessionAgent(agents, {
@@ -273,7 +301,11 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         discoveredDefaultAgent: defaultAgent ?? undefined,
       })
       if (selectedAgent.id !== session.selectedAgent.id) {
-        nextSessions.set(session.id, { ...session, selectedAgent })
+        nextSessions.set(session.id, {
+          ...session,
+          selectedAgent,
+          selectedModel: resolveSessionModel(selectedAgent, session.selectedModel, get().models),
+        })
       }
     }
     set({ agentDiscovery: { status: 'done', defaultAgent, agents }, sessions: nextSessions })
@@ -321,12 +353,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
   setModels: (models) => {
     const swapped = [...get().sessions].flatMap(([id, session]) => {
-      const selectedModel = resolveSessionModel(
-        session.selectedAgent,
-        session.chatThread,
-        session.selectedModel,
-        models,
-      )
+      const selectedModel = resolveSessionModel(session.selectedAgent, session.selectedModel, models)
       return selectedModel === session.selectedModel ? [] : [[id, { ...session, selectedModel }] as const]
     })
     if (swapped.length === 0) {
@@ -439,31 +466,25 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
-    const agentChanged = session.selectedAgent.id !== agent.id
-    const threadPatch = agentChanged ? { agentId: agent.id, acpSessionId: null } : { agentId: agent.id }
+    const started =
+      session.agentLocked ||
+      session.chatThread ||
+      session.chatInstance.messages.length > 0 ||
+      session.chatInstance.status === 'submitted' ||
+      session.chatInstance.status === 'streaming'
+    if (started) {
+      if (session.selectedAgent.id === agent.id) {
+        return
+      }
+      throw new Error('Cannot change the agent after a chat has started')
+    }
+    const selectedModel = resolveSessionModel(agent, session.selectedModel, models)
     const nextSessions = new Map(sessions)
-    const nextChatThread = session.chatThread ? { ...session.chatThread, ...threadPatch } : session.chatThread
-    // Session-only: the user picked an agent, not this model, so `selected_model` stays put.
-    const selectedModel = resolveSessionModel(agent, nextChatThread, session.selectedModel, models)
-    nextSessions.set(id, {
-      ...session,
-      chatThread: nextChatThread,
-      selectedAgent: agent,
-      selectedModel,
-      agentChosenByUser: true,
-    })
-
+    nextSessions.set(id, { ...session, selectedAgent: agent, selectedModel, agentChosenByUser: true })
     set({ sessions: nextSessions })
 
     const db = getDb()
-
-    if (session.chatThread) {
-      await updateChatThread(db, session.chatThread.id, threadPatch)
-    }
-
-    // Persist the global last-used agent so new chats default to it (mirrors
-    // `setSelectedModel`). The per-thread write above keeps existing chats
-    // pinned to their own agent.
+    // Only new chats inherit this preference; each persisted chat owns its agent.
     await updateSettings(db, { selected_agent: agent.id })
 
     trackEvent('agent_select', { agent: agent.id })
@@ -482,6 +503,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     if (!session) {
       throw new Error('No session found')
+    }
+
+    if (!isModelAvailableForAgent(session.selectedAgent, model)) {
+      throw new Error('This model is not available for the selected agent')
     }
 
     const nextSessions = new Map(sessions)

@@ -182,6 +182,7 @@ const DefaultTrigger = <T,>({
 
 export const SearchableMenu = <T,>({
   embedded = false,
+  disabled = false,
   items,
   value,
   onValueChange,
@@ -347,13 +348,17 @@ export const SearchableMenu = <T,>({
 
   return (
     <ResponsivePopover
-      open={open}
-      onOpenChange={setOpen}
+      open={disabled ? false : open}
+      onOpenChange={(next) => {
+        if (!disabled) {
+          setOpen(next)
+        }
+      }}
       title={mobileTitle}
       trigger={
         // min-w-0 lets a truncating trigger label (e.g. the model selector's)
         // shrink and ellipsize instead of forcing the row wider.
-        <button type="button" className="flex min-w-0 items-center focus:outline-none">
+        <button type="button" disabled={disabled} className="flex min-w-0 items-center focus:outline-none">
           {triggerContent}
         </button>
       }

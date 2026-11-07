@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getClock } from '@/testing-library'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { tool } from 'ai'
 import { z } from 'zod'
 import type { PreparedAiRequestConfig } from '@/ai/fetch'
+import * as agentDefaults from '@/defaults/agents'
 import { builtInAgent } from '@/defaults/agents'
 import { defaultModelProfileOpus55 } from '@/defaults/model-profiles'
 import { createClient } from '@/lib/http'
@@ -400,6 +401,8 @@ describe('built-in compaction integration', () => {
           trackEvent: () => {},
         },
       )
+      // Transcript fixtures use a synthetic model; eligibility has separate policy coverage.
+      const policy = spyOn(agentDefaults, 'isModelAvailableForAgent').mockReturnValue(true)
       hydrateStore({
         id: f.context.threadId,
         chatInstance: instance,
@@ -420,6 +423,7 @@ describe('built-in compaction integration', () => {
         expect(request).not.toContain('Old context')
         expect(f.requests.filter(isSummary)).toHaveLength(1)
       } finally {
+        policy.mockRestore()
         adapter.disconnect()
       }
     },
@@ -445,6 +449,8 @@ describe('built-in compaction integration', () => {
         trackEvent: () => {},
       },
     )
+    // Transcript fixtures use a synthetic model; eligibility has separate policy coverage.
+    const policy = spyOn(agentDefaults, 'isModelAvailableForAgent').mockReturnValue(true)
     hydrateStore({
       id: f.context.threadId,
       chatInstance: instance,
@@ -466,6 +472,7 @@ describe('built-in compaction integration', () => {
         expect(JSON.stringify(f.requests.at(-1))).not.toContain('Condensed previous task')
       }
     } finally {
+      policy.mockRestore()
       adapter.disconnect()
     }
   })

@@ -1169,6 +1169,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,
       chatThreadId: context.threadId,
+      toolApprovalHandled: true,
     })
     init.signal?.throwIfAborted()
     const resolved = await resolvePiModel(agentCore, context, config.profile, options)

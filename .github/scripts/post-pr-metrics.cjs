@@ -117,10 +117,12 @@ module.exports = async ({ github, context, baselineDir = '.metrics-baseline' }) 
     `| Lines changed (prod code) | \`+${LINES_ADDED || 0} / -${LINES_REMOVED || 0}\` |`,
     `| JS bundle size (gzipped) | ${bundleLine} |`,
     `| Test coverage | ${coverageLine} |`,
-    `| Performance ([preview](${PREVIEW_URL})) | ${lighthouseLine} |`,
+    `| Lighthouse performance (signed out; [preview](${PREVIEW_URL})) | ${lighthouseLine} |`,
     `| Accessibility | ${a11yLine} |`,
     `| Best Practices | ${bpLine} |`,
     `| SEO | ${seoLine} |`,
+    '',
+    'Lighthouse runs without a signed-in session. SSO redirects may lead to the identity provider; these scores do not measure authenticated chat. Use the performance harness for signed-in chat and interaction measurements.',
   ]
 
   // Show LHCI assertion warnings in a collapsible section so reviewers

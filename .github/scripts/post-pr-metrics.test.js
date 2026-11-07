@@ -297,7 +297,7 @@ describe('lighthouse', () => {
     const gh = makeGithub()
     await postPrMetrics({ github: gh, context: makeContext(), baselineDir: BASELINE_DIR })
     const body = gh._mocks.createComment.mock.calls[0][0].body
-    expect(body).toContain('| Performance ([preview](https://app-pr-456.preview.thunderbolt.io)) | _Preview was not reachable during this metrics run — Lighthouse skipped_ |')
+    expect(body).toContain('| Lighthouse performance (signed out; [preview](https://app-pr-456.preview.thunderbolt.io)) | _Preview was not reachable during this metrics run — Lighthouse skipped_ |')
     expect(body).not.toContain('Render')
     expect(body).not.toContain('timed out')
     restore()
@@ -321,13 +321,16 @@ describe('lighthouse', () => {
     restore()
   })
 
-  test('shows green circle for perf score >= 90', async () => {
+  test('reports successful Lighthouse scores with their unauthenticated scope', async () => {
     const restore = withEnv({ BUILD_OUTCOME: 'success', PREVIEW_READY: 'true', LH_PERF: '95', LH_FCP: '0.8 s', LH_LCP: '1.2 s', LH_TBT: '10 ms' })
     const gh = makeGithub()
     await postPrMetrics({ github: gh, context: makeContext(), baselineDir: BASELINE_DIR })
     const body = gh._mocks.createComment.mock.calls[0][0].body
     expect(body).toContain(':green_circle:')
     expect(body).toContain('**95/100**')
+    expect(body).toContain('Lighthouse performance (signed out;')
+    expect(body).toContain('Lighthouse runs without a signed-in session. SSO redirects may lead to the identity provider; these scores do not measure authenticated chat.')
+    expect(body).toContain('Use the performance harness for signed-in chat and interaction measurements.')
     restore()
   })
 

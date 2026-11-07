@@ -92,8 +92,9 @@ jobs:
           key: pr-metrics-main-${{ github.event.pull_request.base.sha }}
           restore-keys: pr-metrics-main-
 
-      # --- Lighthouse (load time via the PR app preview) ---
+      # --- Lighthouse (unauthenticated preview entry) ---
       # preview-deploy.yml publishes the app at app-pr-{number}.preview.thunderbolt.io.
+      # SSO may redirect to the identity provider; signed-in chat is measured by the performance harness.
       # Poll for readiness before running Lighthouse; a queued deploy may outlast this wait.
       - name: Wait for app preview
         id: preview

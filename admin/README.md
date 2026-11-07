@@ -38,10 +38,10 @@ The command enables two separate switches:
   an administrator's view; it is not real authorization or license enforcement.
 - `VITE_ADMIN_LOCAL_REVIEW=true` injects local sample HTTP/auth/proxy clients
   through the app's existing provider interfaces. This bootstrap is DEV-only,
-  requires a loopback host, and is excluded from production builds. It creates
+  requires exactly `http://127.0.0.1:1426`, and is excluded from production builds. It creates
   no valid server credential. Normal builds retain the application's real auth.
 
-Use the dedicated origin above so review settings and the app's local database
+The bootstrap enforces the dedicated origin above before changing settings, so review settings and the app's local database
 stay separate from other Thunderbolt installations. The local review uses a
 sample account and disables sync. Core settings use the real frontend database.
 Backend-dependent operations (AI responses, email, sync, account changes) remain

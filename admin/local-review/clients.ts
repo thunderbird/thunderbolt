@@ -8,12 +8,11 @@ import type { AppClients } from '@/app'
 import { createClient } from '@/lib/http'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { localReviewFetch } from './transport'
+import { assertLocalReviewOrigin } from './origin'
 
 /** Boot the real application with local-only transports on a dedicated development origin. */
 export const prepareLocalReview = (): AppClients => {
-  if (!import.meta.env.DEV || !['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) {
-    throw new Error('Local admin review requires a loopback development server')
-  }
+  assertLocalReviewOrigin(window.location.origin, import.meta.env.DEV)
   const cloudUrl = new URL('/__local_review__/v1', window.location.origin).href
   useLocalSettingsStore.setState({ cloudUrl, syncEnabled: false })
   return {

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, test, type Page } from './test'
+import type { Locator } from '@playwright/test'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeArtifactPrompt, fakeArtifactTitle, fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode, sendChatPrompt } from './helpers'
@@ -20,6 +21,23 @@ const setMobileNavigationOpen = async (page: Page, open: boolean) => {
   }
   await page.keyboard.press('Escape')
   await expect(drawer).toHaveCount(0)
+}
+
+/** Frame-local actionability cannot see an animated parent resize that changes the page's wrapping. */
+const waitForStableFrame = async (frame: Locator) => {
+  await expect
+    .poll(() =>
+      frame.evaluate(async (element) => {
+        const bounds = () => {
+          const { x, y, width, height } = element.getBoundingClientRect()
+          return JSON.stringify([x, y, width, height])
+        }
+        const before = bounds()
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+        return before === bounds()
+      }),
+    )
+    .toBe(true)
 }
 
 /** Exercise real rendering, synced preference persistence and every presentation through the product UI. */
@@ -43,6 +61,7 @@ test('a generated artifact can be pinned, opened in every display mode, reloaded
   const content = page.frameLocator(`iframe[title="${fakeArtifactTitle}"]`)
   await expect(frame).toHaveCount(1)
   await expect(frame).toHaveAttribute('sandbox', 'allow-scripts')
+  await waitForStableFrame(frame)
   await content.getByRole('button', { name: 'Increment', exact: true }).click()
   await expect(content.getByLabel('Counter')).toHaveText('1')
   expect(
@@ -102,6 +121,7 @@ test('a generated artifact can be pinned, opened in every display mode, reloaded
   await expect(page.getByRole('button', { name: 'Chat', exact: true })).toBeVisible()
   await expect(content.getByLabel('Counter')).toHaveText('0')
   await expect(frame).toHaveCount(1)
+  await waitForStableFrame(frame)
   await content.getByRole('button', { name: 'Increment', exact: true }).click()
   await expect(content.getByLabel('Counter')).toHaveText('1')
 
@@ -141,6 +161,7 @@ test('a generated artifact can be pinned, opened in every display mode, reloaded
   await page.getByRole('button', { name: 'Open in side panel', exact: true }).click()
   await expect(page.getByText(`${fakeArtifactTitle} — shown in side panel`)).toHaveCount(1)
   await expect(frame).toHaveCount(1)
+  await waitForStableFrame(frame)
   await content.getByRole('button', { name: 'Increment', exact: true }).click()
   await expect(content.getByLabel('Counter')).toHaveText('1')
   await page.getByRole('button', { name: 'Open full screen', exact: true }).click()
@@ -156,6 +177,7 @@ test('a generated artifact can be pinned, opened in every display mode, reloaded
   await expect(pinnedItem).toHaveCount(0)
   await setMobileNavigationOpen(page, false)
   await expect(frame).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Pin artifact', exact: true })).toBeEnabled()
   await page.reload()
   await expect(frame).toHaveCount(1)
   await expect(page.getByRole('button', { name: 'Pin artifact', exact: true })).toBeEnabled()

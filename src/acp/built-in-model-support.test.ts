@@ -27,7 +27,7 @@ describe('supportsPiCompaction', () => {
   })
 
   it('rejects unconfigured OpenAI-wire providers and tool-disabled legacy models', () => {
-    for (const provider of ['openai', 'openrouter'] as const) {
+    for (const provider of ['openai', 'openrouter', 'otari'] as const) {
       expect(supportsPiCompaction(createMockModel({ provider, apiKey: null, toolUsage: 1 }))).toBe(false)
       expect(supportsPiCompaction(createMockModel({ provider, apiKey: 'test', toolUsage: 1 }))).toBe(true)
     }

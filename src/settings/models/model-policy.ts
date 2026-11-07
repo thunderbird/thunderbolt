@@ -4,6 +4,18 @@
 
 import type { Model } from '@/types'
 
+/** Picker membership and order; the mapped type makes provider additions exhaustive. */
+const addableProviderValues = {
+  tinfoil: 'tinfoil',
+  anthropic: 'anthropic',
+  openai: 'openai',
+  openrouter: 'openrouter',
+  otari: 'otari',
+  custom: 'custom',
+} as const satisfies { [Provider in Exclude<Model['provider'], 'thunderbolt'>]: Provider }
+
+export const addableProviders = Object.values(addableProviderValues)
+
 export type ApiKeyEdit = { kind: 'keep' } | { kind: 'replace'; value: string } | { kind: 'clear' }
 
 /** Maps an API-key edit to DAL semantics: keep → undefined, clear → null, replace → the value. */
@@ -77,7 +89,7 @@ export const matchesThreadConfidentiality = (
  * catalog loads without one.
  */
 export const catalogRequiresApiKey = (provider: Model['provider']): boolean =>
-  provider === 'openai' || provider === 'openrouter' || provider === 'anthropic'
+  provider === 'openai' || provider === 'openrouter' || provider === 'anthropic' || provider === 'otari'
 
 /** Providers whose catalog loads without credentials, so forms fetch it eagerly. */
 export const providerAutoFetchesCatalog = (provider: Model['provider']): boolean =>

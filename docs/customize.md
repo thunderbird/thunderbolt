@@ -43,6 +43,7 @@ model of its own, chosen at its end, and ignores what you configure here.
 | Anthropic             | Required   | Not needed   |                                                                                       |
 | OpenAI                | Required   | Not needed   |                                                                                       |
 | OpenRouter            | Required   | Not needed   |                                                                                       |
+| Otari                 | Required   | Not needed   | Hosted gateway at `https://api.otari.ai/api/v1`                                       |
 | Tinfoil               | Required   | Not needed   | Confidential inference in a verified hardware enclave                                 |
 | Custom                | Optional   | Required     | Any OpenAI-compatible endpoint on this machine, or on an address reachable over HTTPS |
 
@@ -52,8 +53,8 @@ the endpoint does not need one.
 
 ### Adding a model
 
-Where the provider publishes a catalog, the model list fills itself in. OpenAI, Anthropic and
-OpenRouter need a valid key before their catalog loads, and you can always type the model identifier
+Where the provider publishes a catalog, the model list fills itself in. OpenAI, Anthropic,
+OpenRouter and Otari need a valid key before their catalog loads, and you can always type the model identifier
 by hand instead. Every provider except the managed Thunderbolt models must pass **Test Connection**
 before the model can be saved.
 
@@ -61,6 +62,10 @@ The connection test also checks whether the model accepts tools. A model that re
 Ollama's `gemma3`, is saved with **Supports tools** turned off, and its chats run without web search,
 integrations or other tools. The switch is on the add and edit forms if the test gets it wrong, and
 running the test again on a saved model updates it.
+
+For **Otari**, enter your Otari API token and select a model from the catalog. Keep
+the full provider-prefixed identifier, such as `openai:gpt-4o`, when entering a model by hand.
+For a self-hosted Otari gateway, choose **Custom** and enter its base URL ending in `/api/v1`.
 
 ### Models your deployment provides
 

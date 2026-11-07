@@ -17,10 +17,9 @@ import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import type { ToolSupport } from '@/hooks/use-model-connection-test'
 import { useAppName } from '@/lib/branding-selectors'
-import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
-import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
-import { getProviderLabel, providerPickerOrder } from './model-presentation'
+import { addableProviders, providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
+import { getProviderLabel } from './model-presentation'
 import { SupportsToolsSwitch } from './supports-tools-switch'
 import type { AddModelFormValues } from './use-add-model-form'
 
@@ -38,7 +37,7 @@ type AddModelFormProps = {
   submitError: string | null
   onSubmit: (values: AddModelFormValues) => void
   onCancel: () => void
-  onProviderChange: (provider: Model['provider']) => void
+  onProviderChange: (provider: AddModelFormValues['provider']) => void
   onCatalogInvalidated: () => void
   onSelectModel: (id: string) => void
   onTestConnection: () => void
@@ -92,7 +91,7 @@ export const AddModelForm = ({
                 <Trans>Provider</Trans>
               </FormLabel>
               <Select
-                onValueChange={(value: Model['provider']) => {
+                onValueChange={(value: AddModelFormValues['provider']) => {
                   onProviderChange(value)
                 }}
                 value={field.value}
@@ -103,7 +102,7 @@ export const AddModelForm = ({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {providerPickerOrder.map((provider) => (
+                  {addableProviders.map((provider) => (
                     <SelectItem key={provider} value={provider}>
                       {getProviderLabel(i18n, provider, appName)}
                     </SelectItem>
@@ -145,35 +144,33 @@ export const AddModelForm = ({
             )}
           />
         )}
-        {provider !== 'thunderbolt' && (
-          <FormField
-            control={form.control}
-            name="apiKey"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {provider === 'custom' ? <Trans>API Key (Optional)</Trans> : <Trans>API Key</Trans>}
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    type="password"
-                    {...field}
-                    placeholder="sk-..."
-                    className="rounded-lg"
-                    onChange={(event) => {
-                      field.onChange(event)
-                      onCatalogInvalidated()
-                    }}
-                  />
-                </FormControl>
-                {catalogError && provider !== 'custom' && (
-                  <p className="mt-1 whitespace-pre-line text-sm text-destructive">{catalogError}</p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
+        <FormField
+          control={form.control}
+          name="apiKey"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                {provider === 'custom' ? <Trans>API Key (Optional)</Trans> : <Trans>API Key</Trans>}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  type="password"
+                  {...field}
+                  placeholder={provider === 'otari' ? 'tk-...' : 'sk-...'}
+                  className="rounded-lg"
+                  onChange={(event) => {
+                    field.onChange(event)
+                    onCatalogInvalidated()
+                  }}
+                />
+              </FormControl>
+              {catalogError && provider !== 'custom' && (
+                <p className="mt-1 whitespace-pre-line text-sm text-destructive">{catalogError}</p>
+              )}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         {showModelSelection && (
           <FormField
             control={form.control}
@@ -251,13 +248,11 @@ export const AddModelForm = ({
           error={connectionError}
           toolSupport={toolSupport}
         />
-        {provider !== 'thunderbolt' && (
-          <SupportsToolsSwitch
-            checked={supportsTools}
-            onCheckedChange={(checked) => form.setValue('supportsTools', checked)}
-            disabled={isTesting}
-          />
-        )}
+        <SupportsToolsSwitch
+          checked={supportsTools}
+          onCheckedChange={(checked) => form.setValue('supportsTools', checked)}
+          disabled={isTesting}
+        />
         {submitError && (
           <StatusCard
             icon={<X className="h-4 w-4 text-destructive" />}

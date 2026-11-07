@@ -97,6 +97,10 @@ backend:
     waitlistEnabled: "false"
     databaseDriver: postgres
     rateLimitEnabled: "false"
+    # -- Explicit proxy trust: "cloudflare", "akamai", or a fixed XFF hop count
+    # (e.g. "1" for a single nginx ingress). Empty trusts only the socket IP.
+    # Restrict direct access to the backend before enabling forwarded-header trust.
+    trustedProxy: ""
     # -- CLI rollout order: docs/self-hosting/configuration.md#command-line-client-rollout.
     # -- Minimum compatible app semver.
     minAppVersion: ""

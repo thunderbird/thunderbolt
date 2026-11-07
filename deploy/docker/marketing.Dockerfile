@@ -21,7 +21,8 @@ COPY web ./web
 COPY docs ./docs
 
 WORKDIR /app/web
-RUN bun run build
+ARG PUBLIC_CONTACT_ENDPOINT=/v1/contact
+RUN PUBLIC_CONTACT_ENDPOINT="$PUBLIC_CONTACT_ENDPOINT" bun run build
 
 # Stage 2: Serve with nginx
 FROM nginxinc/nginx-unprivileged:alpine

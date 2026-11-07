@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { extractClientIp } from './request'
+import { extractClientIp, getTrustedIpHeaders, withTrustedClientIp } from './request'
 
 describe('Utils - Request', () => {
   describe('extractClientIp', () => {
@@ -75,5 +75,62 @@ describe('Utils - Request', () => {
         expect(extractClientIp(headers, 'socket-ip', 'akamai')).toBe('socket-ip')
       })
     })
+  })
+})
+
+describe('fixed trusted proxy chains', () => {
+  it('selects from the right and ignores forged leading and CDN headers', () => {
+    const headers = new Headers({
+      'x-forwarded-for': '192.0.2.99, 203.0.113.5, 10.0.0.4',
+      'cf-connecting-ip': '192.0.2.66',
+    })
+    expect(extractClientIp(headers, 'socket', 1)).toBe('10.0.0.4')
+    expect(extractClientIp(headers, 'socket', 2)).toBe('203.0.113.5')
+    expect(extractClientIp(headers, 'socket')).toBe('socket')
+  })
+
+  it.each(['', '203.0.113.5,', '203.0.113.5, not-an-ip', '203.0.113.5, 999.1.2.3'])(
+    'fails closed for a missing or malformed trusted hop: %s',
+    (value) => expect(extractClientIp(new Headers({ 'x-forwarded-for': value }), 'socket', 1)).toBe('socket'),
+  )
+
+  it('does not shift past empty hops or a short chain into attacker-controlled input', () => {
+    expect(extractClientIp(new Headers({ 'x-forwarded-for': '203.0.113.5' }), 'socket', 2)).toBe('socket')
+    expect(extractClientIp(new Headers({ 'x-forwarded-for': '192.0.2.9, , 10.0.0.4' }), 'socket', 2)).toBe('socket')
+  })
+
+  it('canonicalizes IPv6 and trims whitespace', () => {
+    expect(extractClientIp(new Headers({ 'x-forwarded-for': ' 2001:0DB8:0:0:0:0:0:1 ' }), 'socket', 1)).toBe(
+      '2001:db8::1',
+    )
+  })
+
+  it('gives Better Auth the selected IP without trusting an incoming internal header', async () => {
+    const request = new Request('https://api.example.com/v1/api/auth/test', {
+      method: 'POST',
+      headers: {
+        'x-forwarded-for': '192.0.2.99, 203.0.113.5, 10.0.0.4',
+        'x-thunderbolt-client-ip': '192.0.2.66',
+      },
+      body: 'original body',
+    })
+    const normalized = withTrustedClientIp(request, 2)
+    const [header] = getTrustedIpHeaders(2)!
+    expect(normalized.headers.get(header)).toBe('203.0.113.5')
+    expect(normalized.headers.get('x-forwarded-for')).toBe(request.headers.get('x-forwarded-for'))
+    expect(normalized.method).toBe('POST')
+    expect(normalized.url).toBe(request.url)
+    expect(await normalized.text()).toBe('original body')
+    expect(request.headers.get(header)).toBe('192.0.2.66')
+  })
+
+  it('overwrites a forged internal header even when XFF is missing', () => {
+    const request = new Request('https://api.example.com', { headers: { 'x-thunderbolt-client-ip': '192.0.2.66' } })
+    expect(withTrustedClientIp(request, 1).headers.get(getTrustedIpHeaders(1)![0])).toBe('unknown')
+    expect(withTrustedClientIp(request, '')).toBe(request)
+    expect(withTrustedClientIp(request, 'cloudflare')).toBe(request)
+    expect(getTrustedIpHeaders('cloudflare')).toEqual(['cf-connecting-ip'])
+    expect(getTrustedIpHeaders('akamai')).toEqual(['true-client-ip'])
+    expect(getTrustedIpHeaders('')).toBeUndefined()
   })
 })

@@ -33,6 +33,7 @@ jobs:
       localization: ${{ steps.filter.outputs.localization }}
       miniapps: ${{ steps.filter.outputs.miniapps }}
       helm: ${{ steps.filter.outputs.helm }}
+      pulumi: ${{ steps.filter.outputs.pulumi }}
       qa: ${{ steps.filter.outputs.qa }}
     steps:
       - name: Checkout code
@@ -112,6 +113,9 @@ jobs:
               # Also scanned by the email catalog: it authors step-up prose outside a template.
               - 'backend/src/lib/security-notifications.tsx'
               - 'backend/lingui.config.ts'
+            pulumi:
+              - 'deploy/pulumi/**'
+              - '.github/workflows/ci.yml'
             helm:
               - 'deploy/k8s/**'
               - '.github/workflows/ci.yml'
@@ -291,6 +295,21 @@ jobs:
             exit 1
           fi
           echo "No untransformed Lingui macros in the bundle."
+
+  pulumi:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.pulumi == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+        working-directory: deploy/pulumi
+      - run: bun run typecheck && bun run test
+        working-directory: deploy/pulumi
 
   # Chart unit tests (helm-unittest). Runs only when the chart or this workflow
   # changes. helm-unittest is installed from its release tarball, pinned by

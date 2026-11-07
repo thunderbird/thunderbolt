@@ -511,7 +511,7 @@ export const createServices = (args: ServiceArgs) => {
           ...(args.branding ? [{ name: 'BRANDING', value: args.branding }] : []),
           // Cloudflare terminates TLS for preview stacks — trust its CF-Connecting-IP
           // header for rate limiting. Enterprise stacks leave this unset (direct socket IP).
-          { name: 'TRUSTED_PROXY', value: args.behindCloudflareProxy ? 'cloudflare' : '' },
+          { name: 'TRUSTED_PROXY', value: args.behindCloudflareProxy ? 'cloudflare' : '1' },
         ],
         secrets: [
           { name: 'DATABASE_URL', valueFrom: backendSecrets.databaseUrl.arn },

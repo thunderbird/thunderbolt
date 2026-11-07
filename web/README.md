@@ -76,9 +76,11 @@ The contact form posts to the backend's public `POST /v1/contact` endpoint. It s
 - `RESEND_API_KEY`: the existing transactional-email API key.
 - `EMAIL_FROM`: a sender on a domain verified in your Resend account.
 
-Visitors can supply only their contact details and message. The recipient and subject are fixed by the server. Requests are limited to three per hour per client IP, even when general application rate limiting is disabled. Configure `TRUSTED_PROXY` for the deployment's actual ingress/proxy so unrelated visitors do not share one limit; never trust arbitrary forwarded headers.
+Visitors can supply only their contact details and message. The recipient and subject are fixed by the server. Requests are limited to three per hour per client IP, even when general application rate limiting is disabled. Configure `TRUSTED_PROXY` for the deployment's actual ingress/proxy so unrelated visitors do not share one limit; never trust arbitrary forwarded headers. A fixed single nginx/ALB hop uses `TRUSTED_PROXY=1`; multiple hops require the exact count and an origin reachable only through that fixed chain.
 
-For Kubernetes, use `backend.email.contactTo`, `backend.email.from`, and `backend.email.resendApiKeyBase64`. The marketing hostname routes only the exact `/v1/contact` path to the backend; the rest remains static. Supply secrets through your normal deployment secret workflow, not committed values files.
+For Kubernetes, set `backend.env.trustedProxy` for your ingress and use `backend.email.contactTo`, `backend.email.from`, and `backend.email.resendApiKeyBase64`. The marketing hostname routes only the exact `/v1/contact` path to the backend; the rest remains static. Supply secrets through your normal deployment secret workflow, not committed values files.
+
+Fargate routes the exact `/v1/contact` path on the marketing hostname to the backend. PR preview image builds set `PUBLIC_CONTACT_ENDPOINT` to that preview’s API URL; the preview backend already permits its marketing origin.
 
 During `bun run dev`, Vite proxies `/v1/contact` to `http://127.0.0.1:8000`. Set `CONTACT_API_TARGET` to use another local backend. Static preview servers do not provide the API. On other hosting platforms, configure the same reverse-proxy route or set `PUBLIC_CONTACT_ENDPOINT` at build time to your backend URL and include the site's origin in backend CORS configuration. Only that public URL belongs in the website build; never expose a Resend key through a `PUBLIC_` variable.
 

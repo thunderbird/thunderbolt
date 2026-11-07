@@ -161,6 +161,8 @@ spec:
               value: {{ .Values.powersync.jwt.kid }}
             - name: RATE_LIMIT_ENABLED
               value: {{ .Values.backend.env.rateLimitEnabled | quote }}
+            - name: TRUSTED_PROXY
+              value: {{ .Values.backend.env.trustedProxy | default "" | quote }}
             - name: MIN_APP_VERSION
               value: {{ .Values.backend.env.minAppVersion | quote }}
             - name: CLI_DEVICE_REGISTRATION_ENABLED

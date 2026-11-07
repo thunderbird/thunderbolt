@@ -108,12 +108,22 @@ export const createAlb = ({ name, vpcId, publicSubnetIds, albSgId, hostnames }: 
     defaultActions: [{ type: 'forward', targetGroupArn: frontendTg.arn }],
   })
 
-  // -- Host-header rules (priority 1-5) — active only when hostnames provided.
+  // -- Host-header rules (priority 2-7) — active only when hostnames provided.
   // These win over path-based rules because lower priority = higher precedence.
   if (hostnames?.marketing) {
+    new aws.lb.ListenerRule(`${name}-host-marketing-contact-rule`, {
+      listenerArn: listener.arn,
+      priority: 6,
+      conditions: [
+        { hostHeader: { values: [hostnames.marketing] } },
+        { pathPattern: { values: ['/v1/contact'] } },
+      ],
+      actions: [{ type: 'forward', targetGroupArn: backendTg.arn }],
+    })
+
     new aws.lb.ListenerRule(`${name}-host-marketing-rule`, {
       listenerArn: listener.arn,
-      priority: 1,
+      priority: 7,
       conditions: [{ hostHeader: { values: [hostnames.marketing] } }],
       actions: [{ type: 'forward', targetGroupArn: marketingTg.arn }],
     })

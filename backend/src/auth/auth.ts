@@ -22,7 +22,7 @@ import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { getPasskeyAndroidOriginsList, getSettings, isPasskeyEnabled, getPasskeyRpName } from '@/config/settings'
 import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-limit'
-import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
+import { extractClientIp, getTrustedIpHeaders, withTrustedClientIp } from '@/utils/request'
 import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth, type User } from 'better-auth'
@@ -265,7 +265,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   if (!settings.trustedProxy && process.env.NODE_ENV === 'production') {
     console.warn(
       'TRUSTED_PROXY is not set. Better Auth rate limiting will use x-forwarded-for ' +
-        'which is spoofable without a trusted proxy. Set TRUSTED_PROXY=cloudflare (or akamai) ' +
+        'which is spoofable without a trusted proxy. Set TRUSTED_PROXY=cloudflare, akamai, or the fixed proxy hop count ' +
         'to ensure rate limiting uses the correct client IP header.',
     )
   }
@@ -654,7 +654,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
 
   resolveSession = (headers) => auth.api.getSession({ headers, query: { disableRefresh: true } })
 
-  return auth
+  return {
+    ...auth,
+    handler: (request: Request) => auth.handler(withTrustedClientIp(request, settings.trustedProxy)),
+  }
 }
 
 export type Auth = ReturnType<typeof createAuth>

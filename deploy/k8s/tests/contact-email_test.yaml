@@ -121,3 +121,42 @@ tests:
               service:
                 name: backend
                 port: { number: 8000 }
+
+  - it: leaves forwarded-header trust off unless the operator configures it
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_PROXY, value: '' }
+
+  - it: exposes a fixed ingress hop count alongside contact email
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.trustedProxy: '1'
+      backend.email.contactTo: team@example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_PROXY, value: '1' }
+
+  - it: supports authoritative CDN headers
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.trustedProxy: cloudflare
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_PROXY, value: cloudflare }
+
+  - it: tolerates reuse-values from before proxy trust was configurable
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.trustedProxy: null
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_PROXY, value: '' }

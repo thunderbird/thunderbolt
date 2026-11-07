@@ -1,0 +1,31 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Names</title>
+  </head>
+  <!-- The cases the old homemade name check got wrong, and some it got right. An id starting with `u-` marks a
+       control with no accessible name, `n-` one with a name. -->
+  <body>
+    <!-- A screen reader skips aria-hidden text, so a close button drawn with × alone has no name. -->
+    <button id="u-hidden-text"><span aria-hidden="true">×</span></button>
+    <!-- A labelled icon names the button that holds it. -->
+    <button id="n-child-label"><svg role="img" aria-label="Close" width="16" height="16"></svg></button>
+    <!-- A submit input's value is its name. -->
+    <input id="n-submit-value" type="submit" value="Send" />
+    <!-- Menu items and options need a name too. -->
+    <div role="menu" aria-label="Actions"><div id="u-menuitem" role="menuitem" tabindex="0"></div></div>
+    <div role="listbox" aria-label="Models"><div id="u-option" role="option" aria-selected="false"></div></div>
+    <!-- A label made of blanks, and one pointing at no element. -->
+    <button id="u-blank-label" aria-label=" "></button>
+    <button id="u-labelledby-missing" aria-labelledby="nothing"></button>
+    <!-- A title, a placeholder and a hidden element pointed at by aria-labelledby all give a name. -->
+    <button id="n-title" title="Delete"></button>
+    <input id="n-placeholder" placeholder="Search" />
+    <span id="search-label" hidden>Find</span>
+    <input id="n-labelledby-hidden" aria-labelledby="search-label" />
+  </body>
+</html>

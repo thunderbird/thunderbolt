@@ -8,13 +8,20 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
-import { layoutProblems } from '../layout'
+import type axe from 'axe-core'
+import { axePath, layoutProblems } from '../layout'
 
 const probePath = resolve(import.meta.dirname, '../layout-probe.js')
 const fixture = (name: string) => pathToFileURL(resolve(import.meta.dirname, '../fixtures/layout', name)).href
 
-const problemsOf = async (page: Page, name: string) => {
+/** Loads axe-core and the probe in every page, in the explore agent's order. */
+const addProbe = async (page: Page) => {
+  await page.addInitScript({ path: axePath })
   await page.addInitScript({ path: probePath })
+}
+
+const problemsOf = async (page: Page, name: string) => {
+  await addProbe(page)
   await page.goto(fixture(name))
   return layoutProblems(page)
 }
@@ -53,6 +60,72 @@ test('a new load, with new generated ids, quotes the same unnamed controls', asy
   expect(lines.filter((line) => line.includes('unnamed-control'))).toEqual(unnamedLines)
 })
 
+test('a control Tab or a screen reader reaches needs a name, whatever its pointer-events or opacity', async ({
+  page,
+}) =>
+  expect(await problemsOf(page, 'reachable.html')).toEqual([
+    { kind: 'unnamed-control', target: 'button "loader-circle icon after Reply"' },
+    { kind: 'unnamed-control', target: 'button "send icon after Composer"' },
+    { kind: 'unnamed-control', target: 'button "ellipsis icon after Message"' },
+  ]))
+
+test('axe-core names controls the way a screen reader does', async ({ page }) =>
+  expect(await problemsOf(page, 'names.html')).toEqual(
+    [
+      'button "#u-hidden-text"',
+      'menuitem "#u-menuitem"',
+      'option "#u-option"',
+      'button "#u-blank-label"',
+      'button "#u-labelledby-missing"',
+    ].map((target) => ({ kind: 'unnamed-control', target })),
+  ))
+
+test('a control axe cannot settle a name for goes to review, never into a problem', async ({ page }) => {
+  await page.addInitScript(() => {
+    const element = () => document.querySelector('button')
+    Object.assign(window, {
+      axe: { run: async () => ({ violations: [], incomplete: [{ nodes: [{ element: element() }] }] }) },
+    })
+  })
+  await page.addInitScript({ path: probePath })
+  await page.goto(fixture('ok.html'))
+  expect(await layoutProblems(page)).toEqual([])
+  expect(await page.evaluate(() => window.__qaLayout.review())).toEqual([
+    { kind: 'unnamed-control', target: 'button "after Terms"' },
+  ])
+})
+
+test('a problem after a change is confirmed within layoutProblems wait, though axe takes 150 ms a run', async ({
+  page,
+}) => {
+  await page.addInitScript({ path: axePath })
+  await page.addInitScript(() => {
+    const run = window.axe.run.bind(window.axe)
+    Object.assign(window.axe, {
+      run: async (context: axe.ElementContext, options: axe.RunOptions) => {
+        await new Promise((done) => setTimeout(done, 150))
+        return run(context, options)
+      },
+    })
+  })
+  await page.addInitScript({ path: probePath })
+  await page.goto(fixture('covered.html'))
+  await page.evaluate(() => document.getElementById('footer')?.remove())
+  expect(await layoutProblems(page)).toEqual([])
+  await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div id="footer">Footer</div>'))
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Continue"' }])
+})
+
+test('without axe-core the probe never reports ready, so the page counts as unmeasured', async ({ page }) => {
+  const lines = consoleLines(page)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.addInitScript({ path: probePath })
+  await page.goto(fixture('ok.html'))
+  expect(lines).toEqual([])
+  expect(errors).toEqual(['layout-probe.js needs axe-core loaded before it'])
+})
+
 test('a fixed footer over a button is covered', async ({ page }) =>
   expect(await problemsOf(page, 'covered.html')).toEqual([{ kind: 'covered', target: 'button "Continue"' }]))
 
@@ -62,7 +135,7 @@ test('a button pushed out of a fixed container is offscreen', async ({ page }) =
 test('a button below the fold of a scrollable page is fine', async ({ page }) =>
   expect(await problemsOf(page, 'scrollable.html')).toEqual([]))
 
-test('the background of a modal is not covered', async ({ page }) =>
+test('the background of a modal is neither covered nor unnamed', async ({ page }) =>
   expect(await problemsOf(page, 'modal.html')).toEqual([]))
 
 test('an overlay that leaves after 200 ms is never reported', async ({ page }) => {
@@ -204,7 +277,7 @@ test('a focused field scrolled fully into its box is not clipped', async ({ page
 
 test('a focused field clipped only while it scrolls into view is never reported', async ({ page }) => {
   const lines = consoleLines(page)
-  await page.addInitScript({ path: probePath })
+  await addProbe(page)
   await page.goto(`${fixture('focused-clipped.html')}#scrolls`)
   expect(await layoutProblems(page)).toEqual([])
   expect(lines).toEqual(['[qa-layout] ready'])
@@ -248,7 +321,7 @@ test('a button scrolled under an absolute header outside its scroll box is fine 
 }) => expect(await problemsOf(page, 'header-over-scroller.html')).toEqual([]))
 
 test('an absolute header over a button its scroll box cannot scroll clear is covered', async ({ page }) => {
-  await page.addInitScript({ path: probePath })
+  await addProbe(page)
   await page.goto(`${fixture('header-over-scroller.html')}#stuck`)
   expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Under the header"' }])
 })

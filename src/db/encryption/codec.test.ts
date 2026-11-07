@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
+import { performance as realPerformance } from 'node:perf_hooks'
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test'
 
 import {
@@ -92,8 +93,10 @@ const setupKeyring = async (keyIds: KeyId[], primary: KeyId) => {
 // and Date are), so poll on it to let fake-indexeddb callbacks progress.
 const flushAsync = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
+/** Wait for native crypto and IndexedDB callbacks with a deadline independent of fake timers. */
 const waitFor = async (predicate: () => boolean): Promise<void> => {
-  for (let i = 0; i < 1000; i++) {
+  const deadline = realPerformance.now() + 2000
+  while (realPerformance.now() < deadline) {
     if (predicate()) {
       return
     }

@@ -321,6 +321,8 @@ RC tags are excluded from the changelog on purpose: `cliff.toml:59` sets `tag_pa
 `nightly-pipeline.yml` runs daily at 04:00 UTC and on manual dispatch. It runs Nightly E2E first, then Release for all platforms only if E2E passes and the run is on `main`.
 The release is skipped when the HEAD of `main` already carries a `vX.Y.Z` tag, which means nothing has landed since the last version bump. The pipeline never retries a failed release; see [Recovering a Failed Release](#recovering-a-failed-release).
 
+The version bump starts from the exact commit tested by that pipeline. If `main` advances before publication, including during the atomic branch-and-tag push, the nightly skips the release without rebasing onto untested code. It creates no remote tag or GitHub release and starts no platform builds. The next pipeline run tests the newer commit; a skipped release does not close an existing release incident. Standalone releases refresh the branch before choosing the version and may rebase and retry a rejected push.
+
 Every release bumps the patch version with a commit on `main`, tags `vX.Y.Z` and publishes a normal GitHub release marked Latest with a "may be unstable" warning. It ships to the CrabNebula updater, TestFlight and the Play internal track.
 
 Dispatch `release.yml` directly to skip E2E. It uses the same patch bump; pass an explicit `version` for a deliberate minor or major bump.

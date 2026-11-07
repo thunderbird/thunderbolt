@@ -29,6 +29,10 @@ on:
           - major
   workflow_call:
     inputs:
+      expected_sha:
+        description: 'Tested nightly revision; skip publication if the branch has advanced'
+        required: false
+        type: string
       platform:
         description: 'Platform for the release (all, ios, android, desktop)'
         required: false
@@ -44,6 +48,9 @@ on:
         type: string
         default: 'auto'
     outputs:
+      published:
+        description: 'Whether the release commit and tag were published'
+        value: ${{ jobs.version_bump.outputs.published }}
       new_version:
         description: 'The new version that was created'
         value: ${{ jobs.version_bump.outputs.new_version }}
@@ -57,8 +64,12 @@ permissions:
 jobs:
   version_bump:
     runs-on: ubuntu-latest
+    concurrency:
+      group: version-bump-${{ github.ref }}
+      cancel-in-progress: false
     environment: thunderbolt_release
     outputs:
+      published: ${{ steps.release.outputs.published }}
       new_version: ${{ steps.version.outputs.new_version }}
       tag_name: ${{ steps.tag.outputs.tag_name }}
 
@@ -73,6 +84,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.expected_sha || github.ref_name }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
@@ -92,7 +104,10 @@ jobs:
           tool: git-cliff
 
       - name: Run create-release script
+        id: release
         env:
+          RELEASE_EXPECTED_SHA: ${{ inputs.expected_sha }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_VERSION_TYPE: ${{ inputs.version_type }}
           INPUT_PLATFORM: ${{ inputs.platform }}
@@ -114,6 +129,7 @@ jobs:
           bun run scripts/create-release.ts "${ARGS[@]}"
 
       - name: Extract outputs
+        if: steps.release.outputs.published == 'true'
         id: version
         env:
           INPUT_VERSION_TYPE: ${{ inputs.version_type }}
@@ -128,6 +144,7 @@ jobs:
           echo "📝 Version type: $INPUT_VERSION_TYPE"
 
       - name: Extract tag name
+        if: steps.release.outputs.published == 'true'
         id: tag
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
@@ -144,6 +161,7 @@ jobs:
           echo "🏷️  Tag: $TAG_NAME"
 
       - name: Generate changelog
+        if: steps.release.outputs.published == 'true'
         id: changelog
         run: |
           # The create-release script already wrote CHANGELOG.md and tagged the
@@ -159,6 +177,7 @@ jobs:
           echo "changelog_b64=$CHANGELOG_B64" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
+        if: steps.release.outputs.published == 'true'
         env:
           CHANGELOG_B64: ${{ steps.changelog.outputs.changelog_b64 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

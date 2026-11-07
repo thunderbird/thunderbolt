@@ -16,11 +16,15 @@
  *   bun run scripts/create-release.ts --type auto
  *   bun run scripts/create-release.ts --version 1.2.3 --dry-run
  *   bun run scripts/create-release.ts --platform all --push  # Used by CI
+ *
+ * Nightly CI sets RELEASE_EXPECTED_SHA and RELEASE_BRANCH to preserve the tested revision.
+ * GITHUB_OUTPUT receives published=false when a newer branch head makes that nightly stale.
  */
 
 import { execSync } from 'child_process'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { pushRelease, updateReleaseBranch, type ReleaseTarget } from './release-git'
 
 type VersionType = 'major' | 'minor' | 'patch' | 'auto'
 
@@ -363,7 +367,7 @@ const tagExists = (tagName: string): boolean => {
 /**
  * Commit and tag the version
  */
-const commitAndTag = (version: string, platform: string, shouldPush: boolean) => {
+const commitAndTag = (version: string, platform: string): string => {
   // Determine tag name based on platform
   const tagName = platform === 'all' ? `v${version}` : `v${version}-${platform}-rc`
 
@@ -400,27 +404,39 @@ const commitAndTag = (version: string, platform: string, shouldPush: boolean) =>
   exec(`git tag ${tagName}`)
   console.log('  ✓ Tag created locally')
 
-  if (shouldPush) {
-    console.log('\n📤 Pushing to remote...')
-    const currentBranch = exec('git branch --show-current', true)
-    exec(`git push origin ${currentBranch}`)
-    exec(`git push origin ${tagName}`)
-    console.log('  ✓ Pushed to remote')
+  return tagName
+}
 
-    console.log(`\n✅ Tag ${tagName} created and pushed`)
-    if (platform === 'all') {
-      console.log('🚀 This will trigger the release workflow to build all platforms')
-    } else {
-      console.log(`🚀 This will trigger the ${platform} release workflow`)
-    }
-  } else {
-    console.log(`\n✅ Tag ${tagName} created locally`)
-    console.log(`\n💡 To push and trigger CI/CD, run:`)
-    const currentBranch = exec('git branch --show-current', true)
-    console.log(`   git push origin ${currentBranch}`)
-    console.log(`   git push origin ${tagName}`)
-    console.log(`\n   Or run the script again with --push flag`)
+/** Expose publication to dependent jobs; a stale nightly must not build or resolve an incident. */
+const reportPublication = (published: boolean) => {
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `published=${published}\n`)
   }
+  if (!published) {
+    const message = 'Nightly release skipped: the branch advanced beyond the tested revision. No release was published.'
+    console.log(message)
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.warn(`::warning title=Nightly release skipped::${message}`)
+    }
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`)
+    }
+  }
+}
+
+/** Recalculate version selection against the current source, including every publication retry. */
+const nextReleaseVersion = (args: Args): string => {
+  const currentVersion = getCurrentVersion()
+  console.log(`📦 Current version: ${currentVersion}`)
+
+  if (args.version) {
+    console.log(`✨ Using specified version: ${args.version}`)
+    return args.version
+  }
+  const versionType = args.type === 'auto' ? detectVersionType() : args.type!
+  const version = bumpVersion(currentVersion, versionType)
+  console.log(`📈 Auto-detected version: ${version} (type: ${versionType})`)
+  return version
 }
 
 /**
@@ -466,25 +482,20 @@ const main = () => {
     process.exit(1)
   }
 
-  // Determine new version
-  const currentVersion = getCurrentVersion()
-  console.log(`📦 Current version: ${currentVersion}`)
-  console.log(`🎯 Platform: ${platform}`)
-
-  let newVersion: string
-
-  if (args.version) {
-    newVersion = args.version
-    console.log(`✨ Using specified version: ${newVersion}`)
-  } else {
-    const versionType = args.type === 'auto' ? detectVersionType() : args.type!
-    newVersion = bumpVersion(currentVersion, versionType)
-    console.log(`📈 Auto-detected version: ${newVersion} (type: ${versionType})`)
+  const target: ReleaseTarget = {
+    branch: process.env.RELEASE_BRANCH || undefined,
+    expectedSha: process.env.RELEASE_EXPECTED_SHA || undefined,
+  }
+  if (args.push && !args.dryRun && !updateReleaseBranch(target)) {
+    reportPublication(false)
+    return
   }
 
+  console.log(`🎯 Platform: ${platform}`)
   if (args.dryRun) {
+    const newVersion = nextReleaseVersion(args)
     console.log('\n🧪 DRY RUN - No changes will be made')
-    console.log(`\nWould update version from ${currentVersion} to ${newVersion}`)
+    console.log(`\nWould update version from ${getCurrentVersion()} to ${newVersion}`)
     console.log('\nFiles that would be updated:')
     versionPackagePaths.forEach((path) => console.log(`  - ${path}`))
     console.log('  - src-tauri/Cargo.toml')
@@ -501,11 +512,24 @@ const main = () => {
     process.exit(0)
   }
 
-  // Update version files
-  updateVersionFiles(newVersion, platform)
-
-  // Commit and tag
-  commitAndTag(newVersion, platform, args.push || false)
+  /** Rebuild every generated release file after a concurrent branch advance. */
+  const prepare = () => {
+    const version = nextReleaseVersion(args)
+    updateVersionFiles(version, platform)
+    return commitAndTag(version, platform)
+  }
+  const tagName = prepare()
+  if (args.push) {
+    const published = pushRelease(tagName, target, undefined, prepare)
+    reportPublication(published)
+    if (published) {
+      console.log(`\n✅ Release published from the current source revision`)
+    }
+    return
+  }
+  console.log(`\n✅ Tag ${tagName} created locally`)
+  const currentBranch = exec('git branch --show-current', true)
+  console.log(`   git push --atomic origin HEAD:refs/heads/${currentBranch} refs/tags/${tagName}`)
 }
 
 // Run the script

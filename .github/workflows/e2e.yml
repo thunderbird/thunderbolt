@@ -161,7 +161,7 @@ jobs:
   e2e-report:
     # Both suites, or a red E2EE run produces no human-readable output at all:
     # its blobs were uploaded but never merged here.
-    if: always() && (needs.e2e.result != 'skipped' || needs['powersync-e2ee'].result != 'skipped')
+    if: ${{ !cancelled() && (needs.e2e.result != 'skipped' || needs['powersync-e2ee'].result != 'skipped') }}
     needs: [e2e, powersync-e2ee]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -183,10 +183,21 @@ jobs:
           path: all-blob-reports
           merge-multiple: true
 
+      - name: Check for blob reports
+        id: blobs
+        run: |
+          if compgen -G 'all-blob-reports/*.zip' > /dev/null; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No blob reports were produced. Check the test jobs for setup failures or cancellation." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Merge reports
+        if: steps.blobs.outputs.available == 'true'
         run: bunx playwright merge-reports --reporter html ./all-blob-reports
 
       - name: Upload HTML report
+        if: steps.blobs.outputs.available == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-report

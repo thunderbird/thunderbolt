@@ -17,7 +17,7 @@ import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
 import { readFileOrNull } from '../lib/secure-fs.ts'
 import { cliVersion } from '../version.ts'
-import type { HarnessRuntime, PreparedPiBinding, ResolvedAccountCredential } from './types.ts'
+import type { HarnessRuntime, ManagedCatalog, PreparedPiBinding, ResolvedAccountCredential } from './types.ts'
 import { createTestProviderRuntime, testSessionCredential } from './test-fixtures.ts'
 import { createTinfoilBinding, type CreateTinfoilBindingOptions } from './tinfoil.ts'
 import { prepareProviderBinding } from './provider-stage.ts'
@@ -31,6 +31,13 @@ const confidentialModel: SharedModel = {
   contextWindow: 128_000,
   startWithReasoning: 1,
   supportsParallelToolCalls: 1,
+}
+
+const confidentialCatalog: ManagedCatalog = {
+  version: 1,
+  defaultModelId: confidentialModel.id,
+  data: [confidentialModel],
+  imageSupport: { [confidentialModel.id]: 'unsupported' },
 }
 
 // Representative metadata captured from Tinfoil's public /v1/models endpoint on 2026-11-05.
@@ -251,12 +258,7 @@ describe('createTinfoilBinding', () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     const { runtime } = await createTestProviderRuntime({
       resolveAccountCredential: async () => sessionCredential(),
-      loadCatalog: async () => ({
-        version: 1,
-        defaultModelId: confidentialModel.id,
-        data: [confidentialModel],
-        imageSupport: {},
-      }),
+      loadCatalog: async () => confidentialCatalog,
       createTinfoilBinding: (options) =>
         createTinfoilBinding({
           ...bindingOptions(),
@@ -299,8 +301,7 @@ describe('createTinfoilBinding', () => {
         return pending.promise
       })
       const warn = spyOn(console, 'warn').mockImplementation(() => {})
-      const catalog = { version: 1, defaultModelId: confidentialModel.id, data: [confidentialModel], imageSupport: {} }
-      const loadCatalog = mock(async () => catalog)
+      const loadCatalog = mock(async () => confidentialCatalog)
       const { runtime: providerRuntime } = await createTestProviderRuntime({
         loadConfig: async () => ({
           version: 3,
@@ -335,7 +336,7 @@ describe('createTinfoilBinding', () => {
         loadCatalog.mockImplementation(async () => {
           requiredStarted.resolve()
           await requiredReady.promise
-          return catalog
+          return confidentialCatalog
         })
         const timeout = spyOn(AbortSignal, 'timeout')
           .mockReturnValueOnce(overallDeadline.signal)

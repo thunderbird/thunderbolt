@@ -17,6 +17,13 @@ import type { SearchEntityType } from './types'
 const searchIndexTable = 'search_index'
 /** Tiny bookkeeping table holding the built {@link searchIndexVersion}. */
 const searchMetaTable = 'search_index_meta'
+/**
+ * Maps each indexed `(entity_type, id)` to its {@link searchIndexTable} rowid.
+ * FTS5 can only look a row up by rowid or MATCH — a `WHERE id = ?` on an
+ * UNINDEXED column scans the whole index — so without this map every update or
+ * delete of an indexed row would cost a full scan.
+ */
+const searchKeysTable = 'search_index_keys'
 /** Column order shared by the create, trigger, and backfill statements. */
 const indexColumns = 'id, entity_type, parent_id, title, body'
 /**
@@ -31,6 +38,7 @@ const triggerNames = (type: SearchEntityType) => ({
   insert: `search_index_ai_${type}`,
   update: `search_index_au_${type}`,
   delete: `search_index_ad_${type}`,
+  replace: `search_index_bi_${type}`,
 })
 
 /** `json_extract` of a single field from a row's JSON `data` blob. */
@@ -85,23 +93,42 @@ export const buildCreateSql = (): string =>
   `tokenize = 'unicode61 remove_diacritics 2')`
 
 /**
- * The three `AFTER INSERT/UPDATE/DELETE` triggers that keep {@link searchIndexTable}
- * in sync with one entity's internal backing table. Rows are scoped by the
- * literal `entity_type` so deletes never touch another entity's hits. The insert
- * is conditional on {@link notSoftDeleted} (a `SELECT … WHERE` yields zero rows
- * for a soft-deleted record), so on UPDATE the delete-then-insert pair hard-deletes
- * the index entry when `deleted_at` becomes set, and re-adds it if it's cleared.
+ * The `CREATE TABLE` statement for {@link searchKeysTable}. `fts_rowid` is an
+ * explicit INTEGER PRIMARY KEY so `VACUUM` cannot renumber it out from under
+ * the index rows that carry it.
+ */
+export const buildCreateKeysSql = (): string =>
+  `CREATE TABLE ${searchKeysTable} (fts_rowid INTEGER PRIMARY KEY, entity_type TEXT NOT NULL, id TEXT NOT NULL, ` +
+  `UNIQUE (entity_type, id))`
+
+/** Indexed lookup of the {@link searchIndexTable} rowid holding one entity row. */
+const ftsRowid = (cfg: SearchEntityConfig, idExpr: string): string =>
+  `(SELECT fts_rowid FROM ${searchKeysTable} WHERE entity_type = '${cfg.type}' AND id = ${idExpr})`
+
+/**
+ * The `BEFORE INSERT` and `AFTER INSERT/UPDATE/DELETE` triggers that keep {@link searchIndexTable}
+ * in sync with one entity's internal backing table. Index rows are found through
+ * {@link searchKeysTable}, scoped by the literal `entity_type` so deletes never
+ * touch another entity's hits. The insert is conditional on {@link notSoftDeleted}
+ * (a `SELECT … WHERE` yields zero rows for a soft-deleted record), so on UPDATE the
+ * delete-then-insert pair hard-deletes the index entry when `deleted_at` becomes
+ * set, and re-adds it if it's cleared. The BEFORE INSERT trigger removes an indexed id first:
+ * PowerSync applies synced rows with `REPLACE INTO`, which replaces an existing
+ * row without firing the DELETE trigger.
  * @param internalName - The `ps_data__*` / `ps_data_local__*` backing table.
  */
 export const buildTriggerSql = (cfg: SearchEntityConfig, internalName: string): string[] => {
   const names = triggerNames(cfg.type)
+  const remove = (idExpr: string) =>
+    `DELETE FROM ${searchIndexTable} WHERE rowid = ${ftsRowid(cfg, idExpr)}; ` +
+    `DELETE FROM ${searchKeysTable} WHERE entity_type = '${cfg.type}' AND id = ${idExpr}`
   const insert =
-    `INSERT INTO ${searchIndexTable}(${indexColumns}) SELECT ` +
+    `INSERT INTO ${searchKeysTable}(entity_type, id) SELECT '${cfg.type}', NEW.id WHERE ${notSoftDeleted('NEW.data')}; ` +
+    `INSERT INTO ${searchIndexTable}(rowid, ${indexColumns}) SELECT ${ftsRowid(cfg, 'NEW.id')}, ` +
     `NEW.id, '${cfg.type}', ${parentExpr(cfg, 'NEW.data')}, ${titleExpr(cfg, 'NEW.data')}, ${bodyExpr(cfg, 'NEW.data')} ` +
     `WHERE ${notSoftDeleted('NEW.data')}`
-  const remove = `DELETE FROM ${searchIndexTable} WHERE id = OLD.id AND entity_type = '${cfg.type}'`
-  // Metadata/cache/context writes must not scan and rebuild the FTS row. Compare
-  // the rendered index values, including NULLs and soft-delete visibility.
+  // Metadata/cache/context writes must not rewrite the FTS row. Compare the
+  // rendered index values, including NULLs and soft-delete visibility.
   const indexChanged = [
     'OLD.id IS NOT NEW.id',
     ...[titleExpr, parentExpr, bodyExpr].map(
@@ -111,27 +138,32 @@ export const buildTriggerSql = (cfg: SearchEntityConfig, internalName: string): 
   ].join(' OR ')
   return [
     `CREATE TRIGGER ${names.insert} AFTER INSERT ON ${internalName} BEGIN ${insert}; END`,
-    `CREATE TRIGGER ${names.update} AFTER UPDATE ON ${internalName} WHEN ${indexChanged} BEGIN ${remove}; ${insert}; END`,
-    `CREATE TRIGGER ${names.delete} AFTER DELETE ON ${internalName} BEGIN ${remove}; END`,
+    `CREATE TRIGGER ${names.update} AFTER UPDATE ON ${internalName} WHEN ${indexChanged} BEGIN ${remove('OLD.id')}; ${insert}; END`,
+    `CREATE TRIGGER ${names.delete} AFTER DELETE ON ${internalName} BEGIN ${remove('OLD.id')}; END`,
+    `CREATE TRIGGER ${names.replace} BEFORE INSERT ON ${internalName} WHEN EXISTS (SELECT 1 FROM ${searchKeysTable} WHERE entity_type = '${cfg.type}' AND id = NEW.id) BEGIN ${remove('NEW.id')}; END`,
   ]
 }
 
 /**
- * The one-shot `INSERT … SELECT` that backfills existing rows of one entity,
- * skipping soft-deleted rows.
+ * The one-shot `INSERT … SELECT` pair that backfills existing rows of one entity,
+ * skipping soft-deleted rows: first their {@link searchKeysTable} entries, then
+ * the index rows under those rowids.
  */
-export const buildBackfillSql = (cfg: SearchEntityConfig, internalName: string): string =>
-  `INSERT INTO ${searchIndexTable}(${indexColumns}) SELECT ` +
-  `id, '${cfg.type}', ${parentExpr(cfg, 'data')}, ${titleExpr(cfg, 'data')}, ${bodyExpr(cfg, 'data')} ` +
-  `FROM ${internalName} WHERE ${notSoftDeleted('data')}`
+export const buildBackfillSql = (cfg: SearchEntityConfig, internalName: string): string[] => [
+  `INSERT INTO ${searchKeysTable}(entity_type, id) SELECT '${cfg.type}', id ` +
+    `FROM ${internalName} WHERE ${notSoftDeleted('data')}`,
+  `INSERT INTO ${searchIndexTable}(rowid, ${indexColumns}) SELECT ${ftsRowid(cfg, `${internalName}.id`)}, ` +
+    `id, '${cfg.type}', ${parentExpr(cfg, 'data')}, ${titleExpr(cfg, 'data')}, ${bodyExpr(cfg, 'data')} ` +
+    `FROM ${internalName} WHERE ${notSoftDeleted('data')}`,
+]
 
-/** Drops the previous index generation: every entity trigger, then the table. */
+/** Drops the previous index generation: every entity trigger, the key map, then the table. */
 export const buildDropSql = (): string[] => {
   const dropTriggers = searchEntities.flatMap((cfg) => {
     const names = triggerNames(cfg.type)
-    return [names.insert, names.update, names.delete].map((name) => `DROP TRIGGER IF EXISTS ${name}`)
+    return Object.values(names).map((name) => `DROP TRIGGER IF EXISTS ${name}`)
   })
-  return [...dropTriggers, `DROP TABLE IF EXISTS ${searchIndexTable}`]
+  return [...dropTriggers, `DROP TABLE IF EXISTS ${searchKeysTable}`, `DROP TABLE IF EXISTS ${searchIndexTable}`]
 }
 
 /** Resolves an entity's PowerSync view name to its internal backing table. */
@@ -148,7 +180,7 @@ const resolveInternalName = (tableName: string): string => {
  *
  * Runs once at startup: if the index already exists at the current
  * {@link searchIndexVersion} it returns immediately. Otherwise it drops any
- * previous generation, recreates the virtual table, installs INSERT/UPDATE/DELETE
+ * previous generation, recreates the virtual table and its key map, installs INSERT/UPDATE/DELETE
  * triggers on each entity's backing table, backfills existing rows, and records
  * the new version in {@link searchMetaTable}. Validation and rebuilding share a
  * write transaction so failed repairs roll back and concurrent callers serialize.
@@ -160,18 +192,20 @@ export const createSearchIndex = async (
     await transaction.execute(`CREATE TABLE IF NOT EXISTS ${searchMetaTable} (version INTEGER)`)
 
     const [meta] = await transaction.getAll<{ version: number }>(`SELECT version FROM ${searchMetaTable} LIMIT 1`)
-    const indexRows = await transaction.getAll(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, [
-      searchIndexTable,
-    ])
+    // Every trigger reads the key map, so without it every indexed write throws and sync stalls.
+    const tableRows = await transaction.getAll(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (?, ?)`,
+      [searchIndexTable, searchKeysTable],
+    )
     // Also confirm the per-entity triggers still exist: PowerSync can drop/recreate
     // its internal ps_data__* tables (resync, schema update), which silently takes
     // our triggers with them while the search_index table survives. Without this
     // check the version gate would short-circuit and the index would go stale.
     const triggerRows = await transaction.getAll(
-      `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'`,
+      `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_%'`,
     )
-    const expectedTriggerCount = searchEntities.length * 3
-    if (indexRows.length > 0 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
+    const expectedTriggerCount = searchEntities.length * 4
+    if (tableRows.length === 2 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
       return
     }
 
@@ -179,13 +213,13 @@ export const createSearchIndex = async (
       await transaction.execute(statement)
     }
     await transaction.execute(buildCreateSql())
+    await transaction.execute(buildCreateKeysSql())
 
     for (const cfg of searchEntities) {
       const internalName = resolveInternalName(cfg.tableName)
-      for (const trigger of buildTriggerSql(cfg, internalName)) {
-        await transaction.execute(trigger)
+      for (const statement of [...buildTriggerSql(cfg, internalName), ...buildBackfillSql(cfg, internalName)]) {
+        await transaction.execute(statement)
       }
-      await transaction.execute(buildBackfillSql(cfg, internalName))
     }
 
     await transaction.execute(`DELETE FROM ${searchMetaTable}`)

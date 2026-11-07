@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { execFileSync } from 'node:child_process'
-import { chromium } from 'playwright'
+import { chromium, type Browser } from 'playwright'
 import { getChromeLaunchOptions } from '../chrome'
 import { collectPageErrors } from '../../e2e/helpers'
 import { installProbe, type PerformanceWindow } from './probe'
@@ -14,7 +14,7 @@ import { summarizeSample } from './metrics'
 import { measureOverlayRetention } from './memory'
 import { fixtureVersion, prepare, runScenarios } from './scenarios'
 import { chromeMetrics, finishTrace, traceCategories } from './recording'
-import { collectCleanupErrors, finalizeReport } from './cleanup'
+import { collectCleanupErrors, finalizeReport, type CleanupStep } from './cleanup'
 import { localOrigin, positiveInteger, validateLabel } from './options'
 
 const { values } = parseArgs({
@@ -44,7 +44,7 @@ await mkdir(output, { recursive: true })
 const profiles = values.profile === 'both' ? ['desktop', 'mobile'] : [values.profile]
 const runnerRevision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
 const runnerDirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length > 0
-const browser = await chromium.launch(getChromeLaunchOptions())
+const cleanup: CleanupStep[] = []
 const samples: Record<string, unknown>[] = []
 const retentionSamples: {
   profile: string
@@ -59,7 +59,7 @@ const report = {
   runnerRevision,
   runnerDirty,
   capturedAt: new Date().toISOString(),
-  browser: browser.version(),
+  browser: '',
   platform: `${process.platform}/${process.arch}`,
   cpuThrottle: cpu,
   diagnosticTrace: values.trace,
@@ -73,7 +73,7 @@ const report = {
   retentionSamples,
 }
 /** Own each context through setup, measurements and failure artifact capture. */
-const runAttempt = async (profile: string, run: number) => {
+const runAttempt = async (browser: Browser, profile: string, run: number) => {
   const mobile = profile === 'mobile'
   const context = await browser.newContext({
     baseURL: values.url,
@@ -172,17 +172,20 @@ const runAttempt = async (profile: string, run: number) => {
   }
 }
 try {
+  const browser = await chromium.launch(getChromeLaunchOptions())
+  cleanup.push({ name: 'browser', run: () => browser.close() })
+  report.browser = browser.version()
   const attempts = profiles.flatMap((profile) =>
     Array.from({ length: runs }, (_, index) => ({ profile, run: index + 1 })),
   )
   for (const { profile, run } of attempts) {
-    await runAttempt(profile, run)
+    await runAttempt(browser, profile, run)
   }
   report.completed = true
 } catch (error) {
   report.failure = error instanceof Error ? error.message : String(error)
   throw error
 } finally {
-  await finalizeReport(`${output}/${values.label}.json`, report, [{ name: 'browser', run: () => browser.close() }])
+  await finalizeReport(`${output}/${values.label}.json`, report, cleanup)
 }
 console.log(`Saved ${output}/${values.label}.json`)

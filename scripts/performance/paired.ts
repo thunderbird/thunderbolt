@@ -15,7 +15,7 @@ import { percentile, summarizeSample } from './metrics'
 import { fixtureVersion, prepare } from './scenarios'
 import { defaultJourneyNames, journeyNames, runJourney, type Journey } from './journeys'
 import { chromeMetrics, finishTrace, retainedChromeMetrics, traceCategories } from './recording'
-import { collectCleanupErrors, finalizeReport } from './cleanup'
+import { collectCleanupErrors, finalizeReport, type CleanupStep } from './cleanup'
 import { localOrigin, positiveInteger, validateLabel } from './options'
 
 const { values } = parseArgs({
@@ -57,7 +57,7 @@ const output = resolve(values.out)
 await mkdir(output, { recursive: true })
 const runnerRevision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
 const runnerDirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length > 0
-const browser = await chromium.launch(getChromeLaunchOptions())
+const cleanup: CleanupStep[] = []
 const samples: (ReturnType<typeof summarizeSample> & {
   pair: number
   variant: string
@@ -77,7 +77,7 @@ const report = {
   runnerDirty,
   attestationDisabled: true,
   capturedAt: new Date().toISOString(),
-  browser: browser.version(),
+  browser: '',
   platform: `${process.platform}/${process.arch}`,
   cpuThrottle: cpu,
   profile: values.profile,
@@ -104,6 +104,9 @@ const attempts = Array.from({ length: pairs }, (_, index) => index + 1).flatMap(
   (pair % 2 ? (['before', 'after'] as const) : (['after', 'before'] as const)).map((variant) => ({ pair, variant })),
 )
 try {
+  const browser = await chromium.launch(getChromeLaunchOptions())
+  cleanup.push({ name: 'browser', run: () => browser.close() })
+  report.browser = browser.version()
   for (const { pair, variant } of attempts) {
     const mobile = values.profile === 'mobile'
     const context = await browser.newContext({
@@ -213,7 +216,7 @@ try {
   report.failure = error instanceof Error ? error.message : String(error)
   throw error
 } finally {
-  await finalizeReport(`${output}/${values.label}.json`, report, [{ name: 'browser', run: () => browser.close() }])
+  await finalizeReport(`${output}/${values.label}.json`, report, cleanup)
 }
 if (!values.trace) {
   for (const name of new Set(samples.map((sample) => sample.name))) {

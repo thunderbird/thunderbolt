@@ -142,10 +142,10 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   )
   const lastUserMessageId = lastUserMessage?.id
   const resendAttachment = useCallback(
-    (messageId: string, localFileId: string, target: 'text' | 'images') => {
+    (localFileId: string, target: 'text' | 'images') => {
       setMessages((prev) =>
         prev.map((message) =>
-          message.id === messageId
+          message.id === lastUserMessageId
             ? {
                 ...message,
                 parts: message.parts.map((part) =>
@@ -159,7 +159,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
       )
       regenerate()
     },
-    [setMessages, regenerate],
+    [lastUserMessageId, setMessages, regenerate],
   )
 
   const compactionInLastMessage = compacting && isStreaming && lastMessage?.role === 'assistant'
@@ -190,11 +190,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
               <UserMessage
                 message={message}
                 lastMessageAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
-                onResendAttachment={
-                  message.id === lastUserMessageId
-                    ? (localFileId, target) => resendAttachment(message.id, localFileId, target)
-                    : undefined
-                }
+                onResendAttachment={message.id === lastUserMessageId ? resendAttachment : undefined}
               />
             )}
             {checkpoint?.version === 1 && (

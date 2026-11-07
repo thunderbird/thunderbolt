@@ -392,7 +392,10 @@ export const createAgentRoutingFetch = (
     }
     if (operation === 'prompt') {
       telemetry?.startPhase('persist_user_message')
-      await saveMessages({ id, messages: requestMessages })
+      // Hydration supplies a durable prefix, and historical edits save themselves.
+      // Keep the predecessor too: the SDK does not await the previous onFinish,
+      // so its assistant row may still need inserting before the new user's parent is set.
+      await saveMessages({ id, messages: requestMessages.slice(-2) })
       telemetry?.endPhase('persist_user_message')
     }
 

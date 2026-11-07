@@ -49,6 +49,7 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -226,7 +227,7 @@ type ChatPromptInputProps = {
   useWarmAcpCommands?: typeof useWarmAcpCommands_default
 }
 
-export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
+const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
   (
     {
       useNavigate = useNavigate_default,
@@ -425,16 +426,19 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // one for the form and one for the textarea) avoids two cached pointers
     // to the same node drifting out of sync.
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-    const hasPreloadedSendDependencies = useRef(false)
+    const preloadedAgentType = useRef<typeof selectedAgent.type | null>(null)
 
     const preloadSendDependencies = useCallback(() => {
-      if (hasPreloadedSendDependencies.current) {
+      if (preloadedAgentType.current === selectedAgent.type) {
         return
       }
-      hasPreloadedSendDependencies.current = true
-      preloadAgentConnection()
-      preloadChatMessageList()
-    }, [])
+      const firstInput = preloadedAgentType.current === null
+      preloadedAgentType.current = selectedAgent.type
+      preloadAgentConnection(selectedAgent.type)
+      if (firstInput) {
+        preloadChatMessageList()
+      }
+    }, [selectedAgent.type])
 
     const getTextarea = (): HTMLTextAreaElement | null => {
       textareaRef.current = formRef.current?.querySelector('textarea') ?? null
@@ -974,16 +978,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               they slide back down on dismiss. pointer-events gated so the empty
               overlay area doesn't eat clicks behind it. */}
           <div className="pointer-events-none absolute inset-x-0 bottom-full flex flex-col">
-            {/* Chips keep their normal resting gap above the composer (pb-2). */}
-            <div className="pointer-events-auto pb-2">
-              <ChatSkillsBar
-                onAddToChat={handleAddChipFromBar}
-                onAddInstruction={insertInstructionText}
-                // Pinning is a "starting a new chat" affordance — once the thread
-                // has any message, hide the bar so chips don't compete for space.
-                hidden={messages.length > 0}
-              />
-            </div>
+            {/* Pinning is a new-chat affordance. Unmount its queries once the
+                thread starts; the composer owns ongoing skill insertion. */}
+            {messages.length === 0 && (
+              <div className="pointer-events-auto pb-2">
+                <ChatSkillsBar onAddToChat={handleAddChipFromBar} onAddInstruction={insertInstructionText} />
+              </div>
+            )}
             <AnimatePresence initial={false}>
               {attachError && (
                 <ComposerAlert key="attach-error" onDismiss={() => setAttachError(null)}>
@@ -1139,3 +1140,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     )
   },
 )
+
+ChatPromptInputComponent.displayName = 'ChatPromptInput'
+
+// The composer owns its draft and throttled chat subscription. Parent scroll
+// updates must not force it (and its menus) to render between those updates.
+export const ChatPromptInput = memo(ChatPromptInputComponent)

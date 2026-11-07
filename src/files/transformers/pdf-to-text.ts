@@ -18,15 +18,18 @@ export const pdfToText = async (file: StoredFile): Promise<{ text: string }> => 
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
   const data = await file.blob.arrayBuffer()
-  const doc = await pdfjs.getDocument({ data }).promise
+  const task = pdfjs.getDocument({ data })
+  try {
+    const doc = await task.promise
+    const pages: string[] = []
+    for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+      const page = await doc.getPage(pageNum)
+      const content = await page.getTextContent()
+      pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
+    }
 
-  const pages: string[] = []
-  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-    const page = await doc.getPage(pageNum)
-    const content = await page.getTextContent()
-    pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
+    return { text: pages.join('\n\n').trim() }
+  } finally {
+    await task.destroy()
   }
-  await doc.destroy()
-
-  return { text: pages.join('\n\n').trim() }
 }

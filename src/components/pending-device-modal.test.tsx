@@ -11,11 +11,16 @@ import { createMockHttpClient } from '@/test-utils/http-client'
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
-import { act, cleanup, fireEvent, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import type { ReactNode } from 'react'
 import { eq } from 'drizzle-orm'
+import { SQLiteRemoteSession } from 'drizzle-orm/sqlite-proxy'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { PowerSyncContext } from '@powersync/react'
+import { DatabaseProvider } from '@/contexts/database-context'
+import { createPowerSyncMockWithReactivity } from '@/test-utils/powersync-mock'
 import 'fake-indexeddb/auto'
 import { createClient } from '@/lib/http'
 import {
@@ -87,6 +92,62 @@ describe('PendingDeviceModal', () => {
     useLocalSettingsStore.setState({ syncEnabled: false })
     sessionStorage.removeItem(sessionStorageKey)
     cleanup()
+  })
+
+  it('mounts device queries only while sync is enabled and releases them when disabled', async () => {
+    const db = getDb()
+    await db.insert(devicesTable).values([
+      { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
+      { id: pendingDeviceId1, userId: 'user-1', name: 'Waiting Phone', trusted: 0, approvalPending: 1 },
+    ])
+    useLocalSettingsStore.setState({ syncEnabled: false })
+    const powerSync = createPowerSyncMockWithReactivity({ tables: ['devices'] })
+    const watchChanges = spyOn(powerSync, 'onChangeWithCallback')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+    const prepareQuery = spyOn(SQLiteRemoteSession.prototype, 'prepareQuery')
+
+    try {
+      render(
+        <DatabaseProvider db={db}>
+          <PowerSyncContext.Provider value={powerSync as never}>
+            <QueryClientProvider client={queryClient}>
+              <HttpClientWrapper>
+                <PendingDeviceModal />
+              </HttpClientWrapper>
+            </QueryClientProvider>
+          </PowerSyncContext.Provider>
+        </DatabaseProvider>,
+      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(prepareQuery).not.toHaveBeenCalled()
+      expect(watchChanges).not.toHaveBeenCalled()
+      expect(screen.queryByText('New device waiting')).not.toBeInTheDocument()
+
+      await act(async () => {
+        useLocalSettingsStore.setState({ syncEnabled: true })
+        await getClock().runAllAsync()
+      })
+      await waitForElement(() => screen.queryByText('Waiting Phone'))
+      expect(screen.getByText('New device waiting')).toBeInTheDocument()
+      expect(watchChanges).toHaveBeenCalledTimes(2)
+      const signals = watchChanges.mock.calls.map(([, options]) => options.signal)
+      expect(signals.every((signal) => signal?.aborted === false)).toBe(true)
+
+      await act(async () => {
+        useLocalSettingsStore.setState({ syncEnabled: false })
+        await getClock().runAllAsync()
+      })
+      expect(screen.queryByText('New device waiting')).not.toBeInTheDocument()
+      expect(signals.every((signal) => signal?.aborted === true)).toBe(true)
+    } finally {
+      cleanup()
+      queryClient.clear()
+      prepareQuery.mockRestore()
+      watchChanges.mockRestore()
+    }
   })
 
   it('does not render modal when there are no pending devices', async () => {

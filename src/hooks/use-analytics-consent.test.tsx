@@ -59,6 +59,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await resetTestDatabase()
+  useLocalSettingsStore.setState({ syncEnabled: false })
 })
 
 afterEach(() => {

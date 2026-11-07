@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type React from 'react'
-import { Resend } from 'resend'
+import { Resend, type ErrorResponse } from 'resend'
 
 /**
  * Sender address for all outgoing emails, and the contact address in their
@@ -43,11 +43,26 @@ export const shouldSkipEmail = (): boolean => {
   return false
 }
 
+/** Whether a real email provider is configured; public forms must never simulate delivery. */
+export const isEmailConfigured = (): boolean => resend !== null
+
 export type SendEmailParams = {
   to: string
   from?: string
   subject: string
+  replyTo?: string
   react: React.ReactElement
+}
+
+/** Structured provider rejection safe to log without message text or email addresses. */
+export class EmailDeliveryError extends Error {
+  constructor(
+    readonly providerCode: ErrorResponse['name'],
+    readonly providerStatus: number | null,
+  ) {
+    super('Email provider rejected delivery')
+    this.name = 'EmailDeliveryError'
+  }
 }
 
 /**
@@ -55,15 +70,15 @@ export type SendEmailParams = {
  * Uses the default sender address unless overridden.
  * @throws Error if resend client is not configured (should call shouldSkipEmail first)
  */
-export const sendEmail = async ({ to, from = emailFrom, subject, react }: SendEmailParams) => {
+export const sendEmail = async ({ to, from = emailFrom, subject, react, replyTo }: SendEmailParams) => {
   if (!resend) {
     throw new Error('Email service not configured')
   }
 
-  const { data, error } = await resend.emails.send({ from, to, subject, react })
+  const { data, error } = await resend.emails.send({ from, to, subject, react, replyTo })
 
   if (error) {
-    throw new Error(`Failed to send email: ${error.message}`)
+    throw new EmailDeliveryError(error.name, error.statusCode)
   }
 
   return data

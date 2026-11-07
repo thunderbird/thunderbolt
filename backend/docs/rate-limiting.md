@@ -53,9 +53,9 @@ The skip branch is deliberate (such requests 401 anyway), but mounted is not enf
 
 ### IP resolution fails closed
 
-- `extractClientIp` ([utils/request.ts](../src/utils/request.ts)) trusts a proxy header only when `TRUSTED_PROXY` names the edge (`cloudflare` → `CF-Connecting-IP`, `akamai` → `True-Client-IP`). Without one, any client can forge `X-Forwarded-For` and mint a fresh bucket per request.
+- `extractClientIp` ([utils/request.ts](../src/utils/request.ts)) trusts a proxy header only when `TRUSTED_PROXY` names the edge (`cloudflare` → `CF-Connecting-IP`, `akamai` → `True-Client-IP`). A positive integer selects that many trusted hops from the right of `X-Forwarded-For`; use it only for a fixed chain with direct origin access blocked. Without explicit trust, forwarded headers are ignored.
 - An unresolvable address shares a single `ip:unknown` bucket rather than skipping the limit ([rate-limit.ts:167](../src/middleware/rate-limit.ts)); identifiable clients keep their own.
-- `getTrustedIpHeaders` feeds the same `TRUSTED_PROXY` value to Better Auth's `ipAddressHeaders`, so both limiters agree on the client. It returns `undefined`, not `[]`, when no proxy is configured. `undefined` lets Better Auth fall back to `x-forwarded-for`. With `[]` it finds no IP, so every client shares one bucket per path.
+- `getTrustedIpHeaders` feeds the same `TRUSTED_PROXY` value to Better Auth's `ipAddressHeaders`, so both limiters agree on the client. In hop-count mode, the auth handler overwrites an internal header with the selected address before Better Auth reads it; visitors cannot supply that value. It returns `undefined`, not `[]`, when no proxy is configured. `undefined` lets Better Auth fall back to `x-forwarded-for`. With `[]` it finds no IP, so every client shares one bucket per path.
 
 ## Response contract
 

@@ -1,0 +1,162 @@
+suite: Website contact delivery
+templates:
+  - templates/backend.yaml
+  - templates/secrets.yaml
+  - templates/ingress.yaml
+set:
+  backend.betterAuthSecretBase64: dGVzdA==
+tests:
+  - it: preserves backend email defaults and disables contact when unconfigured
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: CONTACT_EMAIL_TO }
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: EMAIL_FROM }
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RESEND_API_KEY }
+          any: true
+
+  - it: tolerates an upgrade from before the email values existed
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.email: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: CONTACT_EMAIL_TO }
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: EMAIL_FROM }
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RESEND_API_KEY }
+          any: true
+
+  - it: injects configured addresses and references the secret without exposing its key
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.email.from: 'Thunderbolt <hello@example.com>'
+      backend.email.contactTo: team@example.com
+      backend.email.resendApiKeyBase64: cmVfdGVzdA==
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: EMAIL_FROM, value: 'Thunderbolt <hello@example.com>' }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: CONTACT_EMAIL_TO, value: team@example.com }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RESEND_API_KEY
+            valueFrom:
+              secretKeyRef: { name: thunderbolt-secrets, key: resend-api-key }
+
+  - it: stores the Resend key as base64 secret data
+    template: templates/secrets.yaml
+    set:
+      backend.email.resendApiKeyBase64: cmVfdGVzdA==
+    asserts:
+      - equal: { path: 'data["resend-api-key"]', value: cmVfdGVzdA== }
+
+  - it: renders the empty secret key safely for older releases
+    template: templates/secrets.yaml
+    set:
+      backend.email: null
+    asserts:
+      - equal: { path: 'data["resend-api-key"]', value: '' }
+
+  - it: routes only the contact endpoint on the marketing host to the backend
+    template: templates/ingress.yaml
+    documentSelector: { path: metadata.name, value: thunderbolt-ingress }
+    set:
+      ingress.hostnames.marketing: www.example.com
+      backend.service.port: 8080
+      marketing.service.port: 8081
+    asserts:
+      - equal:
+          path: spec.rules[0]
+          value:
+            host: www.example.com
+            http:
+              paths:
+                - path: /v1/contact
+                  pathType: Exact
+                  backend:
+                    service:
+                      name: backend
+                      port: { number: 8080 }
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: marketing
+                      port: { number: 8081 }
+
+  - it: keeps the existing path-based backend routing without marketing hostnames
+    template: templates/ingress.yaml
+    documentSelector: { path: metadata.name, value: thunderbolt-ingress }
+    set:
+      ingress.hostnames: null
+      ingress.host: app.example.com
+    asserts:
+      - equal: { path: 'spec.rules[0].host', value: app.example.com }
+      - contains:
+          path: spec.rules[0].http.paths
+          content:
+            path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port: { number: 8000 }
+
+  - it: leaves forwarded-header trust off unless the operator configures it
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_PROXY, value: '' }
+
+  - it: exposes a fixed ingress hop count alongside contact email
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.trustedProxy: '1'
+      backend.email.contactTo: team@example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_PROXY, value: '1' }
+
+  - it: supports authoritative CDN headers
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.trustedProxy: cloudflare
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_PROXY, value: cloudflare }
+
+  - it: tolerates reuse-values from before proxy trust was configurable
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.trustedProxy: null
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_PROXY, value: '' }

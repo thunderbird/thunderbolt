@@ -71,3 +71,24 @@ describe('release tag wiring', () => {
     expect(publish?.env?.LATEST).toBe("${{ inputs.latest && !endsWith(env.RELEASE_TAG, '-rc') }}")
   })
 })
+
+it('preview marketing builds use the same API as the preview app', () => {
+  const preview = Bun.YAML.parse(
+    readFileSync(join(import.meta.dir, '../.github/workflows/preview-deploy.yml'), 'utf8'),
+  ) as { jobs: { publish: { with: { vite_backend_url: string } } } }
+  const images = Bun.YAML.parse(
+    readFileSync(join(import.meta.dir, '../.github/workflows/images-publish.yml'), 'utf8'),
+  ) as { jobs: { publish: { steps: { name?: string; with: Record<string, string> }[] } } }
+  expect(preview.jobs.publish.with.vite_backend_url).toBe(
+    'https://api-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io/v1',
+  )
+  const marketing = images.jobs.publish.steps.find(
+    (step: { name?: string }) => step.name === 'Build and push marketing',
+  )
+  expect(marketing.with['build-args']).toContain(
+    "PUBLIC_CONTACT_ENDPOINT=${{ inputs.vite_backend_url && format('{0}/contact', inputs.vite_backend_url) || '/v1/contact' }}",
+  )
+  const dockerfile = readFileSync(join(import.meta.dir, '../deploy/docker/marketing.Dockerfile'), 'utf8')
+  expect(dockerfile).toContain('ARG PUBLIC_CONTACT_ENDPOINT=/v1/contact')
+  expect(dockerfile).toContain('RUN PUBLIC_CONTACT_ENDPOINT="$PUBLIC_CONTACT_ENDPOINT" bun run build')
+})

@@ -102,6 +102,7 @@ const settingsSchema = z
     anthropicApiKey: z.string().default(''),
     anthropicBaseUrl: z.string().default('https://api.anthropic.com'),
     resendMonitoringApiKey: z.string().default(''),
+    contactEmailTo: z.email().max(254).optional(),
     exaApiKey: z.string().default(''),
     tinfoilApiKey: z.string().default(''),
     // Include the `/v1` API prefix — Tinfoil's OpenAI-compatible endpoints live
@@ -320,8 +321,9 @@ const settingsSchema = z
 
     // Trusted proxy (controls which proxy headers are trusted for IP extraction)
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
+    // a positive hop count (1–32) for a fixed X-Forwarded-For chain,
     // or leave empty to use only the direct socket IP (proxy headers are NOT trusted)
-    trustedProxy: z.enum(['', 'cloudflare', 'akamai']).default(''),
+    trustedProxy: z.union([z.enum(['', 'cloudflare', 'akamai']), z.coerce.number().int().min(1).max(32)]).default(''),
 
     // ACP (Agent Client Protocol) settings
     // Comma-separated list of agent IDs to expose via GET /agents. Empty = all registered.
@@ -559,6 +561,7 @@ const parseSettings = (): Settings => {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
     anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
     resendMonitoringApiKey: process.env.RESEND_MONITORING_API_KEY || '',
+    contactEmailTo: process.env.CONTACT_EMAIL_TO?.trim() || undefined,
     exaApiKey: process.env.EXA_API_KEY || '',
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
     tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh/v1',

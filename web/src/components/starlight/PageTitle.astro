@@ -1,0 +1,43 @@
+---
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import { SparkBurst } from '../marketing/spark/spark-burst';
+const isHome = Astro.locals.starlightRoute.entry.id === 'docs';
+---
+
+{isHome ? (
+  <div class="docs-intro">
+    <div class="docs-title">
+      <div>
+        <h1 id="_top">Thunderbolt docs</h1>
+        <p>Find your way around. Then make it your own.</p>
+      </div>
+      <SparkBurst className="docs-burst" />
+    </div>
+    <div class="docs-start">
+      <a href="/docs/using/">Use Thunderbolt <span aria-hidden="true">→</span></a>
+      <a href="/docs/self-hosting/">Run it yourself <span aria-hidden="true">→</span></a>
+    </div>
+  </div>
+) : <Default />}
+
+<style>
+  .docs-title { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+  .docs-title p { margin: 20px 0 0; font-size: 16px; line-height: 1.7; color: var(--spark-muted); }
+  :global(.docs-burst) { width: 64px; flex-shrink: 0; }
+  .docs-start { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px; }
+  .docs-start a { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--spark-border); color: var(--spark-ink); font-size: 14px; font-weight: 500; text-decoration: none; }
+  .docs-start a:hover { border-color: var(--spark-red); color: var(--spark-red); }
+  .docs-start span { color: var(--spark-red); }
+  @media (max-width: 480px) {
+    .docs-title { gap: 16px; }
+    :global(.docs-burst) { display: none; }
+    .docs-title p { font-size: 14px; margin-top: 16px; }
+    .docs-start { gap: 16px; margin-top: 24px; }
+  }
+  @media (max-width: 360px) {
+    .docs-start { grid-template-columns: 1fr; gap: 8px; }
+  }
+</style>

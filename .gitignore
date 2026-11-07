@@ -62,6 +62,7 @@ mise.toml
 !.claude/skills/thunder-red-team/
 !.claude/skills/thunder-red-team/**
 !.claude/skills/thunder-update-model
+!.claude/skills/thunder-demo-videos
 .zed/**
 .zedscratches/**
 .mcp.json

@@ -120,6 +120,8 @@ Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive th
 | `src/` + `shared/` roots                                 | `bun run test`                                               |
 | `shared/agent-core` (nested, outside frontend discovery) | `bun run test:agent-core`, `bun run test:agent-core:browser` |
 | `backend/`                                               | `bun run test:backend`                                       |
+| Public website (`web/`)                                  | `cd web && bun run test && bun run typecheck`                |
+| Demo recording/export helpers                           | `bun run test:demo-videos` (prepared Python/FFmpeg environment) |
 | `cli/`                                                   | `cd cli && bun run test`                                     |
 | Playwright specs in `e2e/`                               | `bun run e2e`                                                |
 

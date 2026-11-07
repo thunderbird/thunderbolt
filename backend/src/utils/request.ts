@@ -65,7 +65,7 @@ export const defaultResponseDenylist = [
 export const extractClientIp = (headers: Headers, fallback = 'unknown', trustedProxy: TrustedProxy = ''): string => {
   if (typeof trustedProxy === 'number') {
     const address = headers.get('x-forwarded-for')?.split(',').at(-trustedProxy)?.trim()
-    if (!address || !isIP(address)) {
+    if (!address || address.includes('%') || !isIP(address)) {
       return fallback
     }
     // Canonicalize IPv6 spellings so one address cannot create multiple buckets.

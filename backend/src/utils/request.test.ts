@@ -89,7 +89,7 @@ describe('fixed trusted proxy chains', () => {
     expect(extractClientIp(headers, 'socket')).toBe('socket')
   })
 
-  it.each(['', '203.0.113.5,', '203.0.113.5, not-an-ip', '203.0.113.5, 999.1.2.3'])(
+  it.each(['', '203.0.113.5,', '203.0.113.5, not-an-ip', '203.0.113.5, 999.1.2.3', 'fe80::1%eth0'])(
     'fails closed for a missing or malformed trusted hop: %s',
     (value) => expect(extractClientIp(new Headers({ 'x-forwarded-for': value }), 'socket', 1)).toBe('socket'),
   )

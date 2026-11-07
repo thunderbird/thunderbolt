@@ -92,8 +92,10 @@ const setupKeyring = async (keyIds: KeyId[], primary: KeyId) => {
 // and Date are), so poll on it to let fake-indexeddb callbacks progress.
 const flushAsync = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
+/** Allow native WebCrypto to settle without advancing the codec's fake timeout. */
 const waitFor = async (predicate: () => boolean): Promise<void> => {
-  for (let i = 0; i < 1000; i++) {
+  const deadline = performance.now() + 2000
+  while (performance.now() < deadline) {
     if (predicate()) {
       return
     }

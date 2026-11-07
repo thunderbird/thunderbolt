@@ -23,24 +23,27 @@ export const pdfToImages = async (file: StoredFile): Promise<{ images: Transform
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
   const data = await file.blob.arrayBuffer()
-  const doc = await pdfjs.getDocument({ data }).promise
-
-  const images: TransformImage[] = []
-  const pageCount = Math.min(doc.numPages, maxPages)
-  for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
-    const page = await doc.getPage(pageNum)
-    const viewport = page.getViewport({ scale: renderScale })
-    const canvas = document.createElement('canvas')
-    canvas.width = viewport.width
-    canvas.height = viewport.height
-    const canvasContext = canvas.getContext('2d')
-    if (!canvasContext) {
-      continue
+  const task = pdfjs.getDocument({ data })
+  try {
+    const doc = await task.promise
+    const images: TransformImage[] = []
+    const pageCount = Math.min(doc.numPages, maxPages)
+    for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+      const page = await doc.getPage(pageNum)
+      const viewport = page.getViewport({ scale: renderScale })
+      const canvas = document.createElement('canvas')
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+      const canvasContext = canvas.getContext('2d')
+      if (!canvasContext) {
+        continue
+      }
+      await page.render({ canvas, canvasContext, viewport }).promise
+      images.push({ mimeType: 'image/png', dataUrl: canvas.toDataURL('image/png') })
     }
-    await page.render({ canvas, canvasContext, viewport }).promise
-    images.push({ mimeType: 'image/png', dataUrl: canvas.toDataURL('image/png') })
-  }
-  await doc.destroy()
 
-  return { images }
+    return { images }
+  } finally {
+    await task.destroy()
+  }
 }

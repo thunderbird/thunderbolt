@@ -27,6 +27,7 @@ import { MCPProvider } from '@/lib/mcp-provider'
 import { DatabaseProvider } from '@/contexts/database-context'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { getClock } from '@/testing-library'
+import { defaultChatTitle } from '@/lib/constants'
 
 /**
  * Helper function to create a system model (required for getDefaultModelForThread)
@@ -701,6 +702,30 @@ describe('useHydrateChatStore', () => {
   })
 
   describe('saveMessages', () => {
+    it.each(['Original topic', ''])(
+      'keeps title generation tied to the first prompt %j when saving only the tail',
+      async (firstText) => {
+        const modelId = await createSystemModel()
+        const threadId = await createTestThread(modelId, defaultChatTitle)
+        const history = [
+          createTestMessage({ parts: [{ type: 'text', text: firstText }] }),
+          createTestMessage({ role: 'assistant', parts: [{ type: 'text', text: 'Previous reply' }] }),
+          createTestMessage({ parts: [{ type: 'text', text: 'Later topic' }] }),
+        ]
+        await saveMessagesWithContextUpdate(getDb(), threadId, history)
+        const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+          wrapper: TestWrapper,
+        })
+
+        await act(async () => {
+          await result.current.hydrateChatStore()
+          await result.current.saveMessages({ id: threadId, messages: history.slice(-2) })
+        })
+
+        expect((await getThread(getDb(), threadId))?.title).toBe(firstText || defaultChatTitle)
+      },
+    )
+
     it('should save messages and update store state', async () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId)

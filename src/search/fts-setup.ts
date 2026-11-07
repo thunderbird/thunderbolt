@@ -127,11 +127,18 @@ export const buildTriggerSql = (cfg: SearchEntityConfig, internalName: string): 
     `INSERT INTO ${searchIndexTable}(rowid, ${indexColumns}) SELECT ${ftsRowid(cfg, 'NEW.id')}, ` +
     `NEW.id, '${cfg.type}', ${parentExpr(cfg, 'NEW.data')}, ${titleExpr(cfg, 'NEW.data')}, ${bodyExpr(cfg, 'NEW.data')} ` +
     `WHERE ${notSoftDeleted('NEW.data')}`
-  const indexed = (dataExpr: string) =>
-    `(${parentExpr(cfg, dataExpr)}, ${titleExpr(cfg, dataExpr)}, ${bodyExpr(cfg, dataExpr)}, ${notSoftDeleted(dataExpr)})`
+  // Metadata/cache/context writes must not rewrite the FTS row. Compare the
+  // rendered index values, including NULLs and soft-delete visibility.
+  const indexChanged = [
+    'OLD.id IS NOT NEW.id',
+    ...[titleExpr, parentExpr, bodyExpr].map(
+      (expression) => `(${expression(cfg, 'OLD.data')}) IS NOT (${expression(cfg, 'NEW.data')})`,
+    ),
+    `(${notSoftDeleted('OLD.data')}) IS NOT (${notSoftDeleted('NEW.data')})`,
+  ].join(' OR ')
   return [
     `CREATE TRIGGER ${names.insert} AFTER INSERT ON ${internalName} BEGIN ${insert}; END`,
-    `CREATE TRIGGER ${names.update} AFTER UPDATE ON ${internalName} WHEN ${indexed('OLD.data')} IS NOT ${indexed('NEW.data')} BEGIN ${remove('OLD.id')}; ${insert}; END`,
+    `CREATE TRIGGER ${names.update} AFTER UPDATE ON ${internalName} WHEN ${indexChanged} BEGIN ${remove('OLD.id')}; ${insert}; END`,
     `CREATE TRIGGER ${names.delete} AFTER DELETE ON ${internalName} BEGIN ${remove('OLD.id')}; END`,
     `CREATE TRIGGER ${names.replace} BEFORE INSERT ON ${internalName} WHEN EXISTS (SELECT 1 FROM ${searchKeysTable} WHERE entity_type = '${cfg.type}' AND id = NEW.id) BEGIN ${remove('NEW.id')}; END`,
   ]

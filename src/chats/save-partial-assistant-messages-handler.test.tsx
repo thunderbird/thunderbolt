@@ -9,9 +9,17 @@ import { getClock } from '@/testing-library'
 import type { ThunderboltUIMessage } from '@/types'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { Chat } from '@ai-sdk/react'
+import type { ChatStatus } from 'ai'
+import { Profiler } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 
 type StreamingSaveParams = { threadId: string; message: ThunderboltUIMessage; parentId: string | null }
+
+/** Exercise the SDK's real status subscriptions without starting a network request. */
+class StreamingChat extends Chat<ThunderboltUIMessage> {
+  transition = (status: ChatStatus) => this.setStatus({ status })
+}
 
 /** Flip a mock chat instance's read-only `status` for a rerender. */
 const setStatus = (instance: ReturnType<typeof createMockChatInstance>, status: 'streaming' | 'ready' | 'error') => {
@@ -38,6 +46,106 @@ describe('SavePartialAssistantMessagesHandler', () => {
     // Reset store state after each test
     resetStore()
     await resetTestDatabase()
+  })
+
+  it.each(['ready', 'error'] as const)(
+    'coalesces SDK deltas and cancels pending partial saves immediately on %s',
+    async (terminalStatus) => {
+      const userMessage: ThunderboltUIMessage = { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }
+      const assistantMessage = (text: string): ThunderboltUIMessage => ({
+        id: 'answer-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text }],
+      })
+      const chatInstance = new StreamingChat({ messages: [userMessage, assistantMessage('partial')] })
+      chatInstance.transition('streaming')
+      hydrateStore({ chatInstance, chatThread: null, id: 'thread-1', selectedModel: null, triggerData: null })
+      const saveStreamingMessage = mock((_params: StreamingSaveParams) => Promise.resolve())
+      const onRender = mock(() => {})
+      render(
+        <Profiler id="partial-save" onRender={onRender}>
+          <SavePartialAssistantMessagesHandler saveStreamingMessage={saveStreamingMessage} />
+        </Profiler>,
+        { wrapper: createQueryTestWrapper() },
+      )
+      const initialRenders = onRender.mock.calls.length
+      expect(saveStreamingMessage).toHaveBeenCalledTimes(1)
+
+      for (let token = 1; token <= 30; token++) {
+        await act(async () => {
+          chatInstance.messages = [userMessage, assistantMessage('x'.repeat(token))]
+          await getClock().tickAsync(10)
+        })
+      }
+      expect(onRender.mock.calls.length - initialRenders).toBeLessThanOrEqual(5)
+
+      const completeMessage = assistantMessage('Complete response')
+      await act(async () => {
+        chatInstance.messages = [userMessage, completeMessage]
+        chatInstance.transition(terminalStatus)
+      })
+      const savesAtFinish = saveStreamingMessage.mock.calls.length
+      expect(chatInstance.messages.at(-1)).toEqual(completeMessage)
+      await act(async () => {
+        await getClock().tickAsync(1_000)
+      })
+      // This must hold before the messages throttle expires as well: the final
+      // save owned by onFinish cannot be overwritten by a queued older partial.
+      expect(saveStreamingMessage).toHaveBeenCalledTimes(savesAtFinish)
+    },
+  )
+
+  it.each(['unmount', 'next turn'] as const)('does not flush an older SDK snapshot after %s', async (boundary) => {
+    const user: ThunderboltUIMessage = { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }
+    const partial = (text: string): ThunderboltUIMessage => ({
+      id: 'answer-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text }],
+    })
+    const chatInstance = new StreamingChat({ messages: [user, partial('initial')] })
+    chatInstance.transition('streaming')
+    hydrateStore({ chatInstance, chatThread: null, id: 'thread-1', selectedModel: null, triggerData: null })
+    const saveStreamingMessage = mock((_params: StreamingSaveParams) => Promise.resolve())
+    const view = render(<SavePartialAssistantMessagesHandler saveStreamingMessage={saveStreamingMessage} />, {
+      wrapper: createQueryTestWrapper(),
+    })
+
+    // Queue a database save and then a separate throttled SDK notification.
+    for (const text of ['queued save', 'queued notification']) {
+      await act(async () => {
+        chatInstance.messages = [user, partial(text)]
+        await getClock().tickAsync(10)
+      })
+    }
+    expect(saveStreamingMessage).toHaveBeenCalledTimes(1)
+
+    if (boundary === 'unmount') {
+      view.unmount()
+      await act(async () => {
+        await getClock().tickAsync(1000)
+      })
+      expect(saveStreamingMessage).toHaveBeenCalledTimes(1)
+      return
+    }
+
+    const nextUser = { ...user, id: 'user-2' }
+    const nextAnswer = { ...partial('next answer'), id: 'answer-2' }
+    await act(async () => {
+      chatInstance.transition('ready')
+    })
+    await act(async () => {
+      chatInstance.messages = [user, partial('complete'), nextUser]
+      chatInstance.transition('submitted')
+    })
+    await act(async () => {
+      chatInstance.messages = [...chatInstance.messages, nextAnswer]
+      chatInstance.transition('streaming')
+      await getClock().tickAsync(1000)
+    })
+    expect(saveStreamingMessage.mock.calls.map(([params]) => params)).toEqual([
+      { threadId: 'thread-1', message: partial('initial'), parentId: user.id },
+      { threadId: 'thread-1', message: nextAnswer, parentId: nextUser.id },
+    ])
   })
 
   it('should render children without modification', () => {

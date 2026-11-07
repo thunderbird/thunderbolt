@@ -95,14 +95,20 @@ const renderHeader = (style: CommentStyle, headerLines: string[]): string => {
   }
 }
 
-/** Inspect only the leading notice, not license names quoted inside source/tests. */
+/** Find the first notice among leading comments without inspecting source code or later documentation. */
 export const headerStatus = (content: string, path: string): 'valid' | 'missing' | 'conflict' => {
   const leading = content
     .replace(/^#![^\n]*\n/, '')
     .replace(/^\s*(['"])use (client|server|strict)\1\s*;?\s*/, '')
     .trimStart()
     .replace(/^---\r?\n/, '')
-  const comment = leading.match(/^(?:\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|(?:(?:#|--|\/\/)[^\n]*(?:\n|$))+)/)?.[0] ?? ''
+  const comments = leading.match(/^(?:(?:\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|(?:#|--|\/\/)[^\n]*(?:\n|$))\s*)+/)?.[0] ?? ''
+  const comment =
+    [...comments.matchAll(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|(?:(?:#|--|\/\/)[^\n]*(?:\n|$))+/g)]
+      .map(([comment]) => comment)
+      .find((comment) =>
+        /mozilla\.org\/MPL|SPDX-License-Identifier|UNLICENSED|license TBD|Mozilla Public License/.test(comment),
+      ) ?? ''
   const expected = headerLinesForPath(path)
   const hasMpl = comment.includes('mozilla.org/MPL') || comment.includes('SPDX-License-Identifier: MPL-2.0')
   const hasAdmin = comment.includes('UNLICENSED') || comment.includes('license TBD')

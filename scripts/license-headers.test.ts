@@ -32,6 +32,31 @@ describe('scoped source notices', () => {
     expect(headerStatus('const text = "UNLICENSED"', 'admin/example.ts')).toBe('missing')
   })
 
+  it.each(['/* eslint-disable no-console */', '/// <reference types="vite/client" />', '// @ts-nocheck'])(
+    '%s does not hide an existing notice',
+    (directive) => {
+      const source = `${directive}\n\n/* SPDX-License-Identifier: MPL-2.0 */\nexport {}`
+      expect(headerStatus(source, 'src/example.ts')).toBe('valid')
+      expect(applyHeader(source, 'src/example.ts')).toBe(source)
+      expect(headerStatus(source, 'admin/example.ts')).toBe('conflict')
+    },
+  )
+
+  it('does not scan past executable code or beyond the first license notice', () => {
+    const source = '/* eslint-disable no-console */\nexport const text = "UNLICENSED"'
+    expect(headerStatus(source, 'src/example.ts')).toBe('missing')
+    const licensed = applyHeader(source, 'src/example.ts')
+    expect(headerStatus(`${licensed}\n/* UNLICENSED */`, 'src/example.ts')).toBe('valid')
+    const documented = applyHeader('', 'src/example.ts') + '/** The admin feature is UNLICENSED. */\nexport {}'
+    expect(headerStatus(documented, 'src/example.ts')).toBe('valid')
+  })
+
+  it('keeps a conflicting notice behind a directive intact', () => {
+    const source = '/* eslint-disable */\n/* SPDX-License-Identifier: MIT */\nexport {}'
+    expect(headerStatus(source, 'src/example.ts')).toBe('conflict')
+    expect(() => applyHeader(source, 'src/example.ts')).toThrow('Conflicting source notice')
+  })
+
   it('recognizes notices after shebangs, directives, and Astro frontmatter', () => {
     for (const [path, source] of [
       ['admin/task.sh', '#!/bin/sh\necho hello'],

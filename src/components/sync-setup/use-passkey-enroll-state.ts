@@ -15,6 +15,7 @@ import { getDeviceDisplayName } from '@/lib/platform'
 import { enrollPasskey, ensureSessionBound } from '@/services/encryption'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 
 /**
  * - `no-prf` — the passkey works for sign-in, but its provider can't produce a
@@ -45,6 +46,7 @@ export const usePasskeyEnrollState = ({
   const queryClient = useQueryClient()
   const { passkey: accountPasskey, isLoading } = useAccountPasskey()
   const [status, setStatus] = useState<EnrollStatus>('idle')
+  const operation = useAsyncAttempt()
 
   const createPasskey = async () => {
     const result = await registerPasskey(authClient, getDeviceDisplayName())
@@ -53,7 +55,9 @@ export const usePasskeyEnrollState = ({
   }
 
   /** Create the passkey, or reuse the existing one, and return its credential + PRF output. */
-  const getCredentialAndPrf = async (): Promise<{ credentialId: string; prfOutput: Uint8Array | null }> => {
+  const getCredentialAndPrf = async (
+    isCurrent: () => boolean,
+  ): Promise<{ credentialId: string; prfOutput: Uint8Array | null } | null> => {
     if (accountPasskey) {
       return {
         credentialId: accountPasskey.credentialID,
@@ -61,6 +65,9 @@ export const usePasskeyEnrollState = ({
       }
     }
     const { passkey, prfOutput } = await createPasskey()
+    if (!isCurrent()) {
+      return null
+    }
     // Some providers only release the PRF output on an assertion, not at creation.
     return {
       credentialId: passkey.credentialID,
@@ -69,6 +76,10 @@ export const usePasskeyEnrollState = ({
   }
 
   const enroll = async () => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return
+    }
     setStatus('working')
     onBusyChange(true)
     try {
@@ -76,20 +87,34 @@ export const usePasskeyEnrollState = ({
         if (!accountPasskey) {
           await createPasskey()
         }
-        onEnrolled()
+        if (attempt.isCurrent()) {
+          onEnrolled()
+        }
         return
       }
       // A re-authentication starts a new session, which must be bound to this
       // device. Done first, so a bind failure can't strand a passkey prompt.
       await ensureSessionBound(httpClient)
-      const { credentialId, prfOutput } = await getCredentialAndPrf()
+      if (!attempt.isCurrent()) {
+        return
+      }
+      const credential = await getCredentialAndPrf(attempt.isCurrent)
+      if (!credential || !attempt.isCurrent()) {
+        return
+      }
+      const { credentialId, prfOutput } = credential
       if (!prfOutput) {
         setStatus('no-prf')
         return
       }
       await enrollPasskey(httpClient, { credentialId, prfOutput })
-      onEnrolled()
+      if (attempt.isCurrent()) {
+        onEnrolled()
+      }
     } catch (error) {
+      if (!attempt.isCurrent()) {
+        return
+      }
       if (isPasskeyCancellation(error)) {
         setStatus('idle')
         return
@@ -102,9 +127,14 @@ export const usePasskeyEnrollState = ({
       // A failure may mean the account gained a passkey elsewhere (registration
       // refused as a duplicate): refresh, so a retry uses it instead of looping.
       await queryClient.invalidateQueries({ queryKey: accountPasskeyQueryKey })
-      setStatus('error')
+      if (attempt.isCurrent()) {
+        setStatus('error')
+      }
     } finally {
-      onBusyChange(false)
+      if (attempt.isCurrent()) {
+        onBusyChange(false)
+      }
+      attempt.finish()
     }
   }
 

@@ -725,6 +725,7 @@ msgstr ""
 msgid "Change your recovery phrase?"
 msgstr ""
 
+#: src/hooks/use-mcp-server-oauth.ts
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "As alterações foram salvas, mas a reconexão falhou. Tente novamente."
@@ -754,7 +755,7 @@ msgstr ""
 msgid "Chats in a project inherit its instructions."
 msgstr "Conversas em um projeto herdam as instruções dele."
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
 msgstr "Verificar atualizações"
@@ -798,8 +799,7 @@ msgid "Checking your session."
 msgstr "Verificando sua sessão."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
-#: src/components/upgrade-required.tsx
-#: src/settings/app-version-section.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Checking…"
 msgstr "Verificando…"
 
@@ -1298,6 +1298,10 @@ msgstr "Não foi possível exibir o código de emparelhamento."
 #: src/projects/project-form.tsx
 msgid "Could not save the project."
 msgstr "Não foi possível salvar o projeto."
+
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "Could not start authorization. Please try again."
+msgstr ""
 
 #: src/settings/passkeys.tsx
 #~ msgid "Couldn't add a passkey. Please try again."
@@ -1861,7 +1865,7 @@ msgstr "Baixar o app"
 msgid "Download HTML"
 msgstr "Baixar HTML"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Download update"
 msgstr "Baixar atualização"
 
@@ -1873,7 +1877,7 @@ msgstr "Baixando a atualização…"
 msgid "Downloading update… {downloadProgress}%"
 msgstr "Baixando a atualização… {downloadProgress}%"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Downloading…"
 msgstr "Baixando…"
 
@@ -2644,8 +2648,8 @@ msgid "Location"
 msgstr "Local"
 
 #: src/components/onboarding/onboarding-location-step.tsx
-msgid "Location is required."
-msgstr "O local é obrigatório."
+#~ msgid "Location is required."
+#~ msgstr "O local é obrigatório."
 
 #: src/components/logout-modal.tsx
 #: src/components/sidebar-footer.tsx
@@ -2831,7 +2835,6 @@ msgstr "Meu agente"
 msgid "Name"
 msgstr "Nome"
 
-#: src/components/onboarding/onboarding-name-step.tsx
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Name is required."
@@ -3101,8 +3104,8 @@ msgid "OAuth state mismatch — possible CSRF, authorization rejected."
 msgstr "Estado OAuth divergente — possível CSRF, autorização rejeitada."
 
 #: src/hooks/use-oauth-connect.ts
-msgid "OAuth validation failed"
-msgstr "A validação do OAuth falhou"
+#~ msgid "OAuth validation failed"
+#~ msgstr "A validação do OAuth falhou"
 
 #: src/projects/emoji-catalog.ts
 msgid "Objects"
@@ -3347,8 +3350,8 @@ msgid "Please choose one of the options on screen."
 msgstr "Escolha uma das opções na tela."
 
 #: src/components/onboarding/onboarding-location-step.tsx
-msgid "Please select a location from the dropdown to get coordinates."
-msgstr "Selecione um local na lista para obter as coordenadas."
+#~ msgid "Please select a location from the dropdown to get coordinates."
+#~ msgstr "Selecione um local na lista para obter as coordenadas."
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Please store your recovery key somewhere safe. You'll need it to access your data if you ever lose all your devices."
@@ -3514,6 +3517,10 @@ msgstr "Falha na recuperação"
 msgid "Recovery phrase"
 msgstr "Frase de recuperação"
 
+#: src/hooks/use-sync-setup.ts
+msgid "Recovery phrase must be 24 words (you entered {wordCount})."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
 msgstr ""
@@ -3654,7 +3661,7 @@ msgstr "Redefinindo…"
 msgid "Restart Now"
 msgstr "Reiniciar agora"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
 msgstr "Reiniciar para atualizar"
 
@@ -3670,7 +3677,7 @@ msgstr "Obtendo dados…"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Retry"
 msgstr "Tentar novamente"
 
@@ -4177,6 +4184,10 @@ msgstr ""
 msgid "Signed Out"
 msgstr "Sessão encerrada"
 
+#: src/components/sign-in/sign-in-form.tsx
+msgid "Signing in…"
+msgstr ""
+
 #: src/components/revoked-device-modal.tsx
 #~ msgid "Signing out…"
 #~ msgstr "Saindo…"
@@ -4545,6 +4556,10 @@ msgstr "A solicitação foi recusada. Você pode fechar esta página com seguran
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr "O servidor rejeitou a credencial. Verifique seu token Bearer ou sua chave de API."
 
+#: src/lib/encryption-error-message.ts
+msgid "The server took too long to respond. Please try again."
+msgstr ""
+
 #: src/lib/device-grant.ts
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
 msgstr "O serviço de login está indisponível neste momento. Verifique sua conexão e tente novamente."
@@ -4647,6 +4662,10 @@ msgstr "Este link é inválido. Solicite um novo."
 #: src/hooks/use-external-link-dialog.ts
 msgid "This link uses an address the app cannot open."
 msgstr "Este endereço não pode ser aberto pelo app."
+
+#: src/mini-apps/mini-app-frame.tsx
+msgid "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
+msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
@@ -4843,6 +4862,10 @@ msgstr "Formato de hora"
 #: src/components/sync-setup/confirm-identity-step.tsx
 msgid "To continue, we’ll email you a verification code."
 msgstr "Para continuar, vamos enviar um código de verificação para seu e-mail."
+
+#: src/lib/encrypted-sync-support.ts
+msgid "To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system."
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"

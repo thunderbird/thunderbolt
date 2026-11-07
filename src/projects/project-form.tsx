@@ -9,6 +9,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useReducer } from 'react'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 
 import { Button } from '@/components/ui/button'
 import { FormFooter } from '@/components/ui/form-footer'
@@ -54,9 +55,10 @@ type ProjectFormProps = {
   /** May reject; the form catches and shows the message rather than letting the
    *  rejection escape a handler React does not await. */
   onSubmit: (values: ProjectFormValues) => Promise<void>
+  onSuccess?: () => void
 }
 
-export const ProjectForm = ({ initialValues, onCancel, onSubmit }: ProjectFormProps) => {
+export const ProjectForm = ({ initialValues, onCancel, onSubmit, onSuccess }: ProjectFormProps) => {
   const { t } = useLingui()
   const [{ icon, name, description, instructions, isPending, submitError }, dispatch] = useReducer(projectFormReducer, {
     ...initialValues,
@@ -64,15 +66,30 @@ export const ProjectForm = ({ initialValues, onCancel, onSubmit }: ProjectFormPr
     submitError: null,
   })
 
+  const submission = useAsyncAttempt()
   const canSave = name.trim().length > 0 && !isPending
 
   const handleSubmit = async () => {
+    if (!canSave) {
+      return
+    }
+    const attempt = submission.begin()
+    if (!attempt) {
+      return
+    }
     dispatch({ type: 'SUBMIT_STARTED' })
     try {
       await onSubmit({ icon, name, description, instructions })
+      if (attempt.isCurrent()) {
+        onSuccess?.()
+      }
     } catch (error) {
       const fallback = t`Could not save the project.`
-      dispatch({ type: 'SUBMIT_FAILED', message: error instanceof Error ? error.message : fallback })
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'SUBMIT_FAILED', message: error instanceof Error ? error.message : fallback })
+      }
+    } finally {
+      attempt.finish()
     }
   }
 

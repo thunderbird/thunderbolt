@@ -50,8 +50,7 @@ export const useAuthGate = (require: AuthRequirement, search = ''): AuthGateStat
 
   const isAnonymousAllowed = isAnonymousAuthEnabled() && !isSsoMode() && isWaitlistBypassed()
 
-  const triedAnonRef = useRef(false)
-  // The captcha attempt in flight, if any. A ref because a double click on retry lands before the
+  // The anonymous sign-in attempt, if any. A ref because a double click on retry lands before the
   // re-render that hides the button; aborted on unmount so a stale attempt never signs in.
   const attemptRef = useRef<AbortController | null>(null)
   const [anonError, setAnonError] = useState<Error | null>(null)
@@ -91,6 +90,9 @@ export const useAuthGate = (require: AuthRequirement, search = ''): AuthGateStat
     const result = await authClient.signIn.anonymous({
       fetchOptions: { headers: authRequestHeaders({ [captchaTokenHeader]: token }), signal },
     })
+    if (signal.aborted) {
+      return null
+    }
     if (result?.error?.code === captchaVerificationFailedCode) {
       setCaptchaStatus('failed')
       return null
@@ -98,15 +100,24 @@ export const useAuthGate = (require: AuthRequirement, search = ''): AuthGateStat
     return result
   }
 
-  /** One captcha attempt at a time; a call while one is in flight is a no-op. */
-  const signInWithCaptcha = async () => {
+  /** One sign-in owner covers both the challenge and its request, with or without CAPTCHA. */
+  const signInAnonymously = async () => {
     if (attemptRef.current) {
-      return null
+      return
     }
     const attempt = new AbortController()
     attemptRef.current = attempt
     try {
-      return await solveAndSignIn(attempt.signal)
+      const result = isAltchaCaptchaEnabled()
+        ? await solveAndSignIn(attempt.signal)
+        : await authClient.signIn.anonymous({ fetchOptions: { signal: attempt.signal } })
+      if (!attempt.signal.aborted && result?.error) {
+        setAnonError(new Error(result.error.message ?? 'Anonymous sign-in failed'))
+      }
+    } catch (err) {
+      if (!attempt.signal.aborted) {
+        setAnonError(err instanceof Error ? err : new Error(String(err)))
+      }
     } finally {
       if (attemptRef.current === attempt) {
         attemptRef.current = null
@@ -114,50 +125,26 @@ export const useAuthGate = (require: AuthRequirement, search = ''): AuthGateStat
     }
   }
 
-  const signInAnonymously = async () => {
-    try {
-      const result = isAltchaCaptchaEnabled() ? await signInWithCaptcha() : await authClient.signIn.anonymous()
-      if (result?.error) {
-        setAnonError(new Error(result.error.message ?? 'Anonymous sign-in failed'))
-      }
-    } catch (err) {
-      setAnonError(err instanceof Error ? err : new Error(String(err)))
-    }
-  }
-
   const fireAnonSignIn = useEffectEvent(() => void signInAnonymously())
+  const shouldSignIn = !isPending && !isAuthenticated && require === 'authenticated' && isAnonymousAllowed
 
-  // Strict Mode invokes effects twice on mount; the ref dedups so we never fire
-  // signIn.anonymous() more than once per gate mount. Only the captcha retry
-  // button signs in again.
-  //
-  // Better Auth client methods resolve with `{ data, error }` for HTTP failures
-  // (4xx/5xx) — they do NOT throw. Only network errors / aborts reject. We must
-  // surface both paths to the error boundary; otherwise an HTTP error leaves the
-  // gate stuck in `loading` forever (the ref prevents a retry).
   useEffect(() => {
-    const shouldFireAnon =
-      !isPending && !isAuthenticated && require === 'authenticated' && isAnonymousAllowed && !triedAnonRef.current
-    if (!shouldFireAnon) {
+    if (!shouldSignIn) {
       return
     }
-    triedAnonRef.current = true
-    fireAnonSignIn()
-  }, [isPending, isAuthenticated, require, isAnonymousAllowed])
-
-  // Unmount cancels a captcha attempt before it can sign in. It also re-arms the auto sign-in,
-  // because Strict Mode's simulated unmount keeps the refs and would otherwise leave nothing running.
-  useEffect(
-    () => () => {
-      if (!attemptRef.current) {
-        return
+    // Start after effect replay, so Strict Mode never sends a discarded guest sign-in.
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) {
+        fireAnonSignIn()
       }
-      attemptRef.current.abort()
+    })
+    return () => {
+      cancelled = true
+      attemptRef.current?.abort()
       attemptRef.current = null
-      triedAnonRef.current = false
-    },
-    [],
-  )
+    }
+  }, [shouldSignIn, authClient, httpClient])
 
   if (isPending) {
     return { status: 'loading' }

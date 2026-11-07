@@ -58,13 +58,17 @@ export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad, onRetry }: Mi
     {status !== 'ready' && (
       <EmbeddedSurfaceStatus
         name={app.name}
-        state={status === 'unreachable' ? 'failed' : 'waiting'}
+        state={status === 'connecting' ? 'waiting' : 'failed'}
         onRetry={onRetry}
         detail={
-          <Trans>
-            Nothing completed the handshake at {app.url}. Check that the app is running, and that it allows this origin
-            in its <code>frame-ancestors</code>.
-          </Trans>
+          status === 'unsupported' ? (
+            <Trans>This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it.</Trans>
+          ) : (
+            <Trans>
+              Nothing completed the handshake at {app.url}. Check that the app is running, and that it allows this
+              origin in its <code>frame-ancestors</code>.
+            </Trans>
+          )
         }
       />
     )}

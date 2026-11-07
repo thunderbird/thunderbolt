@@ -215,3 +215,82 @@ describe('openWebSocketTransport', () => {
     expect(error).toMatchObject({ reason: 'remote-close', retryable: true })
   })
 })
+
+describe('WebSocket terminal transitions', () => {
+  for (const alreadyAborted of [false, true]) {
+    it(`rejects and releases ${alreadyAborted ? 'an already canceled' : 'a canceled pending'} socket`, async () => {
+      const socket = new FakeSocket()
+      const controller = new AbortController()
+      if (alreadyAborted) {
+        controller.abort()
+      }
+      const opening = openWebSocketTransport({
+        url: 'wss://example.com',
+        signal: controller.signal,
+        webSocketFactory: () => asWebSocketLike(socket),
+      })
+      controller.abort()
+      await expect(opening).rejects.toMatchObject({ name: 'AbortError' })
+      expect(socket.closed).toEqual({ code: normalCloseCode })
+    })
+  }
+
+  it('terminates on a failed send and never leaves a reusable half-open transport', async () => {
+    const {
+      transport,
+      sockets: [socket],
+    } = await openSocket()
+    const cause = new Error('socket write failed')
+    socket.send = () => {
+      throw cause
+    }
+    const writer = transport.stream.writable.getWriter()
+    await expect(writer.write({ id: 1 } as AnyMessage)).rejects.toMatchObject({ reason: 'stream-error', cause })
+    await expect(transport.closed).rejects.toMatchObject({ reason: 'stream-error', cause })
+    expect(socket.closed).toEqual({ code: normalCloseCode })
+    await expect(transport.stream.readable.getReader().read()).resolves.toMatchObject({ done: true })
+    transport.close()
+    await expect(writer.write({ id: 2 } as AnyMessage)).rejects.toMatchObject({ reason: 'stream-error' })
+    expect(socket.sent).toEqual([])
+  })
+
+  it('closes the socket on an opening error and ignores a late open', async () => {
+    const socket = new FakeSocket()
+    const opening = openWebSocketTransport({
+      url: 'wss://example.com',
+      signal: new AbortController().signal,
+      webSocketFactory: () => asWebSocketLike(socket),
+    })
+    socket.emit('error', { message: 'connection failed' })
+    await expect(opening).rejects.toThrow('connection failed')
+    expect(socket.closed).toEqual({ code: normalCloseCode })
+    expect(() => socket.open()).not.toThrow()
+  })
+
+  it('consumer cancellation closes the socket and ignores late frames', async () => {
+    const {
+      transport,
+      sockets: [socket],
+    } = await openSocket()
+    await transport.stream.readable.cancel()
+    await expect(transport.closed).resolves.toBeUndefined()
+    expect(socket.closed).toEqual({ code: normalCloseCode })
+    expect(() => socket.emit('message', { data: '{}' })).not.toThrow()
+    expect(() => transport.close()).not.toThrow()
+  })
+
+  it('honors an abort between open and the async handoff', async () => {
+    const socket = new FakeSocket()
+    const controller = new AbortController()
+    const opening = openWebSocketTransport({
+      url: 'wss://example.com',
+      signal: controller.signal,
+      webSocketFactory: () => asWebSocketLike(socket),
+    })
+    socket.open()
+    controller.abort()
+    const transport = await opening
+    expect(socket.closed).toEqual({ code: normalCloseCode })
+    await expect(transport.closed).resolves.toBeUndefined()
+  })
+})

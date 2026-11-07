@@ -229,6 +229,7 @@ describe('PendingDeviceModal', () => {
     fireEvent.change(screen.getByLabelText('Device fingerprint'), { target: { value: fingerprint } })
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await waitForElement(() => screen.queryByRole('alert'))
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't approve this device. Please try again.")
     expect(requests).toContain('/devices/me/envelope')
     expect(requests.filter((path) => path === '/devices/me/envelope')).toHaveLength(1)
   })

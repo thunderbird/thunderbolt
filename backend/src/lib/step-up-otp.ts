@@ -201,51 +201,58 @@ export type StepUpOtpVerdict = 'valid' | 'invalid' | 'expired' | 'too-many-attem
  * which is precisely the attacker this gate exists to stop, so issuing the
  * guesses in parallel costs it nothing.
  */
-export const verifyStepUpOtp = async (
+export const verifyStepUpOtpInTransaction = async (
+  tx: QueryableDatabase,
+  action: StepUpAction,
+  email: string,
+  otp: string,
+): Promise<StepUpOtpVerdict> => {
+  const [row] = await tx
+    .select()
+    .from(verification)
+    .where(eq(verification.identifier, stepUpIdentifier(action, email)))
+    .orderBy(desc(verification.createdAt))
+    .limit(1)
+    .for('update')
+  if (!row) {
+    return 'invalid'
+  }
+  if (row.expiresAt < new Date()) {
+    await tx.delete(verification).where(eq(verification.id, row.id))
+    return 'expired'
+  }
+  const { code, attempts } = splitStoredOtp(row.value)
+  if (attempts >= stepUpAllowedAttempts) {
+    // The row STAYS. It is already unusable — this check runs before the
+    // compare — and `requestStepUpOtp` reads its `createdAt` to space out
+    // emails. Deleting it here let a session holder burn the budget to erase
+    // the cooldown and immediately demand another code, flooding the owner's
+    // inbox. It clears on its own at expiry, long after the cooldown.
+    return 'too-many-attempts'
+  }
+  if (!constantTimeEquals(code, otp)) {
+    await tx
+      .update(verification)
+      .set({ value: `${code}:${attempts + 1}` })
+      .where(eq(verification.id, row.id))
+    return 'invalid'
+  }
+  return 'valid'
+}
+
+/** Check a code outside a protected action, retaining atomic attempt-budget accounting. */
+export const verifyStepUpOtp = (
   database: typeof DbType,
   action: StepUpAction,
   email: string,
   otp: string,
-): Promise<StepUpOtpVerdict> =>
-  database.transaction(async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(verification)
-      .where(eq(verification.identifier, stepUpIdentifier(action, email)))
-      .orderBy(desc(verification.createdAt))
-      .limit(1)
-      .for('update')
-    if (!row) {
-      return 'invalid'
-    }
-    if (row.expiresAt < new Date()) {
-      await tx.delete(verification).where(eq(verification.id, row.id))
-      return 'expired'
-    }
-    const { code, attempts } = splitStoredOtp(row.value)
-    if (attempts >= stepUpAllowedAttempts) {
-      // The row STAYS. It is already unusable — this check runs before the
-      // compare — and `requestStepUpOtp` reads its `createdAt` to space out
-      // emails. Deleting it here let a session holder burn the budget to erase
-      // the cooldown and immediately demand another code, flooding the owner's
-      // inbox. It clears on its own at expiry, long after the cooldown.
-      return 'too-many-attempts'
-    }
-    if (!constantTimeEquals(code, otp)) {
-      await tx
-        .update(verification)
-        .set({ value: `${code}:${attempts + 1}` })
-        .where(eq(verification.id, row.id))
-      return 'invalid'
-    }
-    return 'valid'
-  })
+): Promise<StepUpOtpVerdict> => database.transaction((tx) => verifyStepUpOtpInTransaction(tx, action, email, otp))
 
 /**
  * Single-use enforcement: `verifyStepUpOtp` deliberately does NOT consume a
- * valid code, so the gated route deletes the row after its transaction
- * commits. Delete-on-commit (not on-check) keeps an action that fails midway
- * retryable with the same code.
+ * valid code. The gated route consumes it INSIDE the same transaction as
+ * verification and the protected action. A rollback preserves the code; a
+ * commit cannot leave a replay window or consume a subsequently issued code.
  */
-export const consumeStepUpOtp = (database: typeof DbType, action: StepUpAction, email: string) =>
+export const consumeStepUpOtp = (database: QueryableDatabase, action: StepUpAction, email: string) =>
   database.delete(verification).where(eq(verification.identifier, stepUpIdentifier(action, email)))

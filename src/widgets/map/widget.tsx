@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Skeleton } from '@/components/ui/skeleton'
+import { useOnScreen } from '@/hooks/use-on-screen'
 import type { I18n, MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
@@ -117,11 +118,12 @@ const isWebglAvailable = (): boolean => {
  * popup with each feature's neutral display fields (`label` / `description`)
  * on click. Domain-specific properties are never surfaced.
  *
- * MapLibre (a heavy dependency) and its stylesheet are lazy-imported on mount
- * so they stay out of the entry/chat bundle until a map actually renders.
+ * MapLibre and its stylesheet load once the widget approaches the viewport.
+ * The visibility latch keeps an initialized map's pan and zoom when it scrolls away.
  */
 export const MapWidget = ({ data, title }: MapWidgetProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
+  const isOnScreen = useOnScreen(containerRef)
   const { i18n } = useLingui()
   const [error, setError] = useState<MessageDescriptor | null>(null)
   const [ready, setReady] = useState(false)
@@ -138,7 +140,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
 
   useEffect(() => {
     const container = containerRef.current
-    if (!collection || !container) {
+    if (!isOnScreen || !collection || !container) {
       return
     }
     // Reset to the skeleton (and clear any prior error) whenever the data
@@ -341,7 +343,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
       resizeObserver.disconnect()
       map?.remove()
     }
-  }, [collection])
+  }, [collection, isOnScreen])
 
   if (!collection) {
     return null
@@ -352,7 +354,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
       {title && <div className="mb-1.5 px-1 font-medium text-[length:var(--font-size-sm)]">{title}</div>}
       <div className="relative h-80 w-full overflow-hidden rounded-lg border border-border">
         <div ref={containerRef} className="h-full w-full" />
-        {!ready && !error && <MapSkeleton />}
+        {isOnScreen && !ready && !error && <MapSkeleton />}
         {error && (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
             <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{i18n._(error)}</p>

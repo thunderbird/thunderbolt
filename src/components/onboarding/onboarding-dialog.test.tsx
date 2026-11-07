@@ -271,6 +271,29 @@ describe('OnboardingDialog', () => {
       })
     }
 
+    it('does not mount wizard queries when onboarding was already completed', async () => {
+      await reconcileDefaults(getDb())
+      await updateSettings(getDb(), { user_has_completed_onboarding: true })
+      render(
+        <>
+          <OnboardingDialog />
+          <GrabQueryClient />
+        </>,
+        { wrapper: createRouterWrapper() },
+      )
+      await flush()
+
+      expect(screen.queryByText(wizardTitle)).toBeNull()
+      expect(queryClient?.getQueryCache().find({ queryKey: ['integrationStatus'] })).toBeUndefined()
+      expect(queryClient?.getQueryCache().find({ queryKey: ['account-passkey'], exact: false })).toBeUndefined()
+      expect(
+        queryClient?.getQueryCache().find({
+          queryKey: ['settings'],
+          predicate: ({ queryKey }) => queryKey.includes('onboarding_current_step'),
+        }),
+      ).toBeUndefined()
+    })
+
     it('closes once the account is marked onboarded', async () => {
       await reconcileDefaults(getDb())
       render(
@@ -282,6 +305,12 @@ describe('OnboardingDialog', () => {
       )
       await flush()
       expect(screen.queryByText(wizardTitle)).not.toBeNull()
+      expect(
+        queryClient
+          ?.getQueryCache()
+          .find({ queryKey: ['integrationStatus'] })
+          ?.getObserversCount(),
+      ).toBe(1)
 
       await updateSettings(getDb(), { user_has_completed_onboarding: true })
       await act(async () => {
@@ -290,6 +319,20 @@ describe('OnboardingDialog', () => {
       await flush()
 
       expect(screen.queryByText(wizardTitle)).toBeNull()
+
+      await updateSettings(getDb(), { user_has_completed_onboarding: false })
+      await act(async () => {
+        await queryClient?.invalidateQueries()
+      })
+      await flush()
+
+      expect(screen.queryByText(wizardTitle)).not.toBeNull()
+      expect(
+        queryClient
+          ?.getQueryCache()
+          .find({ queryKey: ['integrationStatus'] })
+          ?.getObserversCount(),
+      ).toBe(1)
     })
   })
 })

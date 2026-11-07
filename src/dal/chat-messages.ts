@@ -21,6 +21,17 @@ export const getMessage = async (db: AnyDrizzleDatabase, messageId: string): Pro
     .get()) as ChatMessage | undefined
 }
 
+/** Read widget state without transferring the body or decoding message parts and metadata in JavaScript. */
+export const getMessageCache = async (
+  db: AnyDrizzleDatabase,
+  messageId: string,
+): Promise<Pick<ChatMessage, 'cache'> | undefined> =>
+  db
+    .select({ cache: chatMessagesTable.cache })
+    .from(chatMessagesTable)
+    .where(and(eq(chatMessagesTable.id, messageId), isNull(chatMessagesTable.deletedAt)))
+    .get()
+
 /**
  * Gets all chat messages for a specific thread (excluding soft-deleted)
  */
@@ -33,18 +44,21 @@ export const getChatMessages = async (db: AnyDrizzleDatabase, threadId: string):
 }
 
 /**
- * Gets the last message in a thread (excluding soft-deleted)
+ * Gets the last live message's identity for parent chaining and model selection.
  */
-export const getLastMessage = async (db: AnyDrizzleDatabase, threadId: string): Promise<ChatMessage | null> => {
+export const getLastMessage = async (
+  db: AnyDrizzleDatabase,
+  threadId: string,
+): Promise<Pick<ChatMessage, 'id' | 'modelId'> | null> => {
   const lastMessage = await db
-    .select()
+    .select({ id: chatMessagesTable.id, modelId: chatMessagesTable.modelId })
     .from(chatMessagesTable)
     .where(and(eq(chatMessagesTable.chatThreadId, threadId), isNull(chatMessagesTable.deletedAt)))
     .orderBy(desc(chatMessagesTable.id))
     .limit(1)
     .get()
 
-  return (lastMessage ?? null) as ChatMessage | null
+  return lastMessage ?? null
 }
 
 /**
@@ -180,8 +194,7 @@ export const updateMessageCache = async (
   cacheKey: string,
   value: unknown,
 ): Promise<void> => {
-  // Fetch current message
-  const message = await getMessage(db, messageId)
+  const message = await getMessageCache(db, messageId)
 
   if (!message) {
     throw new Error('Message not found')

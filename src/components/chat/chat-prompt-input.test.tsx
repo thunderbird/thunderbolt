@@ -15,7 +15,7 @@ import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { act, cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { createElement, createRef, type ReactNode } from 'react'
+import { createElement, createRef, type ReactNode, useReducer } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
 import { useAcpSessionStore } from '@/acp/session-state-store'
@@ -26,9 +26,15 @@ import { ContentViewProvider } from '@/content-view/context'
 import { ActiveContentView } from '@/content-view/active-content-view'
 import { getClock } from '@/testing-library'
 import { builtInAgent } from '@/defaults/agents'
+import { defaultSkillWeather } from '@/defaults/skills'
+import * as skillHooks from '@/skills/use-skills'
+import * as adapterCache from '@/acp/adapter-cache'
+import * as chatMessagesLoader from './chat-messages-loader'
 import type { Agent } from '@/types/acp'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 import type { ImageSupportCheck } from './use-image-support-check'
+// The fake clock cannot wait for cold module I/O; browser coverage exercises the first lazy load.
+import '@/components/context-usage/compaction-summary-content'
 
 // The real blob store uses IndexedDB, which isn't available in the test env.
 // Back it with an in-memory Map so the attach path (put → chip render) works.
@@ -144,6 +150,70 @@ describe('ChatPromptInput', () => {
   })
 
   describe('rendering', () => {
+    it('warms only the selected agent type on first input and after a type change', () => {
+      const { mockUseChat } = setupStore()
+      const preloadAgent = spyOn(adapterCache, 'preloadAgentConnection').mockImplementation(() => {})
+      const preloadMessages = spyOn(chatMessagesLoader, 'preloadChatMessageList').mockImplementation(() => {})
+      try {
+        render(
+          <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+          { wrapper: TestWrapper },
+        )
+        const textarea = screen.getByPlaceholderText('Ask me anything…')
+        expect(preloadAgent).not.toHaveBeenCalled()
+        expect(preloadMessages).not.toHaveBeenCalled()
+
+        fireEvent.change(textarea, { target: { value: 'a' } })
+        fireEvent.change(textarea, { target: { value: 'ab' } })
+        expect(preloadAgent.mock.calls).toEqual([['built-in']])
+
+        act(() => useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent }))
+        fireEvent.change(textarea, { target: { value: 'abc' } })
+        fireEvent.change(textarea, { target: { value: 'abcd' } })
+        expect(preloadAgent.mock.calls).toEqual([['built-in'], ['remote-acp']])
+
+        act(() => useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent }))
+        fireEvent.change(textarea, { target: { value: 'abcde' } })
+        expect(preloadAgent.mock.calls).toEqual([['built-in'], ['remote-acp'], ['managed-http']])
+        expect(preloadMessages).toHaveBeenCalledTimes(1)
+      } finally {
+        cleanup()
+        preloadAgent.mockRestore()
+        preloadMessages.mockRestore()
+      }
+    })
+
+    it('ignores parent stream renders while keeping the draft editable', () => {
+      const { mockUseChat } = setupStore()
+      const onRender = mock(() => {})
+      const countedUseChat: typeof mockUseChat = (options) => {
+        onRender()
+        return mockUseChat(options)
+      }
+      const useIsMobile = createMockUseIsMobile()
+      const Parent = () => {
+        const [, rerender] = useReducer((value: number) => value + 1, 0)
+        return (
+          <>
+            <button onClick={rerender}>Parent update</button>
+            <ChatPromptInput useChat={countedUseChat} useIsMobile={useIsMobile} />
+          </>
+        )
+      }
+      render(<Parent />, { wrapper: TestWrapper })
+      const initialRenders = onRender.mock.calls.length
+
+      for (let token = 0; token < 20; token++) {
+        fireEvent.click(screen.getByRole('button', { name: 'Parent update' }))
+      }
+
+      expect(onRender.mock.calls.length - initialRenders).toBe(0)
+      const input = screen.getByPlaceholderText('Ask me anything…')
+      fireEvent.change(input, { target: { value: 'My next question' } })
+      expect(input).toHaveValue('My next question')
+      expect(onRender.mock.calls.length).toBeGreaterThan(initialRenders)
+    })
+
     it('should render textarea with placeholder', () => {
       const { mockUseChat } = setupStore()
 
@@ -152,6 +222,50 @@ describe('ChatPromptInput', () => {
       })
 
       expect(screen.getByPlaceholderText('Ask me anything…')).toBeInTheDocument()
+    })
+
+    it('unmounts the pinned-skills queries once the chat has messages and restores them for an empty chat', () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      const previousConfig = useConfigStore.getState()
+      useConfigStore.setState({ config: {}, configLoaded: true })
+      const pinnedQuery = spyOn(skillHooks, 'usePinnedSkills').mockReturnValue({
+        pinned: [defaultSkillWeather],
+        pinnedSet: new Set([defaultSkillWeather.id]),
+        togglePin: async () => undefined,
+        reorderPins: async () => undefined,
+      })
+      try {
+        render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            useContextTracking={createMockUseContextTracking()}
+          />,
+          { wrapper: TestWrapper },
+        )
+        expect(screen.getByLabelText('Add a skill')).toBeInTheDocument()
+        expect(pinnedQuery).toHaveBeenCalled()
+        pinnedQuery.mockClear()
+
+        mockChatInstance.messages.push({ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] })
+        const input = screen.getByPlaceholderText('Ask me anything…')
+        for (const value of ['N', 'Ne', 'Next']) {
+          fireEvent.change(input, { target: { value } })
+        }
+        expect(screen.queryByLabelText('Add a skill')).toBeNull()
+        expect(pinnedQuery).not.toHaveBeenCalled()
+        expect(input).toHaveValue('Next')
+        expect(screen.getByRole('button', { name: 'Context usage' })).toBeInTheDocument()
+
+        mockChatInstance.messages.length = 0
+        fireEvent.change(input, { target: { value: '' } })
+        expect(screen.getByLabelText('Add a skill')).toBeInTheDocument()
+        expect(pinnedQuery).toHaveBeenCalled()
+      } finally {
+        cleanup()
+        pinnedQuery.mockRestore()
+        useConfigStore.setState(previousConfig)
+      }
     })
   })
 
@@ -435,7 +549,9 @@ describe('ChatPromptInput', () => {
 
       const contextTrigger = screen.getByRole('button', { name: 'Context usage' })
       fireEvent.click(contextTrigger)
-      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'View summary' }))
+      await act(async () => {
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'View summary' }))
+      })
       expect(screen.getByRole('region', { name: 'Compaction summary' })).toBeInTheDocument()
       expect(screen.queryByRole('dialog')).toBeNull()
       expect(screen.getByRole('heading', { name: 'Saved decisions' })).toBeInTheDocument()

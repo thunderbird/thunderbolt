@@ -56,7 +56,7 @@ export const pushRelease = (
       git(['push', '--atomic', 'origin', `${releaseHead}:refs/heads/${branch}`, `${releaseHead}:refs/tags/${tag}`])
       return true
     } catch (error) {
-      git(['fetch', '--tags', 'origin', branch])
+      git(['fetch', '--no-tags', 'origin', branch])
       const currentRemoteHead = git(['rev-parse', 'FETCH_HEAD'])
       if (target.expectedSha && currentRemoteHead !== target.expectedSha) {
         return false
@@ -79,6 +79,8 @@ export const pushRelease = (
       if (git(['ls-remote', '--tags', 'origin', `refs/tags/${tag}`])) {
         throw error
       }
+      // Refresh metadata only after checking the prepared tag for a collision.
+      git(['fetch', 'origin', 'refs/tags/*:refs/tags/*'])
       const sourceHead = git(['rev-parse', 'HEAD^'])
       git(['merge-base', '--is-ancestor', sourceHead, currentRemoteHead])
       git(['reset', '--keep', currentRemoteHead])

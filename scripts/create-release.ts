@@ -415,6 +415,9 @@ const reportPublication = (published: boolean) => {
   if (!published) {
     const message = 'Nightly release skipped: the branch advanced beyond the tested revision. No release was published.'
     console.log(message)
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.warn(`::warning title=Nightly release skipped::${message}`)
+    }
     if (process.env.GITHUB_STEP_SUMMARY) {
       appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`)
     }

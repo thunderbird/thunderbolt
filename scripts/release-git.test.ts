@@ -230,12 +230,20 @@ writeFileSync('CHANGELOG.md', process.argv[process.argv.indexOf('--tag') + 1] + 
     })
   })
 
-  test('preserves a conflicting remote tag even when the source also advanced', () => {
+  test('preserves the original push error and conflicting tag when the source also advanced', () => {
     withReleaseRepository(({ local, remote, release, advance, prepare, target }) => {
       const released = release()
       const advanced = advance()
       remote(['update-ref', 'refs/tags/v1.2.3', target.expectedSha])
-      expect(() => pushRelease('v1.2.3', { branch: 'main' }, local, prepare)).toThrow()
+      const failure = new Error('atomic push rejected: conflicting remote tag')
+      const git = (args: string[]) => {
+        if (args[0] === 'push') {
+          throw failure
+        }
+        return local(args)
+      }
+      expect(() => pushRelease('v1.2.3', { branch: 'main' }, git, prepare)).toThrow(failure)
+      expect(local(['rev-parse', 'v1.2.3'])).toBe(released)
       expect(local(['rev-parse', 'HEAD'])).toBe(released)
       expect(remote(['rev-parse', 'v1.2.3'])).toBe(target.expectedSha)
       expect(remote(['rev-parse', 'main'])).toBe(advanced)
@@ -299,6 +307,7 @@ describe('nightly tested revision', () => {
           ...process.env,
           RELEASE_BRANCH: target.branch,
           RELEASE_EXPECTED_SHA: target.expectedSha,
+          GITHUB_ACTIONS: 'true',
           GITHUB_OUTPUT: output,
           GITHUB_STEP_SUMMARY: summary,
         },
@@ -307,6 +316,7 @@ describe('nightly tested revision', () => {
       })
       expect(result.exitCode).toBe(0)
       expect(readFileSync(output, 'utf8')).toBe('published=false\n')
+      expect(result.stderr.toString()).toContain('::warning title=Nightly release skipped::')
       expect(readFileSync(summary, 'utf8')).toContain('Nightly release skipped')
       expect(local(['rev-parse', 'HEAD'])).toBe(target.expectedSha)
       expect(remote(['rev-parse', 'main'])).toBe(advanced)

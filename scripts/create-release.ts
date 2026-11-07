@@ -367,7 +367,7 @@ const tagExists = (tagName: string): boolean => {
 /**
  * Commit and tag the version
  */
-const commitAndTag = (version: string, platform: string, shouldPush: boolean, target: ReleaseTarget): boolean => {
+const commitAndTag = (version: string, platform: string): string => {
   // Determine tag name based on platform
   const tagName = platform === 'all' ? `v${version}` : `v${version}-${platform}-rc`
 
@@ -404,28 +404,7 @@ const commitAndTag = (version: string, platform: string, shouldPush: boolean, ta
   exec(`git tag ${tagName}`)
   console.log('  ✓ Tag created locally')
 
-  if (shouldPush) {
-    console.log('\n📤 Pushing to remote...')
-    if (!pushRelease(tagName, target)) {
-      return false
-    }
-    console.log('  ✓ Pushed to remote')
-
-    console.log(`\n✅ Tag ${tagName} created and pushed`)
-    if (platform === 'all') {
-      console.log('🚀 This will trigger the release workflow to build all platforms')
-    } else {
-      console.log(`🚀 This will trigger the ${platform} release workflow`)
-    }
-  } else {
-    console.log(`\n✅ Tag ${tagName} created locally`)
-    console.log(`\n💡 To push and trigger CI/CD, run:`)
-    const currentBranch = exec('git branch --show-current', true)
-    console.log(`   git push origin ${currentBranch}`)
-    console.log(`   git push origin ${tagName}`)
-    console.log(`\n   Or run the script again with --push flag`)
-  }
-  return shouldPush
+  return tagName
 }
 
 /** Expose publication to dependent jobs; a stale nightly must not build or resolve an incident. */
@@ -440,6 +419,21 @@ const reportPublication = (published: boolean) => {
       appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`)
     }
   }
+}
+
+/** Recalculate version selection against the current source, including every publication retry. */
+const nextReleaseVersion = (args: Args): string => {
+  const currentVersion = getCurrentVersion()
+  console.log(`📦 Current version: ${currentVersion}`)
+
+  if (args.version) {
+    console.log(`✨ Using specified version: ${args.version}`)
+    return args.version
+  }
+  const versionType = args.type === 'auto' ? detectVersionType() : args.type!
+  const version = bumpVersion(currentVersion, versionType)
+  console.log(`📈 Auto-detected version: ${version} (type: ${versionType})`)
+  return version
 }
 
 /**
@@ -494,25 +488,11 @@ const main = () => {
     return
   }
 
-  // Determine new version
-  const currentVersion = getCurrentVersion()
-  console.log(`📦 Current version: ${currentVersion}`)
   console.log(`🎯 Platform: ${platform}`)
-
-  let newVersion: string
-
-  if (args.version) {
-    newVersion = args.version
-    console.log(`✨ Using specified version: ${newVersion}`)
-  } else {
-    const versionType = args.type === 'auto' ? detectVersionType() : args.type!
-    newVersion = bumpVersion(currentVersion, versionType)
-    console.log(`📈 Auto-detected version: ${newVersion} (type: ${versionType})`)
-  }
-
   if (args.dryRun) {
+    const newVersion = nextReleaseVersion(args)
     console.log('\n🧪 DRY RUN - No changes will be made')
-    console.log(`\nWould update version from ${currentVersion} to ${newVersion}`)
+    console.log(`\nWould update version from ${getCurrentVersion()} to ${newVersion}`)
     console.log('\nFiles that would be updated:')
     versionPackagePaths.forEach((path) => console.log(`  - ${path}`))
     console.log('  - src-tauri/Cargo.toml')
@@ -529,14 +509,24 @@ const main = () => {
     process.exit(0)
   }
 
-  // Update version files
-  updateVersionFiles(newVersion, platform)
-
-  // Commit and tag
-  const published = commitAndTag(newVersion, platform, args.push || false, target)
-  if (args.push) {
-    reportPublication(published)
+  /** Rebuild every generated release file after a concurrent branch advance. */
+  const prepare = () => {
+    const version = nextReleaseVersion(args)
+    updateVersionFiles(version, platform)
+    return commitAndTag(version, platform)
   }
+  const tagName = prepare()
+  if (args.push) {
+    const published = pushRelease(tagName, target, undefined, prepare)
+    reportPublication(published)
+    if (published) {
+      console.log(`\n✅ Release published from the current source revision`)
+    }
+    return
+  }
+  console.log(`\n✅ Tag ${tagName} created locally`)
+  const currentBranch = exec('git branch --show-current', true)
+  console.log(`   git push --atomic origin HEAD:refs/heads/${currentBranch} refs/tags/${tagName}`)
 }
 
 // Run the script

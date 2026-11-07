@@ -34,19 +34,29 @@ export const updateReleaseBranch = (target: ReleaseTarget = {}, git: GitCommand 
   return true
 }
 
-/** Publish atomically; stale nightlies skip, while manual releases may rebase and retry. */
-export const pushRelease = (tag: string, target: ReleaseTarget = {}, git: GitCommand = runGit): boolean => {
+/** Publish atomically; manual retries must regenerate metadata from the new source revision. */
+export const pushRelease = (
+  initialTag: string,
+  target: ReleaseTarget = {},
+  git: GitCommand = runGit,
+  rebuild?: () => string,
+): boolean => {
   const branch = target.branch ?? git(['symbolic-ref', '--short', 'HEAD'])
   if (target.expectedSha && git(['rev-parse', 'HEAD^']) !== target.expectedSha) {
     throw new Error('Nightly release commit must directly follow the tested revision')
   }
+  let tag = initialTag
   for (const attempt of [1, 2, 3]) {
     const remoteHead = git(['rev-parse', `refs/remotes/origin/${branch}`])
+    const releaseHead = git(['rev-parse', 'HEAD'])
+    if (git(['rev-parse', `refs/tags/${tag}`]) !== releaseHead) {
+      throw new Error('Release tag does not match the prepared release commit')
+    }
     try {
-      git(['push', '--atomic', 'origin', `HEAD:refs/heads/${branch}`, `refs/tags/${tag}`])
+      git(['push', '--atomic', 'origin', `${releaseHead}:refs/heads/${branch}`, `${releaseHead}:refs/tags/${tag}`])
       return true
     } catch (error) {
-      git(['fetch', 'origin', branch])
+      git(['fetch', '--tags', 'origin', branch])
       const currentRemoteHead = git(['rev-parse', 'FETCH_HEAD'])
       if (target.expectedSha && currentRemoteHead !== target.expectedSha) {
         return false
@@ -54,9 +64,29 @@ export const pushRelease = (tag: string, target: ReleaseTarget = {}, git: GitCom
       if (attempt === 3 || currentRemoteHead === remoteHead) {
         throw error
       }
-      git(['rebase', 'FETCH_HEAD'])
-      // Only the unpublished local tag moves. Neither remote ref is force-pushed.
-      git(['tag', '--force', tag])
+      if (!rebuild) {
+        throw new Error('Release branch advanced; regenerate version and changelog before publishing', { cause: error })
+      }
+      if (
+        git(['status', '--porcelain']) ||
+        git(['rev-parse', 'HEAD']) !== releaseHead ||
+        git(['rev-parse', `refs/tags/${tag}`]) !== releaseHead
+      ) {
+        throw new Error('Release checkout changed; refusing to replace the prepared release', { cause: error })
+      }
+      // An atomic push can fail for a tag collision, or lose its acknowledgement.
+      // In either case an existing remote tag must never be removed or replaced.
+      if (git(['ls-remote', '--tags', 'origin', `refs/tags/${tag}`])) {
+        throw error
+      }
+      const sourceHead = git(['rev-parse', 'HEAD^'])
+      git(['merge-base', '--is-ancestor', sourceHead, currentRemoteHead])
+      git(['reset', '--keep', currentRemoteHead])
+      git(['update-ref', '-d', `refs/tags/${tag}`, releaseHead])
+      if (git(['status', '--porcelain'])) {
+        throw new Error('Release checkout changed before rebuilding', { cause: error })
+      }
+      tag = rebuild()
     }
   }
   throw new Error('Release push exhausted its retries')

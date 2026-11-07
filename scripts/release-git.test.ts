@@ -6,7 +6,7 @@ import { describe, expect, mock, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pushRelease, updateReleaseBranch } from './release-git'
 
 /** Run a release against an isolated bare origin, including real atomic-push rejection. */
@@ -38,6 +38,7 @@ const createReleaseRepository = (directory: string) => {
     const entries = [
       ['version.txt', version],
       ['source.txt', source],
+      ['CHANGELOG.md', `version: ${version}\nsource: ${source}`],
     ].map(([name, value]) => `100644 blob ${git(cwd, ['hash-object', '-w', '--stdin'], value)}\t${name}`)
     const tree = git(cwd, ['mktree'], `${entries.join('\n')}\n`)
     return git(cwd, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', 'fixture'])
@@ -56,12 +57,33 @@ const createReleaseRepository = (directory: string) => {
     local(['tag', 'v1.2.3'])
     return sha
   }
+  const prepare = () => {
+    const base = local(['rev-parse', 'HEAD'])
+    const source = local(['show', 'HEAD:source.txt'])
+    const version = source === 'untested' ? '1.3.0' : '1.2.3'
+    const sha = commit(checkout, version, source, base)
+    local(['reset', '--hard', sha])
+    const tag = `v${version}`
+    local(['tag', tag])
+    return tag
+  }
   const advance = () => {
     const sha = commit(origin, '1.2.2', 'untested', tested)
     remote(['update-ref', 'refs/heads/main', sha])
     return sha
   }
-  return { directory, checkout, local, remote, release, advance, target: { branch: 'main', expectedSha: tested } }
+  return {
+    directory,
+    checkout,
+    origin,
+    env,
+    local,
+    remote,
+    release,
+    prepare,
+    advance,
+    target: { branch: 'main', expectedSha: tested },
+  }
 }
 
 describe('release publication', () => {
@@ -78,36 +100,108 @@ describe('release publication', () => {
   test('publishes branch and tag in one atomic push', () => {
     const git = mock((args: string[]) => (args[0] === 'symbolic-ref' ? 'main' : 'original'))
     pushRelease('v1.2.3', {}, git)
-    expect(git.mock.calls.at(-1)).toEqual([['push', '--atomic', 'origin', 'HEAD:refs/heads/main', 'refs/tags/v1.2.3']])
+    expect(git.mock.calls.at(-1)).toEqual([
+      ['push', '--atomic', 'origin', 'original:refs/heads/main', 'original:refs/tags/v1.2.3'],
+    ])
   })
 
-  test('rebases and moves the local tag before retrying a concurrent branch update', () => {
-    const git = mock((args: string[]): string => {
-      if (args[0] === 'symbolic-ref') {
-        return 'main'
+  test('publishes the prepared snapshot rather than concurrent local work', () => {
+    withReleaseRepository(({ local, remote, release, target }) => {
+      const released = release()
+      const racingGit = (args: string[]) => {
+        if (args[0] === 'push') {
+          local(['commit', '--allow-empty', '-m', 'user concurrent work'])
+        }
+        return local(args)
       }
-      if (args[0] === 'rev-parse') {
-        return args[1] === 'FETCH_HEAD' ? 'advanced' : 'original'
-      }
-      if (args[0] === 'push' && git.mock.calls.filter(([command]) => command[0] === 'push').length === 1) {
-        throw new Error('non-fast-forward')
-      }
-      return ''
+      expect(pushRelease('v1.2.3', target, racingGit)).toBe(true)
+      expect(remote(['rev-parse', 'main'])).toBe(released)
+      expect(remote(['rev-parse', 'v1.2.3'])).toBe(released)
+      expect(local(['log', '-1', '--format=%s'])).toBe('user concurrent work')
+      expect(local(['rev-parse', 'HEAD'])).not.toBe(released)
     })
-    pushRelease('v1.2.3', {}, git)
-    expect(git.mock.calls.map(([args]) => args[0])).toEqual([
-      'symbolic-ref',
-      'rev-parse',
-      'push',
-      'fetch',
-      'rev-parse',
-      'rebase',
-      'tag',
-      'rev-parse',
-      'push',
-    ])
-    expect(git.mock.calls).toContainEqual([['tag', '--force', 'v1.2.3']])
   })
+
+  test('recalculates the version and changelog from the advanced source before retrying', () => {
+    withReleaseRepository(({ local, remote, prepare, advance }) => {
+      const tag = prepare()
+      const advanced = advance()
+      expect(pushRelease(tag, { branch: 'main' }, local, prepare)).toBe(true)
+      expect(remote(['rev-parse', 'main'])).toBe(remote(['rev-parse', 'v1.3.0']))
+      expect(remote(['rev-parse', 'main^'])).toBe(advanced)
+      expect(remote(['show', 'main:version.txt'])).toBe('1.3.0')
+      expect(remote(['show', 'main:CHANGELOG.md'])).toContain('version: 1.3.0\nsource: untested')
+      expect(remote(['tag', '--list', 'v1.2.3'])).toBe('')
+      expect(local(['tag', '--list', 'v1.2.3'])).toBe('')
+    })
+  })
+
+  test('the real CLI recalculates auto version and regenerates changelog after a push race', () => {
+    withReleaseRepository(({ directory, checkout, origin, env, local, remote }) => {
+      for (const [path, content] of Object.entries({
+        'package.json': JSON.stringify({ name: 'release-fixture', version: '1.2.2' }),
+        'cli/package.json': JSON.stringify({ name: 'release-cli-fixture', version: '1.2.2' }),
+        'src-tauri/Cargo.toml': '[package]\nname = "release-fixture"\nversion = "1.2.2"\n',
+        'src-tauri/Cargo.lock': '# fixture\n',
+        'src-tauri/tauri.conf.json': JSON.stringify({ version: '1.2.2' }),
+        'src-tauri/gen/android/app/tauri.properties': 'versionName=1.2.2\n',
+      })) {
+        mkdirSync(dirname(join(checkout, path)), { recursive: true })
+        writeFileSync(join(checkout, path), content)
+      }
+      local(['add', '.'])
+      local(['commit', '-m', 'chore: seed release files'])
+      local(['tag', 'v1.2.2'])
+      local(['push', 'origin', 'HEAD:refs/heads/main', 'refs/tags/v1.2.2'])
+      const base = local(['rev-parse', 'HEAD'])
+      const tree = local(['rev-parse', 'HEAD^{tree}'])
+      const advanced = remote(['commit-tree', tree, '-p', base, '-m', 'feat: fresh capability'])
+      const scripts = join(checkout, 'scripts')
+      mkdirSync(scripts)
+      for (const file of ['create-release.ts', 'release-git.ts']) {
+        copyFileSync(join(import.meta.dir, file), join(scripts, file))
+      }
+      writeFileSync(join(checkout, '.git/info/exclude'), 'scripts/\n')
+      const marker = join(directory, 'advanced')
+      writeFileSync(
+        join(checkout, '.git/hooks/pre-push'),
+        `#!${process.execPath}
+import { existsSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+if (!existsSync(${JSON.stringify(marker)})) {
+  writeFileSync(${JSON.stringify(marker)}, '')
+  execFileSync('git', ['--git-dir', ${JSON.stringify(origin)}, 'update-ref', 'refs/heads/main', ${JSON.stringify(advanced)}])
+}
+`,
+        { mode: 0o755 },
+      )
+      const bin = join(directory, 'bin')
+      mkdirSync(bin)
+      // Only the external formatter is stubbed; version selection and publication run the real CLI.
+      writeFileSync(
+        join(bin, 'git-cliff'),
+        `#!${process.execPath}
+import { writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+writeFileSync('CHANGELOG.md', process.argv[process.argv.indexOf('--tag') + 1] + '\\n' + execFileSync('git', ['log', '--format=%s'], { encoding: 'utf8' }))
+`,
+        { mode: 0o755 },
+      )
+      const result = Bun.spawnSync([process.execPath, join(scripts, 'create-release.ts'), '--push'], {
+        cwd: directory,
+        env: { ...env, PATH: `${bin}:${process.env.PATH}`, RELEASE_BRANCH: 'main', RELEASE_EXPECTED_SHA: '' },
+        timeout: 10_000,
+      })
+      expect({ exitCode: result.exitCode, stderr: result.stderr.toString() }).toMatchObject({ exitCode: 0 })
+      expect(JSON.parse(remote(['show', 'main:package.json'])).version).toBe('1.3.0')
+      expect(remote(['show', 'main:CHANGELOG.md'])).toContain('v1.3.0')
+      expect(remote(['show', 'main:CHANGELOG.md'])).toContain('feat: fresh capability')
+      expect(remote(['rev-parse', 'main^'])).toBe(advanced)
+      expect(remote(['rev-parse', 'main'])).toBe(remote(['rev-parse', 'v1.3.0']))
+      expect(remote(['tag', '--list', 'v1.2.3'])).toBe('')
+      expect(remote(['log', 'main', '--format=%s'])).not.toContain('bump version to 1.2.3')
+    })
+  }, 15_000)
 
   test('surfaces push failures without retrying when the branch did not advance', () => {
     const failure = new Error('permission denied')
@@ -122,24 +216,30 @@ describe('release publication', () => {
     expect(git.mock.calls.some(([args]) => args[0] === 'tag')).toBe(false)
   })
 
-  test('stops on a rebase conflict without moving or publishing the tag', () => {
-    const git = mock((args: string[]): string => {
-      if (args[0] === 'symbolic-ref') {
-        return 'main'
-      }
-      if (args[0] === 'rev-parse') {
-        return args[1] === 'FETCH_HEAD' ? 'advanced' : 'original'
-      }
-      if (args[0] === 'push') {
-        throw new Error('non-fast-forward')
-      }
-      if (args[0] === 'rebase') {
-        throw new Error('conflict')
-      }
-      return ''
+  test('preserves local changes instead of replacing a prepared release', () => {
+    withReleaseRepository(({ checkout, local, remote, release, advance, prepare }) => {
+      const released = release()
+      const advanced = advance()
+      writeFileSync(join(checkout, 'source.txt'), 'user edit')
+      expect(() => pushRelease('v1.2.3', { branch: 'main' }, local, prepare)).toThrow('checkout changed')
+      expect(local(['rev-parse', 'HEAD'])).toBe(released)
+      expect(readFileSync(join(checkout, 'source.txt'), 'utf8')).toBe('user edit')
+      expect(local(['rev-parse', 'v1.2.3'])).toBe(released)
+      expect(remote(['rev-parse', 'main'])).toBe(advanced)
+      expect(remote(['tag', '--list'])).toBe('')
     })
-    expect(() => pushRelease('v1.2.3', {}, git)).toThrow('conflict')
-    expect(git.mock.calls.some(([args]) => args[0] === 'tag')).toBe(false)
+  })
+
+  test('preserves a conflicting remote tag even when the source also advanced', () => {
+    withReleaseRepository(({ local, remote, release, advance, prepare, target }) => {
+      const released = release()
+      const advanced = advance()
+      remote(['update-ref', 'refs/tags/v1.2.3', target.expectedSha])
+      expect(() => pushRelease('v1.2.3', { branch: 'main' }, local, prepare)).toThrow()
+      expect(local(['rev-parse', 'HEAD'])).toBe(released)
+      expect(remote(['rev-parse', 'v1.2.3'])).toBe(target.expectedSha)
+      expect(remote(['rev-parse', 'main'])).toBe(advanced)
+    })
   })
 
   test('bounds retries when the branch keeps advancing', () => {
@@ -155,7 +255,7 @@ describe('release publication', () => {
       }
       return ''
     })
-    expect(() => pushRelease('v1.2.3', {}, git)).toThrow('non-fast-forward')
+    expect(() => pushRelease('v1.2.3', {}, git, () => 'v1.2.3')).toThrow('non-fast-forward')
     expect(git.mock.calls.filter(([args]) => args[0] === 'push')).toHaveLength(3)
   })
 })
@@ -262,14 +362,14 @@ describe('nightly tested revision', () => {
     })
   })
 
-  test('still allows a manual release to rebase over a concurrent source change', () => {
+  test('refuses a stale manual publication without a metadata rebuilder', () => {
     withReleaseRepository(({ local, remote, release, advance }) => {
-      release()
-      advance()
-      expect(pushRelease('v1.2.3', { branch: 'main' }, local)).toBe(true)
-      expect(remote(['rev-parse', 'main'])).toBe(remote(['rev-parse', 'v1.2.3']))
-      expect(remote(['show', 'v1.2.3:version.txt'])).toBe('1.2.3')
-      expect(remote(['show', 'v1.2.3:source.txt'])).toBe('untested')
+      const released = release()
+      const advanced = advance()
+      expect(() => pushRelease('v1.2.3', { branch: 'main' }, local)).toThrow('regenerate version and changelog')
+      expect(local(['rev-parse', 'HEAD'])).toBe(released)
+      expect(remote(['rev-parse', 'main'])).toBe(advanced)
+      expect(remote(['tag', '--list'])).toBe('')
     })
   })
 })

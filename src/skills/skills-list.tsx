@@ -5,7 +5,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { LayoutGroup, m } from 'framer-motion'
 import { Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import { SettingsEmptyState, SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { SettingsListBody, SettingsListPane, SettingsSectionLabel } from '@/components/settings/settings-list'
@@ -13,9 +13,8 @@ import { Button } from '@/components/ui/button'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
-import type { Skill } from '@/types'
 import { skillMatchesQuery } from './display'
-import { LibraryRow, skillRowTransition } from './library-row'
+import { LibraryRow, skillRowTransition, type SkillListItem } from './library-row'
 
 /**
  * Sidebar list for `/settings/skills`. Skills are grouped by enabled state
@@ -33,8 +32,12 @@ export const SkillsList = ({
   onSelectSkill,
   onEditSkill,
   onDeleteSkill,
+  intro,
+  actions,
 }: {
-  skills: Skill[]
+  intro?: ReactNode
+  actions?: ReactNode
+  skills: SkillListItem[]
   activeSkillId: string | null
   isEnabled: (id: string) => boolean
   onToggleEnabled: (id: string, next: boolean) => void
@@ -50,8 +53,8 @@ export const SkillsList = ({
   const { enabledRows, disabledRows } = useMemo(() => {
     const query = search.trim()
     const filtered = skills.filter((s) => skillMatchesQuery(s, query))
-    const enabled: Skill[] = []
-    const disabled: Skill[] = []
+    const enabled: SkillListItem[] = []
+    const disabled: SkillListItem[] = []
     for (const s of filtered) {
       ;(isEnabled(s.id) ? enabled : disabled).push(s)
     }
@@ -69,6 +72,7 @@ export const SkillsList = ({
       <PageSearch onSearch={setSearch}>
         <PageHeader title={t`Skills`}>
           <PageSearch.Button />
+          {actions}
           <PageCreateAction label={t`New Skill`} onClick={onCreate} />
         </PageHeader>
 
@@ -81,6 +85,7 @@ export const SkillsList = ({
           animates between the two positions. */}
       <LayoutGroup>
         <SettingsListBody>
+          {intro}
           {/* `layout="position"` on the wrappers (not full `layout`) so the
               containers reposition without animating their bounding-box
               SIZE — full `layout` interpolates height via a transform,

@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isAdminDesignPreview } from '@/lib/admin-preview'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { m, useReducedMotion } from 'framer-motion'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { MessageCircle, Settings, type LucideIcon } from 'lucide-react'
+import { MessageCircle, Settings, ShieldCheck, type LucideIcon } from 'lucide-react'
 import type { SidebarSection } from './types'
 
 type SectionDefinition = {
@@ -17,10 +18,14 @@ type SectionDefinition = {
   icon: LucideIcon
 }
 
-const sections: SectionDefinition[] = [
+const baseSections: SectionDefinition[] = [
   { id: 'chats', label: msg`Chats`, icon: MessageCircle },
   { id: 'settings', label: msg`Settings`, icon: Settings },
 ]
+
+const sections: SectionDefinition[] = isAdminDesignPreview
+  ? [...baseSections, { id: 'admin', label: msg`Admin`, icon: ShieldCheck }]
+  : baseSections
 
 /** Near-critically-damped spring so the thumb glides to its slot without overshoot. */
 const thumbSpring = { type: 'spring', stiffness: 500, damping: 40 } as const

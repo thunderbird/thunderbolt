@@ -8,7 +8,6 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router'
 
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { useFormatters } from '@/i18n/use-formatters'
@@ -37,6 +36,7 @@ import { cn } from '@/lib/utils'
 import { useLibrarySkills } from '@/skills/use-skills'
 import type { Agent } from '@/types/acp'
 import { acpEndpointLabel, agentProvenanceLine } from './agent-provenance'
+import { AgentUsageSummary } from './agent-usage-summary'
 import type { TestAcpConnectionFn } from './add-custom-agent-form'
 
 /** On-demand probe result: the panel never polls on open — Status starts at
@@ -194,56 +194,31 @@ const BuiltInBody = () => {
   })
 
   return (
-    <>
-      <div className="flex shrink-0 flex-col gap-2">
-        <DetailSectionTitle>
-          <Trans>About</Trans>
-        </DetailSectionTitle>
-        <p className="text-base leading-snug text-foreground">
-          <Trans>
-            {appName} is the agent built into the app — always here, no setup needed. It draws on everything you have
-            enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on.
-          </Trans>
-        </p>
-      </div>
-
-      <DetailDivider />
-
-      <div className="flex flex-col gap-4">
-        <DetailSectionTitle>
-          <Trans>What it uses</Trans>
-        </DetailSectionTitle>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <FieldLabel>{t`Skills`}</FieldLabel>
-            <Link
-              to="/settings/skills"
-              className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
-            >
-              <Plural value={enabledSkills} one="# skill" other="# skills" />
-            </Link>
-          </div>
-          <div className="flex flex-col gap-1">
-            <FieldLabel>{t`MCP servers`}</FieldLabel>
-            <Link
-              to="/settings/connections"
-              className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
-            >
-              <Plural value={mcpServers.length} one="# MCP server" other="# MCP servers" />
-            </Link>
-          </div>
-          <div className="flex flex-col gap-1">
-            <FieldLabel>{t`Integrations`}</FieldLabel>
-            <Link
-              to="/settings/connections"
-              className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
-            >
-              <Trans>Manage integrations</Trans>
-            </Link>
-          </div>
-        </div>
-      </div>
-    </>
+    <AgentUsageSummary
+      about={
+        <Trans>
+          {appName} is the agent built into the app — always here, no setup needed. It draws on everything you have
+          enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on.
+        </Trans>
+      }
+      resources={[
+        {
+          label: t`Skills`,
+          summary: <Plural value={enabledSkills} one="# skill" other="# skills" />,
+          to: '/settings/skills',
+        },
+        {
+          label: t`MCP servers`,
+          summary: <Plural value={mcpServers.length} one="# MCP server" other="# MCP servers" />,
+          to: '/settings/connections',
+        },
+        {
+          label: t`Integrations`,
+          summary: <Trans>Manage integrations</Trans>,
+          to: '/settings/connections',
+        },
+      ]}
+    />
   )
 }
 

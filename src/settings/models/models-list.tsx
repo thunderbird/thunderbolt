@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
+import type { ReactNode } from 'react'
 import { AlertTriangle, Cpu, Plus } from 'lucide-react'
 
 import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
@@ -16,8 +17,14 @@ import type { Model } from '@/types'
 import { useAppName } from '@/lib/branding-selectors'
 import { getProviderDisplay, ModelProviderIconTile } from './model-presentation'
 
+export type ModelListItem = Pick<
+  Model,
+  'id' | 'name' | 'provider' | 'enabled' | 'isSystem' | 'isConfidential' | 'apiKey'
+>
+
 type ModelsListProps = {
-  models: Model[]
+  intro?: ReactNode
+  models: ModelListItem[]
   activeModelId: string | null
   onSelect: (modelId: string) => void
   onToggle: (modelId: string, enabled: boolean) => void
@@ -25,12 +32,13 @@ type ModelsListProps = {
 }
 
 /** Presentational list of configured models with enable toggles and the add affordance. */
-export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }: ModelsListProps) => {
+export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd, intro }: ModelsListProps) => {
   const { i18n, t } = useLingui()
   const appName = useAppName()
 
   return (
     <SettingsListBody className={settingsListBodyRowsClass}>
+      {intro}
       {models.map((model) => {
         const isEnabled = model.enabled === 1
         const modelName = model.name

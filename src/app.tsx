@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
 
+import { isAdminDesignPreview, loadAdminDesignPreview } from '@/lib/admin-preview'
 import { i18n } from '@/i18n'
 
 import ChatDetailPage from '@/chats/detail'
@@ -24,7 +25,14 @@ import SettingsLayout from '@/settings/layout'
 import WaitlistLayout from '@/waitlist/layout'
 import WaitlistPage from '@/waitlist/waitlist-page'
 import { HapticsProvider } from '@/hooks/use-haptics'
-import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
+import {
+  AuthProvider,
+  DatabaseProvider,
+  HttpClientProvider,
+  SignInModalProvider,
+  type AuthClient,
+  type HttpClient,
+} from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useAnalyticsConsent } from '@/hooks/use-analytics-consent'
 import { useAppLanguage } from '@/hooks/use-app-language'
@@ -58,6 +66,7 @@ import Layout from './layout'
 import { loadSearchPalette } from '@/search/palette/search-palette-loader'
 import { MCPProvider } from './lib/mcp-provider'
 import { ProxyFetchProvider } from './lib/proxy-fetch-context'
+import type { FetchFn } from './lib/proxy-fetch'
 import { TrayProvider } from './lib/tray'
 import Loading from './loading'
 import type { InitData } from './types'
@@ -85,6 +94,7 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // Tauri apps automatically. Deployment-specific chunks (SSO, dev-only routes)
 // live outside the map.
 const routeChunkLoaders = {
+  ...(isAdminDesignPreview ? { admin: loadAdminDesignPreview } : {}),
   tasks: () => import('@/tasks'),
   miniApp: () => import('@/mini-apps/mini-app-page'),
   settings: () => import('@/settings/index'),
@@ -98,6 +108,8 @@ const routeChunkLoaders = {
   // critical path (only reached via a QR/link).
   deviceApproval: () => import('@/components/device-approval'),
 }
+
+const AdminDesignPreview = routeChunkLoaders.admin ? lazy(routeChunkLoaders.admin) : () => null
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
 const MiniAppPage = lazy(routeChunkLoaders.miniApp)
@@ -235,6 +247,12 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
 
+            {isAdminDesignPreview && (
+              <Route element={<SettingsLayout />}>
+                <Route path="admin/*" element={<AdminDesignPreview />} />
+              </Route>
+            )}
+
             {/* Settings routes with SettingsLayout */}
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<Settings />} />
@@ -292,11 +310,13 @@ const MigrationRecoveryKeyDialog = ({
   )
 }
 
-export const App = () => {
+export type AppClients = { httpClient?: HttpClient; authClient?: AuthClient; proxyFetch?: FetchFn }
+
+export const App = ({ httpClient, authClient, proxyFetch }: AppClients = {}) => {
   // Lazy initializer = runs exactly once on first render; records the
   // "React mounted" mark for startup telemetry.
   useState(markAppMounted)
-  const { initData, initError, clearDatabase } = useAppInitialization()
+  const { initData, initError, clearDatabase } = useAppInitialization(httpClient)
   const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()
   useAppVersionUnsupportedListener()
 
@@ -366,11 +386,11 @@ export const App = () => {
         <QueryClientProvider client={queryClient}>
           <DatabaseProvider db={initData.db}>
             <HttpClientProvider httpClient={initData.httpClient}>
-              <AuthProvider cloudUrl={initData.cloudUrl}>
+              <AuthProvider cloudUrl={initData.cloudUrl} authClient={authClient}>
                 <SignInModalProvider>
                   <PostHogProvider client={initData.posthogClient}>
                     <TrayProvider tray={initData.tray} window={initData.window}>
-                      <ProxyFetchProvider>
+                      <ProxyFetchProvider proxyFetch={proxyFetch}>
                         <MCPProvider>
                           <HapticsProvider>
                             <ContentViewProvider>

@@ -25,6 +25,9 @@ import { SupportsToolsSwitch } from './supports-tools-switch'
 import type { AddModelFormValues } from './use-add-model-form'
 
 type AddModelFormProps = {
+  mode?: 'create' | 'edit'
+  /** Configure metadata without collecting credentials or making a live connection. */
+  connectionMode?: 'live' | 'configuration'
   form: UseFormReturn<AddModelFormValues>
   modelItems: ComboboxItem[]
   selectedModelId: string | null
@@ -46,6 +49,8 @@ type AddModelFormProps = {
 
 /** Presentational add-model form; provider and mutation behavior stays in the page controller. */
 export const AddModelForm = ({
+  mode = 'create',
+  connectionMode = 'live',
   form,
   modelItems,
   selectedModelId,
@@ -65,6 +70,8 @@ export const AddModelForm = ({
   onTestConnection,
 }: AddModelFormProps) => {
   const { i18n, t } = useLingui()
+  const configurationOnly = connectionMode === 'configuration'
+  const { isDirty, isValid } = form.formState
   const appName = useAppName()
   const provider = form.watch('provider')
   const apiKey = form.watch('apiKey')
@@ -78,7 +85,10 @@ export const AddModelForm = ({
 
   // Stays visible when the catalog fails: its "Custom" entry is the manual fallback.
   const showModelSelection =
-    providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url))
+    configurationOnly ||
+    providerAutoFetchesCatalog(provider) ||
+    Boolean(apiKey) ||
+    (provider === 'custom' && Boolean(url))
 
   return (
     <Form {...form}>
@@ -96,6 +106,7 @@ export const AddModelForm = ({
                   onProviderChange(value)
                 }}
                 value={field.value}
+                disabled={mode === 'edit'}
               >
                 <FormControl>
                   <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
@@ -145,7 +156,7 @@ export const AddModelForm = ({
             )}
           />
         )}
-        {provider !== 'thunderbolt' && (
+        {!configurationOnly && provider !== 'thunderbolt' && (
           <FormField
             control={form.control}
             name="apiKey"
@@ -241,20 +252,22 @@ export const AddModelForm = ({
             )}
           />
         )}
-        <ConnectionTestSection
-          provider={provider}
-          model={model}
-          apiKey={apiKey}
-          isTesting={isTesting}
-          onTest={onTestConnection}
-          status={connectionStatus}
-          error={connectionError}
-          toolSupport={toolSupport}
-        />
+        {!configurationOnly && (
+          <ConnectionTestSection
+            provider={provider}
+            model={model}
+            apiKey={apiKey}
+            isTesting={isTesting}
+            onTest={onTestConnection}
+            status={connectionStatus}
+            error={connectionError}
+            toolSupport={toolSupport}
+          />
+        )}
         {provider !== 'thunderbolt' && (
           <SupportsToolsSwitch
             checked={supportsTools}
-            onCheckedChange={(checked) => form.setValue('supportsTools', checked)}
+            onCheckedChange={(checked) => form.setValue('supportsTools', checked, { shouldDirty: true })}
             disabled={isTesting}
           />
         )}
@@ -270,15 +283,20 @@ export const AddModelForm = ({
           <Button
             type="submit"
             isLoading={isPending}
-            loadingLabel={t`Adding…`}
-            disabled={shouldDisableAddModel({
-              isPending,
-              isFormValid: form.formState.isValid,
-              provider,
-              connectionStatus,
-            })}
+            loadingLabel={mode === 'edit' ? t`Saving…` : t`Adding…`}
+            disabled={
+              (mode === 'edit' && !isDirty) ||
+              (configurationOnly
+                ? isPending || !isValid
+                : shouldDisableAddModel({
+                    isPending,
+                    isFormValid: isValid,
+                    provider,
+                    connectionStatus,
+                  }))
+            }
           >
-            <Trans>Add Model</Trans>
+            {mode === 'edit' ? <Trans>Save</Trans> : <Trans>Add Model</Trans>}
           </Button>
         </FormFooter>
       </form>

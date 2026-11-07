@@ -7,10 +7,12 @@ import { createPortal } from 'react-dom'
 
 import { useMobileForegroundPortalTarget } from '@/components/ui/mobile-foreground-portal'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
 
 type PageHeaderProps = {
   title: string
   children?: ReactNode
+  actionsClassName?: string
 }
 
 /**
@@ -32,7 +34,7 @@ type PageHeaderProps = {
  * </PageHeader>
  * ```
  */
-export const PageHeader = ({ title, children }: PageHeaderProps) => {
+export const PageHeader = ({ title, children, actionsClassName }: PageHeaderProps) => {
   const { isMobile } = useIsMobile()
   const portalTarget = useMobileForegroundPortalTarget()
 
@@ -60,7 +62,7 @@ export const PageHeader = ({ title, children }: PageHeaderProps) => {
       {/* pr-2 pulls the actions in so icon buttons center-align with list rows'
           trailing controls (rows carry their own horizontal inset) and sit at
           the same x across settings pages. */}
-      <div className="flex items-center gap-2 pr-2">{children}</div>
+      <div className={cn('flex items-center gap-2 pr-2', actionsClassName)}>{children}</div>
     </div>
   )
 }

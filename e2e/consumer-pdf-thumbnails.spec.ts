@@ -89,8 +89,9 @@ test('PDF history previews wait for visibility, retain their size, and open norm
   await card.scrollIntoViewIfNeeded()
   await expect(card.locator('.react-pdf__Page canvas')).toBeVisible()
   const after = (await card.boundingBox())!
-  expect(after.width).toBe(before.width)
-  expect(after.height).toBe(before.height)
+  // Firefox reports sub-pixel noise (175.99998 vs 176) after scrolling; a real layout shift is far larger.
+  expect(after.width).toBeCloseTo(before.width, 1)
+  expect(after.height).toBeCloseTo(before.height, 1)
   await expect(page.getByTitle('history-40.pdf', { exact: true }).locator('.react-pdf__Document')).toHaveCount(0)
 
   await card.click()

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useAppName } from '@/lib/branding-selectors'
 import { BackButton } from '@/components/ui/back-button'
 import {
@@ -29,6 +30,7 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
   const appName = useAppName()
   const [step, setStep] = useState<'email' | 'otp'>('email')
   const goBackRef = useRef<(() => void) | null>(null)
+  const { isMobile } = useIsMobile()
 
   const handleClose = () => {
     onOpenChange(false)
@@ -56,6 +58,9 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
       // simple email form doesn't float in empty space (mobile stays
       // full-screen via its own min-h-dvh).
       className="md:min-h-0"
+      // Mobile pins the close button top-left, on top of the OTP step's back
+      // button; that step's Cancel button still closes the modal.
+      showCloseButton={!(isMobile && step === 'otp')}
       onOpenChange={(open) => {
         if (!open) {
           setStep('email')

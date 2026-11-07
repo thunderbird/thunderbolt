@@ -176,8 +176,9 @@ gzipped bundle size, test coverage, Lighthouse scores.
   with a `pr-metrics-main-` prefix fallback, so a base commit with no entry is compared
   against an earlier `main` build.
 - Lighthouse is advisory: [`lighthouserc.js`](../../../lighthouserc.js) sets every assertion
-  to `warn` and reports the median of three runs. It scores the **Render** preview, not the
-  Pulumi stack.
+  to `warn` and reports the median of three runs. It scores the **Pulumi app preview's
+  signed-out entry**, which may follow SSO redirects to the identity provider. Use the
+  [performance harness](performance.md) for authenticated chat and interaction measurements.
 
 ### `thunder-deep-review.yml`
 
@@ -200,10 +201,10 @@ Runs the `thunder-deep-review` skill read-only and posts an inline review.
 
 A PR against `main` gets two previews, and they are not equivalent.
 
-| Preview                 | URL                                                                           | What it is                                                                                      | Use it for                                                         |
-| ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks; it is what Lighthouse scores                      |
-| Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Anything touching sync, SSO, migrations, or cross-device behaviour |
+| Preview                 | URL                                                                           | What it is                                                                                      | Use it for                                                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks                                                                                                                                          |
+| Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Sync, SSO, migrations, cross-device behaviour and signed-out Lighthouse scores; use the [performance harness](performance.md) for signed-in measurements |
 
 Fork PRs get the Pulumi preview only after a maintainer approves the run (see
 [Preview lifecycle](#preview-lifecycle)).

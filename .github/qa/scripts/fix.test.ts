@@ -12,6 +12,7 @@ import type { Area, RawFinding, Severity } from './findings'
 import {
   asUser,
   checkPatch,
+  clip,
   checkTests,
   type FixPlan,
   type FixTask,
@@ -22,10 +23,14 @@ import {
   regressionSpec,
   route,
   type Run,
+  needsUnitTest,
   noLinks,
   runGate,
+  runTestsCapturing,
+  testFailed,
   testRuns,
   whyNoSpec,
+  wrap,
 } from './fix'
 import type { Verified, VerifiedFinding } from './verify'
 
@@ -147,6 +152,17 @@ const testUser = Bun.env.QA_TEST_USER
 const quiet = async (cmd: string[], cwd: string) =>
   Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).exited
 
+/** Runs a command with `env` as its whole environment and returns its exit code and output, as `checkTests` reads. */
+const captured =
+  (env: Record<string, string | undefined> = process.env) =>
+  async (cmd: string[], cwd: string) => {
+    const proc = Bun.spawnSync(cmd, { cwd, env, stdin: 'ignore' })
+    return { code: proc.exitCode, output: `${proc.stdout}${proc.stderr}` }
+  }
+/** A test run in which a named test failed, and one that passed. */
+const failedRun = { code: 1, output: '(fail) title [0.12ms]\n 0 pass\n 1 fail\n' }
+const passedRun = { code: 0, output: ' 1 pass\n 0 fail\n' }
+
 describe('route', () => {
   type Row = { id: string; area: Area; severity: Severity; action: Filed['action']; would?: Filed['action'] }
   const rows: Row[] = [
@@ -217,6 +233,8 @@ describe('route', () => {
     expect(first).toMatchObject({
       kind: 'spec',
       real: false,
+      // A page error shows without a browser, so the patch needs a unit test.
+      unitTest: true,
       spec: join(outDir, 'c2-chat', 'repro', 'urgent-settings.spec.ts'),
     })
     expect(first.finding).toEqual({
@@ -840,7 +858,10 @@ describe('whyNoSpec', () => {
   type Extra = Partial<Pick<FixTask, 'charterDir' | 'real'>> & {
     proof?: { kind: 'visual' } | { kind: 'spec'; flow: string }
   }
-  const task = ({ proof, ...extra }: Extra = {}, finding: Partial<FixTask['finding']> = {}): FixTask => ({
+  const task = (
+    { proof, ...extra }: Extra = {},
+    finding: Partial<FixTask['finding']> = {},
+  ): Omit<FixTask, 'unitTest'> => ({
     fp: 'ab12cd34',
     severity: 'High',
     branch: 'qa-fix/ab12cd34',
@@ -888,6 +909,31 @@ describe('whyNoSpec', () => {
     expect(whyNoSpec(task({ charterDir: 'c1-first-run-desktop' }))).toBe('onboarding')
     expect(whyNoSpec(task({ real: true }))).toBe('real')
   })
+
+  test('asks every web fix for a unit test but a layout or visual one, which its browser check proves', () => {
+    expect(needsUnitTest(task())).toBe(false)
+    expect(needsUnitTest(task({ proof: { kind: 'visual' } }, oracle('visual')))).toBe(false)
+    // Persistence is logic: a reload fix gets the spec and keeps the unit test.
+    expect(needsUnitTest(task({}, oracle('lost-on-reload')))).toBe(true)
+    // A missing name and logic, and the sessions whose check never becomes a spec, keep the unit test.
+    expect(needsUnitTest(task({}, oracle('layout', '[qa-layout] unnamed-control button "x"')))).toBe(true)
+    expect(needsUnitTest(task({}, oracle('stuck')))).toBe(true)
+    expect(needsUnitTest(task({ charterDir: 'c1-first-run-desktop' }))).toBe(true)
+    expect(needsUnitTest(task({ real: true }))).toBe(true)
+    expect(needsUnitTest(task({}, { area: 'security' }))).toBe(true)
+    // A native task keeps its Maestro check instead.
+    expect(needsUnitTest(task({ proof: { kind: 'spec', flow: 'f.yaml' } }, oracle('stuck')))).toBe(false)
+  })
+})
+
+describe('clip and wrap', () => {
+  test('cut a title at a word and wrap a body at spaces, past a word longer than the line', () => {
+    expect(clip('fix: keep the title', 12)).toBe('fix: keep')
+    expect(clip('fix: keep', 12)).toBe('fix: keep')
+    expect(clip('x'.repeat(20), 12)).toBe('x'.repeat(12))
+    expect(wrap('one two three four', 9)).toBe('one two\nthree\nfour')
+    expect(wrap(`a ${'x'.repeat(12)} b`, 9)).toBe(`a\n${'x'.repeat(12)}\nb`)
+  })
 })
 
 describe('checkPatch', () => {
@@ -903,6 +949,7 @@ describe('checkPatch', () => {
     platform: 'desktop',
     kind: 'spec',
     real: false,
+    unitTest: true,
     spec: reproSpec(),
     finding: { ...finding('chat'), oracle: { type: 'page-error', evidence: 'x' } },
   })
@@ -914,6 +961,7 @@ describe('checkPatch', () => {
     platform: 'desktop',
     kind: 'visual',
     real: false,
+    unitTest: false,
     finding: { ...finding('layout'), oracle: { type: 'visual', evidence: 'Continue sits under the banner' } },
   })
   const fixed = () => writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n')
@@ -1088,6 +1136,7 @@ describe('checkPatch', () => {
       platform: 'ios',
       kind: 'spec',
       real: false,
+      unitTest: false,
       flow: reproFlow(),
       finding: { ...finding('onboarding'), viewport: 'ios', oracle: { type: 'assert-failed', evidence: 'x' } },
     })
@@ -1218,6 +1267,24 @@ describe('testRuns', () => {
   })
 })
 
+describe('testFailed', () => {
+  test('counts a named test, a test in a suite and a colored line, never a hook or a file that did not load', () => {
+    expect(testFailed('(fail) title [0.12ms]\n 0 pass\n 1 fail\n')).toBe(true)
+    expect(testFailed('(fail) suite > keeps the title [0.13ms]\n')).toBe(true)
+    expect(testFailed('\u001b[31m(fail)\u001b[0m title \u001b[2m[0.12ms]\u001b[0m\n')).toBe(true)
+    // A beforeAll or afterAll hook that threw, at the top or in a suite.
+    expect(testFailed('error: not fixed\n(fail) (unnamed) [0.20ms]\n 0 pass\n 1 fail\n')).toBe(false)
+    expect(testFailed('(fail) suite > (unnamed) [0.23ms]\n')).toBe(false)
+    // An import, compile or top-level error: Bun counts a failure but names no test.
+    expect(testFailed("SyntaxError: Export named 'clean' not found\n 0 pass\n 1 fail\n 1 error\n")).toBe(false)
+  })
+})
+
+test('the test runner returns when its command exits, though a process the command left behind holds its output', async () => {
+  const result = await runTestsCapturing(['sh', '-c', 'echo out; echo err >&2; sleep 30 & exit 3'], dir)
+  expect(result).toEqual({ code: 3, output: 'out\nerr\n' })
+})
+
 describe('checkTests', () => {
   const fp = 'ab12cd34'
   let repo: string
@@ -1236,7 +1303,7 @@ describe('checkTests', () => {
 
   const patchOf = (files: Record<string, string>, renames: [string, string][] = []) =>
     writePatch(repo, fp, files, renames)
-  const check = async (exec = quiet) => {
+  const check = async (exec: Parameters<typeof checkTests>[0]['exec'] = captured()) => {
     const result = await checkTests({ outDir, fp, repoDir: repo, run: git, exec, log: () => {} })
     // Each half takes its hunks out again, so the checkout ends as it started.
     expect(await git(['git', 'status', '--porcelain'])).toBe('')
@@ -1246,6 +1313,28 @@ describe('checkTests', () => {
   test('passes a regression test that fails without the fix and passes with it', async () => {
     await patchOf({ 'src/title.ts': fixed, 'src/title.test.ts': titleTest('  Renamed  ') })
     expect(await check()).toEqual({ failsWithout: true, passesWith: true })
+    // The runner the workflow uses, which also copies the output to the job log.
+    expect(await checkTests({ outDir, fp, repoDir: repo, run: git, log: () => {} })).toEqual({
+      failsWithout: true,
+      passesWith: true,
+    })
+  }, 20_000)
+
+  test('rejects a test that fails without the fix only because it cannot load or set up', async () => {
+    const withClean = `${fixed}export const clean = (text: string) => text.trim()\n`
+    // An export the fix adds to the buggy file: without the fix the import fails before any test runs.
+    const importsNew = titleTest('  Renamed  ').replace('{ title }', '{ clean, title }')
+    await patchOf({ 'src/title.ts': withClean, 'src/title.test.ts': `${importsNew}clean('')\n` })
+    expect(await check()).toEqual({ failsWithout: false, passesWith: true })
+
+    const hook = `import { beforeAll } from 'bun:test'\nimport { title } from './title'\n`
+    const setup = `${hook}beforeAll(() => {\n  if (title(' a ') !== 'a') throw new Error('not fixed')\n})\n`
+    const failingSetup = `${setup}${titleTest('Renamed').split('\n').slice(2).join('\n')}`
+    await patchOf({
+      'src/title.ts': fixed,
+      'src/title.test.ts': `import { expect, test } from 'bun:test'\n${failingSetup}`,
+    })
+    expect(await check()).toEqual({ failsWithout: false, passesWith: true })
   }, 20_000)
 
   test('passes a renamed test file that gains the regression case', async () => {
@@ -1297,7 +1386,7 @@ describe('checkTests', () => {
     const cmds: string[][] = []
     const exec = async (cmd: string[]) => {
       cmds.push(cmd)
-      return cmds.length === 1 ? 1 : 0
+      return cmds.length === 1 ? failedRun : passedRun
     }
     await patchOf({ 'src/title.ts': fixed, 'src/title.test.ts': titleTest('  Renamed  ') })
     const gitCalls: string[][] = []
@@ -1326,7 +1415,10 @@ describe('checkTests', () => {
 
   test('fails a patch with no unit test, and an empty patch, without running anything', async () => {
     const runs: string[][] = []
-    const exec = async (cmd: string[]) => runs.push(cmd)
+    const exec = async (cmd: string[]) => {
+      runs.push(cmd)
+      return passedRun
+    }
     const none = { failsWithout: false, passesWith: false }
     await patchOf({ 'src/title.ts': fixed })
     expect(await check(exec)).toEqual(none)
@@ -1352,15 +1444,7 @@ describe('checkTests', () => {
       'src/title.test.ts': snapshotTest,
       [snapshotPath]: snapshotOf({ 'title 1': 'a' }),
     })
-    const resetEnv = (cmd: string[], cwd: string) =>
-      Bun.spawn(cmd, {
-        cwd,
-        env: { PATH: process.env.PATH ?? '' },
-        stdin: 'ignore',
-        stdout: 'ignore',
-        stderr: 'ignore',
-      }).exited
-    expect(await check(resetEnv)).toEqual({ failsWithout: true, passesWith: false })
+    expect(await check(captured({ PATH: process.env.PATH }))).toEqual({ failsWithout: true, passesWith: false })
   }, 20_000)
 
   test('opens the snapshot files to the test user in both halves, past one the patch deletes', async () => {
@@ -1372,7 +1456,7 @@ describe('checkTests', () => {
     const modes: number[] = []
     const exec = async () => {
       modes.push((await stat(join(repo, snapshotPath))).mode & 0o777)
-      return modes.length === 1 ? 1 : 0
+      return modes.length === 1 ? failedRun : passedRun
     }
     const result = await checkTests({ outDir, fp, user: 'qa-test', repoDir: repo, run: git, exec, log: () => {} })
     expect(result).toEqual({ failsWithout: true, passesWith: true })
@@ -1392,7 +1476,10 @@ describe('checkTests', () => {
     await put(join(outDir, 'fix', `${fp}.patch`), await git(['git', 'diff', '--cached', '--binary', 'HEAD']))
     await git(['git', 'reset', '--quiet', '--hard'])
     const runs: string[][] = []
-    const exec = async (cmd: string[]) => runs.push(cmd)
+    const exec = async (cmd: string[]) => {
+      runs.push(cmd)
+      return passedRun
+    }
     const result = await checkTests({ outDir, fp, user: 'qa-test', repoDir: repo, run: git, exec, log: () => {} })
     expect(result).toEqual({ failsWithout: false, passesWith: false })
     expect(runs).toEqual([])
@@ -1420,7 +1507,7 @@ describe('checkTests', () => {
         'src/title.test.ts': snapshotTest,
         [snapshotPath]: snapshotOf({ 'title 1': 'a', 'title 2': 'b' }),
       })
-      const result = await checkTests({ outDir, fp, user, repoDir: repo, run: git, exec: quiet, log: () => {} })
+      const result = await checkTests({ outDir, fp, user, repoDir: repo, run: git, exec: captured(), log: () => {} })
       expect(result).toEqual({ failsWithout: true, passesWith: true })
     },
     30_000,
@@ -1455,6 +1542,7 @@ describe('the PR checks gate', () => {
     charterDir: 'c8-phone',
     platform: 'phone',
     real: false,
+    unitTest: false,
     kind: 'spec',
     spec: join(outDir, 'c8-phone', 'repro', '1.spec.ts'),
     finding: {
@@ -1679,12 +1767,14 @@ describe('publish', () => {
         actual: 'Untitled',
         ...extra,
       },
-    } satisfies Omit<FixTask, 'kind' | 'spec' | 'flow'>
+    } satisfies Omit<FixTask, 'kind' | 'spec' | 'flow' | 'unitTest'>
     const proof = () => {
       if (flow) return { kind, platform: 'ios', flow }
       return kind === 'visual' ? { kind } : { kind, spec: specPath() }
     }
-    const task: FixTask = { ...base, ...proof() }
+    const routed = { ...base, ...proof() }
+    // As route sets it.
+    const task: FixTask = { ...routed, unitTest: needsUnitTest(routed) }
     const withTicket = { ...task, issueId: 'issue-1', identifier: 'THB-1' }
     const plan: FixPlan = { fixes: [ticket ? withTicket : task], verifyNative }
     await put(join(outDir, 'fix-plan.json'), JSON.stringify(plan))
@@ -1733,7 +1823,9 @@ describe('publish', () => {
       spec: 'e2e/consumer-qa-ab12cd34.spec.ts',
       commit:
         'fix: Renaming a chat loses its title\n\n' +
-        "Keeps the QA agent's repro as the regression test e2e/consumer-qa-ab12cd34.spec.ts.",
+        'The repro spec that confirmed the bug passed three times on the patched code. It is added with its\n' +
+        "assertions unchanged as e2e/consumer-qa-ab12cd34.spec.ts. The patch's unit tests fail without the\n" +
+        'fix and pass with it.',
     })
     expect(runs.map((r) => r.cmd.slice(0, 2).join(' '))).toEqual(['git read-tree', 'git apply', 'git diff'])
     expect(runs[1].cmd).toContain('--cached')
@@ -1785,7 +1877,15 @@ describe('publish', () => {
     expect(pr.env).toEqual({ GH_TOKEN: 'app-token' })
     // The branch name links the PR to the ticket, so the description does not name it.
     expect(pr.stdin).not.toContain('THB-1')
-    expect(pr.stdin).toContain('**Finding:** `Renaming a chat loses its title` · chat · High')
+    expect(argAfter(pr.cmd, '--title')).toBe('fix: Renaming a chat loses its title')
+    // What the checks showed and who wrote it, without the pipeline's own labels.
+    expect(pr.stdin).toBe(
+      'The repro spec that confirmed the bug passed three times on the patched code. It is added with its ' +
+        "assertions unchanged as `e2e/consumer-qa-ab12cd34.spec.ts`. The patch's unit tests fail without the fix and " +
+        'pass with it.\n\n' +
+        'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, ' +
+        'approves or marks PRs ready.',
+    )
     expect(runs.flatMap((r) => r.cmd).some((arg) => /^(merge|ready|review)$/.test(arg))).toBe(false)
     expect(await readFile(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts'), 'utf8')).toBe(
       (await regressionSpec('c2-chat', fp, spec)).source,
@@ -1857,7 +1957,7 @@ describe('publish', () => {
     expect(await readFile(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts'), 'utf8')).toBe(
       (await regressionSpec('c2-chat', fp, check)).source,
     )
-    expect(runs.at(-1)?.stdin).toContain('failed without this patch and passes with it')
+    expect(runs.at(-1)?.stdin).toContain('failed three times without this patch and passed three times with it')
   })
 
   test('a real-AI web visual fix is never published, even when its check passed on the fake AI', async () => {
@@ -1935,7 +2035,7 @@ describe('publish', () => {
     expect(result).toMatchObject({ outcome: 'pr', spec: undefined })
     expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
     expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
-    expect(runs.at(-1)?.stdin).toContain("Checked on ios with the finding's Maestro flow")
+    expect(runs.at(-1)?.stdin).toContain("The finding's Maestro flow passed three times on the ios app")
   })
 
   test('an onboarding fix PR adds no regression spec, since e2e/ does not serve the onboarding build', async () => {
@@ -1964,7 +2064,7 @@ describe('publish', () => {
     expect(runs.at(-1)?.stdin).toContain('runs on the fake provider')
   })
 
-  test('a fix a unit test can show adds no spec, and its PR says the unit test guards it', async () => {
+  test('a fix a unit test can show adds no spec, and its PR says the unit tests failed without the fix', async () => {
     await setup({ extra: { oracle: { type: 'assert-failed', evidence: 'expected Renamed' } } })
 
     const { repoDir, runs, result } = await publishLive()
@@ -1973,10 +2073,49 @@ describe('publish', () => {
     expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
     expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
     const commit = argAfter(runs.find((r) => r.cmd.includes('commit'))?.cmd ?? [], '--message')
-    for (const text of [runs.at(-1)?.stdin ?? '', commit]) {
-      expect(text).toContain('The unit test in this patch guards the fix.')
+    for (const text of [(runs.at(-1)?.stdin ?? '').replaceAll('\n', ' '), commit.replaceAll('\n', ' ')]) {
+      expect(text).toContain("The patch's unit tests fail without the fix and pass with it.")
       expect(text).not.toMatch(/is added as|Keeps .* as the regression test|e2e\/consumer-qa-/)
     }
+  })
+
+  test("titles the PR with the fix agent's description of the change when Title Lint would accept it", async () => {
+    const titled = async (written?: string) => {
+      await setup()
+      if (written !== undefined) await put(join(outDir, 'fix', `${fp}.title`), written)
+      const { runs } = await publishLive()
+      const pr = runs.find((r) => r.cmd[0] === 'gh')
+      const commit = argAfter(runs.find((r) => r.cmd.includes('commit'))?.cmd ?? [], '--message')
+      expect(commit.split('\n')[0]).toBe(argAfter(pr?.cmd ?? [], '--title'))
+      return argAfter(pr?.cmd ?? [], '--title')
+    }
+    expect(await titled('fix(chat): keep a renamed title after a reload\nmore text\n')).toBe(
+      'fix(chat): keep a renamed title after a reload',
+    )
+    // Not a Title Lint type, a breaking marker, no type at all, or a secret: the finding's title instead.
+    for (const written of ['feature: keep the title', 'fix!: keep the title', 'Keep the title', 'fix: lin_api_x', ''])
+      expect({ written, title: await titled(written) }).toEqual({
+        written,
+        title: 'fix: Renaming a chat loses its title',
+      })
+    expect(await titled()).toBe('fix: Renaming a chat loses its title')
+    // A foreign link goes, as in the ticket fields, and a cut that leaves no subject falls back.
+    expect(await titled('fix: load https://evil.example/x')).toBe('fix: load [link removed]')
+    expect(await titled(`fix: ${'x'.repeat(110)}`)).toBe('fix: Renaming a chat loses its title')
+  })
+
+  test('cuts a long title at a word and keeps every commit line within 100 characters', async () => {
+    const long =
+      'Choosing the Custom provider logs console errors for a model fetch to a URL the user never entered in the form'
+    await setup({ extra: { title: long, oracle: { type: 'assert-failed', evidence: 'x' } } })
+    const { runs } = await publishLive()
+    const commit = argAfter(runs.find((r) => r.cmd.includes('commit'))?.cmd ?? [], '--message')
+    const [title, ...rest] = commit.split('\n')
+    expect(title).toBe(
+      'fix: Choosing the Custom provider logs console errors for a model fetch to a URL the user never',
+    )
+    expect(rest.filter((line) => line.length > 100)).toEqual([])
+    expect(rest.length).toBeGreaterThan(2)
   })
 
   test('a patch without the PR checks pass leaves the ticket and the repository alone and says so', async () => {
@@ -2007,12 +2146,14 @@ describe('publish', () => {
   })
 
   test('unit tests that did not fail without the fix send the ticket to a person, even past a failed PR check', async () => {
-    await setup()
+    await setup({ extra: { oracle: { type: 'assert-failed', evidence: 'expected Renamed' } } })
     await putPasses('session', 'replay')
     const run = fakeRun([], { 'git diff': rawDiff('src/chat.ts', 'src/chat.test.ts') })
     expect(await publish({ outDir, fp, live: false, run, log: () => {} })).toEqual({
       outcome: 'human-required',
-      reasons: ["the patch's unit tests did not fail without the fix and pass with it"],
+      reasons: [
+        "the patch's unit tests did not fail without the fix and pass with it (a test that only fails to load or set up does not count)",
+      ],
     })
   })
 
@@ -2260,18 +2401,32 @@ describe('publish', () => {
       session: 'the fix session did not finish',
       replay: 'the repro spec did not pass three times on the patched code',
       visual: 'the visual check did not fail three times without the patch and pass three times with it',
-      tests: "the patch's unit tests did not fail without the fix and pass with it",
+      tests:
+        "the patch's unit tests did not fail without the fix and pass with it (a test that only fails to load or set up does not count)",
       real: 'the repro spec still fails on the real AI providers',
       ios: 'the patch did not build on the native platform (ios), or the flow still fails there',
       android: 'the patch did not build on the native platform (android), or the flow still fails there',
     }
+    /** A finding a unit test can show, so its PR adds no regression spec and its patch needs a unit test. */
+    const unit: Setup = { extra: { oracle: { type: 'assert-failed', evidence: 'expected Renamed' } } }
+    const visual: Setup = { kind: 'visual', extra: { oracle: { type: 'visual', evidence: 'Menu cut off' } } }
+    const layout: Setup = { extra: { oracle: { type: 'layout', evidence: '[qa-layout] overflow-text button "Menu"' } } }
     const tasks: [string, Setup, (keyof typeof reasons)[]][] = [
-      ['a web spec task', {}, ['session', 'replay', 'tests']],
-      ['a web visual task', { kind: 'visual' }, ['session', 'visual', 'tests']],
+      // Its repro spec becomes the regression spec and proves the layout fix, so it needs no unit test.
+      ['a web layout task', layout, ['session', 'replay']],
+      // The default finding, lost on a reload, gets the spec and keeps the unit test.
+      ['a web reload task', {}, ['session', 'replay', 'tests']],
+      ['a web spec task a unit test can show', unit, ['session', 'replay', 'tests']],
+      ['a web visual task', visual, ['session', 'visual']],
+      [
+        'a web visual task on the onboarding build',
+        { ...visual, charterDir: 'c1-first-run-desktop' },
+        ['session', 'visual', 'tests'],
+      ],
       ['a real-AI web task', { real: true, charterDir: 'c3-models-providers-desktop' }, ['session', 'real', 'tests']],
       [
         'a web task also found on Android',
-        { verifyNative: [native('android')] },
+        { ...unit, verifyNative: [native('android')] },
         ['session', 'replay', 'tests', 'android'],
       ],
       ['a native task', { flow: 'native', verifyNative: [native('ios')] }, ['session', 'ios']],
@@ -2391,7 +2546,7 @@ describe('publish', () => {
     })
 
     test('a pass of another fingerprint counts for nothing', async () => {
-      await setupTask({})
+      await setupTask(unit)
       await put(
         join(outDir, 'artifacts.txt'),
         [`qa-fix-status-${fp}-1`, ...['session', 'replay', 'tests'].map((c) => `qa-pass-ffffffff-${c}-1`)].join('\n'),
@@ -2405,7 +2560,7 @@ describe('publish', () => {
     // One artifact list spans every attempt of the run, so a re-run must not pair one attempt's patch with another's
     // passes.
     test('only the passes of the attempt whose patch publish read count', async () => {
-      await setupTask({})
+      await setupTask(unit)
       await putPassesOf('1', 'session', 'replay', 'tests', 'checks')
       const inAttempt = (attempt: string) =>
         publish({
@@ -2447,14 +2602,14 @@ describe('publish', () => {
       expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
     })
 
-    test('a web patch with no unit test says so', async () => {
-      await setupTask({})
+    test('a web patch with no unit test says so, when no browser check proves it', async () => {
+      await setupTask(unit)
       await putPasses('session', 'replay')
       const result = await publish({ outDir, fp, live: false, run: fakeRun([], diffOutput), log: () => {} })
       expect(result).toEqual({
         outcome: 'human-required',
         reasons: [
-          'the patch adds or changes no unit test file (`*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`), and every web fix needs one that fails without the fix',
+          'the patch adds or changes no unit test file (`*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`), and a web fix that no browser check proves needs one that fails without the fix',
         ],
       })
     })

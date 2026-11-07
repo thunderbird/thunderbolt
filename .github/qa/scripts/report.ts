@@ -12,6 +12,7 @@ import type { Canary } from './canaries'
 import type { Filed, Scorecard } from './file-findings'
 import { sanitize } from './sanitize'
 import { findingId, loadFindings, parseSession, realAiCharters } from './findings'
+import { type Run, runCommand } from './fix'
 import { selects } from './legs'
 import type { Verified, VerifiedFinding } from './verify'
 
@@ -719,6 +720,84 @@ export const runSummary = async (
   return { report, nothingExplored: nothingExplored(sessions) }
 }
 
+/** The GitHub App publish opens fix PRs as. The factory bot shares it, but a person writes its PRs' first commit. */
+const qaApp = 'thunderbolt-automation-agent'
+
+type FixPr = {
+  number: number
+  state: 'OPEN' | 'CLOSED' | 'MERGED'
+  commits: { nodes: { commit: { author: { name: string } | null; parents: { totalCount: number } } }[] }
+}
+const fixPrOutcomes = ['right first time', 'needed edits', 'discarded', 'open'] as const
+
+/**
+ * How one of the app's PRs ended, or undefined when publish did not open it (its first commit is not the bot's): closed
+ * unmerged is discarded, merged with only the bot's commits (merges of main aside) is right first time, merged with
+ * any other commit needed edits, and open waits for a person.
+ */
+const fixPrOutcome = ({ state, commits }: FixPr): (typeof fixPrOutcomes)[number] | undefined => {
+  const bot = `${qaApp}[bot]`
+  const authors = commits.nodes.map(({ commit }) => ({
+    name: commit.author?.name,
+    merge: commit.parents.totalCount > 1,
+  }))
+  if (authors[0]?.name !== bot) return undefined
+  if (state === 'OPEN') return 'open'
+  if (state === 'CLOSED') return 'discarded'
+  return authors.every(({ name, merge }) => merge || name === bot) ? 'right first time' : 'needed edits'
+}
+
+/** The report section on the fix PRs of earlier runs, from GitHub alone. */
+export const fixPrSection = (prs: FixPr[]) => {
+  const outcomes = prs.flatMap((pr) => {
+    const outcome = fixPrOutcome(pr)
+    return outcome ? [{ number: pr.number, outcome }] : []
+  })
+  const decided = outcomes.filter(({ outcome }) => outcome !== 'open').length
+  const right = outcomes.filter(({ outcome }) => outcome === 'right first time').length
+  return [
+    '## Fix PRs of earlier runs',
+    "From GitHub: merged with only the bot's commits (merges of main aside) is right first time, merged with other " +
+      'commits needed edits, closed unmerged is discarded, and open waits for a person.',
+    '',
+    ...fixPrOutcomes.map((name) => {
+      const numbers = outcomes.filter(({ outcome }) => outcome === name).map(({ number }) => `#${number}`)
+      return `- ${name}: ${numbers.length}${numbers.length ? ` (${numbers.join(', ')})` : ''}`
+    }),
+    '',
+    `Right first time: ${right} of ${decided} decided.`,
+    '',
+  ].join('\n')
+}
+
+/**
+ * Lists the app's PRs in `repo` and writes `fixPrSection` to stdout and `stepSummary`.
+ * shortcut: the newest 100 PRs, 100 commits each; page through once the bot has opened more.
+ */
+export const runFixPrs = async (
+  repo = process.env.GITHUB_REPOSITORY ?? 'thunderbird/thunderbolt',
+  run: Run = runCommand,
+  stepSummary = process.env.GITHUB_STEP_SUMMARY,
+) => {
+  const query =
+    'query($q: String!) { search(query: $q, type: ISSUE, first: 100) { nodes { ... on PullRequest { number state ' +
+    'commits(first: 100) { nodes { commit { author { name } parents { totalCount } } } } } } } }'
+  const out = await run([
+    'gh',
+    'api',
+    'graphql',
+    '-f',
+    `query=${query}`,
+    '-f',
+    // Newest first: search otherwise sorts by relevance, so the first 100 would be any 100.
+    `q=repo:${repo} is:pr author:app/${qaApp} sort:created-desc`,
+  ])
+  const { data }: { data: { search: { nodes: FixPr[] } } } = JSON.parse(out)
+  const section = fixPrSection(data.search.nodes)
+  if (stepSummary) await appendFile(stepSummary, section)
+  return section
+}
+
 /**
  * Canary leg: match its confirmed findings against the canaries and the baseline (the same findings replayed on the
  * normal build), and write `canary.json`. The filer never sees the canary leg: the file job downloads only the weekly
@@ -763,11 +842,15 @@ if (import.meta.main) {
       console.error('::error::Every explore session ended in an error or a timeout.')
       process.exitCode = 1
     }
+  } else if (positionals[0] === 'fix-prs') {
+    console.log(await runFixPrs())
   } else if (positionals[0] === 'canary') {
     if (!values.baseline || !values.canaries) throw new Error('canary needs --baseline and --canaries')
     const result = await runCanary(out, values.baseline, values.canaries, values.charters)
     console.log(`canary recall ${result.found}/${result.total}`)
   } else {
-    throw new Error('usage: report.ts session|summary|canary --out qa-out [--baseline dir --canaries manifest.json]')
+    throw new Error(
+      'usage: report.ts session|summary|canary --out qa-out [--baseline dir --canaries manifest.json] | report.ts fix-prs',
+    )
   }
 }

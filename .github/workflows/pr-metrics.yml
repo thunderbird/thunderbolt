@@ -16,7 +16,7 @@ jobs:
   metrics:
     runs-on: ubuntu-latest
     # 20min cap matches ci.yml `typescript` job — bounds the whole run (coverage
-    # test, size-limit build, Render preview wait, Lighthouse) so a hang can't
+    # test, size-limit build, app preview wait, Lighthouse) so a hang can't
     # burn GitHub's 6h default.
     timeout-minutes: 20
     steps:
@@ -92,13 +92,13 @@ jobs:
           key: pr-metrics-main-${{ github.event.pull_request.base.sha }}
           restore-keys: pr-metrics-main-
 
-      # --- Lighthouse (load time via Render PR preview) ---
-      # Render auto-deploys a preview at thunderbolt-pr-{number}.onrender.com for every PR.
-      # We poll until it's ready (up to 5 minutes), then run Lighthouse against it.
-      - name: Wait for Render preview
+      # --- Lighthouse (load time via the PR app preview) ---
+      # preview-deploy.yml publishes the app at app-pr-{number}.preview.thunderbolt.io.
+      # Poll for readiness before running Lighthouse; a queued deploy may outlast this wait.
+      - name: Wait for app preview
         id: preview
         run: |
-          URL="https://thunderbolt-pr-${{ github.event.pull_request.number }}.onrender.com"
+          URL="https://app-pr-${{ github.event.pull_request.number }}.preview.thunderbolt.io"
           echo "url=$URL" >> $GITHUB_OUTPUT
           for i in $(seq 1 30); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" 2>/dev/null)

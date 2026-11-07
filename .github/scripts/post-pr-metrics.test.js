@@ -292,12 +292,14 @@ describe('test coverage', () => {
 // ---------------------------------------------------------------------------
 
 describe('lighthouse', () => {
-  test('shows preview not ready message when PREVIEW_READY is not true', async () => {
-    const restore = withEnv({ BUILD_OUTCOME: 'success', PREVIEW_READY: 'false' })
+  test('links the app preview without diagnosing a deployment failure when it is not ready', async () => {
+    const restore = withEnv({ BUILD_OUTCOME: 'success', PREVIEW_READY: 'false', PREVIEW_URL: 'https://app-pr-456.preview.thunderbolt.io' })
     const gh = makeGithub()
     await postPrMetrics({ github: gh, context: makeContext(), baselineDir: BASELINE_DIR })
     const body = gh._mocks.createComment.mock.calls[0][0].body
-    expect(body).toContain('_Preview not ready')
+    expect(body).toContain('| Performance ([preview](https://app-pr-456.preview.thunderbolt.io)) | _Preview was not reachable during this metrics run — Lighthouse skipped_ |')
+    expect(body).not.toContain('Render')
+    expect(body).not.toContain('timed out')
     restore()
   })
 

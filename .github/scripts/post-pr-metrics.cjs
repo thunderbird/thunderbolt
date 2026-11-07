@@ -86,13 +86,13 @@ module.exports = async ({ github, context, baselineDir = '.metrics-baseline' }) 
     return `${COVERAGE}% _(no baseline yet — merge to main first)_`
   })()
 
-  // Builds the Lighthouse section using metrics from the Render PR preview.
+  // Builds the Lighthouse section using metrics from the PR app preview.
   // Shows category scores + key web vitals, with an optional link to the full report.
   // Falls back gracefully when the preview wasn't ready or Lighthouse failed.
   const scoreIcon = (score) => score >= 90 ? ':green_circle:' : score >= 50 ? ':yellow_circle:' : ':red_circle:'
 
   const lighthouseLine = (() => {
-    if (PREVIEW_READY !== 'true') return '_Preview not ready — Render deploy may have timed out_'
+    if (PREVIEW_READY !== 'true') return '_Preview was not reachable during this metrics run — Lighthouse skipped_'
     const perfScore = parseInt(LH_PERF)
     if (isNaN(perfScore) || !LH_FCP || !LH_LCP || !LH_TBT) return '_Lighthouse results unavailable_'
     const reportLink = LH_REPORT_URL ? ` · [Full report](${LH_REPORT_URL})` : ''

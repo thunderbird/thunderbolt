@@ -139,11 +139,14 @@ describe('ChatPromptInput', () => {
 
   beforeEach(() => {
     resetStore()
+    // Drafts flush on unmount and otherwise survive into the next randomized case.
+    localStorage.removeItem('draft:thread-1')
     useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() })
   })
 
   afterEach(async () => {
     cleanup()
+    localStorage.removeItem('draft:thread-1')
     resetStore()
     useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() })
     await resetTestDatabase()
@@ -209,6 +212,7 @@ describe('ChatPromptInput', () => {
 
       expect(onRender.mock.calls.length - initialRenders).toBe(0)
       const input = screen.getByPlaceholderText('Ask me anything…')
+      expect(input).toHaveValue('')
       fireEvent.change(input, { target: { value: 'My next question' } })
       expect(input).toHaveValue('My next question')
       expect(onRender.mock.calls.length).toBeGreaterThan(initialRenders)

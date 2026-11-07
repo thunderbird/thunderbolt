@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
+import { LayoutGrid, MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
 import { ContextMenuItem, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 
@@ -12,17 +12,27 @@ export type ProjectActionHandlers = {
   onEdit: () => void
   onTogglePin: () => void
   onDelete: () => void
+  onOpenArtifacts?: () => void
 }
 
 /** Keep the folder's context menu and overflow menu in sync. */
 export const ProjectActionMenuItems = ({
   context = false,
   onNewChat,
+  onOpenArtifacts,
   onEdit,
   onTogglePin,
   pinned,
   onDelete,
-}: ProjectActionHandlers & { context?: boolean; pinned: boolean }) => {
+}: {
+  context?: boolean
+  onNewChat: () => void
+  onOpenArtifacts?: () => void
+  onEdit: () => void
+  onTogglePin: () => void
+  pinned: boolean
+  onDelete: () => void
+}) => {
   const Item = context ? ContextMenuItem : DropdownMenuItem
   const Separator = context ? ContextMenuSeparator : DropdownMenuSeparator
   return (
@@ -31,6 +41,12 @@ export const ProjectActionMenuItems = ({
         <MessageCirclePlus />
         <Trans>New chat</Trans>
       </Item>
+      {onOpenArtifacts && (
+        <Item onSelect={onOpenArtifacts} className="cursor-pointer">
+          <LayoutGrid />
+          <Trans>Artifacts</Trans>
+        </Item>
+      )}
       <Item onSelect={onTogglePin} className="cursor-pointer">
         {pinned ? <PinOff /> : <Pin />}
         {pinned ? <Trans>Unpin</Trans> : <Trans>Pin</Trans>}

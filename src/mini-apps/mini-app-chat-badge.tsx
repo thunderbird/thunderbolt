@@ -15,6 +15,8 @@
  * so there.
  */
 
+import { AppWindow } from 'lucide-react'
+import { parseArtifactId } from '@/artifacts/artifact'
 import { useLingui } from '@lingui/react/macro'
 
 import { findMiniApp } from './registry'
@@ -26,7 +28,13 @@ export const MiniAppChatBadge = ({ appId }: { appId: string }) => {
   const app = findMiniApp(apps, appId)
 
   if (!app) {
-    return null
+    return parseArtifactId(appId)?.kind === 'html' ? (
+      <AppWindow
+        className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground"
+        aria-label={t`From an artifact`}
+        role="img"
+      />
+    ) : null
   }
 
   return (

@@ -4,14 +4,16 @@
 
 import { useDroppable } from '@dnd-kit/core'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import { projectDropId } from '@/projects/chat-drop'
 import type { ProjectActionHandlers } from '@/projects/project-action-menu-items'
 import { ProjectActions } from '@/projects/project-actions'
 import { ProjectIcon } from '@/projects/project-icon'
+import { useProjectArtifactsDialog } from '@/projects/use-project-artifacts-dialog'
 import type { Project } from '@/types'
 import { ChatListItem } from './chat-list-item'
+import { ProjectArtifactLinks } from './project-artifact-links'
 import { useSidebarPreviewState } from './use-sidebar-preview-state'
 import { SidebarListToggle } from './sidebar-list-toggle'
 import type { ChatListProps, ChatThread } from './types'
@@ -19,9 +21,11 @@ import type { ChatListProps, ChatThread } from './types'
 const projectRowActionClass =
   'bg-transparent hover:bg-transparent dark:hover:bg-transparent active:bg-transparent data-[state=open]:bg-transparent'
 
-type ProjectTreeRowProps = Pick<
+export type ProjectTreeProps = Pick<
   ChatListProps,
+  | 'chatThreads'
   | 'currentChatThreadId'
+  | 'isCollapsed'
   | 'isMobile'
   | 'deleteChatMutation'
   | 'deleteChatDialogRef'
@@ -30,18 +34,32 @@ type ProjectTreeRowProps = Pick<
   | 'onRename'
   | 'onMoveToProject'
 > & {
+  isDragging: boolean
+  draggingFromProjectId: string | null
+}
+
+type ProjectTreeRowProps = ProjectTreeProps & {
   project: Project
+  actions: ProjectActionHandlers
   chats: ChatThread[]
   expanded: boolean
   active: boolean
-  draggingFromProjectId: string | null
-  actions: ProjectActionHandlers
   onToggle: () => void
 }
 
-export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...props }: ProjectTreeRowProps) => {
+export const ProjectTreeRow = ({
+  project,
+  actions,
+  chats,
+  expanded,
+  active,
+  onToggle,
+  ...props
+}: ProjectTreeRowProps) => {
   const { t } = useLingui()
   const chatList = useSidebarPreviewState(chats, props.currentChatThreadId)
+  const artifactsDialog = useProjectArtifactsDialog()
+  const { setOpen, closeMobileSidebar } = useSidebar()
   const { setNodeRef, isOver } = useDroppable({
     id: projectDropId(project.id),
     disabled: props.draggingFromProjectId === project.id,
@@ -49,7 +67,17 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
 
   return (
     <SidebarMenuItem>
-      <ProjectActions project={project} actions={props.actions} triggerClassName={projectRowActionClass}>
+      <ProjectActions
+        project={project}
+        handlers={actions}
+        triggerClassName={projectRowActionClass}
+        onOpenArtifacts={async () => {
+          if (props.isMobile) {
+            await closeMobileSidebar()
+          }
+          artifactsDialog.open(project.id)
+        }}
+      >
         {(menu) => (
           <div
             ref={setNodeRef}
@@ -60,13 +88,18 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
               isActive={active}
               aria-expanded={expanded}
               aria-controls={`project-chats-${project.id}`}
-              onClick={onToggle}
+              onClick={() => {
+                if (props.isCollapsed) {
+                  setOpen(true)
+                }
+                onToggle()
+              }}
               className="min-w-0 cursor-pointer gap-2 md:pr-9 group-hover/project:bg-sidebar-accent group-hover/project:text-sidebar-accent-foreground group-data-[state=open]/project:bg-sidebar-accent group-data-[state=open]/project:text-sidebar-accent-foreground group-has-data-[state=open]/project:bg-sidebar-accent group-has-data-[state=open]/project:text-sidebar-accent-foreground"
             >
-              <ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] shrink-0" />
-              <span className="truncate">{project.name}</span>
+              <ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] shrink-0 [&>img]:size-full" />
+              {!props.isCollapsed && <span className="truncate">{project.name}</span>}
             </SidebarMenuButton>
-            {menu && (
+            {!props.isCollapsed && menu && (
               <div className="absolute right-0 top-1/2 -translate-y-1/2 transition-opacity md:opacity-0 md:group-hover/project:opacity-100 md:group-focus-within/project:opacity-100 md:group-data-[state=open]/project:opacity-100 md:group-has-data-[state=open]/project:opacity-100">
                 {menu}
               </div>
@@ -74,9 +107,10 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
           </div>
         )}
       </ProjectActions>
-      {expanded && (
+      {expanded && !props.isCollapsed && (
         <div id={`project-chats-${project.id}`} className="ml-4 mt-1 border-l border-border/70 pl-2">
           <SidebarMenu>
+            <ProjectArtifactLinks projectId={project.id} isMobile={props.isMobile} />
             {chatList.items.map((thread) => (
               <SidebarMenuItem key={thread.id}>
                 <ChatListItem

@@ -15,9 +15,11 @@
  */
 
 import { Trans } from '@lingui/react/macro'
+import { AppWindow } from 'lucide-react'
+import { artifactPath, parseArtifactId } from '@/artifacts/artifact'
+import { useArtifact } from '@/artifacts/use-artifacts'
 import { Link } from 'react-router'
 
-import { useIsMobile } from '@/hooks/use-mobile'
 import { findMiniApp, type MiniAppDefinition } from './registry'
 import { miniAppChatPath } from './use-chat-destination'
 import { useMiniApps } from './use-mini-apps'
@@ -27,9 +29,6 @@ type MiniAppOriginNoticeProps = {
   app: MiniAppDefinition | null
   /** Carried into the app so "Open app" reopens this chat beside it. */
   chatThreadId: string
-  /** False at mobile widths, where the app route only renders a size notice —
-   *  the provenance is still worth saying, the link is not. */
-  canOpen: boolean
 }
 
 /**
@@ -45,7 +44,7 @@ type MiniAppOriginNoticeProps = {
  * Mobile only: below the breakpoint the header is always drawn, so this is
  * exactly where it overlaps. Desktop keeps its current spacing.
  */
-export const MiniAppOriginNotice = ({ app, chatThreadId, canOpen }: MiniAppOriginNoticeProps) => (
+export const MiniAppOriginNotice = ({ app, chatThreadId }: MiniAppOriginNoticeProps) => (
   <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-[length:var(--font-size-sm)] text-muted-foreground max-md:pt-[calc(var(--header-inset)+0.5rem)]">
     {app ? (
       <>
@@ -53,14 +52,12 @@ export const MiniAppOriginNotice = ({ app, chatThreadId, canOpen }: MiniAppOrigi
         <span className="truncate">
           <Trans>Started from {app.name}</Trans>
         </span>
-        {canOpen && (
-          <Link
-            to={miniAppChatPath(app.id, chatThreadId)}
-            className="ml-auto shrink-0 underline underline-offset-2 hover:text-foreground"
-          >
-            <Trans>Open app</Trans>
-          </Link>
-        )}
+        <Link
+          to={miniAppChatPath(app.id, chatThreadId)}
+          className="ml-auto shrink-0 underline underline-offset-2 hover:text-foreground"
+        >
+          <Trans>Open app</Trans>
+        </Link>
       </>
     ) : (
       <span className="truncate">
@@ -76,8 +73,11 @@ type MiniAppChatBannerProps = {
 }
 
 export const MiniAppChatBanner = ({ appId, chatThreadId }: MiniAppChatBannerProps) => {
-  const { isMobile } = useIsMobile()
   const { apps, loading, failed } = useMiniApps()
+
+  if (parseArtifactId(appId)?.kind === 'html' && !findMiniApp(apps, appId)) {
+    return <HtmlArtifactChatBanner artifactId={appId} chatThreadId={chatThreadId} />
+  }
 
   // The registry arrives over the network. Rendering "no longer available"
   // while it's still in flight — or after the fetch simply failed — would
@@ -86,5 +86,35 @@ export const MiniAppChatBanner = ({ appId, chatThreadId }: MiniAppChatBannerProp
     return null
   }
 
-  return <MiniAppOriginNotice app={findMiniApp(apps, appId) ?? null} chatThreadId={chatThreadId} canOpen={!isMobile} />
+  return <MiniAppOriginNotice app={findMiniApp(apps, appId) ?? null} chatThreadId={chatThreadId} />
+}
+
+/** Generated artifact provenance resolves locally and remains useful when the registry is offline. */
+const HtmlArtifactChatBanner = ({ artifactId, chatThreadId }: { artifactId: string; chatThreadId: string }) => {
+  const { artifact, loading, failed } = useArtifact(artifactId)
+  if (loading || failed) {
+    return null
+  }
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-sm text-muted-foreground max-md:pt-[calc(var(--header-inset)+0.5rem)]">
+      <AppWindow className="size-4 shrink-0" />
+      {artifact ? (
+        <>
+          <span className="truncate">
+            <Trans>Started from {artifact.title}</Trans>
+          </span>
+          <Link
+            className="ml-auto shrink-0 underline underline-offset-2"
+            to={`${artifactPath(artifact.id)}?chat=${encodeURIComponent(chatThreadId)}`}
+          >
+            <Trans>Open artifact</Trans>
+          </Link>
+        </>
+      ) : (
+        <span>
+          <Trans>Started from an artifact that is no longer available</Trans>
+        </span>
+      )}
+    </div>
+  )
 }

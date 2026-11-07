@@ -22,7 +22,7 @@ import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 import { requestMiniAppApproval } from './mini-app-approval'
-import { useMiniAppStore } from './mini-app-store'
+import { getMiniAppSnapshot, useMiniAppStore } from './mini-app-store'
 import type { MiniAppDefinition } from './registry'
 
 const app = { id: 'finance-model', name: 'Finance Model' } as MiniAppDefinition
@@ -59,7 +59,7 @@ const makeSession = (id: string): ChatSession =>
 const queueOf = (id: string) => useChatStore.getState().sessions.get(id)?.miniAppApprovalQueue ?? []
 
 const ask = (chatThreadId: string, args: unknown, forApp = app) =>
-  requestMiniAppApproval({ chatThreadId, app: forApp, tool: writeTool, args })
+  requestMiniAppApproval({ chatThreadId, app: forApp, tool: writeTool, args, surfaceOwner: 'test' })
 
 /*
  * The store is a module-level singleton shared by every test file in the
@@ -68,12 +68,12 @@ const ask = (chatThreadId: string, args: unknown, forApp = app) =>
  * assume no app is open and failed as a block, on one seed in four.
  */
 afterEach(() => {
-  useMiniAppStore.setState({ activeApp: null, tools: [], invokeTool: null, requestContext: null })
+  useMiniAppStore.getState().closeApp('test')
   useChatStore.setState({ sessions: new Map(), currentSessionId: null })
 })
 
 beforeEach(() => {
-  useMiniAppStore.setState({ activeApp: app, tools: [], invokeTool: null, requestContext: null })
+  useMiniAppStore.getState().openApp(app, 'test')
   useChatStore.setState({
     sessions: new Map([
       ['chat-a', makeSession('chat-a')],
@@ -195,7 +195,7 @@ describe('requestMiniAppApproval', () => {
     const first = ask('chat-a', { n: 1 })
     const second = ask('chat-a', { n: 2 })
 
-    useMiniAppStore.getState().closeApp()
+    useMiniAppStore.getState().closeApp('test')
 
     expect(await first).toBe('unavailable')
     expect(await second).toBe('unavailable')
@@ -207,7 +207,7 @@ describe('requestMiniAppApproval', () => {
   it('settles queued approvals in chats the user is not looking at', async () => {
     const background = ask('chat-b', { n: 1 })
 
-    useMiniAppStore.getState().closeApp()
+    useMiniAppStore.getState().closeApp('test')
 
     expect(await background).toBe('unavailable')
     expect(queueOf('chat-b')).toEqual([])
@@ -218,7 +218,7 @@ describe('requestMiniAppApproval', () => {
   it('settles queued approvals when the guest re-handshakes', async () => {
     const decision = ask('chat-a', {})
 
-    useMiniAppStore.getState().resetGuest()
+    useMiniAppStore.getState().resetGuest('test')
 
     expect(await decision).toBe('unavailable')
   })
@@ -232,7 +232,7 @@ describe('requestMiniAppApproval', () => {
   it('carries the requesting app’s name, not the mounted one', async () => {
     const decision = ask('chat-a', {}, otherApp)
 
-    expect(useMiniAppStore.getState().activeApp?.name).toBe('Finance Model')
+    expect(getMiniAppSnapshot('test').app?.name).toBe('Finance Model')
     expect(queueOf('chat-a')[0]?.appName).toBe('Patient Journeys')
     expect(queueOf('chat-a')[0]?.appId).toBe('patient-journeys')
 
@@ -242,10 +242,26 @@ describe('requestMiniAppApproval', () => {
 
   /** Keyed by app, so closing one app cannot answer a call another app is
    *  waiting on. */
+  it('leaves another mounted frame of the same app’s approvals alone', async () => {
+    useMiniAppStore.getState().openApp(app, 'second')
+    const other = requestMiniAppApproval({
+      chatThreadId: 'chat-a',
+      app,
+      tool: writeTool,
+      args: {},
+      surfaceOwner: 'second',
+    })
+    useMiniAppStore.getState().closeApp('test')
+    expect(queueOf('chat-a')).toHaveLength(1)
+    queueOf('chat-a')[0]?.decide('approved')
+    expect(await other).toBe('approved')
+    useMiniAppStore.getState().closeApp('second')
+  })
+
   it('leaves another app’s approvals alone', async () => {
     const other = ask('chat-a', {}, otherApp)
 
-    useMiniAppStore.getState().closeApp()
+    useMiniAppStore.getState().closeApp('test')
 
     expect(queueOf('chat-a')).toHaveLength(1)
     queueOf('chat-a')[0]?.decide('approved')

@@ -21,6 +21,7 @@
  * that answer — see `ChatWithOrigin`.
  */
 
+import { artifactPath, parseArtifactId } from '@/artifacts/artifact'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useCallback } from 'react'
 import { findMiniApp } from './registry'
@@ -39,6 +40,9 @@ export const useChatDestination = (): ((chatThreadId: string, miniAppId?: string
 
   return useCallback(
     (chatThreadId, miniAppId) => {
+      if (miniAppId && !isMobile && parseArtifactId(miniAppId)?.kind === 'html' && !findMiniApp(apps, miniAppId)) {
+        return `${artifactPath(miniAppId)}?chat=${encodeURIComponent(chatThreadId)}`
+      }
       if (!miniAppId || isMobile || !findMiniApp(apps, miniAppId)) {
         return `/chats/${chatThreadId}`
       }

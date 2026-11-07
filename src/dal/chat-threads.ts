@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defaultChatTitle } from '@/lib/constants'
+import { encodeBase64Url } from '@shared/base64url'
 
-import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { chatMessagesTable, chatThreadsTable } from '../db/tables'
+import { chatMessagesTable, chatThreadsTable, settingsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type ChatThread, type Model } from '@/types'
 import { getModel } from './models'
@@ -183,6 +184,32 @@ export const getContextSizeForThread = (db: AnyDrizzleDatabase, threadId: string
   return query as typeof query & DrizzleQueryWithPromise<{ contextSize: number | null }>
 }
 
+/** Scrub artifact presentation preferences along with the chats that own their source messages. */
+const deleteChatArtifactPresentation = async (db: AnyDrizzleDatabase, chats: SQL, deletedAt: string): Promise<void> => {
+  const messages = await db
+    .select({ id: chatMessagesTable.id })
+    .from(chatMessagesTable)
+    .innerJoin(chatThreadsTable, eq(chatThreadsTable.id, chatMessagesTable.chatThreadId))
+    .where(chats)
+  const prefixes = messages.flatMap(({ id }) =>
+    [`${id}-`, `html:${encodeBase64Url(id)}:`].flatMap((source) =>
+      ['artifact_title.', 'artifact_deleted_at.', 'artifact-pin:'].map((key) => `${key}${source}`),
+    ),
+  )
+  await db
+    .update(settingsTable)
+    .set({ value: null, updatedAt: deletedAt })
+    .where(
+      and(
+        isNotNull(settingsTable.value),
+        sql`EXISTS (
+      SELECT 1 FROM json_each(${JSON.stringify(prefixes)}) AS artifact_prefix
+      WHERE substr(${settingsTable.key}, 1, length(artifact_prefix.value)) = artifact_prefix.value
+    )`,
+      ),
+    )
+}
+
 /**
  * Soft deletes a specific chat thread by ID (sets deletedAt datetime)
  * Also soft-deletes all associated messages that haven't been deleted yet
@@ -191,6 +218,7 @@ export const getContextSizeForThread = (db: AnyDrizzleDatabase, threadId: string
 export const deleteChatThread = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   const deletedAt = nowIso()
   await db.transaction(async (tx) => {
+    await deleteChatArtifactPresentation(tx, eq(chatThreadsTable.id, id), deletedAt)
     await tx
       .update(chatMessagesTable)
       .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
@@ -212,6 +240,7 @@ export const deleteNonProjectChatThreads = async (db: AnyDrizzleDatabase): Promi
   const deletedAt = nowIso()
   const target = sql`${chatThreadsTable.projectId} IS NULL AND ${chatThreadsTable.deletedAt} IS NULL`
   await db.transaction(async (tx) => {
+    await deleteChatArtifactPresentation(tx, target, deletedAt)
     await tx
       .update(chatMessagesTable)
       .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })

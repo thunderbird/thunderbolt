@@ -37,7 +37,7 @@ it('keeps the mobile picker above its project dialog, with search focus and nati
     await getClock().tickAsync(20)
   })
   expect(search).toHaveFocus()
-  expect(screen.getByRole('button', { name: '📊' })).toHaveTextContent('📊')
+  expect(screen.getByRole('button', { name: '📊' }).querySelector('img')).not.toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '📊' }))
   expect(onChange).toHaveBeenCalledWith('📊')
   await act(async () => {

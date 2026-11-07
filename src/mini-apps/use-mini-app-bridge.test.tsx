@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useChatStore } from '@/chats/chat-store'
 import * as downloads from '@/lib/download'
 import { HttpClientProvider } from '@/contexts'
 import { getActiveLocale } from '@/i18n/active-locale'
@@ -30,7 +31,7 @@ import {
   toolsRequestTimeoutMs,
   useMiniAppBridge,
 } from './use-mini-app-bridge'
-import { useMiniAppStore } from './mini-app-store'
+import { getMiniAppSnapshot, useMiniAppStore } from './mini-app-store'
 import type { MiniAppDefinition } from './registry'
 
 /** Stand-ins for `Window`; identity is all `acceptGuestMessage` compares. */
@@ -162,8 +163,7 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
   const bridge: { current: Bridge | null } = { current: null }
 
   const Harness = () => {
-    bridge.current = useMiniAppBridge({ app, onChatOpen })
-    // srcdoc provides a local guest window without enabling Happy DOM's iframe page loading.
+    bridge.current = useMiniAppBridge({ app, owner: 'test', onChatOpen })
     return <iframe ref={bridge.current.frameRef} title={app.name} srcDoc="" />
   }
 
@@ -256,9 +256,10 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
 }
 
 beforeEach(() => {
+  useChatStore.setState({ sessions: new Map(), currentSessionId: null })
   // `activeApp` included: it is module-level state another file may have left
   // set, and these tests assume nothing is open until they open it.
-  useMiniAppStore.setState({ activeApp: null, tools: [], invokeTool: null })
+  useMiniAppStore.getState().closeApp('test')
 })
 
 describe('useMiniAppBridge deadlines', () => {
@@ -318,19 +319,34 @@ describe('useMiniAppBridge tool discovery', () => {
       }),
     )
 
-    expect(useMiniAppStore.getState().tools.map((tool) => tool.name)).toEqual(['set_assumption'])
-    expect(useMiniAppStore.getState().invokeTool).not.toBeNull()
+    expect(getMiniAppSnapshot('test').tools.map((tool) => tool.name)).toEqual(['set_assumption'])
+    expect(getMiniAppSnapshot('test').invokeTool).not.toBeNull()
   })
 
   /** An app that declares `tools` and then never answers must not leave the
    *  model holding a toolset that will never arrive. */
+  it('does not invoke a captured tool against a replacement document', async () => {
+    const { posted, handshake, send, envelope } = mountBridge()
+    await handshake({ tools: true })
+    const request = posted.find((message) => 'method' in message && message.method === 'tools/list')
+    await send(
+      envelope({ id: (request as { id: number }).id, result: { tools: [{ name: 'write', description: 'Write' }] } }),
+    )
+    const invoke = getMiniAppSnapshot('test').invokeTool!
+    await handshake({}, { documentId: 'replacement', id: 2 })
+    const result = await invoke('write', {})
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('document changed')
+    expect(posted.some((message) => 'method' in message && message.method === 'tools/call')).toBe(false)
+  })
+
   it('survives an app that never answers the tool list', async () => {
     const { handshake, elapse } = mountBridge()
     await handshake({ tools: true })
 
     await elapse(toolsRequestTimeoutMs)
 
-    expect(useMiniAppStore.getState().tools).toEqual([])
+    expect(getMiniAppSnapshot('test').tools).toEqual([])
   })
 
   /**
@@ -372,7 +388,7 @@ describe('useMiniAppBridge tool discovery', () => {
     )
 
     expect(second).toHaveLength(2)
-    expect(useMiniAppStore.getState().tools.map((tool) => tool.name)).toEqual(['early', 'late'])
+    expect(getMiniAppSnapshot('test').tools.map((tool) => tool.name)).toEqual(['early', 'late'])
   })
 
   /** Accepted without `params` at all, which is valid JSON-RPC for a notification. */
@@ -429,7 +445,7 @@ describe('useMiniAppBridge tool calls', () => {
         result: { tools: [{ name: 'set_assumption', description: 'Change one assumption.' }] },
       }),
     )
-    const invoke = useMiniAppStore.getState().invokeTool
+    const invoke = getMiniAppSnapshot('test').invokeTool
     if (!invoke) {
       throw new Error('the bridge published no invoker')
     }
@@ -665,6 +681,19 @@ describe('useMiniAppBridge message handling', () => {
     expect(signals[0]?.aborted).toBe(true)
   })
 
+  it('discards an auth response when another document handshakes while minting', async () => {
+    const response = Promise.withResolvers<Response>()
+    const client = createClient({ prefixUrl: 'http://test-api.local', fetch: () => response.promise })
+    const { handshake, replyTo, settle, bridge } = mountBridge(() => {}, client)
+    await handshake({ auth: true }, { documentId: 'old', id: 1 })
+    await handshake({}, { documentId: 'new', id: 2 })
+    response.resolve(new Response(JSON.stringify(token), { headers: { 'Content-Type': 'application/json' } }))
+    await settle()
+    expect(replyTo(1)).toBeUndefined()
+    expect(replyTo(2)).toBeDefined()
+    expect(bridge.current?.status).toBe('ready')
+  })
+
   it('acknowledges an open-chat request before acting on it', async () => {
     const prompts: (string | undefined)[] = []
     const { replyTo, send, envelope, handshake } = mountBridge((prompt) => prompts.push(prompt))
@@ -708,11 +737,12 @@ describe('useMiniAppBridge message handling', () => {
     await handshake()
     act(() => bridge.current?.handleFrameLoad())
     unmount()
-    useMiniAppStore.getState().openApp({ ...app, id: 'replacement' })
+    useMiniAppStore.getState().openApp({ ...app, id: 'replacement' }, 'replacement-owner')
     const tools = [{ name: 'replacement-tool', description: 'belongs to the next app' }]
-    useMiniAppStore.getState().setTools(tools, async () => ({ content: '' }))
+    useMiniAppStore.getState().setTools(tools, async () => ({ content: '' }), 'replacement-owner')
     await settle()
-    expect(useMiniAppStore.getState().tools).toEqual(tools)
+    expect(getMiniAppSnapshot('replacement-owner').tools).toEqual(tools)
+    useMiniAppStore.getState().closeApp('replacement-owner')
   })
 
   it.each(['handshake', 'load'])('clears stale selections and requests on a document %s', async (change) => {
@@ -738,14 +768,26 @@ describe('useMiniAppBridge message handling', () => {
   it('drops the previous document state when a different document handshakes', async () => {
     const { send, envelope, handshake } = mountBridge()
     await handshake()
-    useMiniAppStore.getState().setTools([{ name: 'refresh', description: 'Reload the books' }], async () => ({
-      content: '',
-    }))
+    useMiniAppStore.getState().setTools(
+      [{ name: 'refresh', description: 'Reload the books' }],
+      async () => ({
+        content: '',
+      }),
+      'test',
+    )
     await send(envelope({ method: 'ui/notifications/error', params: { message: 'Chart failed to render' } }))
 
     await handshake({}, { documentId: 'doc-b', id: 2 })
 
-    expect(useMiniAppStore.getState().tools).toEqual([])
+    expect(getMiniAppSnapshot('test').tools).toEqual([])
+  })
+
+  it('reinstalls the owner context reader when a ready frame re-handshakes', async () => {
+    const { handshake } = mountBridge()
+    await handshake({ context: true })
+    expect(getMiniAppSnapshot('test').requestContext).not.toBeNull()
+    await handshake({ context: true }, { documentId: 'new', id: 2 })
+    expect(getMiniAppSnapshot('test').requestContext).not.toBeNull()
   })
 
   it('clears a runtime error left over from the previous document', async () => {
@@ -766,13 +808,17 @@ describe('useMiniAppBridge message handling', () => {
   it('leaves everything in place when the same document handshakes twice', async () => {
     const { bridge, replyTo, handshake } = mountBridge()
     await handshake({ tools: true })
-    useMiniAppStore.getState().setTools([{ name: 'refresh', description: 'Reload the books' }], async () => ({
-      content: '',
-    }))
+    useMiniAppStore.getState().setTools(
+      [{ name: 'refresh', description: 'Reload the books' }],
+      async () => ({
+        content: '',
+      }),
+      'test',
+    )
 
     await handshake({ tools: true }, { id: 2 })
 
-    expect(useMiniAppStore.getState().tools.map((tool) => tool.name)).toEqual(['refresh'])
+    expect(getMiniAppSnapshot('test').tools.map((tool) => tool.name)).toEqual(['refresh'])
     expect(bridge.current?.status).toBe('ready')
     // Still answered in full: the second `connect()` is waiting on a reply and
     // has no idea the first one happened.
@@ -944,13 +990,15 @@ describe('useMiniAppBridge message handling', () => {
     async (documentId) => {
       const { bridge, handshake, replyTo } = mountBridge()
       await handshake()
-      useMiniAppStore.getState().setTools([{ name: 'old', description: 'Old tool' }], async () => ({ content: '' }))
+      useMiniAppStore
+        .getState()
+        .setTools([{ name: 'old', description: 'Old tool' }], async () => ({ content: '' }), 'test')
       await handshake({ auth: true, tools: true }, { documentId, id: 99 })
       expect(bridge.current?.status).toBe('unsupported')
       expect(replyTo(99)).toMatchObject({
         error: { code: miniAppRpcErrors.invalidRequest, message: expect.stringContaining('update the mini app SDK') },
       })
-      expect(useMiniAppStore.getState().tools).toEqual([])
+      expect(getMiniAppSnapshot('test').tools).toEqual([])
       act(() => bridge.current?.handleFrameLoad())
       expect(bridge.current?.status).toBe('unsupported')
       await handshake({}, { documentId: 'updated-document', id: 100 })

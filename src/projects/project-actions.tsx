@@ -4,18 +4,19 @@
 
 import { useLingui } from '@lingui/react/macro'
 import { Slot } from '@radix-ui/react-slot'
-import { MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
+import { LayoutGrid, MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
 import type { ReactElement, ReactNode } from 'react'
 import { useProjectActionsState } from './use-project-actions-state'
 import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { ResponsiveActionMenu } from '@/components/ui/responsive-action-menu'
 import type { Project } from '@/types'
-import { ProjectActionMenuItems, type ProjectActionHandlers } from './project-action-menu-items'
+import { type ProjectActionHandlers, ProjectActionMenuItems } from './project-action-menu-items'
 
 type ProjectActionsProps = {
   project: Project
-  actions: ProjectActionHandlers
+  handlers: ProjectActionHandlers
+  onOpenArtifacts: () => void
   triggerClassName?: string
   children: (menu: ReactNode) => ReactElement
 }
@@ -23,7 +24,8 @@ type ProjectActionsProps = {
 /** Project navigation and management from the sidebar row. */
 export const ProjectActions = ({
   project,
-  actions: projectActions,
+  handlers,
+  onOpenArtifacts,
   triggerClassName,
   children,
 }: ProjectActionsProps) => {
@@ -34,15 +36,20 @@ export const ProjectActions = ({
     longPressFired,
     longPressHandlers,
     actions,
+    handleOpenChange,
     handleCloseAutoFocus,
     handleMobileOpenChange,
-  } = useProjectActionsState(projectActions)
+  } = useProjectActionsState({
+    ...handlers,
+    onOpenArtifacts,
+  })
   const pinned = project.pinnedOrder !== null
   const menu = (
     <DetailActionsMenu
       side="right"
       align="start"
       triggerClassName={triggerClassName}
+      onOpenChange={handleOpenChange}
       onCloseAutoFocus={handleCloseAutoFocus}
     >
       <ProjectActionMenuItems pinned={pinned} {...actions} />
@@ -75,6 +82,7 @@ export const ProjectActions = ({
           }
           actions={[
             { label: t`New chat`, icon: <MessageCirclePlus className="size-4" />, onSelect: actions.onNewChat },
+            { label: t`Artifacts`, icon: <LayoutGrid className="size-4" />, onSelect: actions.onOpenArtifacts },
             {
               label: pinned ? t`Unpin` : t`Pin`,
               icon: pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />,
@@ -85,7 +93,7 @@ export const ProjectActions = ({
           ]}
         />
       ) : (
-        <ContextMenu>
+        <ContextMenu onOpenChange={handleOpenChange}>
           <ContextMenuTrigger asChild>{children(menu)}</ContextMenuTrigger>
           <ContextMenuContent className="min-w-56" onCloseAutoFocus={handleCloseAutoFocus}>
             <ProjectActionMenuItems context pinned={pinned} {...actions} />

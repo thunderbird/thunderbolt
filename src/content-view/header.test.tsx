@@ -44,7 +44,7 @@ describe('ContentViewHeader', () => {
 
     render(<ContentViewHeader title="sample.pdf" onClose={onClose} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

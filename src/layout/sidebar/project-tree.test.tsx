@@ -472,6 +472,7 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
   } else {
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'New chat',
+      'Artifacts',
       'Pin',
       'Edit',
       'Delete',

@@ -41,7 +41,7 @@ export const sharedHeaderHasControls = ({
   if (isMobile) {
     return true
   }
-  if (!pathname.startsWith('/apps/')) {
+  if (!pathname.startsWith('/apps/') && !pathname.startsWith('/artifacts/')) {
     return true
   }
   // On the desktop app: back/forward, and the drag surface a frameless window

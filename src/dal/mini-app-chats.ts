@@ -4,7 +4,7 @@
 
 /** Chats that were started from a Mini App. */
 
-import { eq } from 'drizzle-orm'
+import { eq, or } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
@@ -16,11 +16,18 @@ import { getChatActivityQuery } from './chat-activity-query'
 export type MiniAppChat = { id: string; title: string | null; lastActivityAt: Date }
 
 /** Live chats started from one Mini App, in the sidebar's activity order. */
-export const useMiniAppChats = (appId: string): MiniAppChat[] => {
+export const useMiniAppChats = (appId: string, sourceChatId: string | null = null): MiniAppChat[] => {
   const db = useDatabase()
   const { data = [] } = useQuery({
-    queryKey: ['miniAppChats', appId],
-    query: toCompilableQuery(getChatActivityQuery(db, eq(chatThreadsTable.miniAppId, appId))),
+    queryKey: ['miniAppChats', appId, sourceChatId],
+    query: toCompilableQuery(
+      getChatActivityQuery(
+        db,
+        sourceChatId
+          ? or(eq(chatThreadsTable.miniAppId, appId), eq(chatThreadsTable.id, sourceChatId))!
+          : eq(chatThreadsTable.miniAppId, appId),
+      ),
+    ),
   })
   return data.map((row) => ({
     id: row.id,

@@ -5,7 +5,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { FolderMinus, Plus, Trash2 } from 'lucide-react'
 import { useRef } from 'react'
-import { SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar'
+import { SidebarMenu, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar'
 import { unassignDropId } from '@/projects/chat-drop'
 import { ProjectCreateDialog } from '@/projects/project-create-dialog'
 import type { ChatListProps } from './types'
@@ -17,6 +17,8 @@ import { useProjectTreeState } from './use-project-tree-state'
 import { SidebarListToggle } from './sidebar-list-toggle'
 import { SidebarSectionToggle } from './sidebar-section-toggle'
 import { ProjectTreeMenu } from './project-tree-menu'
+import { useProjectArtifactsDialog } from '@/projects/use-project-artifacts-dialog'
+import type { Project } from '@/types'
 
 export type ProjectTreeProps = Pick<
   ChatListProps,
@@ -56,6 +58,18 @@ export const ProjectTree = (props: ProjectTreeProps) => {
     projectCreated,
   } = useProjectTreeState(props.chatThreads, props.currentChatThreadId)
 
+  const artifactsDialog = useProjectArtifactsDialog()
+  const { closeMobileSidebar } = useSidebar()
+  const projectActions = (project: Project) => ({
+    ...getProjectActions(project),
+    onOpenArtifacts: async () => {
+      if (props.isMobile) {
+        await closeMobileSidebar()
+      }
+      artifactsDialog.open(project.id)
+    },
+  })
+
   return (
     <>
       {props.isCollapsed ? (
@@ -68,7 +82,7 @@ export const ProjectTree = (props: ProjectTreeProps) => {
             onChatClick={props.onChatClick}
             onNewProject={openCreateDialog}
             onDeleteAllProjects={openDeleteAll}
-            getProjectActions={getProjectActions}
+            getProjectActions={projectActions}
           />
         </div>
       ) : (
@@ -97,6 +111,7 @@ export const ProjectTree = (props: ProjectTreeProps) => {
               {projectList.items.map((project) => (
                 <ProjectTreeRow
                   key={project.id}
+                  {...props}
                   currentChatThreadId={props.currentChatThreadId}
                   isMobile={props.isMobile}
                   deleteChatMutation={props.deleteChatMutation}
@@ -105,8 +120,8 @@ export const ProjectTree = (props: ProjectTreeProps) => {
                   onChatClick={props.onChatClick}
                   onRename={props.onRename}
                   onMoveToProject={props.onMoveToProject}
+                  actions={projectActions(project)}
                   draggingFromProjectId={props.draggingFromProjectId}
-                  actions={getProjectActions(project)}
                   project={project}
                   chats={props.chatThreads.filter((thread) => thread.projectId === project.id)}
                   active={props.currentChatThreadId === 'new' && project.id === activeId}

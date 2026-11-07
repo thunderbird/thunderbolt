@@ -76,7 +76,8 @@ invalidation map for synced data but **has had no consumer since THU-249**.
 Updates come from PowerSync's own reactivity, so a query refreshes only if it is
 compiled through `toCompilableQuery`.
 
-Project reads in React use `useProjects` and the shared chat-activity query. Plain TanStack
+Every project read from React is a reactive hook: `useProjects`,
+`useProjectArtifactsState`, and the shared chat-activity query. Plain TanStack
 queries with manual `refetch()` went stale on changes from another device, and
 adding map entries would have looked like a fix while doing nothing. A single
 project is read with the non-reactive `getProject`, which with the other
@@ -98,20 +99,22 @@ explicit action.
 
 ## UI surfaces
 
-| Surface              | Notes                                                                                                                                                                                                       |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Sidebar**          | Projects and Recents are collapsible sections in one scroll area. Project folders expand to their chats. Each list starts at five items; Show more reveals five more. The active item remains visible.      |
-| **Project actions**  | Desktop hover reveals the vertical menu; right-click offers the same actions. Mobile uses long-press. New chat, Pin/Unpin, Edit, and Delete are available from the project menu.                            |
-| **Create/edit form** | `ProjectCreateDialog` asks for name and emoji. `ProjectEditorDialog` exposes description and shared instructions through `ProjectForm`. The chat-header badge opens these settings without navigating away. |
-| **Existing links**   | `/projects` redirects to chat home; `/projects/:projectId` starts a chat with that project selected. The old project list, detail page, and comparison routes are removed.                                  |
-| **Emoji icons**      | The Unicode catalog is loaded dynamically and virtualized. Emoji use the operating system’s native glyphs, without bundled artwork or image requests.                                                       |
+| Surface              | Notes                                                                                                                                                                                                                                                                                               |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sidebar**          | Projects and Recents are collapsible sections in one scroll area. Project folders expand to their chats and pinned artifacts. Each list starts at five items; Show more reveals five more. The active item remains visible.                                                                         |
+| **Project actions**  | Desktop hover reveals the vertical menu; right-click offers the same actions. Mobile uses long-press. New chat, Artifacts, Edit, and Delete are available from the project menu.                                                                                                                    |
+| **Create/edit form** | `ProjectEditorDialog` uses one `ProjectForm` for name, emoji, description, and instructions. The chat-header badge opens these settings without navigating away.                                                                                                                                    |
+| **Artifacts**        | The project menu opens a searchable modal over the current chat. It shows at most three complete rows (less on small screens) and virtualizes further rows. Static previews are sandboxed and do not run scripts. Rename/delete dialogs live outside the virtual rows so resizing preserves drafts. |
+| **Artifact canvas**  | Selecting an artifact opens `/projects/:projectId/artifacts/:artifactId` with an optional source-chat pane. Saved titles and deletion markers use existing synced settings; pin lists are scoped per project.                                                                                       |
+| **Existing links**   | `/projects` redirects to chat home; `/projects/:projectId` starts a chat with that project selected. The old project list, detail page, and comparison routes are removed.                                                                                                                          |
+| **Emoji icons**      | The Unicode catalog is loaded dynamically and virtualized. Twemoji SVGs are bundled locally so the picker works in browsers without native emoji glyphs.                                                                                                                                            |
 
 Projects and chats sort by their latest live message, with creation as the floor;
 explicit project pin order remains first. Metadata edits do not bump recency.
 
 Starting a drag does not expand folders or remove the five-item cap. The
 "Remove from project" drop target appears only for a chat that belongs to a
-project. **Move** remains searchable for reaching any folder.
+project. **Move to project** remains searchable for reaching any folder.
 
 The burn action and its search command delete **only chats outside projects**.
 They soft-delete and scrub the matching threads and messages in one transaction;
@@ -165,7 +168,7 @@ include/exclude on any future table.
 - **Search is lexical, not semantic.** Vector search needs an embedding model, a
   vector store, and a privacy decision about sending message text to a provider.
 - **Touch drag is unverified.** Both mobile and desktop show project folders.
-  Every platform reaches membership through **Move** in a chat's
+  Every platform reaches membership through **Move to project** in a chat's
   action menu (long-press on mobile, right-click or `⋯` on desktop), which opens
   `MoveChatToProjectDialog`. The sidebar owns one dialog instance rather than one
   per row, since the list is virtualized and hundreds of rows long.

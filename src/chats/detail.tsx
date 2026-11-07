@@ -6,6 +6,7 @@ import ChatUI from '@/components/chat/chat-ui'
 import { MiniAppChatBanner } from '@/mini-apps/mini-app-chat-banner'
 import { useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useMiniApps } from '@/mini-apps/use-mini-apps'
+import { parseArtifactId } from '@/artifacts/artifact'
 import { useCurrentChatSession } from './chat-store'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { type PropsWithChildren, useEffect, useState } from 'react'
@@ -136,6 +137,7 @@ const ChatWithOrigin = ({ chatThreadId }: { chatThreadId: string }) => {
   const { miniAppId } = useCurrentChatSession()
   const { loading, failed } = useMiniApps()
   const chatDestination = useChatDestination()
+  const [params] = useSearchParams()
 
   if (!miniAppId) {
     return <ChatUI />
@@ -154,7 +156,7 @@ const ChatWithOrigin = ({ chatThreadId }: { chatThreadId: string }) => {
    * conversation is more useful than a spinner. The banner stays quiet in that
    * state rather than claiming the app is gone.
    */
-  if (loading && !failed) {
+  if (loading && !failed && parseArtifactId(miniAppId)?.kind !== 'html') {
     return <ChatUI />
   }
 
@@ -169,7 +171,7 @@ const ChatWithOrigin = ({ chatThreadId }: { chatThreadId: string }) => {
    * below says where the conversation started instead.
    */
   const destination = chatDestination(chatThreadId, miniAppId)
-  if (destination !== `/chats/${chatThreadId}`) {
+  if (params.get('view') !== 'chat' && destination !== `/chats/${chatThreadId}`) {
     return <Navigate to={destination} replace />
   }
 

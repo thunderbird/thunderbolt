@@ -5,23 +5,38 @@
 import { useRef, useState } from 'react'
 import { useLongPress } from '@/hooks/use-long-press'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { loadProjectArtifactsDialog } from './load-project-artifacts-dialog'
 
 import type { ProjectActionHandlers } from './project-action-menu-items'
 
-/** Keep menu focus and mobile long-press behavior independent of dialog ownership. */
-export const useProjectActionsState = (actions: ProjectActionHandlers) => {
+type ProjectActionsStateProps = ProjectActionHandlers & { onOpenArtifacts: () => void }
+
+/** Coordinate project actions, focus restoration, and mobile long-press behavior. */
+export const useProjectActionsState = ({
+  onNewChat,
+  onOpenArtifacts,
+  onTogglePin,
+  onEdit,
+  onDelete,
+}: ProjectActionsStateProps) => {
   const { isMobile } = useIsMobile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const openingDialog = useRef(false)
   const longPressFired = useRef(false)
-  const handOffFocus = (action: () => void) => () => {
-    openingDialog.current = !isMobile
-    action()
-  }
   const handleCloseAutoFocus = (event: Event) => {
     if (openingDialog.current) {
       event.preventDefault()
       openingDialog.current = false
+    }
+  }
+  const handleOpenChange = async (open: boolean) => {
+    if (!open) {
+      return
+    }
+    try {
+      await loadProjectArtifactsDialog()
+    } catch (cause) {
+      console.error('[projects] Could not preload artifact gallery', cause)
     }
   }
   const handleMobileOpenChange = (open: boolean) => {
@@ -29,22 +44,38 @@ export const useProjectActionsState = (actions: ProjectActionHandlers) => {
       longPressFired.current = false
     }
     setMobileMenuOpen(open)
+    void handleOpenChange(open)
   }
   const longPressHandlers = useLongPress(() => {
     longPressFired.current = true
     handleMobileOpenChange(true)
   })
+  const actions = {
+    onNewChat: () => {
+      openingDialog.current = !isMobile
+      onNewChat()
+    },
+    onOpenArtifacts: () => {
+      openingDialog.current = !isMobile
+      onOpenArtifacts()
+    },
+    onTogglePin,
+    onEdit: () => {
+      openingDialog.current = !isMobile
+      onEdit()
+    },
+    onDelete: () => {
+      openingDialog.current = !isMobile
+      onDelete()
+    },
+  }
   return {
     isMobile,
     mobileMenuOpen,
     longPressFired,
     longPressHandlers,
-    actions: {
-      ...actions,
-      onNewChat: handOffFocus(actions.onNewChat),
-      onEdit: handOffFocus(actions.onEdit),
-      onDelete: handOffFocus(actions.onDelete),
-    },
+    actions,
+    handleOpenChange,
     handleCloseAutoFocus,
     handleMobileOpenChange,
   }

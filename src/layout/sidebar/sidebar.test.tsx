@@ -109,11 +109,27 @@ describe('Sidebar reactivity', () => {
     await waitForElement(() => screen.queryByText('Mobile Chat'))
 
     const scrollArea = document.querySelector<HTMLElement>('[data-slot="sidebar-navigation-scroll"]')
-    expect(scrollArea).toContainElement(screen.getByText('Mobile Chat'))
-    expect(scrollArea).toContainElement(screen.getByRole('button', { name: 'Recents' }))
-    expect(scrollArea).toContainElement(document.querySelector('[data-slot="mobile-sidebar-header"]'))
-    expect(scrollArea).not.toContainElement(document.querySelector('[data-sidebar="footer"]'))
-    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+    const mobileHeader = document.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header"]')
+    const recentChatsLabel = screen.getByText('Recents')
+    const sidebarFooter = document.querySelector<HTMLElement>('[data-sidebar="footer"]')
+
+    expect(scrollArea).toContainElement(recentChatsLabel)
+    expect(mobileHeader).not.toContainElement(recentChatsLabel)
+    expect(scrollArea).toContainElement(mobileHeader)
+    expect(mobileHeader).toHaveClass('relative', 'pt-[calc(var(--header-safe-area-top)+0.5rem)]')
+    expect(scrollArea?.firstElementChild).toHaveClass(
+      'pb-[calc(var(--touch-height-lg)+0.5rem+var(--mobile-sidebar-footer-inset))]',
+    )
+    expect(document.querySelectorAll('[data-slot="sidebar-navigation-scroll"]')).toHaveLength(1)
+    expect(scrollArea?.querySelectorAll('.overflow-y-auto')).toHaveLength(0)
+    expect(scrollArea).not.toHaveClass('overscroll-y-none')
+    expect(sidebarFooter).toHaveClass('pb-[var(--mobile-sidebar-footer-inset)]')
+    expect(document.querySelector('[data-slot="mobile-sidebar-footer-scrim"]')).toHaveClass(
+      'from-sidebar',
+      'backdrop-blur-[4px]',
+    )
+    expect(scrollArea?.className).not.toContain('shadow-[')
+    expect(sidebarFooter?.className).not.toContain('shadow-[')
   })
 
   describe('section toggle', () => {

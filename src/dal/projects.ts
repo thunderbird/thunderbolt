@@ -11,11 +11,17 @@
 import { and, asc, desc, eq, exists, getTableColumns, inArray, isNull, sql, type SQL } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
+import { useLingui } from '@lingui/react/macro'
+import { useMemo } from 'react'
+import { chatTitleLabel } from '@/lib/title-generator'
 import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { chatThreadsTable, projectsTable } from '../db/tables'
+import { chatMessagesTable, chatThreadsTable, projectsTable } from '../db/tables'
 import { nowIso } from '../lib/utils'
+import { renderHtmlToolName } from '@/artifacts/constants'
+import { collectProjectArtifacts, type ArtifactMessageRow } from '@/projects/project-artifacts-data'
+import { useArtifactPresentation } from '@/artifacts/use-artifact-presentation'
 import type { Project } from '../types'
 import { getChatActivityQuery, getChatLastActivityId } from './chat-activity-query'
 
@@ -193,7 +199,7 @@ export const setChatThreadProject = async (
 
 // ── Live hooks ───────────────────────────────────────────────────────────────
 
-/** Live projects and readiness, so chats stay visible while their project membership loads. */
+/** Live projects and readiness, so deep links distinguish loading from a missing project. */
 export const useProjectsState = () => {
   const db = useDatabase()
   const { data = [], isLoading } = useQuery({
@@ -205,3 +211,51 @@ export const useProjectsState = () => {
 
 /** Live list of projects (pinned first, then latest chat activity). */
 export const useProjects = (): Project[] => useProjectsState().projects
+
+/** Artifact messages from live source chats; moving or deleting a chat removes its outputs from the collection. */
+export const getProjectArtifactMessagesQuery = (db: AnyDrizzleDatabase, projectId: string) =>
+  db
+    .select({
+      id: chatMessagesTable.id,
+      chatThreadId: chatMessagesTable.chatThreadId,
+      parts: chatMessagesTable.parts,
+      chatTitle: chatThreadsTable.title,
+    })
+    .from(chatMessagesTable)
+    .innerJoin(chatThreadsTable, eq(chatThreadsTable.id, chatMessagesTable.chatThreadId))
+    .where(
+      and(
+        eq(chatThreadsTable.projectId, projectId),
+        isNull(chatThreadsTable.deletedAt),
+        isNull(chatMessagesTable.deletedAt),
+        eq(chatMessagesTable.role, 'assistant'),
+        // Narrows the scan before any JSON is parsed.
+        sql`${chatMessagesTable.parts} LIKE ${`%${renderHtmlToolName}%`}`,
+      ),
+    )
+
+/** Live `render_html` artifacts across a project's chats, newest first. */
+export const useProjectArtifactsState = (projectId: string | undefined) => {
+  const db = useDatabase()
+  const { t, i18n } = useLingui()
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['projectArtifacts', projectId ?? 'none'],
+    query: toCompilableQuery(getProjectArtifactMessagesQuery(db, projectId ?? '')),
+  })
+  const sourceArtifacts = useMemo(
+    () =>
+      collectProjectArtifacts(
+        (data as ArtifactMessageRow[]).map((row) => ({ ...row, chatTitle: chatTitleLabel(i18n, row.chatTitle) })),
+        {
+          untitledChat: t`Untitled chat`,
+          untitledArtifact: t`Untitled artifact`,
+        },
+      ),
+    [data, t, i18n],
+  )
+  const presentation = useArtifactPresentation(sourceArtifacts, projectId ?? 'none')
+  return { artifacts: presentation.artifacts, isLoading: isLoading || presentation.loading }
+}
+
+/** Live verified artifacts, for callers that do not need a loading indicator. */
+export const useProjectArtifacts = (projectId: string | undefined) => useProjectArtifactsState(projectId).artifacts

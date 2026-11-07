@@ -41,6 +41,8 @@ export default defineConfig({
       exclude: ['**/*.test.*'],
     },
   ],
+  // Explicit runtime IDs have no source message; sort by ID instead of filesystem traversal.
+  orderBy: 'messageId',
   compileNamespace: 'ts',
   // Same reasoning as the root config: line numbers would rewrite every catalog
   // whenever an `i18n._` call shifts a line, reddening the CI check for no

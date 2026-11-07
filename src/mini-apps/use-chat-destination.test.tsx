@@ -21,6 +21,7 @@ import { MemoryRouter } from 'react-router'
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { createAuthenticatedClient, type HttpClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
+import { artifactId, artifactPath } from '@/artifacts/artifact'
 import { useChatDestination } from './use-chat-destination'
 import { resetMiniAppsForTesting } from './use-mini-apps'
 
@@ -112,5 +113,26 @@ describe('useChatDestination', () => {
     await settle()
 
     expect(result.current('t?1&2', 'a b/c')).toBe('/apps/a%20b%2Fc?chat=t%3F1%262')
+  })
+})
+
+describe('generated artifact chat destinations', () => {
+  it('resolves an HTML artifact without waiting for the remote registry', () => {
+    const { result } = setup()
+    const id = artifactId({ kind: 'html', messageId: 'message', toolCallId: 'call/1' })
+    expect(result.current('thread&1', id)).toBe(`${artifactPath(id)}?chat=thread%261`)
+  })
+
+  it('does not treat malformed canonical IDs as generated artifacts', async () => {
+    const { result } = setup([])
+    await settle()
+    expect(result.current('thread', 'html:missing-call')).toBe('/chats/thread')
+  })
+
+  it('preserves legacy configured IDs even when they resemble artifact IDs', async () => {
+    const id = artifactId({ kind: 'html', messageId: 'message', toolCallId: 'call' })
+    const { result } = setup([{ ...app, id }])
+    await settle()
+    expect(result.current('thread', id)).toBe(`/apps/${encodeURIComponent(id)}?chat=thread`)
   })
 })

@@ -19,16 +19,17 @@ export const SidebarSectionToggle = ({
   controls,
   label,
   optionsLabel,
-  actions,
+  actions = [],
 }: {
   expanded: boolean
   onToggle: () => void
   controls: string
   label: string
-  optionsLabel: string
-  actions: ResponsiveActionMenuAction[]
+  optionsLabel?: string
+  actions?: ResponsiveActionMenuAction[]
 }) => {
   const { isMobile } = useIsMobile()
+  const hasActions = actions.length > 0
   const openingAction = useRef(false)
   const { menuOpen, setMenuOpen, longPressHandlers, handleClick, handleKeyDown } =
     useSidebarSectionToggleState(onToggle)
@@ -55,11 +56,11 @@ export const SidebarSectionToggle = ({
         type="button"
         aria-expanded={expanded}
         aria-controls={controls}
-        aria-haspopup={isMobile ? 'dialog' : 'menu'}
-        data-long-press={isMobile ? '' : undefined}
-        {...(isMobile ? longPressHandlers : {})}
-        onClick={isMobile ? handleClick : onToggle}
-        onKeyDown={isMobile ? handleKeyDown : undefined}
+        aria-haspopup={hasActions ? (isMobile ? 'dialog' : 'menu') : undefined}
+        data-long-press={isMobile && hasActions ? '' : undefined}
+        {...(isMobile && hasActions ? longPressHandlers : {})}
+        onClick={isMobile && hasActions ? handleClick : onToggle}
+        onKeyDown={isMobile && hasActions ? handleKeyDown : undefined}
       >
         {label}
         <span aria-hidden="true">
@@ -78,24 +79,26 @@ export const SidebarSectionToggle = ({
       )}
     >
       {trigger}
-      <ResponsiveActionMenu
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        title={label}
-        actions={menuActions}
-        desktopMenu={{ side: 'right', align: 'start', sideOffset: 8, onCloseAutoFocus: handleCloseAutoFocus }}
-        trigger={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={optionsLabel}
-            className="hidden md:inline-flex size-[var(--touch-height-default)] shrink-0 bg-transparent text-muted-foreground transition-opacity hover:bg-transparent dark:hover:bg-transparent active:bg-transparent data-[state=open]:bg-transparent md:size-8 md:opacity-0 md:group-hover/section:opacity-100 md:group-has-[:focus-visible]/section:opacity-100 md:data-[state=open]:opacity-100 md:group-data-[state=open]/section:opacity-100"
-          >
-            <MoreVertical className="size-4" />
-          </Button>
-        }
-      />
+      {hasActions && (
+        <ResponsiveActionMenu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          title={label}
+          actions={menuActions}
+          desktopMenu={{ side: 'right', align: 'start', sideOffset: 8, onCloseAutoFocus: handleCloseAutoFocus }}
+          trigger={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={optionsLabel ?? label}
+              className="hidden md:inline-flex size-[var(--touch-height-default)] shrink-0 bg-transparent text-muted-foreground transition-opacity hover:bg-transparent dark:hover:bg-transparent active:bg-transparent data-[state=open]:bg-transparent md:size-8 md:opacity-0 md:group-hover/section:opacity-100 md:group-has-[:focus-visible]/section:opacity-100 md:data-[state=open]:opacity-100 md:group-data-[state=open]/section:opacity-100"
+            >
+              <MoreVertical className="size-4" />
+            </Button>
+          }
+        />
+      )}
     </div>
   )
 

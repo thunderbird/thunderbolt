@@ -76,7 +76,7 @@ describe('CompactionSummaryContent', () => {
     const onClose = mock()
     render(<CompactionSummaryContent checkpoint={{ ...checkpoint, retainedTail: [] }} onClose={onClose} />)
     expect(screen.queryByRole('button', { name: 'Retained messages and tool results' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 

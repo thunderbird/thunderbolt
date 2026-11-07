@@ -13,6 +13,11 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#. placeholder {0}: actions.dialog.artifact.title
+#: src/projects/project-artifact-actions-provider.tsx
+msgid "“{0}” will be removed from project artifacts and pinned shortcuts. The original output will remain in its source chat."
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgstr ""
@@ -20,14 +25,6 @@ msgstr ""
 #: src/components/chat/chat-prompt-input.tsx
 msgid "\"{filename}\" isn't a supported file type."
 msgstr ""
-
-#. placeholder {0}: items.length
-#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
-#: src/components/embedded/surface-selection-bar.tsx
-#~ msgid "# item selected"
-#~ msgid_plural "# items selected"
-#~ msgstr[0] ""
-#~ msgstr[1] ""
 
 #. placeholder {0}: mcpServers.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+MCP+server%7D+other+%7B%23+MCP+servers%7D%7D&pluralize_on=0
@@ -45,18 +42,10 @@ msgid_plural "# tools"
 msgstr[0] ""
 msgstr[1] ""
 
-#. placeholder {0}: items.length
-#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BAsk+about+it%7D+other+%7BAsk+about+them%7D%7D&pluralize_on=0
-#: src/components/embedded/surface-selection-bar.tsx
-#~ msgid "Ask about it"
-#~ msgid_plural "Ask about them"
-#~ msgstr[0] ""
-#~ msgstr[1] ""
-
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
-msgid "{0} is only available on desktop"
-msgstr ""
+#~ msgid "{0} is only available on desktop"
+#~ msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
@@ -94,13 +83,6 @@ msgstr ""
 msgid "{appName} will use it across the app. You can change it later in Preferences."
 msgstr ""
 
-#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
-#: src/projects/index.tsx
-#~ msgid "# chat"
-#~ msgid_plural "# chats"
-#~ msgstr[0] ""
-#~ msgstr[1] ""
-
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+delete+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+delete+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
 #: src/skills/dependents-dialog.tsx
 msgid "One skill references this. If you delete it, that skill may no longer resolve."
@@ -125,14 +107,6 @@ msgstr[1] ""
 #: src/mini-apps/mini-app-download-prompt.tsx
 msgid "{fileName} will be saved to your Downloads folder."
 msgstr ""
-
-#: src/layout/sidebar/project-drop-list.tsx
-#~ msgid "{label} — already in this project"
-#~ msgstr ""
-
-#: src/layout/sidebar/sidebar-section-toggle.tsx
-#~ msgid "{label} options"
-#~ msgstr ""
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -174,6 +148,10 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: src/components/chat/artifact-message-part.tsx
+msgid "{title} — open beside this chat"
+msgstr ""
+
+#: src/components/chat/artifact-message-part.tsx
 msgid "{title} — shown in side panel"
 msgstr ""
 
@@ -183,10 +161,6 @@ msgid "Imported # row. The app may take a moment to reflect new chats."
 msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] ""
 msgstr[1] ""
-
-#: src/components/context-usage/context-usage-indicator.tsx
-#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
-#~ msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
@@ -208,6 +182,10 @@ msgstr ""
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr ""
 
+#: src/projects/project-artifact-gallery.tsx
+msgid "A home for what you create"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
 msgstr ""
@@ -223,10 +201,6 @@ msgstr ""
 #: src/settings/app-version-section.tsx
 msgid "A new version is available. See the update prompt to install."
 msgstr ""
-
-#: src/projects/index.tsx
-#~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
-#~ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
@@ -297,10 +271,6 @@ msgstr ""
 msgid "Add a passkey"
 msgstr ""
 
-#: src/components/onboarding/onboarding-passkey-step.tsx
-#~ msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
-#~ msgstr ""
-
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr ""
@@ -331,10 +301,6 @@ msgstr ""
 msgid "Add Model"
 msgstr ""
 
-#: src/settings/passkeys.tsx
-#~ msgid "Add passkey"
-#~ msgstr ""
-
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr ""
@@ -348,10 +314,6 @@ msgstr ""
 msgid "Add to chat"
 msgstr ""
 
-#: src/settings/passkeys.tsx
-#~ msgid "Add your first passkey"
-#~ msgstr ""
-
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
 msgstr ""
@@ -359,11 +321,6 @@ msgstr ""
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr ""
-
-#. placeholder {0}: formatters.date(passkey.createdAt)
-#: src/settings/passkeys.tsx
-#~ msgid "Added {0}"
-#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -393,11 +350,6 @@ msgstr ""
 #: src/search/commands/navigation.ts
 msgid "All agents"
 msgstr ""
-
-#: src/layout/sidebar/project-drop-list.tsx
-#: src/projects/index.tsx
-#~ msgid "All projects"
-#~ msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
@@ -491,10 +443,6 @@ msgstr ""
 msgid "App Version"
 msgstr ""
 
-#: src/projects/project-form.tsx
-#~ msgid "Applied to every chat in this project."
-#~ msgstr ""
-
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
@@ -528,18 +476,33 @@ msgstr ""
 msgid "Are you sure? You will lose any changes that you made."
 msgstr ""
 
+#: src/artifacts/artifact.ts
 #: src/components/chat/artifact-message-part.tsx
 msgid "Artifact"
 msgstr ""
 
+#: src/projects/project-artifact-actions-provider.tsx
+msgid "Artifact downloaded"
+msgstr ""
+
+#: src/projects/rename-artifact-dialog.tsx
+msgid "Artifact name"
+msgstr ""
+
+#: src/projects/project-artifacts-page.tsx
+msgid "Artifact unavailable"
+msgstr ""
+
+#: src/layout/sidebar/artifact-section-menu.tsx
+#: src/layout/sidebar/artifact-section.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/projects/project-artifact-gallery.tsx
 #: src/projects/project-artifact-grid.tsx
 #: src/projects/project-artifact-workspace.tsx
 #: src/projects/project-artifacts-dialog.tsx
-#~ msgid "Artifacts"
-#~ msgstr ""
+msgid "Artifacts"
+msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
@@ -620,6 +583,10 @@ msgstr ""
 msgid "Back to App"
 msgstr ""
 
+#: src/artifacts/artifact-page.tsx
+msgid "Back to chat"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "Base URL"
 msgstr ""
@@ -678,6 +645,7 @@ msgstr ""
 #: src/components/ui/responsive-modal.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/projects/project-create-form.tsx
+#: src/projects/rename-artifact-dialog.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -718,8 +686,16 @@ msgstr ""
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr ""
 
-#: src/mini-apps/mini-app-page.tsx
+#: src/projects/project-artifact-gallery.tsx
+msgid "Charts, prototypes, and other artifacts from this project's chats appear here. Pin your favorites to keep them in the sidebar."
+msgstr ""
+
+#: src/artifacts/artifact-workspace.tsx
 msgid "Chat"
+msgstr ""
+
+#: src/components/artifact/artifact-controls.tsx
+msgid "Chat about artifact"
 msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
@@ -825,10 +801,6 @@ msgid "Choose project"
 msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
-#~ msgid "Choose your email provider {displayReason}"
-#~ msgstr ""
-
-#: src/widgets/connect-integration/widget.tsx
 msgid "Choose your email provider {reason}"
 msgstr ""
 
@@ -843,12 +815,6 @@ msgstr ""
 #: src/widgets/connect-integration/widget.tsx
 msgid "Choose your email provider to access your email and calendar"
 msgstr ""
-
-#: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
-#: src/search/commands/use-commands.ts
-#~ msgid "Clear all chats"
-#~ msgstr ""
 
 #: src/components/app-error-screen.tsx
 msgid "Clear Database"
@@ -878,10 +844,6 @@ msgstr ""
 msgid "Clear sky"
 msgstr ""
 
-#: src/components/app-error-screen.tsx
-#~ msgid "Clearing Database…"
-#~ msgstr ""
-
 #: src/settings/devices.tsx
 msgid "CLI"
 msgstr ""
@@ -902,16 +864,16 @@ msgstr ""
 msgid "Close"
 msgstr ""
 
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Close chat"
-#~ msgstr ""
-
 #: src/components/detail-panel.tsx
 msgid "Close details"
 msgstr ""
 
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Close navigation"
+msgstr ""
+
+#: src/content-view/header.tsx
+msgid "Close panel"
 msgstr ""
 
 #: src/skills/reorder-panel.tsx
@@ -997,10 +959,6 @@ msgstr ""
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
 msgstr ""
-
-#: src/components/chat/attestation/attestation-details.tsx
-#~ msgid "Confidential hardware"
-#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
@@ -1149,10 +1107,6 @@ msgid "Context"
 msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
-#~ msgid "Context compaction is available with supported built-in models."
-#~ msgstr ""
-
-#: src/components/context-usage/context-usage-indicator.tsx
 msgid "Context usage"
 msgstr ""
 
@@ -1239,10 +1193,6 @@ msgstr ""
 msgid "Could not compact context. Please try again."
 msgstr ""
 
-#: src/components/context-usage/context-usage-indicator.tsx
-#~ msgid "Could not compact context. Your chat history is safe. Please try again."
-#~ msgstr ""
-
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr ""
@@ -1259,12 +1209,20 @@ msgstr ""
 msgid "Could not create the project."
 msgstr ""
 
+#: src/projects/use-project-artifact-actions-state.ts
+msgid "Could not delete the artifact. Please try again."
+msgstr ""
+
 #: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the project. Please try again."
 msgstr ""
 
 #: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the projects. Please try again."
+msgstr ""
+
+#: src/projects/use-project-artifact-actions-state.ts
+msgid "Could not download the artifact. Please try again."
 msgstr ""
 
 #: src/hooks/use-external-link-dialog.ts
@@ -1279,8 +1237,17 @@ msgstr ""
 msgid "Could not read the import file."
 msgstr ""
 
+#: src/layout/sidebar/use-artifact-section-actions.ts
+#: src/projects/use-project-artifact-actions-state.ts
+msgid "Could not rename the artifact. Please try again."
+msgstr ""
+
 #: src/components/device-qr-code.tsx
 msgid "Could not render pairing code."
+msgstr ""
+
+#: src/projects/use-project-artifact-pins.ts
+msgid "Could not save the pin. Please try again."
 msgstr ""
 
 #: src/projects/project-form.tsx
@@ -1291,17 +1258,14 @@ msgstr ""
 msgid "Could not start authorization. Please try again."
 msgstr ""
 
-#: src/settings/passkeys.tsx
-#~ msgid "Couldn't add a passkey. Please try again."
-#~ msgstr ""
+#: src/components/artifact/artifact-controls.tsx
+#: src/layout/sidebar/use-artifact-section-actions.ts
+msgid "Could not update the artifact pin. Try again."
+msgstr ""
 
 #: src/components/onboarding/onboarding-passkey-step.tsx
 msgid "Couldn't add a passkey. You can add one later when you set up sync."
 msgstr ""
-
-#: src/components/onboarding/onboarding-passkey-step.tsx
-#~ msgid "Couldn't add a passkey. You can try again from Settings later."
-#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
@@ -1314,10 +1278,6 @@ msgstr ""
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr ""
-
-#: src/settings/app-version-section.tsx
-#~ msgid "Couldn't check for updates"
-#~ msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "Couldn't check for updates: {error}"
@@ -1336,10 +1296,6 @@ msgid "Couldn't copy. Select the fingerprint to copy it manually."
 msgstr ""
 
 #: src/settings/app-version-section.tsx
-#~ msgid "Couldn't download the update"
-#~ msgstr ""
-
-#: src/settings/app-version-section.tsx
 msgid "Couldn't download the update: {error}"
 msgstr ""
 
@@ -1351,6 +1307,10 @@ msgstr ""
 msgid "Couldn't load {name}"
 msgstr ""
 
+#: src/layout/sidebar/artifact-section.tsx
+msgid "Couldn't load pinned artifacts."
+msgstr ""
+
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
 msgstr ""
@@ -1359,9 +1319,13 @@ msgstr ""
 msgid "Couldn't load this app's pairing identity: {error}"
 msgstr ""
 
-#: src/mini-apps/mini-app-page.tsx
-msgid "Couldn't load your apps. Check your connection and reload."
+#: src/artifacts/artifact-page.tsx
+msgid "Couldn't load this artifact. Check your connection and reload."
 msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Couldn't load your apps. Check your connection and reload."
+#~ msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
@@ -1370,10 +1334,6 @@ msgstr ""
 #: src/settings/encryption/use-remove-passkey.ts
 msgid "Couldn't remove the passkey. Please try again."
 msgstr ""
-
-#: src/settings/app-version-section.tsx
-#~ msgid "Couldn't restart to apply the update"
-#~ msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "Couldn't restart to apply the update: {error}"
@@ -1407,10 +1367,6 @@ msgstr ""
 #: src/waitlist/use-waitlist-state.ts
 msgid "Couldn't sign in with your passkey. Please try again or use your email."
 msgstr ""
-
-#: src/hooks/use-sync-setup.ts
-#~ msgid "Couldn't unlock sync with your passkey."
-#~ msgstr ""
 
 #: src/hooks/use-sync-setup.ts
 msgid "Couldn't unlock sync with your passkey. Please try again."
@@ -1464,10 +1420,6 @@ msgstr ""
 #: src/skills/skills-view.tsx
 msgid "Create Skill"
 msgstr ""
-
-#: src/projects/index.tsx
-#~ msgid "Create your first project"
-#~ msgstr ""
 
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
@@ -1535,10 +1487,6 @@ msgstr ""
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
 
-#: src/components/chat/effort-selector/use-effort-selector-state.ts
-#~ msgid "Default"
-#~ msgstr ""
-
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
 msgstr ""
@@ -1550,6 +1498,8 @@ msgstr ""
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
+#: src/projects/project-artifact-actions-provider.tsx
+#: src/projects/project-artifact-context-menu.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
 #: src/skills/library-row.tsx
@@ -1576,14 +1526,6 @@ msgstr ""
 msgid "Delete agent"
 msgstr ""
 
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "Delete All Chats"
-#~ msgstr ""
-
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "Delete all chats?"
-#~ msgstr ""
-
 #: src/settings/preferences.tsx
 msgid "Delete All Local Data"
 msgstr ""
@@ -1596,6 +1538,10 @@ msgstr ""
 
 #: src/projects/project-delete-dialog.tsx
 msgid "Delete all projects?"
+msgstr ""
+
+#: src/projects/project-artifact-actions-provider.tsx
+msgid "Delete artifact?"
 msgstr ""
 
 #: src/components/delete-chat-dialog.tsx
@@ -1850,6 +1796,7 @@ msgid "Download App"
 msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
+#: src/projects/project-artifact-context-menu.tsx
 msgid "Download HTML"
 msgstr ""
 
@@ -1909,10 +1856,6 @@ msgstr ""
 #: src/settings/models/index.tsx
 msgid "Edit Model"
 msgstr ""
-
-#: src/projects/index.tsx
-#~ msgid "Edit project"
-#~ msgstr ""
 
 #: src/skills/suggestion-chip.tsx
 msgid "Edit skill"
@@ -1996,10 +1939,6 @@ msgstr ""
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Enclave-bound encryption key"
 msgstr ""
-
-#: src/components/chat/attestation/attestation-details.tsx
-#~ msgid "Encrypted connection"
-#~ msgstr ""
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
@@ -2213,6 +2152,10 @@ msgstr ""
 msgid "From {0}"
 msgstr ""
 
+#: src/mini-apps/mini-app-chat-badge.tsx
+msgid "From an artifact"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
 msgstr ""
@@ -2265,6 +2208,7 @@ msgstr ""
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
+#: src/projects/project-artifacts-page.tsx
 msgid "Go back"
 msgstr ""
 
@@ -2345,12 +2289,12 @@ msgstr ""
 msgid "High"
 msgstr ""
 
-#: src/components/chat/effort-selector/effort-selector.tsx
-#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
-#~ msgstr ""
-
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
+msgstr ""
+
+#: src/projects/project-artifact-card.tsx
+msgid "HTML"
 msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
@@ -2489,6 +2433,10 @@ msgstr ""
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr ""
 
+#: src/projects/project-artifacts-page.tsx
+msgid "Its source chat may have been moved or deleted."
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Just synced"
 msgstr ""
@@ -2500,10 +2448,6 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Keep Current Units"
 msgstr ""
-
-#: src/components/revoked-device-modal.tsx
-#~ msgid "Keep data on device"
-#~ msgstr ""
 
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
@@ -2603,10 +2547,6 @@ msgstr ""
 msgid "Loading emoji…"
 msgstr ""
 
-#: src/settings/passkeys.tsx
-#~ msgid "Loading passkeys…"
-#~ msgstr ""
-
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
 msgstr ""
@@ -2702,16 +2642,8 @@ msgstr ""
 msgid "Metric"
 msgstr ""
 
-#: src/settings/preferences.tsx
-#~ msgid "Mini Apps"
-#~ msgstr ""
-
 #: src/mini-apps/mini-app-page.tsx
-msgid "Mini Apps are only available on desktop"
-msgstr ""
-
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
+#~ msgid "Mini Apps are only available on desktop"
 #~ msgstr ""
 
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
@@ -2736,10 +2668,6 @@ msgstr ""
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Model and reasoning effort"
 msgstr ""
-
-#: src/settings/models/add-model-form.tsx
-#~ msgid "Model may not be compatible"
-#~ msgstr ""
 
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
@@ -2804,11 +2732,6 @@ msgstr ""
 msgid "Move session?"
 msgstr ""
 
-#: src/layout/sidebar/chat-list-item.tsx
-#: src/projects/move-chat-to-project-dialog.tsx
-#~ msgid "Move to project"
-#~ msgstr ""
-
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "My Agent"
 msgstr ""
@@ -2849,6 +2772,7 @@ msgstr ""
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
+#: src/projects/project-artifact-gallery.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr ""
@@ -2859,11 +2783,6 @@ msgstr ""
 #: src/lib/title-generator.ts
 msgid "New Chat"
 msgstr ""
-
-#: src/projects/project-detail-panel.tsx
-#: src/projects/project-workspace.tsx
-#~ msgid "New chat in this project"
-#~ msgstr ""
 
 #: src/settings/connections/connections-list.tsx
 msgid "New Connection"
@@ -2898,10 +2817,6 @@ msgstr ""
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "No agents found"
 msgstr ""
-
-#: src/projects/project-detail-panel.tsx
-#~ msgid "No artifacts yet."
-#~ msgstr ""
 
 #: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/chat-menu-items.tsx
@@ -2944,13 +2859,13 @@ msgstr ""
 msgid "No matches"
 msgstr ""
 
+#: src/projects/project-artifact-gallery.tsx
+msgid "No matching artifacts"
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "No matching connections."
 msgstr ""
-
-#: src/projects/index.tsx
-#~ msgid "No matching projects"
-#~ msgstr ""
 
 #: src/projects/move-chat-to-project-dialog.tsx
 #: src/projects/project-badge.tsx
@@ -2981,18 +2896,6 @@ msgstr ""
 #: src/settings/voice.tsx
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr ""
-
-#: src/settings/passkeys.tsx
-#~ msgid "No passkeys yet"
-#~ msgstr ""
-
-#: src/projects/index.tsx
-#~ msgid "No projects yet"
-#~ msgstr ""
-
-#: src/projects/move-chat-to-project-dialog.tsx
-#~ msgid "No projects yet. Create one from the Projects page, then move this chat into it."
-#~ msgstr ""
 
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "No projects yet. Create one in the sidebar, then move this chat into it."
@@ -3050,15 +2953,6 @@ msgstr ""
 msgid "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
 msgstr ""
 
-#. placeholder {0}: app.url
-#: src/mini-apps/mini-app-frame.tsx
-#~ msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
-#~ msgstr ""
-
-#: src/components/embedded/surface-selection-bar.tsx
-#~ msgid "Nothing to ask about there. Try covering some content."
-#~ msgstr ""
-
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Nothing to compact yet."
 msgstr ""
@@ -3107,10 +3001,6 @@ msgstr ""
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr ""
 
-#: src/settings/preferences.tsx
-#~ msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
-#~ msgstr ""
-
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr ""
@@ -3140,6 +3030,11 @@ msgstr ""
 msgid "Only available in private chats."
 msgstr ""
 
+#. placeholder {0}: artifact.title
+#: src/projects/project-artifact-card.tsx
+msgid "Open {0}"
+msgstr ""
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
 msgstr ""
@@ -3160,12 +3055,22 @@ msgstr ""
 msgid "Open app"
 msgstr ""
 
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Open chat"
-#~ msgstr ""
+#: src/layout/sidebar/artifact-context-menu.tsx
+#: src/mini-apps/mini-app-chat-banner.tsx
+#: src/projects/project-artifact-context-menu.tsx
+msgid "Open artifact"
+msgstr ""
+
+#: src/artifacts/artifact-page.tsx
+msgid "Open conversation"
+msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
+msgstr ""
+
+#: src/components/artifact/artifact-controls.tsx
+msgid "Open full screen"
 msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
@@ -3181,7 +3086,7 @@ msgstr ""
 msgid "Open in new tab"
 msgstr ""
 
-#: src/components/chat/inline-artifact-card.tsx
+#: src/components/artifact/artifact-controls.tsx
 msgid "Open in side panel"
 msgstr ""
 
@@ -3194,11 +3099,16 @@ msgid "Open in Sidebar"
 msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
-msgstr ""
+#~ msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
+#~ msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
+msgstr ""
+
+#: src/layout/sidebar/artifact-context-menu.tsx
+#: src/projects/project-artifact-context-menu.tsx
+msgid "Open source chat"
 msgstr ""
 
 #: src/settings/app-version-section.tsx
@@ -3221,10 +3131,6 @@ msgstr ""
 #: src/settings/voice.tsx
 msgid "Optional — leave blank for local servers that don’t require auth."
 msgstr ""
-
-#: src/projects/project-form.tsx
-#~ msgid "Optional — what this project is for"
-#~ msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
@@ -3268,25 +3174,6 @@ msgstr ""
 msgid "Passkey"
 msgstr ""
 
-#: src/components/onboarding/onboarding-passkey-step.tsx
-#~ msgid "Passkey added — you're all set."
-#~ msgstr ""
-
-#: src/components/sign-in/use-sign-in-form-state.ts
-#: src/waitlist/use-waitlist-state.ts
-#~ msgid "Passkey sign-in failed. Please try again or use your email."
-#~ msgstr ""
-
-#: src/layout/sidebar/settings-sidebar.tsx
-#: src/search/commands/navigation.ts
-#: src/settings/passkeys.tsx
-#~ msgid "Passkeys"
-#~ msgstr ""
-
-#: src/settings/passkeys.tsx
-#~ msgid "Passkeys aren't available on this device."
-#~ msgstr ""
-
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
 msgstr ""
@@ -3320,14 +3207,23 @@ msgstr ""
 msgid "Pin"
 msgstr ""
 
+#: src/components/artifact/artifact-controls.tsx
+msgid "Pin artifact"
+msgstr ""
+
+#: src/layout/sidebar/artifact-section-menu.tsx
+#: src/layout/sidebar/artifact-section.tsx
+msgid "Pin artifacts to keep them here."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr ""
 
-#: src/projects/project-action-menu-items.tsx
-#: src/projects/project-actions.tsx
-#~ msgid "Pin project"
-#~ msgstr ""
+#: src/projects/project-artifact-context-menu.tsx
+#: src/projects/project-artifact-workspace.tsx
+msgid "Pin to project"
+msgstr ""
 
 #: src/skills/suggestion-chip.tsx
 msgid "Pinned skill {label}"
@@ -3379,6 +3275,11 @@ msgstr ""
 msgid "Preview not available for this file type. Use the download button to view it."
 msgstr ""
 
+#. placeholder {0}: artifact.title
+#: src/projects/project-artifact-card.tsx
+msgid "Preview of {0}"
+msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview webview is only available in the desktop app"
 msgstr ""
@@ -3412,6 +3313,11 @@ msgstr ""
 msgid "Project settings"
 msgstr ""
 
+#: src/projects/project-artifacts-dialog-content.tsx
+#: src/projects/project-artifacts-page.tsx
+msgid "Project unavailable"
+msgstr ""
+
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 #: src/search/palette/entity-meta.ts
@@ -3426,10 +3332,6 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Proxying is required in the web app to bypass browser CORS restrictions."
 msgstr ""
-
-#: src/components/chat/attestation/attestation-details.tsx
-#~ msgid "Published code"
-#~ msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
@@ -3485,14 +3387,6 @@ msgid "Recent chat options"
 msgstr ""
 
 #: src/layout/sidebar/chat-list.tsx
-#~ msgid "Recent Chats"
-#~ msgstr ""
-
-#: src/layout/sidebar/project-drop-list.tsx
-#~ msgid "Recent Projects"
-#~ msgstr ""
-
-#: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
 msgid "Recents"
 msgstr ""
@@ -3536,10 +3430,6 @@ msgstr ""
 msgid "Remove"
 msgstr ""
 
-#: src/settings/passkeys.tsx
-#~ msgid "Remove {name}"
-#~ msgstr ""
-
 #: src/components/logout-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr ""
@@ -3572,8 +3462,14 @@ msgstr ""
 msgid "Removing…"
 msgstr ""
 
+#: src/layout/sidebar/artifact-context-menu.tsx
 #: src/layout/sidebar/chat-list-item.tsx
+#: src/projects/project-artifact-context-menu.tsx
 msgid "Rename"
+msgstr ""
+
+#: src/projects/rename-artifact-dialog.tsx
+msgid "Rename artifact"
 msgstr ""
 
 #: src/layout/sidebar/rename-chat-dialog.tsx
@@ -3592,10 +3488,6 @@ msgstr ""
 #: src/components/chat/quote-reply-button.tsx
 msgid "Reply"
 msgstr ""
-
-#: src/projects/project-form.tsx
-#~ msgid "Reply in British English. Prefer bullet points over prose."
-#~ msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Request denied"
@@ -3632,10 +3524,6 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Reset Local Database?"
 msgstr ""
-
-#: src/components/chat/effort-selector/effort-selector.tsx
-#~ msgid "Reset reasoning effort"
-#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
@@ -3719,6 +3607,7 @@ msgstr ""
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/mini-apps/mini-app-download-prompt.tsx
+#: src/projects/rename-artifact-dialog.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
@@ -3787,6 +3676,10 @@ msgstr ""
 msgid "Search and work with your OneDrive files and documents."
 msgstr ""
 
+#: src/projects/project-artifact-gallery.tsx
+msgid "Search artifacts"
+msgstr ""
+
 #: src/search/palette/search-palette.tsx
 msgid "Search chats, models, skills, agents…"
 msgstr ""
@@ -3798,10 +3691,6 @@ msgstr ""
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr ""
-
-#: src/settings/preferences.tsx
-#~ msgid "Search currencies..."
-#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Search currencies…"
@@ -3867,8 +3756,8 @@ msgstr ""
 msgid "See the equation on screen."
 msgstr ""
 
+#: src/artifacts/remote-artifact-surface.tsx
 #: src/components/artifact/selectable-artifact.tsx
-#: src/mini-apps/mini-app-page.tsx
 msgid "Select"
 msgstr ""
 
@@ -4022,6 +3911,14 @@ msgstr ""
 msgid "Show"
 msgstr ""
 
+#: src/components/chat/artifact-message-part.tsx
+msgid "Show artifact"
+msgstr ""
+
+#: src/layout/sidebar/artifact-section.tsx
+msgid "Show fewer artifacts"
+msgstr ""
+
 #. placeholder {0}: project.name
 #: src/layout/sidebar/project-tree-row.tsx
 msgid "Show fewer chats in {0}"
@@ -4035,20 +3932,32 @@ msgstr ""
 msgid "Show fewer recent chats"
 msgstr ""
 
+#: src/artifacts/artifact-workspace.tsx
+#: src/projects/project-artifact-workspace.tsx
+msgid "Show here"
+msgstr ""
+
+#: src/components/artifact/artifact-controls.tsx
 #: src/components/chat/artifact-message-part.tsx
 msgid "Show inline"
 msgstr ""
 
+#: src/layout/sidebar/artifact-section-menu.tsx
 #: src/layout/sidebar/chat-menu-items.tsx
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/sidebar-list-toggle.tsx
 msgid "Show less"
 msgstr ""
 
+#: src/layout/sidebar/artifact-section-menu.tsx
 #: src/layout/sidebar/chat-menu-items.tsx
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/sidebar-list-toggle.tsx
 msgid "Show more"
+msgstr ""
+
+#: src/layout/sidebar/artifact-section.tsx
+msgid "Show more artifacts"
 msgstr ""
 
 #. placeholder {0}: project.name
@@ -4107,10 +4016,6 @@ msgstr ""
 msgid "Sign in to {appName}"
 msgstr ""
 
-#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
-#~ msgid "Sign in to a full account to share a debug transcript."
-#~ msgstr ""
-
 #: src/components/device-approval.tsx
 msgid "Sign in to continue"
 msgstr ""
@@ -4131,10 +4036,6 @@ msgstr ""
 #: src/components/device-approval.tsx
 msgid "Sign in with your {appName} account to approve this CLI request."
 msgstr ""
-
-#: src/settings/passkeys.tsx
-#~ msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
-#~ msgstr ""
 
 #: src/settings/encryption/passkey-section.tsx
 msgid "Sign in with your fingerprint, face, or device PIN."
@@ -4175,10 +4076,6 @@ msgstr ""
 #: src/components/sign-in/sign-in-form.tsx
 msgid "Signing in…"
 msgstr ""
-
-#: src/components/revoked-device-modal.tsx
-#~ msgid "Signing out…"
-#~ msgstr ""
 
 #: src/components/magic-link-verify.tsx
 msgid "Signing you in…"
@@ -4254,6 +4151,10 @@ msgstr ""
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 msgstr ""
 
+#: src/projects/project-artifact-workspace.tsx
+msgid "Source chat"
+msgstr ""
+
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Source repository"
 msgstr ""
@@ -4275,12 +4176,17 @@ msgid "Start voice mode"
 msgstr ""
 
 #. placeholder {0}: app.name
+#. placeholder {0}: artifact.title
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Started from {0}"
 msgstr ""
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Started from an app that is no longer available"
+msgstr ""
+
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from an artifact that is no longer available"
 msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
@@ -4476,14 +4382,6 @@ msgstr ""
 msgid "The chat will be retained by the {recipient} team."
 msgstr ""
 
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
-#~ msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
-#~ msgstr ""
-
 #: src/components/revoke-device-dialog.tsx
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr ""
@@ -4507,18 +4405,6 @@ msgstr ""
 #: src/services/revoke-failure.ts
 msgid "The device lost access, but your account key was not replaced, so it can still read your data."
 msgstr ""
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
-#~ msgstr ""
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
-#~ msgstr ""
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working."
-#~ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
@@ -4552,10 +4438,6 @@ msgstr ""
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
 msgstr ""
 
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
-#~ msgstr ""
-
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "The transcript was rejected by the server."
 msgstr ""
@@ -4575,13 +4457,14 @@ msgstr ""
 msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
 msgstr ""
 
+#: src/artifacts/artifact-page.tsx
+#: src/content-view/artifact-sidebar-content.tsx
+msgid "This artifact is no longer available."
+msgstr ""
+
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
-#~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "This chat session, including the messages you sent and the responses from the agent, the data inputs and outputs of any tools used, errors, and timestamps."
@@ -4610,10 +4493,6 @@ msgstr ""
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This device has been approved and sync is now enabled across your devices."
 msgstr ""
-
-#: src/components/revoked-device-modal.tsx
-#~ msgid "This device has been signed out remotely. Choose what to do with your local data."
-#~ msgstr ""
 
 #: src/hooks/use-sync-setup.ts
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
@@ -4658,10 +4537,6 @@ msgstr ""
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
 msgstr ""
-
-#: src/settings/models/add-model-form.tsx
-#~ msgid "This model does not seem to support tool usage."
-#~ msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
 msgid "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
@@ -4771,10 +4646,6 @@ msgstr ""
 msgid "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
 msgstr ""
 
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "This will permanently delete all your chats."
-#~ msgstr ""
-
 #: src/skills/delete-skill-dialog.tsx
 msgid "This will permanently delete the skill. Other skills that reference it may no longer resolve."
 msgstr ""
@@ -4786,10 +4657,6 @@ msgstr ""
 #: src/settings/account/delete-account-section.tsx
 msgid "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 msgstr ""
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "This will send the current chat with the Thunderbolt team so that they can debug the problem."
-#~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "This will share the current chat with the {recipient} team so that they can debug the problem."
@@ -4834,18 +4701,6 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Time Format"
 msgstr ""
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "to access your calendar"
-#~ msgstr ""
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "to access your email"
-#~ msgstr ""
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "to access your email and calendar"
-#~ msgstr ""
 
 #: src/components/sync-setup/confirm-identity-step.tsx
 msgid "To continue, we’ll email you a verification code."
@@ -4967,10 +4822,6 @@ msgstr ""
 msgid "Unknown (code {code})"
 msgstr ""
 
-#: src/widgets/weather-forecast/widget.tsx
-#~ msgid "Unknown error"
-#~ msgstr ""
-
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Unlock sync with a passkey"
 msgstr ""
@@ -4985,15 +4836,25 @@ msgstr ""
 msgid "Unpin"
 msgstr ""
 
-#: src/projects/project-action-menu-items.tsx
-#: src/projects/project-actions.tsx
-#~ msgid "Unpin project"
-#~ msgstr ""
+#: src/components/artifact/artifact-controls.tsx
+#: src/layout/sidebar/artifact-context-menu.tsx
+msgid "Unpin artifact"
+msgstr ""
+
+#: src/projects/project-artifact-context-menu.tsx
+#: src/projects/project-artifact-workspace.tsx
+msgid "Unpin from project"
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
 msgstr ""
 
+#: src/dal/projects.ts
+msgid "Untitled artifact"
+msgstr ""
+
+#: src/dal/projects.ts
 #: src/lib/title-generator.ts
 #: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"
@@ -5090,10 +4951,6 @@ msgstr ""
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Use your fingerprint, face, or device PIN to sign in instead of an email code. Email sign-in still works too."
 msgstr ""
-
-#: src/components/sync-setup/passkey-enroll-step.tsx
-#~ msgid "Use your passkey to turn on sync on new devices, without approving them from another device. Anyone who can use this passkey will be able to unlock your data."
-#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "User Experience"
@@ -5208,10 +5065,6 @@ msgstr ""
 msgid "Waiting for approval"
 msgstr ""
 
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Waiting for your approval in the app"
-#~ msgstr ""
-
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
 msgstr ""
@@ -5310,10 +5163,6 @@ msgstr ""
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "What's in it?"
 msgstr ""
-
-#: src/settings/preferences.tsx
-#~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
-#~ msgstr ""
 
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"
@@ -5494,17 +5343,9 @@ msgstr ""
 msgid "Your chats and settings will remain on this device for next time."
 msgstr ""
 
-#: src/components/revoked-device-modal.tsx
-#~ msgid "Your chats and settings will remain on this device for offline use."
-#~ msgstr ""
-
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"
 msgstr ""
-
-#: src/components/chat/attestation/attestation-control.tsx
-#~ msgid "Your device checks the confidential hardware and published code before sending to {provider}."
-#~ msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
@@ -5513,10 +5354,6 @@ msgstr ""
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
 msgstr ""
-
-#: src/components/chat/attestation/attestation-control.tsx
-#~ msgid "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
-#~ msgstr ""
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
@@ -5530,21 +5367,9 @@ msgstr ""
 msgid "Your name"
 msgstr ""
 
-#: src/settings/preferences.tsx
-#~ msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
-#~ msgstr ""
-
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
 msgstr ""
-
-#: src/settings/encryption/use-change-recovery-key.ts
-#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey in Preferences, then try again."
-#~ msgstr ""
-
-#: src/settings/encryption/use-change-recovery-key.ts
-#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey under Settings → Preferences in the web app, then try again."
-#~ msgstr ""
 
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Your passkey's sync keys couldn't be verified. Remove the passkey in Settings → Preferences on the web, then try again."
@@ -5553,10 +5378,6 @@ msgstr ""
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"
 msgstr ""
-
-#: src/components/chat/error-message.tsx
-#~ msgid "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
-#~ msgstr ""
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Your recovery phrase was never saved"

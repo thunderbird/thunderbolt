@@ -34,6 +34,7 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/compon
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { suggestedEmoji } from './emoji-catalog'
+import { EmojiGlyph } from './emoji-glyph'
 import { useEmojiPickerState } from './use-emoji-picker-state'
 
 /** Height reserved for the pinned category label, in pixels. */
@@ -75,7 +76,7 @@ const EmojiButton = ({
       isSelected && 'bg-accent ring-1 ring-ring',
     )}
   >
-    {native}
+    <EmojiGlyph emoji={native} />
   </button>
 )
 
@@ -249,7 +250,11 @@ export const EmojiPicker = ({ value, onChange, label, children }: EmojiPickerPro
           : undefined
       }
     >
-      {value ?? <Smile className="size-[var(--icon-size-default)] text-muted-foreground" aria-hidden="true" />}
+      {value ? (
+        <EmojiGlyph emoji={value} />
+      ) : (
+        <Smile className="size-[var(--icon-size-default)] text-muted-foreground" aria-hidden="true" />
+      )}
     </Button>
   )
 

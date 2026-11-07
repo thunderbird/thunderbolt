@@ -4,6 +4,8 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
+import { artifactId } from '@/artifacts/artifact'
+import { collectProjectArtifacts } from '@/projects/project-artifacts-data'
 import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
 import { eq, sql } from 'drizzle-orm'
@@ -16,6 +18,7 @@ import {
   getAllProjects,
   getProject,
   getProjectChatThreads,
+  getProjectArtifactMessagesQuery,
   maxProjectInstructionsLength,
   maxProjectNameLength,
   setChatThreadProject,
@@ -45,6 +48,37 @@ const seedThread = async (projectId: string | null) => {
   await getDb().insert(chatThreadsTable).values({ id, title: 'T', projectId })
   return id
 }
+
+describe('project artifact sources', () => {
+  it('follows live project membership and excludes deleted messages and user content', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'Artifacts' })
+    const chatId = await seedThread(project.id)
+    const otherChat = await seedThread(null)
+    const parts = [
+      {
+        type: 'tool-render_html' as const,
+        toolCallId: 'tool',
+        state: 'output-available' as const,
+        input: { html: '<h1>Demo</h1>', title: 'Demo' },
+        output: { ok: true },
+      },
+    ]
+    const liveMessage = uuidv7()
+    await db.insert(chatMessagesTable).values([
+      { id: liveMessage, chatThreadId: chatId, role: 'assistant', parts },
+      { id: uuidv7(), chatThreadId: chatId, role: 'user', parts },
+      { id: uuidv7(), chatThreadId: chatId, role: 'assistant', parts, deletedAt: '2026-10-21T00:00:00Z' },
+      { id: uuidv7(), chatThreadId: otherChat, role: 'assistant', parts },
+    ])
+    expect((await getProjectArtifactMessagesQuery(db, project.id)).map((row) => row.id)).toEqual([liveMessage])
+    await setChatThreadProject(db, chatId, null)
+    expect(await getProjectArtifactMessagesQuery(db, project.id)).toEqual([])
+    await setChatThreadProject(db, chatId, project.id)
+    await db.update(chatThreadsTable).set({ deletedAt: '2026-10-21T00:00:00Z' }).where(eq(chatThreadsTable.id, chatId))
+    expect(await getProjectArtifactMessagesQuery(db, project.id)).toEqual([])
+  })
+})
 
 describe('projects CRUD', () => {
   it('creates and reads back a project', async () => {
@@ -286,5 +320,56 @@ describe('updateProject error surface', () => {
     const project = await createProject(db, { name: 'A' })
     await updateProject(db, project.id, { name: '  Spaced out  ' })
     expect((await getProject(db, project.id))?.name).toBe('Spaced out')
+  })
+})
+
+describe('project artifact discovery', () => {
+  const verifiedPart = (toolCallId: string) => ({
+    type: 'tool-render_html',
+    toolCallId,
+    state: 'output-available',
+    input: { html: '<h1>Result</h1>', title: 'Same title' },
+    output: { ok: true },
+  })
+
+  it('uses source identities that survive reordering and distinguish repeated titles and tool IDs', () => {
+    const firstId = uuidv7({ msecs: 1_000 })
+    const secondId = uuidv7({ msecs: 2_000 })
+    const rows = [
+      { id: firstId, chatThreadId: 'chat-a', chatTitle: 'A', parts: [verifiedPart('one'), verifiedPart('two')] },
+      { id: secondId, chatThreadId: 'chat-b', chatTitle: 'B', parts: [verifiedPart('one')] },
+    ]
+    const artifacts = collectProjectArtifacts(rows, { untitledChat: 'Untitled chat', untitledArtifact: 'Artifact' })
+    expect(new Set(artifacts.map((artifact) => artifact.id)).size).toBe(3)
+    expect(artifacts[0].messageId).toBe(secondId)
+    expect(artifacts.find((artifact) => artifact.messageId === secondId)?.id).toBe(
+      artifactId({ kind: 'html', messageId: secondId, toolCallId: 'one' }),
+    )
+    const reordered = collectProjectArtifacts([{ ...rows[0], parts: [...rows[0].parts].reverse() }], {
+      untitledChat: 'Untitled chat',
+      untitledArtifact: 'Artifact',
+    })
+    expect(new Set(reordered.map((artifact) => artifact.id))).toEqual(
+      new Set(artifacts.filter((artifact) => artifact.messageId === firstId).map((artifact) => artifact.id)),
+    )
+  })
+
+  it('excludes failed, streaming, empty and malformed content while reading serialized ACP results', () => {
+    const parts = [
+      { ...verifiedPart('failed'), output: { ok: false, errors: ['Invalid script'] } },
+      { ...verifiedPart('streaming'), state: 'input-streaming' },
+      { ...verifiedPart('empty'), input: { html: '', title: 'Blank' } },
+      { ...verifiedPart('acp'), output: { details: { ok: true } } },
+      null,
+    ]
+    const rows = [
+      { id: uuidv7(), chatThreadId: 'chat', chatTitle: 'Chat', parts: JSON.stringify(parts) },
+      { id: uuidv7(), chatThreadId: 'chat', chatTitle: 'Chat', parts: '{invalid' },
+    ]
+    expect(
+      collectProjectArtifacts(rows, { untitledChat: 'Untitled chat', untitledArtifact: 'Artifact' }).map(
+        (artifact) => artifact.id,
+      ),
+    ).toEqual([artifactId({ kind: 'html', messageId: rows[0].id, toolCallId: 'acp' })])
   })
 })

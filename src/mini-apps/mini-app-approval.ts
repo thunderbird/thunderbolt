@@ -33,6 +33,7 @@ export type RequestMiniAppApprovalOptions = {
   /** The chat that provoked the call — also its `chat-store` session key. */
   chatThreadId: string
   app: MiniAppDefinition
+  surfaceOwner?: string
   tool: MiniAppTool
   args: unknown
 }
@@ -60,6 +61,7 @@ export type RequestMiniAppApprovalOptions = {
 export const requestMiniAppApproval = ({
   chatThreadId,
   app,
+  surfaceOwner,
   tool,
   args,
 }: RequestMiniAppApprovalOptions): Promise<MiniAppApprovalOutcome> =>
@@ -93,7 +95,14 @@ export const requestMiniAppApproval = ({
       settle('expired')
     }, approvalTimeoutMs)
 
-    const pending: PendingMiniAppApproval = { appId: app.id, appName: app.name, tool, args, decide: settle }
+    const pending: PendingMiniAppApproval = {
+      appId: app.id,
+      appName: app.name,
+      surfaceOwner,
+      tool,
+      args,
+      decide: settle,
+    }
 
     if (!useChatStore.getState().enqueueMiniAppApproval(chatThreadId, pending)) {
       // Nobody to ask, and the reason matters: reporting this as a refusal

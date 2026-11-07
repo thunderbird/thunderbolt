@@ -8,14 +8,14 @@ A project's instructions are always on for every chat inside it. Guidance you wa
 
 ## Create a project
 
-Open **⋮ → New project** beside **Projects** in the sidebar, or long-press the **Projects** heading on mobile. Choose a name and an optional emoji. Description and shared instructions can be added later through the project’s **Edit** action.
+Open **Project options → New project** beside **Projects** in the sidebar, or long-press the **Projects** heading on mobile. Choose a name and an optional emoji. After creating the project, use its **⋯ → Edit** action to add a description and instructions.
 
-| Field        | Required | Limit             | What it does                                      |
-| ------------ | -------- | ----------------- | ------------------------------------------------- |
-| Icon         | No       | Any emoji         | Marks the project in the sidebar and chat headers |
-| Name         | Yes      | 100 characters    | How the project is labelled everywhere            |
-| Description  | No       | Any length        | A note for you. It is not sent to the model       |
-| Instructions | No       | 20,000 characters | Applied to every chat in the project              |
+| Field        | Required | Limit             | What it does                                               |
+| ------------ | -------- | ----------------- | ---------------------------------------------------------- |
+| Icon         | No       | Any emoji         | Marks the project in chat headers and artifact collections |
+| Name         | Yes      | 100 characters    | How the project is labelled everywhere                     |
+| Description  | No       | Any length        | A note for you. It is not sent to the model                |
+| Instructions | No       | 20,000 characters | Applied to every chat in the project                       |
 
 Instructions are plain prose, for example: `Reply in British English. Prefer bullet points over prose.` Edits take effect on the next message, including in chats already open.
 
@@ -29,9 +29,11 @@ Every message in a chat carries the project's name and instructions, alongside t
 
 Expand a project folder to see its chats. **⋯ → New chat** creates a chat inside that project. Projects, their chats, and Recents show five entries initially; **Show more** adds five at a time. The sidebar uses one scroll area. Chats and projects rise with recent conversation activity.
 
+Expand a project folder to see its chats. **⋯ → New chat** creates a chat inside that project. Projects, their chats, and Recents show five entries initially; **Show more** adds five at a time. The sidebar uses one scroll area. Chats and projects rise with recent conversation activity.
+
 ## Artifacts
 
-Artifacts remain in the chats that produced them. See [Chat](./chat.md#artifacts).
+Open a project's **⋯ → Artifacts** menu (long-press the project on mobile) to browse its artifacts in a searchable modal. It shows up to three rows at a time; scroll for more. Selecting a card opens the artifact canvas, with a **Source chat** button to open its conversation alongside it. Right-click or long-press a card to rename, delete, download, or pin it to the project's sidebar folder. Deleting an artifact from this collection keeps the original output in its source chat. See [Chat](./chat.md#artifacts).
 
 ## Searching across a project's chats
 
@@ -49,7 +51,7 @@ A project has no document library. Attachments belong to the chat you add them t
 
 Deleting a project removes its instructions and the grouping. **Its chats are kept** and become ordinary chats.
 
-The **Recents → Delete chats** action deletes only chats outside projects. Open the heading’s **⋮** menu on desktop, or long-press the heading on mobile. Its confirmation explicitly says that chats inside projects are kept. After deleting a project, its former chats are standalone and are included in this action.
+The burn icon in **Recents** deletes only chats outside projects. Its confirmation explicitly says that chats inside projects are kept. After deleting a project, its former chats are standalone and are included in this action.
 
 ## Privacy and sync
 

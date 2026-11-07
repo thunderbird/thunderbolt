@@ -254,6 +254,15 @@ describe('Header', () => {
     expect(screen.getByRole('button', { name: 'In project: Launch' }).closest('.absolute')).toHaveClass('right-2')
   })
 
+  it('shows the project control when opening an existing mobile chat', async () => {
+    const project = await createProject(getDb(), { name: 'Launch' })
+    setupWithAgent(customAgent, { projectId: project.id })
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+
+    expect(screen.getByRole('button', { name: 'In project: Launch' })).toBeInTheDocument()
+  })
+
   it('hides the agent selector in minimal mode', () => {
     useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
     setupWithAgent(builtInAgent)

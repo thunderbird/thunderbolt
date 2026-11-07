@@ -46,6 +46,10 @@ type DetailPanelProps = {
   /** Extra header actions (e.g. a ⋯ menu), rendered left of the Close button. */
   actions?: ReactNode
   onClose: () => void
+  /** Let embedded interactive content own its scrolling and footer. */
+  bodyClassName?: string
+  /** Embedded chat composers reserve their own keyboard space. */
+  handlesKeyboardInset?: boolean
   /** Hide when the containing modal supplies its own close control. */
   showCloseButton?: boolean
   children: ReactNode
@@ -63,6 +67,8 @@ export const DetailPanel = ({
   subtitle,
   actions,
   onClose,
+  bodyClassName,
+  handlesKeyboardInset = false,
   showCloseButton = true,
   children,
 }: DetailPanelProps) => {
@@ -75,7 +81,7 @@ export const DetailPanel = ({
     // the footer above the window edge.
     <section
       className="relative flex h-full flex-1 flex-col overflow-hidden px-4 text-foreground md:px-6 md:pb-5"
-      style={isMobile ? { maxHeight: 'calc(100% - var(--kb, 0px))' } : undefined}
+      style={isMobile && !handlesKeyboardInset ? { maxHeight: 'calc(100% - var(--kb, 0px))' } : undefined}
     >
       {/* Mobile pins the corner controls and the title bar between them — the
           title sits centered in the control row, freeing content space. */}
@@ -123,6 +129,7 @@ export const DetailPanel = ({
         className={cn(
           "flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto md:pt-4 max-md:pt-[calc(var(--modal-top-inset)+1rem)] max-md:pb-[calc(var(--touch-height-default)+var(--modal-footer-inset))] max-md:after:h-[var(--kb,0px)] max-md:after:shrink-0 max-md:after:content-['']",
           floatingFormFooterClass,
+          bodyClassName,
         )}
       >
         {children}
@@ -140,6 +147,8 @@ type DetailPanelSurfaceProps = {
    *  overlay arbitrary routes (the quick-create panels) rather than sitting
    *  under a settings page header that already provides the inset. */
   topInset?: boolean
+  /** Override the desktop width when the host measures its own available space. */
+  desktopWidth?: string
   children: ReactNode
 }
 
@@ -160,6 +169,7 @@ export const DetailPanelSurface = ({
   onClose,
   onCloseComplete,
   topInset = false,
+  desktopWidth = 'clamp(var(--create-panel-min-width), calc(50vw - 128px), 540px)',
   children,
 }: DetailPanelSurfaceProps) => {
   const { isMobile } = useIsMobile()
@@ -176,7 +186,7 @@ export const DetailPanelSurface = ({
         // :root). It plus the 360px ResizablePanel minSize in main-layout.tsx
         // derive the 840px create-item-layout container breakpoint in
         // index.css — re-derive that literal if either floor changes.
-        width="clamp(var(--create-panel-min-width), calc(50vw - 128px), 540px)"
+        width={desktopWidth}
         className="[filter:drop-shadow(var(--shadow-glow-strong))] dark:[filter:drop-shadow(0_0_32px_rgb(0_0_0/24%))]"
       >
         <div className={cn('h-full pb-12', topInset && 'pt-12')}>

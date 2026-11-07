@@ -3,24 +3,32 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { MemoryRouter } from 'react-router'
-import { MiniAppOriginNotice } from './mini-app-chat-banner'
+import { AppWindow } from 'lucide-react'
+import { MiniAppChatBanner, MiniAppOriginNotice } from './mini-app-chat-banner'
+import * as miniApps from './use-mini-apps'
+import * as mobile from '@/hooks/use-mobile'
 import type { MiniAppDefinition } from './registry'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  mock.restore()
+})
 
-const app = {
+const app: MiniAppDefinition = {
   id: 'patient-journeys',
   name: 'Patient Journeys',
+  description: '',
+  origin: 'https://apps.example.com',
   url: 'https://apps.example.com/journeys',
-  icon: () => null,
-} as unknown as MiniAppDefinition
+  icon: AppWindow,
+}
 
-const renderNotice = (value: MiniAppDefinition | null, canOpen = true) =>
+const renderNotice = (value: MiniAppDefinition | null) =>
   render(
     <MemoryRouter>
-      <MiniAppOriginNotice app={value} chatThreadId="thread-1" canOpen={canOpen} />
+      <MiniAppOriginNotice app={value} chatThreadId="thread-1" />
     </MemoryRouter>,
   )
 
@@ -55,12 +63,18 @@ describe('MiniAppOriginNotice', () => {
     expect(screen.queryByText('Open app')).toBeNull()
   })
 
-  /** At mobile widths the app route only renders a size notice, so the link
-   *  would lead nowhere useful — but where the chat came from still matters. */
-  it('keeps the provenance but drops the link where the app cannot open', () => {
-    renderNotice(app, false)
+  it.each([true, false])('keeps the return link when isMobile is %s', (isMobile) => {
+    spyOn(mobile, 'useIsMobile').mockReturnValue({ isMobile })
+    spyOn(miniApps, 'useMiniApps').mockReturnValue({ apps: [app], loading: false, failed: false })
+    render(
+      <MemoryRouter>
+        <MiniAppChatBanner appId={app.id} chatThreadId="thread-1" />
+      </MemoryRouter>,
+    )
 
     expect(screen.getByText('Started from Patient Journeys')).toBeTruthy()
-    expect(screen.queryByText('Open app')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Open app' }).getAttribute('href')).toBe(
+      '/apps/patient-journeys?chat=thread-1',
+    )
   })
 })

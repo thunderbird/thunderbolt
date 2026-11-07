@@ -439,7 +439,7 @@ describe('ChatPromptInput', () => {
       expect(screen.getByRole('region', { name: 'Compaction summary' })).toBeInTheDocument()
       expect(screen.queryByRole('dialog')).toBeNull()
       expect(screen.getByRole('heading', { name: 'Saved decisions' })).toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Close panel' }))
       await act(async () => {
         await getClock().tickAsync(1)
       })

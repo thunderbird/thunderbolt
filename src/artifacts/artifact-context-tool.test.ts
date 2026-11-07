@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { useArtifactContextStore } from './artifact-context-store'
+import { getArtifactContextSnapshot, useArtifactContextStore } from './artifact-context-store'
 import { createArtifactContextTool, formatArtifactContext } from './artifact-context-tool'
 
 const context = { title: 'Q3 Revenue', summary: 'EMEA 4.2M · APAC 1.98M' }
@@ -16,13 +16,13 @@ const context = { title: 'Q3 Revenue', summary: 'EMEA 4.2M · APAC 1.98M' }
  * nobody has open. Reset on both edges, because this file cannot control what
  * ran before it either.
  */
-beforeEach(() => useArtifactContextStore.getState().closeArtifact())
-afterEach(() => useArtifactContextStore.getState().closeArtifact())
+beforeEach(() => useArtifactContextStore.getState().closeArtifact('test'))
+afterEach(() => useArtifactContextStore.getState().closeArtifact('test'))
 
 const run = async () => {
   const tool = createArtifactContextTool({
     getSnapshot: () => {
-      const { title, context: current } = useArtifactContextStore.getState()
+      const { title, context: current } = getArtifactContextSnapshot('test')
       return { title, context: current }
     },
   })
@@ -50,29 +50,29 @@ describe('formatArtifactContext', () => {
 
 describe('get_app_context for artifacts', () => {
   it('reports nothing open when no panel is up', async () => {
-    useArtifactContextStore.getState().closeArtifact()
+    useArtifactContextStore.getState().closeArtifact('test')
     expect(await run()).toBe('No artifact is open.')
   })
 
   it('describes the open artifact once it has reported', async () => {
-    useArtifactContextStore.getState().openArtifact('Q3 Revenue')
-    useArtifactContextStore.getState().setContext(context)
+    useArtifactContextStore.getState().openArtifact('Q3 Revenue', 'test')
+    useArtifactContextStore.getState().setContext(context, 'test')
     expect(await run()).toContain('EMEA 4.2M')
   })
 
   /** A context outliving its panel would describe a surface the user closed. */
   it('stops describing an artifact after its panel closes', async () => {
-    useArtifactContextStore.getState().openArtifact('Q3 Revenue')
-    useArtifactContextStore.getState().setContext(context)
-    useArtifactContextStore.getState().closeArtifact()
+    useArtifactContextStore.getState().openArtifact('Q3 Revenue', 'test')
+    useArtifactContextStore.getState().setContext(context, 'test')
+    useArtifactContextStore.getState().closeArtifact('test')
     expect(await run()).toBe('No artifact is open.')
   })
 
   /** Opening a second artifact must not inherit the first one's description. */
   it('does not carry context across from a previous artifact', async () => {
-    useArtifactContextStore.getState().openArtifact('Q3 Revenue')
-    useArtifactContextStore.getState().setContext(context)
-    useArtifactContextStore.getState().openArtifact('Headcount Plan')
+    useArtifactContextStore.getState().openArtifact('Q3 Revenue', 'test')
+    useArtifactContextStore.getState().setContext(context, 'test')
+    useArtifactContextStore.getState().openArtifact('Headcount Plan', 'test')
 
     const text = await run()
     expect(text).toContain('Headcount Plan')

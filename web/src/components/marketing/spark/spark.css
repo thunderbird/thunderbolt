@@ -100,7 +100,7 @@
     serif;
   letter-spacing: -0.045em;
 }
-.spark-hero h1 > span {
+.spark-heading-accent {
   display: inline-block;
   color: var(--spark-red);
   background: var(--spark-heading-gradient);
@@ -109,7 +109,7 @@
   -webkit-text-fill-color: transparent;
 }
 @media (forced-colors: active) {
-  .spark-hero h1 > span {
+  .spark-heading-accent {
     background: none;
     -webkit-text-fill-color: currentColor;
   }

@@ -12,9 +12,6 @@
     serif;
   letter-spacing: -0.05em;
 }
-.privacy-hero h1 span {
-  color: var(--spark-red);
-}
 .privacy-hero > p {
   max-width: 650px;
   margin: 32px auto 0;

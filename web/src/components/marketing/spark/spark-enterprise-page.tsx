@@ -28,7 +28,7 @@ export const SparkEnterprisePage = () => (
         <h1>
           Keep your trade secrets
           <br />
-          <span>secret.</span>
+          <span className="spark-heading-accent">secret.</span>
         </h1>
         <p>
           An open-source AI workspace for your organization. Bring your people, choose your models, and run it on

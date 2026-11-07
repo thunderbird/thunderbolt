@@ -13,9 +13,6 @@
     serif;
   letter-spacing: -0.045em;
 }
-.spark-enterprise-hero h1 span {
-  color: var(--spark-red);
-}
 .spark-enterprise-hero > p {
   max-width: 620px;
   margin: 28px auto 0;

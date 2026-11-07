@@ -55,7 +55,7 @@ export const SparkPage = () => (
           <h1 id="spark-title">
             AI that feels like yours.
             <br />
-            <span>Because it is.</span>
+            <span className="spark-heading-accent">Because it is.</span>
           </h1>
           <p>
             <span>An open-source AI workspace for chat, research, code, and getting things done.</span>{' '}

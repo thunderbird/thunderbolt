@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { http } from '../../../../../src/lib/http'
-import { backendEnv, frontendEnv, resolveSecret } from './env'
+import { backendEnv, frontendEnv, resolveSecret, runtimeEnv } from './env'
 import { allocateStack } from './stack-allocation'
 
 export type BootedStack = { baseUrl: string; teardown: () => Promise<void> }
@@ -35,9 +35,9 @@ export const bootStack = async (repoRoot: string): Promise<BootedStack> => {
   try {
     stack.releaseBackendPort()
     children.push(
-      Bun.spawn(['bun', 'src/index.ts'], {
+      Bun.spawn(['bun', '--no-env-file', 'src/index.ts'], {
         cwd: `${repoRoot}/backend`,
-        env: { ...process.env, ...backendEnv(resolveSecret(), stack) },
+        env: { ...runtimeEnv(), ...backendEnv(resolveSecret(), stack, process.env) },
         stdout: 'ignore',
         stderr: 'ignore',
       }),
@@ -45,23 +45,12 @@ export const bootStack = async (repoRoot: string): Promise<BootedStack> => {
     await waitForUrl(`${stack.backendUrl}/v1/health`, 120_000)
     stack.releaseFrontendPort()
     children.push(
-      Bun.spawn(
-        [
-          'bun',
-          './node_modules/vite/bin/vite.js',
-          '--host',
-          '127.0.0.1',
-          '--port',
-          String(stack.frontendPort),
-          '--strictPort',
-        ],
-        {
-          cwd: repoRoot,
-          env: { ...process.env, ...frontendEnv(stack) },
-          stdout: 'ignore',
-          stderr: 'ignore',
-        },
-      ),
+      Bun.spawn(['bun', '--no-env-file', `${repoRoot}/.claude/skills/thunder-perf-hunt/scripts/lib/frontend.ts`], {
+        cwd: repoRoot,
+        env: { ...runtimeEnv(), ...frontendEnv(stack) },
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }),
     )
     await waitForUrl(stack.baseUrl, 120_000)
     return { baseUrl: stack.baseUrl, teardown }

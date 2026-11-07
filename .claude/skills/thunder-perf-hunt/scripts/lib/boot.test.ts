@@ -44,6 +44,12 @@ describe('isolated performance stacks', () => {
     try {
       await first.teardown()
       expect(children).toHaveLength(4)
+      expect(spawn.mock.calls[0]?.[0]).toEqual(['bun', '--no-env-file', 'src/index.ts'])
+      expect(spawn.mock.calls[1]?.[0]).toEqual([
+        'bun',
+        '--no-env-file',
+        '/repository/.claude/skills/thunder-perf-hunt/scripts/lib/frontend.ts',
+      ])
       expect(children[0]?.kill).toHaveBeenCalledTimes(1)
       expect(children[1]?.kill).toHaveBeenCalledTimes(1)
       expect(children[2]?.kill).not.toHaveBeenCalled()

@@ -46,13 +46,14 @@ bun node_modules/playwright-core/cli.js install chromium firefox
 # supported build via the platform override — it runs fine on the newer glibc:
 PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-arm64 bun node_modules/playwright-core/cli.js install chromium firefox
 
-# A 32+ char BETTER_AUTH_SECRET must be exported (backend/.env has one, or `make doctor` generates it).
-# An AI provider key (ANTHROPIC_API_KEY) is only needed for scenarios that send a chat message.
+# Auth secrets are generated per scout; no backend/.env or production configuration is loaded.
+# For chat/search scenarios only, explicitly opt in to forwarding exported AI/search credentials:
+# PERF_HUNT_ALLOW_PROVIDER_CREDENTIALS=true bun .claude/skills/thunder-perf-hunt/scripts/run.ts ...
 ```
 
 If Playwright browsers cannot be installed at all on the host, the **Firefox path still works** via the `firefox-devtools` MCP + system Firefox (Marionette) — see `references/gecko-profiler.md`. Chromium-only metrics (LoAF, CDP heap) are unavailable in that fallback.
 
-Each invocation boots its own stack with OS-assigned frontend/backend ports, a private temporary PGlite directory, and an anonymous auto-session. Parallel scouts own separate servers and data; teardown removes only that invocation’s stack.
+Each invocation boots its own loopback-only stack with OS-assigned frontend/backend ports, a private temporary PGlite directory, and an anonymous auto-session. Children inherit only runtime paths; Bun and Vite dotenv loading is disabled. Email, analytics, OAuth, production auth secrets and deployment settings are never forwarded. AI/search credentials are forwarded only with `PERF_HUNT_ALLOW_PROVIDER_CREDENTIALS=true`; those provider calls can incur charges. Parallel scouts own separate servers and data; teardown removes only that invocation’s stack.
 
 ## Inputs & modes
 

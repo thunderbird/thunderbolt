@@ -73,45 +73,54 @@ type MiniAppActions = {
 
 const emptyAppState = { activeApp: null, tools: [], invokeTool: null, requestContext: null, openedAt: null }
 
-export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) => ({
-  ...emptyAppState,
-  openApp: (app) => set({ ...emptyAppState, activeApp: app, openedAt: Date.now() }),
-  closeApp: () => {
-    const { activeApp } = get()
-    set(emptyAppState)
-    // Deny everything still waiting on this app, wherever it was asked: the app
-    // they would have acted on is gone, and a tool `execute` awaiting a prompt
-    // nobody can answer hangs the turn. The queues live on the chat sessions
-    // (see `PendingMiniAppApproval`), so the sweep goes through the chat store.
-    if (activeApp) {
-      useChatStore.getState().cancelMiniAppApprovals(activeApp.id)
-    }
-  },
-  setTools: (tools, invokeTool) => {
-    // A model turn can retain these tools across a reload or an approval wait.
-    // Never dispatch that turn's action to a replacement guest document.
-    const invokeCurrentGuest: MiniAppToolInvoker = async (name, args) => {
-      if (get().invokeTool !== invokeCurrentGuest) {
-        return {
-          content: 'The app changed or closed before this action could run. Request its current tools again.',
-          isError: true,
-        }
+export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) => {
+  let documentGeneration = 0
+  return {
+    ...emptyAppState,
+    openApp: (app) => {
+      documentGeneration += 1
+      set({ ...emptyAppState, activeApp: app, openedAt: Date.now() })
+    },
+    closeApp: () => {
+      documentGeneration += 1
+      const { activeApp } = get()
+      set(emptyAppState)
+      // Deny everything still waiting on this app, wherever it was asked: the app
+      // they would have acted on is gone, and a tool `execute` awaiting a prompt
+      // nobody can answer hangs the turn. The queues live on the chat sessions
+      // (see `PendingMiniAppApproval`), so the sweep goes through the chat store.
+      if (activeApp) {
+        useChatStore.getState().cancelMiniAppApprovals(activeApp.id)
       }
-      return invokeTool(name, args)
-    }
-    set({ tools, invokeTool: invokeCurrentGuest })
-  },
-  setContextReader: (requestContext) => set({ requestContext }),
-  resetGuest: () => {
-    const { activeApp } = get()
-    set({ tools: [], invokeTool: null, requestContext: null })
-    // Same reasoning as `closeApp`: the document that would have serviced these
-    // approvals is gone, so nothing can honour them.
-    if (activeApp) {
-      useChatStore.getState().cancelMiniAppApprovals(activeApp.id)
-    }
-  },
-}))
+    },
+    setTools: (tools, invokeTool) => {
+      const generation = documentGeneration
+      // A model turn can retain these tools across a reload or an approval wait.
+      // Never dispatch that turn's action to a replacement guest document.
+      const invokeCurrentGuest: MiniAppToolInvoker = async (name, args) => {
+        if (documentGeneration !== generation) {
+          return {
+            content: 'The app changed or closed before this action could run. Request its current tools again.',
+            isError: true,
+          }
+        }
+        return invokeTool(name, args)
+      }
+      set({ tools, invokeTool: invokeCurrentGuest })
+    },
+    setContextReader: (requestContext) => set({ requestContext }),
+    resetGuest: () => {
+      documentGeneration += 1
+      const { activeApp } = get()
+      set({ tools: [], invokeTool: null, requestContext: null })
+      // Same reasoning as `closeApp`: the document that would have serviced these
+      // approvals is gone, so nothing can honour them.
+      if (activeApp) {
+        useChatStore.getState().cancelMiniAppApprovals(activeApp.id)
+      }
+    },
+  }
+})
 
 /**
  * Read the active app and its tools outside React (prompt assembly, tool calls).

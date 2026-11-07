@@ -124,7 +124,9 @@ it.each(['wss://agents.demo.thunderbolt/finance', 'wss://agents.example/new'])(
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     const saved = dispatch.mock.calls.at(-1)?.[0]
     expect(saved?.type).toBe('save-agent')
-    if (saved?.type !== 'save-agent') throw new Error('Expected an agent save')
+    if (saved?.type !== 'save-agent') {
+      throw new Error('Expected an agent save')
+    }
     expect(saved.agent.id).toBe(agent.id)
     expect(saved.agent.groupIds).toEqual(agent.groupIds)
     expect(saved.agent.integrations).not.toContain('Salesforce')

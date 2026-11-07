@@ -6,7 +6,11 @@ import { collectPageErrors, openSidebarOnMobile } from './helpers'
 import { installMapStyleFixture, mapStyleUrl, prepareMapHistory } from './map-fixture'
 import { expect, test } from './test'
 
-test('history maps initialize near the viewport and retain their instance after scrolling away', async ({ page }) => {
+test('history maps initialize near the viewport and retain their instance after scrolling away', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName === 'firefox', 'Headless Firefox on the GPU-less Linux runner has no WebGL2 for MapLibre')
   test.setTimeout(120_000)
   const errors = collectPageErrors(page)
   const styleRequests: string[] = []

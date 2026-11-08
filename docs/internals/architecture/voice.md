@@ -54,8 +54,9 @@ backend route; the pass-through, its SSRF guard and the attestation lifecycle ar
   straight onto a Web Audio graph; only the transcript and reply are stored, via `chat.sendMessage`
   ([`chat-reply.ts`](../../../src/voice/chat-reply.ts)).
 - **Audio is not metered.** Admission and usage metering apply only to `POST /v1/chat/completions`
-  (`isManagedChat`, [`tinfoil/routes.ts:247`](../../../backend/src/tinfoil/routes.ts)); `/audio/*` is
-  authenticated and rate-limited but consumes no inference quota.
+  (`isManagedChat`, [`tinfoil/routes.ts:355`](../../../backend/src/tinfoil/routes.ts)); `/audio/transcriptions` and
+  `/audio/speech` are authenticated and rate-limited but consume no inference quota. They are the only other paths a
+  `POST` may reach (`allowedPostPaths`), so a new voice endpoint needs adding there.
 - **No `TINFOIL_API_KEY` means no default engine**: the route answers
   `503 Tinfoil provider not configured`, so a self-hosted deployment needs the experimental flag and
   an OpenAI-compatible endpoint.

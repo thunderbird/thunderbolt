@@ -60,6 +60,7 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import { Chat } from '@ai-sdk/react'
+import { getAgentExecution } from '@/agent-execution/store'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport, type ChatInit, type ChatOnFinishCallback } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
@@ -177,17 +178,36 @@ const requestPermissionViaStore = (
   sessionId: string,
   agentId: string,
   request: RequestPermissionRequest,
+  signal?: AbortSignal | null,
+  rememberAllowances = true,
 ): Promise<RequestPermissionResponse> => {
   const toolKey = deriveToolKey(request)
   const allowOption = findAllowOption(request.options)
 
-  if (allowOption && useChatStore.getState().isAlwaysAllowed(agentId, toolKey)) {
+  if (rememberAllowances && allowOption && useChatStore.getState().isAlwaysAllowed(agentId, toolKey)) {
     return Promise.resolve({ outcome: { outcome: 'selected', optionId: allowOption.optionId } })
   }
 
   return new Promise<RequestPermissionResponse>((resolve) => {
     const requestId = uuidv7()
-    useChatStore.getState().setPendingPermission(sessionId, { agentId, requestId, request, resolve })
+    const cancel = () => {
+      if (useChatStore.getState().sessions.get(sessionId)?.pendingPermission?.requestId === requestId) {
+        useChatStore.getState().resolvePendingPermission(sessionId, { outcome: { outcome: 'cancelled' } })
+      }
+    }
+    useChatStore.getState().setPendingPermission(sessionId, {
+      agentId,
+      requestId,
+      request,
+      resolve: (response) => {
+        signal?.removeEventListener('abort', cancel)
+        resolve(response)
+      },
+    })
+    signal?.addEventListener('abort', cancel, { once: true })
+    if (signal?.aborted) {
+      cancel()
+    }
   })
 }
 
@@ -445,10 +465,8 @@ export const createAgentRoutingFetch = (
     // common case — never pays for the lookup.
     const projectSection =
       isBuiltInAgent(selectedAgent) || !session.projectId ? undefined : await resolveAcpProjectSection(id)
-    // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
-    const requestPermission = isBuiltInAgent(selectedAgent)
-      ? undefined
-      : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
+    const requestPermission = (request: RequestPermissionRequest, signal?: AbortSignal) =>
+      requestPermissionViaStore(id, selectedAgent.id, request, signal ?? init.signal, !isBuiltInAgent(selectedAgent))
 
     const turnBudget = getTurnBudget().consumer
     if (operation === 'prompt' && !turnBudget.tryConsumeRequest()) {
@@ -490,6 +508,7 @@ export const createAgentRoutingFetch = (
       projectSection,
       onAcpSessionId: persistAcpSessionId,
       requestPermission,
+      execution: isBuiltInAgent(selectedAgent) ? getAgentExecution(id) : undefined,
       onSessionSideEffect: applySessionSideEffect,
       getAcpCompactions: session.chatInstance.getAcpCompactions,
       onAcpSessionEvent: session.chatInstance.onAcpSessionEvent,

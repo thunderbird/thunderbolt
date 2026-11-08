@@ -9,8 +9,9 @@
  * non-UUID-shaped id loudly.
  */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import * as fsp from '@zenfs/core/promises'
+import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
 import { inferenceUsageReceiptHeader } from '../inference-usage.ts'
 import {
   buildAppHarness,
@@ -53,6 +54,50 @@ describe('writeAgentWorkspaceFiles', () => {
     await writeAgentWorkspaceFiles(threadId, [{ path: 'attachments/a/data.tsv', content: 'x\ty\n1\t2' }])
     expect(await readWorkspaceFile(threadId, 'attachments/a/data.tsv')).toBe('x\ty\n1\t2')
     await removeAgentWorkspace(threadId)
+  })
+
+  it('restores attachments into the selected execution environment', async () => {
+    const nativeThread = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(nativeThread, [])
+    const cwd = workspaceDirFor(nativeThread)
+    const env = new BrowserExecutionEnv({ cwd })
+    const failures = await writeAgentWorkspaceFiles(
+      'native/thread',
+      [{ path: 'attachments/a.txt', content: 'native context' }],
+      { env, cwd },
+    )
+    expect(failures).toEqual([])
+    expect(await fsp.readFile(`${cwd}/attachments/a.txt`, 'utf-8')).toBe('native context')
+    await removeAgentWorkspace(nativeThread)
+  })
+
+  it('preserves edited inputs when the environment restores files without overwriting', async () => {
+    const threadId = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(threadId, [])
+    const cwd = workspaceDirFor(threadId)
+    const env = new BrowserExecutionEnv({ cwd })
+    const restoreFile = spyOn(env, 'writeFile')
+    const execution = {
+      cwd,
+      env: Object.assign(env, {
+        restoreFile: async (path: string, content: string | Uint8Array) => {
+          if (!(await env.readBinaryFile(path)).ok) {
+            return env.writeFile(path, content)
+          }
+          return { ok: true as const, value: undefined }
+        },
+      }),
+    }
+    try {
+      await writeAgentWorkspaceFiles(threadId, [{ path: 'input.txt', content: 'original' }], execution)
+      await fsp.writeFile(`${cwd}/input.txt`, 'edited')
+      await writeAgentWorkspaceFiles(threadId, [{ path: 'input.txt', content: 'original' }], execution)
+      expect(restoreFile).toHaveBeenCalledTimes(1)
+      expect(await readWorkspaceFile(threadId, 'input.txt')).toBe('edited')
+    } finally {
+      restoreFile.mockRestore()
+      await removeAgentWorkspace(threadId)
+    }
   })
 
   it('overwrites a same-size edit with the original content', async () => {

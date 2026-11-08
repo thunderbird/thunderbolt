@@ -211,7 +211,7 @@ export default defineConfig({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    port: Number(process.env.VITE_DEV_PORT ?? 1420),
     strictPort: true,
     // The public CI diagnostic uploads only fixed labels from its Playwright case.
     forwardConsole: process.env.VITE_DB_DIAGNOSTIC !== 'true',
@@ -228,7 +228,7 @@ export default defineConfig({
       ? {
           protocol: 'ws',
           host,
-          port: 1421,
+          port: Number(process.env.VITE_HMR_PORT ?? 1421),
         }
       : undefined,
     watch: {

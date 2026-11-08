@@ -21,14 +21,6 @@ msgstr "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "\"{filename}\" isn't a supported file type."
 
-#. placeholder {0}: items.length
-#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
-#: src/components/embedded/surface-selection-bar.tsx
-#~ msgid "# item selected"
-#~ msgid_plural "# items selected"
-#~ msgstr[0] "# item selected"
-#~ msgstr[1] "# items selected"
-
 #. placeholder {0}: mcpServers.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+MCP+server%7D+other+%7B%23+MCP+servers%7D%7D&pluralize_on=0
 #: src/components/settings/agents/agent-detail.tsx
@@ -44,14 +36,6 @@ msgid "# tool"
 msgid_plural "# tools"
 msgstr[0] "# tool"
 msgstr[1] "# tools"
-
-#. placeholder {0}: items.length
-#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BAsk+about+it%7D+other+%7BAsk+about+them%7D%7D&pluralize_on=0
-#: src/components/embedded/surface-selection-bar.tsx
-#~ msgid "Ask about it"
-#~ msgid_plural "Ask about them"
-#~ msgstr[0] "Ask about it"
-#~ msgstr[1] "Ask about them"
 
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
@@ -94,13 +78,6 @@ msgstr "{appName} wants to connect to {providerName} Email and Calendar"
 msgid "{appName} will use it across the app. You can change it later in Preferences."
 msgstr "{appName} will use it across the app. You can change it later in Preferences."
 
-#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
-#: src/projects/index.tsx
-#~ msgid "# chat"
-#~ msgid_plural "# chats"
-#~ msgstr[0] "# chat"
-#~ msgstr[1] "# chats"
-
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+delete+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+delete+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
 #: src/skills/dependents-dialog.tsx
 msgid "One skill references this. If you delete it, that skill may no longer resolve."
@@ -125,14 +102,6 @@ msgstr[1] "# skills"
 #: src/mini-apps/mini-app-download-prompt.tsx
 msgid "{fileName} will be saved to your Downloads folder."
 msgstr "{fileName} will be saved to your Downloads folder."
-
-#: src/layout/sidebar/project-drop-list.tsx
-#~ msgid "{label} — already in this project"
-#~ msgstr "{label} — already in this project"
-
-#: src/layout/sidebar/sidebar-section-toggle.tsx
-#~ msgid "{label} options"
-#~ msgstr "{label} options"
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -184,10 +153,6 @@ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] "Imported # row. The app may take a moment to reflect new chats."
 msgstr[1] "Imported # rows. The app may take a moment to reflect new chats."
 
-#: src/components/context-usage/context-usage-indicator.tsx
-#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
-#~ msgstr "{usedTokensLabel} of {maxTokensLabel} Context Window"
-
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
 msgstr "{verbPhrase}…"
@@ -223,10 +188,6 @@ msgstr "A new version is available!"
 #: src/settings/app-version-section.tsx
 msgid "A new version is available. See the update prompt to install."
 msgstr "A new version is available. See the update prompt to install."
-
-#: src/projects/index.tsx
-#~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
-#~ msgstr "A project keeps your instructions in one place, so every chat inside it starts with the same context."
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
@@ -297,10 +258,6 @@ msgstr "Add a new task…"
 msgid "Add a passkey"
 msgstr "Add a passkey"
 
-#: src/components/onboarding/onboarding-passkey-step.tsx
-#~ msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
-#~ msgstr "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
-
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr "Add a skill"
@@ -331,10 +288,6 @@ msgstr "Add MCP Server"
 msgid "Add Model"
 msgstr "Add Model"
 
-#: src/settings/passkeys.tsx
-#~ msgid "Add passkey"
-#~ msgstr "Add passkey"
-
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Add Server"
@@ -348,10 +301,6 @@ msgstr "Add summary instructions (optional)"
 msgid "Add to chat"
 msgstr "Add to chat"
 
-#: src/settings/passkeys.tsx
-#~ msgid "Add your first passkey"
-#~ msgstr "Add your first passkey"
-
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
 msgstr "Add your first server"
@@ -359,11 +308,6 @@ msgstr "Add your first server"
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr "Add Your First Task"
-
-#. placeholder {0}: formatters.date(passkey.createdAt)
-#: src/settings/passkeys.tsx
-#~ msgid "Added {0}"
-#~ msgstr "Added {0}"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -374,6 +318,14 @@ msgstr "Adding…"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Advanced (JSON)"
 msgstr "Advanced (JSON)"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Agent access"
+msgstr "Agent access"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Agent location"
+msgstr "Agent location"
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Agent privacy"
@@ -394,14 +346,17 @@ msgstr "AI usage limit reached"
 msgid "All agents"
 msgstr "All agents"
 
-#: src/layout/sidebar/project-drop-list.tsx
-#: src/projects/index.tsx
-#~ msgid "All projects"
-#~ msgstr "All projects"
-
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
 msgstr "All skills are pinned"
+
+#: src/agent-execution/approval.ts
+msgid "Allow once"
+msgstr "Allow once"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Allow tools to act without asking"
+msgstr "Allow tools to act without asking"
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Always allow all actions of this kind"
@@ -491,10 +446,6 @@ msgstr "API key not configured"
 msgid "App Version"
 msgstr "App Version"
 
-#: src/projects/project-form.tsx
-#~ msgid "Applied to every chat in this project."
-#~ msgstr "Applied to every chat in this project."
-
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
@@ -532,15 +483,6 @@ msgstr "Are you sure? You will lose any changes that you made."
 msgid "Artifact"
 msgstr "Artifact"
 
-#: src/projects/project-action-menu-items.tsx
-#: src/projects/project-actions.tsx
-#: src/projects/project-artifact-gallery.tsx
-#: src/projects/project-artifact-grid.tsx
-#: src/projects/project-artifact-workspace.tsx
-#: src/projects/project-artifacts-dialog.tsx
-#~ msgid "Artifacts"
-#~ msgstr "Artifacts"
-
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
 msgstr "Ask"
@@ -548,6 +490,14 @@ msgstr "Ask"
 #: src/components/embedded/selection-popover.tsx
 msgid "Ask about this"
 msgstr "Ask about this"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Ask before changes, commands, and external actions"
+msgstr "Ask before changes, commands, and external actions"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Ask for approval"
+msgstr "Ask for approval"
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
@@ -791,6 +741,14 @@ msgstr "Checking your session."
 msgid "Checking…"
 msgstr "Checking…"
 
+#: src/components/chat/error-message.tsx
+msgid "Choose a tool-capable model to use this computer"
+msgstr "Choose a tool-capable model to use this computer"
+
+#: src/components/chat/error-message.tsx
+msgid "Choose a working folder before using this computer"
+msgstr "Choose a working folder before using this computer"
+
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Choose agent"
 msgstr "Choose agent"
@@ -825,10 +783,6 @@ msgid "Choose project"
 msgstr "Choose project"
 
 #: src/widgets/connect-integration/widget.tsx
-#~ msgid "Choose your email provider {displayReason}"
-#~ msgstr "Choose your email provider {displayReason}"
-
-#: src/widgets/connect-integration/widget.tsx
 msgid "Choose your email provider {reason}"
 msgstr "Choose your email provider {reason}"
 
@@ -843,12 +797,6 @@ msgstr "Choose your email provider to access your email"
 #: src/widgets/connect-integration/widget.tsx
 msgid "Choose your email provider to access your email and calendar"
 msgstr "Choose your email provider to access your email and calendar"
-
-#: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
-#: src/search/commands/use-commands.ts
-#~ msgid "Clear all chats"
-#~ msgstr "Clear all chats"
 
 #: src/components/app-error-screen.tsx
 msgid "Clear Database"
@@ -878,10 +826,6 @@ msgstr "Clear search"
 msgid "Clear sky"
 msgstr "Clear sky"
 
-#: src/components/app-error-screen.tsx
-#~ msgid "Clearing Database…"
-#~ msgstr "Clearing Database…"
-
 #: src/settings/devices.tsx
 msgid "CLI"
 msgstr "CLI"
@@ -902,10 +846,6 @@ msgstr "Clipboard unavailable. Please select the phrase above and copy it manual
 msgid "Close"
 msgstr "Close"
 
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Close chat"
-#~ msgstr "Close chat"
-
 #: src/components/detail-panel.tsx
 msgid "Close details"
 msgstr "Close details"
@@ -917,6 +857,14 @@ msgstr "Close navigation"
 #: src/skills/reorder-panel.tsx
 msgid "Close reorder"
 msgstr "Close reorder"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Cloud"
+msgstr "Cloud"
+
+#: src/components/chat/error-message.tsx
+msgid "Cloud execution is not available yet"
+msgstr "Cloud execution is not available yet"
 
 #: src/components/sidebar-footer.tsx
 msgid "Cloud Sync"
@@ -933,6 +881,10 @@ msgstr "Code didn't work"
 #: src/layout/sidebar/sidebar-header.tsx
 msgid "Collapse Sidebar"
 msgstr "Collapse Sidebar"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Coming soon"
+msgstr "Coming soon"
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Command / arguments"
@@ -998,9 +950,9 @@ msgstr "Complete the setup process to get started with {appName}"
 msgid "Completing…"
 msgstr "Completing…"
 
-#: src/components/chat/attestation/attestation-details.tsx
-#~ msgid "Confidential hardware"
-#~ msgstr "Confidential hardware"
+#: src/components/chat/error-message.tsx
+msgid "Computer execution requires the desktop app"
+msgstr "Computer execution requires the desktop app"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
@@ -1149,10 +1101,6 @@ msgid "Context"
 msgstr "Context"
 
 #: src/components/context-usage/context-usage-indicator.tsx
-#~ msgid "Context compaction is available with supported built-in models."
-#~ msgstr "Context compaction is available with supported built-in models."
-
-#: src/components/context-usage/context-usage-indicator.tsx
 msgid "Context usage"
 msgstr "Context usage"
 
@@ -1239,10 +1187,6 @@ msgstr "Could not check whether a removed device still holds your account key. R
 msgid "Could not compact context. Please try again."
 msgstr "Could not compact context. Please try again."
 
-#: src/components/context-usage/context-usage-indicator.tsx
-#~ msgid "Could not compact context. Your chat history is safe. Please try again."
-#~ msgstr "Could not compact context. Your chat history is safe. Please try again."
-
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr "Could not connect to the agent."
@@ -1287,21 +1231,17 @@ msgstr "Could not render pairing code."
 msgid "Could not save the project."
 msgstr "Could not save the project."
 
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+msgid "Could not select a working folder. Please try again."
+msgstr "Could not select a working folder. Please try again."
+
 #: src/hooks/use-mcp-server-oauth.ts
 msgid "Could not start authorization. Please try again."
 msgstr "Could not start authorization. Please try again."
 
-#: src/settings/passkeys.tsx
-#~ msgid "Couldn't add a passkey. Please try again."
-#~ msgstr "Couldn't add a passkey. Please try again."
-
 #: src/components/onboarding/onboarding-passkey-step.tsx
 msgid "Couldn't add a passkey. You can add one later when you set up sync."
 msgstr "Couldn't add a passkey. You can add one later when you set up sync."
-
-#: src/components/onboarding/onboarding-passkey-step.tsx
-#~ msgid "Couldn't add a passkey. You can try again from Settings later."
-#~ msgstr "Couldn't add a passkey. You can try again from Settings later."
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
@@ -1314,10 +1254,6 @@ msgstr "Couldn't approve this device. Please try again."
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
-
-#: src/settings/app-version-section.tsx
-#~ msgid "Couldn't check for updates"
-#~ msgstr "Couldn't check for updates"
 
 #: src/settings/app-version-section.tsx
 msgid "Couldn't check for updates: {error}"
@@ -1334,10 +1270,6 @@ msgstr "Couldn't complete approval. Close this dialog and check the device list 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Couldn't copy. Select the fingerprint to copy it manually."
 msgstr "Couldn't copy. Select the fingerprint to copy it manually."
-
-#: src/settings/app-version-section.tsx
-#~ msgid "Couldn't download the update"
-#~ msgstr "Couldn't download the update"
 
 #: src/settings/app-version-section.tsx
 msgid "Couldn't download the update: {error}"
@@ -1372,10 +1304,6 @@ msgid "Couldn't remove the passkey. Please try again."
 msgstr "Couldn't remove the passkey. Please try again."
 
 #: src/settings/app-version-section.tsx
-#~ msgid "Couldn't restart to apply the update"
-#~ msgstr "Couldn't restart to apply the update"
-
-#: src/settings/app-version-section.tsx
 msgid "Couldn't restart to apply the update: {error}"
 msgstr "Couldn't restart to apply the update: {error}"
 
@@ -1407,10 +1335,6 @@ msgstr "Couldn't set up the passkey. Please try again."
 #: src/waitlist/use-waitlist-state.ts
 msgid "Couldn't sign in with your passkey. Please try again or use your email."
 msgstr "Couldn't sign in with your passkey. Please try again or use your email."
-
-#: src/hooks/use-sync-setup.ts
-#~ msgid "Couldn't unlock sync with your passkey."
-#~ msgstr "Couldn't unlock sync with your passkey."
 
 #: src/hooks/use-sync-setup.ts
 msgid "Couldn't unlock sync with your passkey. Please try again."
@@ -1464,10 +1388,6 @@ msgstr "Create Project"
 #: src/skills/skills-view.tsx
 msgid "Create Skill"
 msgstr "Create Skill"
-
-#: src/projects/index.tsx
-#~ msgid "Create your first project"
-#~ msgstr "Create your first project"
 
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
@@ -1535,10 +1455,6 @@ msgstr "Data is stored securely on your device."
 msgid "Debug transcript sharing is turned off on this server."
 msgstr "Debug transcript sharing is turned off on this server."
 
-#: src/components/chat/effort-selector/use-effort-selector-state.ts
-#~ msgid "Default"
-#~ msgstr "Default"
-
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
 msgstr "Default setting"
@@ -1575,14 +1491,6 @@ msgstr "Delete account"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Delete agent"
 msgstr "Delete agent"
-
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "Delete All Chats"
-#~ msgstr "Delete All Chats"
-
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "Delete all chats?"
-#~ msgstr "Delete all chats?"
 
 #: src/settings/preferences.tsx
 msgid "Delete All Local Data"
@@ -1684,6 +1592,7 @@ msgstr "Dense drizzle"
 msgid "Dense freezing drizzle"
 msgstr "Dense freezing drizzle"
 
+#: src/agent-execution/approval.ts
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
@@ -1910,10 +1819,6 @@ msgstr "Edit MCP Server"
 msgid "Edit Model"
 msgstr "Edit Model"
 
-#: src/projects/index.tsx
-#~ msgid "Edit project"
-#~ msgstr "Edit project"
-
 #: src/skills/suggestion-chip.tsx
 msgid "Edit skill"
 msgstr "Edit skill"
@@ -1996,10 +1901,6 @@ msgstr "Enclave fingerprint"
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Enclave-bound encryption key"
 msgstr "Enclave-bound encryption key"
-
-#: src/components/chat/attestation/attestation-details.tsx
-#~ msgid "Encrypted connection"
-#~ msgstr "Encrypted connection"
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
@@ -2213,6 +2114,10 @@ msgstr "Food & drink"
 msgid "From {0}"
 msgstr "From {0}"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Full access"
+msgstr "Full access"
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
 msgstr "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
@@ -2344,10 +2249,6 @@ msgstr "Hide QR code for {deviceName}"
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
 msgid "High"
 msgstr "High"
-
-#: src/components/chat/effort-selector/effort-selector.tsx
-#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
-#~ msgstr "Higher effort can improve difficult answers but takes more time and tokens."
 
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
@@ -2501,10 +2402,6 @@ msgstr "Keep {activeLanguageLabel}"
 msgid "Keep Current Units"
 msgstr "Keep Current Units"
 
-#: src/components/revoked-device-modal.tsx
-#~ msgid "Keep data on device"
-#~ msgstr "Keep data on device"
-
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
 msgstr "Keep editing"
@@ -2603,10 +2500,6 @@ msgstr "Loading devices…"
 msgid "Loading emoji…"
 msgstr "Loading emoji…"
 
-#: src/settings/passkeys.tsx
-#~ msgid "Loading passkeys…"
-#~ msgstr "Loading passkeys…"
-
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
 msgstr "Loading preview…"
@@ -2621,6 +2514,10 @@ msgstr "Loading this app's pairing identity…"
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "Loading…"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Local sandbox"
+msgstr "Local sandbox"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
@@ -2702,17 +2599,9 @@ msgstr "Messages"
 msgid "Metric"
 msgstr "Metric"
 
-#: src/settings/preferences.tsx
-#~ msgid "Mini Apps"
-#~ msgstr "Mini Apps"
-
 #: src/mini-apps/mini-app-page.tsx
 msgid "Mini Apps are only available on desktop"
 msgstr "Mini Apps are only available on desktop"
-
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
-#~ msgstr "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
 msgid "Minimal"
@@ -2736,10 +2625,6 @@ msgstr "Model"
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Model and reasoning effort"
 msgstr "Model and reasoning effort"
-
-#: src/settings/models/add-model-form.tsx
-#~ msgid "Model may not be compatible"
-#~ msgstr "Model may not be compatible"
 
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
@@ -2804,11 +2689,6 @@ msgstr "Move file"
 msgid "Move session?"
 msgstr "Move session?"
 
-#: src/layout/sidebar/chat-list-item.tsx
-#: src/projects/move-chat-to-project-dialog.tsx
-#~ msgid "Move to project"
-#~ msgstr "Move to project"
-
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "My Agent"
 msgstr "My Agent"
@@ -2860,11 +2740,6 @@ msgstr "New chat"
 msgid "New Chat"
 msgstr "New Chat"
 
-#: src/projects/project-detail-panel.tsx
-#: src/projects/project-workspace.tsx
-#~ msgid "New chat in this project"
-#~ msgstr "New chat in this project"
-
 #: src/settings/connections/connections-list.tsx
 msgid "New Connection"
 msgstr "New Connection"
@@ -2898,10 +2773,6 @@ msgstr "New Task"
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "No agents found"
 msgstr "No agents found"
-
-#: src/projects/project-detail-panel.tsx
-#~ msgid "No artifacts yet."
-#~ msgstr "No artifacts yet."
 
 #: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/chat-menu-items.tsx
@@ -2948,10 +2819,6 @@ msgstr "No matches"
 msgid "No matching connections."
 msgstr "No matching connections."
 
-#: src/projects/index.tsx
-#~ msgid "No matching projects"
-#~ msgstr "No matching projects"
-
 #: src/projects/move-chat-to-project-dialog.tsx
 #: src/projects/project-badge.tsx
 msgid "No matching projects."
@@ -2981,18 +2848,6 @@ msgstr "No models found."
 #: src/settings/voice.tsx
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
-
-#: src/settings/passkeys.tsx
-#~ msgid "No passkeys yet"
-#~ msgstr "No passkeys yet"
-
-#: src/projects/index.tsx
-#~ msgid "No projects yet"
-#~ msgstr "No projects yet"
-
-#: src/projects/move-chat-to-project-dialog.tsx
-#~ msgid "No projects yet. Create one from the Projects page, then move this chat into it."
-#~ msgstr "No projects yet. Create one from the Projects page, then move this chat into it."
 
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "No projects yet. Create one in the sidebar, then move this chat into it."
@@ -3050,15 +2905,6 @@ msgstr "Not tested"
 msgid "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
 msgstr "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
 
-#. placeholder {0}: app.url
-#: src/mini-apps/mini-app-frame.tsx
-#~ msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
-#~ msgstr "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
-
-#: src/components/embedded/surface-selection-bar.tsx
-#~ msgid "Nothing to ask about there. Try covering some content."
-#~ msgstr "Nothing to ask about there. Try covering some content."
-
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Nothing to compact yet."
 msgstr "Nothing to compact yet."
@@ -3106,10 +2952,6 @@ msgstr "Off"
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
-
-#: src/settings/preferences.tsx
-#~ msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
-#~ msgstr "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
 
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
@@ -3159,10 +3001,6 @@ msgstr "Open {title}"
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Open app"
 msgstr "Open app"
-
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Open chat"
-#~ msgstr "Open chat"
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
@@ -3222,10 +3060,6 @@ msgstr "Optional"
 msgid "Optional — leave blank for local servers that don’t require auth."
 msgstr "Optional — leave blank for local servers that don’t require auth."
 
-#: src/projects/project-form.tsx
-#~ msgid "Optional — what this project is for"
-#~ msgstr "Optional — what this project is for"
-
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "or"
@@ -3268,25 +3102,6 @@ msgstr "Partly cloudy"
 msgid "Passkey"
 msgstr "Passkey"
 
-#: src/components/onboarding/onboarding-passkey-step.tsx
-#~ msgid "Passkey added — you're all set."
-#~ msgstr "Passkey added — you're all set."
-
-#: src/components/sign-in/use-sign-in-form-state.ts
-#: src/waitlist/use-waitlist-state.ts
-#~ msgid "Passkey sign-in failed. Please try again or use your email."
-#~ msgstr "Passkey sign-in failed. Please try again or use your email."
-
-#: src/layout/sidebar/settings-sidebar.tsx
-#: src/search/commands/navigation.ts
-#: src/settings/passkeys.tsx
-#~ msgid "Passkeys"
-#~ msgstr "Passkeys"
-
-#: src/settings/passkeys.tsx
-#~ msgid "Passkeys aren't available on this device."
-#~ msgstr "Passkeys aren't available on this device."
-
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
 msgstr "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
@@ -3323,11 +3138,6 @@ msgstr "Pin"
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr "Pin limit reached ({maxPinnedSkills}). Unpin one first."
-
-#: src/projects/project-action-menu-items.tsx
-#: src/projects/project-actions.tsx
-#~ msgid "Pin project"
-#~ msgstr "Pin project"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Pinned skill {label}"
@@ -3396,6 +3206,10 @@ msgstr "Private"
 msgid "Private inference"
 msgstr "Private inference"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Private workspace inside Thunderbolt"
+msgstr "Private workspace inside Thunderbolt"
+
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
 msgstr "Processing…"
@@ -3426,10 +3240,6 @@ msgstr "Provider"
 #: src/settings/preferences.tsx
 msgid "Proxying is required in the web app to bypass browser CORS restrictions."
 msgstr "Proxying is required in the web app to bypass browser CORS restrictions."
-
-#: src/components/chat/attestation/attestation-details.tsx
-#~ msgid "Published code"
-#~ msgstr "Published code"
 
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
@@ -3463,6 +3273,10 @@ msgstr "Reading {fileName}…"
 msgid "Ready to submit"
 msgstr "Ready to submit"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Real files and commands on your computer"
+msgstr "Real files and commands on your computer"
+
 #: src/content-view/context.tsx
 msgid "Reasoning"
 msgstr "Reasoning"
@@ -3483,14 +3297,6 @@ msgstr "Received an error while testing the model."
 #: src/layout/sidebar/chat-list.tsx
 msgid "Recent chat options"
 msgstr "Recent chat options"
-
-#: src/layout/sidebar/chat-list.tsx
-#~ msgid "Recent Chats"
-#~ msgstr "Recent Chats"
-
-#: src/layout/sidebar/project-drop-list.tsx
-#~ msgid "Recent Projects"
-#~ msgstr "Recent Projects"
 
 #: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
@@ -3535,10 +3341,6 @@ msgstr "Reload"
 #: src/settings/encryption/passkey-section.tsx
 msgid "Remove"
 msgstr "Remove"
-
-#: src/settings/passkeys.tsx
-#~ msgid "Remove {name}"
-#~ msgstr "Remove {name}"
 
 #: src/components/logout-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
@@ -3593,10 +3395,6 @@ msgstr "Reorder skills"
 msgid "Reply"
 msgstr "Reply"
 
-#: src/projects/project-form.tsx
-#~ msgid "Reply in British English. Prefer bullet points over prose."
-#~ msgstr "Reply in British English. Prefer bullet points over prose."
-
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Request denied"
 msgstr "Request denied"
@@ -3632,10 +3430,6 @@ msgstr "Reset Database"
 #: src/settings/preferences.tsx
 msgid "Reset Local Database?"
 msgstr "Reset Local Database?"
-
-#: src/components/chat/effort-selector/effort-selector.tsx
-#~ msgid "Reset reasoning effort"
-#~ msgstr "Reset reasoning effort"
 
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
@@ -3798,10 +3592,6 @@ msgstr "Search chats…"
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr "Search connections"
-
-#: src/settings/preferences.tsx
-#~ msgid "Search currencies..."
-#~ msgstr "Search currencies..."
 
 #: src/settings/preferences.tsx
 msgid "Search currencies…"
@@ -4107,10 +3897,6 @@ msgstr "Sign in faster next time"
 msgid "Sign in to {appName}"
 msgstr "Sign in to {appName}"
 
-#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
-#~ msgid "Sign in to a full account to share a debug transcript."
-#~ msgstr "Sign in to a full account to share a debug transcript."
-
 #: src/components/device-approval.tsx
 msgid "Sign in to continue"
 msgstr "Sign in to continue"
@@ -4131,10 +3917,6 @@ msgstr "Sign in with passkey"
 #: src/components/device-approval.tsx
 msgid "Sign in with your {appName} account to approve this CLI request."
 msgstr "Sign in with your {appName} account to approve this CLI request."
-
-#: src/settings/passkeys.tsx
-#~ msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
-#~ msgstr "Sign in with your fingerprint, face, or device PIN instead of an email code."
 
 #: src/settings/encryption/passkey-section.tsx
 msgid "Sign in with your fingerprint, face, or device PIN."
@@ -4175,10 +3957,6 @@ msgstr "Signed Out"
 #: src/components/sign-in/sign-in-form.tsx
 msgid "Signing in…"
 msgstr "Signing in…"
-
-#: src/components/revoked-device-modal.tsx
-#~ msgid "Signing out…"
-#~ msgstr "Signing out…"
 
 #: src/components/magic-link-verify.tsx
 msgid "Signing you in…"
@@ -4476,14 +4254,6 @@ msgstr "The AI provider took too long to respond. Try again."
 msgid "The chat will be retained by the {recipient} team."
 msgstr "The chat will be retained by the {recipient} team."
 
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
-#~ msgstr "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
-#~ msgstr "The chat will be retained by the Thunderbolt team until your account is deleted."
-
 #: src/components/revoke-device-dialog.tsx
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr "The CLI will be signed out and must sign in again before it can use your {appName} account."
@@ -4507,18 +4277,6 @@ msgstr "The device lost access, but your account key was not replaced, so it can
 #: src/services/revoke-failure.ts
 msgid "The device lost access, but your account key was not replaced, so it can still read your data."
 msgstr "The device lost access, but your account key was not replaced, so it can still read your data."
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
-#~ msgstr "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
-#~ msgstr "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
-
-#: src/components/revoke-device-dialog.tsx
-#~ msgid "The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working."
-#~ msgstr "The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working."
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
@@ -4552,10 +4310,6 @@ msgstr "The server took too long to respond. Please try again."
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
 msgstr "The sign-in service is unavailable right now. Check your connection and try again."
 
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
-#~ msgstr "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
-
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "The transcript was rejected by the server."
 msgstr "The transcript was rejected by the server."
@@ -4580,10 +4334,6 @@ msgid "This can happen in private windows or when site data is blocked. Enable s
 msgstr "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
-#~ msgstr "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "This chat session, including the messages you sent and the responses from the agent, the data inputs and outputs of any tools used, errors, and timestamps."
 msgstr "This chat session, including the messages you sent and the responses from the agent, the data inputs and outputs of any tools used, errors, and timestamps."
 
@@ -4594,6 +4344,10 @@ msgstr "This chat uses {agentName}, which is not available on this platform."
 #: src/lib/otp-error-messages.ts
 msgid "This code has expired. Please request a new one."
 msgstr "This code has expired. Please request a new one."
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "This computer"
+msgstr "This computer"
 
 #: src/components/chat/error-message.tsx
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
@@ -4610,10 +4364,6 @@ msgstr "This device"
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This device has been approved and sync is now enabled across your devices."
 msgstr "This device has been approved and sync is now enabled across your devices."
-
-#: src/components/revoked-device-modal.tsx
-#~ msgid "This device has been signed out remotely. Choose what to do with your local data."
-#~ msgstr "This device has been signed out remotely. Choose what to do with your local data."
 
 #: src/hooks/use-sync-setup.ts
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
@@ -4656,12 +4406,12 @@ msgid "This mini app uses an outdated SDK. Ask its maintainer to update the SDK 
 msgstr "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
 
 #: src/components/chat/error-message.tsx
+msgid "This model cannot run on this computer. Choose a tool-capable supported model."
+msgstr "This model cannot run on this computer. Choose a tool-capable supported model."
+
+#: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
 msgstr "This model couldn't read the attached file. Try a different model."
-
-#: src/settings/models/add-model-form.tsx
-#~ msgid "This model does not seem to support tool usage."
-#~ msgstr "This model does not seem to support tool usage."
 
 #: src/settings/models/connection-test-section.tsx
 msgid "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
@@ -4771,10 +4521,6 @@ msgstr "This will move the session to <0>{0}</0>."
 msgid "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
 msgstr "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
 
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "This will permanently delete all your chats."
-#~ msgstr "This will permanently delete all your chats."
-
 #: src/skills/delete-skill-dialog.tsx
 msgid "This will permanently delete the skill. Other skills that reference it may no longer resolve."
 msgstr "This will permanently delete the skill. Other skills that reference it may no longer resolve."
@@ -4786,10 +4532,6 @@ msgstr "This will permanently delete this chat."
 #: src/settings/account/delete-account-section.tsx
 msgid "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 msgstr "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-#~ msgid "This will send the current chat with the Thunderbolt team so that they can debug the problem."
-#~ msgstr "This will send the current chat with the Thunderbolt team so that they can debug the problem."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "This will share the current chat with the {recipient} team so that they can debug the problem."
@@ -4834,18 +4576,6 @@ msgstr "Time format"
 #: src/settings/preferences.tsx
 msgid "Time Format"
 msgstr "Time Format"
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "to access your calendar"
-#~ msgstr "to access your calendar"
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "to access your email"
-#~ msgstr "to access your email"
-
-#: src/widgets/connect-integration/widget.tsx
-#~ msgid "to access your email and calendar"
-#~ msgstr "to access your email and calendar"
 
 #: src/components/sync-setup/confirm-identity-step.tsx
 msgid "To continue, we’ll email you a verification code."
@@ -4967,10 +4697,6 @@ msgstr "unknown"
 msgid "Unknown (code {code})"
 msgstr "Unknown (code {code})"
 
-#: src/widgets/weather-forecast/widget.tsx
-#~ msgid "Unknown error"
-#~ msgstr "Unknown error"
-
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Unlock sync with a passkey"
 msgstr "Unlock sync with a passkey"
@@ -4984,11 +4710,6 @@ msgstr "Unlock with passkey"
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"
 msgstr "Unpin"
-
-#: src/projects/project-action-menu-items.tsx
-#: src/projects/project-actions.tsx
-#~ msgid "Unpin project"
-#~ msgstr "Unpin project"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
@@ -5090,10 +4811,6 @@ msgstr "Use Thunderbolt from the command line."
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Use your fingerprint, face, or device PIN to sign in instead of an email code. Email sign-in still works too."
 msgstr "Use your fingerprint, face, or device PIN to sign in instead of an email code. Email sign-in still works too."
-
-#: src/components/sync-setup/passkey-enroll-step.tsx
-#~ msgid "Use your passkey to turn on sync on new devices, without approving them from another device. Anyone who can use this passkey will be able to unlock your data."
-#~ msgstr "Use your passkey to turn on sync on new devices, without approving them from another device. Anyone who can use this passkey will be able to unlock your data."
 
 #: src/settings/preferences.tsx
 msgid "User Experience"
@@ -5208,10 +4925,6 @@ msgstr "Wait for the current response to finish before compacting."
 msgid "Waiting for approval"
 msgstr "Waiting for approval"
 
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Waiting for your approval in the app"
-#~ msgstr "Waiting for your approval in the app"
-
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
 msgstr "Want early access?"
@@ -5311,10 +5024,6 @@ msgstr "What would you like to do with your local data?"
 msgid "What's in it?"
 msgstr "What's in it?"
 
-#: src/settings/preferences.tsx
-#~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
-#~ msgstr "When enabled, requests are routed through Thunderbolt's cloud proxy."
-
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"
 msgstr "When to use this skill…"
@@ -5346,6 +5055,10 @@ msgstr "Window controls"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "word1 word2 word3 ..."
 msgstr "word1 word2 word3 ..."
+
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+msgid "Work on this computer"
+msgstr "Work on this computer"
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"
@@ -5494,17 +5207,9 @@ msgstr "Your changes won't be saved."
 msgid "Your chats and settings will remain on this device for next time."
 msgstr "Your chats and settings will remain on this device for next time."
 
-#: src/components/revoked-device-modal.tsx
-#~ msgid "Your chats and settings will remain on this device for offline use."
-#~ msgstr "Your chats and settings will remain on this device for offline use."
-
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"
 msgstr "Your deployment's server"
-
-#: src/components/chat/attestation/attestation-control.tsx
-#~ msgid "Your device checks the confidential hardware and published code before sending to {provider}."
-#~ msgstr "Your device checks the confidential hardware and published code before sending to {provider}."
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
@@ -5513,10 +5218,6 @@ msgstr "Your device checks the enclave hardware and signed build before sending 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
 msgstr "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
-
-#: src/components/chat/attestation/attestation-control.tsx
-#~ msgid "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
-#~ msgstr "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
@@ -5530,21 +5231,9 @@ msgstr "Your message would exceed the model's {formattedMaxTokens}-token context
 msgid "Your name"
 msgstr "Your name"
 
-#: src/settings/preferences.tsx
-#~ msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
-#~ msgstr "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
-
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
 msgstr "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
-
-#: src/settings/encryption/use-change-recovery-key.ts
-#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey in Preferences, then try again."
-#~ msgstr "Your passkey's sync keys could not be verified. Remove your passkey in Preferences, then try again."
-
-#: src/settings/encryption/use-change-recovery-key.ts
-#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey under Settings → Preferences in the web app, then try again."
-#~ msgstr "Your passkey's sync keys could not be verified. Remove your passkey under Settings → Preferences in the web app, then try again."
 
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Your passkey's sync keys couldn't be verified. Remove the passkey in Settings → Preferences on the web, then try again."
@@ -5553,10 +5242,6 @@ msgstr "Your passkey's sync keys couldn't be verified. Remove the passkey in Set
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"
 msgstr "Your private AI assistant"
-
-#: src/components/chat/error-message.tsx
-#~ msgid "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
-#~ msgstr "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Your recovery phrase was never saved"

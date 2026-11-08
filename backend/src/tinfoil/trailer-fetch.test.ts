@@ -20,7 +20,7 @@ const readBody = async (request: IncomingMessage): Promise<string> => {
 
 type Handler = (request: IncomingMessage, response: ServerResponse) => void | Promise<void>
 
-const routes = new Map<string, Handler>([
+const routes: ReadonlyArray<readonly [path: string, handler: Handler]> = [
   [
     '/echo',
     async (request, response) => {
@@ -60,14 +60,14 @@ const routes = new Map<string, Handler>([
     },
   ],
   ['/hang', () => {}],
-])
+]
 
 describe('fetchWithTrailers', () => {
   let server: Server
   let origin: string
 
   beforeAll(async () => {
-    server = createServer((request, response) => routes.get(request.url ?? '')?.(request, response))
+    server = createServer((request, response) => routes.find(([path]) => path === request.url)?.[1](request, response))
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     origin = `http://127.0.0.1:${z.object({ port: z.number() }).parse(server.address()).port}`
   })

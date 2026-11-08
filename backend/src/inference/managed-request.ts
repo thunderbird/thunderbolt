@@ -128,6 +128,23 @@ type UsageCallbacksOptions = {
   recordUsage?: typeof recordInferenceUsage
 }
 
+/** Waits before the second and third ledger write, so a brief database failure does not drop a finished run. */
+const usageWriteRetryDelaysMs = [100, 500]
+
+/** Run a ledger write, retrying it after each delay. A retry is safe: the insert ignores an event ID it already has. */
+const writeWithRetry = async <T>(write: () => Promise<T>, attempt = 0): Promise<T> => {
+  try {
+    return await write()
+  } catch (error) {
+    const delayMs = usageWriteRetryDelaysMs[attempt]
+    if (delayMs === undefined) {
+      throw error
+    }
+    await Bun.sleep(delayMs)
+    return writeWithRetry(write, attempt + 1)
+  }
+}
+
 /**
  * Callbacks that write a managed run's usage to the ledger, in the shape the SSE stream helpers take. For an
  * AI SDK run, drive them with {@link recordLanguageModelUsage}.
@@ -142,7 +159,7 @@ export const createUsageCallbacks = ({
 }: UsageCallbacksOptions) => ({
   onUsage: async (counts: InferenceTokenCounts) => {
     invokeObserverSafely(telemetry.onUsageRecording)
-    const outcome = await recordUsage(database, { id: eventId, userId, counts, price })
+    const outcome = await writeWithRetry(() => recordUsage(database, { id: eventId, userId, counts, price }))
     invokeObserverSafely(() => telemetry.onUsageRecorded?.(outcome))
   },
   onUsageMissing: () => invokeObserverSafely(telemetry.onUsageMissing),

@@ -127,12 +127,69 @@ const recordEnclaveUsage = async (upstream: TinfoilResponse, callbacks: UsageCal
   }
 }
 
-/** Give the client one copy of the body and read the other to the end, so the trailers arrive even if it leaves. */
-const relayToEnd = (body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> => {
-  const [toClient, toEnd] = body.tee()
-  // capStream's idle handling and the null trailers already report a failed read, so this one ignores it.
-  void toEnd.pipeTo(new WritableStream()).catch(() => {})
-  return toClient
+/** How far a client may fall behind the enclave before it is disconnected instead of buffered. */
+const maxUnreadResponseBytes = 1024 * 1024
+const slowClientError = new DOMException('The client fell too far behind the Tinfoil response', 'AbortError')
+
+/**
+ * Forward the body to the client and keep reading it to the end whatever the client does, so the usage trailer
+ * still arrives after a Stop. A client more than `maxUnreadResponseBytes` behind is cut off rather than buffered:
+ * through `cutOff`, which resets its socket, or by erroring its stream when there is no server to do that. The
+ * read is released once the client is gone and the upstream request has been aborted.
+ */
+const relayToEnd = (
+  body: ReadableStream<Uint8Array>,
+  upstreamSignal: AbortSignal,
+  cutOff: (() => void) | undefined,
+): ReadableStream<Uint8Array> => {
+  const reader = body.getReader()
+  const client = { attached: true }
+  const release = () => {
+    if (!client.attached && upstreamSignal.aborted) {
+      // The upstream request is already over, so a failed cancel has nothing left to report.
+      void reader.cancel().catch(() => {})
+    }
+  }
+  upstreamSignal.addEventListener('abort', release, { once: true })
+
+  return new ReadableStream<Uint8Array>(
+    {
+      start: (controller) => {
+        const forward = (chunk: Uint8Array) => {
+          if (client.attached && (controller.desiredSize ?? 0) <= 0) {
+            client.attached = false
+            if (cutOff) {
+              cutOff()
+            } else {
+              controller.error(slowClientError)
+            }
+          }
+          if (client.attached) {
+            controller.enqueue(chunk)
+          }
+        }
+        const pump = async () => {
+          for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+            forward(chunk.value)
+          }
+          if (client.attached && !upstreamSignal.aborted) {
+            controller.close()
+          }
+        }
+        void pump().catch((error: Error) => {
+          // capStream reports the failure itself; a client that already left needs nothing more.
+          if (client.attached) {
+            controller.error(error)
+          }
+        })
+      },
+      cancel: () => {
+        client.attached = false
+        release()
+      },
+    },
+    new ByteLengthQueuingStrategy({ highWaterMark: maxUnreadResponseBytes }),
+  )
 }
 
 /** Resolve an optional ATC-assigned enclave origin, applying the configured API path prefix. */
@@ -373,7 +430,14 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
             onIdleError: server ? () => server.timeout(request, abruptResponseCloseTimeoutSeconds) : undefined,
           }).stream
         : null
-      const responseBody = metered && cappedBody ? relayToEnd(cappedBody) : cappedBody
+      const responseBody =
+        metered && cappedBody
+          ? relayToEnd(
+              cappedBody,
+              upstreamController.signal,
+              server ? () => server.timeout(request, abruptResponseCloseTimeoutSeconds) : undefined,
+            )
+          : cappedBody
       if (metered) {
         void recordEnclaveUsage(upstream, metered.usage)
       }

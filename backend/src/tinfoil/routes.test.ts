@@ -625,10 +625,8 @@ describe('createTinfoilRoutes', () => {
       )
       const reader = response.body!.getReader()
       expect(new TextDecoder().decode((await reader.read()).value)).toBe('first')
-      // Cancelling one tee branch settles only once the other branch ends, so let the upstream finish first.
-      const cancelled = reader.cancel()
+      await reader.cancel()
       resume.resolve()
-      await cancelled
 
       expect(await readLedger(database, userId)).toEqual([expect.objectContaining(usageCounts)])
       expect((await upstreamSignal.promise).aborted).toBe(false)
@@ -1234,6 +1232,66 @@ describe('createTinfoilRoutes', () => {
       expect(await upstream.aborted).toBeInstanceOf(DOMException)
     })
 
+    it('releases a stalled metered stream once its client is gone', async () => {
+      const sourceCancelled = Promise.withResolvers<void>()
+      // The fake ignores the abort signal, so only the relay releasing its read can cancel this source.
+      const fetchFn: TinfoilFetch = async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start: (controller) => controller.enqueue(new Uint8Array([0x01])),
+            cancel: () => sourceCancelled.resolve(),
+          }),
+        )
+      const app = buildApp({ fetchFn, upstreamIdleTimeoutMs: 20 })
+      await new Promise<void>((resolve) => {
+        app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
+      })
+
+      try {
+        const res = await realFetch(new URL('/tinfoil/v1/chat/completions', app.server!.url), {
+          method: 'POST',
+          body: 'opaque-bytes',
+        })
+        const reader = res.body!.getReader()
+        expect((await reader.read()).value).toEqual(new Uint8Array([0x01]))
+        await expect(reader.read()).rejects.toThrow()
+        await sourceCancelled.promise
+      } finally {
+        await app.stop(true)
+      }
+    })
+
+    it('cuts off a client that falls too far behind, and still reads the enclave to the end', async () => {
+      const userId = 'slow-client'
+      await insertUser(database, userId, false)
+      const trailers = Promise.withResolvers<Headers | null>()
+      const chunks = Array.from({ length: 40 }, () => new Uint8Array(64 * 1024))
+      const fetchFn: TinfoilFetch = async () =>
+        withTrailers(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              pull: (controller) => {
+                const next = chunks.shift()
+                if (next === undefined) {
+                  controller.close()
+                  trailers.resolve(new Headers({ [tinfoilUsageMetricsHeader]: usageReport }))
+                  return
+                }
+                controller.enqueue(next)
+              },
+            }),
+          ),
+          trailers.promise,
+        )
+
+      const response = await buildApp({ auth: createMockAuth(userId, false), fetchFn }).handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }),
+      )
+
+      expect(await readLedger(database, userId)).toEqual([expect.objectContaining(usageCounts)])
+      await expect(response.body!.getReader().read()).rejects.toThrow('fell too far behind')
+    })
+
     it('abruptly closes the socket when a relayed response stalls', async () => {
       const responseChunks = [new Uint8Array([0x01, 0x02]), new Uint8Array([0x03, 0x04])]
       const expectedBytes = new Uint8Array(responseChunks.flatMap((chunk) => [...chunk]))
@@ -1594,9 +1652,8 @@ describe('createTinfoilRoutes', () => {
       }).handle(new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'sealed' }))
       const reader = response.body!.getReader()
       expect(new TextDecoder().decode((await reader.read()).value)).toBe('first ')
-      const cancelled = reader.cancel()
+      await reader.cancel()
       releaseSecondChunk.resolve()
-      await cancelled
 
       expect(await readLedger(database, userId)).toEqual([expect.objectContaining(usageCounts)])
       expect(enclaveFinished.count).toBe(finishedBefore + 1)

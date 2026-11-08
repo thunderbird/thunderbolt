@@ -77,23 +77,31 @@ const resetAppDirNow = async (): Promise<void> => {
   const appDataDirPath = await createAppDir()
   const dbPath = await getDatabasePath(appDataDirPath)
 
-  if (dbPath !== ':memory:') {
-    await resetAppDirOpfs()
-
-    // The data is wiped, so the next start can move to OPFS. An empty OPFS database file tells it
-    // to, even while another tab keeps the IndexedDB database open and its delete pending.
-    const root = await navigator.storage.getDirectory()
-    await root.getFileHandle(powerSyncDbFilename, { create: true })
+  // When OPFS is unavailable, PowerSync's IDBBatchAtomicVFS stores data in IndexedDB under
+  // the dbPath name (':memory:'), and the next startup must reopen that same IndexedDB store.
+  // Wait if another tab still holds it open so restart does not hang behind a pending delete.
+  if (dbPath === ':memory:') {
+    for (const dbName of [':memory:', powerSyncDbFilename]) {
+      await withTimeout(
+        deleteIndexedDbDatabase(dbName, undefined, { waitIfBlocked: true }),
+        10_000,
+        'deleteIndexedDbDatabase',
+      )
+    }
+    return
   }
 
-  // Cleanup IndexedDB storage (and legacy ':memory:' IndexedDB store when OPFS is unavailable).
-  const dbNamesToDelete = dbPath === ':memory:' ? [powerSyncDbFilename, ':memory:'] : [powerSyncDbFilename]
-  for (const dbName of dbNamesToDelete) {
-    try {
-      await withTimeout(deleteIndexedDbDatabase(dbName), 10_000, 'deleteIndexedDbDatabase')
-    } catch (error) {
-      console.error('[resetAppDir] Failed to delete the IndexedDB database:', error)
-    }
+  await resetAppDirOpfs()
+
+  // The data is wiped, so the next start can move to OPFS. An empty OPFS database file tells it
+  // to, even while another tab keeps the IndexedDB database open and its delete pending.
+  const root = await navigator.storage.getDirectory()
+  await root.getFileHandle(powerSyncDbFilename, { create: true })
+  // Cleanup only: a later OPFS start retries it (see `PowerSyncDatabaseImpl.initialize`).
+  try {
+    await withTimeout(deleteIndexedDbDatabase(powerSyncDbFilename), 10_000, 'deleteIndexedDbDatabase')
+  } catch (error) {
+    console.error('[resetAppDir] Failed to delete the IndexedDB database:', error)
   }
 }
 

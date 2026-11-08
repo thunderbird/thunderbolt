@@ -14,7 +14,14 @@ import { isSyncEnabled } from './sync-state'
 import { getDeviceId } from '@/lib/auth-token'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
-import { deleteIndexedDbDatabase, getPlatform, getWebBrowser, hasIndexedDbDatabase, hasOpfsFile } from '@/lib/platform'
+import {
+  deleteIndexedDbDatabase,
+  getPlatform,
+  getWebBrowser,
+  hasIndexedDbDatabase,
+  hasOpfsFile,
+  powerSyncDbFilename,
+} from '@/lib/platform'
 import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
 import {
   getMsSinceLastDownload,
@@ -78,7 +85,8 @@ export const waitForOwnDeviceRow = async (powerSync: CommonPowerSyncDatabase, si
 }
 
 /** The database filename PowerSync opens: the OPFS file, or the IndexedDB database name. */
-const toDbFilename = (path: string) => (path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path)
+const toDbFilename = (path: string) =>
+  path === ':memory:' ? powerSyncDbFilename : path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
 
 /**
  * OPFS when usable, except on a `default`-config device whose data already lives in IndexedDB:

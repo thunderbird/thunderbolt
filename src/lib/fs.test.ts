@@ -127,6 +127,19 @@ describe('resetAppDir', () => {
     expect(entries.has('thunderbolt-sync.db')).toBe(true)
     expect(consoleError).toHaveBeenCalled()
   })
+
+  it('deletes the IndexedDB databases when OPFS is unavailable (:memory: fallback)', async () => {
+    const { idb, deleted } = fakeIndexedDb()
+    Object.defineProperty(navigator, 'storage', { value: undefined, configurable: true })
+    Object.defineProperty(globalThis, 'indexedDB', { value: idb, configurable: true })
+    const consoleWarn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await resetAppDir()
+      expect(deleted).toEqual(['thunderbolt-sync.db', ':memory:'])
+    } finally {
+      consoleWarn.mockRestore()
+    }
+  })
 })
 
 describe('app directory creation', () => {

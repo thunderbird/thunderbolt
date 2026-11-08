@@ -70,6 +70,11 @@ describe('getPowerSyncOptions', () => {
       expect(options.database.dbFilename).toBe('thunderbolt.db')
     })
 
+    it('maps the :memory: no-OPFS sentinel to powerSyncDbFilename instead of literal :memory:', () => {
+      const options = getPowerSyncOptions(':memory:', 'default', false)
+      expect(options.database).toEqual({ dbFilename: 'thunderbolt-sync.db', vfs: WASQLiteVFS.IDBBatchAtomicVFS })
+    })
+
     it('does not include flags', () => {
       const options = getPowerSyncOptions('thunderbolt.db', 'default', true)
       expect(options).not.toHaveProperty('flags')

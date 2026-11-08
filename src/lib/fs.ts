@@ -77,22 +77,23 @@ const resetAppDirNow = async (): Promise<void> => {
   const appDataDirPath = await createAppDir()
   const dbPath = await getDatabasePath(appDataDirPath)
 
-  // Only delete file if it's not an in-memory database
-  if (dbPath === ':memory:') {
-    return
+  if (dbPath !== ':memory:') {
+    await resetAppDirOpfs()
+
+    // The data is wiped, so the next start can move to OPFS. An empty OPFS database file tells it
+    // to, even while another tab keeps the IndexedDB database open and its delete pending.
+    const root = await navigator.storage.getDirectory()
+    await root.getFileHandle(powerSyncDbFilename, { create: true })
   }
 
-  await resetAppDirOpfs()
-
-  // The data is wiped, so the next start can move to OPFS. An empty OPFS database file tells it
-  // to, even while another tab keeps the IndexedDB database open and its delete pending.
-  const root = await navigator.storage.getDirectory()
-  await root.getFileHandle(powerSyncDbFilename, { create: true })
-  // Cleanup only: a later OPFS start retries it (see `PowerSyncDatabaseImpl.initialize`).
-  try {
-    await withTimeout(deleteIndexedDbDatabase(powerSyncDbFilename), 10_000, 'deleteIndexedDbDatabase')
-  } catch (error) {
-    console.error('[resetAppDir] Failed to delete the IndexedDB database:', error)
+  // Cleanup IndexedDB storage (and legacy ':memory:' IndexedDB store when OPFS is unavailable).
+  const dbNamesToDelete = dbPath === ':memory:' ? [powerSyncDbFilename, ':memory:'] : [powerSyncDbFilename]
+  for (const dbName of dbNamesToDelete) {
+    try {
+      await withTimeout(deleteIndexedDbDatabase(dbName), 10_000, 'deleteIndexedDbDatabase')
+    } catch (error) {
+      console.error('[resetAppDir] Failed to delete the IndexedDB database:', error)
+    }
   }
 }
 

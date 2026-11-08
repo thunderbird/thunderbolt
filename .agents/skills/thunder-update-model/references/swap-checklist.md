@@ -89,8 +89,8 @@ Items 12 and 13 each have a leaving half and an incoming half. When both models 
 other item is not applicable.
 
 12. confidential, in `backend/src/inference/managed-models.ts`. Leaving half, when the leaving
-    model is confidential: append its slug to `legacyConfidentialModels` (receipts issued before
-    the deploy, edited rows, old builds). If the no-header fallback in
+    model is confidential: append its slug to `legacyConfidentialModels` (requests in flight
+    during the deploy, edited rows, old builds). If the no-header fallback in
     `backend/src/tinfoil/routes.ts` pointed at the leaving model, choose the new fallback export.
     Done when the leaving model still resolves as legacy in `managed-models.test.ts`. Incoming
     half, when the incoming model is confidential: nothing to add, the allowlist derives from
@@ -129,7 +129,7 @@ other item is not applicable.
    remove only this change's SQL, snapshot and journal entry, then regenerate. Done when
    `grep -n '<model>' backend/drizzle/*.sql` shows the row and `_journal.json` ends with its tag.
 15. universal. Backend fixtures that pin slugs: `managed-usage.integration.test.ts` (price oracle)
-    and `tinfoil/routes.test.ts` (receipt price table and header-acceptance list: add the incoming
+    and `tinfoil/routes.test.ts` (admission price table and header-acceptance list: add the incoming
     model, keep the leaving model), both under `backend/src/`, plus
     `backend/src/api/health.test.ts`. Done when `bun run test:backend` passes (item 24).
 

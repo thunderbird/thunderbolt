@@ -53,7 +53,7 @@ backend route; the pass-through, its SSRF guard and the attestation lifecycle ar
 - **Audio is never persisted.** Frames are in-memory `Float32Array`s and synthesized audio goes
   straight onto a Web Audio graph; only the transcript and reply are stored, via `chat.sendMessage`
   ([`chat-reply.ts`](../../../src/voice/chat-reply.ts)).
-- **Audio is not metered.** Admission and usage receipts apply only to `POST /v1/chat/completions`
+- **Audio is not metered.** Admission and usage metering apply only to `POST /v1/chat/completions`
   (`isManagedChat`, [`tinfoil/routes.ts:247`](../../../backend/src/tinfoil/routes.ts)); `/audio/*` is
   authenticated and rate-limited but consumes no inference quota.
 - **No `TINFOIL_API_KEY` means no default engine**: the route answers

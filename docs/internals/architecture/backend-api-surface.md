@@ -23,7 +23,6 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | `GET /v1/locations`, `GET /v1/locations/:id`                                                           | `api/routes.ts`                         | session                                   | none                                              | gated   |
 | `POST /v1/chat/completions`, `POST /v1/chat/v1/messages`                                               | `inference/routes.ts`                   | session, CLI-device-checked               | `inference`                                       | gated   |
 | `POST /v1/agent/chat`‡                                                                                 | `hosted-agent/routes.ts`                | session, CLI-device-checked               | `inference`                                       | gated   |
-| `POST /v1/inference-usage/receipts`                                                                    | `inference/usage-receipt-routes.ts`     | session, web-only by default              | `receipt`                                         | gated   |
 | `ALL /v1/tinfoil/*`                                                                                    | `tinfoil/routes.ts`                     | session, web-only by default              | `pro`                                             | gated   |
 | `ALL /v1/proxy`                                                                                        | `proxy/routes.ts`                       | session                                   | `pro`                                             | gated   |
 | `WS /v1/proxy/ws`                                                                                      | `proxy/ws.ts`                           | subprotocol bearer                        | `pro` mounted, but not enforcing†                 | exempt  |
@@ -68,7 +67,7 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 - `/v1/devices/*` belongs to `api/encryption.ts`, `/v1/account/devices/*` (CLI, revocation) to `api/account.ts`. Eleven encryption endpoints and their canary rules: [e2e-encryption.md](e2e-encryption.md).
 - `/v1/chat/v1/messages`: the inner `/v1` is part of the Anthropic Messages API shape.
 - `GET /v1/health` (public liveness, `api/routes.ts`) and `/v1/health/*` (token-gated probes, `api/health.ts`) are different modules on one prefix.
-- Managed inference is under `/v1/chat`, not `/v1/inference`; the only `/v1/inference-*` path is the usage receipt.
+- Managed inference is under `/v1/chat`, not `/v1/inference`.
 - No MCP route: remote MCP rides the universal proxy ([mcp-connections.md](mcp-connections.md)). The hosted agent's own MCP calls go straight from the API to the servers in `AGENT_MCP_SERVERS`.
 
 ## Global middleware, in order
@@ -116,7 +115,6 @@ Metered routes add two guards:
 | Tier                       | Budget       | Key                             |
 | -------------------------- | ------------ | ------------------------------- |
 | `inference`                | 60 / minute  | `user:<id>`                     |
-| `receipt`                  | 100 / minute | `user:<id>`                     |
 | `pro`                      | 100 / minute | `user:<id>`                     |
 | `auth`                     | 10 / minute  | `ip:<addr>`                     |
 | `anonymous-sign-in`        | 10 / minute  | `ip:<addr>`                     |

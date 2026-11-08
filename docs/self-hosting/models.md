@@ -59,7 +59,7 @@ Anonymous sessions get far less because they cost an attacker nothing to create.
 
 Windows roll continuously, with no monthly reset and no top-up. A user over the limit sees "AI usage limit reached" with the window named, and can keep using their own keys and any custom endpoint. The per-token prices used for this accounting are seeded into your database when you run the release's migrations. Don't treat those figures as an invoice. They approximate provider list prices; read your provider's own billing for what you owe.
 
-Confidential usage is counted from a receipt the client posts back after it decrypts the response, because your server never sees those token counts. A client that closes mid-answer leaves that spend uncounted, so confidential totals can run low. Your server signs the account, the model and the price, so a client can only under-report its own usage.
+Your server cannot read confidential chats, so it asks the Tinfoil enclave for each chat's token counts and charges them at the stored price. A user who presses Stop is still charged for the whole answer, because the server reads the response to the end. A few kinds of usage are not counted: Tinfoil fees beyond tokens, such as built-in web search; audio requests; requests that start at the same time, which can all pass the quota check before any of them is recorded; and a chat whose usage report never arrives, which the server logs as `inference_usage_missing`.
 
 Bring-your-own-key and custom-endpoint traffic is never counted.
 

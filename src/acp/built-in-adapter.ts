@@ -51,7 +51,6 @@ import {
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
 import { getKnownImageSupport } from '@/ai/image-support'
-import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import {
@@ -93,8 +92,6 @@ import { managedAnthropicCatalogId } from '@/ai/managed-model-id'
  *  {@link fetchViaHarness}, never on the chat entry bundle. */
 type AgentCoreModule = typeof import('@shared/agent-core')
 
-type CurrentHttpClient = { current: AgentAdapterContext['httpClient'] }
-
 /** A thread's live harness plus the workspace it is bound to. Kept in the
  *  per-adapter cache so the conversation (which lives in the harness session) and
  *  its isolated OPFS workspace persist across the thread's turns. */
@@ -104,8 +101,6 @@ type HarnessRecord = {
   readonly baseTools: AgentHarnessTool<undefined>[]
   /** Mutable prompt cell read by the harness's per-turn system-prompt callback. */
   readonly systemPrompt: { current: string }
-  /** Mutable transport cell read by the attached receipt lifecycle. */
-  readonly receiptHttpClient?: CurrentHttpClient
 }
 
 /** A thread's cached build, tagged with the config {@link harnessSignature} it was
@@ -295,8 +290,6 @@ export type ResolvedPiModel = {
   readonly thinkingLevel: ThinkingLevel
   /** Attested transport identity used only to invalidate the local harness cache. */
   readonly tinfoilClient?: SecureClient
-  /** Current receipt transport for the persistent managed harness. */
-  readonly receiptHttpClient?: CurrentHttpClient
 }
 
 /** Time a Tinfoil client acquisition without changing its error behavior. */
@@ -362,7 +355,6 @@ export const resolvePiModel = async (
       const evictClient = options.evictSystemTinfoilClient ?? evictSystemTinfoilClient
       const readAuthToken = options.getAuthToken ?? getAuthToken
       const readSsoMode = options.isSsoMode ?? isSsoMode
-      const receiptHttpClient = { current: context.httpClient }
       const fetch: PiModelDescriptor['fetch'] = async (input, init) => {
         const token = readAuthToken()
         const headers = new Headers(init?.headers)
@@ -382,10 +374,6 @@ export const resolvePiModel = async (
         await handleSessionRejected(response)
         return response
       }
-      const receipts = agentCore.createReceiptLifecycle({
-        submit: (usage) => submitInferenceUsageReceipt(usage, receiptHttpClient.current),
-        reportError: (error) => console.error(error),
-      })
       return {
         descriptor: {
           kind: 'confidential',
@@ -395,14 +383,12 @@ export const resolvePiModel = async (
           baseURL: client.getBaseURL()!,
           apiKey: 'thunderbolt-managed',
           fetch,
-          receipts,
           reasoning: true,
           contextWindow: model.contextWindow ?? undefined,
           supportsImages,
         },
         thinkingLevel,
         tinfoilClient: client,
-        receiptHttpClient,
       }
     }
     if (!model.apiKey) {
@@ -581,12 +567,7 @@ const buildHarnessRecord = async (
     history,
     compaction,
   })
-  return {
-    harness,
-    baseTools: harness.getTools(),
-    systemPrompt,
-    receiptHttpClient: resolved.receiptHttpClient,
-  }
+  return { harness, baseTools: harness.getTools(), systemPrompt }
 }
 
 /** Refresh per-send prompt and app/MCP tool closures on a persistent harness. */
@@ -594,12 +575,8 @@ const prepareHarnessForSend = async (
   agentCore: AgentCoreModule,
   record: HarnessRecord,
   config: PreparedAiRequestConfig,
-  httpClient: AgentAdapterContext['httpClient'],
 ): Promise<void> => {
   record.systemPrompt.current = composeAppHarnessSystemPrompt(config)
-  if (record.receiptHttpClient) {
-    record.receiptHttpClient.current = httpClient
-  }
   const tools = await agentCore.toPiAgentTools(config.toolset)
   const allTools = [...record.baseTools, ...tools]
   const activeToolNames = config.model.toolUsage === 0 ? [] : allTools.map((tool) => tool.name)
@@ -870,7 +847,7 @@ const fetchViaHarness = async (
   init.signal?.throwIfAborted()
   await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
   init.signal?.throwIfAborted()
-  await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+  await prepareHarnessForSend(agentCore, record, config)
   init.signal?.throwIfAborted()
   // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
   const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
@@ -1108,7 +1085,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     init.signal?.throwIfAborted()
     await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
     init.signal?.throwIfAborted()
-    await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+    await prepareHarnessForSend(agentCore, record, config)
     init.signal?.throwIfAborted()
     const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
     init.signal?.throwIfAborted()

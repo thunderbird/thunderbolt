@@ -515,8 +515,8 @@ describe('createTinfoilRoutes', () => {
     )
 
     it.each([
-      ['glm-5-3', '1500', '5250'],
-      ['deepseek-v4-1-flash', '300', '700'],
+      ['glm-5-3', '1800', '5750'],
+      ['deepseek-v4-1-flash', '600', '1450'],
       ['glm-5-3-flash', '300', '700'],
       ['glm-5-2', '1500', '5250'],
       ['deepseek-v4-flash', '300', '700'],
@@ -572,13 +572,13 @@ describe('createTinfoilRoutes', () => {
       },
     )
 
-    it('charges a streamed chat from the trailer that follows its body', async () => {
+    it('charges a streamed chat from the trailer that follows its body, with cached tokens at the cached rate', async () => {
       const userId = 'streamed-chat'
       await insertUser(database, userId, false)
       mockFetch.mockResolvedValueOnce(
         withTrailers(
           makeOkResponse('sealed-stream'),
-          Promise.resolve(new Headers({ [tinfoilUsageMetricsHeader]: usageReport })),
+          Promise.resolve(new Headers({ [tinfoilUsageMetricsHeader]: `${usageReport},cached_prompt_tokens=400` })),
         ),
       )
 
@@ -588,7 +588,11 @@ describe('createTinfoilRoutes', () => {
 
       expect(await response.text()).toBe('sealed-stream')
       expect(await readLedger(database, userId)).toEqual([
-        expect.objectContaining({ model: 'glm-5-3', ...usageCounts, costNanoUsd: 1_000n * 1_500n + 100n * 5_250n }),
+        expect.objectContaining({
+          model: 'glm-5-3',
+          ...usageCounts,
+          costNanoUsd: 600n * 1_800n + 400n * 450n + 100n * 5_750n,
+        }),
       ])
     })
 
@@ -981,7 +985,7 @@ describe('createTinfoilRoutes', () => {
       const response = await responsePromise
       await response.arrayBuffer()
       expect(await readLedger(database, userId)).toEqual([
-        expect.objectContaining({ costNanoUsd: 1_000n * 1_500n + 100n * 5_250n }),
+        expect.objectContaining({ costNanoUsd: 1_000n * 1_800n + 100n * 5_750n }),
       ])
     })
 

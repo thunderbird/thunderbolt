@@ -39,6 +39,8 @@ const officialPriceOracle = {
   'tinfoil/deepseek-v4-flash': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
   'anthropic/claude-opus-5': { inputNanoUsdPerToken: 5_000n, outputNanoUsdPerToken: 25_000n },
   'tinfoil/glm-5-2': { inputNanoUsdPerToken: 1_500n, outputNanoUsdPerToken: 5_250n },
+  'tinfoil/glm-5-3': { inputNanoUsdPerToken: 1_800n, outputNanoUsdPerToken: 5_750n },
+  'tinfoil/deepseek-v4-1-flash': { inputNanoUsdPerToken: 600n, outputNanoUsdPerToken: 1_450n },
   'fireworks/glm-5p3': { inputNanoUsdPerToken: 1_400n, outputNanoUsdPerToken: 4_400n },
   'fireworks/minimax-m3': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n },
 } as const
@@ -331,7 +333,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           provider: 'tinfoil',
           model: 'glm-5-3',
           ...glmCounts,
-          costNanoUsd: 41_250_000n,
+          costNanoUsd: 46_750_000n,
         },
       ])
       expect(usageRows.every(({ id }) => uuidV4Pattern.test(id))).toBe(true)
@@ -372,7 +374,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         {
           provider: 'tinfoil',
           model: 'deepseek-v4-1-flash',
-          ...officialPriceOracle['tinfoil/deepseek-v4-flash'],
+          ...officialPriceOracle['tinfoil/deepseek-v4-1-flash'],
         },
         {
           provider: 'tinfoil',
@@ -380,7 +382,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           ...officialPriceOracle['tinfoil/deepseek-v4-flash'],
         },
         { provider: 'tinfoil', model: 'glm-5-2', ...officialPriceOracle['tinfoil/glm-5-2'] },
-        { provider: 'tinfoil', model: 'glm-5-3', ...officialPriceOracle['tinfoil/glm-5-2'] },
+        { provider: 'tinfoil', model: 'glm-5-3', ...officialPriceOracle['tinfoil/glm-5-3'] },
         { provider: 'tinfoil', model: 'glm-5-3-flash', ...officialPriceOracle['tinfoil/deepseek-v4-flash'] },
       ])
 
@@ -390,7 +392,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           [userId],
         )
       ).rows
-      expect(BigInt(totalCost)).toBe(101_250_000n)
+      expect(BigInt(totalCost)).toBe(106_750_000n)
       expect(providerCalls.map(({ url, method }) => ({ url, method }))).toEqual([
         { url: `${opaqueTinfoilOrigin}/chat/completions`, method: 'POST' },
         { url: 'https://api.anthropic.com/v1/chat/completions', method: 'POST' },

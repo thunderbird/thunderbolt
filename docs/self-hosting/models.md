@@ -67,7 +67,7 @@ Bring-your-own-key and custom-endpoint traffic is never counted.
 
 Quota accounting looks up a price for every deployment-provided request in the `inference_prices` table, keyed by `(provider, model)`. A model with no row is refused with `price-unavailable` before any upstream call, so a price row is necessary for a model to be usable, but not sufficient: the model must also be registered and routed. The managed chat routes recognize the Anthropic and confidential models only; the Fireworks rows are used by the hosted agent when `AGENT_MODEL` names a Fireworks model (see [Hosted agent](./configuration.md#hosted-agent)). Prices are integers in nano-USD per token (USD per million tokens x 1000), so $1.40 per million input tokens is `1400`.
 
-Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029_*`, `0033_*`, `0034_*`, `0035_*`), and `0037` adds the cache-read column and sets the Fireworks rates; there is no admin route. To add a model:
+Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029_*`, `0033_*`, `0034_*`, `0035_*`), `0037` adds the cache-read column and sets the Fireworks rates, and `0040` moves the Tinfoil rows to Tinfoil's list prices; there is no admin route. To add a model:
 
 1. Run `bun db generate --custom --name=seed-<provider>-<model>-price` from `backend/`. This creates an empty migration and its `_journal.json` entry, and also writes `meta/00NN_snapshot.json`, which must be committed with the migration.
 2. Add an `INSERT INTO "inference_prices"` row, with the source and verification date in a comment. The `model` value must match the id the request sends; for Fireworks that is the full `accounts/fireworks/models/<name>`. End the statement with `ON CONFLICT` so it keeps an operator's hand-set price: the live upsert below can create the same row out of band, and a plain INSERT would then fail at startup. Set the cached-input rate when the provider publishes one; null bills cache reads at the input rate (Anthropic: a tenth of it).
@@ -94,7 +94,7 @@ SET input_nano_usd_per_token = EXCLUDED.input_nano_usd_per_token,
 
 Migration `0033` seeds `accounts/fireworks/models/glm-5p3` and `accounts/fireworks/models/minimax-m3`. Those two and `claude-opus-5-5` are the ids the [hosted agent](./configuration.md#hosted-agent) accepts as `AGENT_MODEL` (`managedAgentModels` in `backend/src/inference/managed-models.ts`); a new agent model needs an entry there as well as a price row.
 
-Prompt tokens served from the provider's cache are priced by the nullable `cache_read_nano_usd_per_token` column. Migration `0037` sets it from Fireworks' published cached-input prices: 260 for `glm-5p3` and 60 for `minimax-m3`. When the column is null, Anthropic rows bill cache reads at a tenth of the input price and every other provider bills them at the full input price, which overstates spend. The upsert above sets it on a running deployment.
+Prompt tokens served from the provider's cache are priced by the nullable `cache_read_nano_usd_per_token` column. Migration `0037` sets it from Fireworks' published cached-input prices, 260 for `glm-5p3` and 60 for `minimax-m3`, and `0040` sets Tinfoil's, 450 for `glm-5-3` and 10 for `deepseek-v4-1-flash`. When the column is null, Anthropic rows bill cache reads at a tenth of the input price and every other provider bills them at the full input price, which overstates spend. The upsert above sets it on a running deployment.
 
 ## Confidential inference
 

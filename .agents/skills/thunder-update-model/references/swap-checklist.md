@@ -112,18 +112,19 @@ other item is not applicable.
     the generated SQL:
 
    ```sql
-   -- QUOTA price inherited from <leaving-slug> (<in>/<out>), deliberately not the provider list price.
-   INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token")
-   VALUES ('<provider>', '<model>', <in>, <out>)
+   -- <Provider> list price, verified <date>: <in> in / <cached> cached in / <out> out (nano-USD per token).
+   INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token", "cache_read_nano_usd_per_token")
+   VALUES ('<provider>', '<model>', <in>, <out>, <cached, or NULL when the provider publishes none>)
    ON CONFLICT ("provider", "model") DO NOTHING;
    ```
 
    The `provider` and `model` columns name the upstream identity, never the catalog's `provider`
    field (a `thunderbolt` row is never looked up): confidential rows are `('tinfoil', <public
    slug>)`; direct rows are `(<runtime provider>, <internalName>)` from the incoming model's
-   `managedDirectRuntimes` entry. Copy the leaving model's numbers from its own seed migration;
-   `0029` is the precedent and its comment states the policy (`0033` seeded Fireworks list prices
-   for rows that never shipped and is no precedent for a swap). Keep the SQL,
+   `managedDirectRuntimes` entry. Take the numbers from the provider's published prices (for
+   Tinfoil, the `pricing` object in `https://inference.tinfoil.sh/v1/models`), converting USD per
+   1M tokens to nano-USD per token by multiplying by 1000. `0040` is the precedent and its comment
+   cites the source; `0029` and `0034` seeded quota weights instead and are no longer the policy. Keep the SQL,
    `meta/00NN_snapshot.json` and the new `_journal.json` entry together in the change; a migration
    numbered by hand with an older `when` is silently skipped. If the number collides with `main`,
    remove only this change's SQL, snapshot and journal entry, then regenerate. Done when

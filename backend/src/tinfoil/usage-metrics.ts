@@ -15,8 +15,10 @@ const countPattern = /^(?:0|[1-9][0-9]*)$/
 
 /**
  * Read the token counts from a Tinfoil usage report such as
- * `prompt=32,completion=16,total=48,model=deepseek-v4-1-flash,cost_usd=0.0000424`. Fields are keyed, not positional,
- * and Tinfoil may add more. Null unless `prompt`, `completion` and `total` are all safe integers.
+ * `prompt=32,completion=16,total=48,cached_prompt_tokens=0,model=deepseek-v4-1-flash,cost_usd=0.0000424`. Fields are
+ * keyed, not positional, and Tinfoil may add more. Null unless `prompt`, `completion` and `total` are all safe integers.
+ * `cached_prompt_tokens`, a part of `prompt` billed at the cached rate, counts only when it is a valid count no larger
+ * than `prompt`; otherwise every prompt token is charged at the full input rate.
  */
 export const parseTinfoilUsageMetrics = (report: string): InferenceTokenCounts | null => {
   const fields = new Map(
@@ -35,5 +37,9 @@ export const parseTinfoilUsageMetrics = (report: string): InferenceTokenCounts |
   if (promptTokens === null || completionTokens === null || totalTokens === null) {
     return null
   }
-  return { promptTokens, completionTokens, totalTokens }
+  const cacheReadTokens = count('cached_prompt_tokens')
+  if (cacheReadTokens === null || cacheReadTokens > promptTokens) {
+    return { promptTokens, completionTokens, totalTokens }
+  }
+  return { promptTokens, completionTokens, totalTokens, cacheReadTokens }
 }

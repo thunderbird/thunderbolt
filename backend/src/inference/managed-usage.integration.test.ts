@@ -7,10 +7,9 @@ import { clearSettingsCache, getSettings } from '@/config/settings'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { createInferenceRoutes } from '@/inference/routes'
-import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import { createTinfoilRoutes } from '@/tinfoil/routes'
-import { inferenceModelHeader, inferenceUsageReceiptHeader, inferenceUsageReceiptPath } from '@shared/inference-usage'
+import { inferenceModelHeader } from '@shared/inference-usage'
 import { expect, it } from 'bun:test'
 import { asc, eq, inArray } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -179,9 +178,14 @@ it('preserves one anonymous web-session quota across direct and confidential tra
             })
           }
           if (isOpaqueRequest) {
+            const counts = request.headers.get('X-Tinfoil-Model') === 'deepseek-v4-flash' ? deepseekCounts : glmCounts
             return new Response(glmResponseBytes.slice().buffer, {
               status: 200,
-              headers: { 'Content-Type': 'application/octet-stream', 'Ehbp-Response-Nonce': 'fixture-nonce' },
+              headers: {
+                'Content-Type': 'application/octet-stream',
+                'Ehbp-Response-Nonce': 'fixture-nonce',
+                'X-Tinfoil-Usage-Metrics': `prompt=${counts.promptTokens},completion=${counts.completionTokens},total=${counts.totalTokens}`,
+              },
             })
           }
           throw new Error(`Unexpected managed provider request: ${request.method} ${request.url}`)
@@ -204,13 +208,6 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           }),
         )
         .use(
-          createInferenceUsageReceiptRoutes({
-            auth,
-            database,
-            secret: settings.betterAuthSecret,
-          }),
-        )
-        .use(
           createInferenceRoutes({
             auth,
             database,
@@ -221,6 +218,15 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       const authenticatedJsonHeaders = {
         Authorization: `Bearer ${signedBearerToken}`,
         'Content-Type': 'application/json',
+      }
+      /** The Tinfoil route writes its ledger row after the response, so wait for it before the next admission. */
+      const waitForUsageRows = async (expected: number) => {
+        const deadline = Date.now() + 2_000
+        const count = async () =>
+          (await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, userId))).length
+        for (let rows = await count(); rows < expected && Date.now() < deadline; rows = await count()) {
+          await Bun.sleep(5)
+        }
       }
       const wallClockStartedAt = new Date()
       const [{ recordedAt: databaseStartedAt }] = (
@@ -236,17 +242,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       )
       expect(deepseekResponse.status).toBe(200)
       expect(new Uint8Array(await deepseekResponse.arrayBuffer())).toEqual(glmResponseBytes)
-      const deepseekReceiptResponse = await app.handle(
-        new Request(`http://localhost/v1/${inferenceUsageReceiptPath}`, {
-          method: 'POST',
-          headers: authenticatedJsonHeaders,
-          body: JSON.stringify({
-            receipt: deepseekResponse.headers.get(inferenceUsageReceiptHeader),
-            ...deepseekCounts,
-          }),
-        }),
-      )
-      expect(deepseekReceiptResponse.status).toBe(204)
+      await waitForUsageRows(1)
 
       const opusResponse = await app.handle(
         new Request('http://localhost/v1/chat/completions', {
@@ -275,30 +271,11 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           body: glmRequestBytes.slice().buffer,
         }),
       )
-      const receipt = glmResponse.headers.get(inferenceUsageReceiptHeader)
       const receivedGlmBytes = new Uint8Array(await glmResponse.arrayBuffer())
       expect(glmResponse.status).toBe(200)
-      expect(receipt).toBeString()
-      expect(receipt).not.toBeEmpty()
       expect(glmResponse.headers.has('Trailer')).toBe(false)
       expect(receivedGlmBytes).toEqual(glmResponseBytes)
-
-      const receiptResponse = await app.handle(
-        new Request(`http://localhost/v1/${inferenceUsageReceiptPath}`, {
-          method: 'POST',
-          headers: authenticatedJsonHeaders,
-          body: JSON.stringify({
-            receipt,
-            ...glmCounts,
-            provider: 'anthropic',
-            model: 'client-metadata-cannot-select-the-managed-model',
-            inputNanoUsdPerToken: '0',
-            outputNanoUsdPerToken: '0',
-          }),
-        }),
-      )
-      expect(receiptResponse.status).toBe(204)
-      expect(await receiptResponse.text()).toBe('')
+      await waitForUsageRows(3)
 
       const fourthResponse = await app.handle(
         new Request('http://localhost/v1/chat/completions', {

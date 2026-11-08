@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { clearSettingsCache, getSettings } from '@/config/settings'
+import { clearSettingsCache } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import type { InferenceLogger } from '@/inference/client'
@@ -12,20 +12,25 @@ import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestDb } from '@/test-utils/db'
 import { createMockAuth, createThrowingAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { createRejectingRateLimit } from '@/test-utils/rate-limit'
-import { inferenceModelHeader, inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
-import { verifyInferenceUsageReceipt } from '../inference/usage-receipt'
 import { createTinfoilKeepWarm } from './keep-warm'
 import { createTinfoilRoutes, type TinfoilProxyLatencyLog, type TinfoilProxyLogger } from './routes'
+import { createServer, type Server } from 'node:http'
+import { z } from 'zod'
+import { fetchWithTrailers, type TinfoilFetch } from './trailer-fetch'
 import { createTinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
+import { tinfoilModelHeader, tinfoilRequestUsageMetricsHeader, tinfoilUsageMetricsHeader } from './usage-metrics'
 
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 
 const enclaveUrl = 'https://inference.tinfoil.sh'
 const testApiKey = 'test-tinfoil-key'
-const receiptSecret = getSettings().betterAuthSecret
+/** A usage report in Tinfoil's live format: 1,000 prompt and 100 completion tokens. */
+const usageReport = 'prompt=1000,completion=100,total=1100,model=glm-5-3,cost_usd=0.00205'
+const usageCounts = { promptTokens: 1_000, completionTokens: 100, totalTokens: 1_100 }
 const upstreamTimeoutMessage = 'tinfoil upstream timeout'
 const upstreamIdleTimeoutMessage = 'tinfoil upstream idle timeout'
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
@@ -85,6 +90,21 @@ const createAbortableFetch = (response?: Response) => {
   return { fetchFn, started: started.promise, aborted: aborted.promise }
 }
 
+/** An upstream response whose usage report arrives as a trailer, as the real transport exposes it. */
+const withTrailers = (response: Response, trailers: Promise<Headers | null>) => Object.assign(response, { trailers })
+
+/** Read a user's ledger rows, polling for up to two seconds because the route writes them after the response. */
+const readLedger = async (database: TestDatabase, userId: string, expectedRows = 1) => {
+  const deadline = Date.now() + 2_000
+  const read = () => database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, userId))
+  for (let rows = await read(); ; rows = await read()) {
+    if (rows.length >= expectedRows || Date.now() > deadline) {
+      return rows
+    }
+    await Bun.sleep(5)
+  }
+}
+
 const insertUser = async (database: TestDatabase, id: string, isAnonymous: boolean) => {
   await database.insert(user).values({
     id,
@@ -128,7 +148,7 @@ describe('createTinfoilRoutes', () => {
       apiKey?: string
       enclaveUrl?: string
       auth?: typeof mockAuth
-      fetchFn?: typeof fetch
+      fetchFn?: TinfoilFetch
       logger?: TinfoilProxyLogger
       usageLogger?: InferenceLogger
       database?: InferenceDatabase
@@ -300,7 +320,6 @@ describe('createTinfoilRoutes', () => {
       expect(sent.get('cookie')).toBeNull()
       expect(sent.get('connection')).toBeNull()
       expect(sent.get('host')).toBeNull()
-      expect(sent.get('x-tinfoil-request-usage-metrics')).toBeNull()
       expect(sent.get('te')).toBeNull()
       expect(sent.get('trailer')).toBeNull()
     })
@@ -427,7 +446,6 @@ describe('createTinfoilRoutes', () => {
       expect(await requestEncapsulatedKey.promise).toBe('encapsulated-key')
       expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([0xfe, 0x02, 0x00, 0x7f]))
       expect(res.headers.get('ehbp-response-nonce')).toBe('response-nonce')
-      expect(res.headers.get(inferenceUsageReceiptHeader)).toMatch(/^iu1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
     })
 
     it('forwards the request body for POST requests', async () => {
@@ -449,9 +467,6 @@ describe('createTinfoilRoutes', () => {
       expect(calledUrl).toBe(`${enclaveUrl}/v1/chat/completions`)
       expect(init.body).not.toBeNull()
       expect(init.method).toBe('POST')
-      expect(init.redirect).toBe('manual')
-      expect((init as RequestInit & { decompress: boolean }).decompress).toBeFalse()
-      expect((init as RequestInit & { duplex: string }).duplex).toBe('half')
     })
 
     it('forwards JSON bodies untouched (parse: none keeps the stream intact)', async () => {
@@ -506,10 +521,14 @@ describe('createTinfoilRoutes', () => {
       ['glm-5-2', '1500', '5250'],
       ['deepseek-v4-flash', '300', '700'],
     ])(
-      'uses the catalog price and receipt identity for %s without forwarding the model header',
+      'charges %s at its catalog price from the enclave usage header and pins the model upstream',
       async (model, inputRate, outputRate) => {
+        const userId = `priced-${model}`
+        await insertUser(database, userId, false)
+        mockFetch.mockResolvedValueOnce(makeOkResponse('ok', { [tinfoilUsageMetricsHeader]: usageReport }))
         const entries: Parameters<InferenceLogger['info']>[0][] = []
         const response = await buildApp({
+          auth: createMockAuth(userId, false),
           usageLogger: {
             info: (entry) => {
               entries.push(entry)
@@ -523,21 +542,144 @@ describe('createTinfoilRoutes', () => {
           }),
         )
         expect(response.status).toBe(200)
-        const receipt = response.headers.get(inferenceUsageReceiptHeader)!
-        expect(verifyInferenceUsageReceipt(receipt, receiptSecret, Math.floor(Date.now() / 1_000))).toMatchObject({
+        await response.arrayBuffer()
+
+        const [row] = await readLedger(database, userId)
+        expect(row).toMatchObject({
           provider: 'tinfoil',
           model,
-          inputNanoUsdPerToken: inputRate,
-          outputNanoUsdPerToken: outputRate,
+          ...usageCounts,
+          costNanoUsd: 1_000n * BigInt(inputRate) + 100n * BigInt(outputRate),
         })
-        const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
-        expect(new Headers(init.headers).has(inferenceModelHeader)).toBe(false)
+        const upstreamHeaders = new Headers((mockFetch.mock.calls[0] as [string, RequestInit])[1].headers)
+        expect(upstreamHeaders.has(inferenceModelHeader)).toBe(false)
+        expect(upstreamHeaders.get(tinfoilModelHeader)).toBe(model)
+        expect(upstreamHeaders.get(tinfoilRequestUsageMetricsHeader)).toBe('true')
         expect(entries).toEqual([
-          expect.objectContaining({ event: 'inference_usage_receipt_issued', provider: 'tinfoil', model }),
+          expect.objectContaining({
+            event: 'inference_usage_completed',
+            provider: 'tinfoil',
+            model,
+            transport: 'tinfoil',
+          }),
+          expect.objectContaining({
+            event: 'inference_usage_inserted',
+            provider: 'tinfoil',
+            model,
+            outcome: 'inserted',
+          }),
         ])
-        await response.arrayBuffer()
       },
     )
+
+    it('charges a streamed chat from the trailer that follows its body', async () => {
+      const userId = 'streamed-chat'
+      await insertUser(database, userId, false)
+      mockFetch.mockResolvedValueOnce(
+        withTrailers(
+          makeOkResponse('sealed-stream'),
+          Promise.resolve(new Headers({ [tinfoilUsageMetricsHeader]: usageReport })),
+        ),
+      )
+
+      const response = await buildApp({ auth: createMockAuth(userId, false) }).handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }),
+      )
+
+      expect(await response.text()).toBe('sealed-stream')
+      expect(await readLedger(database, userId)).toEqual([
+        expect.objectContaining({ model: 'glm-5-3', ...usageCounts, costNanoUsd: 1_000n * 1_500n + 100n * 5_250n }),
+      ])
+    })
+
+    it('keeps reading to the trailer after the client stops, without aborting the enclave request', async () => {
+      const userId = 'stopped-chat'
+      await insertUser(database, userId, false)
+      const encoder = new TextEncoder()
+      const resume = Promise.withResolvers<void>()
+      const trailers = Promise.withResolvers<Headers | null>()
+      const chunks = ['first', 'second']
+      const upstreamSignal = Promise.withResolvers<AbortSignal>()
+      const fetchFn: TinfoilFetch = async (_url, init) => {
+        upstreamSignal.resolve(init.signal)
+        const body = new ReadableStream<Uint8Array>({
+          pull: async (controller) => {
+            if (chunks.length === 1) {
+              await resume.promise
+            }
+            const next = chunks.shift()
+            if (next === undefined) {
+              controller.close()
+              // The real transport settles trailers only once the body is read to its end.
+              trailers.resolve(new Headers({ [tinfoilUsageMetricsHeader]: usageReport }))
+              return
+            }
+            controller.enqueue(encoder.encode(next))
+          },
+        })
+        return withTrailers(new Response(body), trailers.promise)
+      }
+
+      const response = await buildApp({ auth: createMockAuth(userId, false), fetchFn }).handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }),
+      )
+      const reader = response.body!.getReader()
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe('first')
+      // Cancelling one tee branch settles only once the other branch ends, so let the upstream finish first.
+      const cancelled = reader.cancel()
+      resume.resolve()
+      await cancelled
+
+      expect(await readLedger(database, userId)).toEqual([expect.objectContaining(usageCounts)])
+      expect((await upstreamSignal.promise).aborted).toBe(false)
+    })
+
+    it.each([
+      ['no report', makeOkResponse('ok')],
+      ['a malformed report', makeOkResponse('ok', { [tinfoilUsageMetricsHeader]: 'prompt=1,completion=x' })],
+      ['a body that never completes', withTrailers(makeOkResponse('ok'), Promise.resolve(null))],
+    ])('logs a usage gap and charges nothing for a successful chat with %s', async (_, upstreamResponse) => {
+      const userId = `usage-gap-${_.replaceAll(' ', '-')}`
+      await insertUser(database, userId, false)
+      mockFetch.mockResolvedValueOnce(upstreamResponse)
+      const usageLogger = { info: mock() }
+
+      const response = await buildApp({ auth: createMockAuth(userId, false), usageLogger }).handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }),
+      )
+      await response.arrayBuffer()
+      await Bun.sleep(20)
+
+      expect(usageLogger.info).toHaveBeenCalledWith(
+        {
+          event: 'inference_usage_missing',
+          provider: 'tinfoil',
+          model: 'glm-5-3',
+          route: '/tinfoil/v1/chat/completions',
+        },
+        'Inference usage missing',
+      )
+      expect(await readLedger(database, userId, 0)).toEqual([])
+    })
+
+    it('overrides client-supplied usage-metrics and model headers with the server values', async () => {
+      const response = await buildApp().handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            [inferenceModelHeader]: 'deepseek-v4-1-flash',
+            [tinfoilModelHeader]: 'glm-5-3',
+            [tinfoilRequestUsageMetricsHeader]: 'false',
+          },
+          body: 'opaque-bytes',
+        }),
+      )
+      await response.arrayBuffer()
+
+      const upstreamHeaders = new Headers((mockFetch.mock.calls[0] as [string, RequestInit])[1].headers)
+      expect(upstreamHeaders.get(tinfoilModelHeader)).toBe('deepseek-v4-1-flash')
+      expect(upstreamHeaders.get(tinfoilRequestUsageMetricsHeader)).toBe('true')
+    })
 
     it.each([
       [
@@ -556,7 +698,8 @@ describe('createTinfoilRoutes', () => {
       'classifies the exact resolved POST pathname with a %s and preserves its query',
       async (_, base, path, expectedUrl) => {
         const userId = `managed-${_.replaceAll(' ', '-')}`
-        const requestStartedAt = Math.floor(Date.now() / 1_000)
+        await insertUser(database, userId, false)
+        mockFetch.mockResolvedValueOnce(makeOkResponse('ok', { [tinfoilUsageMetricsHeader]: usageReport }))
         const entries: Array<{ context: Parameters<InferenceLogger['info']>[0]; message: string }> = []
         const usageLogger: InferenceLogger = {
           info: (context, message) => entries.push({ context, message }),
@@ -574,50 +717,40 @@ describe('createTinfoilRoutes', () => {
             body: 'opaque-client-claims-another-model',
           }),
         )
-        const requestFinishedAt = Math.floor(Date.now() / 1_000)
+        await response.arrayBuffer()
 
         const [upstreamUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
         expect(upstreamUrl).toBe(expectedUrl)
-        const receipt = response.headers.get(inferenceUsageReceiptHeader)
-        expect(receipt).not.toBeNull()
-        if (!receipt) {
-          return
-        }
-        expect(receipt).toMatch(/^iu1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
-        const claims = verifyInferenceUsageReceipt(receipt, receiptSecret, Math.floor(Date.now() / 1_000))
-        expect(claims).not.toBeNull()
-        if (!claims) {
-          return
-        }
-        expect(claims).toMatchObject({
-          userId,
-          provider: 'tinfoil',
-          model: 'glm-5-3',
-          inputNanoUsdPerToken: '1500',
-          outputNanoUsdPerToken: '5250',
-        })
-        expect(claims.issuedAt).toBeGreaterThanOrEqual(requestStartedAt)
-        expect(claims.issuedAt).toBeLessThanOrEqual(requestFinishedAt)
-        expect(claims.eventId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+        const [row] = await readLedger(database, userId)
+        expect(row).toMatchObject({ provider: 'tinfoil', model: 'glm-5-3', ...usageCounts })
+        expect(row?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
         expect(entries).toEqual([
           {
             context: {
-              event: 'inference_usage_receipt_issued',
+              event: 'inference_usage_completed',
               provider: 'tinfoil',
               model: 'glm-5-3',
-              eventId: claims.eventId,
-              route: '/tinfoil' + path.split('?')[0],
+              eventId: row?.id,
+              transport: 'tinfoil',
             },
-            message: 'Inference usage receipt issued',
+            message: 'Inference usage completed',
+          },
+          {
+            context: {
+              event: 'inference_usage_inserted',
+              provider: 'tinfoil',
+              model: 'glm-5-3',
+              eventId: row?.id,
+              outcome: 'inserted',
+            },
+            message: 'Inference usage inserted',
           },
         ])
         const serializedEntries = JSON.stringify(entries)
-        expect(serializedEntries).not.toContain(receipt)
         expect(serializedEntries).not.toContain(userId)
         expect(serializedEntries).not.toContain('opaque-client')
         expect(serializedEntries).not.toContain('1500')
         expect(serializedEntries).not.toContain('5250')
-        await response.arrayBuffer()
       },
     )
 
@@ -629,8 +762,9 @@ describe('createTinfoilRoutes', () => {
         }),
       )
 
-      expect(response.headers.get(inferenceUsageReceiptHeader)).toMatch(/^iu1\./)
-      expect(mockFetch.mock.calls[0]?.[0]).toBe('https://inference.tinfoil.sh/v1/%63hat/completions?stream=true')
+      const [upstreamUrl, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      expect(new Headers(init.headers).get(tinfoilRequestUsageMetricsHeader)).toBe('true')
+      expect(upstreamUrl).toBe('https://inference.tinfoil.sh/v1/%63hat/completions?stream=true')
       await response.arrayBuffer()
     })
 
@@ -655,9 +789,11 @@ describe('createTinfoilRoutes', () => {
       const response = await buildApp({ database: countingDatabase }).handle(request)
 
       expect(response.status).toBe(200)
-      expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
       expect(policySelects.count).toBe(0)
       expect(mockFetch).toHaveBeenCalledTimes(1)
+      const upstreamHeaders = new Headers((mockFetch.mock.calls[0] as [string, RequestInit])[1].headers)
+      expect(upstreamHeaders.has(tinfoilRequestUsageMetricsHeader)).toBe(false)
+      expect(upstreamHeaders.has(tinfoilModelHeader)).toBe(false)
       await response.arrayBuffer()
     })
 
@@ -679,7 +815,6 @@ describe('createTinfoilRoutes', () => {
 
         expect(response.status).toBe(503)
         expect(await response.json()).toEqual({ error: { code: 'INFERENCE_PRICE_UNAVAILABLE' } })
-        expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
         expect(mockFetch).not.toHaveBeenCalled()
       },
     )
@@ -750,9 +885,7 @@ describe('createTinfoilRoutes', () => {
             expect(await response.json(), boundary).toEqual({
               error: { code: 'INFERENCE_QUOTA_EXCEEDED', window },
             })
-            expect(response.headers.get(inferenceUsageReceiptHeader), boundary).toBeNull()
           } else {
-            expect(response.headers.get(inferenceUsageReceiptHeader), boundary).not.toBeNull()
             await response.arrayBuffer()
           }
         }
@@ -785,89 +918,56 @@ describe('createTinfoilRoutes', () => {
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it.each([300, 400, 429, 500])('does not issue or log a receipt for upstream status %s', async (status) => {
-      const entries: Array<Parameters<InferenceLogger['info']>[0]> = []
-      mockFetch.mockResolvedValueOnce(new Response('upstream failure', { status }))
-      const response = await buildApp({
-        usageLogger: { info: (context) => entries.push(context) },
-      }).handle(
-        new Request('http://localhost/tinfoil/v1/chat/completions', {
-          method: 'POST',
-          body: 'opaque-bytes',
-        }),
-      )
+    it.each([300, 400, 429, 500])(
+      'charges and logs nothing for upstream status %s without a report',
+      async (status) => {
+        const userId = `rejected-${status}`
+        await insertUser(database, userId, false)
+        const entries: Array<Parameters<InferenceLogger['info']>[0]> = []
+        mockFetch.mockResolvedValueOnce(new Response('upstream failure', { status }))
+        const response = await buildApp({
+          auth: createMockAuth(userId, false),
+          usageLogger: { info: (context) => entries.push(context) },
+        }).handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            body: 'opaque-bytes',
+          }),
+        )
 
-      expect(response.status).toBe(status)
-      expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
-      expect(entries).toEqual([])
-      await response.arrayBuffer()
-    })
+        expect(response.status).toBe(status)
+        await response.arrayBuffer()
+        await Bun.sleep(20)
+        expect(entries).toEqual([])
+        expect(await readLedger(database, userId, 0)).toEqual([])
+      },
+    )
 
-    it.each([
-      ['a non-chat response', 'GET', '/v1/models', 200],
-      ['a managed non-2xx response', 'POST', '/v1/chat/completions', 429],
-    ] as const)('does not relay an upstream-supplied receipt on %s', async (_, method, path, status) => {
+    it('charges a rejected request that still carries a usage report', async () => {
+      const userId = 'rejected-with-report'
+      await insertUser(database, userId, false)
       mockFetch.mockResolvedValueOnce(
-        new Response('upstream response', {
-          status,
-          headers: { [inferenceUsageReceiptHeader]: 'upstream-forged-receipt' },
-        }),
+        new Response('upstream failure', { status: 400, headers: { [tinfoilUsageMetricsHeader]: usageReport } }),
       )
 
-      const response = await buildApp().handle(
-        new Request(`http://localhost/tinfoil${path}`, {
-          method,
-          body: method === 'POST' ? 'opaque-bytes' : undefined,
-        }),
+      const response = await buildApp({ auth: createMockAuth(userId, false) }).handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }),
       )
-
-      expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
       await response.arrayBuffer()
+
+      expect(await readLedger(database, userId)).toEqual([expect.objectContaining(usageCounts)])
     })
 
-    it('replaces an upstream-supplied receipt with the server-issued token on an exact managed 2xx', async () => {
-      const forgedReceipt = 'upstream-forged-receipt'
-      mockFetch.mockResolvedValueOnce(
-        new Response('opaque response', {
-          status: 200,
-          headers: { [inferenceUsageReceiptHeader]: forgedReceipt },
-        }),
-      )
-
-      const response = await buildApp().handle(
-        new Request('http://localhost/tinfoil/v1/chat/completions', {
-          method: 'POST',
-          body: 'opaque-bytes',
-        }),
-      )
-
-      const receipt = response.headers.get(inferenceUsageReceiptHeader)
-      expect(receipt).not.toBeNull()
-      expect(receipt).not.toBe(forgedReceipt)
-      if (!receipt) {
-        return
-      }
-      expect(verifyInferenceUsageReceipt(receipt, receiptSecret, Math.floor(Date.now() / 1_000))).toMatchObject({
-        userId: 'test-user',
-        provider: 'tinfoil',
-        model: 'glm-5-3',
-        inputNanoUsdPerToken: '1500',
-        outputNanoUsdPerToken: '5250',
-      })
-      expect(await response.text()).toBe('opaque response')
-    })
-
-    it('keeps the request-start price snapshot when the current price changes during fetch', async () => {
+    it('charges at the admission price when the current price changes during fetch', async () => {
+      const userId = 'price-snapshot'
+      await insertUser(database, userId, false)
       const fetchStarted = Promise.withResolvers<void>()
       const upstreamResponse = Promise.withResolvers<Response>()
-      const fetchFn: typeof fetch = Object.assign(
-        async () => {
-          fetchStarted.resolve()
-          return upstreamResponse.promise
-        },
-        { preconnect: globalThis.fetch.preconnect },
-      )
-      const responsePromise = buildApp({ fetchFn }).handle(
+      const fetchFn: TinfoilFetch = async () => {
+        fetchStarted.resolve()
+        return upstreamResponse.promise
+      }
+      const responsePromise = buildApp({ auth: createMockAuth(userId, false), fetchFn }).handle(
         new Request('http://localhost/tinfoil/v1/chat/completions', {
           method: 'POST',
           body: 'opaque-bytes',
@@ -878,24 +978,21 @@ describe('createTinfoilRoutes', () => {
         .update(inferencePrices)
         .set({ inputNanoUsdPerToken: 9_999n, outputNanoUsdPerToken: 8_888n })
         .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, 'glm-5-3')))
-      upstreamResponse.resolve(makeOkResponse())
+      upstreamResponse.resolve(makeOkResponse('ok', { [tinfoilUsageMetricsHeader]: usageReport }))
 
       const response = await responsePromise
-      const receipt = response.headers.get(inferenceUsageReceiptHeader)
-      expect(receipt).not.toBeNull()
-      if (!receipt) {
-        return
-      }
-      const claims = verifyInferenceUsageReceipt(receipt, receiptSecret, Math.floor(Date.now() / 1_000))
-      expect(claims).toMatchObject({
-        inputNanoUsdPerToken: '1500',
-        outputNanoUsdPerToken: '5250',
-      })
       await response.arrayBuffer()
+      expect(await readLedger(database, userId)).toEqual([
+        expect.objectContaining({ costNanoUsd: 1_000n * 1_500n + 100n * 5_250n }),
+      ])
     })
 
-    it('does not let usage logger failure alter a successful opaque response', async () => {
+    it('still charges when the usage logger throws, without altering the opaque response', async () => {
+      const userId = 'throwing-logger'
+      await insertUser(database, userId, false)
+      mockFetch.mockResolvedValueOnce(makeOkResponse('ok', { [tinfoilUsageMetricsHeader]: usageReport }))
       const response = await buildApp({
+        auth: createMockAuth(userId, false),
         usageLogger: {
           info: () => {
             throw new Error('usage logger unavailable')
@@ -909,8 +1006,8 @@ describe('createTinfoilRoutes', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(response.headers.get(inferenceUsageReceiptHeader)).toMatch(/^iu1\./)
       expect(await response.text()).toBe('ok')
+      expect(await readLedger(database, userId)).toEqual([expect.objectContaining(usageCounts)])
     })
   })
 
@@ -984,7 +1081,7 @@ describe('createTinfoilRoutes', () => {
       })
     })
 
-    it('does not capture downstream client aborts', async () => {
+    it('does not capture downstream client aborts on an unmetered path', async () => {
       const captureInferenceErrorMock = mock(() => {})
       const upstream = createAbortableFetch()
       const clientController = new AbortController()
@@ -993,7 +1090,7 @@ describe('createTinfoilRoutes', () => {
         fetchFn: upstream.fetchFn,
       })
       const response = app.handle(
-        new Request('http://localhost/tinfoil/v1/chat/completions', {
+        new Request('http://localhost/tinfoil/v1/audio/speech', {
           method: 'POST',
           body: 'opaque-bytes',
           signal: clientController.signal,
@@ -1104,7 +1201,6 @@ describe('createTinfoilRoutes', () => {
       )
 
       expect(res.status).toBe(504)
-      expect(res.headers.get(inferenceUsageReceiptHeader)).toBeNull()
       expect(res.headers.get('content-type')).toBe('text/plain')
       const body = await res.text()
       expect(body).toBe(upstreamTimeoutMessage)
@@ -1183,12 +1279,12 @@ describe('createTinfoilRoutes', () => {
       }
     })
 
-    it('aborts upstream when the client request aborts', async () => {
+    it('aborts an unmetered upstream request when the client request aborts', async () => {
       const upstream = createAbortableFetch()
       const clientController = new AbortController()
       const app = buildApp({ fetchFn: upstream.fetchFn })
       const response = app.handle(
-        new Request('http://localhost/tinfoil/v1/chat/completions', {
+        new Request('http://localhost/tinfoil/v1/audio/speech', {
           method: 'POST',
           body: 'opaque-bytes',
           signal: clientController.signal,
@@ -1200,8 +1296,27 @@ describe('createTinfoilRoutes', () => {
 
       expect(await upstream.aborted).toBe(clientController.signal.reason)
       const resolvedResponse = await response
-      expect(resolvedResponse.headers.get(inferenceUsageReceiptHeader)).toBeNull()
       expect(await resolvedResponse.text()).not.toContain(testApiKey)
+    })
+
+    it('keeps a metered chat running when the client aborts, so only its own timeouts end it', async () => {
+      const upstream = createAbortableFetch()
+      const clientController = new AbortController()
+      const app = buildApp({ fetchFn: upstream.fetchFn, upstreamHeadersTimeoutMs: 50 })
+      const response = app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          body: 'opaque-bytes',
+          signal: clientController.signal,
+        }),
+      )
+
+      const upstreamSignal = await upstream.started
+      clientController.abort()
+      expect(upstreamSignal.aborted).toBe(false)
+
+      expect(await upstream.aborted).toBeInstanceOf(DOMException)
+      expect((await response).status).toBe(504)
     })
 
     it('keeps a steady response stream alive beyond the headers timeout', async () => {
@@ -1344,7 +1459,7 @@ describe('createTinfoilRoutes', () => {
       ])
     })
 
-    it('logs exactly one 499 line when the client aborts before upstream headers', async () => {
+    it('logs exactly one 499 line when the client aborts an unmetered request before upstream headers', async () => {
       const entries: Array<{ context: TinfoilProxyLatencyLog; message: string }> = []
       const timestamps = [5, 10, 12, 20]
       const upstream = createAbortableFetch()
@@ -1358,7 +1473,7 @@ describe('createTinfoilRoutes', () => {
         nowFn: () => timestamps.shift() ?? 0,
       })
       const response = app.handle(
-        new Request('http://localhost/tinfoil/v1/chat/completions', {
+        new Request('http://localhost/tinfoil/v1/audio/speech', {
           method: 'POST',
           body: 'opaque-bytes',
           signal: clientController.signal,
@@ -1373,7 +1488,7 @@ describe('createTinfoilRoutes', () => {
         {
           context: {
             event: 'tinfoil_proxy_latency',
-            route: '/tinfoil/v1/chat/completions',
+            route: '/tinfoil/v1/audio/speech',
             status: 499,
             preHandlerMs: 5,
             handlerToUpstreamFetchMs: 2,
@@ -1418,6 +1533,73 @@ describe('createTinfoilRoutes', () => {
           message: 'Tinfoil proxy latency',
         },
       ])
+    })
+  })
+
+  describe('through the real trailer transport', () => {
+    let enclave: Server
+    let enclaveOrigin: string
+    let releaseSecondChunk = Promise.withResolvers<void>()
+    const enclaveFinished = { count: 0 }
+
+    beforeAll(async () => {
+      enclave = createServer(async (request, response) => {
+        request.resume()
+        response.writeHead(200, { 'Content-Type': 'text/event-stream', Trailer: tinfoilUsageMetricsHeader })
+        response.write('first ')
+        await releaseSecondChunk.promise
+        response.write('second')
+        response.addTrailers({ [tinfoilUsageMetricsHeader]: usageReport })
+        response.end(() => {
+          enclaveFinished.count += 1
+        })
+      })
+      await new Promise<void>((resolve) => enclave.listen(0, '127.0.0.1', resolve))
+      enclaveOrigin = `http://127.0.0.1:${z.object({ port: z.number() }).parse(enclave.address()).port}`
+    })
+
+    afterAll(() => {
+      enclave.closeAllConnections()
+      enclave.close()
+    })
+
+    beforeEach(() => {
+      releaseSecondChunk = Promise.withResolvers<void>()
+    })
+
+    it('relays a streamed chat and charges it from the HTTP trailer', async () => {
+      const userId = 'real-transport-read'
+      await insertUser(database, userId, false)
+      releaseSecondChunk.resolve()
+
+      const response = await buildApp({
+        auth: createMockAuth(userId, false),
+        fetchFn: fetchWithTrailers,
+        enclaveUrl: enclaveOrigin,
+      }).handle(new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'sealed' }))
+
+      expect(await response.text()).toBe('first second')
+      expect(await readLedger(database, userId)).toEqual([expect.objectContaining(usageCounts)])
+    })
+
+    it('finishes the enclave stream and charges it after the client stops reading', async () => {
+      const userId = 'real-transport-stop'
+      await insertUser(database, userId, false)
+      const finishedBefore = enclaveFinished.count
+
+      const response = await buildApp({
+        auth: createMockAuth(userId, false),
+        fetchFn: fetchWithTrailers,
+        enclaveUrl: enclaveOrigin,
+      }).handle(new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'sealed' }))
+      const reader = response.body!.getReader()
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe('first ')
+      const cancelled = reader.cancel()
+      releaseSecondChunk.resolve()
+      await cancelled
+
+      expect(await readLedger(database, userId)).toEqual([expect.objectContaining(usageCounts)])
+      expect(enclaveFinished.count).toBe(finishedBefore + 1)
     })
   })
 
@@ -1624,7 +1806,6 @@ describe('createTinfoilRoutes', () => {
       )
 
       expect(response.status).toBe(401)
-      expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
       expect(policySelects.count).toBe(0)
       expect(mockFetch).not.toHaveBeenCalled()
     })

@@ -366,11 +366,12 @@ describe('createTinfoilRoutes', () => {
       expect(sent.get('x-device-name')).toBeNull()
     })
 
-    it('strips response hop-by-hop headers while preserving content encoding', async () => {
+    it('strips response hop-by-hop headers and the trailer announcement while preserving content encoding', async () => {
       mockFetch.mockResolvedValueOnce(
         makeOkResponse('opaque', {
           connection: 'keep-alive',
           'transfer-encoding': 'chunked',
+          trailer: 'X-Tinfoil-Usage-Metrics',
           'content-encoding': 'br',
         }),
       )
@@ -380,6 +381,7 @@ describe('createTinfoilRoutes', () => {
 
       expect(res.headers.get('connection')).toBeNull()
       expect(res.headers.get('transfer-encoding')).toBeNull()
+      expect(res.headers.get('trailer')).toBeNull()
       expect(res.headers.get('content-encoding')).toBe('br')
       await res.arrayBuffer()
     })
@@ -771,17 +773,30 @@ describe('createTinfoilRoutes', () => {
     })
 
     it.each([
+      '/v1/chat/completions/',
+      '/v1/%63hat/completions%',
+      '/v1/chat/completion',
+      '/v1/chat/completions-extra',
+      '/chat/completions',
+      '/v1/embeddings',
+      '/v1/responses',
+      '/v1/completions',
+    ])('rejects POST %s before any quota read or upstream call', async (path) => {
+      const { countingDatabase, policySelects } = createCountingDatabase()
+      const request = new Request(`http://localhost/tinfoil${path}`, { method: 'POST', body: 'opaque-bytes' })
+      const response = await buildApp({ database: countingDatabase }).handle(request)
+
+      expect(response.status).toBe(404)
+      expect(policySelects.count).toBe(0)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it.each([
       ['GET', '/v1/chat/completions'],
       ['OPTIONS', '/v1/chat/completions'],
-      ['POST', '/v1/chat/completions/'],
-      ['POST', '/v1/%63hat/completions%'],
-      ['POST', '/v1/chat/completion'],
-      ['POST', '/v1/chat/completions-extra'],
-      ['POST', '/chat/completions'],
       ['GET', '/v1/models'],
       ['POST', '/v1/audio/transcriptions'],
       ['POST', '/v1/audio/speech'],
-      ['POST', '/v1/embeddings'],
     ] as const)('does not apply managed policy to %s %s', async (method, path) => {
       const { countingDatabase, policySelects } = createCountingDatabase()
       const request = new Request(`http://localhost/tinfoil${path}`, {
@@ -1727,16 +1742,12 @@ describe('createTinfoilRoutes', () => {
 
       await drain(
         await app.handle(
-          new Request('http://localhost/tinfoil/chat/completions', {
-            method: 'POST',
-            headers: { 'X-Tinfoil-Enclave-Url': assignedEnclaveUrl },
-            body: 'opaque-bytes',
-          }),
+          new Request('http://localhost/tinfoil/models', { headers: { 'X-Tinfoil-Enclave-Url': assignedEnclaveUrl } }),
         ),
       )
 
       const [calledUrl] = mockFetch.mock.calls[0] as [string, RequestInit]
-      expect(calledUrl).toBe(`${assignedEnclaveUrl}/chat/completions`)
+      expect(calledUrl).toBe(`${assignedEnclaveUrl}/models`)
     })
 
     it.each(['https://sub.tinfoil.sh', 'https://tinfoil.sh'])(

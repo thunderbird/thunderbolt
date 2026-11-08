@@ -36,6 +36,11 @@ import {
 
 const allowedMethods = new Set(['GET', 'POST', 'OPTIONS'])
 const bodylessMethods = new Set(['GET', 'OPTIONS'])
+/**
+ * The only upstream paths a client may POST to. Chat is metered and voice is not yet. Any other POST would spend
+ * the operator's key outside the quota, so it gets a 404.
+ */
+const allowedPostPaths = new Set(['/v1/chat/completions', '/v1/audio/transcriptions', '/v1/audio/speech'])
 const defaultUpstreamHeadersTimeoutMs = 30_000
 const defaultUpstreamIdleTimeoutMs = 60_000
 const abruptResponseCloseTimeoutSeconds = 1
@@ -339,11 +344,15 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     const subpath = wildcard.startsWith('/') ? wildcard : `/${wildcard}`
     const search = requestUrl.search
     const upstreamUrl = `${upstreamBaseUrl}${subpath}${search}`
+    const upstreamPath = decodePolicyPathname(new URL(upstreamUrl).pathname)
+    if (method === 'POST' && !allowedPostPaths.has(upstreamPath)) {
+      recordLatency({ status: 404, completedAt: nowFn() })
+      return textResponse(404, 'Not found')
+    }
     upstreamOriginStore.record(upstreamUrl)
 
     let metered: { model: string; usage: UsageCallbacks } | null = null
-    const isManagedChat =
-      method === 'POST' && decodePolicyPathname(new URL(upstreamUrl).pathname) === '/v1/chat/completions'
+    const isManagedChat = method === 'POST' && upstreamPath === '/v1/chat/completions'
     // Preserve the default for clients predating the header.
     const identity = resolveConfidentialManagedModel(
       request.headers.get(inferenceModelHeader) ?? defaultModelGlm53.model,
@@ -402,8 +411,14 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       // Strip upstream CORS headers: the enclave emits a duplicated
       // `Access-Control-Allow-Credentials: true, true`, which browsers reject
       // outright. Our own cors() middleware sets the correct CORS headers for
-      // our origin (including Ehbp-Response-Nonce in expose-headers).
-      const responseHeaders = filterHeaders(upstream.headers, ['transfer-encoding', 'connection', /^access-control-/i])
+      // our origin (including Ehbp-Response-Nonce in expose-headers). `Trailer` announces the usage trailer, which
+      // the backend reads and never relays.
+      const responseHeaders = filterHeaders(upstream.headers, [
+        'transfer-encoding',
+        'connection',
+        'trailer',
+        /^access-control-/i,
+      ])
 
       const cappedBody = upstream.body
         ? capStream(upstream.body, {

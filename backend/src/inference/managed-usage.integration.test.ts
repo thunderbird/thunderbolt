@@ -36,13 +36,25 @@ type ProviderCall = Readonly<{
 // Tinfoil prices: https://tinfoil.sh/pricing
 // Canonical Tinfoil catalog: https://api.tinfoil.sh/api/config/models?paid=true
 const officialPriceOracle = {
-  'tinfoil/deepseek-v4-flash': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
-  'anthropic/claude-opus-5': { inputNanoUsdPerToken: 5_000n, outputNanoUsdPerToken: 25_000n },
-  'tinfoil/glm-5-2': { inputNanoUsdPerToken: 1_500n, outputNanoUsdPerToken: 5_250n },
-  'tinfoil/glm-5-3': { inputNanoUsdPerToken: 1_800n, outputNanoUsdPerToken: 5_750n },
-  'tinfoil/deepseek-v4-1-flash': { inputNanoUsdPerToken: 600n, outputNanoUsdPerToken: 1_450n },
-  'fireworks/glm-5p3': { inputNanoUsdPerToken: 1_400n, outputNanoUsdPerToken: 4_400n },
-  'fireworks/minimax-m3': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n },
+  'tinfoil/deepseek-v4-flash': {
+    inputNanoUsdPerToken: 300n,
+    outputNanoUsdPerToken: 700n,
+    cacheReadNanoUsdPerToken: null,
+  },
+  'anthropic/claude-opus-5': {
+    inputNanoUsdPerToken: 5_000n,
+    outputNanoUsdPerToken: 25_000n,
+    cacheReadNanoUsdPerToken: null,
+  },
+  'tinfoil/glm-5-2': { inputNanoUsdPerToken: 1_500n, outputNanoUsdPerToken: 5_250n, cacheReadNanoUsdPerToken: null },
+  'tinfoil/glm-5-3': { inputNanoUsdPerToken: 1_800n, outputNanoUsdPerToken: 5_750n, cacheReadNanoUsdPerToken: 450n },
+  'tinfoil/deepseek-v4-1-flash': {
+    inputNanoUsdPerToken: 600n,
+    outputNanoUsdPerToken: 1_450n,
+    cacheReadNanoUsdPerToken: 10n,
+  },
+  'fireworks/glm-5p3': { inputNanoUsdPerToken: 1_400n, outputNanoUsdPerToken: 4_400n, cacheReadNanoUsdPerToken: 260n },
+  'fireworks/minimax-m3': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n, cacheReadNanoUsdPerToken: 60n },
 } as const
 
 const deepseekCounts = { promptTokens: 10_000, completionTokens: 10_000, totalTokens: 20_000 } as const
@@ -352,11 +364,12 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         .from(inferencePrices)
         .orderBy(asc(inferencePrices.provider), asc(inferencePrices.model))
       expect(
-        priceRows.map(({ provider, model, inputNanoUsdPerToken, outputNanoUsdPerToken }) => ({
+        priceRows.map(({ provider, model, inputNanoUsdPerToken, outputNanoUsdPerToken, cacheReadNanoUsdPerToken }) => ({
           provider,
           model,
           inputNanoUsdPerToken,
           outputNanoUsdPerToken,
+          cacheReadNanoUsdPerToken,
         })),
       ).toEqual([
         { provider: 'anthropic', model: 'claude-opus-5', ...officialPriceOracle['anthropic/claude-opus-5'] },

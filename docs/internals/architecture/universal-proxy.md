@@ -79,7 +79,7 @@ document. The client strips the two `proxyFramingHeaders` when rebuilding.
 
 ## SSRF and the redirect loop
 
-`validateAndPin` ([backend/src/utils/url-validation.ts:91-136](../../../backend/src/utils/url-validation.ts#L91))
+`validateAndPin` ([backend/src/utils/url-validation.ts:99-144](../../../backend/src/utils/url-validation.ts#L99))
 resolves the hostname, rejects if _any_ resolved address is private, internal or reserved, then
 connects to that IP with the original `Host` header. Pinning closes the DNS-rebinding window
 between check and connect.

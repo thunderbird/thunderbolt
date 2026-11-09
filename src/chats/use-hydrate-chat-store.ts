@@ -7,7 +7,6 @@ import { defaultChatTitle } from '@/lib/constants'
 import { useDatabase, useHttpClient } from '@/contexts'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import {
-  composeAllAgents,
   getAllAgents,
   getAllSystemAgents,
   getAvailableModels,
@@ -21,10 +20,8 @@ import {
   saveMessagesWithContextUpdate,
   saveStreamingAssistantMessage,
 } from '@/dal'
-import { customRowToAgent, systemRowToAgent } from '@/dal/agents'
 import { isHostedAgent } from '@/defaults/agents'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
-import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { markChatReady } from '@/lib/init-timing'
 import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
@@ -43,7 +40,7 @@ import { useNavigate } from 'react-router'
 import { type ChatSession, useChatStore } from './chat-store'
 import { withChatThreadWrite } from './chat-thread-write'
 import { createChatInstance } from './chat-instance'
-import { resolveSessionAgent } from './resolve-session-agent'
+import { resolveChatAgent } from './resolve-chat-agent'
 import { resolveSessionModel } from './resolve-session-model'
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 import { waitForSyncCatchUp as defaultWaitForSyncCatchUp } from '@/db/powersync/sync-state'
@@ -299,36 +296,8 @@ export const useHydrateChatStore = ({
         getAllSystemAgents(db),
       ])
 
-    // Built-in is implicit (lives in code); the DB rows are only customs + system.
-    // Respect the deployment's `disableBuiltInAgent` flag so the resolved agent
-    // and the dropdown agree on whether the built-in exists.
-    const includeBuiltIn = selectBuiltInAgentEnabled(useConfigStore.getState().config)
-    const allAgents = composeAllAgents(systemAgentRows.map(systemRowToAgent), customAgentRows.map(customRowToAgent), {
-      includeBuiltIn,
-    })
-    // Only a brand-new chat takes the discovered default; a persisted thread with
-    // no agent of its own stays on the fallback chain. Read after the last await
-    // so nothing can land between this and `createSession`. Once discovery has
-    // answered, its result wins over `agents_system` rows read before it wrote or
-    // cleared them; until then the cached `is_default` row stands in.
-    const { agentDiscovery } = useChatStore.getState()
-    const discoveredDefaultRowId = systemAgentRows.find((row) => row.isDefault === 1)?.id
-    const discoveredDefaultAgent = chatThread
-      ? undefined
-      : agentDiscovery.status === 'done'
-        ? (agentDiscovery.defaultAgent ?? undefined)
-        : allAgents.find((agent) => agent.id === discoveredDefaultRowId)
-    // A finished discovery's own list covers agents its write added after the read above.
-    const knownAgents =
-      agentDiscovery.status === 'done'
-        ? [...allAgents, ...agentDiscovery.agents.filter((agent) => !allAgents.some(({ id }) => id === agent.id))]
-        : allAgents
-    const selectedAgent = resolveSessionAgent(knownAgents, {
-      threadAgentId: chatThread?.agentId,
-      lastUsedAgentId: settings.selectedAgent,
-      hasModelPick: !!settings.selectedModel,
-      discoveredDefaultAgent,
-    })
+    // Read after the last await so nothing can land between this and `createSession`.
+    const selectedAgent = resolveChatAgent({ chatThread, settings, customAgentRows, systemAgentRows })
     const selectedModel = resolveSessionModel(selectedAgent, chatThread, defaultModel, models)
 
     // A persisted thread owns its project; a brand-new chat started from a

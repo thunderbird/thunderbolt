@@ -153,4 +153,6 @@ export const createThunderboltEngine = (): VoiceEngine =>
     },
     ...pickVoiceProfile(getActiveLocale()),
     ttsSpeed: 1,
+    // vLLM-Omni streams both TTS models as 24 kHz PCM; Tinfoil's router passes the stream through.
+    ttsStream: { sampleRate: 24_000 },
   })

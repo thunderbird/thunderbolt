@@ -193,11 +193,26 @@ describe('useMiniApps', () => {
       expect(result.current.apps).toEqual([])
     })
 
-    it("shows failed, not the previous user's list, when the refetch fails", async () => {
+    it('keeps the list when an anonymous session becomes a real user and the refetch fails', async () => {
       let fail = false
       const client = clientWith(() => (fail ? new Response('nope', { status: 500 }) : Response.json({ apps: [app] })))
       const { result } = setup(client)
-      syncMiniAppsUser('anon-1', client)
+      syncMiniAppsUser('anon-1', client, true)
+      await settle()
+
+      fail = true
+      syncMiniAppsUser('user-1', client)
+      await settle()
+
+      expect(result.current).toMatchObject({ loading: false, failed: false })
+      expect(result.current.apps).toHaveLength(1)
+    })
+
+    it("shows failed, not the previous user's list, when one real user becomes another and the refetch fails", async () => {
+      let fail = false
+      const client = clientWith(() => (fail ? new Response('nope', { status: 500 }) : Response.json({ apps: [app] })))
+      const { result } = setup(client)
+      syncMiniAppsUser('user-0', client)
       await settle()
 
       fail = true

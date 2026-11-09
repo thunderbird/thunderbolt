@@ -92,7 +92,7 @@ const subscribe = (listener: () => void) => {
  * transient 502 at startup left the tab with no apps for the rest of its life,
  * and no way to recover short of a reload.
  */
-const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
+const loadMiniApps = (httpClient: HttpClient, keepListOnFailure = false): Promise<void> => {
   const era = generation
   inFlight ??= (async () => {
     try {
@@ -120,9 +120,13 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
       if (era !== generation) {
         return
       }
-      // Never keeps the previous list: after an identity change it belongs to
-      // someone else, and showing it would be showing the wrong user's apps.
-      setState({ apps: [], loading: false, failed: true })
+      // A failed refetch drops to `failed`, except when an anonymous session
+      // became a real user: an anonymous session never sees gated apps, so its
+      // list is a subset of what the new user may see and stays valid. For a
+      // different user, or signing out, the old list belongs to someone else and
+      // showing it would be showing the wrong user's apps. No retry either way;
+      // the next mount tries again.
+      setState(keepListOnFailure ? { ...state, loading: false } : { apps: [], loading: false, failed: true })
       // Cleared so the next mount retries, rather than the session being stuck.
       inFlight = null
     }
@@ -135,6 +139,8 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
  * signed out, `undefined` until a session settles.
  */
 let registryIdentity: string | null | undefined
+/** Whether that identity was an anonymous session. */
+let registryAnonymous = false
 
 /**
  * Fetch again when the signed-in identity changes, including signing out.
@@ -144,25 +150,28 @@ let registryIdentity: string | null | undefined
  * into a real one without a reload. Keyed on the user id rather than on the
  * modal's success event, so it also fires when the modal is dismissed after the
  * code was accepted. The list on screen stays while the refetch is in flight;
- * if that fails the store drops to `failed`. Advancing the era drops any request
- * still in flight for the old identity.
+ * if that fails the store drops to `failed`, unless an anonymous session became
+ * a real user (see the failure branch of `loadMiniApps`). Advancing the era
+ * drops any request still in flight for the old identity.
  *
  * `undefined` means the session has not settled and is ignored. The first
  * settled identity is recorded without a refetch: the initial load already
  * covers it.
  */
-export const syncMiniAppsUser = (identity: string | null | undefined, httpClient: HttpClient) => {
+export const syncMiniAppsUser = (identity: string | null | undefined, httpClient: HttpClient, isAnonymous = false) => {
   if (identity === undefined || identity === registryIdentity) {
     return
   }
   const isFirstIdentity = registryIdentity === undefined
+  const anonymousBecameReal = registryAnonymous && identity !== null && !isAnonymous
   registryIdentity = identity
+  registryAnonymous = isAnonymous
   if (isFirstIdentity) {
     return
   }
   generation += 1
   inFlight = null
-  void loadMiniApps(httpClient)
+  void loadMiniApps(httpClient, anonymousBecameReal)
 }
 
 /**
@@ -174,9 +183,10 @@ export const useMiniAppsUserSync = () => {
   const httpClient = useHttpClient()
   const { data: session, isPending } = useAuth().useSession()
   const identity = isPending ? undefined : (session?.user?.id ?? null)
+  const isAnonymous = !!session?.user?.isAnonymous
   useEffect(() => {
-    syncMiniAppsUser(identity, httpClient)
-  }, [identity, httpClient])
+    syncMiniAppsUser(identity, httpClient, isAnonymous)
+  }, [identity, httpClient, isAnonymous])
 }
 
 /**
@@ -191,6 +201,7 @@ export const resetMiniAppsForTesting = () => {
   state = emptyState
   inFlight = null
   registryIdentity = undefined
+  registryAnonymous = false
   listeners.clear()
 }
 

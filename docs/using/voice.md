@@ -63,7 +63,7 @@ Your base URL and API key are stored on that device only. They are not synced to
 In a web browser, voice needs `https` (or `localhost`) and microphone permission. A desktop app run from a dev server has no microphone access over plain `http`, though packaged builds are unaffected.
 
 - There is no wake word and no always-on listening. The microphone opens when you start a session and closes when you exit or leave the chat, and only one session runs at a time.
-- There is no separate voice language setting, and the assistant's voice is fixed on the hosted engine.
+- There is no separate voice language setting. On the hosted engine, the speech models and the assistant's voice follow the app language (Settings → Localization): English, German, French, Spanish and Portuguese use the most natural voice, and other languages use one that covers every language. If you speak a language other than the app's, switch the app language to it for the best recognition.
 - Background noise can open a turn on its own. A transcript that is nothing but the filler speech recognition emits on near-silence ("Thanks for watching", a bare "you") is dropped rather than sent, so the model never sees it. Real sign-offs like "thanks" and "bye" are kept and answered.
 - Since no audio is recorded, there is nothing to export or replay afterwards.
 

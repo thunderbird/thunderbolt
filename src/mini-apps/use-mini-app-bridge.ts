@@ -321,6 +321,8 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   // prompt or the `get_app_context` tool.
   const [selection, setSelection] = useState<MiniAppSelection | null>(null)
   const [pendingDownload, setPendingDownload] = useState<PendingMiniAppDownload | null>(null)
+  // Lets host UI drop what it holds from a document that has been replaced.
+  const [documentEpoch, setDocumentEpoch] = useState(0)
   // Answers the save on screen. Null when none is waiting, which is also what
   // makes a second request while one is pending refusable.
   const answerDownloadRef = useRef<((answer: DownloadAnswer) => void) | null>(null)
@@ -397,6 +399,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     answerDownloadRef.current?.('navigated')
     pending.abortAll()
     setSelection(null)
+    setDocumentEpoch((epoch) => epoch + 1)
     resetGuest()
   }, [pending, resetGuest])
 
@@ -1039,5 +1042,6 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     reloadFrame,
     pendingDownload,
     answerDownload,
+    documentEpoch,
   }
 }

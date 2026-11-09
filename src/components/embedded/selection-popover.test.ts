@@ -3,7 +3,30 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { placeSelectionPopover } from './selection-popover'
+import { clampPopoverCenter, placeSelectionPopover } from './selection-popover'
+
+describe('clampPopoverCenter', () => {
+  it('leaves a control with room on both sides where it is', () => {
+    expect(clampPopoverCenter(200, 120, 400)).toBe(200)
+  })
+
+  it('pulls a control near the left edge back inside the surface', () => {
+    expect(clampPopoverCenter(10, 120, 400)).toBe(68)
+  })
+
+  it('pulls a control near the right edge back inside the surface', () => {
+    expect(clampPopoverCenter(395, 120, 400)).toBe(332)
+  })
+
+  it('centres a control too wide to fit with its margins', () => {
+    expect(clampPopoverCenter(10, 300, 200)).toBe(100)
+  })
+
+  it('leaves a selection scrolled out of view where it reported', () => {
+    expect(clampPopoverCenter(-30, 120, 400)).toBe(-30)
+    expect(clampPopoverCenter(450, 120, 400)).toBe(450)
+  })
+})
 
 describe('placeSelectionPopover', () => {
   it('centres the control horizontally on the selection', () => {

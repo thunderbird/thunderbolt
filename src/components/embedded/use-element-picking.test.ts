@@ -24,7 +24,10 @@ const deferredQueries = () => {
 
 const setup = (query: (point: { x: number; y: number }) => Promise<SurfaceHighlightedElement | null>) => {
   const asked: string[][] = []
-  const hook = renderHook(() => useElementPicking({ query, onAsk: (passages) => asked.push(passages) }))
+  const hook = renderHook(
+    ({ documentKey }) => useElementPicking({ query, onAsk: (passages) => asked.push(passages), documentKey }),
+    { initialProps: { documentKey: 1 } },
+  )
   return { hook, asked }
 }
 
@@ -301,6 +304,42 @@ describe('touch selection', () => {
       await hook.result.current.selectAt(point)
     })
   }
+
+  it('drops a tapped element when the document changes, so Add cannot quote the old page', async () => {
+    const { hook, asked } = setup(async () => element('a'))
+    await tap(hook)
+
+    hook.rerender({ documentKey: 2 })
+
+    expect(hook.result.current.mode.kind).toBe('picking')
+    expect(hook.result.current.canConfirm).toBe(false)
+    act(() => hook.result.current.confirmPick())
+    expect(asked).toHaveLength(0)
+  })
+
+  it('discards an answer still in flight from the previous document', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook } = setup(query)
+    act(() => hook.result.current.startPicking())
+    const pending = hook.result.current.selectAt(point)
+
+    hook.rerender({ documentKey: 2 })
+    await act(async () => {
+      releases[0]?.(element('a'))
+      await pending
+    })
+
+    expect(hook.result.current.canConfirm).toBe(false)
+  })
+
+  it('keeps a tapped element across renders of the same document', async () => {
+    const { hook } = setup(async () => element('a'))
+    await tap(hook)
+
+    hook.rerender({ documentKey: 1 })
+
+    expect(hook.result.current.canConfirm).toBe(true)
+  })
 
   it('highlights a tapped element without attaching it', async () => {
     const { hook, asked } = setup(async () => element('a'))

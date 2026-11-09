@@ -70,6 +70,7 @@ export const SelectableArtifact = ({
   const { mode, canConfirm, startPicking, stepBack, pointAt, pickAt, selectAt, confirmPick } = useElementPicking({
     query,
     onAsk,
+    documentKey: html,
   })
 
   const askAboutSelection = () => {

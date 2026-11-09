@@ -117,6 +117,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     reloadFrame,
     pendingDownload,
     answerDownload,
+    documentEpoch,
   } = useMiniAppBridge({
     app,
     onChatOpen: openChat,
@@ -125,6 +126,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const { mode, canConfirm, startPicking, stepBack, pointAt, pickAt, selectAt, confirmPick } = useElementPicking({
     query: queryElementAt,
     onAsk: attachToComposer,
+    documentKey: documentEpoch,
   })
 
   const handleAskAboutSelection = useCallback(() => {

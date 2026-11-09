@@ -93,9 +93,11 @@ export type ElementPickingDeps = {
   query: (point: { x: number; y: number }) => Promise<SurfaceHighlightedElement | null>
   /** Attach the chosen passage to the composer as a quote chip. */
   onAsk: (passages: string[]) => void
+  /** Changes when the surface loads a new document, which invalidates anything picked from the old one. */
+  documentKey: unknown
 }
 
-export const useElementPicking = ({ query, onAsk }: ElementPickingDeps) => {
+export const useElementPicking = ({ query, onAsk, documentKey }: ElementPickingDeps) => {
   const [mode, dispatch] = useReducer(modeReducer, { kind: 'idle' })
   const lastQueryToken = useRef(0)
   /**
@@ -103,6 +105,14 @@ export const useElementPicking = ({ query, onAsk }: ElementPickingDeps) => {
    * prevents pending clicks from attaching the same passage more than once.
    */
   const gestureRef = useRef<symbol | null>(null)
+
+  // A tapped element can wait on screen indefinitely for Add, so it has to be
+  // dropped when its document goes. Stays in picking: the user is still choosing.
+  const lastDocumentKey = useRef(documentKey)
+  if (lastDocumentKey.current !== documentKey) {
+    lastDocumentKey.current = documentKey
+    dispatch({ type: 'SELECTION_CLEARED', token: ++lastQueryToken.current })
+  }
 
   const startPicking = useCallback(() => {
     gestureRef.current = Symbol('element-pick')

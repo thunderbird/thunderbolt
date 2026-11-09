@@ -53,6 +53,16 @@ export const getAllChatThreads = (db: AnyDrizzleDatabase) => {
 }
 
 /**
+ * The titles of the live chats among `ids`, as a query a reactive hook can
+ * watch — deleted chats drop out.
+ */
+export const getChatThreadTitles = (db: AnyDrizzleDatabase, ids: string[]) =>
+  db
+    .select({ id: chatThreadsTable.id, title: chatThreadsTable.title })
+    .from(chatThreadsTable)
+    .where(and(inArray(chatThreadsTable.id, ids), isNull(chatThreadsTable.deletedAt)))
+
+/**
  * Gets a specific chat thread by ID (excluding soft-deleted)
  */
 export const getChatThread = async (db: AnyDrizzleDatabase, id: string): Promise<ChatThread | null> => {

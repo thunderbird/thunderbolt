@@ -10,6 +10,7 @@ import { createMockChatInstance, createMockModel, hydrateStore, resetStore } fro
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getChatReasoningEffort, loadReasoningCapabilities } from '@/ai/reasoning-effort'
 import * as settingsDal from '@/dal/settings'
+import * as modelsDal from '@/dal/models'
 import { useChatStore } from '@/chats/chat-store'
 import { sessionConfigKey, useSessionConfigStore } from '@/acp/session-config-store'
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
@@ -19,6 +20,8 @@ import { http } from '@/lib/http'
 import { attestationStore } from '@/attestation/store'
 import { tinfoilAttestationKey } from '@/attestation/target'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { getDb } from '@/db/database'
+import { reasoningEffortSettingKey } from '@shared/reasoning-effort'
 
 const model = createMockModel({ id: 'effort-model', provider: 'tinfoil', model: 'glm-5-3' })
 let catalogRequest: ReturnType<typeof spyOn<typeof http, 'get'>>
@@ -88,6 +91,7 @@ beforeEach(async () => {
     })
   })
   await resetTestDatabase()
+  await modelsDal.createModel(getDb(), model)
   resetStore()
   attestationStore.clear(tinfoilAttestationKey('system', useLocalSettingsStore.getState().cloudUrl))
   attestationStore.clear(tinfoilAttestationKey('user', ''))
@@ -112,12 +116,12 @@ describe('effort selector state', () => {
     const remove = installRemoteOptions(async (_id, value) => {
       writes.push(value)
     })
-    renderWithReactivity(<DirectChoiceProbe />, { tables: ['settings'] })
+    renderWithReactivity(<DirectChoiceProbe />, { tables: ['settings', 'models'] })
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Unsupported' }))
     })
     expect(writes).toEqual([])
-    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    expect(await getChatReasoningEffort('effort-chat', model)).toBe('high')
     remove()
   })
 
@@ -136,7 +140,7 @@ describe('effort selector state', () => {
             ? { compactionStatus: 'compacting' }
             : { chatInstance: createMockChatInstance([], status) },
         )
-      renderWithReactivity(<DirectChoiceProbe />, { tables: ['settings'] })
+      renderWithReactivity(<DirectChoiceProbe />, { tables: ['settings', 'models'] })
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: 'Deep' }))
       })
@@ -150,7 +154,7 @@ describe('effort selector state', () => {
       selectedModel: { ...model, name: 'Private model', isConfidential: 1, isSystem: 1, apiKey: null },
     })
     renderWithReactivity(<EffortSelector modelPicker={(close) => <button onClick={close}>Manage models</button>} />, {
-      tables: ['settings'],
+      tables: ['settings', 'models'],
     })
     const trigger = screen.getByRole('button', { name: 'Private model' })
     expect(screen.getByTestId('model-selector-trigger')).toBe(trigger)
@@ -174,7 +178,7 @@ describe('effort selector state', () => {
       selectedModel: { ...model, name: 'Private model', isConfidential: 1, isSystem: 1, apiKey: null },
     })
     renderWithReactivity(<EffortSelector modelPicker={() => <button>Choose model</button>} />, {
-      tables: ['settings'],
+      tables: ['settings', 'models'],
     })
 
     const trigger = screen.getByRole('button', { name: 'Private model' })
@@ -198,7 +202,7 @@ describe('effort selector state', () => {
     const remove = installRemoteOptions(async (id, value) => {
       writes.push([id, value])
     })
-    renderWithReactivity(<Probe />, { tables: ['settings'] })
+    renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
     expect(screen.getByRole('status').textContent).toBe('default')
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Balanced' }))
@@ -211,7 +215,7 @@ describe('effort selector state', () => {
     const remove = installRemoteOptions(async () => {
       throw new Error('Agent rejected change')
     })
-    renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
+    renderWithReactivity(<EffortSelector />, { tables: ['settings', 'models'] })
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Reasoning effort' }))
     })
@@ -255,7 +259,7 @@ describe('effort selector state', () => {
       await saved.promise
     }
     useSessionConfigStore.getState().set(key, { options, setOption })
-    renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
+    renderWithReactivity(<EffortSelector />, { tables: ['settings', 'models'] })
     const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
     await act(async () => {
       fireEvent.click(trigger)
@@ -288,72 +292,162 @@ describe('effort selector state', () => {
     useSessionConfigStore.getState().remove(key, setOption)
   })
 
-  it.each([false, true])(
-    'scopes built-in saves by model and waits for every write when first save fails: %s',
-    async (failFirst) => {
-      const first = Promise.withResolvers<void>()
-      const second = Promise.withResolvers<void>()
-      const updateSettings = settingsDal.updateSettings
-      const write = spyOn(settingsDal, 'updateSettings').mockImplementation(async (db, updates, options) => {
-        await (Object.keys(updates)[0].endsWith(model.id) ? first.promise : second.promise)
-        await updateSettings(db, updates, options)
+  it.each([false, true])('keeps model saves independent when an earlier model save fails: %s', async (failFirst) => {
+    const first = Promise.withResolvers<void>()
+    const second = Promise.withResolvers<void>()
+    const updateModel = modelsDal.updateModel
+    const write = spyOn(modelsDal, 'updateModel').mockImplementation(async (db, id, updates) => {
+      await (id === model.id ? first.promise : second.promise)
+      await updateModel(db, id, updates)
+    })
+    const other = { ...model, id: 'other-model' }
+    await modelsDal.createModel(getDb(), other)
+    try {
+      renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
+      const high = await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
+      await act(async () => {
+        fireEvent.click(high)
       })
-      const other = { ...model, id: 'other-model' }
-      try {
-        renderWithReactivity(<Probe />, { tables: ['settings'] })
-        const high = await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
-        await act(async () => {
-          fireEvent.click(high)
-        })
-        expect(high).toBeDisabled()
-        await act(async () => {
-          useChatStore.getState().updateSession('effort-chat', { selectedModel: other })
-        })
-        expect(screen.getByRole('button', { name: 'Low' })).not.toBeDisabled()
-        expect(screen.getByRole('status').textContent).toBe('')
-        await act(async () => {
-          fireEvent.click(screen.getByRole('button', { name: 'Low' }))
-        })
-        const barrier = useChatStore.getState().sessions.get('effort-chat')!.configurationChange!
-        const completed = { value: false }
-        const settled = barrier.then(
-          () => {
-            completed.value = true
-          },
-          () => {
-            completed.value = true
-          },
-        )
-        await act(async () => {
-          if (failFirst) {
-            first.reject(new Error('First write failed'))
-          } else {
-            first.resolve()
-          }
-        })
-        expect(completed.value).toBe(false)
-        expect(useChatStore.getState().sessions.get('effort-chat')!.configurationChange).toBe(barrier)
-        expect(screen.getByRole('button', { name: 'Low' })).toBeDisabled()
-        expect(screen.getByRole('status').textContent).toBe('low')
-        await act(async () => {
-          second.resolve()
-          await settled
-        })
-        expect(screen.getByRole('button', { name: 'Low' })).not.toBeDisabled()
-        expect(useChatStore.getState().sessions.get('effort-chat')!.configurationChange).toBeUndefined()
-        expect(await getChatReasoningEffort('effort-chat', other)).toBe('low')
+      expect(high).toBeDisabled()
+      await act(async () => {
+        useChatStore.getState().updateSession('effort-chat', { selectedModel: other })
+      })
+      await waitForElement(
+        () => screen.queryByRole('button', { name: 'Low' })?.closest('button:not(:disabled)') ?? null,
+      )
+      expect(screen.getByRole('button', { name: 'Low' })).not.toBeDisabled()
+      expect(screen.getByRole('status').textContent).toBe('high')
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Low' }))
+      })
+      const completed = { value: false }
+      const readEffort = getChatReasoningEffort('another-chat', other)
+      const settled = readEffort.then(() => {
+        completed.value = true
+      })
+      await act(async () => {
         if (failFirst) {
-          await expect(barrier).rejects.toThrow('First write failed')
+          first.reject(new Error('First write failed'))
         } else {
-          await expect(barrier).resolves.toBeUndefined()
+          first.resolve()
         }
-      } finally {
-        first.resolve()
+      })
+      expect(completed.value).toBe(false)
+      expect(screen.getByRole('button', { name: 'Low' })).toBeDisabled()
+      expect(screen.getByRole('status').textContent).toBe('low')
+      await act(async () => {
         second.resolve()
-        write.mockRestore()
+        await settled
+      })
+      expect(screen.getByRole('button', { name: 'Low' })).not.toBeDisabled()
+      expect(await readEffort).toBe('low')
+    } finally {
+      first.resolve()
+      second.resolve()
+      write.mockRestore()
+    }
+  })
+
+  it('waits for a model preference save even after its selector unmounts', async () => {
+    const saved = Promise.withResolvers<void>()
+    const updateModel = modelsDal.updateModel
+    const write = spyOn(modelsDal, 'updateModel').mockImplementation(async (db, id, updates) => {
+      await saved.promise
+      await updateModel(db, id, updates)
+    })
+    try {
+      renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
+      const maximum = await waitForElement(() => screen.queryByRole('button', { name: 'Maximum' }))
+      await act(async () => {
+        fireEvent.click(maximum)
+      })
+      cleanup()
+      const completed = { value: false }
+      const readEffort = getChatReasoningEffort('new-chat', model)
+      void readEffort.then(() => {
+        completed.value = true
+      })
+      await act(async () => {})
+      expect(completed.value).toBe(false)
+      await act(async () => {
+        saved.resolve()
+      })
+      expect(await readEffort).toBe('max')
+    } finally {
+      saved.resolve()
+      write.mockRestore()
+    }
+  })
+
+  it('restores the saved model preference and reports a failed write', async () => {
+    await modelsDal.updateModel(getDb(), model.id, { reasoningEffort: 'low' })
+    const saved = Promise.withResolvers<void>()
+    const write = spyOn(modelsDal, 'updateModel').mockImplementation(() => saved.promise)
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      renderWithReactivity(<EffortSelector />, { tables: ['settings', 'models'] })
+      const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
+      await act(async () => {
+        fireEvent.click(trigger)
+      })
+      const slider = screen.getByRole('slider')
+      await act(async () => {
+        fireEvent.change(slider, { target: { value: '2' } })
+        fireEvent.pointerUp(slider)
+      })
+      expect(slider).toHaveAttribute('aria-valuetext', 'Maximum')
+      expect(slider).toBeDisabled()
+      await act(async () => {
+        saved.reject(new Error('Disk full'))
+      })
+      expect(slider).toHaveAttribute('aria-valuetext', 'Low')
+      expect(slider).not.toBeDisabled()
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not change reasoning effort')
+      expect(await getChatReasoningEffort('another-chat', model)).toBe('low')
+    } finally {
+      saved.resolve()
+      write.mockRestore()
+      error.mockRestore()
+    }
+  })
+
+  it('does not overwrite a model preference while its row is still loading after a switch', async () => {
+    const other = { ...model, id: 'loading-model' }
+    await modelsDal.createModel(getDb(), { ...other, reasoningEffort: 'max' })
+    renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
+    await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
+    const getModelQuery = modelsDal.getModelQuery
+    const saved = [(await modelsDal.getModel(getDb(), other.id))!]
+    const loaded = Promise.withResolvers<typeof saved>()
+    const read = spyOn(modelsDal, 'getModelQuery').mockImplementation((db, id) => {
+      const query = getModelQuery(db, id)
+      if (id === other.id) {
+        spyOn(query, 'execute').mockImplementation(() => loaded.promise)
       }
-    },
-  )
+      return query
+    })
+    const write = spyOn(modelsDal, 'updateModel')
+    try {
+      await act(async () => {
+        useChatStore.getState().updateSession('effort-chat', { selectedModel: other })
+      })
+      const low = screen.getByRole('button', { name: 'Low' })
+      expect(low).toBeDisabled()
+      await act(async () => {
+        fireEvent.click(low)
+      })
+      expect(write).not.toHaveBeenCalled()
+      await act(async () => {
+        loaded.resolve(saved)
+      })
+      await waitForElement(() => screen.queryByText('max', { selector: 'output' }))
+      expect(low).not.toBeDisabled()
+    } finally {
+      loaded.resolve(saved)
+      read.mockRestore()
+      write.mockRestore()
+    }
+  })
 
   it('shows a dismissible notification when a write fails after the picker closes', async () => {
     const save = Promise.withResolvers<void>()
@@ -361,7 +455,7 @@ describe('effort selector state', () => {
       await save.promise
     })
     renderWithReactivity(<EffortSelector modelPicker={(close) => <button onClick={close}>Close picker</button>} />, {
-      tables: ['settings'],
+      tables: ['settings', 'models'],
     })
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: `API key not configured ${model.name}` }))
@@ -393,7 +487,7 @@ describe('effort selector state', () => {
     const toggleModel = { ...model, provider: 'anthropic' as const, model: 'claude-sonnet-4-5' }
     await loadReasoningCapabilities(toggleModel)
     useChatStore.getState().updateSession('effort-chat', { selectedModel: toggleModel })
-    renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
+    renderWithReactivity(<EffortSelector />, { tables: ['settings', 'models'] })
     const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
     await act(async () => {
       fireEvent.click(trigger)
@@ -410,13 +504,17 @@ describe('effort selector state', () => {
 
   it('retains the missing API key warning in the combined trigger', async () => {
     useChatStore.getState().updateSession('effort-chat', { selectedModel: { ...model, isSystem: 0, apiKey: null } })
-    renderWithReactivity(<EffortSelector modelPicker={() => <button>Choose model</button>} />, { tables: ['settings'] })
+    renderWithReactivity(<EffortSelector modelPicker={() => <button>Choose model</button>} />, {
+      tables: ['settings', 'models'],
+    })
     expect(screen.getByLabelText('API key not configured')).toBeInTheDocument()
   })
 
   it('keeps model selection available when effort is unsupported', async () => {
     useChatStore.getState().updateSession('effort-chat', { selectedModel: { ...model, model: 'llama3-3-70b' } })
-    renderWithReactivity(<EffortSelector modelPicker={() => <button>Choose model</button>} />, { tables: ['settings'] })
+    renderWithReactivity(<EffortSelector modelPicker={() => <button>Choose model</button>} />, {
+      tables: ['settings', 'models'],
+    })
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: `API key not configured ${model.name}` }))
     })
@@ -428,53 +526,79 @@ describe('effort selector state', () => {
     )
   })
 
-  it('requires an explicit first choice, then previews and commits real effort levels', async () => {
-    renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
+  it('starts with a supported default, then previews and commits real effort levels', async () => {
+    renderWithReactivity(<EffortSelector />, { tables: ['settings', 'models'] })
     const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
-    expect(trigger.getAttribute('title')).toBe('Reasoning effort: Choose effort')
+    expect(trigger.getAttribute('title')).toBe('Reasoning effort: High')
     await act(async () => {
       fireEvent.click(trigger)
     })
     const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
     expect(screen.getByRole('dialog')).toHaveAccessibleName('Reasoning effort')
-    expect(slider.getAttribute('data-selected')).toBe('false')
-    expect(slider.getAttribute('aria-valuetext')).toBe('Choose effort')
+    expect(slider.getAttribute('data-selected')).toBe('true')
+    expect(slider.getAttribute('aria-valuetext')).toBe('High')
     expect(screen.queryByRole('button', { name: 'Default' })).toBeNull()
     await act(async () => {
       fireEvent.blur(slider)
     })
-    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    expect(await getChatReasoningEffort('effort-chat', model)).toBe('high')
     await act(async () => {
       fireEvent.pointerUp(slider)
     })
     expect(slider.getAttribute('data-selected')).toBe('true')
     await act(async () => {
-      fireEvent.change(slider, { target: { value: '1' } })
+      fireEvent.change(slider, { target: { value: '0' } })
     })
-    expect(slider.getAttribute('aria-valuetext')).toBe('High')
-    expect(await getChatReasoningEffort('effort-chat', model)).toBe('low')
+    expect(slider.getAttribute('aria-valuetext')).toBe('Low')
+    expect(await getChatReasoningEffort('effort-chat', model)).toBe('high')
     await act(async () => {
       fireEvent.pointerUp(slider)
     })
-    expect(await getChatReasoningEffort('effort-chat', model)).toBe('high')
+    expect(await getChatReasoningEffort('effort-chat', model)).toBe('low')
     expect(screen.queryByRole('button', { name: 'Reset reasoning effort' })).toBeNull()
   })
 
-  it('offers only supported levels and persists the conversation preference without editing the model', async () => {
-    renderWithReactivity(<Probe />, { tables: ['settings'] })
-    const high = await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
+  it('persists the model preference across chats, model switches, and remounts', async () => {
+    await modelsDal.createModel(getDb(), { ...model, id: 'other-model' })
+    renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
+    await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
     expect(screen.queryByRole('button', { name: 'Off' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Medium' })).toBeNull()
     await act(async () => {
-      fireEvent.click(high)
+      fireEvent.click(screen.getByRole('button', { name: 'Maximum' }))
     })
-    expect(await getChatReasoningEffort('effort-chat', model)).toBe('high')
-    expect(await getChatReasoningEffort('another-chat', model)).toBeUndefined()
+    expect(await getChatReasoningEffort('effort-chat', model)).toBe('max')
+    expect(await getChatReasoningEffort('another-chat', model)).toBe('max')
+    expect((await modelsDal.getModel(getDb(), model.id))?.reasoningEffort).toBe('max')
+    expect(await settingsDal.getAllSettings(getDb())).toEqual([])
+    await act(async () => {
+      useChatStore.getState().updateSession('effort-chat', { selectedModel: { ...model, id: 'other-model' } })
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('high')
+    await act(async () => {
+      useChatStore.getState().updateSession('effort-chat', { selectedModel: model })
+    })
+    await waitForElement(() => screen.queryByText('max', { selector: 'output' }))
+    cleanup()
+    renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
+    await waitForElement(() => screen.queryByText('max', { selector: 'output' }))
     expect(screen.queryByRole('button', { name: 'Default' })).toBeNull()
   })
 
+  it('reacts to synced model preferences and gives them precedence over legacy chat choices', async () => {
+    await settingsDal.updateSettings(getDb(), { [reasoningEffortSettingKey('effort-chat', model.id)]: 'max' })
+    const { triggerChange } = renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
+    await waitForElement(() => screen.queryByText('max', { selector: 'output' }))
+    await act(async () => {
+      await modelsDal.updateModel(getDb(), model.id, { reasoningEffort: 'low' })
+      triggerChange(['models'])
+    })
+    await waitForElement(() => screen.queryByText('low', { selector: 'output' }))
+    expect(await getChatReasoningEffort('effort-chat', model)).toBe('low')
+  })
+
   it('disables changes while streaming or compacting', async () => {
-    renderWithReactivity(<Probe />, { tables: ['settings'] })
+    renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
     const high = await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
     await act(async () => {
       useChatStore.getState().updateSession('effort-chat', { compactionStatus: 'compacting' })
@@ -484,7 +608,7 @@ describe('effort selector state', () => {
 
   it('offers no controls for unsupported models', async () => {
     useChatStore.getState().updateSession('effort-chat', { selectedModel: { ...model, model: 'llama3-3-70b' } })
-    renderWithReactivity(<Probe />, { tables: ['settings'] })
+    renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
     await act(async () => {})
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })

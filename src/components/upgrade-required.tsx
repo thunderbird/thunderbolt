@@ -44,20 +44,20 @@ export const UpgradeRequired = ({ currentVersion, minVersion }: UpgradeRequiredP
   const appName = useAppName()
 
   return (
-    <div className="flex flex-col items-center justify-center w-full h-dvh">
+    <main className="flex min-h-dvh w-full flex-col items-center justify-center bg-background px-4 py-8 text-foreground">
       <div className="flex flex-col items-center gap-8 text-center">
-        <AppWordmark className="text-[length:var(--font-size-sm)]" />
+        <AppWordmark className="text-[length:var(--font-size-sm)] text-foreground/80" />
 
         <div className="flex flex-col items-center gap-2">
           <h1 className="text-4xl font-semibold tracking-tight">
             <Trans>Update required</Trans>
           </h1>
-          <p className="text-muted-foreground max-w-md">
+          <p className="text-foreground/80 max-w-md">
             <Trans>
               This version of {appName} is no longer supported. Update the app to keep chatting and syncing.
             </Trans>
           </p>
-          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+          <p className="text-[length:var(--font-size-sm)] text-foreground/80">
             <Trans>
               Installed: {currentVersion} · Minimum required: {minVersion}
             </Trans>
@@ -66,6 +66,6 @@ export const UpgradeRequired = ({ currentVersion, minVersion }: UpgradeRequiredP
 
         <UpgradeAction />
       </div>
-    </div>
+    </main>
   )
 }

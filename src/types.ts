@@ -147,12 +147,12 @@ export type Model = WithRequired<
 /**
  * Compile-time invariant: every shipped `SharedModel` default (see
  * `shared/defaults/models.ts`) must be structurally assignable to `Model` with
- * the DAL-joined `apiKey` stripped. If `Model` gains a required field that
+ * the DAL-joined `apiKey` and user-owned `reasoningEffort` stripped. If `Model` gains a required field that
  * `SharedModel` doesn't cover, the assignment below errors, forcing us to
  * update the shared type in the same change. Never called at runtime; exported
  * so `noUnusedLocals` doesn't strip the guard.
  */
-export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey'> => model
+export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey' | 'reasoningEffort'> => model
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
 export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>

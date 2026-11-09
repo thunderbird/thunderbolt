@@ -5,6 +5,36 @@
 use anyhow::Result;
 use tauri::command;
 
+/// Restore the main window from the tray, a second launch, or a macOS Dock click.
+#[command]
+pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        use tauri::Manager;
+
+        let window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "Main window is unavailable".to_string())?;
+        let restore = || -> tauri::Result<()> {
+            #[cfg(target_os = "macos")]
+            {
+                app.set_activation_policy(tauri::ActivationPolicy::Regular)?;
+                app.show()?;
+            }
+            window.show()?;
+            window.unminimize()?;
+            window.set_skip_taskbar(false)?;
+            window.set_focus()?;
+            Ok(())
+        };
+        restore().map_err(|error| error.to_string())?;
+    }
+    #[cfg(mobile)]
+    let _ = app;
+
+    Ok(())
+}
+
 #[command]
 pub async fn toggle_dock_icon(app_handle: tauri::AppHandle, show: bool) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -17,7 +47,9 @@ pub async fn toggle_dock_icon(app_handle: tauri::AppHandle, show: bool) -> Resul
             ActivationPolicy::Accessory
         };
 
-        let _ = app_handle.set_activation_policy(policy);
+        app_handle
+            .set_activation_policy(policy)
+            .map_err(|error| error.to_string())?;
     }
 
     #[cfg(not(target_os = "macos"))]

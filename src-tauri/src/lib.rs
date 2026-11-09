@@ -10,6 +10,7 @@ pub mod commands;
 pub mod oauth_server;
 pub mod platform_utils;
 
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "ios"))]
 use tauri::Manager;
 
 // Shared app builder function
@@ -20,9 +21,8 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
+            if let Err(error) = commands::show_main_window(app.clone()) {
+                eprintln!("Could not restore the main window: {error}");
             }
         }));
     }
@@ -41,6 +41,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_passkey::init())
         .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
+            commands::show_main_window,
             commands::toggle_dock_icon,
             commands::set_interface_style,
             commands::start_oauth_server,
@@ -129,6 +130,14 @@ pub fn run() {
     std::env::set_var("RUST_BACKTRACE", "1");
 
     create_app()
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                if let Err(error) = commands::show_main_window(_app.clone()) {
+                    eprintln!("Could not restore the main window: {error}");
+                }
+            }
+        });
 }

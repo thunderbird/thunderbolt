@@ -39,10 +39,15 @@ export const getChromeExecutablePath = (cacheDir = getChromeCacheDir()): string 
 export const getChromeLaunchOptions = () => ({ executablePath: getChromeExecutablePath() })
 
 if (import.meta.main) {
-  const executablePath = getChromeExecutablePath()
-  if (!existsSync(executablePath)) {
-    console.error(`Chrome for Testing Stable is not installed (${executablePath}). Run \`bun run browsers:install\`.`)
+  try {
+    const executablePath = getChromeExecutablePath()
+    if (!existsSync(executablePath)) {
+      throw new Error(`Chrome for Testing Stable is not installed (${executablePath}).`)
+    }
+    console.log(executablePath)
+  } catch (error) {
+    console.error(error)
+    console.error('Run `bun run browsers:install`.')
     process.exit(1)
   }
-  console.log(executablePath)
 }

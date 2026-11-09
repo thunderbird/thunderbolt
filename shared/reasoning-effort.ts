@@ -25,9 +25,20 @@ export const resolveReasoningEffort = (
   capabilities: ReasoningCapabilities,
 ): ReasoningEffort | undefined => (isReasoningEffort(value) && capabilities.efforts.includes(value) ? value : undefined)
 
-/** Separate one chat/model's preference from global model profiles; settings values are encrypted and synced. */
+/** Legacy chat-specific key, read only until the user chooses a model-wide preference. */
 export const reasoningEffortSettingKey = (threadId: string, modelId: string): string =>
   `chat-reasoning-effort:${threadId}:${modelId}`
+
+/** Prefer a supported saved choice, otherwise medium, high, or the first supported reasoning level. */
+export const preferredReasoningEffort = (
+  value: unknown,
+  capabilities: ReasoningCapabilities,
+): ReasoningEffort | undefined =>
+  resolveReasoningEffort(value, capabilities) ??
+  resolveReasoningEffort('medium', capabilities) ??
+  resolveReasoningEffort('high', capabilities) ??
+  capabilities.efforts.find((effort) => effort !== 'none') ??
+  capabilities.efforts[0]
 
 /** Select the effort encoding for an OpenAI-compatible provider. */
 export const reasoningEffortFormat = (providerId: string): 'openai' | 'openrouter' | 'tinfoil' =>

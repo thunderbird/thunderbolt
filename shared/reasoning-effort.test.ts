@@ -9,6 +9,7 @@ import {
   reasoningEfforts,
   openRouterReasoningCapabilities,
   reasoningEffortSettingKey,
+  preferredReasoningEffort,
   reasoningEffortFormat,
   resolveReasoningEffort,
 } from './reasoning-effort'
@@ -30,7 +31,7 @@ describe('reasoning capabilities', () => {
       openRouterReasoningCapabilities({ supported_efforts: ['high', 'none', 'unknown'], mandatory: true }).efforts,
     ).toEqual(['high'])
   })
-  it('resolves unsupported saved values to Default and isolates conversation/model preferences', () => {
+  it('omits unsupported saved values and isolates conversation/model preferences', () => {
     const capabilities = { efforts: ['low', 'high', 'max'] as const }
     expect(resolveReasoningEffort('none', capabilities)).toBeUndefined()
     expect(resolveReasoningEffort('default', capabilities)).toBeUndefined()
@@ -38,6 +39,26 @@ describe('reasoning capabilities', () => {
     expect(reasoningEffortSettingKey('a', 'm')).not.toBe(reasoningEffortSettingKey('b', 'm'))
     expect(reasoningEffortSettingKey('a', 'm')).not.toBe(reasoningEffortSettingKey('a', 'n'))
   })
+  it('defaults only to supported levels and preserves an explicit off choice', () => {
+    expect(preferredReasoningEffort(undefined, { efforts: ['none', 'low', 'medium', 'high'] })).toBe('medium')
+    expect(preferredReasoningEffort(undefined, { efforts: ['low', 'high', 'max'] })).toBe('high')
+    expect(preferredReasoningEffort(undefined, { kind: 'toggle', efforts: ['none', 'high'] })).toBe('high')
+    expect(preferredReasoningEffort(undefined, { efforts: ['none', 'low', 'max'] })).toBe('low')
+    expect(preferredReasoningEffort(undefined, { efforts: ['none'] })).toBe('none')
+    expect(preferredReasoningEffort('none', { efforts: ['none', 'medium', 'high'] })).toBe('none')
+    expect(preferredReasoningEffort('max', { efforts: ['low', 'medium'] })).toBe('medium')
+    expect(preferredReasoningEffort('high', { efforts: [] })).toBeUndefined()
+  })
+  it.each(reasoningEfforts)('preserves the supported saved choice %s', (effort) => {
+    expect(preferredReasoningEffort(effort, { efforts: reasoningEfforts })).toBe(effort)
+  })
+  it.each([undefined, null, '', 'default', 'off', 'unknown', 0, false, {}])(
+    'uses a supported default for absent or invalid preferences: %j',
+    (value) => {
+      expect(preferredReasoningEffort(value, { efforts: ['none', 'medium', 'high'] })).toBe('medium')
+      expect(preferredReasoningEffort(value, { efforts: [] })).toBeUndefined()
+    },
+  )
 })
 
 describe('effort wire translation', () => {

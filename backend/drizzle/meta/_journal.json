@@ -288,6 +288,13 @@
       "when": 1794158108434,
       "tag": "0040_tinfoil-list-prices",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794264531043,
+      "tag": "0041_model_reasoning_effort",
+      "breakpoints": true
     }
   ]
 }

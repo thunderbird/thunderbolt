@@ -4,21 +4,31 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
+import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useLingui } from '@lingui/react/macro'
-import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
+import { useCurrentChatSession } from '@/chats/chat-store'
 import { useSettings } from '@/hooks/use-settings'
-import { loadReasoningCapabilities } from '@/ai/reasoning-effort'
+import { useDatabase } from '@/contexts/database-context'
+import { getModelQuery, updateModel } from '@/dal/models'
+import { loadReasoningCapabilities, queueReasoningEffortWrite } from '@/ai/reasoning-effort'
 import { configSelectOptions, sessionConfigKey, useSessionConfigStore } from '@/acp/session-config-store'
-import { noReasoningEffort, reasoningEffortSettingKey, resolveReasoningEffort } from '@shared/reasoning-effort'
+import { noReasoningEffort, reasoningEffortSettingKey, preferredReasoningEffort } from '@shared/reasoning-effort'
 
 /** Resolve supported controls and commit changes between turns; ACP stays server-authoritative. */
 export const useEffortSelectorState = () => {
   const { t } = useLingui()
+  const db = useDatabase()
   const session = useCurrentChatSession()
   const { id, selectedModel, selectedAgent, chatInstance, compactionStatus } = session
   const builtIn = selectedAgent.type === 'built-in'
-  const key = reasoningEffortSettingKey(id, selectedModel.id)
-  const setting = useSettings({ [key]: String }, { camelCase: false })[key]
+  const legacyKey = reasoningEffortSettingKey(id, selectedModel.id)
+  const legacySetting = useSettings({ [legacyKey]: String }, { camelCase: false })[legacyKey]
+  const modelQuery = usePowerSyncQuery({
+    queryKey: ['models', selectedModel.id],
+    query: toCompilableQuery(getModelQuery(db, selectedModel.id)),
+    enabled: builtIn,
+  })
   const catalog = useQuery({
     queryKey: ['reasoning-capabilities', selectedModel.provider, selectedModel.model, selectedModel.vendor],
     queryFn: () => loadReasoningCapabilities(selectedModel),
@@ -29,15 +39,15 @@ export const useEffortSelectorState = () => {
   const remote = useSessionConfigStore((state) => state.sessions.get(sessionConfigKey(selectedAgent.id, id)))
   const option = remote?.options.find((item) => item.category === 'thought_level' && item.type === 'select')
   const capabilities = catalog.data ?? noReasoningEffort
-  const effort = resolveReasoningEffort(setting.value, capabilities)
-  const scope = `${selectedAgent.id}:${key}`
+  const effort = preferredReasoningEffort(modelQuery.data?.[0]?.reasoningEffort ?? legacySetting.value, capabilities)
+  const scope = `${selectedAgent.id}:${selectedModel.id}`
   const [failure, setFailure] = useState<{ scope: string; message: string } | null>(null)
   const [pending, setPending] = useState<ReadonlyMap<string, { scope: string; value: string }>>(() => new Map())
   // Built-in preferences are per model; an ACP configuration write belongs to the entire session.
   const writeScope = builtIn ? scope : sessionConfigKey(selectedAgent.id, id)
   const busy =
     pending.has(writeScope) ||
-    (builtIn && setting.isLoading) ||
+    (builtIn && (modelQuery.isLoading || legacySetting.isLoading || legacySetting.query.isPlaceholderData)) ||
     chatInstance.status === 'submitted' ||
     chatInstance.status === 'streaming' ||
     compactionStatus === 'compacting'
@@ -70,24 +80,10 @@ export const useEffortSelectorState = () => {
     setPending((current) => new Map(current).set(writeScope, { scope, value: next }))
     try {
       if (builtIn) {
-        const previousWrite = useChatStore.getState().sessions.get(id)?.configurationChange
-        const write = setting.setValue(next)
-        const barrier = (async () => {
-          const results = await Promise.allSettled([previousWrite, write])
-          const failure = results.find((result) => result.status === 'rejected')
-          if (failure?.status === 'rejected') {
-            throw failure.reason
-          }
-        })()
-        useChatStore.getState().updateSession(id, { configurationChange: barrier })
-        const clearBarrier = () => {
-          if (useChatStore.getState().sessions.get(id)?.configurationChange === barrier) {
-            useChatStore.getState().updateSession(id, { configurationChange: undefined })
-          }
-        }
-        // The send path observes barrier failures; this write reports only its own failure.
-        void barrier.then(clearBarrier, clearBarrier)
-        await write
+        await queueReasoningEffortWrite(db, selectedModel.id, async () => {
+          await updateModel(db, selectedModel.id, { reasoningEffort: next })
+          await modelQuery.refetch()
+        })
       } else if (remote && option) {
         await remote.setOption(option.id, next)
       }

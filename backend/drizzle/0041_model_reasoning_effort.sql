@@ -1,0 +1,1 @@
+ALTER TABLE "powersync"."models" ADD COLUMN "reasoning_effort" text;

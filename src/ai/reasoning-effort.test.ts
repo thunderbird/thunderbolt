@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
+import { afterAll, beforeAll, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { http } from '@/lib/http'
 import { createMockModel } from '@/test-utils/chat-store-mocks'
@@ -10,10 +10,14 @@ import {
   createReasoningCapabilitiesLoader,
   getChatReasoningEffort,
   loadReasoningCapabilities,
+  queueReasoningEffortWrite,
 } from './reasoning-effort'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { updateSettings } from '@/dal/settings'
-import { getDb } from '@/db/database'
+import { createModel, updateModel } from '@/dal/models'
+import { eq } from 'drizzle-orm'
+import { getCurrentDatabase, getDb, setDatabase } from '@/db/database'
+import { modelsTable } from '@/db/tables'
 import { reasoningEffortSettingKey } from '@shared/reasoning-effort'
 
 const response = (body: unknown) => {
@@ -26,6 +30,136 @@ const response = (body: unknown) => {
 
 beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
+
+it('serializes repeated model writes and waits for the latest preference from any chat', async () => {
+  const db = getDb()
+  const model = createMockModel({ id: 'queued-effort' })
+  await createModel(getDb(), model)
+  const other = createMockModel({ id: 'independent-effort' })
+  const capabilities = async () => ({ efforts: ['low', 'medium', 'high'] as const })
+  const first = Promise.withResolvers<void>()
+  const second = Promise.withResolvers<void>()
+  const saveFirst = mock(async () => {
+    await first.promise
+    await updateModel(db, model.id, { reasoningEffort: 'high' })
+  })
+  const saveSecond = mock(async () => {
+    await second.promise
+    await updateModel(db, model.id, { reasoningEffort: 'low' })
+  })
+  const firstWrite = queueReasoningEffortWrite(getDb(), model.id, saveFirst)
+  const secondWrite = queueReasoningEffortWrite(getDb(), model.id, saveSecond)
+  const readEffort = getChatReasoningEffort('other-chat', model, capabilities)
+  const completed = { value: false }
+  void readEffort.then(() => {
+    completed.value = true
+  })
+  try {
+    expect(await getChatReasoningEffort('another-chat', other, capabilities)).toBe('medium')
+    expect(saveFirst).toHaveBeenCalledTimes(1)
+    expect(saveSecond).not.toHaveBeenCalled()
+    expect(completed.value).toBe(false)
+    first.resolve()
+    await firstWrite
+    await Promise.resolve()
+    expect(saveSecond).toHaveBeenCalledTimes(1)
+    expect(completed.value).toBe(false)
+    second.resolve()
+    await secondWrite
+    expect(await readEffort).toBe('low')
+    expect(await getChatReasoningEffort('first-chat', model, capabilities)).toBe('low')
+  } finally {
+    first.resolve()
+    second.resolve()
+    await Promise.allSettled([firstWrite, secondWrite, readEffort])
+  }
+})
+
+it('serializes SQLite transactions even when the user switches models before a save finishes', async () => {
+  const db = getDb()
+  const first = createMockModel({ id: 'transaction-first' })
+  const second = createMockModel({ id: 'transaction-second' })
+  await createModel(db, first)
+  await createModel(db, second)
+  const capabilities = async () => ({ efforts: ['low', 'high'] as const })
+  const started = Promise.withResolvers<void>()
+  const finish = Promise.withResolvers<void>()
+  const firstWrite = queueReasoningEffortWrite(db, first.id, () =>
+    db.transaction(async (tx) => {
+      started.resolve()
+      await finish.promise
+      await tx.update(modelsTable).set({ reasoningEffort: 'high' }).where(eq(modelsTable.id, first.id))
+    }),
+  )
+  await started.promise
+  const saveSecond = mock(() => updateModel(db, second.id, { reasoningEffort: 'low' }))
+  const secondWrite = queueReasoningEffortWrite(db, second.id, saveSecond)
+  const secondRead = getChatReasoningEffort('switched-chat', second, capabilities)
+  try {
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(saveSecond).not.toHaveBeenCalled()
+    finish.resolve()
+    await Promise.all([firstWrite, secondWrite])
+    expect(await secondRead).toBe('low')
+    expect(await getChatReasoningEffort('first-chat', first, capabilities)).toBe('high')
+  } finally {
+    finish.resolve()
+    await Promise.allSettled([firstWrite, secondWrite, secondRead])
+  }
+})
+
+it('rejects a send waiting on a failed preference write without poisoning the next choice', async () => {
+  const model = createMockModel({ id: 'failed-effort' })
+  await createModel(getDb(), model)
+  const capabilities = async () => ({ efforts: ['low', 'high'] as const })
+  const first = Promise.withResolvers<void>()
+  const write = queueReasoningEffortWrite(getDb(), model.id, () => first.promise)
+  const read = getChatReasoningEffort('waiting-chat', model, capabilities)
+  const failed = Promise.allSettled([write, read])
+  const next = queueReasoningEffortWrite(getDb(), model.id, () =>
+    updateModel(getDb(), model.id, { reasoningEffort: 'low' }),
+  )
+  const error = new Error('Settings write failed')
+  first.reject(error)
+  expect(await failed).toEqual([
+    { status: 'rejected', reason: error },
+    { status: 'rejected', reason: error },
+  ])
+  await next
+  expect(await getChatReasoningEffort('retry-chat', model, capabilities)).toBe('low')
+})
+
+it('isolates queued preferences when the account database changes', async () => {
+  const original = getCurrentDatabase()!
+  const model = createMockModel({ id: 'account-effort' })
+  await createModel(getDb(), model)
+  const capabilities = async () => ({ efforts: ['low', 'medium', 'high'] as const })
+  const save = Promise.withResolvers<void>()
+  const write = queueReasoningEffortWrite(getDb(), model.id, async () => {
+    await save.promise
+    await updateModel(original.db, model.id, { reasoningEffort: 'high' })
+  })
+  const originalRead = getChatReasoningEffort('old-account-chat', model, capabilities)
+  await setupTestDatabase()
+  const other = getCurrentDatabase()!
+  await createModel(other.db, model)
+  try {
+    expect(await getChatReasoningEffort('new-account-chat', model, capabilities)).toBe('medium')
+    await queueReasoningEffortWrite(getDb(), model.id, () =>
+      updateModel(other.db, model.id, { reasoningEffort: 'low' }),
+    )
+    save.resolve()
+    await write
+    expect(await originalRead).toBe('high')
+    expect(await getChatReasoningEffort('new-account-chat', model, capabilities)).toBe('low')
+  } finally {
+    save.resolve()
+    await Promise.allSettled([write, originalRead])
+    setDatabase(original)
+    await other.close()
+  }
+})
 
 it.each(['openrouter', 'tinfoil'])(
   'shares %s discovery, retries cold failures, and retains known capabilities during refresh outages',
@@ -122,8 +256,9 @@ it.each(['openrouter', 'tinfoil'])(
   },
 )
 
-it('reads only valid, currently supported per-chat/model effort preferences at send time', async () => {
+it('shares model choices across chats, preserves legacy choices, and defaults to a supported effort', async () => {
   const model = createMockModel({ id: 'saved-effort', provider: 'tinfoil', model: 'glm-5-3' })
+  await createModel(getDb(), model)
   const key = reasoningEffortSettingKey('saved-chat', model.id)
   const request = spyOn(http, 'get').mockImplementation(() =>
     response({
@@ -131,28 +266,43 @@ it('reads only valid, currently supported per-chat/model effort preferences at s
     }),
   )
   try {
-    expect(await getChatReasoningEffort('saved-chat', model)).toBeUndefined()
+    expect(await getChatReasoningEffort('saved-chat', model)).toBe('high')
     await updateSettings(getDb(), { [key]: 'invalid' })
-    expect(await getChatReasoningEffort('saved-chat', model)).toBeUndefined()
+    expect(await getChatReasoningEffort('saved-chat', model)).toBe('high')
     await updateSettings(getDb(), { [key]: 'none' })
-    expect(await getChatReasoningEffort('saved-chat', model)).toBeUndefined()
+    expect(await getChatReasoningEffort('saved-chat', model)).toBe('high')
     await updateSettings(getDb(), { [key]: 'max' })
     expect(await getChatReasoningEffort('saved-chat', model)).toBe('max')
-    expect(await getChatReasoningEffort('other-chat', model)).toBeUndefined()
-    expect(await getChatReasoningEffort('saved-chat', { ...model, id: 'other-model' })).toBeUndefined()
+    expect(await getChatReasoningEffort('other-chat', model)).toBe('high')
+    await updateModel(getDb(), model.id, { reasoningEffort: 'low' })
+    expect(await getChatReasoningEffort('saved-chat', model)).toBe('low')
+    expect(await getChatReasoningEffort('other-chat', model)).toBe('low')
+    await updateModel(getDb(), model.id, { reasoningEffort: 'invalid' })
+    expect(await getChatReasoningEffort('saved-chat', model)).toBe('high')
+    await updateModel(getDb(), model.id, { reasoningEffort: null })
+    expect(await getChatReasoningEffort('saved-chat', model)).toBe('max')
+    expect(await getChatReasoningEffort('saved-chat', { ...model, id: 'other-model' })).toBe('high')
     expect(await getChatReasoningEffort('saved-chat', { ...model, model: 'llama3-3-70b' })).toBeUndefined()
   } finally {
     request.mockRestore()
   }
 })
 
+it('surfaces local capability lookup errors instead of silently changing effort', async () => {
+  const model = createMockModel({ id: 'broken-local-catalog', provider: 'openai' })
+  const load = async () => {
+    throw new Error('Local catalog import failed')
+  }
+  await expect(getChatReasoningEffort('local-chat', model, load)).rejects.toThrow('Local catalog import failed')
+})
+
 it.each(['openrouter', 'tinfoil'])(
   'keeps a saved %s choice when discovery fails before any catalog has loaded',
   async (provider) => {
-    const model = createMockModel({ id: 'router-outage', provider, model: 'test/outage' })
+    const model = createMockModel({ id: `${provider}-outage`, provider, model: 'test/outage' })
+    await createModel(getDb(), model)
     const lookup = createReasoningCapabilitiesLoader()
     const readEffort = (threadId: string) => getChatReasoningEffort(threadId, model, lookup)
-    const key = reasoningEffortSettingKey('router-outage-chat', model.id)
     const fetch = spyOn(globalThis, 'fetch').mockImplementation(
       Object.assign(
         async () => {
@@ -163,16 +313,20 @@ it.each(['openrouter', 'tinfoil'])(
     )
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
     try {
-      await updateSettings(getDb(), { [key]: 'high' })
+      expect(await readEffort('router-outage-chat')).toBeUndefined()
+      await updateSettings(getDb(), { [reasoningEffortSettingKey('router-outage-chat', model.id)]: 'low' })
+      expect(await readEffort('router-outage-chat')).toBe('low')
+      await updateModel(getDb(), model.id, { reasoningEffort: 'high' })
       expect(await readEffort('router-outage-chat')).toBe('high')
-      await updateSettings(getDb(), { [key]: 'none' })
+      await updateModel(getDb(), model.id, { reasoningEffort: 'none' })
       expect(await readEffort('router-outage-chat')).toBe('none')
-      expect(fetch).toHaveBeenCalledTimes(2)
-      expect(warn).toHaveBeenCalledTimes(2)
-      await updateSettings(getDb(), { [key]: 'invalid' })
+      expect(fetch).toHaveBeenCalledTimes(4)
+      expect(warn).toHaveBeenCalledTimes(4)
+      await updateModel(getDb(), model.id, { reasoningEffort: 'invalid' })
       expect(await readEffort('router-outage-chat')).toBeUndefined()
       expect(await readEffort('unsaved-chat')).toBeUndefined()
-      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(fetch).toHaveBeenCalledTimes(6)
+      expect(warn).toHaveBeenCalledTimes(6)
     } finally {
       fetch.mockRestore()
       warn.mockRestore()

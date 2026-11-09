@@ -9,6 +9,8 @@ import { getQuotes } from '@/lib/quotes'
 import type { ThunderboltUIMessage } from '@/types'
 import { buildDocumentSideviewId } from '@/types/citation'
 import type { UIMessage } from 'ai'
+import { useIsSharedChat } from '@/shared-chats/snapshot-context'
+import { FileText } from 'lucide-react'
 import { FileCard } from './file-card'
 import { MemoizedMarkdown } from './memoized-markdown'
 
@@ -20,8 +22,23 @@ type MessageBubblesProps = {
   onResendAttachment?: ResendAttachmentHandler
 }
 
+/**
+ * An attachment in a shared chat: its name only. The file stayed on the sharer's
+ * device, so there is nothing to preview or open.
+ */
+const SharedAttachmentChip = ({ filename }: { filename: string }) => (
+  <span
+    title={filename}
+    className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-[length:var(--font-size-sm)]"
+  >
+    <FileText className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" aria-hidden="true" />
+    <span className="truncate">{filename}</span>
+  </span>
+)
+
 export const MessageBubbles = ({ message, onResendAttachment }: MessageBubblesProps) => {
   const showSideview = useShowSideview()
+  const isSharedChat = useIsSharedChat()
   const attachments = getAttachments(message as ThunderboltUIMessage)
   const quotes = getQuotes(message as ThunderboltUIMessage)
 
@@ -41,7 +58,10 @@ export const MessageBubbles = ({ message, onResendAttachment }: MessageBubblesPr
       )}
       {attachments.length > 0 && (
         <div className="ml-auto mt-6 flex max-w-3/4 flex-wrap justify-end gap-2">
-          {attachments.map((attachment) => {
+          {attachments.map((attachment, index) => {
+            if (isSharedChat) {
+              return <SharedAttachmentChip key={`${attachment.filename}-${index}`} filename={attachment.filename} />
+            }
             // Alternative delivery modes to offer, but only on the latest turn and
             // only once a non-native mode is in effect (i.e. remediation already
             // converted this file) — so a clean native send shows no resend noise.

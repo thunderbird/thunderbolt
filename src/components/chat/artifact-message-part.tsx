@@ -6,6 +6,7 @@ import { renderHtmlInput, renderHtmlOutput, type RenderHtmlPart } from '@/artifa
 import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/chats/chat-store'
 import { useContentView } from '@/content-view/context'
+import { useIsSharedChat } from '@/shared-chats/snapshot-context'
 import { useThrottle } from '@/hooks/use-throttle'
 import type { ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { Trans, useLingui } from '@lingui/react/macro'
@@ -41,6 +42,8 @@ export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
   const html = streaming ? throttledHtml : (input.html ?? '')
 
   const { state, showArtifact, close } = useContentView()
+  // A shared chat has no conversation of its own to quote a passage into.
+  const isSharedChat = useIsSharedChat()
   const shownInPanel = state.type === 'artifact' && state.data.artifactId === artifactId
 
   // Live inline card from the moment the call starts (even before any HTML arrives).
@@ -64,7 +67,12 @@ export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
          rather than subscribed to: this is an event handler, and re-rendering
          every artifact card on a session change would buy nothing. */
       onOpenInPanel={() =>
-        showArtifact({ html, title, artifactId, chatThreadId: useChatStore.getState().currentSessionId })
+        showArtifact({
+          html,
+          title,
+          artifactId,
+          chatThreadId: isSharedChat ? null : useChatStore.getState().currentSessionId,
+        })
       }
     />
   )

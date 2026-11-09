@@ -5,10 +5,19 @@
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useDatabase } from '@/contexts'
 import { getMessage, updateMessageCache } from '@/dal/chat-messages'
+import { type SharedChatSnapshot, useSharedChatSnapshot } from '@/shared-chats/snapshot-context'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Ask, type AskSubmission } from './display'
-import { type AskCacheEntry, type AskData, type AskMode, type AskOption, askStorageKey, turnTextForAnswer } from './lib'
+import {
+  type AskCacheEntry,
+  type AskData,
+  type AskMode,
+  type AskOption,
+  askStorageKey,
+  isAskCacheEntry,
+  turnTextForAnswer,
+} from './lib'
 
 type AskWidgetProps = Omit<AskData, 'mode' | 'options'> & {
   /** `free` appears only in messages persisted before the mode was removed. */
@@ -34,11 +43,41 @@ const LegacyFreeAsk = ({ prompt, savedText }: { prompt: string; savedText: strin
 )
 
 /**
+ * An Ask in a shared chat: shown as the sharer left it, answered or not, and
+ * never answerable — there is no conversation here for an answer to go to.
+ */
+const SharedAskWidget = ({
+  prompt,
+  mode,
+  options = [],
+  explanation,
+  messageId,
+  snapshot,
+}: AskWidgetProps & { snapshot: SharedChatSnapshot }) => {
+  const entry = snapshot.cache.get(messageId)?.[askStorageKey({ prompt, mode, options })]
+  const saved = isAskCacheEntry(entry) ? entry : undefined
+
+  if (mode === 'free') {
+    return <LegacyFreeAsk prompt={prompt} savedText={saved?.text ?? saved?.chosen[0] ?? null} />
+  }
+  return (
+    <Ask
+      prompt={prompt}
+      mode={mode}
+      options={options}
+      explanation={explanation}
+      initialSelectedIds={saved?.selectedIds}
+      initialSubmitted
+    />
+  )
+}
+
+/**
  * Connects the presentational {@link Ask} to the message cache: restores a
  * prior response on mount and persists the user's response on submit. Persisted
  * entries are later surfaced to the model (see `formatAskResponsesNote`).
  */
-export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }: AskWidgetProps) => {
+const LiveAskWidget = ({ prompt, mode, options = [], explanation, messageId }: AskWidgetProps) => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { chatInstance } = useCurrentChatSession()
@@ -110,4 +149,10 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
       onSubmit={handleSubmit}
     />
   )
+}
+
+/** An Ask, live in a chat or read-only in a shared one. */
+export const AskWidget = (props: AskWidgetProps) => {
+  const snapshot = useSharedChatSnapshot()
+  return snapshot ? <SharedAskWidget {...props} snapshot={snapshot} /> : <LiveAskWidget {...props} />
 }

@@ -14,6 +14,7 @@ import type { SourceMetadata } from '@/types/source'
 import { widgetRegistry } from '@/widgets'
 import { type ComponentType, createElement, memo } from 'react'
 import { useWidgetHiddenState } from '@/widgets/connect-integration/use-widget-hidden-state'
+import { useIsSharedChat } from '@/shared-chats/snapshot-context'
 
 type WidgetRendererProps = {
   widget: Widget
@@ -30,8 +31,10 @@ type WidgetRendererProps = {
  */
 export const WidgetRenderer = memo(({ widget, messageId, sources }: WidgetRendererProps) => {
   const isHidden = useWidgetHiddenState(messageId, widget.widget)
+  // Asking a recipient to connect the sharer's integration would act on their own account.
+  const isSharedChat = useIsSharedChat()
 
-  if (widget.widget === 'connect-integration' && isHidden) {
+  if (widget.widget === 'connect-integration' && (isHidden || isSharedChat)) {
     return null
   }
 

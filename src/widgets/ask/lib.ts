@@ -112,7 +112,8 @@ export type AskCacheEntry = {
   text?: string
 }
 
-const isAskCacheEntry = (value: unknown): value is AskCacheEntry =>
+/** Whether a cache value is a stored ask response. */
+export const isAskCacheEntry = (value: unknown): value is AskCacheEntry =>
   typeof value === 'object' &&
   value !== null &&
   'prompt' in value &&

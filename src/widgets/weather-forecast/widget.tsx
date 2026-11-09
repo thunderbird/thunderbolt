@@ -32,6 +32,8 @@ export const WeatherForecastWidget = ({ location, region, country, messageId }: 
     // place name — without it the widget would keep rendering the language it
     // was first fetched in.
     cacheKey: ['weatherForecast', location, region, country, temperatureUnit.value, locale],
+    // A shared chat shows the forecast in the sharer's unit and language.
+    snapshotCacheKey: ['weatherForecast', location, region, country],
     enabled: !temperatureUnit.isLoading,
     fetchFn: async () =>
       fetchWeatherForecast({
@@ -60,6 +62,11 @@ export const WeatherForecastWidget = ({ location, region, country, messageId }: 
         </p>
       </div>
     )
+  }
+
+  // Null only in a shared chat whose snapshot carries no forecast: nothing is fetched there.
+  if (data === null) {
+    return null
   }
 
   // No data while the settings gate is closed or the fetch is in flight — the skeleton covers both.

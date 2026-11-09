@@ -444,6 +444,61 @@ describe('mergeMcpTools', () => {
     slow.resolve(null)
   })
 
+  it('waits on a server already mid-reconnect and merges the fresh client tools', async () => {
+    const fresh = named('render', async () => ({ alpha: tool('fresh') })).client
+    const reconnecting: NamedMCPClient = {
+      ...named('render', async () => ({})),
+      client: null,
+      reconnecting: Promise.resolve(fresh),
+    }
+    const reconnect = mock(async () => null)
+
+    const result = await mergeMcpTools({}, [reconnecting], reconnect)
+
+    expect(result.toolset).toEqual({ render_alpha: tool('fresh') })
+    expect(result.summary).toBe('- render (1 tool)')
+    expect(reconnect).not.toHaveBeenCalled()
+  })
+
+  it('skips a mid-reconnect server whose reconnect fails', async () => {
+    const reconnecting: NamedMCPClient = {
+      ...named('render', async () => ({})),
+      client: null,
+      reconnecting: Promise.resolve(null),
+    }
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+
+    const result = await mergeMcpTools(
+      {},
+      [reconnecting, healthy],
+      mock(async () => null),
+    )
+
+    expect(result.toolset).toEqual({ github_beta: tool('b') })
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render" did not reconnect'))
+    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('timed out'))
+  })
+
+  it('skips a mid-reconnect server whose reconnect outlasts the bound', async () => {
+    const slow = Promise.withResolvers<MCPClient | null>()
+    const reconnecting: NamedMCPClient = {
+      ...named('render', async () => ({})),
+      client: null,
+      reconnecting: slow.promise,
+    }
+
+    const merging = mergeMcpTools(
+      {},
+      [reconnecting],
+      mock(async () => null),
+      { reconnectTimeoutMs: 20 },
+    )
+    await getClock().tickAsync(20)
+
+    expect((await merging).toolset).toEqual({})
+    slow.resolve(null)
+  })
+
   it.each([
     { type: 'sse', body: 'Expired session', status: 404, errorName: 'Error' },
     { type: 'http', body: '{', status: 200, errorName: 'SyntaxError' },

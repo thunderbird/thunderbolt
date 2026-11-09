@@ -166,8 +166,9 @@ const defaultMcpReconnectTimeoutMs = 3_000
  *
  * An expected discovery failure (a dropped session, a 4xx/5xx, a network error)
  * reconnects the server and retries discovery once within the same send, so an
- * expired idle session doesn't cost the model its tools for a turn. The wait is
- * bounded per server by `reconnectTimeoutMs`
+ * expired idle session doesn't cost the model its tools for a turn. A server
+ * already mid-reconnect when the send starts arrives with that reconnect instead
+ * of a client. Either wait is bounded per server by `reconnectTimeoutMs`
  * (default {@link defaultMcpReconnectTimeoutMs}); past it the server is skipped
  * for this turn while the reconnect carries on. A failed reconnect, or a second
  * discovery failure on the fresh client, skips the server too; the second
@@ -217,7 +218,8 @@ export const mergeMcpTools = async (
     return added
   }
 
-  for (const { name: serverName, url, client } of mcpClients) {
+  for (const entry of mcpClients) {
+    const { name: serverName, url } = entry
     const basePrefix = sanitizeToolPrefix(serverName)
     let prefix = basePrefix
     let suffix = 2
@@ -257,14 +259,17 @@ export const mergeMcpTools = async (
     }
 
     const discover = async () => {
+      if (!entry.client) {
+        return discoverAfterReconnect(entry.reconnecting)
+      }
       try {
-        return await client.tools()
+        return await entry.client.tools()
       } catch (err) {
         if (!isMcpDiscoveryError(err)) {
           throw err
         }
         console.warn(`MCP tool discovery failed for "${serverName}"; reconnecting and retrying once`, err)
-        return discoverAfterReconnect(reconnectClient(client, err))
+        return discoverAfterReconnect(reconnectClient(entry.client, err))
       }
     }
 

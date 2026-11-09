@@ -36,15 +36,22 @@ export type MCPServerConnection = MCPServer & {
 /** Reconnect a dropped MCP client at the `tools()` boundary. Looks up the
  *  server behind `client` and returns a freshly connected client, or null when
  *  the server is gone/disabled or the reconnect failed. A discovery error is
- *  surfaced while recovery runs and cleared when the connection succeeds. */
+ *  surfaced while recovery runs and cleared when the connection succeeds. A
+ *  client the provider already replaced joins the in-flight reconnect or gets
+ *  the current client, without redialing or surfacing its error. */
 type ReconnectClient = (client: MCPClient, error?: Error) => Promise<MCPClient | null>
 
-/** An enabled, connected client paired with its server identity. `name` is the
+/** An enabled server's client paired with its identity. `name` is the
  *  tool-namespacing prefix consumed by `mergeMcpTools` so different servers'
  *  tools don't collide; `name` and `url` flow through to the assistant message's
  *  `mcpTools` metadata so chat history can resolve a tool call back to its
- *  server (name, url, icon). */
-type NamedMCPClient = { id: string; name: string; url: string; client: MCPClient }
+ *  server (name, url, icon). A server mid-reconnect has no client yet and
+ *  carries the in-flight reconnect instead, so a send can wait for it rather
+ *  than drop the server's tools for the turn. */
+type NamedMCPClient = { id: string; name: string; url: string } & (
+  | { client: MCPClient }
+  | { client: null; reconnecting: Promise<MCPClient | null> }
+)
 
 type MCPContextType = {
   servers: MCPServerConnection[]
@@ -88,7 +95,9 @@ type MCPProviderProps = {
 export const MCPProvider = ({ children, createClient: injectedCreateClient }: MCPProviderProps) => {
   const [servers, setServers] = useState<MCPServerConnection[]>([])
   const clientRefs = useRef<Map<string, MCPClient>>(new Map())
-  const clientToServerId = useRef<Map<MCPClient, string>>(new Map())
+  // Weak and never pruned: a send can still hold a client the provider has
+  // replaced, and must be able to find its server to join the reconnect.
+  const clientToServerId = useRef<WeakMap<MCPClient, string>>(new WeakMap())
   const reconnectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
   const connectsInFlight = useRef<Map<string, Promise<void>>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
@@ -190,7 +199,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     })
   }
 
-  /** Close and forget a client, clearing both lookup directions. */
+  /** Close a client. Its reverse lookup stays so a retired client still resolves to its server. */
   const closeClient = (client: MCPClient) => {
     if (client.close) {
       try {
@@ -199,7 +208,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         console.error('Error closing MCP client:', error)
       }
     }
-    clientToServerId.current.delete(client)
   }
 
   const disconnectServer = (serverId: string) => {
@@ -344,6 +352,11 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     if (!serverId) {
       return Promise.resolve(null)
     }
+    // Already replaced (another send's retry got there first): join that
+    // reconnect, or take its result, instead of redialing a healthy server.
+    if (clientRefs.current.get(serverId) !== client) {
+      return reconnectsInFlight.current.get(serverId) ?? Promise.resolve(clientRefs.current.get(serverId) ?? null)
+    }
     if (error) {
       commitServers((prev) =>
         prev.map((s) => (s.id === serverId ? { ...s, client: null, isConnected: false, error } : s)),
@@ -352,17 +365,25 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     return reconnectServer(serverId)
   }
 
-  const getEnabledClients = (): NamedMCPClient[] => {
-    // Use ref to always get current servers, avoiding stale closures
-    return serversRef.current
-      .filter((server) => server.enabled && server.isConnected && server.client)
-      .map((server) => ({ id: server.id, name: server.name, url: server.url, client: server.client! }))
-  }
+  // Use ref to always get current servers, avoiding stale closures
+  const getEnabledClients = (): NamedMCPClient[] =>
+    serversRef.current.flatMap((server): NamedMCPClient[] => {
+      if (!server.enabled) {
+        return []
+      }
+      const identity = { id: server.id, name: server.name, url: server.url }
+      // An in-flight reconnect wins over the row's client, which it has already
+      // closed even when the row still reads as connected.
+      const reconnecting = reconnectsInFlight.current.get(server.id)
+      if (reconnecting) {
+        return [{ ...identity, client: null, reconnecting }]
+      }
+      return server.isConnected && server.client ? [{ ...identity, client: server.client }] : []
+    })
 
   // Cleanup on unmount
   useEffect(() => {
     const clientsRef = clientRefs
-    const reverseRef = clientToServerId
     return () => {
       const clients = clientsRef.current
       clients.forEach((client, serverId) => {
@@ -375,7 +396,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         }
       })
       clients.clear()
-      reverseRef.current.clear()
     }
   }, [])
 

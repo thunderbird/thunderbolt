@@ -53,10 +53,33 @@ msgstr[1] "# Tools"
 #~ msgstr[0] ""
 #~ msgstr[1] ""
 
+#. placeholder {0}: state.existing.emails.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BShared+with+%23+person.+Saving+updates+everyone+to+the+chat+as+it+is+now.%7D+other+%7BShared+with+%23+people.+Saving+updates+everyone+to+the+chat+as+it+is+now.%7D%7D&pluralize_on=0
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Shared with # person. Saving updates everyone to the chat as it is now."
+msgid_plural "Shared with # people. Saving updates everyone to the chat as it is now."
+msgstr[0] "Mit # Person geteilt. Beim Speichern sehen alle den Chat so, wie er jetzt ist."
+msgstr[1] "Mit # Personen geteilt. Beim Speichern sehen alle den Chat so, wie er jetzt ist."
+
+#. placeholder {0}: tag.email
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "{0} can’t receive shared chats. They need a {appName} account with sync turned on."
+msgstr "{0} kann keine geteilten Chats empfangen. Dafür ist ein {appName}-Konto mit aktivierter Synchronisierung nötig."
+
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
 msgid "{0} is only available on desktop"
 msgstr ""
+
+#. placeholder {0}: tag.email
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "{0} isn’t a valid email address."
+msgstr "{0} ist keine gültige E-Mail-Adresse."
+
+#. placeholder {0}: action.recipient.email
+#: src/shared-chats/shared-chats-page.tsx
+msgid "{0} will no longer be able to open it. Anything they already read can’t be taken back."
+msgstr "{0} kann den Chat dann nicht mehr öffnen. Was bereits gelesen wurde, lässt sich nicht zurücknehmen."
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
@@ -110,6 +133,27 @@ msgid "One skill references this. If you disable it, that skill may no longer re
 msgid_plural "# skills reference this. If you disable it, they may no longer resolve."
 msgstr[0] "Ein Skill verweist darauf. Wenn Sie es deaktivieren, kann dieser Skill möglicherweise nicht mehr aufgelöst werden."
 msgstr[1] "# Skills verweisen darauf. Wenn Sie es deaktivieren, können sie möglicherweise nicht mehr aufgelöst werden."
+
+#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BShared+with+%23+person+%C2%B7+%7BsharedAt%7D%7D+other+%7BShared+with+%23+people+%C2%B7+%7BsharedAt%7D%7D%7D&pluralize_on=count
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Shared with # person · {sharedAt}"
+msgid_plural "Shared with # people · {sharedAt}"
+msgstr[0] "Mit # Person geteilt · {sharedAt}"
+msgstr[1] "Mit # Personen geteilt · {sharedAt}"
+
+#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BShared+with+%23+person.+They%E2%80%99ll+get+an+email+and+can+open+it+from+Shared.%7D+other+%7BShared+with+%23+people.+They%E2%80%99ll+get+an+email+and+can+open+it+from+Shared.%7D%7D&pluralize_on=count
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Shared with # person. They’ll get an email and can open it from Shared."
+msgid_plural "Shared with # people. They’ll get an email and can open it from Shared."
+msgstr[0] "Mit # Person geteilt. Sie erhält eine E-Mail und kann den Chat unter „Geteilt“ öffnen."
+msgstr[1] "Mit # Personen geteilt. Sie erhalten eine E-Mail und können den Chat unter „Geteilt“ öffnen."
+
+#. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BUpdated+for+%23+person.+They+now+see+the+latest+version+of+the+chat.%7D+other+%7BUpdated+for+%23+people.+They+now+see+the+latest+version+of+the+chat.%7D%7D&pluralize_on=count
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Updated for # person. They now see the latest version of the chat."
+msgid_plural "Updated for # people. They now see the latest version of the chat."
+msgstr[0] "Für # Person aktualisiert. Sie sieht jetzt die neueste Version des Chats."
+msgstr[1] "Für # Personen aktualisiert. Sie sehen jetzt die neueste Version des Chats."
 
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
@@ -330,6 +374,10 @@ msgstr "Modell hinzufügen"
 #: src/settings/passkeys.tsx
 #~ msgid "Add passkey"
 #~ msgstr ""
+
+#: src/components/share-chat/email-tag-input.tsx
+msgid "Add people by email"
+msgstr "Personen per E-Mail hinzufügen"
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
@@ -608,6 +656,10 @@ msgstr "Verfügbare Tools:"
 msgid "Back to App"
 msgstr "Zurück zur App"
 
+#: src/shared-chats/shared-chat-page.tsx
+msgid "Back to Shared"
+msgstr "Zurück zu „Geteilt“"
+
 #: src/settings/voice.tsx
 msgid "Base URL"
 msgstr "Basis-URL"
@@ -649,6 +701,10 @@ msgstr "Wenn Sie fortfahren, stimmen Sie unseren <0>Nutzungsbedingungen</0> und 
 msgid "Calendar"
 msgstr "Kalender"
 
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Can’t be opened on this device"
+msgstr "Kann auf diesem Gerät nicht geöffnet werden"
+
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
 #: src/components/chat/external-link-dialog.tsx
@@ -656,6 +712,7 @@ msgstr "Kalender"
 #: src/components/revoke-device-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/components/share-chat/share-chat-dialog.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/step-up-code-dialog.tsx
 #: src/components/sync-enable-warning-dialog.tsx
@@ -716,6 +773,10 @@ msgstr "Chat-Aktionen"
 #: src/layout/sidebar/rename-chat-dialog.tsx
 msgid "Chat name"
 msgstr "Chat-Name"
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Chat shared"
+msgstr "Chat geteilt"
 
 #: src/layout/sidebar/nav-toggle.tsx
 #: src/search/palette/entity-meta.ts
@@ -882,6 +943,7 @@ msgstr "Zwischenablage nicht verfügbar. Bitte markieren Sie die Phrase oben und
 #: src/components/context-overflow-modal.tsx
 #: src/components/device-approval.tsx
 #: src/components/magic-link-verify.tsx
+#: src/components/share-chat/share-chat-dialog.tsx
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
@@ -1291,6 +1353,10 @@ msgstr "Nach Updates konnte nicht gesucht werden: {error}"
 msgid "Couldn't check for updates."
 msgstr "Nach Updates konnte nicht gesucht werden."
 
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Couldn’t check who this chat is shared with. Please try again."
+msgstr "Es konnte nicht geprüft werden, mit wem dieser Chat geteilt ist. Bitte versuchen Sie es erneut."
+
 #: src/components/approve-device-dialog.tsx
 msgid "Couldn't complete approval. Close this dialog and check the device list before trying again."
 msgstr ""
@@ -1315,6 +1381,14 @@ msgstr "Das Update konnte nicht heruntergeladen werden."
 msgid "Couldn't load {name}"
 msgstr ""
 
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Couldn’t load shared chats. Please try again."
+msgstr "Geteilte Chats konnten nicht geladen werden. Bitte versuchen Sie es erneut."
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Couldn’t load sharing"
+msgstr "Freigabe konnte nicht geladen werden"
+
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
 msgstr "Die Emoji-Liste konnte nicht geladen werden. Schließen Sie die Auswahl und öffnen Sie sie erneut."
@@ -1326,6 +1400,10 @@ msgstr "Die Kopplungsidentität dieser App konnte nicht geladen werden: {error}"
 #: src/mini-apps/mini-app-page.tsx
 msgid "Couldn't load your apps. Check your connection and reload."
 msgstr ""
+
+#: src/shared-chats/shared-chat-page.tsx
+msgid "Couldn’t open this shared chat"
+msgstr "Dieser geteilte Chat konnte nicht geöffnet werden"
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
@@ -1371,6 +1449,10 @@ msgstr "Der Passkey konnte nicht eingerichtet werden. Bitte versuchen Sie es ern
 #: src/waitlist/use-waitlist-state.ts
 msgid "Couldn't sign in with your passkey. Please try again or use your email."
 msgstr "Die Anmeldung mit Ihrem Passkey ist fehlgeschlagen. Bitte versuchen Sie es erneut oder verwenden Sie Ihre E-Mail-Adresse."
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Couldn’t stop sharing. Please try again."
+msgstr "Die Freigabe konnte nicht beendet werden. Bitte versuchen Sie es erneut."
 
 #: src/hooks/use-sync-setup.ts
 #~ msgid "Couldn't unlock sync with your passkey."
@@ -1793,6 +1875,7 @@ msgid "Do not ask again"
 msgstr "Nicht mehr fragen"
 
 #: src/components/device-approval.tsx
+#: src/components/share-chat/share-chat-dialog.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Done"
@@ -1904,6 +1987,10 @@ msgstr "E-Mail"
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Email address"
 msgstr "E-Mail-Adresse"
+
+#: src/components/share-chat/email-tag-input.tsx
+msgid "Email addresses"
+msgstr "E-Mail-Adressen"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Enable {customAgentName}"
@@ -2160,6 +2247,10 @@ msgstr "Essen & Trinken"
 #: src/mini-apps/mini-app-chat-badge.tsx
 msgid "From {0}"
 msgstr ""
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "From {ownerName} · {sharedAt}"
+msgstr "Von {ownerName} · {sharedAt}"
 
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
@@ -2429,6 +2520,19 @@ msgstr "Ungültiger Bestätigungslink. Bitte fordern Sie einen neuen an."
 msgid "iOS requires a secure URL (wss://)"
 msgstr "iOS erfordert eine sichere URL (wss://)"
 
+#: src/shared-chats/shared-chat-page.tsx
+#: src/shared-chats/shared-chats-page.tsx
+msgid "It disappears from Shared on all your devices. To see it again, ask the person who shared it."
+msgstr "Er verschwindet auf allen Ihren Geräten aus „Geteilt“. Um ihn wieder zu sehen, bitten Sie die Person, die ihn geteilt hat."
+
+#: src/shared-chats/shared-chat-page.tsx
+msgid "It was shared with a key this device doesn’t hold. Try opening it on another of your devices."
+msgstr "Er wurde mit einem Schlüssel geteilt, den dieses Gerät nicht besitzt. Versuchen Sie, ihn auf einem anderen Ihrer Geräte zu öffnen."
+
+#: src/shared-chats/shared-chat-page.tsx
+msgid "Its content isn’t in a form this version of {appName} can show. Updating {appName} may help."
+msgstr "Der Inhalt liegt in einer Form vor, die diese Version von {appName} nicht anzeigen kann. Ein Update von {appName} kann helfen."
+
 #: src/projects/project-delete-dialog.tsx
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr "Die Anweisungen werden entfernt. Chats im Projekt bleiben erhalten und werden zu normalen Chats."
@@ -2602,6 +2706,10 @@ msgstr "Überwiegend klar"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Manage integrations"
 msgstr "Integrationen verwalten"
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Manage shared chats"
+msgstr "Geteilte Chats verwalten"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Managed by your deployment — always available, no setup needed."
@@ -2958,6 +3066,11 @@ msgstr "Keine Aufgaben gefunden, die zu „{searchQuery}“ passen"
 msgid "No tasks yet"
 msgstr "Noch keine Aufgaben"
 
+#: src/components/share-chat/share-chat-dialog.tsx
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Nobody you shared it with will be able to open it anymore. Anything they already read can’t be taken back."
+msgstr "Niemand, mit dem Sie ihn geteilt haben, kann ihn dann noch öffnen. Was bereits gelesen wurde, lässt sich nicht zurücknehmen."
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "None of your models can be used in this chat. Choose another agent to send."
 msgstr "Keines deiner Modelle kann in diesem Chat verwendet werden. Wähle einen anderen Agenten, um zu senden."
@@ -2974,6 +3087,7 @@ msgstr "Nicht konfiguriert"
 msgid "Not Found"
 msgstr "Nicht gefunden"
 
+#: src/components/share-chat/share-chat-dialog.tsx
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sync-setup/confirm-identity-step.tsx
 #: src/components/sync-setup/passkey-enroll-step.tsx
@@ -2994,6 +3108,10 @@ msgstr ""
 #: src/mini-apps/mini-app-frame.tsx
 #~ msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
 #~ msgstr ""
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Nothing shared with you yet"
+msgstr "Noch nichts mit Ihnen geteilt"
 
 #: src/components/embedded/surface-selection-bar.tsx
 #~ msgid "Nothing to ask about there. Try covering some content."
@@ -3093,6 +3211,7 @@ msgid "Open {skillName}"
 msgstr "{skillName} öffnen"
 
 #: src/settings/connections/connections-list.tsx
+#: src/shared-chats/shared-chats-page.tsx
 msgid "Open {title}"
 msgstr "{title} öffnen"
 
@@ -3100,9 +3219,9 @@ msgstr "{title} öffnen"
 msgid "Open app"
 msgstr ""
 
-#: src/mini-apps/mini-app-page.tsx
-#~ msgid "Open chat"
-#~ msgstr ""
+#: src/shared-chats/sent-share-detail.tsx
+msgid "Open chat"
+msgstr "Chat öffnen"
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
@@ -3140,6 +3259,12 @@ msgstr ""
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
 msgstr "Link öffnen"
+
+#: src/components/share-chat/share-chat-dialog.tsx
+#: src/shared-chats/shared-chat-page.tsx
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Open Preferences"
+msgstr "Einstellungen öffnen"
 
 #: src/settings/app-version-section.tsx
 msgid "Open the store to check for updates."
@@ -3242,6 +3367,10 @@ msgstr "Peer-to-Peer über iroh – die Verbindung wird beim Start eines Chats v
 #: src/settings/devices.tsx
 msgid "Pending approvals"
 msgstr "Ausstehende Genehmigungen"
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "People you add can read this chat as it is now. They can’t reply to or edit it, and see what you add later only when you update the share."
+msgstr "Hinzugefügte Personen können diesen Chat so lesen, wie er jetzt ist. Sie können weder antworten noch ihn bearbeiten und sehen spätere Ergänzungen erst, wenn Sie die Freigabe aktualisieren."
 
 #: src/settings/account/delete-account-section.tsx
 msgid "Permanently delete your account and all data on our servers and this device."
@@ -3457,12 +3586,23 @@ msgstr "Neu laden"
 #: src/components/remove-bridge-dialog.tsx
 #: src/settings/devices.tsx
 #: src/settings/encryption/passkey-section.tsx
+#: src/shared-chats/shared-chat-page.tsx
+#: src/shared-chats/shared-chats-page.tsx
 msgid "Remove"
 msgstr "Entfernen"
+
+#. placeholder {0}: tag.email
+#: src/components/share-chat/email-tag-input.tsx
+msgid "Remove {0}"
+msgstr "{0} entfernen"
 
 #: src/settings/passkeys.tsx
 #~ msgid "Remove {name}"
 #~ msgstr ""
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Remove {title}"
+msgstr "{title} entfernen"
 
 #: src/components/logout-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
@@ -3485,6 +3625,11 @@ msgstr "Zitat entfernen"
 #: src/components/remove-bridge-dialog.tsx
 msgid "Remove this bridge?"
 msgstr "Diese Bridge entfernen?"
+
+#: src/shared-chats/shared-chat-page.tsx
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Remove this shared chat?"
+msgstr "Diesen geteilten Chat entfernen?"
 
 #: src/settings/encryption/passkey-section.tsx
 msgid "Remove your passkey?"
@@ -3652,6 +3797,7 @@ msgstr "Speichern"
 msgid "Save a file from {appName}?"
 msgstr ""
 
+#: src/components/share-chat/share-chat-dialog.tsx
 #: src/projects/project-form.tsx
 msgid "Save changes"
 msgstr "Änderungen speichern"
@@ -3934,13 +4080,76 @@ msgstr "Wird eingerichtet…"
 msgid "Settings"
 msgstr "Einstellungen"
 
+#: src/components/share-chat/share-chat-dialog.tsx
+#: src/layout/sidebar/chat-list-item.tsx
+msgid "Share"
+msgstr "Teilen"
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Share a chat from its menu or the chat header. Only the people you add can read it."
+msgstr "Teilen Sie einen Chat über sein Menü oder die Kopfzeile des Chats. Nur die Personen, die Sie hinzufügen, können ihn lesen."
+
+#: src/components/share-chat/share-chat-button.tsx
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Share chat"
+msgstr "Chat teilen"
+
 #: src/components/share-debug-transcript/share-debug-transcript-button.tsx
 msgid "Share debug transcript"
 msgstr ""
 
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Share updated"
+msgstr "Freigabe aktualisiert"
+
+#: src/layout/sidebar/chat-sidebar.tsx
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Shared"
+msgstr "Geteilt"
+
+#: src/shared-chats/sent-share-detail.tsx
+msgid "Shared {sharedAt}"
+msgstr "Geteilt {sharedAt}"
+
+#: src/shared-chats/shared-chat-page.tsx
+msgid "Shared by {owner} · {sharedAt}"
+msgstr "Geteilt von {owner} · {sharedAt}"
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Shared by me"
+msgstr "Von mir geteilt"
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Shared chats are end-to-end encrypted, so sharing and reading them needs sync on this device."
+msgstr "Geteilte Chats sind Ende-zu-Ende-verschlüsselt. Zum Teilen und Lesen muss auf diesem Gerät die Synchronisierung aktiviert sein."
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Shared chats are end-to-end encrypted, so sharing one needs sync on this device."
+msgstr "Geteilte Chats sind Ende-zu-Ende-verschlüsselt. Zum Teilen muss auf diesem Gerät die Synchronisierung aktiviert sein."
+
+#: src/shared-chats/shared-chat-page.tsx
+msgid "Shared chats are end-to-end encrypted, so they open only on a device with sync turned on."
+msgstr "Geteilte Chats sind Ende-zu-Ende-verschlüsselt und lassen sich daher nur auf einem Gerät mit aktivierter Synchronisierung öffnen."
+
 #: src/projects/project-form.tsx
 msgid "Shared instructions for project chats"
 msgstr "Gemeinsame Anweisungen für Chats in diesem Projekt"
+
+#: src/shared-chats/sent-share-detail.tsx
+msgid "Shared with"
+msgstr "Geteilt mit"
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Shared with me"
+msgstr "Mit mir geteilt"
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Sharing for this chat changed on another device. Close this and open Share again to see who has it now."
+msgstr "Die Freigabe dieses Chats wurde auf einem anderen Gerät geändert. Schließen Sie dieses Fenster und öffnen Sie „Teilen“ erneut, um zu sehen, wer ihn jetzt hat."
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Sharing…"
+msgstr "Wird geteilt…"
 
 #: src/lib/tray.tsx
 msgid "Show"
@@ -4161,7 +4370,9 @@ msgstr "Etwas ist schiefgelaufen"
 
 #: src/components/chat/error-message.tsx
 #: src/components/magic-link-verify.tsx
+#: src/components/share-chat/share-chat-dialog.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
+#: src/shared-chats/shared-chat-page.tsx
 #: src/waitlist/use-waitlist-state.ts
 msgid "Something went wrong. Please try again."
 msgstr "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
@@ -4207,9 +4418,33 @@ msgstr "Status"
 msgid "Stop generating"
 msgstr "Generierung stoppen"
 
+#: src/components/share-chat/share-chat-dialog.tsx
+#: src/shared-chats/sent-share-detail.tsx
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Stop sharing"
+msgstr "Freigabe beenden"
+
+#: src/components/share-chat/share-chat-dialog.tsx
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Stop sharing this chat?"
+msgstr "Freigabe dieses Chats beenden?"
+
+#. placeholder {0}: recipient.email
+#: src/shared-chats/sent-share-detail.tsx
+msgid "Stop sharing with {0}"
+msgstr "Freigabe für {0} beenden"
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Stop sharing with this person?"
+msgstr "Freigabe für diese Person beenden?"
+
 #: src/components/ui/prompt-input.tsx
 msgid "Stopping"
 msgstr ""
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Stopping…"
+msgstr "Wird beendet…"
 
 #: src/components/storage-unavailable-screen.tsx
 msgid "Storage is disabled"
@@ -4360,6 +4595,11 @@ msgstr ""
 msgid "That code isn't valid or has already been used. Check your terminal and try again."
 msgstr "Dieser Code ist ungültig oder wurde bereits verwendet. Prüfen Sie Ihr Terminal und versuchen Sie es erneut."
 
+#: src/shared-chats/shared-chat-page.tsx
+#: src/shared-chats/shared-chats-page.tsx
+msgid "That didn’t work. Please try again."
+msgstr "Das hat nicht funktioniert. Bitte versuchen Sie es erneut."
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The {recipient} team, for debugging. It's tied to your account — it isn't anonymous."
 msgstr ""
@@ -4444,6 +4684,10 @@ msgstr "Die Anweisungen aus Ihren Skills oder Ihrem Projekt sind für diesen Age
 msgid "The map couldn’t be loaded."
 msgstr "Die Karte konnte nicht geladen werden."
 
+#: src/shared-chats/shared-chat-page.tsx
+msgid "The person who shared it stopped sharing it, or deleted the chat."
+msgstr "Die Person, die ihn geteilt hat, hat die Freigabe beendet oder den Chat gelöscht."
+
 #: src/components/device-approval.tsx
 msgid "The request was denied. You can safely close this page."
 msgstr "Die Anfrage wurde abgelehnt. Sie können diese Seite schließen."
@@ -4468,6 +4712,10 @@ msgstr ""
 msgid "Theme"
 msgstr "Design"
 
+#: src/shared-chats/sent-share-detail.tsx
+msgid "They see this chat as it was when you last shared or updated it, and can’t reply to or edit it. Stopping a share keeps them from opening it again, but can’t take back what they’ve already read."
+msgstr "Sie sehen diesen Chat so, wie er beim letzten Teilen oder Aktualisieren war, und können weder antworten noch ihn bearbeiten. Wenn Sie die Freigabe beenden, können sie ihn nicht mehr öffnen, aber bereits Gelesenes lässt sich nicht zurücknehmen."
+
 #: src/components/chat/reasoning-group-title.tsx
 #: src/components/chat/reasoning-item.tsx
 #: src/components/chat/reasoning-part.tsx
@@ -4482,6 +4730,18 @@ msgstr "Diese Aktion kann nicht rückgängig gemacht werden. Dieser Chat und all
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr "Das kann in privaten Fenstern passieren oder wenn Websitedaten blockiert werden. Aktivieren Sie den Speicher für diese Website und laden Sie neu."
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "This chat hasn’t finished syncing yet. Try again in a moment."
+msgstr "Dieser Chat ist noch nicht vollständig synchronisiert. Versuchen Sie es gleich noch einmal."
+
+#: src/shared-chats/shared-chat-page.tsx
+msgid "This chat is no longer shared with you"
+msgstr "Dieser Chat wird nicht mehr mit Ihnen geteilt"
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "This chat is too large to share. Artifacts with embedded images take the most room."
+msgstr "Dieser Chat ist zu groß zum Teilen. Artefakte mit eingebetteten Bildern brauchen den meisten Platz."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #~ msgid "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
@@ -4554,6 +4814,10 @@ msgstr "Dieser Link ist ungültig. Bitte fordern Sie einen neuen an."
 #: src/hooks/use-external-link-dialog.ts
 msgid "This link uses an address the app cannot open."
 msgstr "Diese Adresse kann von der App nicht geöffnet werden."
+
+#: src/shared-chats/shared-message-boundary.tsx
+msgid "This message can’t be shown."
+msgstr "Diese Nachricht kann nicht angezeigt werden."
 
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
@@ -4629,6 +4893,14 @@ msgstr "Dieser Server erfordert eine Autorisierung. Klicken Sie auf „Autorisie
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server uses OAuth. Add it and authorize to connect."
 msgstr "Dieser Server verwendet OAuth. Fügen Sie ihn hinzu und autorisieren Sie ihn, um die Verbindung herzustellen."
+
+#: src/shared-chats/shared-chat-page.tsx
+msgid "This shared chat can’t be opened here"
+msgstr "Dieser geteilte Chat kann hier nicht geöffnet werden"
+
+#: src/shared-chats/shared-chat-page.tsx
+msgid "This shared chat can’t be shown"
+msgstr "Dieser geteilte Chat kann nicht angezeigt werden"
 
 #: src/lib/sso-error-messages.ts
 msgid "This sign-in did not start from {appName}. Open {appName} and sign in from there."
@@ -4830,6 +5102,18 @@ msgstr "Aktivieren Sie die Synchronisierung auf neuen Geräten einfach mit Ihrem
 msgid "Turn on sync on this device to remove this passkey."
 msgstr "Aktivieren Sie die Synchronisierung auf diesem Gerät, um diesen Passkey zu entfernen."
 
+#: src/shared-chats/shared-chat-page.tsx
+msgid "Turn on sync to read shared chats"
+msgstr "Aktivieren Sie die Synchronisierung, um geteilte Chats zu lesen"
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Turn on sync to share"
+msgstr "Aktivieren Sie die Synchronisierung, um zu teilen"
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "Turn on sync to share chats"
+msgstr "Aktivieren Sie die Synchronisierung, um Chats zu teilen"
+
 #: src/components/telemetry-warning-modal.tsx
 msgid "Turning off telemetry will disable all preview features. Are you sure you want to continue?"
 msgstr "Wenn Sie die Telemetrie deaktivieren, werden alle Vorschaufunktionen deaktiviert. Möchten Sie wirklich fortfahren?"
@@ -4894,6 +5178,10 @@ msgstr "Chat ohne Titel"
 msgid "Up late?"
 msgstr "Noch wach?"
 
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Up to {maxShareRecipients} people. Each needs a {appName} account with sync turned on."
+msgstr "Bis zu {maxShareRecipients} Personen. Jede braucht ein {appName}-Konto mit aktivierter Synchronisierung."
+
 #: src/settings/preferences.tsx
 msgid "Update Defaults?"
 msgstr "Standardwerte aktualisieren?"
@@ -4922,6 +5210,10 @@ msgstr "Update bereit. Zum Anwenden neu starten."
 msgid "Update required"
 msgstr "Update erforderlich"
 
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Update to latest"
+msgstr "Auf den neuesten Stand bringen"
+
 #: src/settings/preferences.tsx
 msgid "Update Units"
 msgstr "Einheiten aktualisieren"
@@ -4929,6 +5221,10 @@ msgstr "Einheiten aktualisieren"
 #: src/settings/app-version-section.tsx
 msgid "Updates"
 msgstr "Updates"
+
+#: src/components/share-chat/share-chat-dialog.tsx
+msgid "Updating…"
+msgstr "Wird aktualisiert…"
 
 #: src/components/chat/chat-add-menu.tsx
 msgid "Upload file"
@@ -5030,6 +5326,10 @@ msgstr "Ihren Kalender ansehen und verwalten; Termine erstellen und verschieben.
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "View install guide"
 msgstr "Installationsanleitung ansehen"
+
+#: src/shared-chats/shared-chat-page.tsx
+msgid "View only"
+msgstr "Nur ansehen"
 
 #: src/components/chat/quote-chip.tsx
 msgid "View quote"
@@ -5178,6 +5478,10 @@ msgstr ""
 #~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
 #~ msgstr "Wenn aktiviert, werden Anfragen über den Cloud-Proxy von Thunderbolt geleitet."
 
+#: src/shared-chats/shared-chats-page.tsx
+msgid "When someone shares a chat with you, it shows up here."
+msgstr "Wenn jemand einen Chat mit Ihnen teilt, erscheint er hier."
+
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"
 msgstr "Wann dieser Skill genutzt werden soll…"
@@ -5261,6 +5565,10 @@ msgstr "Sie haben die maximale Anzahl an Geräten erreicht. Widerrufen Sie ein b
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "You have reached the sharing limit. Please try again later."
 msgstr ""
+
+#: src/shared-chats/shared-chats-page.tsx
+msgid "You haven’t shared any chats"
+msgstr "Sie haben noch keine Chats geteilt"
 
 #: src/settings/preferences.tsx
 msgid "You must be signed in to import data."

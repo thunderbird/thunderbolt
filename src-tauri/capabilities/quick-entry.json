@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "quick-entry",
+  "description": "Quick Entry webview permissions (the macOS menu bar prompt). It hands a prompt to the main window, sizes and hides its window, and hides the app on Escape, so it gets events, those window calls and app hide, and nothing else. This limits IPC only: the webview shares the main window's origin, so it is not isolated from its storage.",
+  "webviews": ["quick-entry"],
+  "permissions": [
+    "core:event:default",
+    "core:window:allow-hide",
+    "core:window:allow-scale-factor",
+    "core:window:allow-outer-position",
+    "core:window:allow-outer-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:app:allow-app-hide"
+  ],
+  "remote": {
+    "urls": ["http://localhost:1420/*"]
+  }
+}

@@ -58,6 +58,16 @@ export default defineConfig({
     sourcemap,
     rolldownOptions: {
       external: ['bun:sqlite'],
+      // The macOS menu bar prompt is its own page, loaded by a second Tauri window,
+      // so only the macOS Tauri build emits it. Every other build stays a single
+      // entry: the web image copies only index.html, and size-limit's entry-chunk
+      // metric assumes one entry (a second one splits shared code into its own chunk).
+      input: {
+        main: path.resolve(dirname, 'index.html'),
+        ...(process.env.TAURI_ENV_PLATFORM === 'darwin' && {
+          'quick-entry': path.resolve(dirname, 'quick-entry.html'),
+        }),
+      },
       treeshake: {
         moduleSideEffects: [
           // @powersync/common and @powersync/shared-internals don't declare "sideEffects" in
@@ -74,7 +84,7 @@ export default defineConfig({
       output: {
         // Distinct prefix for the entry chunk so size-limit can track the
         // FCP-blocking bytes separately from on-demand route chunks.
-        entryFileNames: 'assets/entry-[hash].js',
+        entryFileNames: (chunk) => (chunk.name === 'main' ? 'assets/entry-[hash].js' : 'assets/[name]-[hash].js'),
       },
     },
   },
@@ -244,8 +254,9 @@ export default defineConfig({
         path.resolve(__dirname, 'node_modules'),
         path.resolve(__dirname, 'dist-isolation'),
         path.resolve(__dirname, '.storybook'),
-        // Vite's HTML middleware checks checkLoadingAccess() for index.html
+        // Vite's HTML middleware checks checkLoadingAccess() for each HTML entry
         path.resolve(__dirname, 'index.html'),
+        path.resolve(__dirname, 'quick-entry.html'),
       ],
     },
   },

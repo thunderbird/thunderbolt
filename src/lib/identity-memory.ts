@@ -10,6 +10,8 @@ import { cancelTinfoilMobileConnection } from '@/lib/tinfoil-mobile-auth'
 import { clearAllOAuthConnectingState, clearOAuthState } from '@/lib/oauth-state'
 import { clearMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { clearProviderAuthorizationDraft } from '@/providers/authorization-draft'
+import { clearTinfoilClients } from '@/ai/tinfoil-client'
+import { attestationStore } from '@/attestation/store'
 
 /** Clear session memory that must never survive an identity transition. */
 export const clearIdentityScopedMemory = (): void => {
@@ -30,4 +32,6 @@ export const clearIdentityScopedMemory = (): void => {
     }
   }
   clearDebugTranscriptRecorder()
+  clearTinfoilClients()
+  attestationStore.clearAll()
 }

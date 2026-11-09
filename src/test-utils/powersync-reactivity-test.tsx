@@ -12,7 +12,8 @@ import { PowerSyncReactivityTestProvider } from './powersync-mock'
 import { mockProxyFetch } from './proxy-fetch'
 
 /**
- * Poll for element with fake timers. Avoids waitFor's jest.advanceTimersByTime issues in Bun.
+ * Poll with fake timer progress and a real deadline, so native database/crypto work can settle.
+ * Avoids waitFor's jest.advanceTimersByTime issues in Bun.
  */
 export const waitForElement = async (getElement: () => HTMLElement | null, timeoutMs = 2000): Promise<HTMLElement> => {
   const clock = getClock()

@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { cliVersion } from '../version.ts'
+import { defaultModelDeepSeekV41Flash, defaultModelImageSupport } from '../../../shared/defaults/models.ts'
 import { bundledManagedCatalog, fetchManagedCatalog } from './catalog.ts'
 import { futureDirectCatalog } from './test-fixtures.ts'
 import type { AccountFetch } from './types.ts'
@@ -103,10 +104,37 @@ describe('fetchManagedCatalog', () => {
     ['invalid description', { ...bundledManagedCatalog, data: [{ ...firstModel, description: 1 }] }],
     ['invalid confidentiality', { ...bundledManagedCatalog, data: [{ ...firstModel, isConfidential: 2 }] }],
     ['invalid context window', { ...bundledManagedCatalog, data: [{ ...firstModel, contextWindow: null }] }],
+    ['null image support', { ...bundledManagedCatalog, imageSupport: null }],
+    ['non-object image support', { ...bundledManagedCatalog, imageSupport: [] }],
+    ['invalid image support value', { ...bundledManagedCatalog, imageSupport: { [firstModel.id]: 'maybe' } }],
   ] as const)('rejects invalid required field: %s', async (_label, catalog) => {
     const { fetchFn } = createJsonFetch(JSON.stringify({ defaults: { models: catalog } }))
 
     await expect(fetchManagedCatalog('https://api.test/v1', fetchFn)).rejects.toMatchObject({ code: 'config-invalid' })
+  })
+
+  it('falls back to the bundled image support when an older backend omits it', async () => {
+    const { imageSupport: _omitted, ...legacyCatalog } = bundledManagedCatalog
+    const { fetchFn } = createJsonFetch(JSON.stringify({ defaults: { models: legacyCatalog } }))
+
+    await expect(fetchManagedCatalog('https://api.test/v1', fetchFn)).resolves.toEqual({
+      ...legacyCatalog,
+      imageSupport: defaultModelImageSupport,
+    })
+  })
+
+  it('does not carry a bundled declaration over to a row that kept its id but serves another model', async () => {
+    const { imageSupport: _omitted, ...legacyCatalog } = bundledManagedCatalog
+    const replaced = { ...defaultModelDeepSeekV41Flash, model: 'text-only-predecessor' }
+    const catalog = {
+      ...legacyCatalog,
+      data: legacyCatalog.data.map((model) => (model.id === replaced.id ? replaced : model)),
+    }
+    const { fetchFn } = createJsonFetch(JSON.stringify({ defaults: { models: catalog } }))
+
+    const result = await fetchManagedCatalog('https://api.test/v1', fetchFn)
+
+    expect(result.imageSupport[replaced.id]).toBeUndefined()
   })
 
   it('rejects a default model id absent from data', async () => {

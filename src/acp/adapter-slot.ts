@@ -55,7 +55,7 @@ export class AdapterSlot<TAdapter extends SlotAdapter> {
     this.generationValue = generation
     this.statusValue = 'connecting'
 
-    const pending = connect().then(
+    const pending = (async () => connect())().then(
       (adapter) => {
         if (this.disposed || this.generationValue !== generation) {
           adapter.disconnect()
@@ -110,8 +110,8 @@ export class AdapterSlot<TAdapter extends SlotAdapter> {
     const adapter = this.adapter
     const pending = this.connectPending
     this.adapter = null
-    this.connectPending = null
     adapter?.disconnect()
     await pending?.catch(() => {})
+    this.connectPending = null
   }
 }

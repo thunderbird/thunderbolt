@@ -12,6 +12,10 @@ import {
   setDebugTranscriptCaptureEnabled,
 } from '@/debug-transcript/recorder'
 import { clearLocalData } from './cleanup'
+import { withKeyStoreLock } from '@/crypto/key-store-lock'
+import { getCachedSession, setCachedSession } from './session-cache'
+import { captureKeyStorageLifetime } from '@/crypto/key-storage-lifetime'
+import * as encryption from '@/services/encryption'
 import * as authToken from './auth-token'
 import * as fileBlobStorage from './file-blob-storage'
 import * as fs from './fs'
@@ -51,6 +55,7 @@ const startOtari = async (exchange = async (_origin: string, _grant: unknown, _s
   )
   return dependencies
 }
+import { attestationStore } from '@/attestation/store'
 
 describe('clearLocalData', () => {
   const llava = { provider: 'custom', model: 'llava', url: 'http://localhost:11434/v1', vendor: null } as const
@@ -68,6 +73,45 @@ describe('clearLocalData', () => {
     clearImageSupportCache()
     // Bun shares one process across test files; don't leak these spies.
     mock.restore()
+  })
+
+  it('invalidates key operations before waiting for adapter disposal', async () => {
+    const pending = Promise.withResolvers<void>()
+    spyOn(adapterCache, 'disposeAllAdapters').mockReturnValue(pending.promise)
+    spyOn(encryption, 'handleFullWipe').mockResolvedValue()
+    const assertCurrent = captureKeyStorageLifetime()
+    const clearing = clearLocalData({ ...onlyLocalSteps, clearEncryptionKeys: true, clearDatabase: false })
+    expect(assertCurrent).toThrow('Encryption operation cancelled')
+    expect(encryption.handleFullWipe).not.toHaveBeenCalled()
+    pending.resolve()
+    await clearing
+    expect(encryption.handleFullWipe).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds the browser writer lock until both old keys and the cached account are removed', async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    spyOn(adapterCache, 'disposeAllAdapters').mockImplementation(async () => {
+      entered.resolve()
+      await release.promise
+    })
+    spyOn(encryption, 'handleFullWipe').mockResolvedValue()
+    setCachedSession({ user: { id: 'old-account' } })
+    const clearing = clearLocalData({ disableSync: false, clearEncryptionKeys: true, clearDatabase: false })
+    await entered.promise
+    const writer = mock(async () => getCachedSession())
+    const nextWriter = withKeyStoreLock(writer)
+    await Promise.resolve()
+    expect(writer).not.toHaveBeenCalled()
+    release.resolve()
+    await clearing
+    expect(await nextWriter).toBeNull()
+  })
+
+  it('keeps pending key operations valid when sign-out retains encryption keys', async () => {
+    const assertCurrent = captureKeyStorageLifetime()
+    await clearLocalData({ ...onlyLocalSteps, clearDatabase: false })
+    expect(assertCurrent).not.toThrow()
   })
 
   it('forgets image-support results and web storage along with the local database', async () => {
@@ -177,5 +221,23 @@ describe('clearIdentityScopedMemory', () => {
     clearIdentityScopedMemory()
 
     expect(getDebugTranscriptNotes('thread-1')).toEqual([])
+  })
+
+  it('revokes inference evidence and pending reporters when the identity changes', () => {
+    const key = 'tinfoil:user'
+    const reporter = attestationStore.open(key)
+    const evidence = {
+      provider: 'Tinfoil',
+      endpoint: 'inference.tinfoil.sh',
+      verifiedAt: 0,
+      checks: [] as const,
+      details: [],
+    }
+    reporter.publish({ status: 'verified', evidence })
+
+    clearIdentityScopedMemory()
+    expect(attestationStore.getSnapshot(key)).toEqual({ status: 'idle' })
+    reporter.publish({ status: 'verified', evidence })
+    expect(attestationStore.getSnapshot(key)).toEqual({ status: 'idle' })
   })
 })

@@ -19,6 +19,9 @@ import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads
 import { createAgent } from '@/dal/agents'
 import { updateSettings } from '@/dal/settings'
 import { getModel, updateModel } from '@/dal/models'
+import { saveProviderConnection } from '@/dal/provider-connections'
+import * as modelPrewarm from '@/ai/prewarm-tinfoil-model'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
@@ -26,6 +29,8 @@ import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
 import { DatabaseProvider } from '@/contexts/database-context'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { getClock } from '@/testing-library'
+import { defaultChatTitle } from '@/lib/constants'
 
 /**
  * Helper function to create a system model (required for getDefaultModelForThread)
@@ -217,6 +222,84 @@ describe('useHydrateChatStore', () => {
   })
 
   describe('hydrateChatStore', () => {
+    it.each(['managed', 'model key', 'connection OAuth'] as const)(
+      'warms the selected Tinfoil transport on initial and cached hydration: %s',
+      async (credentials) => {
+        const managed = credentials === 'managed'
+        if (!managed) {
+          useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
+        }
+        const modelId = await createTestModel()
+        const connectionId =
+          credentials === 'connection OAuth'
+            ? await saveProviderConnection(getDb(), {
+                provider: 'tinfoil',
+                name: 'Personal Tinfoil',
+                authMethod: 'oauth',
+                credentials: { access_token: 'connection-token', refresh_token: 'refresh' },
+              })
+            : null
+        await updateModel(getDb(), modelId, {
+          provider: 'tinfoil',
+          isSystem: managed ? 1 : 0,
+          isConfidential: 1,
+          apiKey: credentials === 'model key' ? 'model-key' : null,
+          providerConnectionId: connectionId,
+        })
+        await updateSettings(getDb(), { selected_model: modelId })
+        const prewarm = spyOn(modelPrewarm, 'prewarmTinfoilModel').mockResolvedValue(undefined)
+        try {
+          const id = uuidv7()
+          const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true }), {
+            wrapper: TestWrapper,
+          })
+          await act(async () => {
+            await result.current.hydrateChatStore()
+          })
+          expect(prewarm).toHaveBeenCalledTimes(1)
+          expect(prewarm).toHaveBeenCalledWith(getCurrentSession()?.selectedModel)
+          expect(getCurrentSession()?.selectedModel.id).toBe(modelId)
+          prewarm.mockClear()
+          await act(async () => {
+            await result.current.hydrateChatStore()
+          })
+          expect(prewarm).toHaveBeenCalledTimes(1)
+          expect(prewarm).toHaveBeenCalledWith(getCurrentSession()?.selectedModel)
+        } finally {
+          prewarm.mockRestore()
+        }
+      },
+    )
+
+    it('never warms the local model when the selected agent owns inference', async () => {
+      await createAgent(getDb(), {
+        id: 'remote-private',
+        name: 'Remote agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.test/ws',
+        userId: 'u1',
+      })
+      const modelId = await createTestModel()
+      await updateModel(getDb(), modelId, { provider: 'tinfoil', isSystem: 1, isConfidential: 1 })
+      await updateSettings(getDb(), { selected_agent: 'remote-private', selected_model: modelId })
+      const prewarm = spyOn(modelPrewarm, 'prewarmTinfoilModel').mockResolvedValue(undefined)
+      try {
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+          await result.current.hydrateChatStore()
+        })
+        expect(getCurrentSession()?.selectedAgent.id).toBe('remote-private')
+        expect(prewarm).not.toHaveBeenCalled()
+      } finally {
+        prewarm.mockRestore()
+      }
+    })
+
     it('lets a changed provider mode replace pending hydration without creating the session twice', async () => {
       const id = uuidv7()
       const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true }), { wrapper: TestWrapper })
@@ -564,6 +647,119 @@ describe('useHydrateChatStore', () => {
     })
   })
 
+  describe('messages that sync after the chat opens', () => {
+    /** Opens `threadId` while the device is still downloading; resolve the returned promise when it lands. */
+    const openDuringDownload = async (threadId: string) => {
+      const download = Promise.withResolvers<void>()
+      const { result } = renderHook(
+        () => useHydrateChatStore({ id: threadId, isNew: false, waitForSyncCatchUp: () => download.promise }),
+        { wrapper: TestWrapper },
+      )
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      const finishDownload = async () => {
+        await act(async () => {
+          download.resolve()
+          await getClock().runAllAsync()
+        })
+      }
+      return finishDownload
+    }
+
+    const messageIds = () => getCurrentSession()?.chatInstance.messages.map((message) => message.id)
+
+    it('shows the messages of a chat opened before they were downloaded', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      expect(messageIds()).toEqual([])
+
+      const synced = [createTestMessage(), createTestMessage({ role: 'assistant' })]
+      await saveMessagesWithContextUpdate(getDb(), threadId, synced)
+      await finishDownload()
+
+      expect(messageIds()).toEqual(synced.map((message) => message.id))
+    })
+
+    it('marks an empty chat as waiting for its messages until the download lands', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(true)
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [createTestMessage()])
+      await finishDownload()
+
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+
+    it('does not mark a chat that already has messages as waiting', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      await saveMessagesWithContextUpdate(getDb(), threadId, [createTestMessage()])
+      await openDuringDownload(threadId)
+
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+
+    it('appends the messages that arrived after the ones the chat opened with', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const opened = createTestMessage()
+      await saveMessagesWithContextUpdate(getDb(), threadId, [opened])
+      const finishDownload = await openDuringDownload(threadId)
+
+      const synced = [createTestMessage({ role: 'assistant' }), createTestMessage()]
+      await saveMessagesWithContextUpdate(getDb(), threadId, synced)
+      await finishDownload()
+
+      expect(messageIds()).toEqual([opened.id, ...synced.map((message) => message.id)])
+    })
+
+    it('shows a synced failed turn as failed, like a chat opened after it landed', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [
+        createTestMessage(),
+        createTestMessage({ role: 'assistant', parts: [] }),
+      ])
+      await finishDownload()
+
+      expect(messageIds()).toHaveLength(2)
+      expect(getCurrentSession()?.retriesExhausted).toBe(true)
+    })
+
+    it('leaves a chat alone once it no longer matches the start of the saved messages', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      // The user wrote in the empty-looking chat before its history landed.
+      const typed = createTestMessage()
+      getCurrentSession()!.chatInstance.messages = [typed]
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [
+        createTestMessage(),
+        createTestMessage({ role: 'assistant' }),
+      ])
+      await finishDownload()
+
+      expect(messageIds()).toEqual([typed.id])
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+
+    it.each([
+      ['the user is stopping a reply', { stopping: true }],
+      ['its context is being compacted', { compactionStatus: 'compacting' as const }],
+    ])('leaves a chat alone while %s', async (_, busy) => {
+      const threadId = await createTestThread(await createTestModel())
+      const finishDownload = await openDuringDownload(threadId)
+      useChatStore.getState().updateSession(threadId, busy)
+
+      await saveMessagesWithContextUpdate(getDb(), threadId, [createTestMessage()])
+      await finishDownload()
+
+      expect(messageIds()).toEqual([])
+      expect(getCurrentSession()?.awaitingSyncedMessages).toBe(false)
+    })
+  })
+
   describe('model for a thread that falls back to the built-in agent', () => {
     /** A system Tinfoil model: confidential, and server-keyed so the picker enables it. */
     const createConfidentialModel = async () => {
@@ -663,6 +859,30 @@ describe('useHydrateChatStore', () => {
   })
 
   describe('saveMessages', () => {
+    it.each(['Original topic', ''])(
+      'keeps title generation tied to the first prompt %j when saving only the tail',
+      async (firstText) => {
+        const modelId = await createSystemModel()
+        const threadId = await createTestThread(modelId, defaultChatTitle)
+        const history = [
+          createTestMessage({ parts: [{ type: 'text', text: firstText }] }),
+          createTestMessage({ role: 'assistant', parts: [{ type: 'text', text: 'Previous reply' }] }),
+          createTestMessage({ parts: [{ type: 'text', text: 'Later topic' }] }),
+        ]
+        await saveMessagesWithContextUpdate(getDb(), threadId, history)
+        const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+          wrapper: TestWrapper,
+        })
+
+        await act(async () => {
+          await result.current.hydrateChatStore()
+          await result.current.saveMessages({ id: threadId, messages: history.slice(-2) })
+        })
+
+        expect((await getThread(getDb(), threadId))?.title).toBe(firstText || defaultChatTitle)
+      },
+    )
+
     it('should save messages and update store state', async () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId)
@@ -915,6 +1135,33 @@ describe('useHydrateChatStore', () => {
 
       // Verify no error was thrown
       expect(result.current.saveMessages).toBeDefined()
+    })
+
+    it('preserves current context for historical edits and updates it for ordinary saves', async () => {
+      const modelId = await createSystemModel()
+      const threadId = await createTestThread(modelId)
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      const message = createTestMessage({ role: 'assistant', metadata: { contextTokens: 2000 } })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+        await result.current.saveMessages({ id: threadId, messages: [message] })
+        await result.current.saveMessages({
+          id: threadId,
+          messages: [{ ...message, metadata: { contextTokens: 500 } }],
+          updateContext: false,
+        })
+      })
+      expect((await getThread(getDb(), threadId))?.contextSize).toBe(2000)
+
+      await act(async () => {
+        await result.current.saveMessages({
+          id: threadId,
+          messages: [{ ...message, metadata: { contextTokens: 600 } }],
+        })
+      })
+      expect((await getThread(getDb(), threadId))?.contextSize).toBe(600)
     })
   })
   /*

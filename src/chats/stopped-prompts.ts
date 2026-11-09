@@ -15,14 +15,21 @@ const hasReplyText = (message: ThunderboltUIMessage): boolean =>
  * it into the next prompt, and other models answer both.
  *
  * A stopped reply that already had text needs nothing, because the model sees
- * that text. The latest prompt is never marked, since it is the one being sent.
+ * that text. Normal requests leave the latest prompt unmarked because it is
+ * being sent; compaction includes it because every turn is historical.
  *
  * @param messages - the thread's messages, in order
+ * @param options - include the latest stopped prompt when preparing history for compaction
  * @returns the messages with a marker reply after each unanswered stopped prompt
  */
-export const withStoppedReplyMarkers = (messages: ThunderboltUIMessage[]): ThunderboltUIMessage[] =>
+export const withStoppedReplyMarkers = (
+  messages: ThunderboltUIMessage[],
+  options: { includeLatestPrompt?: boolean } = {},
+): ThunderboltUIMessage[] =>
   messages.flatMap((message, index) => {
-    if (messages[index + 1]?.role !== 'user') {
+    const isTurnEnd =
+      messages[index + 1]?.role === 'user' || (options.includeLatestPrompt && index === messages.length - 1)
+    if (!isTurnEnd) {
       return [message]
     }
     const promptIndex = messages.findLastIndex((candidate, i) => i <= index && candidate.role === 'user')

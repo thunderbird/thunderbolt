@@ -5,10 +5,11 @@
 import { deleteModel, getAllModels, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import type { AnyColumn } from 'drizzle-orm'
 import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core'
+import { SQLiteRemoteSession } from 'drizzle-orm/sqlite-proxy'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfileOpus55, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
@@ -118,6 +119,44 @@ afterEach(async () => {
 
 afterAll(async () => {
   await teardownTestDatabase()
+})
+
+describe('returning boot before initial sync', () => {
+  test('skips read-only default passes while preserving rows, markers, and missing profile repair', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    /** Read persisted defaults in stable order, including their version markers. */
+    const snapshot = async () =>
+      Promise.all([
+        db.select().from(modelsTable).orderBy(modelsTable.id),
+        db.select().from(modelProfilesTable).orderBy(modelProfilesTable.modelId),
+        db.select().from(tasksTable).orderBy(tasksTable.id),
+        db.select().from(skillsTable).orderBy(skillsTable.id),
+        db.select().from(settingsTable).orderBy(settingsTable.key),
+      ])
+    const before = await snapshot()
+    await db.delete(modelProfilesTable).where(eq(modelProfilesTable.modelId, defaultModelProfiles[0].modelId))
+
+    // Observe the real transaction's SQL without replacing its behavior.
+    const prepareQuery = spyOn(SQLiteRemoteSession.prototype, 'prepareQuery')
+    try {
+      await reconcileDefaults(db, { initialSyncCompleted: false })
+
+      const queries = prepareQuery.mock.calls.map(([query]) => query.sql)
+      expect({
+        cleanupModels: queries.filter((query) => query.includes(' from "models" where "models"."deleted_at" is null'))
+          .length,
+        tasks: queries.filter((query) => query.includes(' from "tasks"')).length,
+        skills: queries.filter((query) => query.includes(' from "skills"')).length,
+        settings: queries.filter((query) => query.includes(' from "settings"')).length,
+      }).toEqual({ cleanupModels: 0, tasks: 0, skills: 1, settings: 1 })
+    } finally {
+      prepareQuery.mockRestore()
+    }
+
+    expect(await snapshot()).toEqual(before)
+  })
 })
 
 describe('seedModels', () => {
@@ -908,7 +947,7 @@ describe('Opus data migration', () => {
     const otaVersion = defaultModelsVersion + 1
     const otaModels = defaultModels.map((model) => (model.id === defaultModelOpus55.id ? legacyModel : model))
 
-    await reconcileDefaults(db, { models: { version: otaVersion, data: otaModels } })
+    await reconcileDefaults(db, { models: { version: otaVersion, data: otaModels, imageSupport: {} } })
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
@@ -1469,6 +1508,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const otaSource: ModelsDefaults = {
       version: defaultModelsVersion + 1,
       data: [...remaining],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1499,6 +1539,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const otaSource: ModelsDefaults = {
       version: defaultModelsVersion + 1,
       data: [...remaining],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1534,6 +1575,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     const otaSource: ModelsDefaults = {
       version: defaultModelsVersion + 1,
       data: [flipped, ...defaultModels.slice(1)],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1593,6 +1635,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
           userId: null,
         },
       ],
+      imageSupport: {},
     }
 
     await reconcileDefaults(db, { models: otaSource })
@@ -1614,6 +1657,43 @@ describe('reconcileDefaults version gate (THU-637)', () => {
 })
 
 describe('widget skill reconciliation', () => {
+  test('still re-stamps a legacy widget hash when the sync-incomplete gate skips the skills pass', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+    const legacy = {
+      ...defaultSkillWeather,
+      instruction: 'Shipped v4 inline weather instruction',
+      enabled: 0,
+      pinnedOrder: 4,
+    }
+    const legacyHash = hashValues([
+      legacy.name,
+      legacy.label,
+      legacy.description,
+      legacy.instruction,
+      legacy.enabled,
+      legacy.pinnedOrder,
+      legacy.deletedAt,
+    ])
+    await db
+      .update(skillsTable)
+      .set({ ...legacy, defaultHash: legacyHash })
+      .where(eq(skillsTable.id, legacy.id))
+    const markerBefore = await db
+      .select()
+      .from(settingsTable)
+      .where(eq(settingsTable.key, versionMarkerKeys.skills))
+      .get()
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    const updated = await db.select().from(skillsTable).where(eq(skillsTable.id, legacy.id)).get()
+    expect(updated).toMatchObject({ ...legacy, defaultHash: hashSkill(legacy) })
+    expect(await db.select().from(settingsTable).where(eq(settingsTable.key, versionMarkerKeys.skills)).get()).toEqual(
+      markerBefore,
+    )
+  })
+
   test('upgrades shipped v4 weather to canonical widget instructions on the first v5 pass', async () => {
     const db = getDb()
     const shippedV4Weather = {

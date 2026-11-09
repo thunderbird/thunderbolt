@@ -19,23 +19,9 @@ import type { ReturnContext } from '@/lib/oauth-state'
 import { isMobile, isTauri } from '@/lib/platform'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useReducer } from 'react'
+import { useAsyncAttempt } from './use-async-attempt'
 import { v4 as uuidv4 } from 'uuid'
-
-/** OAuth connecting state expires after 15 seconds */
-const connectingTimeoutMs = 15 * 1000
-
-const getConnectingKey = (key: string) => `oauth_connecting_${key}`
-const getTimestampKey = (key: string) => `oauth_connecting_${key}_timestamp`
-
-/**
- * Clears the OAuth connecting state from sessionStorage for a given key.
- * Can be called from outside React components.
- */
-export const clearOAuthConnectingState = (key: string) => {
-  sessionStorage.removeItem(getConnectingKey(key))
-  sessionStorage.removeItem(getTimestampKey(key))
-}
 
 type OAuthDependencies = {
   startOAuthFlowLoopback?: typeof startOAuthFlowLoopback
@@ -45,8 +31,6 @@ type OAuthDependencies = {
 }
 
 type UseOAuthConnectOptions = {
-  /** Unique key for persisting connecting state (e.g., provider name or widget ID) */
-  connectingKey?: string
   onSuccess?: () => void
   onError?: (error: Error) => void
   setPreferredName?: boolean
@@ -68,55 +52,38 @@ type OAuthCallbackData = {
   error?: string
 }
 
-/**
- * Checks if there's a valid (non-expired) connecting state in sessionStorage.
- * Clears expired state as a side effect.
- */
-const getInitialConnectingState = (key: string | undefined): boolean => {
-  if (!key) {
-    return false
-  }
-  const wasConnecting = sessionStorage.getItem(getConnectingKey(key)) === 'true'
-  if (!wasConnecting) {
-    return false
-  }
+type OAuthUiState = { phase: 'idle' | 'connecting' } | { phase: 'error'; message: string }
+type OAuthUiAction =
+  | { type: 'START' }
+  | { type: 'SETTLE' }
+  | { type: 'ERROR'; message: string }
+  | { type: 'CLEAR_ERROR' }
 
-  const timestamp = sessionStorage.getItem(getTimestampKey(key))
-  const startTime = timestamp ? parseInt(timestamp, 10) : 0
-  const elapsed = Date.now() - startTime
-
-  if (elapsed > connectingTimeoutMs) {
-    clearOAuthConnectingState(key)
-    return false
+const oauthUiReducer = (state: OAuthUiState, action: OAuthUiAction): OAuthUiState => {
+  switch (action.type) {
+    case 'START':
+      return { phase: 'connecting' }
+    case 'SETTLE':
+      return { phase: 'idle' }
+    case 'ERROR':
+      return { phase: 'error', message: action.message }
+    case 'CLEAR_ERROR':
+      return state.phase === 'error' ? { phase: 'idle' } : state
   }
-
-  return true
 }
 
 /**
  * Handles OAuth connection flow for any provider.
- * For Tauri: Opens separate webview window and processes result immediately.
+ * Desktop uses a loopback callback; mobile hands off to the system browser and a deep link.
  * For web: Redirects to OAuth provider and processes callback on return.
  */
 export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthConnectResult => {
   const { t, i18n } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
-  const {
-    connectingKey,
-    onSuccess,
-    onError,
-    setPreferredName = false,
-    returnContext = 'integrations',
-    dependencies,
-  } = options
-  const [error, setError] = useState<string | null>(null)
-  // Initialize from sessionStorage synchronously to avoid flash of "Connect" button
-  const [isConnecting, setIsConnecting] = useState(() => getInitialConnectingState(connectingKey))
-  const [activeKey, setActiveKey] = useState<string | null>(connectingKey ?? null)
-  // Prevents a second loopback flow starting if the 15s UI timeout fires while the
-  // browser is still open (loopback flow can take up to 5 minutes)
-  const loopbackActiveRef = useRef(false)
+  const { onSuccess, onError, setPreferredName = false, returnContext = 'integrations', dependencies } = options
+  const [state, dispatch] = useReducer(oauthUiReducer, { phase: 'idle' })
+  const operation = useAsyncAttempt()
 
   // Use injected dependencies or fall back to real implementations
   const {
@@ -129,18 +96,6 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
   const describeError = (error: unknown) => {
     const message = getIntegrationOAuthErrorMessage(error)
     return message ? i18n._(message) : error instanceof Error ? error.message : t`Failed to complete authentication`
-  }
-
-  const clearConnecting = (key: string) => {
-    clearOAuthConnectingState(key)
-    setIsConnecting(false)
-  }
-
-  const startConnecting = (key: string) => {
-    setActiveKey(key)
-    setIsConnecting(true)
-    sessionStorage.setItem(getConnectingKey(key), 'true')
-    sessionStorage.setItem(getTimestampKey(key), Date.now().toString())
   }
 
   /**
@@ -180,42 +135,14 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     }
   }
 
-  // Active timer to clear connecting state when timeout expires
-  useEffect(() => {
-    if (!isConnecting || !activeKey) {
-      return
-    }
-
-    const timestamp = sessionStorage.getItem(getTimestampKey(activeKey))
-    const startTime = timestamp ? parseInt(timestamp, 10) : Date.now()
-    const elapsed = Date.now() - startTime
-    const remaining = connectingTimeoutMs - elapsed
-
-    if (remaining <= 0) {
-      clearConnecting(activeKey)
-      return
-    }
-
-    const timer = setTimeout(() => {
-      clearConnecting(activeKey)
-    }, remaining)
-
-    return () => clearTimeout(timer)
-  }, [isConnecting, activeKey])
-
   const connect = async (provider: OAuthProvider) => {
     const identitySignal = getIdentitySignal()
-    setError(null)
-    const key = connectingKey ?? provider
-
-    if (isTauri() && !isMobile() && loopbackActiveRef.current) {
-      // Re-assert connecting state so the button stays in loading state
-      // (the 15s UI timeout may have cleared it while the flow is still active)
-      startConnecting(key)
+    const attempt = operation.begin()
+    if (!attempt) {
       return
     }
 
-    startConnecting(key)
+    dispatch({ type: 'START' })
     const oauthRelayUrl = getIntegrationRelayUrl()
     const httpClient = createIntegrationOAuthClient(oauthRelayUrl)
     clearOAuthState()
@@ -229,7 +156,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           const state = uuidv4()
           const codeVerifier = generateCodeVerifier()
           const codeChallenge = await generateCodeChallenge(codeVerifier)
-          identitySignal.throwIfAborted()
+          if (!attempt.isCurrent() || identitySignal.aborted) {
+            return
+          }
 
           // Store OAuth state for callback validation
           setOAuthState({
@@ -241,32 +170,39 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           })
 
           const authUrl = await buildAuthUrl(httpClient, provider, state, codeChallenge)
-          identitySignal.throwIfAborted()
+          if (!attempt.isCurrent() || identitySignal.aborted) {
+            return
+          }
 
           // Open in system browser (not webview)
           await openUrl(authUrl)
 
-          // The callback will be handled by the deep link listener
+          // The handoff is complete. A cancelled browser login leaves this screen
+          // usable; a returned deep link owns its own callback progress.
+          if (attempt.isCurrent()) {
+            dispatch({ type: 'SETTLE' })
+          }
         } else {
           // For desktop: Use system browser + loopback server flow.
-          try {
-            loopbackActiveRef.current = true
-            const result = await startLoopback(httpClient, provider)
-
-            if (!result) {
-              clearConnecting(key)
-              return
-            }
-
-            const { tokens, userInfo } = result
-
-            await saveCredentials(provider, tokens, userInfo, oauthRelayUrl, identitySignal)
-
-            clearConnecting(key)
-            onSuccess?.()
-          } finally {
-            loopbackActiveRef.current = false
+          const result = await startLoopback(httpClient, provider)
+          if (!attempt.isCurrent() || identitySignal.aborted) {
+            return
           }
+
+          if (!result) {
+            dispatch({ type: 'SETTLE' })
+            return
+          }
+
+          const { tokens, userInfo } = result
+
+          await saveCredentials(provider, tokens, userInfo, oauthRelayUrl, identitySignal)
+          if (!attempt.isCurrent() || identitySignal.aborted) {
+            return
+          }
+
+          dispatch({ type: 'SETTLE' })
+          onSuccess?.()
         }
       } else {
         // For web: Use redirect flow
@@ -274,15 +210,19 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
         await redirect(httpClient, provider, oauthRelayUrl)
       }
     } catch (e: unknown) {
+      if (!attempt.isCurrent() || identitySignal.aborted) {
+        return
+      }
       // "Redirecting for OAuth" is thrown intentionally by redirectOAuthFlow to satisfy TypeScript's never return type
       // It's not a real error, so we ignore it
       if (e instanceof Error && e.message === 'Redirecting for OAuth') {
         return
       }
-      clearConnecting(key)
       const message = describeError(e)
-      setError(message)
+      dispatch({ type: 'ERROR', message })
       onError?.(new Error(message, { cause: e }))
+    } finally {
+      attempt.finish()
     }
   }
 
@@ -292,73 +232,76 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
    */
   const processCallback = async (callbackData: OAuthCallbackData): Promise<boolean> => {
     const identitySignal = getIdentitySignal()
-    setError(null)
-
-    const { code, state: returnedState, error: oauthError } = callbackData
-
-    // Get OAuth state from oauth-state (needed for both success and error cleanup)
-    const oauthState = getOAuthState()
-    const storedState = oauthState.state
-    const provider = oauthState.provider
-    const codeVerifier = oauthState.verifier
-
-    // Claim only this callback before any async work; native delivery or a remount can replay it.
-    if (returnedState && returnedState === storedState) {
-      clearOAuthState()
-    }
-
-    // Helper to cleanup connecting state - uses connectingKey if available, otherwise provider
-    const cleanup = () => {
-      const key = connectingKey ?? provider
-      if (key) {
-        clearConnecting(key)
-      }
-    }
-
-    if (oauthError) {
-      cleanup()
-      const message = oauthError
-      setError(message)
-      onError?.(new Error(message))
+    const attempt = operation.begin()
+    if (!attempt) {
       return false
     }
-
-    if (!code || !returnedState) {
-      cleanup()
-      return false
-    }
-
-    if (!provider || !codeVerifier || storedState !== returnedState) {
-      cleanup()
-      const message = t`OAuth validation failed`
-      setError(message)
-      onError?.(new Error(message))
-      return false
-    }
-
     try {
-      const oauthRelayUrl = oauthState.oauthRelayUrl ?? getIntegrationRelayUrl()
-      const tokens = await exchangeTokens(createIntegrationOAuthClient(oauthRelayUrl), provider, code, codeVerifier)
-      identitySignal.throwIfAborted()
-      const userInfo = await getUser(provider, tokens.access_token)
+      const { code, state: returnedState, error: oauthError } = callbackData
+      const oauthState = getOAuthState()
+      const { state: storedState, provider, verifier: codeVerifier } = oauthState
 
-      await saveCredentials(provider, tokens, userInfo, oauthRelayUrl, identitySignal)
+      // Unrelated or stale callbacks must not settle the current authorization,
+      // including provider-denial callbacks that do not carry an authorization code.
+      if (!provider || !returnedState || storedState !== returnedState) {
+        return false
+      }
+      if (oauthError) {
+        clearOAuthState()
+        dispatch({ type: 'ERROR', message: oauthError })
+        onError?.(new Error(oauthError))
+        return false
+      }
+      if (!code || !codeVerifier) {
+        return false
+      }
 
-      cleanup()
-      onSuccess?.()
-      return true
-    } catch (e: unknown) {
-      cleanup()
-      const message = describeError(e)
-      setError(message)
-      onError?.(new Error(message, { cause: e }))
-      return false
+      // Claim this one-use callback before yielding. Other mounted consumers
+      // cannot redeem it again, and completion cannot erase a newer OAuth flow.
+      clearOAuthState()
+      dispatch({ type: 'START' })
+      try {
+        const oauthRelayUrl = oauthState.oauthRelayUrl ?? getIntegrationRelayUrl()
+        const tokens = await exchangeTokens(createIntegrationOAuthClient(oauthRelayUrl), provider, code, codeVerifier)
+        if (!attempt.isCurrent() || identitySignal.aborted) {
+          return false
+        }
+        const userInfo = await getUser(provider, tokens.access_token)
+        if (!attempt.isCurrent() || identitySignal.aborted) {
+          return false
+        }
+
+        await saveCredentials(provider, tokens, userInfo, oauthRelayUrl, identitySignal)
+        if (!attempt.isCurrent() || identitySignal.aborted) {
+          return false
+        }
+
+        dispatch({ type: 'SETTLE' })
+        onSuccess?.()
+        return true
+      } catch (e: unknown) {
+        if (!attempt.isCurrent() || identitySignal.aborted) {
+          return false
+        }
+        const message = describeError(e)
+        dispatch({ type: 'ERROR', message })
+        onError?.(new Error(message, { cause: e }))
+        return false
+      }
+    } finally {
+      attempt.finish()
     }
   }
 
-  const clearError = () => setError(null)
+  const clearError = () => dispatch({ type: 'CLEAR_ERROR' })
 
-  return { connect, processCallback, isConnecting, error, clearError }
+  return {
+    connect,
+    processCallback,
+    isConnecting: state.phase === 'connecting',
+    error: state.phase === 'error' ? state.message : null,
+    clearError,
+  }
 }
 
 export type { OAuthCallbackData, OAuthDependencies, UseOAuthConnectResult }

@@ -53,7 +53,8 @@ for (const id of widgetIds) {
 
     await loginViaOidc(page)
     await page.getByTestId('model-selector-trigger').click()
-    await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+    await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
+    await page.keyboard.press('Escape')
     const prompt =
       id === 'WIDGET_LINK_PREVIEW'
         ? `Show a link preview for ${linkUrl}. Use only this URL; do not search or suggest other links.`

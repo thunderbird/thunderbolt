@@ -306,7 +306,7 @@ A hard delete, deliberately narrow: only a **revoked bridge** device (**409** ot
 
 ### Managed Catalog Privacy
 
-`GET /v1/config` publishes managed models through `defaults.models`: versioned `SharedModel` rows without `apiKey`, plus `defaultModelId`. Price tables, quota internals, credentials and other deployment secrets stay backend-only. Mandatory old-client-safe rollout order: [CLI Device Rollout](../../self-hosting/configuration.md#command-line-client-rollout).
+`GET /v1/config` publishes managed models through `defaults.models`: versioned `SharedModel` rows without `apiKey`, plus `defaultModelId` and the rows' image-support declarations. Price tables, quota internals, credentials and other deployment secrets stay backend-only. Mandatory old-client-safe rollout order: [CLI Device Rollout](../../self-hosting/configuration.md#command-line-client-rollout).
 
 ### Encryption API Endpoints
 

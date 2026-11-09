@@ -293,3 +293,35 @@ describe('useElementPicking', () => {
     expect(asked).toEqual([])
   })
 })
+
+it('consumes an outlined pick synchronously before another click can reuse it', async () => {
+  const { hook, asked } = setup(async () => element('a'))
+  act(() => hook.result.current.startPicking())
+  await act(async () => {
+    await hook.result.current.pointAt(point)
+  })
+  await act(async () => {
+    await Promise.all([hook.result.current.pickAt(point), hook.result.current.pickAt(point)])
+  })
+  expect(asked).toHaveLength(1)
+})
+
+it('consumes a gesture after the first pending click resolves', async () => {
+  const { query, releases } = deferredQueries()
+  const { hook, asked } = setup(query)
+  act(() => hook.result.current.startPicking())
+  act(() => {
+    void hook.result.current.pointAt(point)
+  })
+  const first = hook.result.current.pickAt(point)
+  const second = hook.result.current.pickAt(point)
+  await act(async () => {
+    releases[2](element('second'))
+    await second
+    releases[1](element('first'))
+    releases[0](element('hover'))
+    await first
+  })
+  expect(asked).toHaveLength(1)
+  expect(asked[0][0]).toContain('text second')
+})

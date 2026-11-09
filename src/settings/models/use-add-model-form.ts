@@ -22,6 +22,7 @@ import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
 import { getAllModels, getAvailableModels, updateSettings } from '@/dal'
 import { useLocalProviders } from '@/hooks/use-local-providers'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
@@ -111,6 +112,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
   const [state, dispatch] = useReducer(addModelReducer, initialState)
   const { selectedModelId, submitError } = state
   const catalog = useModelCatalog()
+  const submission = useAsyncAttempt()
   const form = useForm<AddModelFormValues>({
     resolver: zodResolver(createAddModelFormSchema(i18n)),
     mode: 'onChange',
@@ -134,6 +136,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
   useAutoCatalogFetch({ armed: isOpen, request: catalogRequest, catalog })
 
   const reset = () => {
+    submission.cancel()
     form.reset()
     form.clearErrors()
     connection.reset()
@@ -210,10 +213,15 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       return { id, models: await getAvailableModels(db) }
     },
     onMutate: () => {
+      const attempt = submission.begin()
+      if (!attempt) {
+        throw new Error('A model save is already in progress')
+      }
       onMutationStart?.()
       dispatch({ type: 'MUTATION_STARTED' })
+      return attempt
     },
-    onSuccess: async ({ models }, values) => {
+    onSuccess: async ({ models }, values, attempt) => {
       if (values.signal?.aborted) {
         return
       }
@@ -223,27 +231,32 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       if (isStandalone) {
         await queryClient.invalidateQueries({ queryKey: ['settings'] })
       }
-      if (values.signal?.aborted) {
+      if (values.signal?.aborted || !attempt?.isCurrent()) {
         return
       }
       close()
       onSaved?.()
     },
-    onError: (_error, values) => {
-      if (values.signal?.aborted) {
+    onError: (_error, values, attempt) => {
+      if (values.signal?.aborted || !attempt?.isCurrent()) {
         return
       }
       // Database errors can include bound API keys and OAuth tokens.
       console.error('Failed to add the model.')
       dispatch({ type: 'MUTATION_FAILED' })
     },
+    onSettled: (_result, _error, _values, attempt) => attempt?.finish(),
   })
 
   const resolveModelId = (values: AddModelFormValues) =>
     selectedModelId === 'custom' && values.customModel ? values.customModel : values.model
 
-  const submit = (values: AddModelFormValues) => {
-    addMutation.mutate({ ...values, model: resolveModelId(values) })
+  const submit = async (values: AddModelFormValues) => {
+    try {
+      await addMutation.mutateAsync({ ...values, model: resolveModelId(values) })
+    } catch {
+      // Mutation callbacks publish errors only while this form attempt is current.
+    }
   }
 
   const testConnection = async () => {
@@ -329,6 +342,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
     resetForm: reset,
     /** Clears leftover probe/error state when the add panel opens. */
     prepareForOpen: () => {
+      submission.cancel()
       connection.reset()
       dispatch({ type: 'PANEL_OPENED' })
     },

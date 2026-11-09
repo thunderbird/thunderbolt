@@ -240,6 +240,7 @@ it.each(['completed', 'failed', 'interrupted'] as const)(
           : []
     const { models, model } = buildOpenAiCompatModel({
       api: 'openai-responses',
+      getReasoningEffort: () => 'high',
       providerId: 'openai',
       modelId: 'gpt-test',
       baseURL: 'https://api.openai.com/v1',
@@ -258,7 +259,45 @@ it.each(['completed', 'failed', 'interrupted'] as const)(
     const result = await stream.result()
     expect(requests).toHaveLength(1)
     expect(requests[0]?.url).toBe('https://api.openai.com/v1/responses')
-    expect(requests[0]?.body).toMatchObject({ stream: true, store: false })
+    expect(requests[0]?.body).toMatchObject({ stream: true, store: false, reasoning: { effort: 'high' } })
+    expect(requests[0]?.body).not.toHaveProperty('reasoning_effort')
     expect(result.stopReason).toBe(outcome === 'completed' ? 'stop' : 'error')
   },
 )
+describe('explicit reasoning effort', () => {
+  it.each(['openai', 'openrouter', 'tinfoil'] as const)(
+    'writes exact %s payloads and restores the original profile on Default',
+    async (format) => {
+      const payloads: Array<Record<string, unknown>> = []
+      const preference: { value: import('../reasoning-effort.ts').ReasoningEffort | undefined } = { value: 'high' }
+      const { models, model } = buildOpenAiCompatModel({
+        providerId: format,
+        modelId: 'test',
+        apiKey: 'test',
+        baseURL: 'https://test.invalid/v1',
+        reasoning: false,
+        supportsImages: false,
+        effortFormat: format,
+        getReasoningEffort: () => preference.value,
+        fetch: async (_input, init) => {
+          payloads.push(JSON.parse(String(init?.body)))
+          return makeSseResponse()
+        },
+      })
+      const provider = models.getProvider(format)!
+      for (const value of ['high', 'none', undefined] as const) {
+        preference.value = value
+        await provider
+          .streamSimple(model, context, {
+            onPayload: (payload) => ({ ...(payload as object), test_marker: 'preserved' }),
+          })
+          .result()
+      }
+      expect(payloads.map((payload) => payload.test_marker)).toEqual(['preserved', 'preserved', 'preserved'])
+      const field = format === 'openrouter' ? 'reasoning' : 'reasoning_effort'
+      expect(payloads.map((payload) => payload[field])).toEqual(
+        format === 'openrouter' ? [{ effort: 'high' }, { effort: 'none' }, undefined] : ['high', 'none', undefined],
+      )
+    },
+  )
+})

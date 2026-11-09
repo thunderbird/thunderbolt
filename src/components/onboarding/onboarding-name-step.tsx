@@ -9,7 +9,7 @@ import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { OnboardingStepHeader } from './onboarding-step-header'
 
 type OnboardingNameStepProps = {
-  state: Pick<OnboardingState, 'nameValue'>
+  state: Pick<OnboardingState, 'nameValue' | 'isSubmittingName'>
   actions: { setNameValue: (value: string) => void }
 }
 
@@ -28,6 +28,7 @@ export const OnboardingNameStep = ({ state, actions }: OnboardingNameStepProps) 
           aria-label={t`Name`}
           placeholder={t`Enter your name`}
           value={state.nameValue}
+          disabled={state.isSubmittingName}
           onChange={(event) => actions.setNameValue(event.target.value)}
           autoFocus
           autoComplete="off"

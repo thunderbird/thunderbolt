@@ -3,8 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { createTestLockManager } from './src/test-utils/web-locks'
 
 GlobalRegistrator.register()
+
+// Happy DOM exposes an empty LockManager; encrypted-sync tests need exclusive lock semantics.
+Object.defineProperty(navigator, 'locks', { configurable: true, value: createTestLockManager() })
 
 // Add comprehensive Node.js polyfills for better compatibility
 import { ReadableStream, TransformStream, WritableStream } from 'stream/web'

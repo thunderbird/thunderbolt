@@ -12,19 +12,22 @@ import {
   type SearchableMenuItem,
 } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { GradientLock } from '@/components/ui/gradient-lock'
-import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useLocalProviders } from '@/hooks/use-local-providers'
 import { cn } from '@/lib/utils'
 import { isModelAvailable, matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
+import { ModelProviderIcon, ModelProviderMark } from '@/settings/models/model-presentation'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, ChevronDown } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, Plus } from 'lucide-react'
 import { useCallback } from 'react'
+import { flushSync } from 'react-dom'
 
 export type ModelSelectorProps = {
+  /** Show the model list directly inside a combined picker. */
+  embedded?: boolean
+  onClose?: () => void
   models: Model[]
   selectedModel: Model | null
   chatThread: ChatThread | null
@@ -52,7 +55,6 @@ const toMenuItem = (
   label: model.name,
   description: model.description || model.model,
   searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
-  icon: model.isConfidential === 1 ? <PrivateBadge /> : undefined,
   disabled: isDisabled,
   data: { model, disabledByEncryption },
 })
@@ -118,6 +120,8 @@ export const categorizeModels = (
 }
 
 export const ModelSelector = ({
+  embedded = false,
+  onClose,
   models,
   selectedModel,
   chatThread,
@@ -153,11 +157,10 @@ export const ModelSelector = ({
             ),
       )}
     >
-      {selected?.data?.model && needsApiKey(selected.data.model) ? (
+      {selected?.data?.model && <ModelProviderIcon model={selected.data.model} className="size-3.5" />}
+      {selected?.data?.model && needsApiKey(selected.data.model) && (
         <AlertTriangle className="size-3.5 shrink-0 text-warning" />
-      ) : selected?.data?.model.isConfidential === 1 ? (
-        <GradientLock className="size-3.5 shrink-0" />
-      ) : null}
+      )}
       {/* Muted in both variants — trigger labels are chrome, not content.
           Truncates instead of wrapping when the composer gets narrow. */}
       <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? t`Select model`}</span>
@@ -178,18 +181,17 @@ export const ModelSelector = ({
         className={cn(
           searchableMenuRowClass,
           'hover:bg-accent/50',
+          embedded && 'text-foreground/80',
           isSelected && 'bg-accent',
           item.disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
         <span className="truncate font-normal">{item.label}</span>
-        {/* ml-auto pushes the trailing indicator (missing-key warning or the
-            confidential "Private" badge) to the row's right edge. */}
-        {showMissingKeyHint ? (
-          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-warning" />
-        ) : item.icon ? (
-          <span className="ml-auto flex-shrink-0">{item.icon}</span>
-        ) : null}
+        {embedded && isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0 text-brand" />}
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {model && <ModelProviderMark model={model} />}
+          {showMissingKeyHint && <AlertTriangle className="size-3.5 shrink-0 text-warning" />}
+        </span>
       </div>
     )
 
@@ -219,23 +221,52 @@ export const ModelSelector = ({
   )
 
   return (
-    <SearchableMenu
-      items={groupedItems}
-      value={selectedModel?.id}
-      onValueChange={handleModelChange}
-      searchable={groupedItems.reduce((count, group) => count + group.items.length, 0) > 10}
-      searchPlaceholder={t`Search Models`}
-      emptyMessage={t`No models found`}
-      mobileTitle={t`Choose model`}
-      mobileSide="bottom"
-      trigger={renderTrigger}
-      renderItem={renderItem}
-      footerAction={footerAction}
-      contentClassName="max-md:bg-sidebar"
-      width={240}
-      maxHeight={340}
-      side={side}
-      align={align}
-    />
+    <>
+      {embedded && (
+        <div className="flex shrink-0 items-center justify-between pl-3 pr-4 pt-2 pb-1">
+          <span className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">{t`Model`}</span>
+          {onAddModels && (
+            <span className="flex w-3.5 shrink-0 items-center justify-center">
+              <button
+                type="button"
+                aria-label={t`Add Model`}
+                title={t`Add Model`}
+                className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full max-md:size-10 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                onClick={() => {
+                  flushSync(() => onClose?.())
+                  onAddModels()
+                }}
+              >
+                <Plus aria-hidden="true" className="size-4" />
+              </button>
+            </span>
+          )}
+        </div>
+      )}
+      <SearchableMenu
+        embedded={embedded}
+        onOpenChange={(open) => {
+          if (!open) {
+            onClose?.()
+          }
+        }}
+        items={groupedItems}
+        value={selectedModel?.id}
+        onValueChange={handleModelChange}
+        searchable={groupedItems.reduce((count, group) => count + group.items.length, 0) > 10}
+        searchPlaceholder={t`Search Models`}
+        emptyMessage={t`No models found`}
+        mobileTitle={t`Choose model`}
+        mobileSide="bottom"
+        trigger={renderTrigger}
+        renderItem={renderItem}
+        footerAction={embedded ? undefined : footerAction}
+        contentClassName="max-md:bg-sidebar"
+        width={240}
+        maxHeight={embedded ? 220 : 340}
+        side={side}
+        align={align}
+      />
+    </>
   )
 }

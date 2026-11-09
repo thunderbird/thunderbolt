@@ -6,8 +6,8 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import { bindModelProvider } from '@/providers/model-connection'
 import { fetchModelsForProvider } from '@/settings/models/model-catalog'
 import type { Model } from '@/types'
-import { type ImageSupport, staticImageSupport } from '@shared/defaults/models'
-import { getCachedImageSupport, setCachedImageSupport } from './image-support'
+import type { ImageSupport } from '@shared/defaults/models'
+import { getCachedImageSupport, getStaticImageSupport, setCachedImageSupport } from './image-support'
 import { probeImageSupport } from './image-support-probe'
 
 /** Upper bound on the whole check, catalog lookup and probe included, generous
@@ -97,7 +97,7 @@ export const detectImageSupport = async (
     probe = probeImageSupport,
   }: DetectImageSupportOptions = {},
 ): Promise<ImageSupport> => {
-  const known = staticImageSupport(inputModel)
+  const known = getStaticImageSupport(inputModel)
   if (known) {
     return known
   }

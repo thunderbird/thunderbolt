@@ -189,6 +189,8 @@ describe('analytics consent', () => {
   })
 
   beforeEach(async () => {
+    await updateSettings(getDb(), { data_collection: true })
+    useLocalSettingsStore.setState({ syncEnabled: false })
     resetPosthogClient()
     mockPosthogInit.mockReset()
     optIn.mockReset()

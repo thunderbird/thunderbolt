@@ -110,38 +110,41 @@ describe('useChatAutomation', () => {
     expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
   })
 
-  it('should not auto-run a stopped prompt after a reload, when the session is no longer stopping', async () => {
-    const messages: ThunderboltUIMessage[] = [
-      {
-        id: 'msg-1',
-        role: 'user',
-        parts: [{ type: 'text', text: 'Write a long essay' }],
-        metadata: { stoppedByUser: true },
-      },
-    ]
-    const mockChatInstance = createMockChatInstance(messages, 'ready')
-    const mockUseChat = createMockUseChat(mockChatInstance)
+  it.each([{ stoppedByUser: true }, { acpCommand: 'compact' as const }])(
+    'should not auto-run a stopped prompt or native command after reload (%p)',
+    async (metadata) => {
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: 'msg-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Write a long essay' }],
+          metadata,
+        },
+      ]
+      const mockChatInstance = createMockChatInstance(messages, 'ready')
+      const mockUseChat = createMockUseChat(mockChatInstance)
 
-    hydrateStore({
-      chatInstance: mockChatInstance,
-      chatThread: null,
-      id: 'thread-1',
-      mcpClients: [],
-      models: [],
-      selectedModel: null,
-      triggerData: null,
-    })
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: null,
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
 
-    renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
-      wrapper: createQueryTestWrapper(),
-    })
+      renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
+        wrapper: createQueryTestWrapper(),
+      })
 
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
 
-    expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
-  })
+      expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
+    },
+  )
 
   it('should not trigger if status is not ready', async () => {
     const messages: ThunderboltUIMessage[] = [

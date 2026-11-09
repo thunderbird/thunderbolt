@@ -38,7 +38,7 @@ export const WaitlistContent = ({ waitlist, embedded = false }: WaitlistContentP
   if (state.status === 'checkEmail' || state.status === 'verifying') {
     return (
       <>
-        {!embedded && <BackButton onClick={actions.reset} className="absolute left-6 top-6" />}
+        {!embedded && <BackButton onClick={actions.reset} disabled={isVerifying} className="absolute left-6 top-6" />}
 
         <div
           className={

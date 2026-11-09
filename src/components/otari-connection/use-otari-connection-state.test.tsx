@@ -115,11 +115,12 @@ describe('Otari connection', () => {
     expect(result.current.isCustomUrl).toBe(true)
     await act(async () => {
       exchange.resolve('delegated-key')
-      await getClock().tickAsync(0)
     })
+    await waitForElement(() => (!result.current.busy ? document.body : null))
     expect(result.current.selected).toBe('workspace/model')
     expect(result.current.key).toBe('delegated-key')
     expect(result.current.busy).toBe(false)
+    expect(complete).toHaveBeenCalledTimes(1)
     expect(deps.loadModels).toHaveBeenCalledTimes(1)
     expect(deps.connect).not.toHaveBeenCalled()
     readReturn.mockRestore()
@@ -139,7 +140,7 @@ describe('Otari connection', () => {
       cancel: () => {},
     })
     render(<OnboardingModelStep />, { wrapper: createTestProvider() })
-    await act(async () => getClock().runAllAsync())
+    await waitForElement(() => screen.queryByText(i18n._(msg`Connection cancelled.`)))
     expect(screen.getByRole('heading', { name: 'Connect Otari' })).toBeInTheDocument()
     expect(screen.getByLabelText('Otari server URL')).toHaveValue('http://localhost:8099')
     expect(screen.getByText(i18n._(msg`Connection cancelled.`))).toBeInTheDocument()
@@ -164,7 +165,7 @@ describe('Otari connection', () => {
     try {
       i18n.loadAndActivate({ locale: 'de', messages: { 'Connection cancelled.': 'Verbindung abgebrochen.' } })
       const { result } = renderHook(() => useOtariConnectionState(), { wrapper: createTestProvider() })
-      await act(async () => getClock().runAllAsync())
+      await waitForElement(() => (!result.current.busy ? document.body : null))
       expect(result.current.error).toBe('Verbindung abgebrochen.')
     } finally {
       i18n.activate(previousLocale)
@@ -190,7 +191,7 @@ describe('Otari connection', () => {
       expect(useSearchProviderStore.getState().connectionId).toBe('oauth:otari')
     })
     render(<OnboardingModelStep onContinue={onContinue} />, { wrapper: createTestProvider() })
-    await act(async () => getClock().runAllAsync())
+    await waitForElement(() => screen.queryByRole('combobox', { name: 'Choose a model' }))
     expect(screen.getByText('Connected to Otari')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Choose a model' })).toHaveFocus()
     expect(screen.queryByRole('button', { name: 'Use this model' })).not.toBeInTheDocument()
@@ -208,8 +209,8 @@ describe('Otari connection', () => {
     )
     await act(async () => {
       verification.resolve('supported')
-      await getClock().runAllAsync()
     })
+    await waitForElement(() => (onContinue.mock.calls.length ? document.body : null))
     expect(onContinue).toHaveBeenCalledTimes(1)
     expect((await getAvailableModels(getDb()))[0]).toMatchObject({
       provider: 'otari',
@@ -237,7 +238,7 @@ describe('Otari connection', () => {
       stubJsonResponse({ data: [{ id: 'example/model' }, { id: 'deepseek/deepseek-v4.1-flash' }] }),
     )
     render(<OnboardingModelStep />, { wrapper: createTestProvider() })
-    await act(async () => getClock().runAllAsync())
+    await waitForElement(() => screen.queryByRole('combobox', { name: 'Choose a model' }))
     const disconnect = screen.getByRole('button', { name: 'Disconnect' })
     expect(disconnect).toHaveTextContent('Connected to Otari')
     expect(screen.queryByRole('button', { name: 'Connect another account' })).not.toBeInTheDocument()

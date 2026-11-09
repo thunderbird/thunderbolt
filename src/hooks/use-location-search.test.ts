@@ -8,7 +8,7 @@ import { spyOn } from 'bun:test'
 import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { setActiveLocale } from '@/i18n/active-locale'
-import type { HttpClient, RequestOptions, ResponsePromise } from '@/lib/http'
+import { createClient, type HttpClient, type RequestOptions, type ResponsePromise } from '@/lib/http'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -412,4 +412,85 @@ it('does not look up a city on a selected but unauthenticated backend', async ()
   expect(result.current.locations).toEqual([])
   expect(get.mock.calls.some(([url]) => url === 'locations')).toBe(false)
   get.mockRestore()
+})
+
+describe('search request ownership', () => {
+  it('retains results when the combobox repeats the current query', async () => {
+    const { result } = renderHook(() => useLocationSearch(), {
+      wrapper: createTestProvider({ mockResponse: mockLocationResponse }),
+    })
+    act(() => result.current.setSearchQuery('San Francisco'))
+    await act(async () => {
+      await getClock().tickAsync(300)
+    })
+    const results = result.current.locations
+    act(() => result.current.setSearchQuery('San Francisco'))
+    expect(result.current.locations).toBe(results)
+    expect(result.current.isSearching).toBe(false)
+  })
+
+  it('settles a failed request and permits the next query to succeed', async () => {
+    const rejected = Promise.withResolvers<Response>()
+    const httpClient = createClient({
+      prefixUrl: 'https://example.com',
+      fetch: (input) => {
+        const url = String(input instanceof Request ? input.url : input)
+        if (!url.includes('/locations?')) {
+          return Promise.resolve(Response.json({}))
+        }
+        return url.includes('fail') ? rejected.promise : Promise.resolve(Response.json(mockLocationResponse))
+      },
+    })
+    const { result } = renderHook(() => useLocationSearch(), { wrapper: createTestProvider({ httpClient }) })
+    act(() => result.current.setSearchQuery('fail'))
+    await act(async () => {
+      await getClock().tickAsync(300)
+    })
+    expect(result.current.isSearching).toBe(true)
+    await act(async () => {
+      rejected.reject(new Error('offline'))
+      await getClock().tickAsync(0)
+    })
+    expect(result.current.isSearching).toBe(false)
+    expect(result.current.locations).toEqual([])
+    act(() => result.current.setSearchQuery('San Francisco'))
+    await act(async () => {
+      await getClock().tickAsync(300)
+    })
+    expect(result.current.locations).toHaveLength(2)
+  })
+
+  it.each(['replace', 'clear', 'edit'] as const)('ignores old results after %s', async (action) => {
+    const old = Promise.withResolvers<Response>()
+    const fresh = Promise.withResolvers<Response>()
+    const queue = [old, fresh]
+    const httpClient = createClient({
+      prefixUrl: 'https://example.com',
+      fetch: (input) =>
+        String(input instanceof Request ? input.url : input).includes('/locations?')
+          ? queue.shift()!.promise
+          : Promise.resolve(Response.json({})),
+    })
+    const { result } = renderHook(() => useLocationSearch(), { wrapper: createTestProvider({ httpClient }) })
+    act(() => result.current.setSearchQuery('San Francisco'))
+    await act(async () => {
+      await getClock().tickAsync(300)
+    })
+    act(() => (action === 'clear' ? result.current.clearSearch() : result.current.setSearchQuery('New York')))
+    if (action === 'replace') {
+      await act(async () => {
+        await getClock().tickAsync(300)
+      })
+      await act(async () => {
+        fresh.resolve(Response.json([mockLocationResponse[1]]))
+        await getClock().tickAsync(0)
+      })
+    }
+    await act(async () => {
+      old.resolve(Response.json([mockLocationResponse[0]]))
+      await getClock().tickAsync(0)
+    })
+    expect(result.current.locations.map((location) => location.city)).toEqual(action === 'replace' ? ['New York'] : [])
+    expect(result.current.isSearching).toBe(false)
+  })
 })

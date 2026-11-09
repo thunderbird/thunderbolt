@@ -180,11 +180,20 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   private powerSync: PowerSyncDatabase | null = null
   private _db: AnyDrizzleDatabase | null = null
   private _isConnected = false
+  private syncOperation: Promise<void> = Promise.resolve()
   private visibilityHandler: (() => void) | null = null
   private hiddenAt: number | null = null
   private _isReconnecting = false
   private versionBlockHandler: (() => void) | null = null
   private vfs: WASQLiteVFS | null = null
+
+  /** Serialize native connection ownership, including close, across async boundaries. */
+  private enqueueSyncOperation(operation: () => Promise<void>): Promise<void> {
+    const pending = this.syncOperation.then(operation)
+    // A failed operation must not poison subsequent cleanup or an explicit retry.
+    this.syncOperation = pending.catch(() => {})
+    return pending
+  }
 
   get db(): AnyDrizzleDatabase {
     if (!this._db) {
@@ -289,8 +298,12 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * Connect to PowerSync Cloud for syncing.
    * Call this when user enables sync.
    */
-  async connectToSync(): Promise<void> {
-    if (!this.powerSync || !this._db || !getLocalSetting('cloudUrl')) {
+  connectToSync(): Promise<void> {
+    return this.enqueueSyncOperation(() => this.connectToSyncNow())
+  }
+
+  private async connectToSyncNow(): Promise<void> {
+    if (!this.powerSync || !this._db || !isSyncEnabled()) {
       return
     }
 
@@ -402,17 +415,28 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * No-ops if a reconnect is already in-flight or sync is disabled.
    */
   async reconnect(trigger: 'visibility' | 'manual' = 'manual', hiddenDurationMs?: number): Promise<void> {
-    if (this._isReconnecting || !this.powerSync || !isSyncEnabled() || isAppVersionUnsupported()) {
+    if (this._isReconnecting) {
       return
     }
     this._isReconnecting = true
+    try {
+      await this.enqueueSyncOperation(() => this.reconnectNow(trigger, hiddenDurationMs))
+    } finally {
+      this._isReconnecting = false
+    }
+  }
+
+  private async reconnectNow(trigger: 'visibility' | 'manual', hiddenDurationMs?: number): Promise<void> {
+    if (!this.powerSync || !isSyncEnabled() || isAppVersionUnsupported()) {
+      return
+    }
     trackSyncEvent('sync_reconnect_start', { trigger })
     try {
       trackSyncEvent('sync_disconnect', { trigger: 'reconnect' })
       stopSyncStatusListener()
       await this.powerSync.disconnect()
       this._isConnected = false
-      await this.connectToSync()
+      await this.connectToSyncNow()
       if (this._isConnected) {
         trackSyncEvent('sync_reconnect_success', {
           trigger,
@@ -427,8 +451,6 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     } catch (err) {
       console.warn('[PowerSync] Reconnect failed:', err)
       trackSyncEvent('sync_reconnect_error', { trigger, error: sanitizeErrorForTracking(err) })
-    } finally {
-      this._isReconnecting = false
     }
   }
 
@@ -492,7 +514,11 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * Call this when user disables sync. `trigger` distinguishes that from the
    * involuntary teardown when the backend rejects this build's version.
    */
-  async disconnectFromSync(trigger: 'user' | 'version_blocked' = 'user'): Promise<void> {
+  disconnectFromSync(trigger: 'user' | 'version_blocked' = 'user'): Promise<void> {
+    return this.enqueueSyncOperation(() => this.disconnectFromSyncNow(trigger))
+  }
+
+  private async disconnectFromSyncNow(trigger: 'user' | 'version_blocked'): Promise<void> {
     if (!this.powerSync || !this._isConnected) {
       return
     }
@@ -564,7 +590,11 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     }
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    return this.enqueueSyncOperation(() => this.closeNow())
+  }
+
+  private async closeNow(): Promise<void> {
     this.stopVisibilityReconnect()
     this.stopVersionBlockListener()
     stopSyncStatusListener()
@@ -574,6 +604,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       await this.powerSync.close()
       this.powerSync = null
       this._db = null
+      this._isConnected = false
     }
   }
 }

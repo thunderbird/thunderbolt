@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { SharedModel } from '@shared/defaults/models'
+import type { ImageSupport, SharedModel } from '@shared/defaults/models'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { usesLocalProviders } from '@/lib/provider-mode'
@@ -52,6 +52,8 @@ export type AppConfig = {
       version: number
       defaultModelId: string
       data: SharedModel[]
+      /** Absent from backends that predate it. */
+      imageSupport?: Record<string, ImageSupport>
     }
   }
 }

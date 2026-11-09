@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import * as modelsDal from '@/dal/models'
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { getSettings } from '@/dal'
 import { createModel, getAllModels, getModel, updateModel } from '@/dal/models'
-import * as modelsDal from '@/dal/models'
 import { exportUserData } from '@/dal/export'
 import { getIntegrationCredentials } from '@/dal/integrations'
 import {
@@ -73,6 +73,50 @@ describe('useAddModelForm', () => {
     cleanup()
     resetStore()
     useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl, localMode: originalLocalMode })
+  })
+
+  it.each(['resolve', 'reject'] as const)('keeps a replacement draft when an abandoned add %s', async (outcome) => {
+    const pending = Promise.withResolvers<void>()
+    const started = Promise.withResolvers<void>()
+    const create = spyOn(modelsDal, 'createModelInTransaction').mockImplementation(() => {
+      started.resolve()
+      return pending.promise
+    })
+    const onClose = mock(() => {})
+    try {
+      const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
+        wrapper: createTestProvider(),
+      })
+      const values = { provider: 'thunderbolt' as const, name: 'Original', model: 'original', supportsTools: true }
+      const first = result.current.onSubmit(values)
+      await result.current.onSubmit(values)
+      await act(async () => {
+        await started.promise
+        await getClock().tickAsync(0)
+      })
+      expect(create).toHaveBeenCalledTimes(1)
+      act(() => {
+        result.current.onCancel()
+        result.current.prepareForOpen()
+        result.current.form.setValue('name', 'Replacement')
+      })
+      onClose.mockClear()
+      await act(async () => {
+        if (outcome === 'resolve') {
+          pending.resolve()
+        } else {
+          pending.reject(new Error('old add failed'))
+        }
+        await first
+        await getClock().runAllAsync()
+      })
+      expect(result.current.form.getValues('name')).toBe('Replacement')
+      expect(result.current.submitError).toBeNull()
+      expect(onClose).not.toHaveBeenCalled()
+    } finally {
+      pending.resolve()
+      create.mockRestore()
+    }
   })
 
   it('refreshes the chat model list before closing after creation', async () => {
@@ -514,7 +558,8 @@ describe('useAddModelForm', () => {
   })
 
   it('substitutes the typed custom model id on submit when Custom is selected', async () => {
-    const onClose = mock(() => {})
+    const completed = Promise.withResolvers<void>()
+    const onClose = mock(() => completed.resolve())
     const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
       wrapper: createTestProvider(),
     })
@@ -533,7 +578,7 @@ describe('useAddModelForm', () => {
         apiKey: '',
         supportsTools: true,
       })
-      await getClock().runAllAsync()
+      await completed.promise
     })
 
     const created = useChatStore.getState().models.find((candidate) => candidate.name === 'My Custom Model')

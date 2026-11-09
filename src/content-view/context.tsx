@@ -12,6 +12,7 @@ import type { UIMessageMetadata } from '@/types'
 import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
 import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
+import type { CompactionSummary } from '@/components/context-usage'
 
 /** A tool call (built-in or MCP dynamic-tool) or a reasoning part shown in the object view. */
 export type ObjectViewContent = ToolUIPart | DynamicToolUIPart | ReasoningUIPart
@@ -51,6 +52,7 @@ type ContentViewState =
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: SideviewData }
   | { type: 'artifact'; data: ArtifactViewData }
+  | { type: 'compaction-summary'; data: CompactionSummary }
 
 type ContentViewContextType = {
   state: ContentViewState
@@ -60,6 +62,8 @@ type ContentViewContextType = {
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
   /** Open a verified HTML artifact in the side panel. */
   showArtifact: (data: ArtifactViewData) => void
+  /** Inspect a local or agent-provided summary without changing the conversation. */
+  showCompactionSummary: (checkpoint: CompactionSummary) => void
   close: () => void
   isOpen: boolean
   previewHidden: boolean
@@ -67,6 +71,9 @@ type ContentViewContextType = {
 }
 
 const ContentViewContext = createContext<ContentViewContextType | undefined>(undefined)
+const ShowCompactionSummaryContext = createContext<ContentViewContextType['showCompactionSummary'] | undefined>(
+  undefined,
+)
 
 /**
  * Unified provider for managing the content view
@@ -157,6 +164,14 @@ export const ContentViewProvider = ({
     setState({ type: null, data: null })
   }, [state.type, trackEvent])
 
+  const showCompactionSummary = useCallback(
+    (checkpoint: CompactionSummary) => {
+      trackEvent('content_view_open', { view_type: 'compaction-summary' })
+      setState({ type: 'compaction-summary', data: checkpoint })
+    },
+    [trackEvent],
+  )
+
   return (
     <ContentViewContext.Provider
       value={{
@@ -165,13 +180,16 @@ export const ContentViewProvider = ({
         showPreview,
         showSideview,
         showArtifact,
+        showCompactionSummary,
         close,
         isOpen: state.type !== null,
         previewHidden,
         setPreviewHidden,
       }}
     >
-      {children}
+      <ShowCompactionSummaryContext.Provider value={showCompactionSummary}>
+        {children}
+      </ShowCompactionSummaryContext.Provider>
     </ContentViewContext.Provider>
   )
 }
@@ -231,4 +249,13 @@ export const useSideview = () => {
     showSideview,
     closeSideview: close,
   }
+}
+
+/** Open summaries without subscribing the message list to side-panel state. */
+export const useShowCompactionSummary = () => {
+  const show = useContext(ShowCompactionSummaryContext)
+  if (!show) {
+    throw new Error('useShowCompactionSummary must be used within a ContentViewProvider')
+  }
+  return show
 }

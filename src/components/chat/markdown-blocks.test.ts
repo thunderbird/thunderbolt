@@ -24,6 +24,8 @@ const documents: Record<string, string> = {
     '1. one\n2. two\n3. three\n\nClosing line.',
   fencedCode: 'Here is code:\n\n```ts\nconst x = 1\nconst y = 2\nconsole.log(x + y)\n```\n\nAnd after the fence.',
   codeShowingMath: 'Literal source:\n\n```\n$$E = mc^2$$ and \\(a\\)\n```\n\ndone.',
+  indentedCode: 'Before.\n\n    const price = "$5"\n    const math = "\\(x\\)"\n\nAfter.',
+  referenceDefinition: '[Read more][guide].\n\n[guide]: https://example.com\n\nClosing.',
   table:
     'Results:\n\n| Name | Score |\n|------|-------|\n| Alice | 90 |\n| Bob | 85 |\n| Carol | 78 |\n\nEnd of table.',
   blockMath: "Newton's law:\n\n$$F = G \\frac{M_1 M_2}{R^2}$$\n\nwhere $G$ is the constant.",

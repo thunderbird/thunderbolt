@@ -41,6 +41,8 @@ export type SearchableMenuFooterAction = {
 }
 
 export type SearchableMenuProps<T = unknown> = {
+  /** Render the list inside an existing surface, keeping it open on selection. */
+  embedded?: boolean
   /** Items to display - can be flat or grouped */
   items: SearchableMenuItem<T>[] | SearchableMenuGroup<T>[]
   /** Currently selected item ID */

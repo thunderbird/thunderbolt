@@ -4,6 +4,7 @@
 
 import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { createModel, getSettings, updateSettings } from '@/dal'
+import * as dal from '@/dal'
 import { saveProviderConnection, saveProviderConnectionInTransaction } from '@/dal/provider-connections'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -167,6 +168,8 @@ describe('OnboardingDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       await flush()
       expect(screen.getByRole('radio', { name: 'OpenRouter' })).toBeChecked()
+      // The lazily mounted provider step starts its own model query.
+      await flush()
       expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
       expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Skip' })).toBeEnabled()
@@ -458,6 +461,150 @@ describe('OnboardingDialog', () => {
       expect(settings.onboardingCurrentStep).toBe('1')
     })
   })
+  it('completes onboarding in one write and permits retry after that write fails', async () => {
+    await reconcileDefaults(getDb())
+    await updateSettings(getDb(), { onboarding_current_step: '7' })
+    render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    const write = spyOn(dal, 'updateSettings')
+      .mockRejectedValueOnce(new Error('storage unavailable'))
+      .mockResolvedValue(undefined)
+    try {
+      const button = screen.getByRole('button', { name: 'Continue' }) as HTMLButtonElement
+      await act(async () => {
+        fireEvent.click(button)
+      })
+      expect(button.disabled).toBe(false)
+      expect(write).toHaveBeenCalledTimes(1)
+      expect(write.mock.calls[0][1]).toEqual({ user_has_completed_onboarding: true, onboarding_current_step: '1' })
+      await act(async () => {
+        fireEvent.click(button)
+      })
+      expect(write).toHaveBeenCalledTimes(2)
+    } finally {
+      write.mockRestore()
+    }
+  })
+
+  it('disables every navigation action while saving the name, then advances only once', async () => {
+    await reconcileDefaults(getDb())
+    await updateSettings(getDb(), { onboarding_current_step: '3' })
+    render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Alice' } })
+    const pending = Promise.withResolvers<void>()
+    const write = spyOn(dal, 'updateSettings').mockImplementationOnce(() => pending.promise)
+    try {
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      })
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Skip' })).toBeDisabled()
+      expect(screen.getByRole('textbox')).toBeDisabled()
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      await act(async () => {
+        pending.resolve()
+        await getClock().runAllAsync()
+      })
+      expect(write).toHaveBeenCalledTimes(2)
+      expect(write.mock.calls[1][1]).toEqual({ onboarding_current_step: '4' })
+      expect(screen.getByText('Where are you located?')).toBeInTheDocument()
+    } finally {
+      write.mockRestore()
+    }
+  })
+
+  it('keeps a failed name save on the editable name step and allows retry', async () => {
+    await reconcileDefaults(getDb())
+    await updateSettings(getDb(), { onboarding_current_step: '3' })
+    render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Alice' } })
+    const write = spyOn(dal, 'updateSettings').mockRejectedValueOnce(new Error('disk full'))
+    try {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+        await getClock().runAllAsync()
+      })
+      expect(screen.getByRole('textbox')).toHaveValue('Alice')
+      expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled()
+      expect(write).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+        await getClock().runAllAsync()
+      })
+      expect(screen.getByText('Where are you located?')).toBeInTheDocument()
+    } finally {
+      write.mockRestore()
+    }
+  })
+
+  it('does not navigate after a name save finishes on an unmounted wizard', async () => {
+    await reconcileDefaults(getDb())
+    await updateSettings(getDb(), { onboarding_current_step: '3' })
+    const { unmount } = render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Alice' } })
+    const pending = Promise.withResolvers<void>()
+    const write = spyOn(dal, 'updateSettings').mockImplementationOnce(() => pending.promise)
+    try {
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      })
+      unmount()
+      await act(async () => {
+        pending.resolve()
+        await getClock().runAllAsync()
+      })
+      expect(write).toHaveBeenCalledTimes(1)
+    } finally {
+      write.mockRestore()
+    }
+  })
+
+  it('persists Skip and Back through the same navigation owner', async () => {
+    await reconcileDefaults(getDb())
+    await updateSettings(getDb(), { onboarding_current_step: '2' })
+    render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByText('What should we call you?')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+      await getClock().runAllAsync()
+    })
+    expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Skip' })).not.toBeDisabled()
+  })
+
+  it('skips the passkey step after determining it is unavailable', async () => {
+    await reconcileDefaults(getDb())
+    await updateSettings(getDb(), { onboarding_current_step: '5' })
+    render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
+  })
 
   describe('Component rendering', () => {
     it('should render without crashing', () => {
@@ -536,6 +683,29 @@ describe('OnboardingDialog', () => {
       })
     }
 
+    it('does not mount wizard queries when onboarding was already completed', async () => {
+      await reconcileDefaults(getDb())
+      await updateSettings(getDb(), { user_has_completed_onboarding: true })
+      render(
+        <>
+          <OnboardingDialog />
+          <GrabQueryClient />
+        </>,
+        { wrapper: createRouterWrapper() },
+      )
+      await flush()
+
+      expect(screen.queryByText(wizardTitle)).toBeNull()
+      expect(queryClient?.getQueryCache().find({ queryKey: ['integrationStatus'] })).toBeUndefined()
+      expect(queryClient?.getQueryCache().find({ queryKey: ['account-passkey'], exact: false })).toBeUndefined()
+      expect(
+        queryClient?.getQueryCache().find({
+          queryKey: ['settings'],
+          predicate: ({ queryKey }) => queryKey.includes('onboarding_current_step'),
+        }),
+      ).toBeUndefined()
+    })
+
     it('closes once the account is marked onboarded', async () => {
       await reconcileDefaults(getDb())
       render(
@@ -547,6 +717,12 @@ describe('OnboardingDialog', () => {
       )
       await flush()
       expect(screen.queryByText(wizardTitle)).not.toBeNull()
+      expect(
+        queryClient
+          ?.getQueryCache()
+          .find({ queryKey: ['integrationStatus'] })
+          ?.getObserversCount(),
+      ).toBe(1)
 
       await updateSettings(getDb(), { user_has_completed_onboarding: true })
       await act(async () => {
@@ -555,6 +731,20 @@ describe('OnboardingDialog', () => {
       await flush()
 
       expect(screen.queryByText(wizardTitle)).toBeNull()
+
+      await updateSettings(getDb(), { user_has_completed_onboarding: false })
+      await act(async () => {
+        await queryClient?.invalidateQueries()
+      })
+      await flush()
+
+      expect(screen.queryByText(wizardTitle)).not.toBeNull()
+      expect(
+        queryClient
+          ?.getQueryCache()
+          .find({ queryKey: ['integrationStatus'] })
+          ?.getObserversCount(),
+      ).toBe(1)
     })
   })
 })

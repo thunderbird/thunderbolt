@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { useConfigStore } from '@/api/config-store'
 import {
   saveProviderConnection,
   saveProviderConnectionInTransaction,
@@ -14,12 +15,22 @@ import { tinfoilSession } from '@/lib/tinfoil-session'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { AvailableModel } from '@/settings/models/model-catalog'
 import type { Model } from '@/types'
-import type { ImageSupport } from '@shared/defaults/models'
+import {
+  defaultModelDeepSeekV41Flash,
+  defaultModelId,
+  defaultModels,
+  defaultModelsVersion,
+  type ImageSupport,
+} from '@shared/defaults/models'
 import { clearImageSupportCache, getCachedImageSupport, setCachedImageSupport } from './image-support'
 import { detectImageSupport } from './image-support-detection'
 import { ImageSupportInconclusiveError } from './image-support-probe'
 
-afterEach(() => mock.restore())
+const originalConfig = useConfigStore.getState().config
+afterEach(() => {
+  mock.restore()
+  useConfigStore.setState({ config: originalConfig })
+})
 
 const proxyFetch: FetchFn = Object.assign(async () => new Response(''), { preconnect: async () => true })
 const getProxyFetch = () => proxyFetch
@@ -58,6 +69,26 @@ describe('detectImageSupport', () => {
     const claude = makeModel({ provider: 'anthropic', model: 'claude-sonnet-5' })
     expect(await detectImageSupport(claude, getProxyFetch, options)).toBe('supported')
     expect(await detectImageSupport(makeModel({ model: 'glm-5-3' }), getProxyFetch, options)).toBe('unsupported')
+    expect(options.fetchCatalog).not.toHaveBeenCalled()
+    expect(options.probe).not.toHaveBeenCalled()
+  })
+
+  it('uses a newer server lineup before starting a catalog request or probe', async () => {
+    const serverOnly = { ...defaultModelDeepSeekV41Flash, id: 'server-only-model', model: 'server-vision-model' }
+    useConfigStore.setState({
+      config: {
+        defaults: {
+          models: {
+            version: defaultModelsVersion + 1,
+            defaultModelId,
+            data: [...defaultModels, serverOnly],
+            imageSupport: { [serverOnly.id]: 'supported' },
+          },
+        },
+      },
+    })
+    const options = makeOptions()
+    expect(await detectImageSupport(makeModel(serverOnly), getProxyFetch, options)).toBe('supported')
     expect(options.fetchCatalog).not.toHaveBeenCalled()
     expect(options.probe).not.toHaveBeenCalled()
   })

@@ -15,6 +15,7 @@ import {
 } from '@/lib/passkey-native'
 import { markOnboardedForReturningUser } from '@/lib/returning-user-onboarding'
 import { getPlatform } from '@/lib/platform'
+import { captureAuthRequestLifetime, getAuthToken } from '@/lib/auth-token'
 import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialCreationOptionsJSON,
@@ -59,6 +60,7 @@ type CeremonyRequest = {
   /** The challenge from the matching options call; see {@link fetchCeremonyOptions}. */
   challenge?: string
   onResponse?: (context: { response: Response }) => void
+  signal?: AbortSignal
 }
 
 /**
@@ -67,12 +69,15 @@ type CeremonyRequest = {
  * from the client config.
  */
 const ceremonyFetch = async <T>(authClient: AuthClient, path: string, request: CeremonyRequest): Promise<T> => {
+  request.signal?.throwIfAborted()
   const { data, error } = await authClient.$fetch<T>(path, {
     method: request.method,
     ...(request.body ? { body: request.body } : {}),
     ...(request.onResponse ? { onResponse: request.onResponse } : {}),
     headers: authRequestHeaders(request.challenge ? { [passkeyChallengeHeader]: request.challenge } : {}),
+    signal: request.signal,
   })
+  request.signal?.throwIfAborted()
   if (error) {
     throw error
   }
@@ -89,10 +94,12 @@ const ceremonyFetch = async <T>(authClient: AuthClient, path: string, request: C
 const fetchCeremonyOptions = async <T>(
   authClient: AuthClient,
   path: string,
+  signal?: AbortSignal,
 ): Promise<{ options: T; challenge: string | undefined }> => {
   let challenge: string | undefined
   const options = await ceremonyFetch<T>(authClient, path, {
     method: 'GET',
+    signal,
     onResponse: ({ response }) => {
       challenge = response.headers.get(passkeyChallengeHeader) ?? undefined
     },
@@ -200,11 +207,14 @@ const runRegistration = async (
 const runAssertion = async (
   optionsJSON: PublicKeyCredentialRequestOptionsJSON,
   withPrf: boolean,
+  signal?: AbortSignal,
 ): Promise<{ response: AuthenticationResponseJSON; prfOutput: Uint8Array | null }> => {
+  signal?.throwIfAborted()
   if (isNativePasskeyPlatform()) {
     return authenticatePasskeyNative(optionsJSON, withPrf ? passkeyPrfSalt : new Uint8Array())
   }
   const { startAuthentication } = await loadWebAuthn()
+  signal?.throwIfAborted()
   return splitPrfOutput(
     await startAuthentication({ optionsJSON: withPrf ? { ...optionsJSON, extensions: prfExtension } : optionsJSON }),
   )
@@ -318,36 +328,47 @@ export const useAccountPasskey = () => {
 /**
  * Authenticate with a passkey (usernameless / discoverable credential). On success
  * the bearer token is persisted by the auth client's `onSuccess` handler, then the
- * session atom is refreshed so the app flips to the authenticated state.
+ * accepted session is published so the app flips to the authenticated state.
  */
-export const signInWithPasskey = async (authClient: AuthClient): Promise<{ userId: string }> => {
+export const signInWithPasskey = async (
+  authClient: AuthClient,
+  { signal, onAuthenticated }: { signal?: AbortSignal; onAuthenticated?: () => void } = {},
+): Promise<{ userId: string }> => {
   const { options: optionsJSON, challenge } = await fetchCeremonyOptions<PublicKeyCredentialRequestOptionsJSON>(
     authClient,
     '/passkey/generate-authenticate-options',
+    signal,
   )
 
   // Sign-in needs no extensions, and a server-chosen PRF request must never reach
   // the authenticator: its output is the passkey slot's secret. Results are
   // stripped too, so a PRF output can never ride the verify request.
   const { extensions: _serverExtensions, ...signInOptions } = optionsJSON
-  const { response } = await runAssertion(signInOptions, false)
+  const { response } = await runAssertion(signInOptions, false, signal)
+  // Browser cancellation is a global singleton, and native prompts offer no
+  // per-request cancellation. Discard this result without cancelling another
+  // caller's ceremony or starting verification after this flow was cancelled.
+  signal?.throwIfAborted()
 
-  await ceremonyFetch(authClient, '/passkey/verify-authentication', {
+  const data = await ceremonyFetch<AuthClient['$Infer']['Session']>(authClient, '/passkey/verify-authentication', {
     method: 'POST',
     body: { response },
     challenge,
+    signal,
   })
+  const isCurrentAuthLifetime = captureAuthRequestLifetime()
+  const acceptedToken = getAuthToken()
+  onAuthenticated?.()
 
-  // Better Auth only refreshes the session atom for its own sign-in methods, so
-  // push the new session in ourselves (as `hydrateSessionFromCache` does).
-  const { data, error } = await authClient.getSession()
-  if (error || !data) {
-    throw error ?? new Error('Passkey sign-in succeeded but no session was returned')
-  }
+  // Verification already returned the accepted session. Publishing it directly
+  // avoids another network request failing after credentials were committed.
   // A passkey sign-in is always a returning user. Mark them onboarded before the
   // app flips to signed-in, or the onboarding wizard flashes.
   await markOnboardedForReturningUser(data.user)
 
+  if (!isCurrentAuthLifetime() || getAuthToken() !== acceptedToken) {
+    throw new DOMException('Auth session changed while finishing passkey sign-in', 'AbortError')
+  }
   const sessionAtom = authClient.$store.atoms.session
   sessionAtom.set({ ...sessionAtom.get(), data, isPending: false })
   return { userId: data.user.id }

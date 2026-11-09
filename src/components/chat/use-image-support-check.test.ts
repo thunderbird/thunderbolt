@@ -3,11 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { clearImageSupportCache, getCachedImageSupport, setCachedImageSupport } from '@/ai/image-support'
+import { useConfigStore } from '@/api/config-store'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { getClock } from '@/testing-library'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { AttachmentData, Model, ThunderboltUIMessage } from '@/types'
-import type { ImageSupport } from '@shared/defaults/models'
+import {
+  defaultModelDeepSeekV41Flash,
+  defaultModelGlm53,
+  defaultModelId,
+  defaultModels,
+  defaultModelsVersion,
+  type ImageSupport,
+} from '@shared/defaults/models'
 import { focusManager } from '@tanstack/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -211,6 +219,46 @@ describe('useImageSupportCheck', () => {
     it('isn’t offered when a fixed rule rules images out', () => {
       const glm53 = { id: 'glm', name: 'GLM 5.3', provider: 'tinfoil', model: 'glm-5-3', url: null } as Model
       const { result } = renderCheck({ model: glm53 })
+      expect(result.current.notice).toBe('unsupported')
+      expect(result.current.tryAnyway).toBeUndefined()
+    })
+  })
+
+  describe('a newer lineup arriving with /config', () => {
+    const declare = (modelId: string, support: ImageSupport) =>
+      act(async () => {
+        useConfigStore.setState({
+          config: {
+            defaults: {
+              models: {
+                version: defaultModelsVersion + 1,
+                defaultModelId,
+                data: [...defaultModels],
+                imageSupport: { [modelId]: support },
+              },
+            },
+          },
+        })
+      })
+
+    // Detection disagrees with the new declaration, so only the declaration can produce the expected result.
+    it('lifts the block when it declares a bundled-unsupported model supported', async () => {
+      const detect = mock(async (): Promise<ImageSupport> => 'unsupported')
+      const { result } = renderCheck({ model: defaultModelGlm53 as Model, detect })
+      expect(result.current.notice).toBe('unsupported')
+
+      await declare(defaultModelGlm53.id, 'supported')
+
+      expect(result.current.notice).toBeUndefined()
+    })
+
+    it('blocks without an override when it declares a bundled-supported model unsupported', async () => {
+      const detect = mock(async (): Promise<ImageSupport> => 'supported')
+      const { result } = renderCheck({ model: defaultModelDeepSeekV41Flash as Model, detect })
+      expect(result.current.notice).toBeUndefined()
+
+      await declare(defaultModelDeepSeekV41Flash.id, 'unsupported')
+
       expect(result.current.notice).toBe('unsupported')
       expect(result.current.tryAnyway).toBeUndefined()
     })

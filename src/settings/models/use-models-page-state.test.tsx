@@ -75,7 +75,9 @@ describe('model settings update active chat availability', () => {
       })
       const { result } = renderHook(useModelsPageState, { wrapper: createTestProvider() })
       act(() => result.current.openEditPanel('editable'))
-      act(() => result.current.submitEdit({ id: 'editable', name: 'Saved', model: 'old-model', toolUsage: 1 }))
+      act(() => {
+        void result.current.submitEdit({ id: 'editable', name: 'Saved', model: 'old-model', toolUsage: 1 })
+      })
       await started.promise
       act(() => result.current.selectActiveModel('another-model'))
       await act(async () => {

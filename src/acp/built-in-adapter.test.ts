@@ -14,6 +14,7 @@ import '@/testing-library'
 
 import { tinfoilSession } from '@/lib/tinfoil-session'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { defaultModels } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -39,7 +40,6 @@ import { createTurnTelemetry } from '@/ai/turn-telemetry'
 import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getLocalSetting } from '@/stores/local-settings-store'
-import type { RequestOptions } from '@/lib/http'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { supersededAppContextOutput } from '@/mini-apps/mini-app-context-note'
@@ -47,22 +47,39 @@ import {
   createBuiltInAdapter,
   composeAppHarnessSystemPrompt,
   harnessSignature,
-  installAppContextSupersede,
-  isPiModelCandidate,
+  supersedeHarnessAppContext,
   readProfileThinkingLevel,
   resolvePiModel,
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
 } from './built-in-adapter'
+import { isPiModelCandidate } from './built-in-model-support'
+import type { AppHarness } from '@shared/agent-core'
 import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
-import { createReceiptLifecycle, type BuildAppHarnessOptions, type PiModelDescriptor } from '@shared/agent-core'
+import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { createPromptParts, type PromptParams } from '@/ai/prompt'
-import { FileError, type AgentHarness, type AgentHarnessEvent, type AgentTool } from '@earendil-works/pi-agent-core'
-import type { AssistantMessage } from '@earendil-works/pi-ai'
+import {
+  FileError,
+  type AgentHarness,
+  type AgentHarnessEvent,
+  type AgentMessage,
+  type AgentTool,
+} from '@earendil-works/pi-agent-core'
 import type { SecureClient } from 'tinfoil'
 
 const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
+const compactionStub = {
+  setReasoningEffort: async () => {},
+  subscribe: () => () => {},
+  getActiveTools: () => [],
+  compaction: {
+    revision: 0,
+    prepareRequest: async (messages: AgentMessage[]) => messages,
+    checkpoint: async () => undefined,
+    abort: () => {},
+  },
+}
 
 const anthropic = (overrides: Partial<Extract<PiModelDescriptor, { kind: 'anthropic' }>> = {}): ResolvedPiModel => ({
   descriptor: { kind: 'anthropic', modelId: 'claude-opus-4-8', apiKey: 'sk-a', fetch: noopFetch, ...overrides },
@@ -100,6 +117,20 @@ describe('isPiModelCandidate', () => {
 })
 
 describe('readProfileThinkingLevel', () => {
+  it.each(['high', 'max'] as const)('preserves adaptive Anthropic profile effort %s', (effort) => {
+    expect(readProfileThinkingLevel({ thinking: { type: 'adaptive' }, effort })).toBe(effort)
+  })
+
+  it('keeps disabled Anthropic thinking off despite a stored effort', () => {
+    expect(readProfileThinkingLevel({ thinking: { type: 'disabled' }, effort: 'max' })).toBe('off')
+  })
+
+  it('prefers native effort fields and ignores malformed adaptive effort', () => {
+    expect(readProfileThinkingLevel({ reasoningEffort: 'low', effort: 'max' })).toBe('low')
+    expect(readProfileThinkingLevel({ reasoning: { effort: 'high' }, effort: 'max' })).toBe('high')
+    expect(readProfileThinkingLevel({ effort: 'unsupported', thinking: { budgetTokens: 4096 } })).toBe('low')
+  })
+
   it('ignores a non-object JSON value from the synced profile column', () => {
     expect(readProfileThinkingLevel(['high'] as never)).toBeNull()
   })
@@ -396,7 +427,7 @@ const tinfoilContext = (model: Model, overrides: Partial<AgentAdapterContext> = 
     ...overrides,
   }) as AgentAdapterContext
 
-const tinfoilAgentCore = { createReceiptLifecycle } as Parameters<typeof resolvePiModel>[0]
+const tinfoilAgentCore = {} as Parameters<typeof resolvePiModel>[0]
 
 const requireDescriptor = <Kind extends PiModelDescriptor['kind']>(
   resolved: ResolvedPiModel | null,
@@ -406,42 +437,6 @@ const requireDescriptor = <Kind extends PiModelDescriptor['kind']>(
     throw new Error(`Expected ${kind} descriptor`)
   }
   return resolved.descriptor as Extract<PiModelDescriptor, { kind: Kind }>
-}
-
-const assistantMessage = (): AssistantMessage => ({
-  role: 'assistant',
-  content: [{ type: 'text', text: 'answer' }],
-  api: 'openai-completions',
-  provider: 'tinfoil',
-  model: 'glm-5-2',
-  usage: {
-    input: 11,
-    output: 2,
-    cacheRead: 3,
-    cacheWrite: 2,
-    totalTokens: 18,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  },
-  stopReason: 'stop',
-  timestamp: 0,
-})
-
-const createHarnessEvents = () => {
-  type Listener = Parameters<AgentHarness['subscribe']>[0]
-  const listeners = new Set<Listener>()
-  return {
-    harness: {
-      subscribe: (listener: Listener) => {
-        listeners.add(listener)
-        return () => listeners.delete(listener)
-      },
-    },
-    emit: async (event: AgentHarnessEvent): Promise<void> => {
-      for (const listener of listeners) {
-        await listener(event)
-      }
-    },
-  }
 }
 
 describe('resolvePiModel — Tinfoil', () => {
@@ -636,9 +631,10 @@ describe('resolvePiModel — Tinfoil', () => {
 
     await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
     expect(evictSystemTinfoilClient).toHaveBeenCalledTimes(1)
+    expect(evictSystemTinfoilClient).toHaveBeenCalledWith(client)
   })
 
-  it.each(['high', 'max'] as const)('resolves BYOK with %s effort directly without receipts', async (effort) => {
+  it.each(['high', 'max'] as const)('resolves BYOK with %s effort directly', async (effort) => {
     const error = Object.assign(new Error('key changed'), { name: 'KeyConfigMismatchError' })
     const client = createSecureClient(async (_input, init) => {
       expect(new Headers(init?.headers).has(inferenceModelHeader)).toBe(false)
@@ -670,7 +666,6 @@ describe('resolvePiModel — Tinfoil', () => {
       reasoning: true,
       supportsImages: true,
     })
-    expect('receipts' in descriptor).toBe(false)
     expect(getTinfoilClient).toHaveBeenCalledWith({
       trace_id: undefined,
       engine: 'pi',
@@ -679,6 +674,7 @@ describe('resolvePiModel — Tinfoil', () => {
     })
     await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
     expect(evictUserTinfoilClient).toHaveBeenCalledTimes(1)
+    expect(evictUserTinfoilClient).toHaveBeenCalledWith(client)
   })
 
   it.each([0, 1])('keeps Tinfoil search in the visible agent tool loop (%s)', async (toolUsage) => {
@@ -767,61 +763,6 @@ describe('resolvePiModel — Tinfoil', () => {
 
     await expect(adapter.fetch({ body: '{}' }, tinfoilContext(model))).rejects.toBe(error)
     expect(aiFetch).toHaveBeenCalledTimes(0)
-  })
-
-  it('submits one terminal receipt for every managed Tinfoil model', async () => {
-    const post = mock(async () => new Response())
-    const resolved = await resolvePiModel(
-      tinfoilAgentCore,
-      tinfoilContext(tinfoilModel({ model: 'deepseek-v4-flash', vendor: 'deepseek' }), {
-        httpClient: { post } as never,
-      }),
-      null,
-      { getSystemTinfoilClient: async () => createSecureClient() },
-    )
-    const descriptor = requireDescriptor(resolved, 'confidential')
-    const events = createHarnessEvents()
-    descriptor.receipts.attach(events.harness)
-    const message = assistantMessage()
-
-    descriptor.receipts.completeProviderStep({ receipt: 'signed-receipt', message })
-    await events.emit({ type: 'message_end', message })
-    await events.emit({ type: 'message_end', message })
-
-    expect(post).toHaveBeenCalledTimes(1)
-    expect(post).toHaveBeenCalledWith('inference-usage/receipts', {
-      json: { receipt: 'signed-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 },
-      timeout: 3_000,
-    })
-  })
-
-  it('reports a managed receipt POST failure without rejecting the terminal event', async () => {
-    const error = new Error('receipt unavailable')
-    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
-    const resolved = await resolvePiModel(
-      tinfoilAgentCore,
-      tinfoilContext(tinfoilModel(), {
-        httpClient: {
-          post: async () => {
-            throw error
-          },
-        } as never,
-      }),
-      null,
-      { getSystemTinfoilClient: async () => createSecureClient() },
-    )
-    const descriptor = requireDescriptor(resolved, 'confidential')
-    const events = createHarnessEvents()
-    descriptor.receipts.attach(events.harness)
-    const message = assistantMessage()
-
-    try {
-      descriptor.receipts.completeProviderStep({ receipt: 'signed-receipt', message })
-      await expect(events.emit({ type: 'message_end', message })).resolves.toBeUndefined()
-      expect(consoleError).toHaveBeenCalledWith(error)
-    } finally {
-      consoleError.mockRestore()
-    }
   })
 
   it('keys the harness cache by attested client identity', async () => {
@@ -915,6 +856,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       buildAppHarness: async (options: BuildAppHarnessOptions) => {
         buildCalls.push(options)
         return {
+          ...compactionStub,
           getTools: () => [],
           setTools: async () => {},
           prompt: async () => {
@@ -956,95 +898,6 @@ describe('createBuiltInAdapter persistent harness', () => {
     expect(authorizationHeaders).toEqual(['Bearer first-token', 'Bearer second-token'])
   })
 
-  it('submits each managed receipt through the current context client without rebuilding the harness', async () => {
-    const model = tinfoilModel()
-    const config = {
-      model,
-      profile: null,
-      supportsTools: true,
-      sourceCollector: [],
-      toolset: {},
-      skills: [],
-      mcpToolsMetadata: undefined,
-      stableSystemPrompt: 'stable',
-      volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
-    } satisfies PreparedAiRequestConfig
-    const receiptIds = ['first-receipt', 'second-receipt']
-    const buildCalls: BuildAppHarnessOptions[] = []
-    const agentCore = {
-      ...tinfoilAgentCore,
-      buildAppHarness: async (options: BuildAppHarnessOptions) => {
-        buildCalls.push(options)
-        if (options.model.kind !== 'confidential') {
-          throw new Error('Expected confidential descriptor')
-        }
-        const descriptor = options.model
-        const events = createHarnessEvents()
-        const harness = {
-          ...events.harness,
-          getTools: () => [],
-          setTools: async () => {},
-          prompt: async () => {
-            const receipt = receiptIds.shift()
-            if (!receipt) {
-              throw new Error('Expected a receipt for each prompt')
-            }
-            const message = assistantMessage()
-            descriptor.receipts.completeProviderStep({ receipt, message })
-            await events.emit({ type: 'message_end', message })
-          },
-          waitForIdle: async () => {},
-          on: () => () => {},
-          abort: async () => ({ aborted: true }),
-          env: { remove: async () => {} },
-        }
-        descriptor.receipts.attach(harness as never)
-        return harness as never
-      },
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
-      writeAgentWorkspaceFiles: async () => [],
-      toPiAgentTools: async () => [],
-      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
-        new ReadableStream<Uint8Array>({
-          start: async (controller) => {
-            await runPrompt()
-            controller.close()
-          },
-        }),
-    } as never
-    const firstBodies: RequestOptions['json'][] = []
-    const secondBodies: RequestOptions['json'][] = []
-    const firstPost = mock(async (_url: string, options?: RequestOptions) => {
-      firstBodies.push(options?.json)
-      return new Response()
-    })
-    const secondPost = mock(async (_url: string, options?: RequestOptions) => {
-      secondBodies.push(options?.json)
-      return new Response()
-    })
-    const client = createSecureClient()
-    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
-      loadAgentCore: async () => agentCore,
-      prepareConfig: async () => config,
-      getSystemTinfoilClient: async () => client,
-    })
-    const request: RequestInit = {
-      body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }),
-    }
-
-    await (await adapter.fetch(request, tinfoilContext(model, { httpClient: { post: firstPost } as never }))).text()
-    await (await adapter.fetch(request, tinfoilContext(model, { httpClient: { post: secondPost } as never }))).text()
-
-    expect(buildCalls).toHaveLength(1)
-    expect(firstPost).toHaveBeenCalledTimes(1)
-    expect(secondPost).toHaveBeenCalledTimes(1)
-    expect(firstBodies).toEqual([{ receipt: 'first-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 }])
-    expect(secondBodies).toEqual([
-      { receipt: 'second-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 },
-    ])
-  })
-
   it('keeps every harness tool inactive when Tinfoil tool usage is off', async () => {
     const model = tinfoilModel({ toolUsage: 0 })
     const config = {
@@ -1061,6 +914,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     } satisfies PreparedAiRequestConfig
     const activeToolNames: Array<string[] | undefined> = []
     const harness = {
+      ...compactionStub,
       getTools: () => [{ name: 'read' } as AgentTool],
       setTools: async (_tools: AgentTool[], active?: string[]) => void activeToolNames.push(active),
       prompt: async () => {},
@@ -1153,7 +1007,8 @@ describe('createBuiltInAdapter persistent harness', () => {
       const setToolsForHarness: Array<{ tools: AgentTool[]; activeToolNames: string[] | undefined }> = []
       let toolResultHandler: (() => Promise<void> | void) | undefined
       setToolsCalls.push(setToolsForHarness)
-      const harness: AgentHarness = {
+      const harness: AppHarness = {
+        ...compactionStub,
         getTools: () => [{ name: 'read' } as AgentTool],
         getActiveTools: () => [{ name: 'read' } as AgentTool],
         steer,
@@ -1366,6 +1221,7 @@ const createBudgetAdapter = (
     embeddedSurface: null,
   })
   const registrations = new Set<unknown>()
+  const registrationRemoved = Promise.withResolvers<void>()
   const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
     prepareConfig: prepareConfig ?? prepareFixtureConfig,
     loadAgentCore: async () => ({
@@ -1382,6 +1238,7 @@ const createBudgetAdapter = (
           return () => {
             registrations.delete(handler)
             remove()
+            registrationRemoved.resolve()
           }
         }
         return harness
@@ -1417,7 +1274,18 @@ const createBudgetAdapter = (
       context,
     )
   const send = async () => (await response()).text()
-  return { adapter, budget, context, response, send, requests, searches, writes, registrations }
+  return {
+    adapter,
+    budget,
+    context,
+    response,
+    send,
+    requests,
+    searches,
+    writes,
+    registrations,
+    registrationRemoved: registrationRemoved.promise,
+  }
 }
 
 const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) => ({
@@ -1572,6 +1440,11 @@ it.each([
 
 it('keeps real adapter citation metadata across a below-cap harness rebuild', async () => {
   await setupTestDatabase()
+  const previousSettings = useLocalSettingsStore.getState()
+  const previousSearch = useSearchProviderStore.getState()
+  const previousToken = localStorage.getItem('thunderbolt_auth_token')
+  useLocalSettingsStore.setState({ cloudUrl: 'https://backend.test', localMode: false })
+  useSearchProviderStore.getState().selectSearchProvider('cloud')
   setAuthToken('test-session')
   const run = createBudgetAdapter(
     [
@@ -1605,6 +1478,11 @@ it('keeps real adapter citation metadata across a below-cap harness rebuild', as
     expect(run.registrations.size).toBe(0)
   } finally {
     clearAuthToken()
+    useLocalSettingsStore.setState(previousSettings)
+    useSearchProviderStore.setState(previousSearch)
+    if (previousToken !== null) {
+      localStorage.setItem('thunderbolt_auth_token', previousToken)
+    }
     run.adapter.disconnect()
     await teardownTestDatabase()
   }
@@ -1646,8 +1524,8 @@ it('removes the budget listener when the response consumer stops the live harnes
     await requested.promise
     expect(run.registrations.size).toBe(1)
     await response.body!.cancel()
-    // Cancellation aborts Pi; the prompt's finally removes the turn-local hook.
-    await Promise.resolve()
+    // Consumer cancellation settles promptly; the prompt's teardown removes the hook.
+    await run.registrationRemoved
     expect(run.registrations.size).toBe(0)
   } finally {
     run.adapter.disconnect()
@@ -1677,6 +1555,7 @@ describe('createBuiltInAdapter stop', () => {
       embeddedSurface: null,
     }
     const harness = {
+      ...compactionStub,
       getTools: () => [],
       setTools: async () => {},
       setActiveTools: async () => {},
@@ -1733,7 +1612,12 @@ describe('createBuiltInAdapter stop', () => {
 
     // Without this the in-browser loop keeps calling the model and running tools
     // after Stop — the AI SDK only aborts the signal, it never cancels the body.
-    expect(signals).toEqual([controller.signal])
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.aborted).toBe(false)
+    const reason = new Error('user stopped')
+    controller.abort(reason)
+    expect(signals[0]?.aborted).toBe(true)
+    expect(signals[0]?.reason).toBe(reason)
   })
 })
 
@@ -1878,7 +1762,7 @@ describe('research promotion through the real Pi adapter', () => {
 })
 
 describe('Mini App reads on the persistent harness', () => {
-  type ContextHandler = (event: { messages: unknown[] }) => { messages: unknown[] }
+  type ContextHandler = (event: { messages: unknown[] }) => { messages: unknown[] } | Promise<{ messages: unknown[] }>
 
   const appContextRead = (toolCallId: string, text: string) => ({
     role: 'toolResult' as const,
@@ -1889,7 +1773,7 @@ describe('Mini App reads on the persistent harness', () => {
     timestamp: 0,
   })
 
-  /** Only the hook registry: `installAppContextSupersede` touches nothing else. */
+  /** Minimal context-hook registry for the adapter's request transformation. */
   const hookRegistry = () => {
     const hooks: { context?: ContextHandler } = {}
     const harness = {
@@ -1905,21 +1789,14 @@ describe('Mini App reads on the persistent harness', () => {
     return { harness, hooks }
   }
 
-  it('supersedes the listed reads in the request without touching the stored ones', () => {
-    const { harness, hooks } = hookRegistry()
-    const remove = installAppContextSupersede(harness, new Set(['earlier']))
+  it('supersedes the listed reads in the request without touching the stored ones', async () => {
     const earlier = appContextRead('earlier', 'Currently viewing: Q2')
     const current = appContextRead('current', 'Currently viewing: Q3')
-
-    const { messages } = hooks.context!({ messages: [earlier, current] })
+    const messages = [earlier, current].map((message) => supersedeHarnessAppContext(message, new Set(['earlier'])))
 
     expect(messages[0]).toEqual({ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] })
     expect(messages[1]).toBe(current)
     expect(earlier.content[0].text).toBe('Currently viewing: Q2')
-
-    remove()
-
-    expect(hooks.context).toBeUndefined()
   })
 
   /** The rewrite the legacy path applies to the request history, carried to the harness's own session. */
@@ -1942,11 +1819,12 @@ describe('Mini App reads on the persistent harness', () => {
     let requested: unknown[] = []
     let toolCallMetadata: Record<string, unknown> | undefined
     const harness = {
+      ...compactionStub,
       ...(registry as object),
       getTools: () => [],
       setTools: async () => {},
       prompt: async () => {
-        requested = hooks.context?.({ messages: [earlier] }).messages ?? []
+        requested = (await hooks.context?.({ messages: [earlier] }))?.messages ?? []
       },
       waitForIdle: async () => {},
       abort: async () => ({ aborted: true }),
@@ -2032,6 +1910,7 @@ describe('attachments in the harness workspace', () => {
     const written: realAgentCore.WorkspaceFile[][] = []
     const prompts: string[] = []
     const harness = {
+      ...compactionStub,
       getTools: () => [],
       setTools: async () => {},
       prompt: async (text: string) => {
@@ -2119,5 +1998,194 @@ describe('attachments in the harness workspace', () => {
     } finally {
       consoleError.mockRestore()
     }
+  })
+})
+
+describe('built-in adapter lifetime ownership', () => {
+  const setup = (blockedPhase?: 'load' | 'config' | 'build' | 'write') => {
+    const reached = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const removed = Promise.withResolvers<void>()
+    let paused = false
+    const pause = async (phase: typeof blockedPhase) => {
+      if (phase === blockedPhase && !paused) {
+        paused = true
+        reached.resolve()
+        await release.promise
+      }
+    }
+    const model = {
+      id: 'lifetime-model',
+      provider: 'anthropic',
+      model: 'claude-opus-4-8',
+      apiKey: 'test',
+      toolUsage: 1,
+    } as Model
+    const config: PreparedAiRequestConfig = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
+      mcpToolsMetadata: undefined,
+    }
+    const listeners = new Set<(event: AgentHarnessEvent) => void>()
+    const run = Promise.withResolvers<void>()
+    const prompt = mock(async () => {
+      for (const listener of listeners) {
+        listener({ type: 'agent_start' })
+      }
+      await run.promise
+    })
+    const abort = mock(async () => {
+      run.resolve()
+    })
+    const compactRequest = mock(async () => {
+      throw new Error('Cancelled preparation must not start a compaction request')
+    })
+    const harness = {
+      ...compactionStub,
+      compaction: { ...compactionStub.compaction, compact: compactRequest },
+      getTools: () => [],
+      setTools: async () => {},
+      prompt,
+      abort,
+      waitForIdle: async () => {},
+      on: () => () => {},
+      subscribe: (listener: (event: AgentHarnessEvent) => void) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    } as unknown as AgentHarness
+    const build = mock(async () => {
+      await pause('build')
+      return harness
+    })
+    const remove = mock(async () => {
+      removed.resolve()
+    })
+    const agentCore = {
+      isKnownAnthropicModel: () => true,
+      buildAppHarness: build,
+      removeAgentWorkspace: remove,
+      toPiAgentTools: async () => [],
+      writeAgentWorkspaceFiles: async () => {
+        await pause('write')
+        return []
+      },
+      piHarnessToUiMessageStream: realAgentCore.piHarnessToUiMessageStream,
+    } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      loadAgentCore: async () => {
+        await pause('load')
+        return agentCore
+      },
+      prepareConfig: async () => {
+        await pause('config')
+        return config
+      },
+      prepareConversation: async () => ({ history: [], prompt: { text: 'hello', images: [] }, files: [] }),
+    })
+    const init = {
+      body: JSON.stringify({ messages: [{ id: 'user', role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }),
+    }
+    const send = (threadId = 'lifetime-thread', regenerationRevision = 0) =>
+      adapter.fetch(init, { ...tinfoilContext(model), threadId, regenerationRevision })
+    const compact = (threadId = 'lifetime-thread') => adapter.compact!(init, { ...tinfoilContext(model), threadId })
+    return {
+      adapter,
+      send,
+      compact,
+      compactRequest,
+      reached,
+      release,
+      build,
+      remove,
+      removed: removed.promise,
+      prompt,
+      abort,
+    }
+  }
+
+  for (const operation of ['send', 'compact'] as const) {
+    for (const phase of ['load', 'config', 'build', 'write'] as const) {
+      it(`does not adopt or run ${operation} work that completes after disconnect during ${phase}`, async () => {
+        const fixture = setup(phase)
+        const pending = fixture[operation]()
+        await fixture.reached.promise
+        fixture.adapter.disconnect()
+        expect(fixture.remove).not.toHaveBeenCalled()
+        fixture.release.resolve()
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+        if (phase === 'build' || phase === 'write') {
+          await fixture.removed
+        }
+        expect(fixture.prompt).not.toHaveBeenCalled()
+        expect(fixture.compactRequest).not.toHaveBeenCalled()
+        expect(fixture.remove).toHaveBeenCalledTimes(phase === 'build' || phase === 'write' ? 1 : 0)
+        expect(fixture.build).toHaveBeenCalledTimes(phase === 'build' || phase === 'write' ? 1 : 0)
+        await expect(fixture[operation]()).rejects.toMatchObject({ name: 'AbortError' })
+      })
+    }
+  }
+
+  it('aborts an active stream when the adapter disconnects and disposes its workspace once', async () => {
+    const fixture = setup()
+    const response = await fixture.send()
+    fixture.adapter.disconnect()
+    fixture.adapter.disconnect()
+    await response.text()
+    await fixture.removed
+    expect(fixture.abort).toHaveBeenCalled()
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('retains workspace cleanup when disconnect cancels a replacement build behind the previous run', async () => {
+    const fixture = setup()
+    const response = await fixture.send()
+    const aborting = Promise.withResolvers<void>()
+    const stopped = Promise.withResolvers<void>()
+    fixture.abort.mockImplementationOnce(async () => {
+      aborting.resolve()
+      await stopped.promise
+    })
+    const replacement = fixture.send('lifetime-thread', 1)
+    await aborting.promise
+    fixture.adapter.disconnect()
+    stopped.resolve()
+    await expect(replacement).rejects.toMatchObject({ name: 'AbortError' })
+    await response.text()
+    await fixture.removed
+    expect(fixture.build).toHaveBeenCalledTimes(1)
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([false, true])('retains failed-build cleanup and permits a fresh retry (retry: %s)', async (retry) => {
+    const fixture = setup()
+    fixture.build.mockRejectedValueOnce(new Error('build failed'))
+    await expect(fixture.send()).rejects.toThrow('build failed')
+    const response = retry ? await fixture.send() : undefined
+    fixture.adapter.disconnect()
+    await response?.text()
+    await fixture.removed
+    expect(fixture.build).toHaveBeenCalledTimes(retry ? 2 : 1)
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('disposes a ready workspace without waiting for another thread to finish loading', async () => {
+    const fixture = setup('build')
+    const pending = fixture.send('blocked-thread')
+    await fixture.reached.promise
+    const response = await fixture.send('ready-thread')
+    fixture.adapter.disconnect()
+    await response.text()
+    await fixture.removed
+    expect(fixture.remove).toHaveBeenCalledTimes(1)
+    fixture.release.resolve()
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

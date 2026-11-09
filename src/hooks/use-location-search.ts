@@ -7,24 +7,27 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { useActiveLocale } from '@/i18n/use-active-locale'
 import { fetchLocations, type LocationData } from '@/lib/locations'
 import { useServerAuthentication } from '@/hooks/use-local-providers'
-import { useEffect, useReducer, useTransition } from 'react'
+import { useEffect, useReducer } from 'react'
 
 type LocationState = {
   open: boolean
   searchQuery: string
   locations: LocationData[]
+  isSearching: boolean
 }
 
 type LocationAction =
   | { type: 'SET_OPEN'; payload: boolean }
   | { type: 'SET_SEARCH_QUERY'; payload: string }
-  | { type: 'SET_LOCATIONS'; payload: LocationData[] }
+  | { type: 'SEARCH_STARTED' }
+  | { type: 'SEARCH_SETTLED'; payload: LocationData[] }
   | { type: 'CLEAR_LOCATION_SEARCH' }
 
 const createInitialState = (autoOpen = false): LocationState => ({
   open: autoOpen,
   searchQuery: '',
   locations: [],
+  isSearching: false,
 })
 
 const locationReducer = (state: LocationState, action: LocationAction): LocationState => {
@@ -32,13 +35,16 @@ const locationReducer = (state: LocationState, action: LocationAction): Location
     case 'SET_OPEN':
       return { ...state, open: action.payload }
     case 'SET_SEARCH_QUERY':
-      return { ...state, searchQuery: action.payload }
-    case 'SET_LOCATIONS':
-      return { ...state, locations: action.payload }
+      if (state.searchQuery === action.payload) {
+        return state
+      }
+      return { ...state, searchQuery: action.payload, locations: [], isSearching: false }
+    case 'SEARCH_STARTED':
+      return { ...state, locations: [], isSearching: true }
+    case 'SEARCH_SETTLED':
+      return { ...state, locations: action.payload, isSearching: false }
     case 'CLEAR_LOCATION_SEARCH':
-      return { ...state, searchQuery: '', locations: [] }
-    default:
-      return state
+      return { ...state, searchQuery: '', locations: [], isSearching: false }
   }
 }
 
@@ -54,25 +60,34 @@ export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) =
   const locale = useActiveLocale()
   const authenticated = useServerAuthentication()
   const [locationState, dispatch] = useReducer(locationReducer, createInitialState(autoOpen))
-  const { open, searchQuery, locations } = locationState
+  const { open, searchQuery, locations, isSearching } = locationState
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
-  const [isSearching, startTransition] = useTransition()
 
   useEffect(() => {
-    if (!authenticated || debouncedSearchQuery.trim().length <= 1) {
-      dispatch({ type: 'SET_LOCATIONS', payload: [] })
+    // Invalidate immediately on input changes, including during the debounce.
+    if (!authenticated || searchQuery !== debouncedSearchQuery || searchQuery.trim().length <= 1) {
       return
     }
-
-    startTransition(async () => {
+    let cancelled = false
+    dispatch({ type: 'SEARCH_STARTED' })
+    const search = async () => {
       try {
-        dispatch({ type: 'SET_LOCATIONS', payload: await fetchLocations(httpClient, debouncedSearchQuery, locale) })
+        const results = await fetchLocations(httpClient, searchQuery, locale)
+        if (!cancelled) {
+          dispatch({ type: 'SEARCH_SETTLED', payload: results })
+        }
       } catch (error) {
-        console.error('Error searching locations:', error)
-        dispatch({ type: 'SET_LOCATIONS', payload: [] })
+        if (!cancelled) {
+          console.error('Error searching locations:', error)
+          dispatch({ type: 'SEARCH_SETTLED', payload: [] })
+        }
       }
-    })
-  }, [debouncedSearchQuery, httpClient, locale, authenticated])
+    }
+    void search()
+    return () => {
+      cancelled = true
+    }
+  }, [searchQuery, debouncedSearchQuery, httpClient, locale, authenticated])
 
   const setOpen = (open: boolean) => dispatch({ type: 'SET_OPEN', payload: open })
   const setSearchQuery = (query: string) => dispatch({ type: 'SET_SEARCH_QUERY', payload: query })

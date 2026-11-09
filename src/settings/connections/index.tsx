@@ -503,6 +503,7 @@ const ConnectionsPage = ({
 
   const openAddForm = () => {
     authorization.cancel()
+    formController.cancel()
     dispatch({ type: 'SELECTION_CHANGED', selection: null })
     form.openAddForm()
   }

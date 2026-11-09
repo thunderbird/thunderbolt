@@ -13,6 +13,7 @@ import type { MCPClient } from '@ai-sdk/mcp'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { getClock } from '@/testing-library'
 import { createElement, type ReactNode } from 'react'
 import { z } from 'zod'
 import type { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
@@ -64,8 +65,39 @@ describe('MCPProvider reconnect', () => {
     cleanup()
   })
 
+  it('recovers a dropped server within the same send when the reconnect completes promptly', async () => {
+    const discoveryError = Object.assign(new Error('MCP SSE Transport Error: 404 Not Found'), {
+      name: 'MCPClientError',
+    })
+    const initial = Object.assign(fakeClient(), {
+      tools: async () => {
+        throw discoveryError
+      },
+    })
+    const recoveredTool = { description: 'Recovered tool', inputSchema: z.object({}) }
+    const fresh = Object.assign(fakeClient(), { tools: async () => ({ search: recoveredTool }) })
+    const clients = [fresh, initial]
+    const { result } = renderProvider(async () => clients.pop()!)
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await act(async () => {
+        await result.current.addServer(server)
+      })
+      await act(async () => {
+        const send = await mergeMcpTools({}, result.current.getEnabledClients(), result.current.reconnectClient)
+        expect(send.toolset).toEqual({ server_1_search: recoveredTool })
+        expect(send.summary).toBe('- server_1 (1 tool)')
+      })
+      expect(result.current.servers[0]).toMatchObject({ isConnected: true, error: null, client: fresh })
+      expect(initial.closeCount()).toBe(1)
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('reconnecting and retrying once'), discoveryError)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it.each([false, true])(
-    'surfaces discovery failure during recovery and settles provider state (recovery fails: %p)',
+    'skips a server whose reconnect outlasts the bound and settles provider state (recovery fails: %p)',
     async (fails) => {
       const discoveryError = Object.assign(new Error('MCP SSE Transport Error: 404 Not Found'), {
         name: 'MCPClientError',
@@ -98,7 +130,13 @@ describe('MCPProvider reconnect', () => {
           await result.current.addServer(server)
         })
         await act(async () => {
-          const send = await mergeMcpTools({}, result.current.getEnabledClients(), result.current.reconnectClient)
+          // The gate holds the reconnect open past the bound, so the send gives
+          // up on this server while the reconnect keeps running for the next one.
+          const sending = mergeMcpTools({}, result.current.getEnabledClients(), result.current.reconnectClient, {
+            reconnectTimeoutMs: 20,
+          })
+          await getClock().tickAsync(20)
+          const send = await sending
           expect(send.toolset).toEqual({})
         })
         expect(result.current.servers[0]).toMatchObject({ isConnected: false, error: discoveryError, client: null })

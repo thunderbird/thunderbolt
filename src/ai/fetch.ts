@@ -88,6 +88,7 @@ import {
 } from 'ai'
 import type { MCPClient, NamedMCPClient, ReconnectClient } from '@/lib/mcp-provider'
 import { isMcpDiscoveryError } from '@/lib/mcp-errors'
+import { withTimeout } from '@/lib/timeout'
 import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
 import type { SkillDefinition } from '@shared/agent-core/skills'
 import { sanitizeToolPrefix } from '@shared/mcp-tool-names'
@@ -148,6 +149,11 @@ type AiFetchStreamingResponseOptions = {
   getProxyFetch: () => FetchFn
 }
 
+/** Longest a send waits for a dropped MCP server to reconnect before skipping
+ *  its tools for the turn. Only a server that accepts the connection and never
+ *  answers reaches it. */
+const defaultMcpReconnectTimeoutMs = 3_000
+
 /**
  * Merge every enabled MCP server's tools into `toolset` (mutated in place and
  * returned alongside a human-readable summary). Each tool is namespaced
@@ -158,8 +164,15 @@ type AiFetchStreamingResponseOptions = {
  * (`render`, `render_2`, …); each final prefix is reserved, so a later server
  * that itself sanitizes to a generated prefix (`render_2`) is bumped again.
  *
- * Expected discovery failures skip that server for this turn and reconnect once
- * in the background for the next send, surfacing the error in the provider.
+ * An expected discovery failure (a dropped session, a 4xx/5xx, a network error)
+ * reconnects the server and retries discovery once within the same send, so an
+ * expired idle session doesn't cost the model its tools for a turn. The wait is
+ * bounded per server by `reconnectTimeoutMs`
+ * (default {@link defaultMcpReconnectTimeoutMs}); past it the server is skipped
+ * for this turn while the reconnect carries on. A failed reconnect, or a second
+ * discovery failure on the fresh client, skips the server too; the second
+ * failure is only logged, since the reconnect already cleared the provider's
+ * error.
  * Programming errors propagate. After prefixing, a name that still collides
  * with an already-registered tool is skipped (first-registered wins) as
  * a safety net. The returned `summary` lists `- <prefix> (<n> tools)` per server
@@ -177,6 +190,7 @@ export const mergeMcpTools = async (
   toolset: Record<string, Tool>,
   mcpClients: NamedMCPClient[],
   reconnectClient: ReconnectClient,
+  { reconnectTimeoutMs = defaultMcpReconnectTimeoutMs }: { reconnectTimeoutMs?: number } = {},
 ): Promise<{ toolset: Record<string, Tool>; summary?: string; mcpTools: UIMessageMetadata['mcpTools'] }> => {
   const takenPrefixes = new Set<string>()
   const mcpServerEntries: string[] = []
@@ -214,6 +228,34 @@ export const mergeMcpTools = async (
     takenPrefixes.add(prefix)
 
     const server = { name: serverName, url }
+
+    /** Wait (bounded) for a reconnect, then run discovery once on the client it
+     *  produced. Returns `{}` when the reconnect fails, exceeds the bound, or the
+     *  fresh client fails discovery too. */
+    const discoverAfterReconnect = async (reconnecting: Promise<MCPClient | null>) => {
+      const fresh = await withTimeout(reconnecting, reconnectTimeoutMs, `MCP reconnect of ${serverName}`)
+      // `withTimeout` already warned; the reconnect is still running for the next send.
+      if (fresh === undefined) {
+        return {}
+      }
+      if (!fresh) {
+        console.warn(`MCP server "${serverName}" did not reconnect; skipping its tools for this send`)
+        return {}
+      }
+      try {
+        return await fresh.tools()
+      } catch (err) {
+        if (!isMcpDiscoveryError(err)) {
+          throw err
+        }
+        console.warn(
+          `MCP tool discovery failed for "${serverName}" after reconnect; skipping its tools for this send`,
+          err,
+        )
+        return {}
+      }
+    }
+
     const discover = async () => {
       try {
         return await client.tools()
@@ -221,9 +263,8 @@ export const mergeMcpTools = async (
         if (!isMcpDiscoveryError(err)) {
           throw err
         }
-        console.warn(`MCP tool discovery failed for "${serverName}"; skipping its tools for this send`, err)
-        void reconnectClient(client, err)
-        return {}
+        console.warn(`MCP tool discovery failed for "${serverName}"; reconnecting and retrying once`, err)
+        return discoverAfterReconnect(reconnectClient(client, err))
       }
     }
 

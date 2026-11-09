@@ -10,6 +10,7 @@ import { getDb } from '@/db/database'
 import { createClient } from '@/lib/http'
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { getClock } from '@/testing-library'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
@@ -366,7 +367,7 @@ describe('mergeMcpTools', () => {
     new TypeError('Failed to fetch'),
     new TypeError('Load failed'),
     new TypeError('NetworkError when attempting to fetch resource.'),
-  ])('skips discovery failure %p, preserves other tools, and recovers for the next send', async (error) => {
+  ])('recovers from discovery failure %p within the same send by reconnecting and retrying once', async (error) => {
     const dropped = named('render', async () => {
       throw error
     })
@@ -377,15 +378,70 @@ describe('mergeMcpTools', () => {
 
     const result = await mergeMcpTools({ app: builtIn }, [dropped, healthy], reconnect)
 
-    expect(result.toolset).toEqual({ app: builtIn, github_beta: tool('b') })
-    expect(result.summary).toBe('- github (1 tool)')
-    expect(Object.keys(result.mcpTools!)).toEqual(['github_beta'])
+    expect(result.toolset).toEqual({ app: builtIn, render_alpha: tool('fresh'), github_beta: tool('b') })
+    expect(result.summary).toBe('- render (1 tool)\n- github (1 tool)')
+    expect(Object.keys(result.mcpTools!)).toEqual(['render_alpha', 'github_beta'])
+    expect(result.mcpTools!.render_alpha).toEqual({
+      name: 'render',
+      url: 'https://render.example.com',
+      toolName: 'alpha',
+    })
     expect(reconnect).toHaveBeenCalledTimes(1)
     expect(reconnect).toHaveBeenCalledWith(dropped.client, error)
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render'), error)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('reconnecting and retrying once'), error)
+  })
 
-    const next = await mergeMcpTools({}, [fresh, healthy], reconnect)
-    expect(next.toolset).toEqual({ render_alpha: tool('fresh'), github_beta: tool('b') })
+  it('skips the server when discovery fails again on the fresh client', async () => {
+    const first = closedError()
+    const second = new StreamableHTTPError(503, 'Error POSTing to endpoint: still down')
+    const dropped = named('render', async () => {
+      throw first
+    })
+    const stillDown = named('render', async () => {
+      throw second
+    })
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+    const reconnect = mock(async () => stillDown.client)
+
+    const result = await mergeMcpTools({ app: tool('app') }, [dropped, healthy], reconnect)
+
+    expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+    expect(result.summary).toBe('- github (1 tool)')
+    expect(reconnect).toHaveBeenCalledTimes(1)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('skipping its tools for this send'), second)
+  })
+
+  it('propagates a programming error thrown by the retried discovery', async () => {
+    const boom = new Error('boom — capability missing')
+    const dropped = named('render', async () => {
+      throw closedError()
+    })
+    const broken = named('render', async () => {
+      throw boom
+    })
+    const reconnect = mock(async () => broken.client)
+
+    await expect(mergeMcpTools({}, [dropped], reconnect)).rejects.toBe(boom)
+  })
+
+  it('skips the server when the reconnect exceeds the bound, leaving it to finish for the next send', async () => {
+    const error = closedError()
+    const dropped = named('render', async () => {
+      throw error
+    })
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+    const slow = Promise.withResolvers<MCPClient | null>()
+    const reconnect = mock(() => slow.promise)
+
+    const merging = mergeMcpTools({}, [dropped, healthy], reconnect, { reconnectTimeoutMs: 20 })
+    await getClock().tickAsync(20)
+    const result = await merging
+
+    expect(result.toolset).toEqual({ github_beta: tool('b') })
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('"MCP reconnect of render" timed out after 20ms'))
+    // The reconnect is still running, so only the timeout is reported.
+    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('did not reconnect'))
+    slow.resolve(null)
   })
 
   it.each([
@@ -455,7 +511,7 @@ describe('mergeMcpTools', () => {
     const reconnect = mock(() => settledRecovery)
     try {
       await accepted.promise
-      const result = await mergeMcpTools(
+      const merging = mergeMcpTools(
         { app: tool('app') },
         [
           named('render', async () => {
@@ -464,7 +520,10 @@ describe('mergeMcpTools', () => {
           named('github', async () => ({ beta: tool('b') })),
         ],
         reconnect,
+        { reconnectTimeoutMs: 20 },
       )
+      await getClock().tickAsync(20)
+      const result = await merging
       expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
       expect(reconnect).toHaveBeenCalledTimes(1)
     } finally {

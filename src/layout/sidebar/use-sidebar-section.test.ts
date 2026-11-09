@@ -13,6 +13,10 @@ describe('useSidebarSection', () => {
 
     const { result: settings } = renderHook(() => useSidebarSection('/settings/models'))
     expect(settings.current.activeSection).toBe('settings')
+    const { result: admin } = renderHook(() => useSidebarSection('/admin/groups'))
+    expect(admin.current.activeSection).toBe('admin')
+    const { result: ordinary } = renderHook(() => useSidebarSection('/administration'))
+    expect(ordinary.current.activeSection).toBe('chats')
   })
 
   it('lets the toggle override the route-derived section without navigating', () => {

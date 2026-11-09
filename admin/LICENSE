@@ -1,0 +1,15 @@
+Thunderbolt Admin Design Proposal — UNLICENSED; license TBD
+
+The files in this directory are not licensed under the Mozilla Public
+License 2.0 (MPL-2.0). All rights reserved. No software license is granted
+for this version by publication of its source. A future enterprise license
+is to be determined (TBD).
+
+Enterprise support and licensing are available. Contact info@thunderbolt.io
+to discuss evaluation, usage permissions, and commercial terms.
+
+UNLICENSED does not mean public domain and does not refer to The Unlicense.
+
+This notice applies to the admin implementation in this directory, not to
+MPL-covered shared components imported from elsewhere in this repository.
+It does not revoke licenses granted for previously published versions.

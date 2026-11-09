@@ -499,6 +499,38 @@ describe('mergeMcpTools', () => {
     slow.resolve(null)
   })
 
+  it('discovers servers in parallel, so the send waits for the slowest rather than the sum', async () => {
+    const slowTools = (tag: string) => () =>
+      new Promise<Record<string, Tool>>((resolve) => setTimeout(() => resolve({ alpha: tool(tag) }), 20))
+    const merging = mergeMcpTools(
+      {},
+      [named('render', slowTools('r')), named('github', slowTools('g'))],
+      mock(async () => null),
+    )
+
+    await getClock().tickAsync(20)
+
+    expect(await Promise.race([merging, Promise.resolve('pending')])).toMatchObject({
+      toolset: { render_alpha: tool('r'), github_alpha: tool('g') },
+    })
+  })
+
+  it('merges in server order even when a later server answers first', async () => {
+    const after = (ms: number, tag: string) => () =>
+      new Promise<Record<string, Tool>>((resolve) => setTimeout(() => resolve({ alpha: tool(tag) }), ms))
+    const merging = mergeMcpTools(
+      {},
+      [named('render', after(20, 'r')), named('github', after(5, 'g'))],
+      mock(async () => null),
+    )
+
+    await getClock().tickAsync(20)
+    const result = await merging
+
+    expect(result.summary).toBe('- render (1 tool)\n- github (1 tool)')
+    expect(Object.keys(result.mcpTools!)).toEqual(['render_alpha', 'github_alpha'])
+  })
+
   it.each([
     { type: 'sse', body: 'Expired session', status: 404, errorName: 'Error' },
     { type: 'http', body: '{', status: 200, errorName: 'SyntaxError' },

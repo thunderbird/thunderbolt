@@ -173,7 +173,8 @@ const defaultMcpReconnectTimeoutMs = 3_000
  * for this turn while the reconnect carries on. A failed reconnect, or a second
  * discovery failure on the fresh client, skips the server too; the second
  * failure is only logged, since the reconnect already cleared the provider's
- * error.
+ * error. Servers are discovered in parallel, so the send waits for the slowest
+ * one rather than the sum, and merged in order.
  * Programming errors propagate. After prefixing, a name that still collides
  * with an already-registered tool is skipped (first-registered wins) as
  * a safety net. The returned `summary` lists `- <prefix> (<n> tools)` per server
@@ -218,8 +219,8 @@ export const mergeMcpTools = async (
     return added
   }
 
-  for (const entry of mcpClients) {
-    const { name: serverName, url } = entry
+  /** Reserve a unique prefix for `serverName`, probing upward on collision. */
+  const reservePrefix = (serverName: string): string => {
     const basePrefix = sanitizeToolPrefix(serverName)
     let prefix = basePrefix
     let suffix = 2
@@ -228,56 +229,61 @@ export const mergeMcpTools = async (
       suffix++
     }
     takenPrefixes.add(prefix)
+    return prefix
+  }
 
-    const server = { name: serverName, url }
-
-    /** Wait (bounded) for a reconnect, then run discovery once on the client it
-     *  produced. Returns `{}` when the reconnect fails, exceeds the bound, or the
-     *  fresh client fails discovery too. */
-    const discoverAfterReconnect = async (reconnecting: Promise<MCPClient | null>) => {
-      const fresh = await withTimeout(reconnecting, reconnectTimeoutMs, `MCP reconnect of ${serverName}`)
-      // `withTimeout` already warned; the reconnect is still running for the next send.
-      if (fresh === undefined) {
-        return {}
-      }
-      if (!fresh) {
-        console.warn(`MCP server "${serverName}" did not reconnect; skipping its tools for this send`)
-        return {}
-      }
-      try {
-        return await fresh.tools()
-      } catch (err) {
-        if (!isMcpDiscoveryError(err)) {
-          throw err
-        }
-        console.warn(
-          `MCP tool discovery failed for "${serverName}" after reconnect; skipping its tools for this send`,
-          err,
-        )
-        return {}
-      }
+  /** Wait (bounded) for a reconnect, then run discovery once on the client it
+   *  produced. Returns `{}` when the reconnect fails, exceeds the bound, or the
+   *  fresh client fails discovery too. */
+  const discoverAfterReconnect = async (serverName: string, reconnecting: Promise<MCPClient | null>) => {
+    const fresh = await withTimeout(reconnecting, reconnectTimeoutMs, `MCP reconnect of ${serverName}`)
+    // `withTimeout` already warned; the reconnect is still running for the next send.
+    if (fresh === undefined) {
+      return {}
     }
-
-    const discover = async () => {
-      if (!entry.client) {
-        return discoverAfterReconnect(entry.reconnecting)
-      }
-      try {
-        return await entry.client.tools()
-      } catch (err) {
-        if (!isMcpDiscoveryError(err)) {
-          throw err
-        }
-        console.warn(`MCP tool discovery failed for "${serverName}"; reconnecting and retrying once`, err)
-        return discoverAfterReconnect(reconnectClient(entry.client, err))
-      }
+    if (!fresh) {
+      console.warn(`MCP server "${serverName}" did not reconnect; skipping its tools for this send`)
+      return {}
     }
+    try {
+      return await fresh.tools()
+    } catch (err) {
+      if (!isMcpDiscoveryError(err)) {
+        throw err
+      }
+      console.warn(
+        `MCP tool discovery failed for "${serverName}" after reconnect; skipping its tools for this send`,
+        err,
+      )
+      return {}
+    }
+  }
 
-    const added = addTools(prefix, server, await discover())
+  const discover = async (entry: NamedMCPClient) => {
+    if (!entry.client) {
+      return discoverAfterReconnect(entry.name, entry.reconnecting)
+    }
+    try {
+      return await entry.client.tools()
+    } catch (err) {
+      if (!isMcpDiscoveryError(err)) {
+        throw err
+      }
+      console.warn(`MCP tool discovery failed for "${entry.name}"; reconnecting and retrying once`, err)
+      return discoverAfterReconnect(entry.name, reconnectClient(entry.client, err))
+    }
+  }
+
+  // Prefixes are reserved in order before discovery runs in parallel, then
+  // tools merge in that same order so collisions resolve first-registered-wins.
+  const servers = mcpClients.map((entry) => ({ entry, prefix: reservePrefix(entry.name) }))
+  const discovered = await Promise.all(servers.map(({ entry }) => discover(entry)))
+  servers.forEach(({ entry, prefix }, i) => {
+    const added = addTools(prefix, { name: entry.name, url: entry.url }, discovered[i])
     if (added > 0) {
       mcpServerEntries.push(`- ${prefix} (${added} ${added === 1 ? 'tool' : 'tools'})`)
     }
-  }
+  })
 
   return {
     toolset,

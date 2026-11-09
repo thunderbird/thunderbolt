@@ -17,7 +17,7 @@ Both end the same way. Revocation is the action you take for a lost or stolen de
 
 1. User confirms "Delete My Account" in **Settings > Preferences**.
 2. `useDeleteAccount` calls `DELETE /v1/account`, then runs `clearLocalData()` and replaces the current location with `/account-deleted`. Local deletion and the sync listener therefore reach the same confirmation page.
-3. The backend deletes the `user` row (`backend/src/dal/users.ts:28`); the synced tables cascade on `user_id`.
+3. The backend deletes the `user` row (`deleteUser`, `backend/src/dal/users.ts`); the synced tables cascade on `user_id`, as do the server-only inbox keys and [shared chats](chat-sharing.md). Shares sent only to the departing account go first, since the cascade would leave them with nobody on them; others keep the shares they were on.
 4. Each **other signed-in device** clears local data and redirects to `/account-deleted`, triggered by whichever comes first:
    - A token refresh answered **410 Gone** with `code: 'ACCOUNT_DELETED'` (`backend/src/api/powersync.ts:229-232`).
    - Sync removing the account's rows, so the device sees its own `devices` row is gone (`src/hooks/use-powersync-credentials-invalid-listener.ts`).
@@ -27,7 +27,7 @@ Both end the same way. Revocation is the action you take for a lost or stolen de
 1. User confirms "Revoke" on another device in **Settings > Devices**.
 2. `useRevokeDevice` (`src/hooks/use-revoke-device.ts`) runs `revokeDeviceAndRotate` (`src/services/encryption.ts`) on a device holding the account keys, and a bare `revokeDeviceWithProof` on a pre-E2EE account.
 3. `POST /v1/account/devices/:id/revoke` carries a `revoke` challenge proof signed with the canary-derived key; pre-E2EE accounts and v1 leftovers send none. In one transaction the backend deletes the device's envelope, sets `revoked_at`, and revokes that device's sessions. PowerSync syncs the row to all clients.
-4. `POST /v1/encryption/rotate` then replaces the account key and mints a new primary data key, with envelopes for every device except the revoked one. If it fails, the server reports the device as awaiting lockout and any trusted device can finish it ([e2e-encryption.md](e2e-encryption.md#device-revocation)).
+4. `POST /v1/encryption/rotate` then replaces the account key and mints a new primary data key, with envelopes for every device except the revoked one. If it fails, the server reports the device as awaiting lockout and any trusted device can finish it ([e2e-encryption.md](e2e-encryption.md#device-revocation)). Once it commits, the revoking device mints the next [inbox key](e2e-encryption.md#the-inbox-key-how-other-accounts-reach-you) version under the new primary, so chats shared from then on go to a key the revoked device never held.
 5. The revoked device resets on whichever comes first: the watched `revokedAt` on its synced row, or a **403** `code: 'DEVICE_DISCONNECTED'`. Revocation deletes its sessions, so that 403 comes from the session check (`backend/src/auth/elysia-plugin.ts`): the app runs it on every start, with or without a stored session, and once more after our backend answers with a 401, because a 401 alone can't tell an expired session from a revoked device.
 
 It clears everything — database, attachments, encryption keys, auth token, device id and web storage — and lands on `/device-revoked`. Anything still queued for upload is lost, since uploads from a revoked device are refused.

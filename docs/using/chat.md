@@ -114,3 +114,15 @@ Projects group related chats and add instructions every chat in the project inhe
 Search (`Cmd/Ctrl + K`) runs entirely on the device, so your query is never sent anywhere. Matching is on keywords rather than meaning: try the wording you used at the time. See [Search](./search.md).
 
 Conversations are stored on the device first. If sync is enabled they appear on your other devices, encrypted end to end when you turn that on. Deleting a chat removes it everywhere you are signed in.
+
+## Sharing a chat
+
+Use **Share** in a chat's `⋯` menu, or the share button in the chat header, to send it to specific people by email. Each person needs a Thunderbolt account on the same server with sync turned on; an address that can't receive shared chats is flagged as you type it. You can share one chat with up to 20 people.
+
+What they receive is a copy of the chat as it is at that moment: your messages and the replies, artifacts, and widget results. Reasoning, tool calls and files stay with you; an attachment shows only its name. They can read it but not reply to it, edit it or continue it, and they don't see anything you add later until you update the share.
+
+Shared chats are end-to-end encrypted to each person: a server that follows the protocol stores them without being able to read them. The server also vouches for who sent a share, since there is no way for you and the recipient to verify each other's identity. Each recipient gets an email naming you, without the chat's title or content.
+
+A chat has one share. Opening **Share** on a chat you already shared shows who has it: add or remove people and save, or choose **Update to latest** to send everyone the chat as it is now. Only people you add get an email. **Stop sharing** is there too.
+
+**Shared** in the sidebar lists the chats shared with you and the ones you shared. From **Shared by me** you can stop sharing a chat, or remove one person. Chats shared with you can be removed from your list. Deleting a chat stops sharing it too. Stopping a share prevents anyone opening it again, but can't take back what they have already read.

@@ -244,12 +244,13 @@ falsify, not a fact.
   one unopenable `wrapped_keys` row used to throw the whole AK rotation, so a single planted row
   voided the cryptographic half of every future revocation, permanently (THU-871 — see C15).
 - **C6 — Challenge-response is not replayable or confusable.** Nonces are single-use, expiring, and
-  bound to user, device, and operation (approve / deny / revoke / rotate / recover / node-id). No
-  cross-operation confusion, no cross-device reuse, no TOCTOU between issue and consume, no endpoint
-  missing the gate. The bound device is **server-resolved** from `session.deviceId`, not asserted by
-  the caller's `X-Device-ID` header (THU-873); the `bind` nonce that establishes that binding is
-  disjoint from the signable operations and is only ever returned sealed to the device's public key,
-  so it can be neither minted in cleartext nor replayed as a proof.
+  bound to user, device, and operation (approve / deny / revoke / rotate / recover / node-id /
+  inbox / share). No cross-operation confusion, no cross-device reuse, no TOCTOU between issue and
+  consume, no endpoint missing the gate. The bound device is **server-resolved** from
+  `session.deviceId`, not asserted by the caller's `X-Device-ID` header (THU-873); the `bind` nonce
+  that establishes that binding is disjoint from the signable operations and is only ever returned
+  sealed to the device's public key, so it can be neither minted in cleartext nor replayed as a
+  proof.
 - **C7 — Migration is atomic and lossless.** Exactly one migrator wins the CAS; a 409 loser degrades
   cleanly; nothing is persisted locally before HTTP 200; the recovery phrase is shown only on 200. A
   hostile flip from a stolen session is a recoverable DoS — never plaintext exposure or data loss.
@@ -404,6 +405,65 @@ falsify, not a fact.
   silent: the server derives the pending set (`GET /encryption/lockout-pending`) so **any** device
   sees it, and `src/settings/devices.tsx` offers a resume action for each — it is gated on that list,
   not on `revokedAt`. What remains is the window itself, not the absence of a way out of it.
+- **C16 — Inbox keys and shared chats.** A shared chat is readable by its recipients and nobody
+  else: the server holds the snapshot only as ciphertext under a random per-share key, and that key
+  is sealed only to each recipient's inbox key ([chat-sharing.md](chat-sharing.md)). Every share AAD
+  names the share and its owner, and the key seal also names the recipient, the inbox version and a
+  hash of the exact public keys sealed to, so a seal or snapshot cannot be moved between shares,
+  owners, recipients or keys. The share key never enters the keyring, the codec or `encodeAAD`, so
+  C3's precondition — no DEK material shared between accounts — still holds. Every share route needs
+  a trusted device bound to the session, and the snapshot read joins the owner's live chat row, so
+  a deleted chat or a revoked share stops being served as soon as the delete reaches the server.
+  The share lists sync through the read-only `received_shares` and `sent_shares` tables, whose sync
+  token has the same trusted-device gate. The server rebuilds them in the transaction that changes
+  who is on a share, and they cascade away with the share itself. They hold the title encrypted
+  under the share key, that key sealed, and account identity.
+  Storing a share also needs a `share` proof: sealing takes only public keys, which the lookup hands
+  out, so without it a stolen session (A5) could send content of its own in the account's name. The
+  proof shows the caller holds the device's signing key; it is not bound to the share's body, and a
+  refused write still spends it. A snapshot is another account's input, so the recipient refuses one
+  that inflates past 16 MiB and drops any part or citation field not shaped the way the viewer
+  renders it.
+
+  Only a current key holder can publish an account's inbox key, and a device locked out by
+  revocation cannot open any version minted after it. Publishing needs an `inbox`
+  proof (`POST /encryption/inbox`), so a stolen session (A5) cannot substitute public keys it
+  controls. Each version's seed is sealed under the primary DEK the publishing device trusts
+  locally, never a served pointer (C4), with AAD `inboxSeedAAD` binding account, version and
+  `key_id`. A rotation that mints a new primary also mints the next inbox version, under a DEK the
+  removed device never held. A row whose seed does not derive to its published public keys is
+  refused by every reader and replaced by the next `ensureInboxKey`.
+
+  Residuals, all accepted for sharing (see [Known and accepted](#known-and-accepted)). (1) **The
+  server is the directory.** Another account learns the public keys from the server, with no
+  pinning or verification, so A2 can serve keys it holds and read whatever is sealed to them. The
+  owner's own reads are unaffected. (2) A2 can serve an **older version**, whose seed a revoked
+  device kept, and that device then reads what is sealed to it. (3) **A6 can publish an inbox key
+  whose seed it knows.** It holds the proof key and the primary DEK, and the key persists until the
+  next new primary — the same class as A6 exfiltrating the primary DEK, but it does break C4's
+  "transient A6 is non-persistent" property for this key. (4) The **lockout window**: between a
+  revoke and its rotation the removed device still holds the current primary and so the current
+  seed, the same window as C5. (5) **Every DEK an inbox row names must stay in the keyring**,
+  which holds because DEKs are never pruned; a keyring compaction would strand those seeds.
+  (6) **The sender is server-asserted.** Nothing signs a share, so A2 can seal content of its own to
+  a recipient's public inbox key and label it as from anyone; with no pinning there is no identity
+  to check a signature against. A5 cannot: the `share` proof stops it. (7) **Revoking stops future
+  reads only.** A recipient keeps what they already opened, and a revoked recipient device can
+  open shares sealed to inbox versions it held. (8) **Metadata is visible**: who shares with whom,
+  when, the compressed snapshot size, and the lookup's answer for each email — an
+  account-existence oracle the `share-lookup` tier caps at 400 emails an hour per account, charged
+  per email. The lookup returns no names; a sharer learns a recipient's name from the sent list,
+  after sharing, which emails the recipient. (9) **A shared
+  artifact is HTML another account wrote.** It runs in the same sandboxed iframe as any artifact,
+  and a script there can still navigate its own frame (`src/artifacts/harness.ts`), so a
+  phishing-shaped page can collect what a recipient types into it and send it away. (10)
+  **Remote resources in a snapshot load on the recipient's device.** A link-preview or source
+  image URL, or an image in the text, tells whoever chose it when the chat was opened and from
+  which address — the open-tracking of an image in an email. Nothing beyond what the snapshot
+  names is fetched: widget data comes from the snapshot only. (11) **The lists persist on
+  devices.** Each trusted device keeps its synced share rows in local SQLite: the other party's
+  name and email in plaintext, the title encrypted and the share key sealed. A device that never
+  reconnects keeps a revoked share's row, but cannot fetch its snapshot.
 
 ## v1 regressions
 
@@ -459,6 +519,11 @@ Not findings. Documented trade-offs, listed so review does not relitigate them.
   passkey (from a device with sync on) rotates the slot away and mints a new primary DEK, which
   stops future unlocks; any device that already unlocked through the slot must still be revoked.
   A step-up gate is a follow-up.
+
+- **Inbox public keys are trusted from the server.** Sharing looks recipients up in a directory the
+  server controls, with no pinning and no verification codes, so a malicious server can read shared
+  content and attribute it to any sender (C16 residuals 1, 2 and 6). It reaches nothing outside what
+  is shared: the inbox key opens share keys only.
 
 ## Consumers
 

@@ -165,7 +165,7 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 ### Schema Split
 
 - **Application schema**: the Postgres `public` schema, freely indexed. Better Auth's `user`, `session`, `account`, `verification`, `sso_provider`, `device_code`, `apikey`, plus `envelopes`, `encryption_metadata`, `otp_challenge`, `waitlist`, `rate_limits`, inference usage, and debug transcripts (`backend/src/db/`).
-- **Synced schema**: the tables in `shared/powersync-tables.ts`, mirrored in the Postgres `powersync` schema (`backend/src/db/powersync-schema.ts`). Minimal indexes (primary key plus one `user_id` index) and no foreign keys between synced tables; the only reference each carries is `user_id`, cascading back to `user`. Composite keys `(id, user_id)` or `(key, user_id)` let defaults seed with the same id for every user ([composite-primary-keys-and-default-data.md](composite-primary-keys-and-default-data.md)).
+- **Synced schema**: the tables in `shared/powersync-tables.ts`, mirrored in the Postgres `powersync` schema (`backend/src/db/powersync-schema.ts`). Minimal indexes (primary key plus one `user_id` index) and no foreign keys between synced tables; the only reference each carries is `user_id`, cascading back to `user`. The exception is the server-written share lists, which also cascade from the server-only `chat_shares`. Composite keys `(id, user_id)` or `(key, user_id)` let defaults seed with the same id for every user ([composite-primary-keys-and-default-data.md](composite-primary-keys-and-default-data.md)).
 
 ## Third-Party Services
 
@@ -213,6 +213,7 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 - [Composite Primary Keys and Default Data](composite-primary-keys-and-default-data.md): why some tables key on `(id, user_id)`.
 - [Client Data Migrations](client-data-migrations.md): why content migrations run on-device, and adding one.
 - [End-to-End Encryption](e2e-encryption.md): key hierarchy, device approval, ciphertext columns.
+- [Chat Sharing](chat-sharing.md): view-only snapshots shared by email, sealed to each recipient's inbox key.
 - [E2EE Threat Model](e2ee-threat-model.md): adversaries, security claims, and the C/A ids findings cite.
 - [Red-Team Harness](red-team-harness.md): how arguments for a vulnerability become executed proof.
 - [Delete Account and Revoke Device](delete-account-and-revoke-device.md): the hard-delete paths.

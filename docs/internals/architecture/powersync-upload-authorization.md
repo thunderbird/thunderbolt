@@ -18,25 +18,27 @@
 
 `applyOperation(database, op, userId)` takes `userId` from the authenticated session, never from the payload.
 
-1. **Legacy table, accept and ignore** ([:100](../../../backend/src/dal/powersync.ts)). A name in `legacyPowerSyncTableNames` ([shared/powersync-tables.ts:38](../../../shared/powersync-tables.ts)) returns `true` without touching the database.
+1. **Legacy table, accept and ignore** (`legacyTables`, [backend/src/dal/powersync.ts](../../../backend/src/dal/powersync.ts)). A name in `legacyPowerSyncTableNames` ([shared/powersync-tables.ts](../../../shared/powersync-tables.ts)) returns `true` without touching the database.
 
    A dropped table stays listed forever: rejecting it 400s the batch, PowerSync retries indefinitely, and one queued write for a removed table stops that device uploading again (THU-739). See [Removing a Synced Table](powersync-account-devices.md#removing-a-synced-table).
 
-2. **Unknown table, reject** ([:104](../../../backend/src/dal/powersync.ts)). `validTables` is built from `powersyncTableNames`, so the allowlist cannot drift from the synced schema.
+2. **Unknown table, reject** (`validTables`). `validTables` is built from `powersyncTableNames`, so the allowlist cannot drift from the synced schema.
 
-3. **Schema lookup** ([:108-115](../../../backend/src/dal/powersync.ts)). Drizzle table, column-name map, primary key and conflict target come from `Record<PowerSyncTableName, …>` maps in [backend/src/db/powersync-schema.ts](../../../backend/src/db/powersync-schema.ts), so a missing entry is a compile error.
+3. **Read-only table, accept and ignore** (`readOnlyTables`). `readOnlyPowerSyncTableNames` holds `received_shares` and `sent_shares`, the share lists only the server writes ([chat-sharing.md](chat-sharing.md#listing)). An operation on one returns `true` without touching the database and logs a warning: rejecting it would wedge the queue as in step 1, and the next checkpoint puts the server's row back on the device.
 
-4. **Reserved device-id namespaces, reject** ([:48](../../../backend/src/dal/powersync.ts), applied at `:117`). A `devices` row whose id starts with `bridge-` or `cli-` is owned by a server route (`POST /v1/devices/bridge`, `PUT /v1/account/devices/cli`), and is reserved from _every_ operation, not just inserts: a client cannot squat a deterministic bridge id or rename a CLI row.
+4. **Schema lookup**. Drizzle table, column-name map, primary key and conflict target come from `Record<PowerSyncTableName, …>` maps in [backend/src/db/powersync-schema.ts](../../../backend/src/db/powersync-schema.ts), so a missing entry is a compile error.
 
-5. **Strip what the client may not set.** `id` and `user_id` are deleted from the payload, then every entry in `uploadDenyColumns` for that table ([:21-39](../../../backend/src/dal/powersync.ts), applied at `:129` and `:162`), then every column the Drizzle table does not have, inside `toSchemaRecord` ([:65](../../../backend/src/dal/powersync.ts)).
+5. **Reserved device-id namespaces, reject** (`isReservedDeviceId`). A `devices` row whose id starts with `bridge-` or `cli-` is owned by a server route (`POST /v1/devices/bridge`, `PUT /v1/account/devices/cli`), and is reserved from _every_ operation, not just inserts: a client cannot squat a deterministic bridge id or rename a CLI row.
 
-6. **Stamp identity from the session.** A `PUT` rebuilds the record as `{ ...payload, id: op.id, user_id: userId }` ([:132](../../../backend/src/dal/powersync.ts)), overwriting a spoofed `id` or `user_id` rather than ignoring it. A `PATCH` carries neither column (stripped in step 5) and is located by primary key.
+6. **Strip what the client may not set.** `id` and `user_id` are deleted from the payload, then every entry in `uploadDenyColumns` for that table, then every column the Drizzle table does not have, inside `toSchemaRecord`.
 
-7. **Coerce timestamps.** Columns in `timestampDbColumns` ([:59](../../../backend/src/dal/powersync.ts)) arrive as ISO strings and become `Date` for Drizzle; an unparseable string passes through unchanged rather than becoming an epoch date.
+7. **Stamp identity from the session.** A `PUT` rebuilds the record as `{ ...payload, id: op.id, user_id: userId }`, overwriting a spoofed `id` or `user_id` rather than ignoring it. A `PATCH` carries neither column (stripped in step 6) and is located by primary key.
 
-8. **Scope the row to the owner.** The upsert's `onConflictDoUpdate` carries `setWhere: eq(userId, ...)`; `PATCH` and `DELETE` put the same equality in the `WHERE`. `chat_threads`, `chat_messages`, `triggers`, `devices` and `projects` have a global `id` primary key (see [composite-primary-keys-and-default-data.md](composite-primary-keys-and-default-data.md)), so without it a guessed id is a cross-account write; with it, the conflicting insert matches zero rows and the other user's row is untouched.
+8. **Coerce timestamps.** Columns in `timestampDbColumns` arrive as ISO strings and become `Date` for Drizzle; an unparseable string passes through unchanged rather than becoming an epoch date.
 
-9. **Refuse deletes on protected tables** ([:184](../../../backend/src/dal/powersync.ts)). `uploadDenyDelete` holds `devices`: removal goes through `POST /v1/account/devices/:id/revoke`, which also drops the device's envelope and sessions.
+9. **Scope the row to the owner.** The upsert's `onConflictDoUpdate` carries `setWhere: eq(userId, ...)`; `PATCH` and `DELETE` put the same equality in the `WHERE`. `chat_threads`, `chat_messages`, `triggers`, `devices` and `projects` have a global `id` primary key (see [composite-primary-keys-and-default-data.md](composite-primary-keys-and-default-data.md)), so without it a guessed id is a cross-account write; with it, the conflicting insert matches zero rows and the other user's row is untouched.
+
+10. **Refuse deletes on protected tables** (`uploadDenyDelete`). `uploadDenyDelete` holds `devices`: removal goes through `POST /v1/account/devices/:id/revoke`, which also drops the device's envelope and sessions.
 
 ## Who owns a `devices` column
 
@@ -63,12 +65,13 @@ Nothing wraps the batch in a transaction: earlier operations are already committ
 
 It returns `true` for the "nothing to do" cases:
 
-- an op for a legacy table ([:100](../../../backend/src/dal/powersync.ts));
-- a `PATCH` with no `data`, or empty `data` ([:156](../../../backend/src/dal/powersync.ts));
-- a `PATCH` left empty after stripping unknown and server-managed columns ([:165-172](../../../backend/src/dal/powersync.ts)), so `{ user_id }` alone cannot wedge every write behind it;
-- a `PUT` with nothing left once `id`, `key` and `user_id` leave the update set: falls back to `onConflictDoNothing`, leaving the existing row intact ([:151](../../../backend/src/dal/powersync.ts)).
+- an op for a legacy table;
+- an op for a read-only table;
+- a `PATCH` with no `data`, or empty `data`;
+- a `PATCH` left empty after stripping unknown and server-managed columns, so `{ user_id }` alone cannot wedge every write behind it;
+- a `PUT` with nothing left once `id`, `key` and `user_id` leave the update set: falls back to `onConflictDoNothing`, leaving the existing row intact.
 
-Every branch is pinned in [backend/src/dal/powersync.test.ts](../../../backend/src/dal/powersync.test.ts), cross-user isolation included.
+Every branch is pinned in [backend/src/dal/powersync.test.ts](../../../backend/src/dal/powersync.test.ts), cross-user isolation included, except the share ones: ignoring uploads to the read-only tables and the chat-delete share cleanup are pinned in [backend/src/api/shares.test.ts](../../../backend/src/api/shares.test.ts).
 
 ## What will bite you
 
@@ -80,12 +83,12 @@ Every branch is pinned in [backend/src/dal/powersync.test.ts](../../../backend/s
 
 ## Where the code lives
 
-| File                                                                                | Role                                                                   |
-| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [backend/src/dal/powersync.ts](../../../backend/src/dal/powersync.ts)               | The gate: allowlists, deny lists, reserved ids, `applyOperation`       |
-| [backend/src/dal/powersync.test.ts](../../../backend/src/dal/powersync.test.ts)     | Regression tests for every branch above                                |
-| [backend/src/api/powersync.ts](../../../backend/src/api/powersync.ts)               | The `/token` and `/upload` routes, device validation, origin check     |
-| [backend/src/db/powersync-schema.ts](../../../backend/src/db/powersync-schema.ts)   | Drizzle tables plus the pk / conflict-target / column-name maps        |
-| [shared/powersync-tables.ts](../../../shared/powersync-tables.ts)                   | `powersyncTableNames` and `legacyPowerSyncTableNames`                  |
-| [src/db/powersync/connector.ts](../../../src/db/powersync/connector.ts)             | `uploadData`: builds the batch, maps error responses to client actions |
-| [src/db/encryption/upload-encoder.ts](../../../src/db/encryption/upload-encoder.ts) | Encrypts encrypted columns before the batch leaves the device          |
+| File                                                                                | Role                                                                              |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [backend/src/dal/powersync.ts](../../../backend/src/dal/powersync.ts)               | The gate: allowlists, deny lists, reserved ids, `applyOperation`                  |
+| [backend/src/dal/powersync.test.ts](../../../backend/src/dal/powersync.test.ts)     | Regression tests for every branch above                                           |
+| [backend/src/api/powersync.ts](../../../backend/src/api/powersync.ts)               | The `/token` and `/upload` routes, device validation, origin check                |
+| [backend/src/db/powersync-schema.ts](../../../backend/src/db/powersync-schema.ts)   | Drizzle tables plus the pk / conflict-target / column-name maps                   |
+| [shared/powersync-tables.ts](../../../shared/powersync-tables.ts)                   | `powersyncTableNames`, `legacyPowerSyncTableNames`, `readOnlyPowerSyncTableNames` |
+| [src/db/powersync/connector.ts](../../../src/db/powersync/connector.ts)             | `uploadData`: builds the batch, maps error responses to client actions            |
+| [src/db/encryption/upload-encoder.ts](../../../src/db/encryption/upload-encoder.ts) | Encrypts encrypted columns before the batch leaves the device                     |

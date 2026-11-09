@@ -4,21 +4,22 @@ Tables holding seeded default data use composite primary keys `(id, user_id)` or
 
 ## Tables with Composite Primary Keys
 
-| Table          | Composite key    | Reason                                                                                                                                                                                       |
-| -------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| settings       | `(key, user_id)` | Keys like `language` or `time_format` are shared; each user has their own value.                                                                                                             |
-| models         | `(id, user_id)`  | Defaults seeded per user under the same ID (`shared/defaults/models.ts`).                                                                                                                    |
-| tasks          | `(id, user_id)`  | Defaults seeded per user under the same ID (`src/defaults/tasks.ts`).                                                                                                                        |
-| skills         | `(id, user_id)`  | Defaults seeded per user under the same ID (`src/defaults/skills.ts`).                                                                                                                       |
-| model_profiles | `(id, user_id)`  | Per-model inference tuning (temperature, nudges, prompt overrides) seeded per user.                                                                                                          |
-| prompts        | `(id, user_id)`  | Historical: default automations were seeded here until skills superseded them in THU-547, and `reconcileDefaults()` no longer touches `prompts`. The key stays for rows written before that. |
-| agents         | `(id, user_id)`  | Nothing is seeded (user-created ACP agents, no `default_hash` column). The key follows the convention of the tables around it.                                                               |
+| Table           | Composite key    | Reason                                                                                                                                                                                       |
+| --------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| settings        | `(key, user_id)` | Keys like `language` or `time_format` are shared; each user has their own value.                                                                                                             |
+| models          | `(id, user_id)`  | Defaults seeded per user under the same ID (`shared/defaults/models.ts`).                                                                                                                    |
+| tasks           | `(id, user_id)`  | Defaults seeded per user under the same ID (`src/defaults/tasks.ts`).                                                                                                                        |
+| skills          | `(id, user_id)`  | Defaults seeded per user under the same ID (`src/defaults/skills.ts`).                                                                                                                       |
+| model_profiles  | `(id, user_id)`  | Per-model inference tuning (temperature, nudges, prompt overrides) seeded per user.                                                                                                          |
+| prompts         | `(id, user_id)`  | Historical: default automations were seeded here until skills superseded them in THU-547, and `reconcileDefaults()` no longer touches `prompts`. The key stays for rows written before that. |
+| agents          | `(id, user_id)`  | Nothing is seeded (user-created ACP agents, no `default_hash` column). The key follows the convention of the tables around it.                                                               |
+| received_shares | `(id, user_id)`  | Server-written: one row per recipient of a share, all under the share's id. Each device syncs only its own account's rows, so `id` alone is unique there.                                    |
 
 In `settings` the key column is physically named `id` "for PowerSync compatibility" and is only accessed as `key` in Drizzle (`backend/src/db/powersync-schema.ts:32`, `src/db/tables.ts:13`). The `(key, user_id)` notation used here follows the Drizzle keys; the constraint on disk is on `(id, user_id)`.
 
 ## Tables with Single Primary Key
 
-User-created data keeps a single `id` primary key, since each row already has a globally unique ID: chat_threads, chat_messages, triggers, devices, projects.
+User-created data keeps a single `id` primary key, since each row already has a globally unique ID: chat_threads, chat_messages, triggers, devices, projects. So does the server-written `sent_shares`, one row per share.
 
 Local-only client tables never reach this schema at all: `mcp_servers`, `mcp_secrets`, `models_secrets`, `integrations_secrets`, `agents_system` and `agents_secrets` are declared in `localOnlyTables` (`src/db/powersync/schema.ts`) and have no backend counterpart.
 

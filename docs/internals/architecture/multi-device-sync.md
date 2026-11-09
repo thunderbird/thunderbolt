@@ -40,20 +40,22 @@ The Vite alias `powersync-web-internal` lets the custom SharedWorker reach `@pow
 
 From [`shared/powersync-tables.ts`](../../../shared/powersync-tables.ts):
 
-| Table            | Purpose                                                                        | Primary key      |
-| ---------------- | ------------------------------------------------------------------------------ | ---------------- |
-| `settings`       | Per-user preferences                                                           | `(key, user_id)` |
-| `chat_threads`   | Conversation metadata                                                          | `id`             |
-| `chat_messages`  | Individual messages within threads                                             | `id`             |
-| `tasks`          | Todo / task items (defaults seeded per user)                                   | `(id, user_id)`  |
-| `models`         | Configured models: provider, endpoint, capabilities (defaults seeded per user) | `(id, user_id)`  |
-| `prompts`        | Saved prompt templates (defaults seeded per user)                              | `(id, user_id)`  |
-| `skills`         | Slash-command skills (defaults seeded per user)                                | `(id, user_id)`  |
-| `triggers`       | Automations                                                                    | `id`             |
-| `model_profiles` | Per-model tuning (temperature, prompt overrides) seeded per user               | `(id, user_id)`  |
-| `devices`        | Registered devices for the current account                                     | `id`             |
-| `agents`         | User-created ACP agents (built-ins and system agents are not rows)             | `(id, user_id)`  |
-| `projects`       | Project workspaces (durable instructions)                                      | `id`             |
+| Table             | Purpose                                                                        | Primary key      |
+| ----------------- | ------------------------------------------------------------------------------ | ---------------- |
+| `settings`        | Per-user preferences                                                           | `(key, user_id)` |
+| `chat_threads`    | Conversation metadata                                                          | `id`             |
+| `chat_messages`   | Individual messages within threads                                             | `id`             |
+| `tasks`           | Todo / task items (defaults seeded per user)                                   | `(id, user_id)`  |
+| `models`          | Configured models: provider, endpoint, capabilities (defaults seeded per user) | `(id, user_id)`  |
+| `prompts`         | Saved prompt templates (defaults seeded per user)                              | `(id, user_id)`  |
+| `skills`          | Slash-command skills (defaults seeded per user)                                | `(id, user_id)`  |
+| `triggers`        | Automations                                                                    | `id`             |
+| `model_profiles`  | Per-model tuning (temperature, prompt overrides) seeded per user               | `(id, user_id)`  |
+| `devices`         | Registered devices for the current account                                     | `id`             |
+| `agents`          | User-created ACP agents (built-ins and system agents are not rows)             | `(id, user_id)`  |
+| `projects`        | Project workspaces (durable instructions)                                      | `id`             |
+| `received_shares` | Chats shared with this account (server-written, read-only)                     | `(id, user_id)`  |
+| `sent_shares`     | Chats this account shared, with their recipients (server-written, read-only)   | `id`             |
 
 Default-data tables use composite primary keys so multiple users can hold the same default id ([details](composite-primary-keys-and-default-data.md)).
 

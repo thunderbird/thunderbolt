@@ -73,6 +73,7 @@ The exporter walks the same name → Drizzle table map PowerSync uses (`syncedTa
 - `devices`: per-device trust state. Trust is between specific device keys, so the rows would be misleading on another device.
 - `integrations_secrets`: Google / Microsoft OAuth tokens. The importing user re-authenticates; tokens are usually expired or revoked anyway.
 - `agents_system`: system-provided agents (Haystack's ACP agents, the hosted agent) hydrated from the backend `/agents` discovery endpoint, not user content.
+- `received_shares`, `sent_shares`: the share lists, written by the server and read-only on the client ([chat-sharing.md](chat-sharing.md#listing)). The shares themselves stay on the server, so imported rows would list shares that are not there.
 
 ## Encryption
 

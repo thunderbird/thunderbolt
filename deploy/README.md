@@ -667,11 +667,11 @@ The realm `thunderbolt` is auto-imported from `config/keycloak-realm.json` on fi
 
 The sync config (Sync Streams, edition 3) lives in `config/powersync-config.yaml`, and the same streams are inlined in the Helm chart's ConfigMap (`k8s/templates/configmaps.yaml`). Both must be edited together — a table added to one and not the other syncs on one deployment path and silently not on the other.
 
-| Stream            | Priority | Tables                                                            |
-| ----------------- | -------- | ----------------------------------------------------------------- |
-| `device_self`     | 1        | the requesting device's own `devices` row                         |
-| `user_essentials` | 1        | settings, models, model_profiles, devices, chat_threads           |
-| `user_data`       | 2        | chat_messages, tasks, prompts, skills, triggers, agents, projects |
+| Stream            | Priority | Tables                                                                             |
+| ----------------- | -------- | ---------------------------------------------------------------------------------- |
+| `device_self`     | 1        | the requesting device's own `devices` row                                          |
+| `user_essentials` | 1        | settings, models, model_profiles, devices, chat_threads, sent_shares               |
+| `user_data`       | 2        | chat_messages, tasks, prompts, skills, triggers, agents, projects, received_shares |
 
 Priority 1 completes first, so a reconnecting device gets its settings, model list and thread index before the message bodies start arriving.
 

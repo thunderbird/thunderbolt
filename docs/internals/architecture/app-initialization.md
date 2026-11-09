@@ -85,7 +85,7 @@ newer rows we haven't received".
 `waitForFirstSync({ priority: initialSyncPriority })`, `initialSyncPriority = 1`, covering the
 `user_essentials` and `device_self` streams in
 [`powersync-service/config/config.yaml`](../../../powersync-service/config/config.yaml): `settings`,
-`models`, `model_profiles`, `devices`, `chat_threads`. The lower-priority `user_data` stream (`chat_messages`,
+`models`, `model_profiles`, `devices`, `chat_threads`, `sent_shares`. The lower-priority `user_data` stream (`chat_messages`,
 `tasks`, `skills`, ...) streams in after the app is interactive.
 
 It then waits for this device's own `devices` row. The account streams are gated on that row, so a

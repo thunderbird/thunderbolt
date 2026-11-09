@@ -425,6 +425,8 @@ Apart from anonymous sign-in, the limits are not configurable:
 | Private chat, the bring-your-own-key relay, tools, search and previews, together | 100 per minute |
 | Sign-in                                                                          | 10 per minute  |
 | Debug transcript upload                                                          | 10 per hour    |
+| Sharing a chat                                                                   | 60 per hour    |
+| Looking up who a chat can be shared with, counted per email                      | 400 per hour   |
 
 The third row is one shared bucket per user, not one per group. Authenticated requests are counted per user, anonymous accounts included, since those have a user record too. Sign-in requests have no session and are counted per IP address; when an IP cannot be determined they share a single bucket rather than skipping the limit, so that protection cannot quietly turn itself off.
 

@@ -20,7 +20,18 @@ Every synced table needs a **`user_id`** column: sync rules and the backend scop
 
 ### Current Tables
 
-[shared/powersync-tables.ts](../../../shared/powersync-tables.ts): `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `prompts`, `skills`, `triggers`, `model_profiles`, `devices`, `agents`, `projects`.
+[shared/powersync-tables.ts](../../../shared/powersync-tables.ts): `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `prompts`, `skills`, `triggers`, `model_profiles`, `devices`, `agents`, `projects`, `received_shares`, `sent_shares`.
+
+### Read-only Tables
+
+`received_shares` and `sent_shares` (`readOnlyPowerSyncTableNames` in [shared/powersync-tables.ts](../../../shared/powersync-tables.ts)) are written only by the server: projections of the share tables. Clients only read them.
+
+- **How the server keeps them current.** `rebuildShareRows` (`backend/src/dal/shares.ts`) rewrites a share's rows in the transaction that changes who is on it. Deletes need no rebuild: both tables carry a foreign key to the server-only `chat_shares(id)` with `ON DELETE CASCADE`, the one foreign key on a synced table besides `user_id`.
+- **Uploads.** An upload to either table is accepted and ignored (`readOnlyTables` in `backend/src/dal/powersync.ts`), and the next checkpoint restores the server's row. They are also left out of the data export.
+- **Timestamps** are ISO text the server formats, not `timestamp` columns, so the client sorts and parses them as they are.
+- **Streams.** `sent_shares` syncs in `user_essentials`, beside `chat_threads`, so a device never lists a chat before it knows the chat's share. `received_shares` syncs in `user_data`: other accounts decide how many rows it holds, so it stays off the stream that app start waits on.
+
+Why the lists sync and the snapshots do not: [chat-sharing.md](chat-sharing.md#listing).
 
 ### Indexes and Foreign Keys
 
@@ -45,14 +56,15 @@ Backend: primary keys and one `user_id` index per table. No composite foreign ke
    Never add a table to `device_self`. That stream delivers one row — the requesting device's own — to a device whose other streams revocation has removed, so anything else put there would keep syncing to revoked devices.
 
 6. Run `bun db generate` and confirm `backend/drizzle/meta/_journal.json` gained the entry. Drizzle finds migrations through the journal, so an SQL file without one never runs.
+7. If only the server writes the table, add it to `readOnlyPowerSyncTableNames` in [shared/powersync-tables.ts](../../../shared/powersync-tables.ts) too. That makes the backend ignore uploads to it and keeps it out of the data export; without it, an upload would be applied.
 
 ### PR Flow for Adding Tables
 
 Two PRs, to avoid sync rule mismatches.
 
-**PR 1: backend schema, migration and sync rules** (steps 2 and 4-6, plus the `backend/src/db/powersync-schema.ts` half of step 1). Merge, then run the migration. `.github/workflows/images-publish.yml` rebuilds `thunderbolt-powersync` with the new rules baked in. **Roll the Render `powersync` service to the new tag** (dashboard > Manual Deploy > Deploy latest reference) before merging PR 2; preview stacks pick it up on their next Pulumi apply.
+**PR 1: backend schema, migration and sync rules** (steps 2-7). `syncedTables` in `src/db/powersync/schema.ts` must list every `powersyncTableNames` entry, so PR 1 also carries the new table's entries in `src/db/tables.ts` and `src/db/powersync/schema.ts`, unused until PR 2. Merge, then run the migration. `.github/workflows/images-publish.yml` rebuilds `thunderbolt-powersync` with the new rules baked in. **Roll the Render `powersync` service to the new tag** (dashboard > Manual Deploy > Deploy latest reference) before merging PR 2; preview stacks pick it up on their next Pulumi apply.
 
-**PR 2: frontend** (`src/db/tables.ts`, step 3, plus DAL, defaults, reconciliation, UI). Merge only after PR 1's image is live. Frontend-first fails silently: the table works locally but never replicates.
+**PR 2: frontend** (DAL, defaults, reconciliation, UI). Merge only after PR 1's image is live. Frontend-first fails silently: the table works locally but never replicates.
 
 ### Adding Columns to an Existing Synced Table
 

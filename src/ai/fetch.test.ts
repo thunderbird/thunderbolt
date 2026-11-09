@@ -499,6 +499,27 @@ describe('mergeMcpTools', () => {
     slow.resolve(null)
   })
 
+  it('bounds the retried discovery together with the reconnect, skipping a server that never answers', async () => {
+    const dropped = named('render', async () => {
+      throw closedError()
+    })
+    const hung = named('render', () => new Promise<Record<string, Tool>>(() => {})).client
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+
+    const merging = mergeMcpTools(
+      {},
+      [dropped, healthy],
+      mock(async () => hung),
+      { reconnectTimeoutMs: 20 },
+    )
+    await getClock().tickAsync(20)
+
+    expect(await Promise.race([merging, Promise.resolve('pending')])).toMatchObject({
+      toolset: { github_beta: tool('b') },
+    })
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('"MCP connect of render" timed out after 20ms'))
+  })
+
   it('discovers servers in parallel, so the send waits for the slowest rather than the sum', async () => {
     const slowTools = (tag: string) => () =>
       new Promise<Record<string, Tool>>((resolve) => setTimeout(() => resolve({ alpha: tool(tag) }), 20))

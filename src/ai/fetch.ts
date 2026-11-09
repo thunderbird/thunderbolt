@@ -149,9 +149,9 @@ type AiFetchStreamingResponseOptions = {
   getProxyFetch: () => FetchFn
 }
 
-/** Longest a send waits for an MCP server to (re)connect before skipping its
- *  tools for the turn. Only a server that accepts the connection and never
- *  answers reaches it. */
+/** Longest a send waits for an MCP server to (re)connect and answer discovery
+ *  before skipping its tools for the turn. Only a server that accepts the
+ *  connection and never answers reaches it. */
 const defaultMcpReconnectTimeoutMs = 3_000
 
 /**
@@ -168,9 +168,10 @@ const defaultMcpReconnectTimeoutMs = 3_000
  * reconnects the server and retries discovery once within the same send, so an
  * expired idle session doesn't cost the model its tools for a turn. A server
  * still connecting when the send starts (first connect or reconnect) arrives with
- * that connect instead of a client. Either wait is bounded per server by
- * `reconnectTimeoutMs` (default {@link defaultMcpReconnectTimeoutMs}); past it
- * the server is skipped for this turn while the connect carries on. A failed
+ * that connect instead of a client. Either wait, including the discovery that
+ * follows it, is bounded per server by `reconnectTimeoutMs` (default
+ * {@link defaultMcpReconnectTimeoutMs}); past it the server is skipped for this
+ * turn while the connect carries on. A failed
  * connect, or a second discovery failure on the fresh client, skips the server
  * too; the second failure is only logged, since the reconnect already cleared
  * the provider's error. Servers are discovered in parallel, so the send waits
@@ -232,15 +233,10 @@ export const mergeMcpTools = async (
     return prefix
   }
 
-  /** Wait (bounded) for a connect, then run discovery once on the client it
-   *  produced. Returns `{}` when the connect fails, exceeds the bound, or the
-   *  fresh client fails discovery too. */
-  const discoverAfterConnect = async (serverName: string, connecting: Promise<MCPClient | null>) => {
-    const fresh = await withTimeout(connecting, reconnectTimeoutMs, `MCP connect of ${serverName}`)
-    // `withTimeout` already warned; the connect is still running for the next send.
-    if (fresh === undefined) {
-      return {}
-    }
+  /** Wait for a connect, then run discovery once on the client it produced.
+   *  Returns `{}` when the connect fails or the fresh client fails discovery too. */
+  const discoverOnConnect = async (serverName: string, connecting: Promise<MCPClient | null>) => {
+    const fresh = await connecting
     if (!fresh) {
       console.warn(`MCP server "${serverName}" did not connect; skipping its tools for this send`)
       return {}
@@ -258,6 +254,16 @@ export const mergeMcpTools = async (
       return {}
     }
   }
+
+  /** {@link discoverOnConnect} under one bound, so a server that reconnects but
+   *  never answers discovery can't hold up the send. `withTimeout` warns when it
+   *  fires; the connect keeps running for the next send. */
+  const discoverAfterConnect = async (serverName: string, connecting: Promise<MCPClient | null>) =>
+    (await withTimeout(
+      discoverOnConnect(serverName, connecting),
+      reconnectTimeoutMs,
+      `MCP connect of ${serverName}`,
+    )) ?? {}
 
   const discover = async (entry: NamedMCPClient) => {
     if (!entry.client) {

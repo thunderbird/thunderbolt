@@ -23,7 +23,7 @@
  */
 
 import { useEffect, useSyncExternalStore } from 'react'
-import { useHttpClient } from '@/contexts'
+import { useAuth, useHttpClient } from '@/contexts'
 import type { HttpClient } from '@/lib/http'
 import { parseMiniAppRegistry, type MiniAppDefinition } from './registry'
 
@@ -115,12 +115,53 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
       if (era !== generation) {
         return
       }
-      setState({ apps: [], loading: false, failed: true })
+      // A refetch that fails keeps the list already on screen; only a first
+      // load (or one that already failed) has nothing to keep.
+      setState(state.loading || state.failed ? { apps: [], loading: false, failed: true } : state)
       // Cleared so the next mount retries, rather than the session being stuck.
       inFlight = null
     }
   })()
   return inFlight
+}
+
+/** The user the current registry was fetched for; `undefined` until a session settles. */
+let registryUserId: string | undefined
+
+/**
+ * Fetch again when the signed-in user changes, keeping what is on screen meanwhile.
+ *
+ * The registry depends on who is asking: an app with `allowedEmails` is left
+ * out for an anonymous session, and the in-tab sign-in modal turns that session
+ * into a real one without a reload. Keyed on the user id rather than on the
+ * modal's success event, so it also fires when the modal is dismissed after the
+ * code was accepted. Advancing the era drops any request still in flight for the
+ * old identity.
+ */
+export const syncMiniAppsUser = (userId: string | undefined, httpClient: HttpClient) => {
+  if (userId === undefined || userId === registryUserId) {
+    return
+  }
+  const isFirstUser = registryUserId === undefined
+  registryUserId = userId
+  if (isFirstUser) {
+    return
+  }
+  generation += 1
+  inFlight = null
+  void loadMiniApps(httpClient)
+}
+
+/**
+ * Keeps the registry in step with the session. Mount once, beside the sidebar;
+ * `useMiniApps` consumers stay free of auth.
+ */
+export const useMiniAppsUserSync = () => {
+  const httpClient = useHttpClient()
+  const userId = useAuth().useSession().data?.user?.id
+  useEffect(() => {
+    syncMiniAppsUser(userId, httpClient)
+  }, [userId, httpClient])
 }
 
 /**
@@ -134,6 +175,7 @@ export const resetMiniAppsForTesting = () => {
   generation += 1
   state = emptyState
   inFlight = null
+  registryUserId = undefined
   listeners.clear()
 }
 

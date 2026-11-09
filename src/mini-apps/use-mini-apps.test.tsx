@@ -23,7 +23,7 @@ import type { ReactNode } from 'react'
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { createAuthenticatedClient, type HttpClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
-import { registryTimeoutMs, resetMiniAppsForTesting, useMiniApps } from './use-mini-apps'
+import { registryTimeoutMs, resetMiniAppsForTesting, syncMiniAppsUser, useMiniApps } from './use-mini-apps'
 
 const app = {
   id: 'finance-model',
@@ -121,6 +121,52 @@ describe('useMiniApps', () => {
     await settle()
 
     expect(result.current).toMatchObject({ loading: false, failed: true })
+  })
+
+  /**
+   * A gated app is hidden from the anonymous session, so a change of user must
+   * refetch. Keyed on the user id, not a modal event: the modal can be dismissed
+   * after the code is accepted and the user is signed in all the same.
+   */
+  describe('when the signed-in user changes', () => {
+    it('refetches, and does not for the first user or an unchanged one', async () => {
+      let requests = 0
+      let signedIn = false
+      const client = clientWith(() => {
+        requests += 1
+        return Response.json({ apps: signedIn ? [app] : [] })
+      })
+      const { result } = setup(client)
+      syncMiniAppsUser('anon-1', client)
+      await settle()
+      expect(result.current.apps).toEqual([])
+
+      syncMiniAppsUser('anon-1', client)
+      await settle()
+      expect(requests).toBe(1)
+
+      signedIn = true
+      syncMiniAppsUser('user-1', client)
+      await settle()
+
+      expect(requests).toBe(2)
+      expect(result.current.apps.map((entry) => entry.id)).toEqual(['finance-model'])
+    })
+
+    it('keeps the list on screen when the refetch fails', async () => {
+      let fail = false
+      const client = clientWith(() => (fail ? new Response('nope', { status: 500 }) : Response.json({ apps: [app] })))
+      const { result } = setup(client)
+      syncMiniAppsUser('anon-1', client)
+      await settle()
+
+      fail = true
+      syncMiniAppsUser('user-1', client)
+      await settle()
+
+      expect(result.current).toMatchObject({ loading: false, failed: false })
+      expect(result.current.apps).toHaveLength(1)
+    })
   })
 
   /**

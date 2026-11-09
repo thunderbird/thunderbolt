@@ -453,9 +453,14 @@ export type MiniAppConfig = {
   url: string
   /** HS256 signing secret, unique to this app. Never leaves the backend. */
   secret: string
+  /**
+   * Lowercased emails allowed to see and use this app. Absent means everyone.
+   * Never leaves the backend.
+   */
+  allowedEmails?: string[]
 }
 
-/** What the frontend is allowed to see — everything but the secret. */
+/** What the frontend is allowed to see — everything but the secret and the allowlist. */
 export type { PublicMiniApp }
 
 /** The shared http(s) rule, as this end's zod field. */
@@ -480,6 +485,11 @@ const miniAppEntrySchema = z
     // Matches the 32-character floor the rest of the codebase holds signing
     // secrets to; this one signs identity tokens apps trust.
     secret: z.string().min(32),
+    // Trimmed and lowercased once here so the per-request check is a plain `includes`.
+    allowedEmails: z
+      .array(z.string())
+      .transform((emails) => emails.map((email) => email.trim().toLowerCase()))
+      .optional(),
   })
   // `url` is almost always the origin; making operators repeat it is a
   // second place for the two to disagree.
@@ -546,7 +556,16 @@ export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Map<string, M
  * route means any caller can drive the log volume.
  */
 export const toPublicMiniApps = (apps: ReadonlyMap<string, MiniAppConfig>): PublicMiniApp[] =>
-  [...apps].map(([id, { secret: _secret, ...app }]) => ({ id, ...app }))
+  [...apps].map(([id, { secret: _secret, allowedEmails: _allowedEmails, ...app }]) => ({ id, ...app }))
+
+/**
+ * Whether `email` may see and use `app`. An app without `allowedEmails` is open
+ * to everyone, including signed-out callers; a gated one needs a matching email.
+ */
+export const isMiniAppAllowed = (
+  app: Pick<MiniAppConfig, 'allowedEmails'>,
+  email: string | null | undefined,
+): boolean => !app.allowedEmails || (!!email && app.allowedEmails.includes(email.toLowerCase()))
 
 /**
  * Parse and validate environment variables into settings

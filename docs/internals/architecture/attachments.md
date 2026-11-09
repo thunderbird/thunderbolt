@@ -7,8 +7,8 @@ Users attach PDFs, images, Word documents, spreadsheets, and plain-text files to
 
 | Limit                        | Value | Where                                                                                                                          |
 | ---------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Files per message            | 10    | `maxAttachmentCount`, `chat-prompt-input.tsx`                                                                                  |
-| Bytes per file (post-shrink) | 25 MB | `maxAttachmentBytes`, `chat-prompt-input.tsx`                                                                                  |
+| Files per message            | 10    | `maxAttachmentCount`, `use-composer-attachments.ts`                                                                            |
+| Bytes per file (post-shrink) | 25 MB | `maxAttachmentBytes`, `use-composer-attachments.ts`                                                                            |
 | Compression threshold        | 10 MB | `compressionThresholdBytes`, [`src/files/compress/compress-attachment.ts`](../../../src/files/compress/compress-attachment.ts) |
 
 Accepted types: PDF, PNG/JPEG/WebP/GIF, DOCX, XLSX, and Markdown/plain text/CSV/JSON.
@@ -55,8 +55,9 @@ invalidated file poisons the conversation. Hence the one-time `detachBytes` copy
 
 ## Entering the app
 
-The composer ([`src/components/chat/chat-prompt-input.tsx`](../../../src/components/chat/chat-prompt-input.tsx)) is the
-only door: paperclip, drag-and-drop, and paste funnel into one `addFiles`. Paste is intercepted only when the
+Every intake goes through one hook,
+[`useComposerAttachments`](../../../src/components/chat/use-composer-attachments.ts): the composer's paperclip,
+drag-and-drop and paste, and paste in the macOS Quick Entry panel, all funnel into one `addFiles`. Paste is intercepted only when the
 clipboard carries files; a pasted screenshot arrives unnamed and is given a synthetic, extension-bearing name.
 
 Acceptance is by MIME type **or** extension, because a file picker reports `.md` with an empty `type`.
@@ -230,7 +231,7 @@ on the card.
 | Transformer registry                | `src/files/transformers/index.ts`                          |
 | CSV parsing and TSV output          | `src/files/tabular.ts`                                     |
 | Compression                         | `src/files/compress/`                                      |
-| Composer intake (picker/drop/paste) | `src/components/chat/chat-prompt-input.tsx`                |
+| Composer intake (picker/drop/paste) | `src/components/chat/use-composer-attachments.ts`          |
 | Remediation ladder                  | `src/components/chat/use-attachment-remediation.ts`        |
 | Error classification                | `src/lib/error-utils.ts`                                   |
 | Cards, thumbnails, resend controls  | `src/components/chat/file-card.tsx`, `message-bubbles.tsx` |

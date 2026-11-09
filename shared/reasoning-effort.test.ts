@@ -42,12 +42,36 @@ describe('reasoning capabilities', () => {
   it('defaults only to supported levels and preserves an explicit off choice', () => {
     expect(preferredReasoningEffort(undefined, { efforts: ['none', 'low', 'medium', 'high'] })).toBe('medium')
     expect(preferredReasoningEffort(undefined, { efforts: ['low', 'high', 'max'] })).toBe('high')
-    expect(preferredReasoningEffort(undefined, { kind: 'toggle', efforts: ['none', 'high'] })).toBe('high')
+    expect(preferredReasoningEffort(undefined, { kind: 'toggle', efforts: ['none', 'high'] })).toBe('none')
     expect(preferredReasoningEffort(undefined, { efforts: ['none', 'low', 'max'] })).toBe('low')
     expect(preferredReasoningEffort(undefined, { efforts: ['none'] })).toBe('none')
     expect(preferredReasoningEffort('none', { efforts: ['none', 'medium', 'high'] })).toBe('none')
     expect(preferredReasoningEffort('max', { efforts: ['low', 'medium'] })).toBe('medium')
     expect(preferredReasoningEffort('high', { efforts: [] })).toBeUndefined()
+  })
+  it('uses a supported profile default unless the user chose a supported effort', () => {
+    const capabilities = { efforts: ['none', 'low', 'medium', 'high', 'max'] as const }
+    expect(preferredReasoningEffort(undefined, capabilities, 'low')).toBe('low')
+    expect(preferredReasoningEffort(undefined, capabilities, 'max')).toBe('max')
+    expect(preferredReasoningEffort('high', capabilities, 'low')).toBe('high')
+    expect(preferredReasoningEffort('none', capabilities, 'max')).toBe('none')
+    expect(preferredReasoningEffort('invalid', capabilities, 'low')).toBe('low')
+    expect(preferredReasoningEffort(undefined, capabilities, 'xhigh')).toBe('medium')
+    expect(preferredReasoningEffort(undefined, { efforts: [] }, 'high')).toBeUndefined()
+  })
+  it('keeps optional thinking off unless the profile or user enables it', () => {
+    const capabilities = { kind: 'toggle', efforts: ['none', 'high'] } as const
+    expect(preferredReasoningEffort(undefined, capabilities)).toBe('none')
+    expect(preferredReasoningEffort(undefined, capabilities, 'high')).toBe('high')
+    expect(preferredReasoningEffort(undefined, capabilities, 'none')).toBe('none')
+    expect(preferredReasoningEffort('none', capabilities, 'high')).toBe('none')
+    expect(preferredReasoningEffort('high', capabilities, 'none')).toBe('high')
+  })
+  it('leaves an unrepresentable profile unselected until the user chooses an override', () => {
+    const capabilities = { efforts: ['low', 'high'] } as const
+    expect(preferredReasoningEffort(undefined, capabilities, null)).toBeUndefined()
+    expect(preferredReasoningEffort('invalid', capabilities, null)).toBeUndefined()
+    expect(preferredReasoningEffort('low', capabilities, null)).toBe('low')
   })
   it.each(reasoningEfforts)('preserves the supported saved choice %s', (effort) => {
     expect(preferredReasoningEffort(effort, { efforts: reasoningEfforts })).toBe(effort)

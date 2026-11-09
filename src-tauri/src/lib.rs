@@ -9,6 +9,8 @@ pub mod cli_installer;
 pub mod commands;
 pub mod oauth_server;
 pub mod platform_utils;
+#[cfg(desktop)]
+mod tray;
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "ios"))]
 use tauri::Manager;
@@ -20,6 +22,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     // Single-instance: focus existing window when a second instance is launched (desktop only)
     #[cfg(desktop)]
     {
+        builder = builder.manage(tray::TrayState::default());
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Err(error) = commands::show_main_window(app.clone()) {
                 eprintln!("Could not restore the main window: {error}");
@@ -42,7 +45,9 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
             commands::show_main_window,
-            commands::toggle_dock_icon,
+            commands::hide_main_window,
+            #[cfg(desktop)]
+            tray::initialize_tray,
             commands::set_interface_style,
             commands::start_oauth_server,
             commands::install_thunderbolt_cli,

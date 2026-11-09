@@ -15,6 +15,8 @@ import {
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { updateSettings } from '@/dal/settings'
 import { createModel, updateModel } from '@/dal/models'
+import { upsertModelProfile, deleteModelProfileForModel, getModelProfile } from '@/dal/model-profiles'
+import { defaultModelDeepSeekV41Flash, defaultModelGlm53 } from '@shared/defaults/models'
 import { eq } from 'drizzle-orm'
 import { getCurrentDatabase, getDb, setDatabase } from '@/db/database'
 import { modelsTable } from '@/db/tables'
@@ -286,6 +288,62 @@ it('shares model choices across chats, preserves legacy choices, and defaults to
   } finally {
     request.mockRestore()
   }
+})
+
+it.each([
+  { model: defaultModelDeepSeekV41Flash, effort: 'low' },
+  { model: defaultModelGlm53, effort: 'max' },
+] as const)('preserves the bundled tuned profile for $model.name', async ({ model: defaultModel, effort }) => {
+  const model = { ...defaultModel, apiKey: null, reasoningEffort: null }
+  await updateModel(getDb(), model.id, { reasoningEffort: null })
+  const capabilities = async () => ({ efforts: ['none', 'low', 'medium', 'high', 'max'] as const })
+  expect((await getModelProfile(getDb(), model.id))?.providerOptions?.reasoningEffort).toBe(effort)
+  expect(await getChatReasoningEffort('profile-chat', model, capabilities)).toBeUndefined()
+  await updateSettings(getDb(), { [reasoningEffortSettingKey('profile-chat', model.id)]: 'high' })
+  expect(await getChatReasoningEffort('profile-chat', model, capabilities)).toBe('high')
+  await updateModel(getDb(), model.id, { reasoningEffort: 'none' })
+  expect(await getChatReasoningEffort('profile-chat', model, capabilities)).toBe('none')
+  expect(await getChatReasoningEffort('other-profile-chat', model, capabilities)).toBe('none')
+})
+
+it('preserves live profile options, including configured levels outside the current catalog, and excludes deleted profiles', async () => {
+  const model = createMockModel({ id: 'profile-effort' })
+  await createModel(getDb(), model)
+  const capabilities = async () => ({ efforts: ['none', 'low', 'medium', 'high'] as const })
+  const read = () => getChatReasoningEffort('profile-chat', model, capabilities)
+  expect(await read()).toBe('medium')
+  await upsertModelProfile(getDb(), { modelId: model.id, providerOptions: { reasoning: { effort: 'low' } } })
+  expect(await read()).toBeUndefined()
+  await upsertModelProfile(getDb(), { modelId: model.id, providerOptions: { reasoningEffort: 'max' } })
+  expect(await read()).toBeUndefined()
+  await upsertModelProfile(getDb(), { modelId: model.id, providerOptions: { effort: 'high' } })
+  expect(await read()).toBeUndefined()
+  await deleteModelProfileForModel(getDb(), model.id)
+  expect(await read()).toBe('medium')
+})
+
+it.each([{ enabled: false }, { enabled: true }, { max_tokens: 1024 }, { max_tokens: 16384 }])(
+  'preserves native OpenRouter profile %j without an explicit saved effort',
+  async (reasoning) => {
+    const model = createMockModel({ id: `router-profile-${JSON.stringify(reasoning)}`, provider: 'openrouter' })
+    await createModel(getDb(), model)
+    await upsertModelProfile(getDb(), { modelId: model.id, providerOptions: { reasoning } })
+    const capabilities = async () => ({ efforts: ['low', 'high'] as const })
+    expect(await getChatReasoningEffort('profile-chat', model, capabilities)).toBeUndefined()
+    await updateModel(getDb(), model.id, { reasoningEffort: 'high' })
+    expect(await getChatReasoningEffort('profile-chat', model, capabilities)).toBe('high')
+  },
+)
+
+it('defaults optional thinking off and respects a configured profile or explicit toggle choice', async () => {
+  const model = createMockModel({ id: 'toggle-default', provider: 'anthropic', model: 'claude-sonnet-4-5' })
+  await createModel(getDb(), model)
+  const read = () => getChatReasoningEffort('toggle-chat', model)
+  expect(await read()).toBe('none')
+  await upsertModelProfile(getDb(), { modelId: model.id, providerOptions: { thinking: { budgetTokens: 4096 } } })
+  expect(await read()).toBeUndefined()
+  await updateModel(getDb(), model.id, { reasoningEffort: 'none' })
+  expect(await read()).toBe('none')
 })
 
 it('surfaces local capability lookup errors instead of silently changing effort', async () => {

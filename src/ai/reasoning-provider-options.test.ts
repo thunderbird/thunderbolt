@@ -105,3 +105,59 @@ it.each(['anthropic', 'openrouter', 'openai', 'openai-chat'] as const)(
     }
   },
 )
+
+it.each([undefined, 'high', 'none'] as const)(
+  'preserves a native Anthropic budget unless the user chooses %s',
+  async (effort) => {
+    const payloads: Record<string, unknown>[] = []
+    const fetch = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        payloads.push((await new Request(input, init).json()) as Record<string, unknown>)
+        throw new Error('request captured')
+      },
+      { preconnect: () => {} },
+    )
+    const model = createAnthropic({ apiKey: 'test', fetch })('claude-sonnet-4-5')
+    const profile = { thinking: { type: 'enabled', budgetTokens: 16384 } }
+    await expect(
+      model.doGenerate({
+        prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
+        providerOptions: { anthropic: reasoningProviderOptions(profile, 'anthropic', effort, true) },
+      }),
+    ).rejects.toThrow('request captured')
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]!.thinking).toEqual(
+      effort === 'none' ? undefined : { type: 'enabled', budget_tokens: effort === undefined ? 16384 : 4096 },
+    )
+    expect(profile.thinking.budgetTokens).toBe(16384)
+  },
+)
+
+it.each([{ enabled: false }, { enabled: true }, { max_tokens: 16384 }])(
+  'preserves native OpenRouter reasoning %j when no override was selected',
+  async (reasoning) => {
+    const payloads: Record<string, unknown>[] = []
+    const fetch = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        payloads.push((await new Request(input, init).json()) as Record<string, unknown>)
+        throw new Error('request captured')
+      },
+      { preconnect: () => {} },
+    )
+    const model = createOpenAICompatible({
+      name: 'openrouter',
+      baseURL: 'https://openrouter.invalid/v1',
+      apiKey: 'test',
+      fetch,
+    })('test/model')
+    await expect(
+      model.doGenerate({
+        prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
+        providerOptions: { openrouter: reasoningProviderOptions({ reasoning }, 'openrouter', undefined, false) },
+      }),
+    ).rejects.toThrow('request captured')
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]!.reasoning).toEqual(reasoning)
+    expect(payloads[0]!.reasoning_effort).toBeUndefined()
+  },
+)

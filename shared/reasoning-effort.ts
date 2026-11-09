@@ -29,16 +29,26 @@ export const resolveReasoningEffort = (
 export const reasoningEffortSettingKey = (threadId: string, modelId: string): string =>
   `chat-reasoning-effort:${threadId}:${modelId}`
 
-/** Prefer a supported saved choice, otherwise medium, high, or the first supported reasoning level. */
+/** Prefer a saved choice or tuned profile, then a supported default. A null profile cannot be represented.
+ * Optional thinking stays off by default. */
 export const preferredReasoningEffort = (
   value: unknown,
   capabilities: ReasoningCapabilities,
-): ReasoningEffort | undefined =>
-  resolveReasoningEffort(value, capabilities) ??
-  resolveReasoningEffort('medium', capabilities) ??
-  resolveReasoningEffort('high', capabilities) ??
-  capabilities.efforts.find((effort) => effort !== 'none') ??
-  capabilities.efforts[0]
+  profileEffort?: ReasoningEffort | null,
+): ReasoningEffort | undefined => {
+  const saved = resolveReasoningEffort(value, capabilities)
+  if (saved !== undefined || profileEffort === null) {
+    return saved
+  }
+  return (
+    resolveReasoningEffort(profileEffort, capabilities) ??
+    resolveReasoningEffort(capabilities.kind === 'toggle' ? 'none' : undefined, capabilities) ??
+    resolveReasoningEffort('medium', capabilities) ??
+    resolveReasoningEffort('high', capabilities) ??
+    capabilities.efforts.find((effort) => effort !== 'none') ??
+    capabilities.efforts[0]
+  )
+}
 
 /** Select the effort encoding for an OpenAI-compatible provider. */
 export const reasoningEffortFormat = (providerId: string): 'openai' | 'openrouter' | 'tinfoil' =>

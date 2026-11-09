@@ -8,6 +8,8 @@ import { http } from '@/lib/http'
 import type { Model } from '@/types'
 import { getSettings } from '@/dal/settings'
 import { getModel } from '@/dal/models'
+import { getModelProviderOptionsQuery } from '@/dal/model-profiles'
+import { resolveProfileReasoningEffort } from './profile-thinking-level'
 import { getDb } from '@/db/database'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import {
@@ -16,6 +18,7 @@ import {
   openRouterReasoningCapabilities,
   reasoningEffortSettingKey,
   preferredReasoningEffort,
+  resolveReasoningEffort,
   type ReasoningCapabilities,
 } from '@shared/reasoning-effort'
 import {
@@ -112,13 +115,22 @@ export const getChatReasoningEffort = async (
   const db = getDb()
   await pendingWrites.get(db)?.byModel.get(model.id)
   const legacyKey = reasoningEffortSettingKey(threadId, model.id)
-  const [savedModel, settings] = await Promise.all([
+  const [savedModel, settings, profile] = await Promise.all([
     getModel(db, model.id),
     getSettings(db, { [legacyKey]: String }, { camelCase: false }),
+    getModelProviderOptionsQuery(db, model.id).get(),
   ])
   const saved = savedModel?.reasoningEffort ?? settings[legacyKey]
   try {
-    return preferredReasoningEffort(saved, await loadCapabilities(model))
+    const capabilities = await loadCapabilities(model)
+    const preference = resolveReasoningEffort(saved, capabilities)
+    const profileEffort = resolveProfileReasoningEffort(profile?.providerOptions, capabilities)
+    // Leave configured profile options untouched unless the user chose an override.
+    // This preserves native options such as an exact Anthropic thinking budget.
+    if (preference !== undefined || profileEffort !== undefined) {
+      return preference
+    }
+    return preferredReasoningEffort(undefined, capabilities)
   } catch (error) {
     if (model.provider !== 'openrouter' && model.provider !== 'tinfoil') {
       throw error

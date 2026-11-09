@@ -11,6 +11,7 @@ import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-rea
 import { getChatReasoningEffort, loadReasoningCapabilities } from '@/ai/reasoning-effort'
 import * as settingsDal from '@/dal/settings'
 import * as modelsDal from '@/dal/models'
+import { upsertModelProfile } from '@/dal/model-profiles'
 import { useChatStore } from '@/chats/chat-store'
 import { sessionConfigKey, useSessionConfigStore } from '@/acp/session-config-store'
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
@@ -194,7 +195,7 @@ describe('effort selector state', () => {
       fireEvent.click(privacyRow)
     })
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByRole('dialog')).toHaveAccessibleName('Connection privacy')
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Private inference')
   })
 
   it('preserves agent-advertised opaque values, including default', async () => {
@@ -489,6 +490,7 @@ describe('effort selector state', () => {
     useChatStore.getState().updateSession('effort-chat', { selectedModel: toggleModel })
     renderWithReactivity(<EffortSelector />, { tables: ['settings', 'models'] })
     const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
+    expect(trigger).toHaveAttribute('title', 'Reasoning effort: Off')
     await act(async () => {
       fireEvent.click(trigger)
     })
@@ -595,6 +597,29 @@ describe('effort selector state', () => {
     })
     await waitForElement(() => screen.queryByText('low', { selector: 'output' }))
     expect(await getChatReasoningEffort('effort-chat', model)).toBe('low')
+  })
+
+  it('preselects the profile effort and follows synced changes until the user chooses a model preference', async () => {
+    await upsertModelProfile(getDb(), { modelId: model.id, providerOptions: { reasoningEffort: 'low' } })
+    const { triggerChange } = renderWithReactivity(<Probe />, { tables: ['settings', 'models', 'model_profiles'] })
+    await waitForElement(() => screen.queryByText('low', { selector: 'output' }))
+    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    await act(async () => {
+      await upsertModelProfile(getDb(), { modelId: model.id, providerOptions: { reasoning: { effort: 'max' } } })
+      triggerChange(['model_profiles'])
+    })
+    await waitForElement(() => screen.queryByText('max', { selector: 'output' }))
+    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'High' }))
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('high')
+    await act(async () => {
+      await upsertModelProfile(getDb(), { modelId: model.id, providerOptions: { reasoningEffort: 'low' } })
+      triggerChange(['model_profiles'])
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('high')
+    expect(await getChatReasoningEffort('effort-chat', model)).toBe('high')
   })
 
   it('disables changes while streaming or compacting', async () => {

@@ -1124,8 +1124,8 @@ msgid "Connection failed"
 msgstr "No se pudo conectar"
 
 #: src/components/chat/attestation/attestation-modal.tsx
-msgid "Connection privacy"
-msgstr ""
+#~ msgid "Connection privacy"
+#~ msgstr ""
 
 #: src/components/chat/attestation/attestation-control.tsx
 msgid "Connection privacy: {label}"
@@ -1142,6 +1142,10 @@ msgstr "¡Conexión correcta!"
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Connection verified"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection Verified"
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
@@ -3447,7 +3451,7 @@ msgstr "En la app web es necesario usar proxy para evitar las restricciones CORS
 msgid "Q3 planning"
 msgstr "Planificación del T3"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Quit"
 msgstr "Salir"
 
@@ -4030,7 +4034,7 @@ msgstr ""
 msgid "Shared instructions for project chats"
 msgstr "Instrucciones compartidas para los chats del proyecto"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Show"
 msgstr "Mostrar"
 

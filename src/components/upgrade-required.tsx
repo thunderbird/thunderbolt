@@ -6,7 +6,6 @@ import { AppWordmark } from '@/components/app-wordmark'
 import { useAppName } from '@/lib/branding-selectors'
 import { Button } from '@/components/ui/button'
 import { desktopUpdateActionLabel, useDesktopUpdate } from '@/hooks/use-desktop-update'
-import { isDesktop } from '@/lib/platform'
 import { Trans, useLingui } from '@lingui/react/macro'
 
 type UpgradeRequiredProps = {
@@ -20,10 +19,10 @@ type UpgradeRequiredProps = {
  * flow as the `UpdateNotification` popover — check → download → restart.
  */
 const UpgradeAction = () => {
-  const { status, primaryAction } = useDesktopUpdate()
+  const { enabled, status, primaryAction } = useDesktopUpdate()
   const { i18n } = useLingui()
 
-  if (!isDesktop()) {
+  if (!enabled) {
     return (
       <Button variant="secondary" onClick={() => window.location.reload()}>
         <Trans>Reload</Trans>

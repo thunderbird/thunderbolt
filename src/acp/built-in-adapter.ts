@@ -42,7 +42,7 @@
  * adapter's teardown (agent delete / config edit / sign-out).
  */
 
-import { piThinkingLevels } from '@shared/reasoning-effort'
+import { readProfileThinkingLevel } from '@/ai/profile-thinking-level'
 import {
   aiFetchStreamingResponse,
   prepareAiRequestConfig,
@@ -160,101 +160,10 @@ type TinfoilClientOptions = Pick<
   | 'isSsoMode'
 >
 
-const piThinkingLevelSchema = z.enum(piThinkingLevels)
-const profileThinkingOptionsSchema = z
-  .object({
-    reasoningEffort: z.string().optional().catch(undefined),
-    effort: z.string().optional().catch(undefined),
-    reasoning_effort: z.string().optional().catch(undefined),
-    reasoning: z
-      .object({ effort: z.string().optional().catch(undefined) })
-      .optional()
-      .catch(undefined),
-    thinking: z
-      .object({
-        type: z.string().optional().catch(undefined),
-        budgetTokens: z.number().optional().catch(undefined),
-      })
-      .optional()
-      .catch(undefined),
-  })
-  .passthrough()
-
 /** Reasoning depth used when a model carries no explicit profile config. Mirrors
  *  the adaptive default the anthropic path has always used, so deriving the level
  *  never regresses a model that didn't configure one. */
 const fallbackThinkingLevel: ThinkingLevel = 'medium'
-
-/** Maps an Anthropic-style thinking budget (tokens) to a Pi level by upper bound:
- *  ≤0 → off, ≤1024 → minimal, ≤4096 → low, ≤12288 → medium, else high. */
-const budgetToThinkingLevel = (budget: number): ThinkingLevel => {
-  if (budget <= 0) {
-    return 'off'
-  }
-  if (budget <= 1024) {
-    return 'minimal'
-  }
-  if (budget <= 4096) {
-    return 'low'
-  }
-  if (budget <= 12288) {
-    return 'medium'
-  }
-  return 'high'
-}
-
-/** Coerce a profile effort string to a Pi level. Maps the explicit "off" signals
- *  ('off'/'none') to `off`, accepts the Pi levels verbatim, and rejects anything
- *  else (returning null so the caller can keep looking / fall back). */
-const effortToThinkingLevel = (value: string | undefined): ThinkingLevel | null => {
-  if (value === undefined) {
-    return null
-  }
-  if (value === 'none') {
-    return 'off'
-  }
-  const parsed = piThinkingLevelSchema.safeParse(value)
-  return parsed.success ? parsed.data : null
-}
-
-/** Pull a Pi thinking level out of a profile's `providerOptions`, the only
- *  per-model reasoning signal in the data model (there is no thinking-level
- *  column). Recognizes the OpenAI `reasoningEffort`/`reasoning_effort` strings,
- *  a nested `reasoning.effort`, Anthropic's top-level `effort`, and its `thinking` object
- *  (`{ type: 'disabled' }` → off; `{ budgetTokens }` → bucketed level). Returns
- *  null when no reasoning config is present. */
-export const readProfileThinkingLevel = (
-  providerOptions: ModelProfile['providerOptions'] | undefined,
-): ThinkingLevel | null => {
-  if (!providerOptions) {
-    return null
-  }
-  const parsed = profileThinkingOptionsSchema.safeParse(providerOptions)
-  if (!parsed.success) {
-    return null
-  }
-  const options = parsed.data
-  const direct = effortToThinkingLevel(options.reasoningEffort) ?? effortToThinkingLevel(options.reasoning_effort)
-  if (direct) {
-    return direct
-  }
-  const reasoning = options.reasoning
-  if (reasoning) {
-    const nested = effortToThinkingLevel(reasoning.effort)
-    if (nested) {
-      return nested
-    }
-  }
-  const thinking = options.thinking
-  if (thinking?.type === 'disabled') {
-    return 'off'
-  }
-  const adaptiveEffort = effortToThinkingLevel(options.effort)
-  if (adaptiveEffort) {
-    return adaptiveEffort
-  }
-  return thinking?.budgetTokens === undefined ? null : budgetToThinkingLevel(thinking.budgetTokens)
-}
 
 /** The Pi thinking level for a model: its explicit profile reasoning config, else
  *  the adaptive fallback. Used for the anthropic path (whose catalog model is

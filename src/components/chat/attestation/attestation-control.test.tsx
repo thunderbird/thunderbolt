@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, mock } from 'bun:test'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { AttestationControl } from './attestation-control'
 import type { AttestationState } from '@/attestation/types'
@@ -25,6 +25,11 @@ describe('attestation control', () => {
   it('keeps technical details behind a disclosure and makes the inference boundary explicit', () => {
     render(<AttestationControl hour12={false} target={target} state={verified} onVerify={async () => {}} />)
     fireEvent.click(screen.getByRole('button', { name: 'Connection privacy: Connection verified' }))
+    const dialog = screen.getByRole('dialog', { name: 'Connection Verified' })
+    const title = within(dialog).getByRole('heading', { name: 'Connection Verified' })
+    expect(title.querySelector('svg')).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('heading')).toHaveLength(1)
+    expect(within(dialog).queryByText('Connection verified', { exact: true })).not.toBeInTheDocument()
     expect(screen.getByText('Hardware attestation')).toBeVisible()
     expect(screen.getByText('Signed build provenance')).toBeVisible()
     expect(screen.getByText('Enclave-bound encryption key')).toBeVisible()
@@ -39,6 +44,7 @@ describe('attestation control', () => {
     const verify = mock(async () => {})
     render(<AttestationControl hour12={false} target={target} state={{ status: 'idle' }} onVerify={verify} />)
     fireEvent.click(screen.getByRole('button', { name: 'Connection privacy: Private inference' }))
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Private inference')
     expect(verify).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Verify connection' }))
     expect(verify).toHaveBeenCalledTimes(1)
@@ -57,6 +63,8 @@ describe('attestation control', () => {
         onVerify={async () => {}}
       />,
     )
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Verification failed')
+    expect(screen.queryByRole('heading', { name: 'Connection Verified' })).not.toBeInTheDocument()
     expect(screen.queryByText('Hardware attestation')).not.toBeInTheDocument()
     expect(screen.queryByText('release-digest')).not.toBeInTheDocument()
     expect(screen.getByText(/Verification timed out/)).toBeVisible()
@@ -73,8 +81,9 @@ describe('attestation control', () => {
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Connection privacy: Agent privacy' }))
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Agent privacy')
     expect(screen.getByText(/My agent receives this chat/)).toBeVisible()
-    expect(screen.queryByText('Connection verified')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Connection Verified' })).not.toBeInTheDocument()
     expect(screen.queryByText('Hardware attestation')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Verify connection' })).not.toBeInTheDocument()
   })
@@ -93,7 +102,9 @@ describe('attestation control', () => {
     view.rerender(
       <AttestationControl hour12={false} target={target} state={{ status: 'verifying' }} onVerify={verify} />,
     )
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Verifying connection…')
     expect(screen.getByRole('heading', { name: 'Verifying connection…' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: 'Connection Verified' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
     expect(screen.queryByText('Hardware attestation')).not.toBeInTheDocument()
   })
@@ -108,10 +119,11 @@ describe('attestation control', () => {
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Connection privacy: Verification unavailable' }))
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Verification unavailable')
     expect(screen.getByText(/cannot verify its provider yet/)).toBeVisible()
     expect(screen.queryByText('Hardware attestation')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Verify connection' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Connection verified' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Connection Verified' })).not.toBeInTheDocument()
   })
 
   it('returns focus to the persistent trigger when the dialog closes', async () => {

@@ -3,9 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { LanguageModelV2Usage } from '@ai-sdk/provider'
-import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { SourceMetadata } from './types/source'
-import type { Window } from '@tauri-apps/api/window'
 import type { UIMessage, UITools } from 'ai'
 import type { DrizzleQuery } from '@powersync/drizzle-driver'
 import type { InferSelectModel } from 'drizzle-orm'
@@ -35,8 +33,6 @@ import type {
 export type InitData = {
   db: AnyDrizzleDatabase
   cloudUrl: string
-  tray: TrayIcon | undefined
-  window: Window | undefined
   posthogClient: PostHog | null
   httpClient: HttpClient
   experimentalFeatureTasks: boolean

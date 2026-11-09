@@ -11,8 +11,6 @@ import { createMockHttpClient } from '@/test-utils/http-client'
 import { createClient } from '@/lib/http'
 import { TrayManager } from '@/lib/tray'
 import * as encryption from '@/services/encryption'
-import type { TrayIcon } from '@tauri-apps/api/tray'
-import type { Window } from '@tauri-apps/api/window'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
@@ -127,9 +125,8 @@ describe('useAppInitialization', () => {
     expect(result.current.initError).toBeUndefined()
   })
 
-  it('waits for supported native tray/window readiness before publishing content', async () => {
-    const nativeResources = { tray: { id: 'native-tray' } as TrayIcon, window: { label: 'main' } as Window }
-    const nativeReady = Promise.withResolvers<typeof nativeResources>()
+  it('waits for supported native tray readiness before publishing content', async () => {
+    const nativeReady = Promise.withResolvers<void>()
     const initializeNative = spyOn(TrayManager, 'initIfSupported').mockImplementation(() => nativeReady.promise)
     const { client, responses } = createPendingAnalyticsClient()
     const { result, unmount } = renderHook(() => useAppInitialization(client), {
@@ -145,12 +142,11 @@ describe('useAppInitialization', () => {
       expect(responses).toHaveLength(0)
 
       await act(async () => {
-        nativeReady.resolve(nativeResources)
+        nativeReady.resolve()
         await getClock().runAllAsync()
       })
       expect(result.current.isInitializing).toBe(false)
-      expect(result.current.initData?.tray).toBe(nativeResources.tray)
-      expect(result.current.initData?.window).toBe(nativeResources.window)
+      expect(result.current.initData).toBeDefined()
       expect(result.current.initData?.posthogClient).toBeNull()
       expect(responses).toHaveLength(1)
 
@@ -164,8 +160,31 @@ describe('useAppInitialization', () => {
     }
   })
 
+  it('keeps the app usable when native tray creation fails', async () => {
+    const error = new Error('native tray unavailable')
+    const initializeNative = spyOn(TrayManager, 'initIfSupported').mockRejectedValue(error)
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    const client = createMockHttpClient(mockPostHogConfig)
+    const { result, unmount } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    try {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(result.current.isInitializing).toBe(false)
+      expect(result.current.initData).toBeDefined()
+      expect(result.current.initError).toBeUndefined()
+      expect(warn).toHaveBeenCalledWith('Failed to initialize tray, continuing without tray support:', error)
+    } finally {
+      unmount()
+      initializeNative.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
   it('allows database reset while an obsolete native readiness call remains pending', async () => {
-    const nativeReady = Promise.withResolvers<{ tray: undefined; window: undefined }>()
+    const nativeReady = Promise.withResolvers<void>()
     const initializeNative = spyOn(TrayManager, 'initIfSupported').mockImplementation(() => nativeReady.promise)
     const database = getCurrentDatabase()!
     const close = spyOn(database, 'close').mockRejectedValue(new Error('test reset reached database'))
@@ -184,7 +203,7 @@ describe('useAppInitialization', () => {
       expect(close).toHaveBeenCalledTimes(1)
       expect(result.current.initError?.code).toBe('DATABASE_INIT_FAILED')
       await act(async () => {
-        nativeReady.resolve({ tray: undefined, window: undefined })
+        nativeReady.resolve()
         await getClock().runAllAsync()
       })
       expect(result.current.initData).toBeUndefined()

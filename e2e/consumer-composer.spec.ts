@@ -51,10 +51,10 @@ for (const { width, desktopSizing } of [
       await loginViaEmailCode(page)
 
       const selector = page.getByTestId('model-selector-trigger')
-      await expect(selector).toHaveAttribute('title', 'Reasoning effort: Medium')
+      await expect(selector).toHaveAttribute('title', 'Reasoning effort: Low')
       await selector.click()
       const slider = page.getByRole('slider', { name: 'Reasoning effort' })
-      await expect(slider).toHaveAttribute('aria-valuetext', 'Medium')
+      await expect(slider).toHaveAttribute('aria-valuetext', 'Low')
       const sliderBounds = await slider.boundingBox()
       await slider.click({ position: { x: sliderBounds!.width - 2, y: sliderBounds!.height / 2 } })
       await expect(selector).toHaveAttribute('title', 'Reasoning effort: High')
@@ -140,6 +140,13 @@ for (const { width, desktopSizing } of [
       }
       await expect(context).toBeVisible()
       await expectControlsToFit(page, [add, context, selector, send])
+      const contextBounds = (await context.boundingBox())!
+      const addBounds = (await add.boundingBox())!
+      expect(contextBounds.width).toBeGreaterThanOrEqual(contextBounds.height)
+      expect(addBounds.width).toBe(addBounds.height)
+      if (width < 768 && !desktopSizing) {
+        expect(contextBounds.width).toBe(contextBounds.height)
+      }
       const percentage = context.locator('span')
       const percentageBounds = await percentage.boundingBox()
       expect(percentageBounds).not.toBeNull()

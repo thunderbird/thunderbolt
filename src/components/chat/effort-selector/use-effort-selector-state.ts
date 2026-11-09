@@ -11,6 +11,8 @@ import { useCurrentChatSession } from '@/chats/chat-store'
 import { useSettings } from '@/hooks/use-settings'
 import { useDatabase } from '@/contexts/database-context'
 import { getModelQuery, updateModel } from '@/dal/models'
+import { getModelProviderOptionsQuery } from '@/dal/model-profiles'
+import { resolveProfileReasoningEffort } from '@/ai/profile-thinking-level'
 import { loadReasoningCapabilities, queueReasoningEffortWrite } from '@/ai/reasoning-effort'
 import { configSelectOptions, sessionConfigKey, useSessionConfigStore } from '@/acp/session-config-store'
 import { noReasoningEffort, reasoningEffortSettingKey, preferredReasoningEffort } from '@shared/reasoning-effort'
@@ -29,6 +31,11 @@ export const useEffortSelectorState = () => {
     query: toCompilableQuery(getModelQuery(db, selectedModel.id)),
     enabled: builtIn,
   })
+  const profileQuery = usePowerSyncQuery({
+    queryKey: ['model-provider-options', selectedModel.id],
+    query: toCompilableQuery(getModelProviderOptionsQuery(db, selectedModel.id)),
+    enabled: builtIn,
+  })
   const catalog = useQuery({
     queryKey: ['reasoning-capabilities', selectedModel.provider, selectedModel.model, selectedModel.vendor],
     queryFn: () => loadReasoningCapabilities(selectedModel),
@@ -39,7 +46,11 @@ export const useEffortSelectorState = () => {
   const remote = useSessionConfigStore((state) => state.sessions.get(sessionConfigKey(selectedAgent.id, id)))
   const option = remote?.options.find((item) => item.category === 'thought_level' && item.type === 'select')
   const capabilities = catalog.data ?? noReasoningEffort
-  const effort = preferredReasoningEffort(modelQuery.data?.[0]?.reasoningEffort ?? legacySetting.value, capabilities)
+  const effort = preferredReasoningEffort(
+    modelQuery.data?.[0]?.reasoningEffort ?? legacySetting.value,
+    capabilities,
+    resolveProfileReasoningEffort(profileQuery.data?.[0]?.providerOptions, capabilities),
+  )
   const scope = `${selectedAgent.id}:${selectedModel.id}`
   const [failure, setFailure] = useState<{ scope: string; message: string } | null>(null)
   const [pending, setPending] = useState<ReadonlyMap<string, { scope: string; value: string }>>(() => new Map())
@@ -47,7 +58,11 @@ export const useEffortSelectorState = () => {
   const writeScope = builtIn ? scope : sessionConfigKey(selectedAgent.id, id)
   const busy =
     pending.has(writeScope) ||
-    (builtIn && (modelQuery.isLoading || legacySetting.isLoading || legacySetting.query.isPlaceholderData)) ||
+    (builtIn &&
+      (modelQuery.isLoading ||
+        profileQuery.isLoading ||
+        legacySetting.isLoading ||
+        legacySetting.query.isPlaceholderData)) ||
     chatInstance.status === 'submitted' ||
     chatInstance.status === 'streaming' ||
     compactionStatus === 'compacting'

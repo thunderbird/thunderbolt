@@ -1,0 +1,519 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/*
+ * Theme is driven by a `data-theme` attribute the app sets from the host's
+ * `theme/changed` notification, so an embedded app tracks Thunderbolt's
+ * appearance rather than the OS setting.
+ *
+ * `--tone` is the one colour that carries meaning: it follows the runway tier
+ * (calm, amber, red) and drives the headline, the line and the lights together.
+ * It is a registered property so a tier change cross-fades instead of snapping.
+ */
+@property --tone {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0d9488;
+}
+
+:root {
+  --bg: #ffffff;
+  --surface: #f6f7f9;
+  --border: #e3e5ea;
+  --text: #14161a;
+  --muted: #6b7280;
+  --negative: #dc2626;
+  --funding: #4f46e5;
+  --calm: #0d9488;
+  --warn: #d97706;
+  --danger: #dc2626;
+}
+
+[data-theme='dark'] {
+  --bg: #0b0c0f;
+  --surface: #14161b;
+  --border: #262a33;
+  --text: #f4f5f7;
+  --muted: #9aa1ad;
+  --negative: #f87171;
+  --funding: #a5b4fc;
+  --calm: #2dd4bf;
+  --warn: #fbbf24;
+  --danger: #f87171;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.page {
+  padding: 24px 28px 40px;
+  max-width: 1100px;
+  margin: 0 auto;
+  transition: --tone 600ms ease;
+}
+
+.page[data-tier='calm'] {
+  --tone: var(--calm);
+}
+
+.page[data-tier='warn'] {
+  --tone: var(--warn);
+}
+
+.page[data-tier='danger'] {
+  --tone: var(--danger);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+h1 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  margin: 0;
+}
+
+h2 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0 0 12px;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.dot.live {
+  background: #22c55e;
+}
+
+/* Hero: headline, stat chips and the chart in one card. */
+.hero {
+  padding: 28px 28px 16px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--tone) 14%, transparent), transparent 60%),
+    var(--surface);
+  margin-bottom: 20px;
+}
+
+.hero-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px 32px;
+  margin-bottom: 8px;
+}
+
+.headline {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 14px;
+  align-items: baseline;
+}
+
+.big {
+  grid-row: 1 / span 2;
+  font-size: clamp(80px, 15vw, 132px);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  color: var(--tone);
+}
+
+.unit {
+  align-self: end;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.when {
+  align-self: start;
+  margin-top: 6px;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+}
+
+.chip-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.chip-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Chart */
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart .axis {
+  fill: var(--muted);
+  font-size: 12px;
+}
+
+.chart .grid {
+  stroke: var(--border);
+  stroke-opacity: 0.6;
+}
+
+.chart .area-top {
+  stop-color: var(--tone);
+  stop-opacity: 0.45;
+}
+
+.chart .area-bottom {
+  stop-color: var(--tone);
+  stop-opacity: 0;
+}
+
+.chart .line {
+  fill: none;
+  stroke: var(--tone);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart .line.dashed {
+  stroke: var(--muted);
+  stroke-width: 3;
+  stroke-dasharray: 3 8;
+  opacity: 0.8;
+}
+
+.chart .zone {
+  fill: var(--muted);
+  opacity: 0.1;
+}
+
+.chart .zone-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.chart .zero {
+  stroke: var(--negative);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+}
+
+.chart .zero-label {
+  fill: var(--negative);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chart .marker-line {
+  stroke: var(--funding);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+}
+
+.chart .marker-dot {
+  fill: var(--funding);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart .marker-ring {
+  fill: none;
+  stroke: var(--funding);
+  stroke-width: 2;
+  opacity: 0.35;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.chart .marker-label {
+  fill: var(--funding);
+  font-size: 13px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+}
+
+.chart .marker.flash .marker-ring {
+  animation: ring 1.2s ease-out;
+}
+
+.chart .marker.flash .marker-label {
+  animation: blink 1.2s ease-out;
+}
+
+.chart .select-line {
+  stroke: var(--text);
+  stroke-opacity: 0.35;
+  stroke-width: 1.5;
+}
+
+.chart .select-dot {
+  fill: var(--tone);
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.chart .hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+/* Runway lights: lit while cash is positive, staggered by month. */
+.chart .light {
+  fill: var(--border);
+  transition:
+    fill 400ms ease,
+    filter 400ms ease;
+}
+
+.chart .light.lit {
+  fill: var(--tone);
+  filter: drop-shadow(0 0 5px var(--tone));
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+
+/* Assumption strip */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.field label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+input {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+
+.field input {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+input:focus {
+  outline: 2px solid var(--tone);
+  outline-offset: 1px;
+}
+
+/* Hire and funding cards */
+.group {
+  margin-bottom: 24px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.item .title {
+  font-size: 17px;
+  font-weight: 700;
+  padding-right: 24px;
+}
+
+.item .sub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+}
+
+.remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.remove:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.add {
+  min-height: 90px;
+  border: 1.5px dashed var(--border);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add:hover {
+  border-color: var(--tone);
+  color: var(--tone);
+}
+
+/* Pulse whatever the chat just changed. */
+.flash {
+  animation: pulse 1.4s ease-out;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--tone) 70%, transparent);
+    background: color-mix(in srgb, var(--tone) 22%, var(--surface));
+  }
+  100% {
+    box-shadow: 0 0 0 14px transparent;
+    background: var(--surface);
+  }
+}
+
+@keyframes ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+@keyframes blink {
+  0%,
+  40% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--tone) 30%, transparent);
+}

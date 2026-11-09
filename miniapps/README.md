@@ -9,6 +9,7 @@ point at one of its elements.
 | `sdk/`             | Guest-side client for the bridge. The only copy.                 |
 | `template/`        | Minimal starter. Copy it to begin a new app.                     |
 | `samples/finance/` | A worked example — a quarterly revenue model the chat can drive. |
+| `samples/runway/`  | A cash runway planner built for what-if demos.                   |
 
 ## Running one locally
 
@@ -21,6 +22,7 @@ bun install
 
 cd template          # bun dev → http://localhost:5190
 cd samples/finance   # bun dev → http://localhost:5174
+cd samples/runway    # bun dev → http://localhost:5175
 ```
 
 The template's `:5190` is the port the backend's development `MINI_APPS` fallback and

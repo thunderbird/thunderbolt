@@ -69,7 +69,7 @@ describe('connection model picker', () => {
     const models = await getAllModels(getDb())
     expect(models.map((model) => model.model).sort()).toEqual(['one', 'two'])
     expect(models.every((model) => model.providerConnectionId === id)).toBe(true)
-    expect(models.every((model) => model.toolUsage === 0)).toBe(true)
+    expect(models.every((model) => model.toolUsage === 1)).toBe(true)
     expect(await getDb().select().from(modelsSecretsTable)).toEqual([])
     expect(saved).toHaveBeenCalledTimes(1)
   })
@@ -111,7 +111,6 @@ describe('connection model picker', () => {
     renderPicker()
     await chooseConnection('First')
     fireEvent.click(await waitForElement(() => screen.queryByRole('checkbox', { name: 'A model' })))
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Enable tools for models with unknown support' }))
     await chooseConnection('Disabled')
     expect(screen.getByRole('button', { name: 'Add models' })).toBeDisabled()
     expect(screen.getByText('Enable this connection to add models.')).toBeInTheDocument()
@@ -119,10 +118,9 @@ describe('connection model picker', () => {
     await chooseConnection('First')
     expect(await waitForElement(() => screen.queryByRole('checkbox', { name: 'A model' }))).not.toBeChecked()
     fireEvent.click(screen.getByRole('checkbox', { name: 'A model' }))
-    expect(screen.getByRole('checkbox', { name: 'Enable tools for models with unknown support' })).not.toBeChecked()
   })
 
-  it.each([false, true])('allows manual custom models with explicit tools choice (%s)', async (enableTools) => {
+  it('enables tools for manually entered models without an opt-in', async () => {
     await saveProviderConnection(getDb(), {
       provider: 'custom',
       name: 'Local server',
@@ -139,18 +137,14 @@ describe('connection model picker', () => {
     expect(fetch).toHaveBeenCalledTimes(2)
     fireEvent.click(screen.getByRole('button', { name: 'Enter a model ID' }))
     fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: '  local-model  ' } })
-    const tools = screen.getByRole('checkbox', { name: 'Enable tools for models with unknown support' })
-    expect(tools).not.toBeChecked()
-    if (enableTools) {
-      fireEvent.click(tools)
-    }
+    expect(screen.queryByRole('checkbox', { name: /Enable tools/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Add models' }))
     await settle()
     expect((await getAllModels(getDb()))[0]?.model).toBe('local-model')
-    expect((await getAllModels(getDb()))[0]?.toolUsage).toBe(enableTools ? 1 : 0)
+    expect((await getAllModels(getDb()))[0]?.toolUsage).toBe(1)
   })
 
-  it('applies the tools opt-in only to unknown catalog entries', async () => {
+  it('warns only for models that explicitly lack tools and preserves their capabilities', async () => {
     await saveProviderConnection(getDb(), {
       provider: 'openai',
       name: 'Mixed catalog',
@@ -165,10 +159,15 @@ describe('connection model picker', () => {
     renderPicker()
     await chooseConnection('Mixed catalog')
     fireEvent.click(screen.getByRole('checkbox', { name: 'Supported' }))
+    expect(screen.queryByRole('status')).toBeNull()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Unsupported' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Unsupported')
+    expect(screen.getByRole('status')).toHaveTextContent('do not support tools')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Unsupported' }))
+    expect(screen.queryByRole('status')).toBeNull()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Unsupported' }))
     expect(screen.queryByRole('checkbox', { name: 'Enable tools for models with unknown support' })).toBeNull()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Unknown' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Enable tools for models with unknown support' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add models' }))
     await settle()
     expect(Object.fromEntries((await getAllModels(getDb())).map((model) => [model.model, model.toolUsage]))).toEqual({

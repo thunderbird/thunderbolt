@@ -65,11 +65,14 @@ it('leaves existing model preferences intact when the catalog selects the same m
   expect(await getDb().select().from(modelProfilesTable)).toMatchObject([{ modelId, temperature: 0.3 }])
 })
 
-it.each([undefined, false, true])('enables model tools only for explicit support: %s', async (supports_tools) => {
-  const id = await connect()
-  const [modelId] = await addProviderModels(getDb(), id, [{ id: 'test', supports_tools }])
-  expect((await getModel(getDb(), modelId))?.toolUsage).toBe(supports_tools === true ? 1 : 0)
-})
+it.each([undefined, false, true])(
+  'enables tools unless the model explicitly lacks support: %s',
+  async (supports_tools) => {
+    const id = await connect()
+    const [modelId] = await addProviderModels(getDb(), id, [{ id: 'test', supports_tools }])
+    expect((await getModel(getDb(), modelId))?.toolUsage).toBe(supports_tools === false ? 0 : 1)
+  },
+)
 
 it('does not add a model after its owning operation was canceled', async () => {
   const id = await connect()

@@ -12,7 +12,7 @@ import {
   startOpenRouterConnection,
   type OpenRouterManualConnection,
 } from '@/lib/openrouter-auth'
-import { tinfoilAuth, TinfoilConnectionError } from '@/lib/tinfoil-auth'
+import { tinfoilAuth, getTinfoilErrorMessage } from '@/lib/tinfoil-auth'
 import {
   startTinfoilMobileConnection,
   cancelTinfoilMobileConnection,
@@ -265,11 +265,9 @@ export const useOnboardingProviderState = (
         dispatch({
           type: 'error',
           error:
-            error instanceof TinfoilConnectionError
-              ? error.message
-              : provider === 'tinfoil'
-                ? t`Could not connect to Tinfoil. Try again, or use an API key.`
-                : t`Could not connect to OpenRouter. Try again, or use an API key.`,
+            provider === 'tinfoil'
+              ? i18n._(getTinfoilErrorMessage(error))
+              : t`Could not connect to OpenRouter. Try again, or use an API key.`,
         })
       }
     }
@@ -301,11 +299,9 @@ export const useOnboardingProviderState = (
         dispatch({
           type: 'error',
           error:
-            error instanceof TinfoilConnectionError
-              ? error.message
-              : returned.attempt.provider === 'tinfoil'
-                ? t`Could not connect to Tinfoil. Try again, or use an API key.`
-                : t`Could not connect to OpenRouter. Try again, or use an API key.`,
+            returned.attempt.provider === 'tinfoil'
+              ? i18n._(getTinfoilErrorMessage(error))
+              : t`Could not connect to OpenRouter. Try again, or use an API key.`,
         })
       }
     }

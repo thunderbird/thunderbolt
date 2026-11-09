@@ -8,7 +8,7 @@ A provider is a service with optional capabilities. A connection is a named auth
 
 `provider_connections` syncs metadata: provider type, name, endpoint, authentication method, enabled state, timestamps and soft deletion. Names, endpoints and `models.provider_connection_id` use the existing encrypted sync columns. `provider_connection_secrets` is device-local and keyed by connection ID. Its credential binding covers provider, authentication method and endpoint; a synced routing change cannot reuse an existing device key.
 
-OAuth uses a stable `oauth:<provider>` identity: one sign-in per service, regardless of endpoint. Named API-key connections have independent IDs. A synced connection with no matching local credential is shown as **Connect on this device**. Disabling a connection does not modify model toggles. Disconnecting clears only local authorization and retains metadata and model/history references.
+OAuth uses a stable `oauth:<provider>` identity: one sign-in per service, regardless of endpoint. Named API-key connections have independent IDs. A synced connection with no matching local credential requires signing in on that device. Disabling a connection does not modify model toggles. Disconnecting clears only local authorization and retains metadata and model/history references.
 
 The DAL provides one connection API for metadata, device credentials and request-time resolution. The integration credential DAL remains a compatibility boundary for the existing OAuth session lifecycle and pre-migration rows. Google and Microsoft retain their separate account/integration flow.
 
@@ -19,6 +19,10 @@ An opaque fingerprint detects asynchronous authorization or verification superse
 Connections creates and manages authorizations without requiring a model. Multiple models can be selected from a searchable catalog; custom endpoints also accept a manually entered model ID. Model settings retain model-specific preferences and link to the exact named connection for credentials.
 
 Onboarding connects a provider and chooses an initial/default model. Otari/Tinfoil search can finish search setup when available; an unconfigured Otari search service explains the missing configuration and leaves the search step visible. Changing connections in Settings preserves an explicit search choice.
+
+Search onboarding uses one choice per provider, reusing an available connection after authorization rather than adding a duplicate choice. Exa and Tavily offer OAuth or an API key; Brave uses an API key. Browser and native OAuth returns resume the originating wizard or aside.
+
+Otari is an opt-in preview under **Settings → Preferences → Preview Features**. The `experimental_feature_otari` setting defaults to false and controls its visibility in onboarding, connections, model selection and search. Switching it off preserves saved connections and models.
 
 ## Migration, backup and rollout
 

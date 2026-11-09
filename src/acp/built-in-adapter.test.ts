@@ -114,9 +114,11 @@ describe('readProfileThinkingLevel', () => {
   })
 })
 
-/** Real prompt parts, so these tests break if the `# Language` section moves out of the
- *  stable half or stops reaching this engine. */
-const languagePromptParts = (appLanguage: PromptParams['appLanguage']) =>
+/** Real prompt parts to verify stable instructions reach the harness and drive cache invalidation. */
+const testPromptParts = (
+  appLanguage: PromptParams['appLanguage'],
+  availableToolNames: PromptParams['availableToolNames'] = [],
+) =>
   createPromptParts(
     {
       modelName: 'Test Model',
@@ -125,7 +127,7 @@ const languagePromptParts = (appLanguage: PromptParams['appLanguage']) =>
       location: {},
       localization: { distanceUnit: 'metric', temperatureUnit: 'c', timeFormat: '24h', currency: 'EUR' },
       integrationStatus: 'READY',
-      hasWebTools: false,
+      availableToolNames,
       appLanguage,
     },
     new Date('2026-07-10T12:00:00Z'),
@@ -133,7 +135,7 @@ const languagePromptParts = (appLanguage: PromptParams['appLanguage']) =>
 
 describe('reply-language directive delivery', () => {
   it('carries the language directive and its named fallback into the harness prompt', () => {
-    const { stablePrompt, volatilePrompt } = languagePromptParts('ja')
+    const { stablePrompt, volatilePrompt } = testPromptParts('ja')
     const composed = composeAppHarnessSystemPrompt({
       stableSystemPrompt: stablePrompt,
       volatileSystemPrompt: volatilePrompt,
@@ -146,7 +148,7 @@ describe('reply-language directive delivery', () => {
   })
 
   it('keeps the directive cacheable — in the stable half, ahead of the timestamp', () => {
-    const { stablePrompt, volatilePrompt } = languagePromptParts('ja')
+    const { stablePrompt, volatilePrompt } = testPromptParts('ja')
     const composed = composeAppHarnessSystemPrompt({
       stableSystemPrompt: stablePrompt,
       volatileSystemPrompt: volatilePrompt,
@@ -160,13 +162,32 @@ describe('reply-language directive delivery', () => {
 
   it('rebuilds the harness when the app language changes mid-thread', () => {
     // Otherwise a live harness would keep instructing the previous fallback language.
-    expect(harnessSignature(anthropic(), languagePromptParts('ja').stablePrompt)).not.toBe(
-      harnessSignature(anthropic(), languagePromptParts('pt-BR').stablePrompt),
+    expect(harnessSignature(anthropic(), testPromptParts('ja').stablePrompt)).not.toBe(
+      harnessSignature(anthropic(), testPromptParts('pt-BR').stablePrompt),
     )
   })
 })
 
 describe('composeAppHarnessSystemPrompt', () => {
+  it('updates the harness prompt and signature when web search becomes available or unavailable', () => {
+    const unavailable = testPromptParts('en')
+    const available = testPromptParts('en', ['search'])
+    const compose = ({ stablePrompt, volatilePrompt }: ReturnType<typeof testPromptParts>) =>
+      composeAppHarnessSystemPrompt({
+        stableSystemPrompt: stablePrompt,
+        volatileSystemPrompt: volatilePrompt,
+        supportsTools: true,
+      })
+
+    expect(compose(unavailable)).toContain('Built-in web search is unavailable')
+    expect(compose(available)).not.toContain('Built-in web search is unavailable')
+    expect(compose(available)).toContain('Web lookups use the `search` tool.')
+    expect(harnessSignature(anthropic(), unavailable.stablePrompt)).not.toBe(
+      harnessSignature(anthropic(), available.stablePrompt),
+    )
+    expect(compose(testPromptParts('en'))).toBe(compose(unavailable))
+  })
+
   it.each([false, true])('describes coding tools only when supportsTools is true (%s)', (supportsTools) => {
     const composed = composeAppHarnessSystemPrompt({
       stableSystemPrompt: 'Stable instructions',

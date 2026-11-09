@@ -49,11 +49,30 @@ describe('isTokenFresh', () => {
 })
 
 describe('OAuth refresh without a cloud session', () => {
+  const originalLocks = navigator.locks
   beforeAll(setupTestDatabase)
+  beforeAll(() => {
+    const tails = new Map<string, Promise<unknown>>()
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: <T>(name: string, work: () => Promise<T>) => {
+          const next = (tails.get(name) ?? Promise.resolve()).then(work)
+          tails.set(
+            name,
+            next.catch(() => {}),
+          )
+          return next
+        },
+      },
+    })
+  })
   beforeEach(resetTestDatabase)
   afterEach(() => mock.restore())
   afterAll(teardownTestDatabase)
+  afterAll(() => Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks }))
   const credentials = {
+    sessionRevision: 'original-session',
     access_token: 'old-access',
     refresh_token: 'old-refresh',
     expires_at: 0,
@@ -68,8 +87,8 @@ describe('OAuth refresh without a cloud session', () => {
       useLocalSettingsStore.setState({ cloudUrl: 'https://other.example/v1' })
       const fetch = spyOn(globalThis, 'fetch').mockImplementation(
         Object.assign(
-          async (input: RequestInfo | URL) => {
-            const request = new Request(input)
+          async (input: RequestInfo | URL, init?: RequestInit) => {
+            const request = new Request(input, init)
             expect(request.url).toBe('https://original.example/v1/auth/google/refresh')
             expect(request.headers.get('Authorization')).toBeNull()
             expect(request.credentials).toBe('omit')
@@ -94,15 +113,32 @@ describe('OAuth refresh without a cloud session', () => {
     async (change) => {
       await saveIntegrationCredentials(getDb(), 'google', credentials, true)
       const response = Promise.withResolvers<Response>()
+      const started = Promise.withResolvers<void>()
       spyOn(globalThis, 'fetch').mockImplementation(
-        Object.assign(() => response.promise, { preconnect: globalThis.fetch.preconnect }),
+        Object.assign(
+          () => {
+            started.resolve()
+            return response.promise
+          },
+          { preconnect: globalThis.fetch.preconnect },
+        ),
       )
       const pending = ensureValidOAuthToken(createClient(), 'google', credentials)
+      await started.promise
       if (change === 'disconnect') {
         await deleteIntegrationCredentials(getDb(), 'google')
       }
       if (change === 'reconnect') {
-        await saveIntegrationCredentials(getDb(), 'google', { ...credentials, access_token: 'different-account' }, true)
+        await saveIntegrationCredentials(
+          getDb(),
+          'google',
+          {
+            ...credentials,
+            sessionRevision: 'different-session',
+            access_token: 'different-account',
+          },
+          true,
+        )
       }
       if (change === 'disable') {
         await setIntegrationEnabled(getDb(), 'google', false)
@@ -119,4 +155,86 @@ describe('OAuth refresh without a cloud session', () => {
       }
     },
   )
+
+  it.each(['google', 'microsoft'] as const)('refreshes %s once for parallel tool calls', async (provider) => {
+    await saveIntegrationCredentials(getDb(), provider, credentials, true)
+    const fetch = spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(
+        async () => Response.json({ access_token: 'new-access', refresh_token: 'rotated-refresh', expires_in: 3600 }),
+        { preconnect: globalThis.fetch.preconnect },
+      ),
+    )
+    expect(
+      await Promise.all(Array.from({ length: 3 }, () => ensureValidOAuthToken(createClient(), provider, credentials))),
+    ).toEqual(['new-access', 'new-access', 'new-access'])
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect((await getIntegrationCredentials(getDb(), provider))?.credentials.refresh_token).toBe('rotated-refresh')
+  })
+
+  it('does not use a different account for requests queued before reconnecting', async () => {
+    await saveIntegrationCredentials(
+      getDb(),
+      'google',
+      {
+        ...credentials,
+        sessionRevision: 'different-session',
+        access_token: 'different-account',
+        expires_at: Date.now() + 3600_000,
+      },
+      true,
+    )
+    const fetch = spyOn(globalThis, 'fetch')
+    await expect(ensureValidOAuthToken(createClient(), 'google', credentials)).rejects.toThrow('integration changed')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('does not use an unexpired token after disabling the integration', async () => {
+    const fresh = { ...credentials, expires_at: Date.now() + 3600_000 }
+    await saveIntegrationCredentials(getDb(), 'google', fresh, false)
+    await expect(ensureValidOAuthToken(createClient(), 'google', fresh)).rejects.toThrow('integration changed')
+  })
+
+  it('keeps older sessions working through the supplied client before a relay was recorded', async () => {
+    const { sessionRevision: _revision, oauthRelayUrl: _relay, ...legacy } = credentials
+    await saveIntegrationCredentials(getDb(), 'google', legacy, true)
+    const fetch = mock(async (input: RequestInfo | URL) => {
+      expect(new Request(input).url).toBe('https://legacy.example/v1/auth/google/refresh')
+      return Response.json({ access_token: 'new-access', expires_in: 3600 })
+    })
+    const client = createClient({ prefixUrl: 'https://legacy.example/v1', fetch })
+    expect(await ensureValidOAuthToken(client, 'google', legacy)).toBe('new-access')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns a fresh enabled session without sending a refresh request', async () => {
+    const fresh = { ...credentials, expires_at: Date.now() + 3600_000 }
+    await saveIntegrationCredentials(getDb(), 'google', fresh, true)
+    const fetch = spyOn(globalThis, 'fetch')
+    expect(await ensureValidOAuthToken(createClient(), 'google', fresh)).toBe('old-access')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('requires reconnection when an expired session has no refresh token', async () => {
+    const expired = { ...credentials, refresh_token: undefined }
+    await saveIntegrationCredentials(getDb(), 'google', expired, true)
+    const fetch = spyOn(globalThis, 'fetch')
+    await expect(ensureValidOAuthToken(createClient(), 'google', expired)).rejects.toThrow('no refresh token')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('releases the lock after a failed refresh so the next call can retry', async () => {
+    await saveIntegrationCredentials(getDb(), 'google', credentials, true)
+    const fetch = spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(async () => Response.json({ error: 'unavailable' }, { status: 502 }), {
+        preconnect: globalThis.fetch.preconnect,
+      }),
+    )
+    await expect(ensureValidOAuthToken(createClient(), 'google', credentials)).rejects.toThrow()
+    fetch.mockImplementation(
+      Object.assign(async () => Response.json({ access_token: 'new-access', expires_in: 3600 }), {
+        preconnect: globalThis.fetch.preconnect,
+      }),
+    )
+    expect(await ensureValidOAuthToken(createClient(), 'google', credentials)).toBe('new-access')
+  })
 })

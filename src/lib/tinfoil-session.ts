@@ -14,7 +14,7 @@ import { writeProviderCredentials } from '@/providers/credentials'
 const lockName = 'thunderbolt-tinfoil-session'
 /** A single origin-wide lock protects rotating Tinfoil credentials. */
 export const withTinfoilSessionLock = <T>(operation: () => Promise<T>): Promise<T> =>
-  navigator.locks.request(lockName, operation)
+  navigator.locks.request(lockName, () => operation())
 
 const defaultDependencies = {
   db: getDb,

@@ -3,11 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createWebToolBudget } from '@/ai/web-tool-budget'
-import { createModel as insertModel } from '@/dal/models'
+import { createModel as insertModel, updateModel } from '@/dal/models'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { createClient } from '@/lib/http'
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -195,7 +196,7 @@ describe('selectPromptSkillDefinitions', () => {
         currency: 'USD',
       },
       integrationStatus: 'READY',
-      hasWebTools: false,
+      availableToolNames: [],
       skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
       supportsTools,
     })
@@ -896,6 +897,118 @@ describe('withAppVersionHeader', () => {
 
     expect(events).toHaveLength(0)
     window.removeEventListener(appVersionUnsupported, listener)
+  })
+})
+
+describe('prepareAiRequestConfig — web search availability', () => {
+  const modelId = 'search-availability-model'
+  const httpClient = createClient({
+    prefixUrl: 'https://backend.test',
+    fetch: async () => {
+      throw new Error('Request preparation must not execute a tool')
+    },
+  })
+  const unavailableSearch = 'Built-in web search is unavailable for this request.'
+  const availableSearch = 'Web lookups use the `search` and `fetch_content` tools'
+
+  beforeEach(async () => {
+    await setupTestDatabase()
+    setAuthToken('search-availability-session')
+    useSearchProviderStore.getState().clearSearchProvider()
+    await insertModel(getDb(), { id: modelId, provider: 'openai', model: 'gpt-test', name: 'Test', toolUsage: 1 })
+    await updateSettings(getDb(), { integrations_pro_is_enabled: false })
+  })
+
+  afterEach(async () => {
+    clearAuthToken()
+    useSearchProviderStore.getState().clearSearchProvider()
+    await teardownTestDatabase()
+  })
+
+  it('refreshes the prompt from exposed tools when search is enabled and disabled between sends', async () => {
+    const disabled = await prepareAiRequestConfig({ modelId, httpClient })
+    expect(disabled.toolset.search).toBeUndefined()
+    expect(disabled.toolset.fetch_content).toBeUndefined()
+    expect(disabled.stableSystemPrompt).toContain(unavailableSearch)
+    expect(disabled.stableSystemPrompt).not.toContain(availableSearch)
+
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    const enabled = await prepareAiRequestConfig({ modelId, httpClient })
+    expect(enabled.toolset.search).toBeDefined()
+    expect(enabled.toolset.fetch_content).toBeDefined()
+    expect(enabled.stableSystemPrompt).toContain(availableSearch)
+    expect(enabled.stableSystemPrompt).not.toContain(unavailableSearch)
+    expect(enabled.stableSystemPrompt).not.toBe(disabled.stableSystemPrompt)
+
+    await updateSettings(getDb(), { integrations_pro_is_enabled: false })
+    const disabledAgain = await prepareAiRequestConfig({ modelId, httpClient })
+    expect(disabledAgain.toolset.search).toBeUndefined()
+    expect(disabledAgain.stableSystemPrompt).toBe(disabled.stableSystemPrompt)
+  })
+
+  it('reports unavailable search when model tool use is off despite enabled providers', async () => {
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    await updateModel(getDb(), modelId, { toolUsage: 0 })
+    const discover = mock(async () => ({ web_search: tool('external-search') }))
+    const config = await prepareAiRequestConfig({ modelId, httpClient, mcpClients: [named('web', discover)] })
+
+    expect(config.supportsTools).toBe(false)
+    expect(config.toolset).toEqual({})
+    expect(discover).not.toHaveBeenCalled()
+    expect(config.stableSystemPrompt).toContain(unavailableSearch)
+    expect(config.stableSystemPrompt).not.toContain(availableSearch)
+  })
+
+  it.each([
+    ['web_search', 'Search the public web for current news and other information.'],
+    ['search', 'Search private project documents by title.'],
+  ])(
+    'preserves MCP %s and lets its advertised capability govern whether it can supply live information',
+    async (name, description) => {
+      const externalTool = { ...tool(name), description }
+      const config = await prepareAiRequestConfig({
+        modelId,
+        httpClient,
+        mcpClients: [named('external', async () => ({ [name]: externalTool }))],
+      })
+
+      expect(config.toolset[`external_${name}`]).toBe(externalTool)
+      expect(config.mcpToolsMetadata?.[`external_${name}`]?.toolName).toBe(name)
+      expect(config.stableSystemPrompt).toContain(unavailableSearch)
+      expect(config.stableSystemPrompt).toContain(
+        'only if its description explicitly supports public web search or retrieving the current information requested',
+      )
+      expect(config.stableSystemPrompt).toContain('If no available tool supports that lookup')
+      expect(config.stableSystemPrompt).not.toContain(availableSearch)
+    },
+  )
+
+  it('drops unavailable MCP tools from the next request and restores them after discovery recovers', async () => {
+    const externalTool = { ...tool('web-search'), description: 'Search the public web for current news.' }
+    const discover = mock(async () => ({ web_search: externalTool }))
+    const mcpClients = [named('external', discover)]
+    const reconnectClient = mock(async () => null)
+    /** Rebuild the effective capabilities for each send in the same conversation. */
+    const prepare = () => prepareAiRequestConfig({ modelId, httpClient, mcpClients, reconnectClient })
+    const connected = await prepare()
+    const error = closedError()
+    discover.mockRejectedValueOnce(error)
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const disconnected = await prepare()
+      expect(disconnected.toolset.external_web_search).toBeUndefined()
+      expect(disconnected.mcpToolsMetadata).toBeUndefined()
+      expect(disconnected.stableSystemPrompt).toContain(unavailableSearch)
+      expect(disconnected.stableSystemPrompt).not.toContain('## Connected MCP Servers')
+      expect(disconnected.stableSystemPrompt).not.toBe(connected.stableSystemPrompt)
+      expect(reconnectClient).toHaveBeenCalledWith(mcpClients[0]!.client, error)
+
+      const recovered = await prepare()
+      expect(recovered.toolset.external_web_search).toBe(externalTool)
+      expect(recovered.stableSystemPrompt).toBe(connected.stableSystemPrompt)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 

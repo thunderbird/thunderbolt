@@ -23,6 +23,7 @@ export const ProviderConnectionSummary = ({
   const definition = getProviderDefinition(connection.provider)
   const name = connection.provider === 'openai' && connection.authMethod === 'oauth' ? 'ChatGPT' : definition.name
   const oauth = connection.authMethod === 'oauth'
+  const signedIn = oauth && (connection.connected || connection.needsConsent)
   const customUrl = connection.url && connection.url !== definition.defaultUrl ? connection.url : null
   return (
     <div className="flex flex-col items-center gap-6 px-4 py-8 text-center">
@@ -30,9 +31,11 @@ export const ProviderConnectionSummary = ({
         <span className="flex size-14 items-center justify-center rounded-2xl border border-border/60 bg-muted/40">
           <ProviderConnectionIcon provider={connection.provider} />
         </span>
-        {oauth && (
-          <span className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full bg-success text-white ring-4 ring-sidebar">
-            <Check className="size-3.5" aria-hidden="true" />
+        {signedIn && (
+          <span className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full bg-sidebar">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground [background-image:var(--gradient-brand)]">
+              <Check className="size-3" aria-hidden="true" />
+            </span>
           </span>
         )}
       </div>
@@ -40,7 +43,7 @@ export const ProviderConnectionSummary = ({
         <h3 className="text-xl font-medium tracking-tight">
           {connection.needsConsent ? (
             <Trans>Signed in to {name}</Trans>
-          ) : oauth ? (
+          ) : signedIn ? (
             <Trans>Connected to {name}</Trans>
           ) : (
             name

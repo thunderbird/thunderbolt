@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { updateSettings } from '@/dal/settings'
 import { createMcpServer, createMcpServerWithCredentials, getAllMcpServers, getMcpServerCredentials } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -105,6 +106,7 @@ describe('ConnectionsPage list', () => {
     otariBrowser.cancelOtariBrowserConnection()
     cancelTinfoilMobileConnection()
     await resetTestDatabase()
+    await updateSettings(getDb(), { experimental_feature_otari: true })
   })
 
   afterEach(() => {
@@ -207,14 +209,14 @@ describe('ConnectionsPage list', () => {
   ])('returns from %s to the connection picker', async (name) => {
     renderWithReactivity(<ConnectionsPage />, { wrapper: McpProviderWrapper })
     fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' })))
-    fireEvent.click(screen.getByRole('button', { name }))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name })))
     expect(await waitForElement(() => screen.queryByRole('button', { name: 'Go back' }))).toBeVisible()
     if (name !== 'MCP server') {
       expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     }
     fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
     expect(screen.getByRole('heading', { name: 'New Connection' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Otari Models and search' })).toBeVisible()
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Otari Models and search' }))).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
   })
 
@@ -582,7 +584,9 @@ describe('ConnectionsPage list', () => {
       for (const name of ['Google Productivity', 'Microsoft Productivity']) {
         expect(screen.getByRole('button', { name })).toBeVisible()
       }
-      expect(screen.getByRole('button', { name: 'Otari Models and search' })).toBeVisible()
+      expect(
+        await waitForElement(() => screen.queryByRole('button', { name: 'Otari Models and search' })),
+      ).toBeVisible()
       expect(screen.getByRole('button', { name: 'MCP server' })).toBeVisible()
       await act(async () => {
         setAuthToken('cloud-session')

@@ -10,6 +10,7 @@ import type { HttpClient } from '@/lib/http'
 
 export type OAuthCredentials = {
   oauthRelayUrl?: string
+  sessionRevision?: string
   access_token: string
   refresh_token?: string
   expires_at?: number
@@ -43,26 +44,33 @@ export const ensureValidOAuthToken = async (
   httpClient: HttpClient,
   provider: OAuthProvider,
   credentials: OAuthCredentials,
-): Promise<string> => {
-  if (isTokenFresh(credentials.expires_at)) {
-    return credentials.access_token
-  }
+): Promise<string> =>
+  navigator.locks.request(`integration-oauth:${provider}`, async () => {
+    const db = getDb()
+    const row = await getIntegrationCredentials(db, provider)
+    // Another window may have refreshed while this request waited, or the user may have switched accounts.
+    if (!row?.enabled || row.credentials.sessionRevision !== credentials.sessionRevision) {
+      throw new Error('The integration changed before token refresh. Try again.')
+    }
+    const current = row.credentials
+    if (isTokenFresh(current.expires_at)) {
+      return current.access_token
+    }
 
-  if (!credentials.refresh_token) {
-    throw new Error('Access token expired and no refresh token available')
-  }
+    if (!current.refresh_token) {
+      throw new Error('Access token expired and no refresh token available')
+    }
 
-  const relayClient = credentials.oauthRelayUrl ? createIntegrationOAuthClient(credentials.oauthRelayUrl) : httpClient
-  const newTokens = await refreshAccessToken(relayClient, provider, credentials.refresh_token)
-  const updated: OAuthCredentials = {
-    ...credentials,
-    access_token: newTokens.access_token,
-    refresh_token: newTokens.refresh_token || credentials.refresh_token,
-    expires_at: Date.now() + newTokens.expires_in * 1000,
-  }
+    const relayClient = current.oauthRelayUrl ? createIntegrationOAuthClient(current.oauthRelayUrl) : httpClient
+    const newTokens = await refreshAccessToken(relayClient, provider, current.refresh_token)
+    const updated: OAuthCredentials = {
+      ...current,
+      access_token: newTokens.access_token,
+      refresh_token: newTokens.refresh_token || current.refresh_token,
+      expires_at: Date.now() + newTokens.expires_in * 1000,
+    }
 
-  const db = getDb()
-  await updateIntegrationCredentials(db, provider, updated, credentials)
+    await updateIntegrationCredentials(db, provider, updated, current)
 
-  return updated.access_token
-}
+    return updated.access_token
+  })

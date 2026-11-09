@@ -4,7 +4,7 @@
 
 import { useAppName } from '@/lib/branding-selectors'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { lazy, Suspense, useEffect, useEffectEvent, useReducer, useState, useTransition } from 'react'
+import { lazy, Suspense, useEffect, useEffectEvent, useState, useTransition } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { useDatabase, useSignInModal } from '@/contexts'
@@ -47,7 +47,7 @@ export const OnboardingDialog = () => {
   const isStandalone = useNeedsOwnModel()
   const { openSignInModal } = useSignInModal()
   const serverState = useOnboardingServerState()
-  const { hasSearchProvider, hasBuiltInSearch } = useSearchProviderAvailability()
+  const { hasBuiltInSearch } = useSearchProviderAvailability()
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { userHasCompletedOnboarding, dataCollection } = useSettings({
@@ -96,14 +96,7 @@ export const OnboardingDialog = () => {
 
   // Celebration step completion handler
   const [isCompleting, startCompleting] = useTransition()
-  const [{ isFormDirty, isSearchReady }, updateForm] = useReducer(
-    (
-      state: { isFormDirty: boolean; isSearchReady: boolean | null },
-      patch: Partial<{ isFormDirty: boolean; isSearchReady: boolean | null }>,
-    ) => ({ ...state, ...patch }),
-    { isFormDirty: false, isSearchReady: null },
-  )
-  const setIsFormDirty = (isFormDirty: boolean) => updateForm({ isFormDirty })
+  const [isFormDirty, setIsFormDirty] = useState(false)
   const [completionError, setCompletionError] = useState<string | null>(null)
 
   const donationMutation = useMutation({ mutationFn: (enabled: boolean) => dataCollection.setValue(enabled) })
@@ -128,10 +121,6 @@ export const OnboardingDialog = () => {
     } else if (state.currentStep === onboardingStepCount) {
       // Special handling for celebration step
       handleCelebrationComplete()
-    } else if (state.currentStep === 10) {
-      if (hasSearchProvider && isSearchReady !== false) {
-        await actions.nextStep()
-      }
     } else if (state.currentStep === 2) {
       // Auth step - only allow continue if connected
       if (state.isProviderConnected) {
@@ -155,9 +144,6 @@ export const OnboardingDialog = () => {
   const isCelebration = state.currentStep === onboardingStepCount
 
   const handleBackAction = () => {
-    if (state.currentStep === 10) {
-      updateForm({ isSearchReady: null })
-    }
     if (state.currentStep === 8 && serverState.goBack()) {
       return
     }
@@ -167,9 +153,6 @@ export const OnboardingDialog = () => {
   }
 
   const handleSkipAction = () => {
-    if (state.currentStep === 10) {
-      updateForm({ isSearchReady: null })
-    }
     if (state.canSkip) {
       actions.skipStep()
     }
@@ -198,6 +181,8 @@ export const OnboardingDialog = () => {
             <Suspense fallback={<Loader2 className="size-6 animate-spin self-center text-muted-foreground" />}>
               <OnboardingModelStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
             </Suspense>
+          ) : state.currentStep === 10 ? (
+            <OnboardingSearchStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
           ) : (
             <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
               {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
@@ -208,9 +193,7 @@ export const OnboardingDialog = () => {
                   onContinueLocal={actions.nextStep}
                 />
               )}
-              {state.currentStep === 10 && (
-                <OnboardingSearchStep onReadyChange={(isSearchReady) => updateForm({ isSearchReady })} />
-              )}
+
               {state.currentStep === 2 && (
                 <OnboardingAuthStep
                   isProcessing={state.processingOAuth}
@@ -249,7 +232,7 @@ export const OnboardingDialog = () => {
               )}
             </div>
           )}
-          {state.currentStep !== 9 && (
+          {state.currentStep !== 9 && state.currentStep !== 10 && (
             <div className="relative flex w-full shrink-0 px-5 pt-2">
               <OnboardingActionButtons
                 onBack={isCelebration ? undefined : state.canGoBack ? handleBackAction : undefined}
@@ -275,15 +258,13 @@ export const OnboardingDialog = () => {
                           ? !state.isNameValid
                           : state.currentStep === 4
                             ? !state.isLocationValid
-                            : state.currentStep === 10
-                              ? !hasSearchProvider || isSearchReady === false
-                              : state.currentStep === passkeyStep
-                                ? !accountPasskey.isSettled
-                                : isCelebration &&
-                                  (isCompleting ||
-                                    dataCollection.isLoading ||
-                                    donationMutation.isPending ||
-                                    donationMutation.isError)
+                            : state.currentStep === passkeyStep
+                              ? !accountPasskey.isSettled
+                              : isCelebration &&
+                                (isCompleting ||
+                                  dataCollection.isLoading ||
+                                  donationMutation.isPending ||
+                                  donationMutation.isError)
                 }
                 continueText={
                   state.currentStep === 8 && serverState.isConnecting ? (

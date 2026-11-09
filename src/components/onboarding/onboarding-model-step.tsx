@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { getOtariBrowserReturn, getOtariBrowserDraft } from '@/lib/otari-browser-auth'
 import { OtariConnection } from '@/components/otari-connection'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Monitor, Sparkles } from 'lucide-react'
+import { Loader2, Monitor, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,14 +22,27 @@ import { useOnboardingProviderState } from './use-onboarding-provider-state'
 
 type OnboardingModelStepProps = { onBack?: () => void; onContinue?: () => void; onSkip?: () => void }
 
-const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStepProps) => {
+const OnboardingModelStep = (props: OnboardingModelStepProps) => {
+  const { otariEnabled, isLoading } = useProviderVisibility()
+  if (isLoading) {
+    return <Loader2 className="size-6 animate-spin self-center text-muted-foreground" />
+  }
+  return <OnboardingModelStepContent key={String(otariEnabled)} {...props} otariEnabled={otariEnabled} />
+}
+
+const OnboardingModelStepContent = ({
+  onBack,
+  onContinue,
+  onSkip,
+  otariEnabled,
+}: OnboardingModelStepProps & { otariEnabled: boolean }) => {
   const { t } = useLingui()
   const { connectedProviders, isLoading, disconnectProvider } = useOnboardingModelState()
   const state = useOnboardingProviderState(
     connectedProviders,
     undefined,
     onContinue,
-    getOtariBrowserReturn('onboarding') || getOtariBrowserDraft('onboarding')
+    otariEnabled && (getOtariBrowserReturn('onboarding') || getOtariBrowserDraft('onboarding'))
       ? { initialProvider: 'otari', initialView: 'otari' }
       : {},
   )
@@ -81,16 +95,18 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
                   checked={state.selection === 'tinfoil'}
                   onSelect={() => state.selectProvider('tinfoil')}
                 />
-                <OnboardingChoiceCard
-                  name="ai-provider"
-                  value="otari"
-                  label={t`Otari`}
-                  disabled={busy}
-                  description={<Trans>Sign in to connect Otari.</Trans>}
-                  icon={<OnboardingProviderLogo provider="otari" />}
-                  checked={state.selection === 'otari'}
-                  onSelect={() => state.selectProvider('otari')}
-                />
+                {otariEnabled && (
+                  <OnboardingChoiceCard
+                    name="ai-provider"
+                    value="otari"
+                    label={t`Otari`}
+                    disabled={busy}
+                    description={<Trans>Sign in to connect Otari.</Trans>}
+                    icon={<OnboardingProviderLogo provider="otari" />}
+                    checked={state.selection === 'otari'}
+                    onSelect={() => state.selectProvider('otari')}
+                  />
+                )}
                 <OnboardingChoiceCard
                   name="ai-provider"
                   value="custom"

@@ -66,6 +66,15 @@ export const useConnectionsOAuthCallback = ({
   })
 
   useEffect(() => {
-    handleCallback(locationState)
+    // Start after mount settles: StrictMode's trial cleanup would abort a one-use token exchange.
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) {
+        handleCallback(locationState)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
   }, [locationState])
 }

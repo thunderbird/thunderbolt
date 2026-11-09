@@ -50,10 +50,13 @@ export const createIntegrationOAuthClient = (
   }
   return createClient({
     prefixUrl: relayUrl,
-    credentials: isSelectedServer() ? 'include' : 'omit',
     fetch: async (input, init) => {
       try {
-        const response = await fetchFn(input, { ...init, redirect: 'error' })
+        const response = await fetchFn(input, {
+          ...init,
+          credentials: isSelectedServer() ? 'include' : 'omit',
+          redirect: 'error',
+        })
         if (response.status === 401) {
           throw new IntegrationOAuthRelayError('session-required')
         }

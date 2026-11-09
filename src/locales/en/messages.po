@@ -67,8 +67,12 @@ msgid "{appName} (hosted, private)"
 msgstr "{appName} (hosted, private)"
 
 #: src/components/settings/agents/agent-detail.tsx
-msgid "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
-msgstr "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
+msgid "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, connections, and MCP servers) to help with whatever you are working on."
+msgstr "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, connections, and MCP servers) to help with whatever you are working on."
+
+#: src/components/settings/agents/agent-detail.tsx
+#~ msgid "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
+#~ msgstr "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
 
 #: src/components/storage-unavailable-screen.tsx
 msgid "{appName} needs browser storage (IndexedDB) to work, but it's currently disabled."
@@ -900,7 +904,6 @@ msgstr "Checking your session."
 msgid "Checking…"
 msgstr "Checking…"
 
-#: src/components/onboarding/onboarding-search-step.tsx
 #: src/settings/models/add-provider-models.tsx
 msgid "Choose a connection"
 msgstr "Choose a connection"
@@ -1199,7 +1202,9 @@ msgstr "Connect Microsoft"
 msgid "Connect on this device"
 msgstr "Connect on this device"
 
+#: src/components/onboarding/onboarding-search-step.tsx
 #: src/settings/search/index.tsx
+#: src/settings/search/search-connection-detail.tsx
 msgid "Connect or enable this connection to use search"
 msgstr "Connect or enable this connection to use search"
 
@@ -1254,6 +1259,10 @@ msgstr "Connect to your server"
 #: src/settings/connections/ai-provider-detail.tsx
 #~ msgid "Connect with a paid Tinfoil subscription."
 #~ msgstr "Connect with a paid Tinfoil subscription."
+
+#: src/components/onboarding/onboarding-search-step.tsx
+msgid "Connect with an API key."
+msgstr "Connect with an API key."
 
 #: src/settings/search/index.tsx
 #~ msgid "Connect with your own API key"
@@ -1406,6 +1415,7 @@ msgid "Connection unavailable on this device."
 msgstr "Connection unavailable on this device."
 
 #: src/components/chat/chat-add-menu.tsx
+#: src/components/settings/agents/agent-detail.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
@@ -1556,9 +1566,7 @@ msgstr "Could not connect to the model. Check your connection and credentials, t
 msgid "Could not connect to this server. Check the URL and that the server is reachable."
 msgstr "Could not connect to this server. Check the URL and that the server is reachable."
 
-#: src/components/onboarding/use-onboarding-provider-state.ts
 #: src/lib/tinfoil-auth.ts
-#: src/lib/tinfoil-mobile-auth.ts
 msgid "Could not connect to Tinfoil. Try again, or use an API key."
 msgstr "Could not connect to Tinfoil. Try again, or use an API key."
 
@@ -2443,8 +2451,8 @@ msgid "Enable this connection to add models."
 msgstr "Enable this connection to add models."
 
 #: src/settings/models/add-provider-models.tsx
-msgid "Enable tools for models with unknown support"
-msgstr "Enable tools for models with unknown support"
+#~ msgid "Enable tools for models with unknown support"
+#~ msgstr "Enable tools for models with unknown support"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Enabled"
@@ -2534,7 +2542,7 @@ msgstr "Enter your verification code"
 msgid "Enterprise"
 msgstr "Enterprise"
 
-#: src/settings/search/index.tsx
+#: src/settings/search/search-connection-detail.tsx
 msgid "Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters. No separate Exa API key is needed."
 msgstr "Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters. No separate Exa API key is needed."
 
@@ -2547,8 +2555,8 @@ msgstr "Exa provides search and page content through Tinfoil’s encrypted conne
 #~ msgstr "Exa search through your Tinfoil subscription"
 
 #: src/components/onboarding/onboarding-search-step.tsx
-msgid "Existing connection"
-msgstr "Existing connection"
+#~ msgid "Existing connection"
+#~ msgstr "Existing connection"
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
@@ -2982,8 +2990,8 @@ msgid "Instructions"
 msgstr "Instructions"
 
 #: src/components/settings/agents/agent-detail.tsx
-msgid "Integrations"
-msgstr "Integrations"
+#~ msgid "Integrations"
+#~ msgstr "Integrations"
 
 #: src/lib/otp-error-messages.ts
 msgid "Invalid code. Please try again."
@@ -3188,22 +3196,27 @@ msgstr "Logging out…"
 msgid "Mainly clear"
 msgstr "Mainly clear"
 
+#: src/settings/connections/provider-connection-detail.tsx
+msgid "Manage account"
+msgstr "Manage account"
+
 #: src/settings/search/index.tsx
 msgid "Manage all connections"
 msgstr "Manage all connections"
 
 #: src/settings/models/model-detail.tsx
-#: src/settings/search/index.tsx
+#: src/settings/search/search-connection-detail.tsx
 msgid "Manage connection"
 msgstr "Manage connection"
 
+#: src/components/settings/agents/agent-detail.tsx
 #: src/settings/models/add-provider-models.tsx
 msgid "Manage connections"
 msgstr "Manage connections"
 
 #: src/components/settings/agents/agent-detail.tsx
-msgid "Manage integrations"
-msgstr "Manage integrations"
+#~ msgid "Manage integrations"
+#~ msgstr "Manage integrations"
 
 #: src/settings/connections/provider-connection-detail.tsx
 #~ msgid "Manage models"
@@ -3214,8 +3227,8 @@ msgid "Manage provider connection"
 msgstr "Manage provider connection"
 
 #: src/settings/connections/provider-connection-detail.tsx
-msgid "Manage subscription"
-msgstr "Manage subscription"
+#~ msgid "Manage subscription"
+#~ msgstr "Manage subscription"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Managed by your deployment — always available, no setup needed."
@@ -3864,6 +3877,7 @@ msgid "Organize chats with projects."
 msgstr "Organize chats with projects."
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/preferences.tsx
 msgid "Otari"
 msgstr "Otari"
 
@@ -3894,6 +3908,10 @@ msgstr "Otari server URL"
 #: src/components/onboarding/onboarding-search-step.tsx
 msgid "Otari web search isn’t available. Choose a search provider below, or skip for now."
 msgstr "Otari web search isn’t available. Choose a search provider below, or skip for now."
+
+#: src/settings/search/search-connection-detail.tsx
+msgid "Otari web search isn’t available. Configure a search provider in Otari to use it here."
+msgstr "Otari web search isn’t available. Configure a search provider in Otari to use it here."
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Other provider"
@@ -4466,13 +4484,13 @@ msgstr "Search across chats, models, skills, agents, and more"
 msgid "Search agents"
 msgstr "Search agents"
 
-#: src/settings/search/index.tsx
+#: src/settings/search/search-connection-detail.tsx
 msgid "Search and page content are provided by your connected Thunderbolt server."
 msgstr "Search and page content are provided by your connected Thunderbolt server."
 
 #: src/settings/search/index.tsx
-msgid "Search and page content use your Otari connection and your workspace’s web access settings. Manage your search provider in Otari."
-msgstr "Search and page content use your Otari connection and your workspace’s web access settings. Manage your search provider in Otari."
+#~ msgid "Search and page content use your Otari connection and your workspace’s web access settings. Manage your search provider in Otari."
+#~ msgstr "Search and page content use your Otari connection and your workspace’s web access settings. Manage your search provider in Otari."
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Search and work with your OneDrive files and documents."
@@ -4538,6 +4556,7 @@ msgstr "Search models…"
 msgid "Search projects"
 msgstr "Search projects"
 
+#: src/components/onboarding/onboarding-search-step.tsx
 #: src/components/search-provider-setup/search-provider-setup.tsx
 msgid "Search provider"
 msgstr "Search provider"
@@ -4564,8 +4583,8 @@ msgstr "Search tasks…"
 #~ msgstr "Search through your Otari workspace"
 
 #: src/settings/search/index.tsx
-msgid "Search uses this connection. Manage its credentials in Connections."
-msgstr "Search uses this connection. Manage its credentials in Connections."
+#~ msgid "Search uses this connection. Manage its credentials in Connections."
+#~ msgstr "Search uses this connection. Manage its credentials in Connections."
 
 #: src/settings/search/index.tsx
 #~ msgid "Search uses this connection’s API key. Manage its credentials in Connections."
@@ -4863,6 +4882,7 @@ msgid "Sign in to connect Otari."
 msgstr "Sign in to connect Otari."
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/components/onboarding/onboarding-search-step.tsx
 msgid "Sign in to connect your account."
 msgstr "Sign in to connect your account."
 
@@ -5341,6 +5361,11 @@ msgstr "The transcript was rejected by the server."
 msgid "Theme"
 msgstr "Theme"
 
+#. placeholder {0}: state.modelsWithoutTools.join(', ')
+#: src/settings/models/add-provider-models.tsx
+msgid "These models do not support tools and cannot use features like web search: {0}."
+msgstr "These models do not support tools and cannot use features like web search: {0}."
+
 #: src/components/chat/reasoning-group-title.tsx
 #: src/components/chat/reasoning-item.tsx
 #: src/components/chat/reasoning-part.tsx
@@ -5673,16 +5698,16 @@ msgstr "Tinfoil returned an empty web tool response."
 #~ msgstr "Tinfoil search is no longer connected or enabled."
 
 #: src/integrations/tinfoil-search/http-client.ts
-msgid "Tinfoil search refused an unencrypted request."
-msgstr "Tinfoil search refused an unencrypted request."
+#~ msgid "Tinfoil search refused an unencrypted request."
+#~ msgstr "Tinfoil search refused an unencrypted request."
 
 #: src/integrations/tinfoil-search/http-client.ts
-msgid "Tinfoil search refused an unexpected endpoint."
-msgstr "Tinfoil search refused an unexpected endpoint."
+#~ msgid "Tinfoil search refused an unexpected endpoint."
+#~ msgstr "Tinfoil search refused an unexpected endpoint."
 
 #: src/integrations/tinfoil-search/http-client.ts
-msgid "Tinfoil search refused an unsupported request method."
-msgstr "Tinfoil search refused an unsupported request method."
+#~ msgid "Tinfoil search refused an unsupported request method."
+#~ msgstr "Tinfoil search refused an unsupported request method."
 
 #: src/integrations/tinfoil-search/attested-fetch.ts
 #~ msgid "Tinfoil search returned an unencrypted response."
@@ -5999,6 +6024,10 @@ msgstr "Use the connection prompt on screen to continue."
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Use the official Otari server"
 msgstr "Use the official Otari server"
+
+#: src/components/onboarding/onboarding-search-step.tsx
+msgid "Use this connection."
+msgstr "Use this connection."
 
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Use this model"

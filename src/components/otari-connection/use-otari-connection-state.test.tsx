@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { updateSettings } from '@/dal/settings'
 import { StrictMode } from 'react'
 import { msg } from '@lingui/core/macro'
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
@@ -35,6 +36,7 @@ import { useOtariConnectionState } from './use-otari-connection-state'
 describe('Otari connection', () => {
   beforeEach(async () => {
     await resetTestDatabase()
+    await updateSettings(getDb(), { experimental_feature_otari: true })
     rejectNestedTransactions(getDb())
     useLocalSettingsStore.setState({ cloudUrl: '', localMode: true, serverHasAuthenticated: false, syncEnabled: false })
     spyOn(http, 'get').mockImplementation((url) =>

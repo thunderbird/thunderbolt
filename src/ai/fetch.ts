@@ -662,7 +662,6 @@ export const prepareAiRequestConfig = async ({
     appToolset[name] = miniAppTool
     registeredMiniAppTools.add(name)
   }
-  const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
@@ -711,7 +710,7 @@ export const prepareAiRequestConfig = async ({
       currency: settings.currency,
     },
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
-    hasWebTools,
+    availableToolNames: Object.keys(merged.toolset),
     mcpServersSummary: merged.summary,
     skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
     supportsTools: loadsSkillsByTool,

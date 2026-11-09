@@ -15,7 +15,6 @@ import {
   SettingsSelectableRow,
   settingsListBodyRowsClass,
 } from '@/components/settings/settings-list'
-import { Button } from '@/components/ui/button'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { NewConnectionPicker } from '@/settings/connections/new-connection-picker'
 import { ProviderConnectionForm } from '@/settings/connections/provider-connection-form'
@@ -28,6 +27,8 @@ import { canSupplySearch } from '@/integrations/standalone-search/eligibility'
 import { isSearchProvider } from '@/integrations/standalone-search/providers'
 import { ModelProviderIconTile } from '@/settings/models/model-presentation'
 import { SearchProviderIconTile } from './search-provider-icon-tile'
+import { SearchConnectionDetail } from './search-connection-detail'
+import { ProviderConnectionIcon } from '@/settings/connections/provider-connection-icon'
 import { useSearchSettingsState } from './use-search-settings-state'
 
 const SearchSettingsPage = () => {
@@ -41,8 +42,10 @@ const SearchSettingsPage = () => {
   )
   const showCloud = page.cloudVisible && 'thunderbolt'.includes(query)
   const authorization = useProviderAuthorization({ resumeReturn: false, onConnected: (id) => page.setPanel(id) })
-  const adding = providerDefinitions.find((provider) => page.panel === `add:${provider.id}`)
-  const active = page.connections.find(({ id }) => id === page.panel)
+  const adding = providerDefinitions.find(
+    (provider) => page.panel === `add:${provider.id}` && (provider.id !== 'otari' || page.otariEnabled),
+  )
+  const active = page.configuredConnections.find(({ id }) => id === page.panel)
   const close = () => {
     authorization.cancel()
     page.setPanel(null)
@@ -132,7 +135,11 @@ const SearchSettingsPage = () => {
       <DetailPanelSurface open={page.panel !== null} onClose={close}>
         {page.panel === 'new' && (
           <DetailPanel title={t`New Search Connection`} onClose={close}>
-            <NewConnectionPicker capability="search" onProvider={(id) => selectPanel(`add:${id}`)} />
+            <NewConnectionPicker
+              otariEnabled={page.otariEnabled}
+              capability="search"
+              onProvider={(id) => selectPanel(`add:${id}`)}
+            />
             <Link
               to="/settings/connections"
               className="self-start text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
@@ -142,46 +149,26 @@ const SearchSettingsPage = () => {
           </DetailPanel>
         )}
         {adding && (
-          <DetailPanel title={adding.name} onClose={close}>
+          <DetailPanel title={adding.name} icon={<ProviderConnectionIcon provider={adding.id} />} onClose={close}>
             <ProviderConnectionForm
               key={adding.id}
               provider={adding.id}
               authorization={authorization}
-              existingOAuth={page.connections.find(
+              existingOAuth={page.configuredConnections.find(
                 (connection) => connection.provider === adding.id && connection.authMethod === 'oauth',
               )}
               onSaved={(id) => page.setPanel(id)}
               onCancel={close}
+              onBack={() => selectPanel('new')}
             />
           </DetailPanel>
         )}
         {(active || page.panel === 'cloud') && (
-          <DetailPanel title={active?.name ?? 'Thunderbolt'} onClose={close}>
-            <div className="space-y-4 text-sm text-muted-foreground">
-              <p>
-                {active?.provider === 'tinfoil' ? (
-                  <Trans>
-                    Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters. No
-                    separate Exa API key is needed.
-                  </Trans>
-                ) : active?.provider === 'otari' ? (
-                  <Trans>
-                    Search and page content use your Otari connection and your workspace’s web access settings. Manage
-                    your search provider in Otari.
-                  </Trans>
-                ) : active ? (
-                  <Trans>Search uses this connection. Manage its credentials in Connections.</Trans>
-                ) : (
-                  <Trans>Search and page content are provided by your connected Thunderbolt server.</Trans>
-                )}
-              </p>
-              <Button variant="outline" asChild>
-                <Link to="/settings/connections" state={active ? { providerConnectionId: active.id } : undefined}>
-                  <Trans>Manage connection</Trans>
-                </Link>
-              </Button>
-            </div>
-          </DetailPanel>
+          <SearchConnectionDetail
+            connection={active}
+            searchAvailable={Boolean(active && page.connections.some(({ id }) => id === active.id))}
+            onClose={close}
+          />
         )}
       </DetailPanelSurface>
     </div>

@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { t } from '@lingui/core/macro'
 import { createClient, HttpError, type HttpClient } from '@/lib/http'
 import { nativeFetch } from '@/lib/native-fetch'
 
@@ -20,14 +19,14 @@ export const createSearchNetworkFetch = (client: HttpClient): typeof fetch =>
       const request = new Request(input, init)
       const url = new URL(request.url)
       if (url.origin !== 'https://websearch.tinfoil.sh' || url.pathname !== '/mcp' || url.username || url.password) {
-        throw new Error(t`Tinfoil search refused an unexpected endpoint.`)
+        throw new Error('Tinfoil search refused an unexpected endpoint.')
       }
       const method = request.method === 'POST' ? 'post' : request.method === 'DELETE' ? 'delete' : null
       if (!method) {
-        throw new Error(t`Tinfoil search refused an unsupported request method.`)
+        throw new Error('Tinfoil search refused an unsupported request method.')
       }
       if (method === 'post' && !request.headers.has('ehbp-encapsulated-key')) {
-        throw new Error(t`Tinfoil search refused an unencrypted request.`)
+        throw new Error('Tinfoil search refused an unencrypted request.')
       }
       try {
         const response = await client[method](request.url, {

@@ -66,11 +66,42 @@ const settleDeferredRedirect = async () => {
 describe('OAuthCallback routing', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.removeItem('thunderbolt-provider-authorization-draft')
   })
 
   afterEach(() => {
+    sessionStorage.removeItem('thunderbolt-provider-authorization-draft')
     Object.defineProperty(window, 'location', { value: originalLocation, writable: true, configurable: true })
   })
+
+  it('returns search authorization to onboarding without opening a connection aside', async () => {
+    sessionStorage.setItem(
+      'thunderbolt-provider-authorization-draft',
+      JSON.stringify({ purpose: 'onboarding-search', provider: 'exa' }),
+    )
+    setMcpOAuthState({ serverId: 'oauth:exa', stateNonce: 'matching', returnTo: '/chats/new', startedAt: Date.now() })
+    setCallbackUrl('?code=test-code&state=matching')
+    renderCallback()
+    await settleDeferredRedirect()
+    expect(screen.getByTestId('chat-page')).not.toHaveAttribute('data-return')
+    expect(screen.getByTestId('chat-page')).toHaveAttribute('data-path', '/chats/new')
+    expect(screen.queryByTestId('connections-page')).toBeNull()
+  })
+
+  it.each(['custom-mcp-server', 'oauth:tavily'])(
+    'ignores an old onboarding draft when returning from a different MCP connection (%s)',
+    async (serverId) => {
+      sessionStorage.setItem(
+        'thunderbolt-provider-authorization-draft',
+        JSON.stringify({ purpose: 'onboarding-search', provider: 'exa' }),
+      )
+      setMcpOAuthState({ serverId, stateNonce: 'matching', returnTo: '/chats/new', startedAt: Date.now() })
+      setCallbackUrl('?code=test-code&state=matching')
+      renderCallback()
+      await settleDeferredRedirect()
+      expect(screen.getByTestId('chat-page')).toHaveAttribute('data-return', 'matching')
+    },
+  )
 
   it.each(['mcp', 'integration'] as const)('restores %s callbacks over their original chat route', async (flow) => {
     const returnTo = '/chats/new?project=work#composer'

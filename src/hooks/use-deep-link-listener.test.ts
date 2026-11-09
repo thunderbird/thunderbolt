@@ -17,6 +17,7 @@ import {
   startTinfoilMobileConnection,
 } from '@/lib/tinfoil-mobile-auth'
 import { mobileOAuthRedirectUri } from '@/lib/oauth-redirect'
+import { providerAuthorizationDraftKey, providerAuthorizationDraftStorage } from '@/providers/authorization-draft'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import {
   determineNavigationTarget,
@@ -38,6 +39,7 @@ afterAll(async () => {
 afterEach(() => {
   clearMcpOAuthState()
   clearOAuthState()
+  providerAuthorizationDraftStorage().removeItem(providerAuthorizationDraftKey)
   cancelTinfoilMobileConnection()
   localStorage.removeItem('thunderbolt.otari.authorization')
   clearOtariBrowserReturn('o'.repeat(43))
@@ -938,4 +940,36 @@ it('restores native MCP OAuth to its originating route rather than the integrati
   const oauth = { code: 'code', state: 'native-nonce', error: null, iss: null }
   expect(determineNavigationTarget('integrations', oauth)).toEqual({ path: '/chats/new?project=work#composer', oauth })
   clearMcpOAuthState()
+})
+
+it.each([true, false])('routes native search OAuth back to its owning UI (onboarding: %s)', async (onboarding) => {
+  setMcpOAuthState({
+    serverId: 'oauth:exa',
+    stateNonce: 'native-search',
+    returnTo: '/chats/new',
+    startedAt: Date.now(),
+  })
+  if (onboarding) {
+    providerAuthorizationDraftStorage().setItem(
+      providerAuthorizationDraftKey,
+      JSON.stringify({ purpose: 'onboarding-search', provider: 'exa' }),
+    )
+  }
+  const { result } = renderHook(
+    () => {
+      useDeepLinkListener(undefined, {
+        isTauri: () => true,
+        getCurrent: async () => ['https://app.thunderbolt.io/oauth/callback?code=test&state=native-search'],
+        onOpenUrl: async () => () => {},
+      })
+      return useLocation()
+    },
+    { wrapper: ({ children }) => createElement(MemoryRouter, null, children) },
+  )
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  expect(result.current.pathname).toBe('/chats/new')
+  expect(result.current.state.oauth).toMatchObject({ code: 'test', state: 'native-search' })
+  expect(result.current.state.connectionOAuthReturn).toBe(onboarding ? undefined : 'native-search')
 })

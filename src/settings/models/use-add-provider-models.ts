@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { useDeferredValue, useEffect, useReducer, useRef } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -23,7 +24,6 @@ type PickerState = {
   search: string
   manualId: string
   manual: boolean
-  enableUnknownTools: boolean
 }
 const initialState: PickerState = {
   connectionId: '',
@@ -31,7 +31,6 @@ const initialState: PickerState = {
   search: '',
   manualId: '',
   manual: false,
-  enableUnknownTools: false,
 }
 type PickerAction =
   | { type: 'connection'; id: string }
@@ -39,7 +38,6 @@ type PickerAction =
   | { type: 'search'; value: string }
   | { type: 'manual'; value: boolean }
   | { type: 'manualId'; value: string }
-  | { type: 'enableUnknownTools'; value: boolean }
   | { type: 'reset' }
 
 /** Keeps catalog selections scoped to the connection that supplied them. */
@@ -60,8 +58,6 @@ export const providerModelPickerReducer = (state: PickerState, action: PickerAct
       return { ...state, manual: action.value }
     case 'manualId':
       return { ...state, manualId: action.value }
-    case 'enableUnknownTools':
-      return { ...state, enableUnknownTools: action.value }
     case 'reset':
       return initialState
   }
@@ -71,6 +67,7 @@ export const providerModelPickerReducer = (state: PickerState, action: PickerAct
 export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { t } = useLingui()
   const db = useDatabase()
+  const { isProviderVisible } = useProviderVisibility()
   const getProxyFetch = useProxyFetchGetter()
   const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(providerModelPickerReducer, initialState)
@@ -84,8 +81,10 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     queryKey: ['models', 'provider-picker'],
     query: toCompilableQuery(getAllModels(db)),
   })
-  const connections = allConnections.filter((connection) =>
-    getProviderDefinition(connection.provider).capabilities.includes('models'),
+  const connections = allConnections.filter(
+    (connection) =>
+      isProviderVisible(connection.provider) &&
+      getProviderDefinition(connection.provider).capabilities.includes('models'),
   )
   const connection = connections.find((candidate) => candidate.id === state.connectionId)
   const canLoad = Boolean(isOpen && connection?.connected && connection.enabled)
@@ -159,7 +158,7 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     visibleModels,
     existingIds,
     selectedCount: selectedModels.length,
-    hasUnknownToolSupport: selectedModels.some((model) => model.supports_tools === undefined),
+    modelsWithoutTools: selectedModels.filter((model) => model.supports_tools === false).map(getModelDisplayName),
     isLoadingCatalog: canLoad && catalog.isFetching,
     catalogError: catalog.isError ? t`Could not load this connection's models. Try again.` : null,
     submitError: mutation.isError ? t`Could not add the models. Try again.` : null,
@@ -173,7 +172,6 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     setSearch: (value: string) => dispatch({ type: 'search', value }),
     setManual: (value: boolean) => dispatch({ type: 'manual', value }),
     setManualId: (value: string) => dispatch({ type: 'manualId', value }),
-    setEnableUnknownTools: (value: boolean) => dispatch({ type: 'enableUnknownTools', value }),
     refresh: () => void catalog.refetch(),
     submit: () => {
       if (canSubmit && connection && !pending.current) {
@@ -181,10 +179,7 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
         pending.current = controller
         mutation.mutate({
           id: connection.id,
-          models: selectedModels.map((model) => ({
-            ...model,
-            supports_tools: model.supports_tools ?? state.enableUnknownTools,
-          })),
+          models: selectedModels,
           updatedAt: connection.updatedAt,
           controller,
         })

@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
-import { StrictMode } from 'react'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as mcpOAuth from '@/lib/mcp-auth/web-oauth-flow'
+import { setMcpOAuthState, clearMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import * as chatGPT from './chatgpt-auth'
 import * as oauthSession from './oauth-session'
 import { getMcpServerCredentials } from '@/dal/mcp-secrets'
@@ -38,6 +38,7 @@ import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
 import { getClock } from '@/testing-library'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { useProviderAuthorization } from './use-provider-authorization'
+import { useConnectionsOAuthCallback } from '@/settings/connections/use-connections-oauth-callback'
 
 /** Exercise real credential persistence while replacing external authorization transports. */
 const setup = () => {
@@ -65,6 +66,7 @@ describe('provider authorization without a model', () => {
   })
   afterEach(() => {
     cleanup()
+    clearMcpOAuthState()
     mock.restore()
     useSearchProviderStore.getState().clearSearchProvider()
   })
@@ -140,6 +142,53 @@ describe('provider authorization without a model', () => {
       expect(result.current.isPending).toBe(false)
     },
   )
+
+  it('completes a mount-triggered MCP callback once under StrictMode', async () => {
+    setMcpOAuthState({ serverId: 'oauth:exa', stateNonce: 'nonce' })
+    sessionStorage.setItem(
+      'thunderbolt-provider-authorization-draft',
+      JSON.stringify({
+        provider: 'exa',
+        name: 'Exa',
+        attempt: await getProviderConnectionAttempt(getDb(), 'exa'),
+      }),
+    )
+    const exchange = spyOn(mcpOAuth, 'completeMcpOAuthFlow').mockImplementation(async (args) => {
+      clearMcpOAuthState()
+      await args.saveCredentials!({
+        type: 'oauth',
+        access_token: 'returned-access',
+        clientId: 'client',
+        issuer: 'https://auth.example',
+        tokenEndpoint: 'https://auth.example/token',
+      })
+    })
+    const Provider = createTestProvider()
+    const connected = Promise.withResolvers<void>()
+    const onConnected = mock(() => connected.resolve())
+    const locationState = { oauth: { code: 'code', state: 'nonce' } }
+    const { result } = renderHook(
+      () => {
+        const authorization = useProviderAuthorization({ onConnected, resumeReturn: false })
+        useConnectionsOAuthCallback({
+          locationState,
+          processMcpCallback: authorization.processMcpCallback,
+          processIntegrationCallback: () => {},
+          getIntegrationProvider: () => null,
+          dispatch: () => {},
+        })
+        return authorization
+      },
+      {
+        wrapper: Provider,
+        reactStrictMode: true,
+      },
+    )
+    await act(async () => connected.promise)
+    expect(result.current.isPending).toBe(false)
+    expect(onConnected).toHaveBeenCalledTimes(1)
+    expect(exchange).toHaveBeenCalledTimes(1)
+  })
 
   it.each(['openrouter', 'tinfoil'] as const)(
     'redirects browser %s in the same tab without starting a popup flow',
@@ -482,11 +531,8 @@ describe('provider authorization without a model', () => {
     const connected = Promise.withResolvers<string>()
     const onConnected = mock((id: string) => connected.resolve(id))
     renderHook(() => useProviderAuthorization({ onConnected }), {
-      wrapper: ({ children }) => (
-        <StrictMode>
-          <Provider>{children}</Provider>
-        </StrictMode>
-      ),
+      wrapper: Provider,
+      reactStrictMode: true,
     })
     await act(async () => {
       grant.resolve('returned-token')

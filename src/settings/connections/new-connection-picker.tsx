@@ -19,6 +19,7 @@ import { providerDefinitions } from '@/providers/registry'
 import type { Integration } from './types'
 import type { ProviderCapability, ProviderType } from '@/providers/types'
 import { ProviderConnectionIcon } from './provider-connection-icon'
+import { cn } from '@/lib/utils'
 
 /** One entry point for AI providers, search providers, and existing MCP setup. */
 export const NewConnectionPicker = ({
@@ -27,11 +28,13 @@ export const NewConnectionPicker = ({
   integrations = [],
   onIntegration,
   capability,
+  otariEnabled = false,
 }: {
   onProvider: (provider: ProviderType) => void
   onMcp?: () => void
   integrations?: Integration[]
   onIntegration?: (id: string) => void
+  otariEnabled?: boolean
   capability?: ProviderCapability
 }) => {
   const { t, i18n } = useLingui()
@@ -69,6 +72,7 @@ export const NewConnectionPicker = ({
     .filter(
       (provider) =>
         provider.id !== 'custom' &&
+        (provider.id !== 'otari' || otariEnabled) &&
         (!capability || provider.capabilities.includes(capability)) &&
         matchesType(provider.capabilities),
     )
@@ -153,12 +157,15 @@ export const NewConnectionPicker = ({
           </DropdownMenu>
         )}
       </div>
-      {[...genericOptions, ...options].map((option) => (
+      {[...genericOptions, ...options].map((option, index) => (
         <Button
           key={option.id}
           type="button"
           variant="outline"
-          className="justify-start whitespace-normal text-left"
+          className={cn(
+            'justify-start whitespace-normal text-left',
+            index > 0 && index === genericOptions.length && 'mt-4',
+          )}
           onClick={option.onSelect}
         >
           <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">

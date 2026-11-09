@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import {
+  providerAuthorizationDraftKey as draftKey,
+  providerAuthorizationDraftStorage as draftStorage,
+} from './authorization-draft'
 import { useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -60,6 +64,7 @@ import { getProviderDefinition } from './registry'
 import { getProviderConnectionRevision } from './revision'
 
 type AuthorizationInput = {
+  purpose?: 'onboarding-search'
   provider: OAuthProviderType
   name: string
   url?: string
@@ -72,9 +77,6 @@ type Manual = {
   attempt: ProviderConnectionAttempt<OAuthProviderType>
 }
 type State = { isPending: boolean; error: string | null; manual: Manual | null; code: string }
-const draftKey = 'thunderbolt-provider-authorization-draft'
-const draftStorage = () => (isTauri() && isMobile() ? localStorage : sessionStorage)
-
 /** Draft cleanup must not prevent cancellation or hide an already saved connection. */
 const clearAuthorizationDraft = () => {
   try {
@@ -172,6 +174,9 @@ export const useProviderAuthorization = ({
     await queryClient.invalidateQueries({ queryKey: ['models'] })
     await assertCurrent()
     update({ isPending: false, manual: null, code: '', error: null })
+    if (input.purpose === 'onboarding-search') {
+      useSearchProviderStore.getState().selectSearchConnection(id)
+    }
     onConnected(id)
   }
 

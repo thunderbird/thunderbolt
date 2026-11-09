@@ -5,7 +5,7 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { createOpenRouterAuth, createProviderAuthorization, type OpenRouterAuthDependencies } from './openrouter-auth'
-import { createTinfoilAuth } from './tinfoil-auth'
+import { createTinfoilAuth, TinfoilReauthorizationError } from './tinfoil-auth'
 
 /** Flushes the injected asynchronous platform boundaries without advancing timers. */
 const settle = async () => {
@@ -105,7 +105,7 @@ describe('Tinfoil OAuth', () => {
     const rejected = createTinfoilAuth('public-client', {
       fetch: async () => Response.json({ error: 'invalid_grant', error_description: 'secret' }, { status: 400 }),
     })
-    await expect(rejected.refresh('refresh')).rejects.toThrow('Reconnect Tinfoil')
+    await expect(rejected.refresh('refresh')).rejects.toBeInstanceOf(TinfoilReauthorizationError)
   })
 })
 

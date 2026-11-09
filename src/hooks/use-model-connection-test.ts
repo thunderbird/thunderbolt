@@ -6,6 +6,7 @@ import { tinfoilSession } from '@/lib/tinfoil-session'
 import { bindModelProvider } from '@/providers/model-connection'
 import { useLingui } from '@lingui/react/macro'
 import { createModel } from '@/ai/fetch'
+import { streamProbe } from '@/ai/stream-probe'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
@@ -97,7 +98,7 @@ const sameConfig = (left: NormalizedConfig, right: NormalizedConfig): boolean =>
   left.oauthProvider === right.oauthProvider
 
 /**
- * Probe that issues a real `generateText` round-trip against the configured
+ * Probe that issues a real AI SDK round-trip against the configured
  * provider and reports whether the model accepts tools. Split out so tests can
  * swap in a synchronous stub without touching global module mocks.
  */
@@ -187,6 +188,7 @@ export const createDefaultProbe =
       !config.providerConnectionId && config.oauthProvider === 'tinfoil'
         ? { ...config, apiKey: await tinfoilSession.getAccessToken() }
         : config
+    const { api } = await bindModelProvider(connectionTestModel(resolved))
     const aiModel =
       config.provider === 'tinfoil'
         ? await createTinfoilProbeModel(resolved, acquireTinfoilClient)
@@ -198,7 +200,8 @@ export const createDefaultProbe =
       abortSignal: signal,
     }
     // Through the AI SDK, so the probe sends what real chats send (tool_choice included).
-    const sendWithTools = () => runGenerateText({ ...request, tools: probeTools })
+    const send = api === 'openai-responses' ? streamProbe : runGenerateText
+    const sendWithTools = () => send({ ...request, tools: probeTools })
     try {
       await sendWithTools()
       return 'supported'
@@ -206,7 +209,7 @@ export const createDefaultProbe =
       if (!isToolRejectionCandidate(error)) {
         throw error
       }
-      await runGenerateText(request)
+      await send(request)
       if (!isServerError(error)) {
         return 'unsupported'
       }
@@ -234,9 +237,9 @@ const defaultProbe = createDefaultProbe()
  * spinner immediately (no useEffect-based invalidation).
  *
  * The probe is bounded by a single 10s `AbortSignal.timeout` piped through
- * both the provider construction (via `Promise.race`) and the `generateText`
+ * both the provider construction (via `Promise.race`) and the inference
  * request (via `abortSignal`), so a hanging Tinfoil attestation or a stuck
- * `generateText` request both surface as a timeout error.
+ * inference request both surface as a timeout error.
  *
  * `test` resolves with the tool-support verdict so the caller can apply it in
  * its event handler, or `null` when the run was superseded or the config was

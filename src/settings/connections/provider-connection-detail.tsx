@@ -4,7 +4,7 @@
 
 import { useRef, useState } from 'react'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { SquarePen, Trash2 } from 'lucide-react'
+import { ExternalLink, SquarePen, Trash2 } from 'lucide-react'
 import { DetailPanel } from '@/components/detail-panel'
 import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
@@ -21,7 +21,7 @@ import { canConnectChatGPT } from '@/providers/chatgpt-auth'
 import { ProviderConnectionSummary } from './provider-connection-summary'
 import type { useAiProviderConnections } from './use-ai-provider-connections'
 import { openExternalUrl } from '@/lib/open-external-url'
-import { tinfoilManageSubscriptionUrl } from '@/lib/tinfoil-auth'
+import { getProviderAccountUrl } from '@/providers/account-url'
 
 /** A durable connection stays visible when this device has no credentials. */
 export const ProviderConnectionDetail = ({
@@ -61,6 +61,7 @@ export const ProviderConnectionDetail = ({
   // A reconnect publishes credentials before its discovery and refresh finish.
   // Keep its form mounted until onSaved, even when the live row becomes connected.
   const showForm = !hasSession || editor.mode !== 'details'
+  const accountUrl = getProviderAccountUrl(connection)
   const setMode = (mode: typeof editor.mode) => setEditor({ hasSession, mode })
   return (
     <DetailPanel
@@ -88,6 +89,12 @@ export const ProviderConnectionDetail = ({
               <Trans>Edit</Trans>
             </DropdownMenuItem>
           )}
+          {accountUrl && (
+            <DropdownMenuItem onClick={() => openExternalUrl(accountUrl)}>
+              <ExternalLink />
+              <Trans>Manage account</Trans>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             disabled={controls.pending || authorization.isPending}
             onClick={() => setConfirmRemoval(true)}
@@ -107,8 +114,8 @@ export const ProviderConnectionDetail = ({
             </p>
           )}
           <ProviderConnectionForm
-            onBack={editor.mode !== 'edit' ? onBack : undefined}
             onAddApiKey={onAddApiKey}
+            onBack={editor.mode !== 'edit' ? onBack : undefined}
             mode={editor.mode === 'edit' ? 'edit' : 'connect'}
             provider={connection.provider}
             connection={connection}
@@ -162,15 +169,6 @@ export const ProviderConnectionDetail = ({
           >
             <Trans>Disconnect this device</Trans>
           </Button>
-          {connection.provider === 'tinfoil' && connection.authMethod === 'oauth' && (
-            <Button
-              variant="link"
-              className="px-0 text-xs font-normal text-muted-foreground"
-              onClick={() => openExternalUrl(tinfoilManageSubscriptionUrl)}
-            >
-              <Trans>Manage subscription</Trans>
-            </Button>
-          )}
         </ProviderConnectionSummary>
       )}
       {!showForm && onBack && (

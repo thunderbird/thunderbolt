@@ -31,6 +31,7 @@ export const ProviderConnectionForm = ({
   onAddApiKey,
   mode = 'connect',
   initialAuthMethod,
+  hideName = false,
 }: {
   provider: ProviderType
   connection?: ProviderConnection
@@ -42,6 +43,7 @@ export const ProviderConnectionForm = ({
   onAddApiKey?: () => void
   mode?: 'connect' | 'edit'
   initialAuthMethod?: ProviderAuthMethod
+  hideName?: boolean
 }) => {
   const { t } = useLingui()
   const state = useProviderConnectionForm({
@@ -85,7 +87,7 @@ export const ProviderConnectionForm = ({
           <ProviderConnectionIcon provider={provider} />
         </span>
       )}
-      {!existingSignIn && !oauthConnect && (
+      {!hideName && !existingSignIn && !oauthConnect && (
         <div className="flex flex-col gap-2">
           <Label htmlFor="connection-name">
             <Trans>Name</Trans>

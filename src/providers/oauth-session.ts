@@ -39,7 +39,7 @@ const oauthErrorSchema = z.object({ error: z.string() })
 
 /** Serializes rotating refresh tokens across tabs and desktop windows. */
 export const withProviderOAuthLock = <T>(id: string, action: () => Promise<T>): Promise<T> =>
-  navigator.locks.request(`provider-oauth:${id}`, action)
+  navigator.locks.request(`provider-oauth:${id}`, () => action())
 
 /** Refreshes only the still-enabled, locally approved session; late results never restore disconnected access. */
 export const resolveOAuthAccessToken = (db: AnyDrizzleDatabase, id: string): Promise<string> =>

@@ -4,6 +4,7 @@
 
 import { getMcpOAuthState, isMcpOAuthCallback, type OAuthCallbackParams } from '@/lib/mcp-auth/mcp-oauth-state'
 import { oauthReturnPath } from '@/lib/oauth-return-route'
+import { isOnboardingSearchAuthorization } from '@/providers/authorization-draft'
 import { getOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { isSafeRelativePath } from '@/lib/safe-relative-path'
 import { isTauri } from '@/lib/platform'
@@ -196,14 +197,14 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
             // Get the return context from oauth-state (where mobile flow stores it)
             const oauthState = getOAuthState()
             const target = determineNavigationTarget(oauthState.returnContext, oauthData)
+            const returnsToOnboarding = isMcpOAuthCallback(oauthData)
+              ? isOnboardingSearchAuthorization()
+              : oauthState.returnContext === 'onboarding'
 
             navigate(target.path, {
               state: {
                 oauth: target.oauth,
-                connectionOAuthReturn:
-                  isMcpOAuthCallback(oauthData) || oauthState.returnContext !== 'onboarding'
-                    ? oauthData.state || 'oauth-return'
-                    : undefined,
+                connectionOAuthReturn: returnsToOnboarding ? undefined : oauthData.state || 'oauth-return',
               },
               replace: true,
             })

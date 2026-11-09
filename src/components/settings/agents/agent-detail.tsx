@@ -205,7 +205,7 @@ const BuiltInBody = () => {
         <p className="text-base leading-snug text-foreground">
           <Trans>
             {appName} is the agent built into the app — always here, no setup needed. It draws on everything you have
-            enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on.
+            enabled in your library (skills, connections, and MCP servers) to help with whatever you are working on.
           </Trans>
         </p>
       </div>
@@ -236,12 +236,12 @@ const BuiltInBody = () => {
             </Link>
           </div>
           <div className="flex flex-col gap-1">
-            <FieldLabel>{t`Integrations`}</FieldLabel>
+            <FieldLabel>{t`Connections`}</FieldLabel>
             <Link
               to="/settings/connections"
               className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
             >
-              <Trans>Manage integrations</Trans>
+              <Trans>Manage connections</Trans>
             </Link>
           </div>
         </div>

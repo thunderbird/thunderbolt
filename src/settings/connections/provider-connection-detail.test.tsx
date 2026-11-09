@@ -16,6 +16,7 @@ import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-rea
 import { getClock } from '@/testing-library'
 import { ProviderConnectionDetail } from './provider-connection-detail'
 import type { useAiProviderConnections } from './use-ai-provider-connections'
+import * as externalUrl from '@/lib/open-external-url'
 
 const controls: ReturnType<typeof useAiProviderConnections> = {
   providers: [],
@@ -56,6 +57,28 @@ const selectAction = async (name: string) => {
 }
 
 describe('provider connection detail', () => {
+  it('keeps account management in the menu and the API-key link below disconnect', async () => {
+    const open = spyOn(externalUrl, 'openExternalUrl').mockResolvedValue()
+    const addApiKey = mock(() => {})
+    renderWithReactivity(
+      <ProviderConnectionDetail
+        connection={{ ...connection, provider: 'tinfoil', name: 'Tinfoil' }}
+        controls={controls}
+        authorization={authorization}
+        onAddApiKey={addApiKey}
+        onClose={() => {}}
+      />,
+      { route: '/settings/connections' },
+    )
+    expect(screen.queryByRole('button', { name: 'Manage account' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Add another instance via API key' })).toBeVisible()
+    expect(screen.queryByText('Manage subscription')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Disconnect this device' })).toBeVisible()
+    await selectAction('Manage account')
+    expect(open).toHaveBeenCalledWith('https://dash.tinfoil.sh/')
+    fireEvent.click(screen.getByRole('button', { name: 'Add another instance via API key' }))
+    expect(addApiKey).toHaveBeenCalledTimes(1)
+  })
   beforeAll(setupTestDatabase)
   afterAll(teardownTestDatabase)
   beforeEach(async () => {
@@ -179,7 +202,7 @@ describe('provider connection detail', () => {
     expect(screen.getByRole('button', { name: 'Allow plan access' })).toBeVisible()
   })
 
-  it('offers a separate API-key connection when this browser cannot reconnect a saved ChatGPT account', () => {
+  it('offers a separate API-key connection when this browser cannot reconnect a saved ChatGPT account', async () => {
     const addApiKey = mock(() => {})
     renderWithReactivity(
       <ProviderConnectionDetail

@@ -17,7 +17,7 @@ export type AvailableModel = {
   name?: string
   created?: number
   owned_by?: string
-  /** Known catalog support; otherwise require an explicit choice or connection test. */
+  /** Known catalog support; unknown models default to tools enabled. */
   supports_tools?: boolean
   /** Whether the model accepts image input. Undefined when the provider doesn't say. */
   supports_images?: boolean

@@ -188,11 +188,13 @@ describe('analytics consent', () => {
     opt_out_capturing: optOut,
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
     resetPosthogClient()
     mockPosthogInit.mockReset()
     optIn.mockReset()
     optOut.mockReset()
+    await updateSettings(getDb(), { data_collection: true })
+    useLocalSettingsStore.setState({ syncEnabled: false })
   })
 
   afterEach(async () => {

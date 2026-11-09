@@ -44,8 +44,10 @@ it('pins the relay and never forwards a different server’s session after serve
   setAuthToken('other-session')
   await client.post('auth/microsoft/refresh', { json: { refresh_token: 'private-refresh' } })
   expect(requests[0].headers.get('Authorization')).toBe('Bearer original-session')
+  expect(requests[0].credentials).toBe('include')
   expect(requests[1].url).toBe('https://original.example/v1/auth/microsoft/refresh')
   expect(requests[1].headers.get('Authorization')).toBeNull()
+  expect(requests[1].credentials).toBe('omit')
 })
 
 it('distinguishes blocked networks from a relay requiring an app session', async () => {

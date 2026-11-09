@@ -6,6 +6,7 @@ import { getMcpOAuthState, isMcpOAuthCallback } from '@/lib/mcp-auth/mcp-oauth-s
 import { getOAuthState } from '@/lib/oauth-state'
 import { isSafeRelativePath } from '@/lib/safe-relative-path'
 import { oauthReturnPath } from '@/lib/oauth-return-route'
+import { isOnboardingSearchAuthorization } from '@/providers/authorization-draft'
 import Loading from '@/loading'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
@@ -70,7 +71,9 @@ export default function OAuthCallback() {
         if (isMcpOAuthCallback({ code, state, error: oauthError })) {
           navigate(oauthReturnPath(getMcpOAuthState().returnTo), {
             replace: true,
-            state: { oauth: oauthPayload, connectionOAuthReturn: state || 'oauth-return' },
+            state: isOnboardingSearchAuthorization()
+              ? { oauth: oauthPayload }
+              : { oauth: oauthPayload, connectionOAuthReturn: state || 'oauth-return' },
           })
           return
         }

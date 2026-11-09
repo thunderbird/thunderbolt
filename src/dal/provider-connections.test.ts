@@ -25,11 +25,41 @@ import {
 import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import { addProviderModels } from '@/providers/models'
 import { getModel, getAvailableModels } from './models'
+import { updateSettings } from './settings'
 import { isModelReady } from '@/settings/models/model-policy'
 import { migrateProviderConnections } from '@/lib/data-migrations/provider-connections'
 
 beforeEach(resetTestDatabase)
 afterAll(teardownTestDatabase)
+
+it('saves Tinfoil OAuth credentials when Web Locks supplies its callback argument', async () => {
+  const original = Object.getOwnPropertyDescriptor(navigator, 'locks')
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: <T>(name: string, callback: (lock: Lock) => Promise<T>) => callback({ name, mode: 'exclusive' }),
+    },
+  })
+  try {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'tinfoil',
+      name: 'Tinfoil',
+      authMethod: 'oauth',
+      credentials: { access_token: 'access', refresh_token: 'refresh', expires_at: Date.now() + 60_000 },
+    })
+    expect(id).toBe('oauth:tinfoil')
+    expect(await getProviderCredentials(getDb(), id)).toMatchObject({
+      access_token: 'access',
+      refresh_token: 'refresh',
+    })
+  } finally {
+    if (original) {
+      Object.defineProperty(navigator, 'locks', original)
+    } else {
+      Reflect.deleteProperty(navigator, 'locks')
+    }
+  }
+})
 const connect = (name = 'Work', authMethod: 'oauth' | 'api_key' = 'api_key') =>
   saveProviderConnection(getDb(), {
     provider: 'otari',
@@ -71,6 +101,7 @@ describe('provider connections', () => {
     expect(await getProviderConnections(getDb())).toHaveLength(1)
   })
   it('shares credentials across models without copying them and preserves model toggles', async () => {
+    await updateSettings(getDb(), { experimental_feature_otari: true })
     const id = await connect()
     const ids = await addProviderModels(getDb(), id, [{ id: 'one' }, { id: 'two' }, { id: 'one' }])
     expect(ids).toHaveLength(2)

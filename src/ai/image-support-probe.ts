@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resolveOpenAiCompatConnection, type OpenAiCompatConnection } from '@/ai/fetch'
+import { streamProbe } from '@/ai/stream-probe'
+import { createOpenAI } from '@ai-sdk/openai'
+import { APICallError } from 'ai'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { bindModelProvider } from '@/providers/model-connection'
 import type { Model } from '@/types'
@@ -40,9 +43,10 @@ const completionText = (body: unknown): string => {
   return parsed.success ? (parsed.data.choices[0].message.content?.trim() ?? '') : ''
 }
 
-type ProbeContent = string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>
+type ProbeContent = string | Array<{ type: 'text'; text: string } | { type: 'image'; image: URL }>
 
-const postChatCompletion = (
+/** Keep the compatible probe lightweight while sharing error handling with Responses. */
+const postChatCompletion = async (
   connection: OpenAiCompatConnection,
   modelId: string,
   content: ProbeContent,
@@ -52,12 +56,31 @@ const postChatCompletion = (
   if (connection.apiKey) {
     headers.Authorization = `Bearer ${connection.apiKey}`
   }
-  return connection.fetch(`${connection.baseURL.replace(/\/+$/, '')}/chat/completions`, {
+  const url = `${connection.baseURL.replace(/\/+$/, '')}/chat/completions`
+  const response = await connection.fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ model: modelId, messages: [{ role: 'user', content }], stream: false }),
+    body: JSON.stringify({
+      model: modelId,
+      messages: [
+        {
+          role: 'user',
+          content:
+            typeof content === 'string'
+              ? content
+              : content.map((part) =>
+                  part.type === 'image' ? { type: 'image_url', image_url: { url: part.image.href } } : part,
+                ),
+        },
+      ],
+      stream: false,
+    }),
     signal,
   })
+  if (!response.ok) {
+    throw new APICallError({ message: 'Image probe failed', url, requestBodyValues: {}, statusCode: response.status })
+  }
+  return completionText(await response.json())
 }
 
 /**
@@ -81,38 +104,48 @@ export const probeImageSupport = async (
   getProxyFetch: () => FetchFn,
   signal: AbortSignal,
 ): Promise<ImageSupport> => {
-  const { model, wrapFetch } = await bindModelProvider(inputModel)
+  const { model, wrapFetch, api } = await bindModelProvider(inputModel)
   const resolved = resolveOpenAiCompatConnection(model, getProxyFetch)
   if (!resolved) {
     throw new ImageSupportInconclusiveError(`No OpenAI-compatible connection for provider "${model.provider}"`)
   }
   const connection = { ...resolved, fetch: wrapFetch(resolved.fetch) }
-
-  const response = await postChatCompletion(
-    connection,
-    model.model,
-    [
+  const send =
+    api === 'openai-responses'
+      ? (content: ProbeContent) =>
+          streamProbe({
+            model: createOpenAI(connection).responses(model.model),
+            messages: [{ role: 'user', content }],
+            maxRetries: 0,
+            abortSignal: signal,
+          })
+      : (content: ProbeContent) => postChatCompletion(connection, model.model, content, signal)
+  try {
+    const answer = await send([
       { type: 'text', text: probeQuestion },
-      { type: 'image_url', image_url: { url: probeImageDataUrl } },
-    ],
-    signal,
-  )
-  if (response.ok) {
-    const answer = completionText(await response.json())
-    if (!answer) {
+      { type: 'image', image: new URL(probeImageDataUrl) },
+    ])
+    if (!answer.trim()) {
       throw new ImageSupportInconclusiveError('Probe completion carried no answer')
     }
     // Deliberately literal: "lime", "verde", or a hex code counts as unsupported
     // and is cached. The composer's "Try anyway" is the escape hatch for that.
     return /\bgreen\b/i.test(answer) ? 'supported' : 'unsupported'
+  } catch (error) {
+    if (!APICallError.isInstance(error)) {
+      throw error
+    }
+    if (!contentRejectionStatuses.has(error.statusCode ?? 0)) {
+      throw new ImageSupportInconclusiveError(`Probe failed with status ${error.statusCode}`)
+    }
+    try {
+      await send('Reply with the word ok.')
+    } catch (controlError) {
+      if (APICallError.isInstance(controlError)) {
+        throw new ImageSupportInconclusiveError(`Probe control request failed with status ${controlError.statusCode}`)
+      }
+      throw controlError
+    }
+    return 'unsupported'
   }
-  if (!contentRejectionStatuses.has(response.status)) {
-    throw new ImageSupportInconclusiveError(`Probe failed with status ${response.status}`)
-  }
-
-  const control = await postChatCompletion(connection, model.model, 'Reply with the word ok.', signal)
-  if (!control.ok) {
-    throw new ImageSupportInconclusiveError(`Probe control request failed with status ${control.status}`)
-  }
-  return 'unsupported'
 }

@@ -26,6 +26,7 @@ import { createMockModel } from '@/test-utils/chat-store-mocks'
 import { SignInModalProvider, type AuthClient } from '@/contexts'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { thunderboltCloudUrl } from '@/lib/constants'
+import * as otariCapabilities from '@/integrations/otari-search/capabilities'
 
 let consoleSpies: ConsoleSpies
 let originalCloudUrl: string
@@ -43,7 +44,8 @@ afterAll(async () => {
   consoleSpies.restore()
 })
 
-beforeEach(() => {
+beforeEach(async () => {
+  await updateSettings(getDb(), { experimental_feature_otari: true })
   originalCloudUrl = getLocalSetting('cloudUrl')
   originalLocalMode = getLocalSetting('localMode')
   useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', localMode: false })
@@ -339,32 +341,37 @@ describe('OnboardingDialog', () => {
     it.each(['available', 'not_configured', 'workspace_disabled', 'unknown'] as const)(
       'only skips search when the Otari connection advertises it (%s)',
       async (status) => {
-        useLocalSettingsStore.setState({ cloudUrl: '' })
-        await reconcileDefaults(getDb())
-        const id = await saveProviderConnection(getDb(), {
-          provider: 'otari',
-          name: 'Otari',
-          url: 'http://localhost:8099/api/v1',
-          authMethod: 'api_key',
-          credentials: { apiKey: 'key' },
-        })
-        useSearchProviderStore.getState().configureProviderSearch(id, status)
-        await updateSettings(getDb(), { onboarding_current_step: '10', selected_model: '' })
-        render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
-        await flush()
-        if (status !== 'available') {
-          expect(screen.getByText('Add web search')).toBeInTheDocument()
-          expect(
-            screen.getByText('Otari web search isn’t available. Choose a search provider below, or skip for now.'),
-          ).toBeInTheDocument()
-          expect(useSearchProviderStore.getState().selection).toBe('auto')
-          return
+        const discovery = spyOn(otariCapabilities, 'loadOtariSearchStatus').mockResolvedValue(status)
+        try {
+          useLocalSettingsStore.setState({ cloudUrl: '' })
+          await reconcileDefaults(getDb())
+          const id = await saveProviderConnection(getDb(), {
+            provider: 'otari',
+            name: 'Otari',
+            url: 'http://localhost:8099/api/v1',
+            authMethod: 'api_key',
+            credentials: { apiKey: 'key' },
+          })
+          useSearchProviderStore.getState().configureProviderSearch(id, status)
+          await updateSettings(getDb(), { onboarding_current_step: '10', selected_model: '' })
+          render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+          await flush()
+          if (status !== 'available') {
+            expect(screen.getByText('Add web search')).toBeInTheDocument()
+            expect(
+              screen.getByText('Otari web search isn’t available. Choose a search provider below, or skip for now.'),
+            ).toBeInTheDocument()
+            expect(useSearchProviderStore.getState().selection).toBe('auto')
+            return
+          }
+          expect(screen.queryByText('Add web search')).toBeNull()
+          expect(screen.getByText('What should we call you?')).toBeInTheDocument()
+          fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+          await flush()
+          expect(screen.getByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
+        } finally {
+          discovery.mockRestore()
         }
-        expect(screen.queryByText('Add web search')).toBeNull()
-        expect(screen.getByText('What should we call you?')).toBeInTheDocument()
-        fireEvent.click(screen.getByRole('button', { name: 'Back' }))
-        await flush()
-        expect(screen.getByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
       },
     )
     it('keeps connection-owned search when all its models are disabled', async () => {
@@ -428,7 +435,7 @@ describe('OnboardingDialog', () => {
       await updateSettings(getDb(), { onboarding_current_step: '10' })
       render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
       await flush()
-      expect(screen.getByRole('combobox', { name: 'Existing connection' })).toHaveTextContent('Work search')
+      expect(screen.getByRole('radio', { name: 'Work search' })).toBeChecked()
       expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled()
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
       await flush()

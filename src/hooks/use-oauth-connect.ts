@@ -153,6 +153,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
   ) => {
     const credentials = {
       oauthRelayUrl,
+      sessionRevision: crypto.randomUUID(),
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token || '',
       expires_at: Date.now() + tokens.expires_in * 1000,

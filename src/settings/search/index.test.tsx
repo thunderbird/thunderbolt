@@ -21,13 +21,16 @@ import SearchSettingsPage from './index'
 import * as otariBrowser from '@/lib/otari-browser-auth'
 import * as platform from '@/lib/platform'
 import { getClock } from '@/testing-library'
+import * as otariCapabilities from '@/integrations/otari-search/capabilities'
 
 beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
 beforeEach(async () => {
   await resetTestDatabase()
+  await updateSettings(getDb(), { experimental_feature_otari: true })
   useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
   useSearchProviderStore.getState().clearSearchProvider()
+  spyOn(otariCapabilities, 'loadOtariSearchStatus').mockResolvedValue('available')
 })
 afterEach(() => {
   cleanup()
@@ -45,6 +48,14 @@ const renderPage = () =>
       tables: ['provider_connections', 'provider_connection_secrets', 'settings'],
     },
   )
+/** Reveal the management link in the shared detail header menu. */
+const openManageMenu = async () => {
+  await act(async () => {
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0 })
+  })
+  return waitForElement(() => screen.queryByRole('menuitem', { name: 'Manage connection' }))
+}
+
 const save = (provider: 'tinfoil' | 'otari' | 'exa', name: string) =>
   saveProviderConnection(getDb(), {
     provider,
@@ -53,6 +64,40 @@ const save = (provider: 'tinfoil' | 'otari' | 'exa', name: string) =>
     url: provider === 'otari' ? 'https://otari.example/api/v1' : null,
     credentials: { apiKey: `secret-${name}` },
   })
+
+it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
+  'omits Otari search when live discovery reports %s, even with an old available status',
+  async (status) => {
+    const id = await save('otari', 'Otari without search')
+    useSearchProviderStore.getState().configureProviderSearch(id, 'available')
+    spyOn(otariCapabilities, 'loadOtariSearchStatus').mockResolvedValue(status)
+    await save('exa', 'Working search')
+    renderPage()
+    await waitForElement(() => screen.queryByRole('switch', { name: 'Use Working search' }))
+    await act(async () => {
+      await getClock().tickAsync(100)
+    })
+    expect(screen.queryByRole('button', { name: 'Open Otari without search' })).toBeNull()
+    expect(useSearchProviderStore.getState().connectionId).toBe(id)
+  },
+)
+
+it('checks each Otari instance separately and discovers search enabled later without reconnecting', async () => {
+  await save('otari', 'No search')
+  const available = await save('otari', 'Search enabled')
+  const discover = spyOn(otariCapabilities, 'loadOtariSearchStatus').mockImplementation(async (_url, key) =>
+    key === 'secret-Search enabled' ? 'available' : 'not_configured',
+  )
+  const view = renderPage()
+  await waitForElement(() => screen.queryByRole('switch', { name: 'Use Search enabled' }))
+  expect(screen.queryByRole('button', { name: 'Open No search' })).toBeNull()
+  fireEvent.click(screen.getByRole('switch', { name: 'Use Search enabled' }))
+  expect(useSearchProviderStore.getState().connectionId).toBe(available)
+  view.unmount()
+  discover.mockResolvedValue('available')
+  renderPage()
+  expect(await waitForElement(() => screen.queryByRole('switch', { name: 'Use No search' }))).toBeVisible()
+})
 
 it('lists named connections without models or inline credential fields and preserves each credential when switching', async () => {
   const work = await save('exa', 'Work search')
@@ -66,7 +111,33 @@ it('lists named connections without models or inline credential fields and prese
   expect((await getProviderCredentials(getDb(), personal))?.apiKey).toBe('secret-Personal search')
   fireEvent.click(screen.getByRole('button', { name: 'Open Work search' }))
   expect(screen.queryByLabelText('API key')).toBeNull()
-  expect(screen.getByRole('link', { name: 'Manage connection' })).toHaveAttribute('href', '/settings/connections')
+  expect(await openManageMenu()).toHaveAttribute('href', '/settings/connections')
+})
+
+it('shows the shared OAuth connection summary and keeps management in the header menu', async () => {
+  const id = await saveProviderConnection(getDb(), {
+    provider: 'otari',
+    name: 'Team search',
+    authMethod: 'oauth',
+    url: 'https://otari.example/api/v1',
+    credentials: { access_token: 'test-token' },
+  })
+  const { triggerChange } = renderPage()
+  fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Team search' })))
+  expect(screen.getByRole('status')).toHaveTextContent('Connected to Otari')
+  expect(screen.getByRole('status')).toHaveTextContent('https://otari.example/api/v1')
+  expect(screen.queryByRole('button', { name: 'Manage connection' })).toBeNull()
+  expect(screen.queryByRole('link', { name: 'Manage connection' })).toBeNull()
+  expect(await openManageMenu()).toHaveAttribute('href', '/settings/connections')
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+  await act(async () => {
+    await disconnectProviderConnection(getDb(), id)
+    triggerChange(['provider_connections', 'provider_connection_secrets'])
+  })
+  expect(
+    await waitForElement(() => screen.queryByText('Connect or enable this connection to use search')),
+  ).toBeVisible()
+  expect(screen.queryByText('Connected to Otari')).toBeNull()
 })
 it.each(['tinfoil', 'otari'] as const)('selects and disables %s search independently of models', async (provider) => {
   const id = await save(provider, 'My provider')
@@ -98,7 +169,7 @@ it.each(['disabled', 'disconnected'] as const)(
     await waitForElement(() => screen.queryByRole('switch', { name: 'Use Private search' }))
     expect(useSearchProviderStore.getState().connectionId).toBe(id)
     fireEvent.click(screen.getByRole('switch', { name: 'Use Private search' }))
-    expect(screen.getByRole('link', { name: 'Manage connection' })).toBeTruthy()
+    expect(await openManageMenu()).toBeTruthy()
   },
 )
 it('offers adding a connection when none exists', () => {
@@ -107,6 +178,9 @@ it('offers adding a connection when none exists', () => {
   expect(screen.getByRole('link', { name: 'Manage all connections' })).toHaveAttribute('href', '/settings/connections')
   fireEvent.click(screen.getByRole('button', { name: 'Exa Search' }))
   expect(screen.getByRole('button', { name: 'Connect Exa' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
+  expect(screen.getByRole('link', { name: 'Manage all connections' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Exa Search' }))
   fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
   expect(screen.getByLabelText('API key')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'OpenAI Models' })).toBeNull()
@@ -146,7 +220,7 @@ it.each([true, false])('keeps Cloud visible while its integration is enabled: %s
   expect(toggle.getAttribute('aria-checked')).toBe(String(enabled))
   if (!enabled) {
     fireEvent.click(toggle)
-    expect(screen.getByRole('link', { name: 'Manage connection' })).toBeTruthy()
+    expect(await openManageMenu()).toBeTruthy()
   }
 })
 

@@ -36,6 +36,7 @@ import { useOnboardingModelState } from './use-onboarding-model-state'
 import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
 import { getClock } from '@/testing-library'
 import * as tinfoilSession from '@/lib/tinfoil-session'
+import * as browserAuth from '@/lib/provider-browser-auth'
 
 type Dependencies = NonNullable<Parameters<typeof useOnboardingProviderState>[1]>
 
@@ -672,6 +673,35 @@ describe('useOnboardingProviderState', () => {
     expect(screen.queryByRole('button', { name: 'Use sign-in instead' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(screen.getByRole('radio', { name: 'Tinfoil' })).toBeInTheDocument()
+  })
+
+  it('loads the saved preview flag before consuming an authorization return', async () => {
+    await updateSettings(getDb(), { experimental_feature_otari: true })
+    const completion = Promise.withResolvers<{ access_token: string }>()
+    const complete = mock(() => completion.promise)
+    const cancel = mock(() => {})
+    const returned = {
+      id: 'return',
+      context: 'onboarding' as const,
+      returnTo: '/chats/new',
+      callbackUrl: 'https://localhost/oauth/openrouter',
+      attempt: await getProviderConnectionAttempt(getDb(), 'openrouter'),
+      complete,
+      cancel,
+    }
+    const readReturn = spyOn(browserAuth, 'getProviderBrowserReturn').mockReturnValue(returned)
+    spyOn(browserAuth, 'clearProviderBrowserReturn').mockImplementation(() => {
+      readReturn.mockReturnValue(null)
+    })
+    render(<OnboardingModelStep />, { wrapper: createTestProvider() })
+    expect(complete).not.toHaveBeenCalled()
+    await act(async () => getClock().runAllAsync())
+    expect(complete).toHaveBeenCalledTimes(1)
+    expect(cancel).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Cancel connection' })).toBeVisible()
+    await act(async () => completion.resolve({ access_token: 'openrouter-key' }))
+    await act(async () => getClock().runAllAsync())
+    expect(cancel).not.toHaveBeenCalled()
   })
 
   it.each([false, true])('resumes native authorization once after remount (StrictMode: %s)', async (strict) => {

@@ -2,11 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { msg } from '@lingui/core/macro'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { z } from 'zod'
 import { currentOAuthReturnPath, oauthReturnPath } from './oauth-return-route'
-import { i18n } from '@/i18n'
 import { mobileOAuthRedirectUri } from './oauth-redirect'
 import { generateCodeChallenge, generateCodeVerifier } from './pkce'
 import type { ProviderConnectionAttempt } from './provider-connection-attempt'
@@ -154,7 +152,7 @@ export const captureTinfoilMobileReturn = (
       completion ??= (async () => {
         controller.signal.throwIfAborted()
         if (invalid) {
-          throw new TinfoilConnectionError(i18n._(msg`Could not connect to Tinfoil. Try again, or use an API key.`))
+          throw new TinfoilConnectionError()
         }
         return deps.exchange(
           { code: code!, verifier: flow.data.verifier, redirectUri: mobileOAuthRedirectUri },

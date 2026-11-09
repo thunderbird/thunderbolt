@@ -4,64 +4,98 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Search } from 'lucide-react'
-import { useId } from 'react'
-import { SearchProviderSetup } from '@/components/search-provider-setup'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { canSupplySearch } from '@/integrations/standalone-search/eligibility'
-import { useSearchProviderAvailability } from '@/integrations/standalone-search/use-search-provider-availability'
+import { ProviderConnectionForm } from '@/settings/connections/provider-connection-form'
+import { ProviderConnectionSummary } from '@/settings/connections/provider-connection-summary'
+import { ProviderConnectionIcon } from '@/settings/connections/provider-connection-icon'
 import { OnboardingStepHeader } from './onboarding-step-header'
-import { useSearchProviderStore } from '@/stores/search-provider-store'
+import { OnboardingChoiceCard } from './onboarding-choice-card'
+import { OnboardingActionButtons } from './onboarding-action-buttons'
+import { canSupplySearch } from '@/integrations/standalone-search/eligibility'
+import { useOnboardingSearchState, type OnboardingSearchStepProps } from './use-onboarding-search-state'
 
-export const OnboardingSearchStep = ({ onReadyChange }: { onReadyChange?: (ready: boolean) => void }) => {
+/** Provider choices and connection steps match model onboarding. */
+export const OnboardingSearchStep = (props: OnboardingSearchStepProps) => {
   const { t } = useLingui()
-  const selectId = useId()
-  const { connections } = useSearchProviderAvailability()
-  const stored = useSearchProviderStore()
-  const available = connections.filter(
-    (connection) =>
-      canSupplySearch(connection) &&
-      (connection.provider !== 'otari' ||
-        (stored.connectionStatus?.connectionId === connection.id && stored.connectionStatus.status === 'available')),
-  )
+  const { onBack, onSkip } = props
+  const state = useOnboardingSearchState(props)
+  const { stored, choices, connected, otariEnabled, provider, authorization, choose, back, saved } = state
   return (
-    <div className="flex w-full flex-1 flex-col justify-center gap-8">
-      <OnboardingStepHeader
-        icon={<Search className="size-10 text-foreground/80" />}
-        title={<Trans>Add web search</Trans>}
-        description={<Trans>Optionally let your agent search the web</Trans>}
-      />
-      {stored.connectionStatus && stored.connectionStatus.status !== 'available' && (
-        <p role="status" className="text-center text-sm text-muted-foreground">
-          <Trans>Otari web search isn’t available. Choose a search provider below, or skip for now.</Trans>
-        </p>
-      )}
-      {available.length > 0 && (
-        <div className="space-y-2">
-          <Label htmlFor={selectId}>
-            <Trans>Existing connection</Trans>
-          </Label>
-          <Select
-            value={available.some(({ id }) => id === stored.connectionId) ? stored.connectionId! : ''}
-            onValueChange={(id) => {
-              stored.selectSearchConnection(id)
-              onReadyChange?.(true)
-            }}
-          >
-            <SelectTrigger id={selectId} className="w-full">
-              <SelectValue placeholder={t`Choose a connection`} />
-            </SelectTrigger>
-            <SelectContent>
-              {available.map((connection) => (
-                <SelectItem key={connection.id} value={connection.id}>
-                  {connection.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+    <div className="flex min-h-0 w-full flex-1 flex-col">
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
+        <div className="flex flex-1 flex-col justify-center gap-5">
+          <OnboardingStepHeader
+            icon={<Search className="size-10 text-foreground/80" />}
+            title={<Trans>Add web search</Trans>}
+            description={<Trans>Optionally let your agent search the web</Trans>}
+          />
+          {state.view === 'choices' && (
+            <>
+              {otariEnabled && stored.connectionStatus && stored.connectionStatus.status !== 'available' && (
+                <p role="status" className="text-center text-sm text-muted-foreground">
+                  <Trans>Otari web search isn’t available. Choose a search provider below, or skip for now.</Trans>
+                </p>
+              )}
+              <fieldset aria-label={t`Search provider`} className="flex flex-col gap-2">
+                {choices.map((choice) => (
+                  <OnboardingChoiceCard
+                    key={choice.id}
+                    name="search-provider"
+                    value={choice.id}
+                    label={choice.name}
+                    accessibleLabel={choice.name}
+                    description={
+                      choice.connected && choice.provider !== 'exa' ? (
+                        <Trans>Use this connection.</Trans>
+                      ) : choice.provider === 'brave' ? (
+                        <Trans>Connect with an API key.</Trans>
+                      ) : (
+                        <Trans>Sign in to connect your account.</Trans>
+                      )
+                    }
+                    icon={
+                      <span className="[&>svg]:size-6 [&>img]:size-6">
+                        <ProviderConnectionIcon provider={choice.provider} />
+                      </span>
+                    }
+                    checked={state.selection === choice.id}
+                    onSelect={() => choose(choice.id)}
+                  />
+                ))}
+              </fieldset>
+            </>
+          )}
+          {state.view === 'connect' && provider && (
+            <ProviderConnectionForm
+              key={provider}
+              hideName
+              provider={provider}
+              authorization={authorization}
+              onBack={back}
+              onSaved={saved}
+              onCancel={back}
+            />
+          )}
+          {state.view === 'ready' && connected && (
+            <ProviderConnectionSummary connection={connected}>
+              {!canSupplySearch(connected) && (
+                <p className="text-sm text-muted-foreground">
+                  <Trans>Connect or enable this connection to use search</Trans>
+                </p>
+              )}
+            </ProviderConnectionSummary>
+          )}
+        </div>
+      </div>
+      {state.view !== 'connect' && (
+        <div className="relative flex w-full shrink-0 px-5 pt-2">
+          <OnboardingActionButtons
+            onBack={state.view === 'choices' ? onBack : back}
+            onSkip={onSkip}
+            onContinue={state.continueSetup}
+            continueDisabled={!state.canContinue}
+          />
         </div>
       )}
-      <SearchProviderSetup onReadyChange={onReadyChange} />
     </div>
   )
 }

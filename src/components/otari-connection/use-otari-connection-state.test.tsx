@@ -33,6 +33,7 @@ import type { AvailableModel } from '@/settings/models/model-catalog'
 import OnboardingModelStep from '@/components/onboarding/onboarding-model-step'
 import { useOtariConnectionState } from './use-otari-connection-state'
 import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
+import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 
 describe('Otari connection', () => {
   beforeEach(async () => {
@@ -416,8 +417,9 @@ describe('Otari connection', () => {
     const { result } = renderHook(() => useOtariConnectionState(undefined, undefined, 'onboarding'), {
       wrapper: createTestProvider(),
     })
-    await act(async () => getClock().runAllAsync())
+    await waitForElement(() => (!result.current.busy ? document.body : null))
     expect(complete).not.toHaveBeenCalled()
+    expect(result.current.busy).toBe(false)
     expect(result.current.error).toBe('Could not connect to Otari. Please try again.')
     expect((await getProviderCredentials(getDb(), 'oauth:otari'))?.access_token).toBe('current-key')
   })

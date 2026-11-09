@@ -7,6 +7,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useDatabase, useHttpClient } from '@/contexts'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { isUnauthorizedError } from './mcp-unauthorized-error'
+import { withDeadline } from './timeout'
 import type { MCPTransportType } from './mcp-transport'
 
 type SdkMcpClient = Awaited<ReturnType<typeof createMCPClient>>
@@ -85,6 +86,11 @@ const MCPContext = createContext<MCPContextType | undefined>(undefined)
  *  free function so tests can inject a fake via {@link MCPProvider}'s
  *  `createClient` prop without touching the AI SDK / proxy stack. */
 type CreateClientFn = (serverId: string, url: string, type: MCPTransportType) => Promise<MCPClient>
+
+/** Longest a reconnect may run before it fails. Sends hand the in-flight
+ *  reconnect to each other, so one that never settled would cost every send its
+ *  wait and keep Retry joined to it forever. */
+const reconnectDeadlineMs = 30_000
 
 type MCPProviderProps = {
   children: ReactNode
@@ -310,8 +316,13 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       // Tear down the stale connection before opening a new one.
       disconnectServer(serverId)
 
+      const connecting = createClient(server.id, server.url, server.type)
       try {
-        const client = await createClient(server.id, server.url, server.type)
+        const client = await withDeadline(
+          connecting,
+          reconnectDeadlineMs,
+          () => new Error(`MCP reconnect timed out after ${reconnectDeadlineMs}ms`),
+        )
 
         // The server may have been removed/disabled while we were connecting —
         // close the orphan rather than caching a client nothing can reach.
@@ -327,6 +338,9 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         )
         return client
       } catch (err) {
+        // Close a connect that lands after the deadline instead of leaving it
+        // open; a late failure needs nothing, the deadline already reported it.
+        void connecting.then(closeClient, () => {})
         console.error('Failed to reconnect MCP server:', server.name, err)
         // Skip committing an error onto a server that was removed/disabled
         // mid-reconnect — its row is gone or intentionally off.

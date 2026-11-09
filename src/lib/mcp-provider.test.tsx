@@ -299,6 +299,46 @@ describe('MCPProvider reconnect', () => {
     }
   })
 
+  it('fails a reconnect that never settles, so later sends stop waiting on it', async () => {
+    const late = fakeClient()
+    const gate = deferred<void>()
+    let calls = 0
+    const { result } = renderProvider(async () => {
+      calls++
+      if (calls === 1) {
+        return fakeClient()
+      }
+      await gate.promise
+      return late
+    })
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await act(async () => {
+        await result.current.addServer(server)
+      })
+      let reconnecting!: Promise<ProviderMCPClient | null>
+      await act(async () => {
+        reconnecting = result.current.reconnectServer(server.id)
+        await getClock().tickAsync(30_000)
+      })
+      expect(await reconnecting).toBeNull()
+      expect(result.current.servers[0]).toMatchObject({ isConnected: false, client: null })
+      expect(result.current.servers[0].error?.message).toContain('timed out')
+      expect(result.current.getEnabledClients()).toEqual([])
+
+      // The connect that finally lands is closed, not left open.
+      await act(async () => {
+        gate.resolve()
+        await getClock().tickAsync(0)
+      })
+      expect(late.closeCount()).toBe(1)
+      expect(result.current.servers[0]).toMatchObject({ isConnected: false, client: null })
+    } finally {
+      gate.resolve()
+      error.mockRestore()
+    }
+  })
+
   it('hands a send the in-flight reconnect even while the row still reads as connected', async () => {
     const initial = fakeClient()
     const fresh = fakeClient()

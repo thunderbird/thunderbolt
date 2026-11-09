@@ -171,15 +171,17 @@ const defaultMcpReconnectTimeoutMs = 3_000
  * that connect instead of a client. Either wait, including the discovery that
  * follows it, is bounded per server by `reconnectTimeoutMs` (default
  * {@link defaultMcpReconnectTimeoutMs}); past it the server is skipped for this
- * turn while the connect carries on. A failed
- * connect, or a second discovery failure on the fresh client, skips the server
- * too; the second failure is only logged, since the reconnect already cleared
- * the provider's error. Servers are discovered in parallel, so the send waits
- * for the slowest one rather than the sum, and merged in order.
- * Programming errors propagate. After prefixing, a name that still collides
- * with an already-registered tool is skipped (first-registered wins) as
- * a safety net. The returned `summary` lists `- <prefix> (<n> tools)` per server
- * (undefined when no MCP tools were added), injected into the system prompt.
+ * turn while the connect carries on. The first discovery on a connected client
+ * is not bounded, so a slow but healthy server isn't cut off. A failed connect,
+ * or a second discovery failure on the fresh client, skips the server too; the
+ * second failure is only logged, since the reconnect already cleared the
+ * provider's error. Servers are discovered in parallel, so the send waits for
+ * the slowest one rather than the sum, and merged in order.
+ * Programming errors propagate, unless the server's wait has already timed out.
+ * After prefixing, a name that still collides with an already-registered tool is
+ * skipped (first-registered wins) as a safety net. The returned `summary` lists
+ * `- <prefix> (<n> tools)` per server (undefined when no MCP tools were added),
+ * injected into the system prompt.
  *
  * Also returns `mcpTools`, mapping each namespaced tool name (`<prefix>_<tool>`)
  * to its owning server's `{ name, url }` plus the bare `toolName`. This is the
@@ -262,7 +264,7 @@ export const mergeMcpTools = async (
     (await withTimeout(
       discoverOnConnect(serverName, connecting),
       reconnectTimeoutMs,
-      `MCP connect of ${serverName}`,
+      `MCP connect and discovery for ${serverName}`,
     )) ?? {}
 
   const discover = async (entry: NamedMCPClient) => {

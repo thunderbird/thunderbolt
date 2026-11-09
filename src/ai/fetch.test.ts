@@ -438,7 +438,9 @@ describe('mergeMcpTools', () => {
     const result = await merging
 
     expect(result.toolset).toEqual({ github_beta: tool('b') })
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('"MCP connect of render" timed out after 20ms'))
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('"MCP connect and discovery for render" timed out after 20ms'),
+    )
     // The reconnect is still running, so only the timeout is reported.
     expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('did not connect'))
     slow.resolve(null)
@@ -517,7 +519,9 @@ describe('mergeMcpTools', () => {
     expect(await Promise.race([merging, Promise.resolve('pending')])).toMatchObject({
       toolset: { github_beta: tool('b') },
     })
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('"MCP connect of render" timed out after 20ms'))
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('"MCP connect and discovery for render" timed out after 20ms'),
+    )
   })
 
   it('discovers servers in parallel, so the send waits for the slowest rather than the sum', async () => {

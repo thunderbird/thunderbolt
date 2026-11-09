@@ -106,6 +106,9 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   const clientToServerId = useRef<WeakMap<MCPClient, string>>(new WeakMap())
   const reconnectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
   const connectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
+  // The latest connect or reconnect per server. Only it may commit, so an attempt
+  // overtaken by a newer one (a URL change mid-connect) can't overwrite its result.
+  const latestAttempts = useRef<Map<string, symbol>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const db = useDatabase()
@@ -154,6 +157,20 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     }
   }
 
+  /** Claim the right to commit `serverId`'s connection, superseding any earlier attempt. */
+  const startAttempt = (serverId: string): symbol => {
+    const attempt = Symbol(serverId)
+    latestAttempts.current.set(serverId, attempt)
+    return attempt
+  }
+
+  /** Whether `attempt` may still commit: the server exists, is enabled, and no
+   *  later connect or reconnect has superseded it. */
+  const canCommit = (serverId: string, attempt: symbol): boolean => {
+    const current = serversRef.current.find((s) => s.id === serverId)
+    return Boolean(current?.enabled) && latestAttempts.current.get(serverId) === attempt
+  }
+
   const connectServer = (server: MCPServer): Promise<MCPClient | null> => {
     if (!server.enabled) {
       commitServers((prev) =>
@@ -174,15 +191,17 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       return inFlight
     }
 
+    const attempt = startAttempt(server.id)
+    // A reconnect still running is superseded: stop handing it to sends.
+    reconnectsInFlight.current.delete(server.id)
     const promise = (async (): Promise<MCPClient | null> => {
       try {
         const client = await connectWithDeadline(server)
 
-        // The server may have been removed/disabled while we were connecting —
-        // close the orphan rather than caching/committing (and re-enabling) a
-        // client nothing can reach.
-        const current = serversRef.current.find((s) => s.id === server.id)
-        if (!current || !current.enabled) {
+        // The server may have been removed/disabled, or reconnected by a newer
+        // attempt, while we were connecting — close the orphan rather than
+        // caching/committing (and re-enabling) a client nothing should reach.
+        if (!canCommit(server.id, attempt)) {
           closeClient(client)
           return null
         }
@@ -201,10 +220,9 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         } else {
           console.error('Failed to connect to MCP server:', server.name, err)
         }
-        // Skip committing an error onto a server that was removed/disabled
-        // mid-connect — its row is gone or intentionally off.
-        const current = serversRef.current.find((s) => s.id === server.id)
-        if (!current || !current.enabled) {
+        // Skip committing an error onto a server that was removed/disabled or
+        // superseded mid-connect — its row is gone, off, or owned by a newer attempt.
+        if (!canCommit(server.id, attempt)) {
           return null
         }
         commitServers((prev) =>
@@ -220,7 +238,11 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
 
     connectsInFlight.current.set(server.id, promise)
     return promise.finally(() => {
-      connectsInFlight.current.delete(server.id)
+      // A reconnect may already have dropped this entry, and a newer connect
+      // may own the slot by now.
+      if (connectsInFlight.current.get(server.id) === promise) {
+        connectsInFlight.current.delete(server.id)
+      }
     })
   }
 
@@ -331,6 +353,9 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       return Promise.resolve(null)
     }
 
+    const attempt = startAttempt(serverId)
+    // A first connect still running is superseded: stop handing it to sends.
+    connectsInFlight.current.delete(serverId)
     const promise = (async (): Promise<MCPClient | null> => {
       // Tear down the stale connection before opening a new one.
       disconnectServer(serverId)
@@ -338,10 +363,9 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       try {
         const client = await connectWithDeadline(server)
 
-        // The server may have been removed/disabled while we were connecting —
-        // close the orphan rather than caching a client nothing can reach.
-        const current = serversRef.current.find((s) => s.id === serverId)
-        if (!current || !current.enabled) {
+        // The server may have been removed/disabled, or reconnected again, while
+        // we were connecting — close the orphan rather than caching it.
+        if (!canCommit(serverId, attempt)) {
           closeClient(client)
           return null
         }
@@ -353,10 +377,9 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         return client
       } catch (err) {
         console.error('Failed to reconnect MCP server:', server.name, err)
-        // Skip committing an error onto a server that was removed/disabled
-        // mid-reconnect — its row is gone or intentionally off.
-        const current = serversRef.current.find((s) => s.id === serverId)
-        if (!current || !current.enabled) {
+        // Skip committing an error onto a server that was removed/disabled or
+        // superseded mid-reconnect.
+        if (!canCommit(serverId, attempt)) {
           return null
         }
         commitServers((prev) =>
@@ -368,7 +391,11 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
 
     reconnectsInFlight.current.set(serverId, promise)
     return promise.finally(() => {
-      reconnectsInFlight.current.delete(serverId)
+      // A connect may already have dropped this entry, and a newer reconnect
+      // may own the slot by now.
+      if (reconnectsInFlight.current.get(serverId) === promise) {
+        reconnectsInFlight.current.delete(serverId)
+      }
     })
   }
 
@@ -377,10 +404,14 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     if (!serverId) {
       return Promise.resolve(null)
     }
-    // Already replaced (another send's retry got there first): join that
-    // reconnect, or take its result, instead of redialing a healthy server.
+    // Already replaced (another send's retry, or a disable and re-enable, got
+    // there first): join that connect, or take its result, instead of redialing.
     if (clientRefs.current.get(serverId) !== client) {
-      return reconnectsInFlight.current.get(serverId) ?? Promise.resolve(clientRefs.current.get(serverId) ?? null)
+      return (
+        reconnectsInFlight.current.get(serverId) ??
+        connectsInFlight.current.get(serverId) ??
+        Promise.resolve(clientRefs.current.get(serverId) ?? null)
+      )
     }
     if (error) {
       commitServers((prev) =>

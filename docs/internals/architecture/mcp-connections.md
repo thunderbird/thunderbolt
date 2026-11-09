@@ -278,9 +278,11 @@ overlapping work:
 
 Recovery is at the `tools()` boundary, not on a timer: `mergeMcpTools`
 ([src/ai/fetch.ts](../../../src/ai/fetch.ts)) catches an expected discovery error (`isMcpDiscoveryError`),
-reconnects, and retries discovery once in the same send, waiting at most 3s per server before skipping
-that server for the turn. Servers are discovered in parallel and merged in order, so the send waits for
-the slowest server rather than the sum. Unexpected errors propagate.
+reconnects, and retries discovery once in the same send. The reconnect and the retried discovery
+share a 3s limit per server, past which that server is skipped for the turn; the first discovery on a
+connected client has no limit, so a slow but healthy server isn't cut off. Servers are discovered in
+parallel and merged in order, so the send waits for the slowest server rather than the sum. Unexpected
+errors propagate.
 
 - `getEnabledClients` returns a server whose first connect or reconnect is in flight as `client: null`
   plus that `connecting` promise, so a send that starts mid-connect waits for it rather than dropping the

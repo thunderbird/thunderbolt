@@ -330,6 +330,136 @@ describe('MCPProvider reconnect', () => {
     }
   })
 
+  it('keeps the connection a URL change made when the superseded first connect later times out', async () => {
+    const stale = fakeClient()
+    const current = fakeClient()
+    const staleGate = deferred<void>()
+    const newUrl = 'https://example.test/other'
+    const { result } = renderProvider(async (_id, url) => {
+      if (url === newUrl) {
+        return current
+      }
+      await staleGate.promise
+      return stale
+    })
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      let adding!: Promise<void>
+      act(() => {
+        adding = result.current.addServer(server)
+      })
+      await act(async () => {
+        await result.current.updateServer({ ...server, url: newUrl })
+      })
+      expect(result.current.servers[0]).toMatchObject({ url: newUrl, isConnected: true, client: current })
+      // The stuck first connect is no longer handed to sends.
+      expect(result.current.getEnabledClients()).toEqual([expect.objectContaining({ client: current })])
+
+      await act(async () => {
+        await getClock().tickAsync(30_000)
+        await adding
+      })
+      expect(result.current.servers[0]).toMatchObject({ isConnected: true, client: current, error: null })
+
+      await act(async () => {
+        staleGate.resolve()
+        await getClock().tickAsync(0)
+      })
+      expect(stale.closeCount()).toBe(1)
+      expect(result.current.servers[0]).toMatchObject({ isConnected: true, client: current, error: null })
+    } finally {
+      staleGate.resolve()
+      error.mockRestore()
+    }
+  })
+
+  it('lets a send holding a client closed by a disable and re-enable join the new connect', async () => {
+    const discoveryError = Object.assign(new Error('Attempted to send a request from a closed client'), {
+      name: 'MCPClientError',
+    })
+    const old = Object.assign(fakeClient(), {
+      tools: async () => {
+        throw discoveryError
+      },
+    })
+    const tool = { description: 'Fresh tool', inputSchema: z.object({}) }
+    const fresh = Object.assign(fakeClient(), { tools: async () => ({ search: tool }) })
+    const gate = deferred<void>()
+    let calls = 0
+    const { result } = renderProvider(async () => {
+      calls++
+      if (calls === 1) {
+        return old
+      }
+      await gate.promise
+      return fresh
+    })
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await act(async () => {
+        await result.current.addServer(server)
+      })
+      const snapshot = result.current.getEnabledClients()
+      let enabling!: Promise<void>
+      await act(async () => {
+        await result.current.updateServer({ ...server, enabled: false })
+        enabling = result.current.updateServer({ ...server, enabled: true })
+      })
+      await act(async () => {
+        const sending = mergeMcpTools({}, snapshot, result.current.reconnectClient)
+        await getClock().tickAsync(0)
+        gate.resolve()
+        expect((await sending).toolset).toEqual({ server_1_search: tool })
+        await enabling
+      })
+      expect(calls).toBe(2)
+      expect(result.current.servers[0]).toMatchObject({ isConnected: true, client: fresh, error: null })
+    } finally {
+      gate.resolve()
+      warn.mockRestore()
+    }
+  })
+
+  it('hands sends the re-enable connect, not the reconnect it superseded', async () => {
+    const stale = fakeClient()
+    const tool = { description: 'Fresh tool', inputSchema: z.object({}) }
+    const fresh = Object.assign(fakeClient(), { tools: async () => ({ search: tool }) })
+    const gate = deferred<void>()
+    let calls = 0
+    const { result } = renderProvider(async () => {
+      calls++
+      if (calls === 1) {
+        return fakeClient()
+      }
+      if (calls === 2) {
+        await gate.promise
+        return stale
+      }
+      return fresh
+    })
+    await act(async () => {
+      await result.current.addServer(server)
+    })
+    let reconnecting!: Promise<ProviderMCPClient | null>
+    try {
+      await act(async () => {
+        reconnecting = result.current.reconnectServer(server.id)
+        await result.current.updateServer({ ...server, enabled: false })
+        await result.current.updateServer({ ...server, enabled: true })
+      })
+      expect(result.current.getEnabledClients()).toEqual([expect.objectContaining({ client: fresh })])
+      const send = await mergeMcpTools({}, result.current.getEnabledClients(), result.current.reconnectClient)
+      expect(send.toolset).toEqual({ server_1_search: tool })
+    } finally {
+      await act(async () => {
+        gate.resolve()
+        await reconnecting
+      })
+    }
+    expect(await reconnecting).toBeNull()
+    expect(stale.closeCount()).toBe(1)
+  })
+
   it('does not hand a send the reconnect of a server disabled while it runs', async () => {
     const gate = deferred<void>()
     let calls = 0

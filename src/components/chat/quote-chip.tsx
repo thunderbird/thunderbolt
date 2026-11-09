@@ -23,7 +23,8 @@ export const QuoteChip = ({ text, onRemove }: QuoteChipProps) => {
   const { t } = useLingui()
 
   return (
-    <div className="group relative flex max-w-full items-start rounded-lg border border-l-2 border-l-primary/60 bg-muted/50">
+    // On mobile a chip can be added from a full-screen panel that closes over 200ms; waiting it out keeps the entrance visible.
+    <div className="group relative flex max-w-full items-start rounded-lg border border-l-2 border-l-primary/60 bg-muted/50 animate-in fade-in slide-in-from-bottom-1 duration-200 max-md:delay-200 max-md:fill-mode-backwards motion-reduce:animate-none">
       <Popover>
         <PopoverTrigger asChild>
           <button

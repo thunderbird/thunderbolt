@@ -13,7 +13,14 @@ import { AnimatePresence, m } from 'framer-motion'
 import { MessageSquare, MousePointerClick } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useLocation, useParams } from 'react-router'
-import { ElementPickOverlay, EmbeddedErrorStrip, SelectionPopover, useElementPicking } from '@/components/embedded'
+import {
+  ElementPickBanner,
+  ElementPickOverlay,
+  ElementPickRing,
+  EmbeddedErrorStrip,
+  SelectionPopover,
+  useElementPicking,
+} from '@/components/embedded'
 
 import { MiniAppFrame } from './mini-app-frame'
 
@@ -115,7 +122,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     onChatOpen: openChat,
   })
 
-  const { mode, startPicking, dismiss, pointAt, pickAt } = useElementPicking({
+  const { mode, canConfirm, startPicking, stepBack, pointAt, pickAt, selectAt, confirmPick } = useElementPicking({
     query: queryElementAt,
     onAsk: attachToComposer,
   })
@@ -180,27 +187,36 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
           defaultSize={isSidePaneShown ? appPanelSize : '100%'}
           minSize={`${appPanelMinWidth}px`}
         >
-          <div className="relative flex flex-col h-full">
-            <MiniAppFrame
-              app={app}
-              frameRef={frameRef}
-              status={status}
-              onFrameLoad={handleFrameLoad}
-              onRetry={reloadFrame}
-            />
-            {/* Same strip an artifact shows for the same situation: the app is
+          <div className="flex h-full flex-col overflow-hidden">
+            {/* The frame's own box, so the overlay stays flush with it and off the banner. */}
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <MiniAppFrame
+                app={app}
+                frameRef={frameRef}
+                status={status}
+                onFrameLoad={handleFrameLoad}
+                onRetry={reloadFrame}
+              />
+              {/* Same strip an artifact shows for the same situation: the app is
                 still on screen and probably still useful, so this sits over it
                 rather than replacing it. */}
-            {runtimeError && (
-              <EmbeddedErrorStrip message={runtimeError} className="absolute inset-x-0 top-0 z-20 border-b-0" />
-            )}
-            {showFloatingControls && selection?.rect && (
-              <SelectionPopover rect={selection.rect} onAsk={handleAskAboutSelection} />
-            )}
-            {mode.kind === 'picking' && (
-              <ElementPickOverlay element={mode.element} onPoint={pointAt} onPick={pickAt} onCancel={dismiss} />
-            )}
-            {/* Thunderbolt's own affordances, floating over the app rather than
+              {runtimeError && (
+                <EmbeddedErrorStrip message={runtimeError} className="absolute inset-x-0 top-0 z-20 border-b-0" />
+              )}
+              {showFloatingControls && selection?.rect && (
+                <SelectionPopover rect={selection.rect} onAsk={handleAskAboutSelection} />
+              )}
+              {mode.kind === 'picking' && (
+                <ElementPickOverlay
+                  element={mode.element}
+                  onPoint={pointAt}
+                  onPick={pickAt}
+                  onSelect={selectAt}
+                  onCancel={stepBack}
+                />
+              )}
+              <ElementPickRing active={mode.kind === 'picking'} />
+              {/* Thunderbolt's own affordances, floating over the app rather than
                 living inside it — the assistant belongs to the host, so a customer
                 app shouldn't have to render (or style) a button to reach it.
 
@@ -215,23 +231,30 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                 second control for one job and — because the cluster is gated on
                 the app being ready — missing exactly when a failed or slow app
                 made getting back out most urgent. */}
-            {showFloatingControls && (
-              <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2">
-                <Button onClick={startPicking} variant="secondary" size="lg" className="shadow-lg rounded-full">
-                  <MousePointerClick className="size-[var(--icon-size-sm)]" />
-                  <Trans>Select</Trans>
-                </Button>
-                {/* Not while an aside is up either: the chat would open
+              {showFloatingControls && (
+                <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2 animate-in fade-in duration-200 motion-reduce:animate-none">
+                  <Button onClick={startPicking} variant="secondary" size="lg" className="shadow-lg rounded-full">
+                    <MousePointerClick className="size-[var(--icon-size-sm)]" />
+                    <Trans>Select</Trans>
+                  </Button>
+                  {/* Not while an aside is up either: the chat would open
                     underneath it, out of sight. Closing the aside is the way
                     to what is beneath. */}
-                {!isSidePaneShown && splitFits && (
-                  <Button onClick={() => openChat()} size="lg" className="shadow-lg rounded-full">
-                    <MessageSquare className="size-[var(--icon-size-sm)]" />
-                    <Trans>Chat</Trans>
-                  </Button>
-                )}
-              </div>
-            )}
+                  {!isSidePaneShown && splitFits && (
+                    <Button onClick={() => openChat()} size="lg" className="shadow-lg rounded-full">
+                      <MessageSquare className="size-[var(--icon-size-sm)]" />
+                      <Trans>Chat</Trans>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+            <ElementPickBanner
+              open={mode.kind === 'picking'}
+              canConfirm={canConfirm}
+              onConfirm={confirmPick}
+              onCancel={stepBack}
+            />
           </div>
         </ResizablePanel>
         {isSidePaneShown && (

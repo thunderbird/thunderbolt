@@ -8,7 +8,9 @@ import { SelectableArtifact } from '@/components/artifact/selectable-artifact'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { useParams } from 'react-router'
 import { useArtifactContextStore } from '@/artifacts/artifact-context-store'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useEffect, useRef, useState } from 'react'
+import { useAddedToChatStore } from './added-to-chat-store'
 import { type ArtifactViewData } from './context'
 import { ContentViewHeader } from './header'
 
@@ -18,6 +20,15 @@ type ArtifactSidebarContentProps = {
 }
 
 /**
+ * Whether the composer a picked passage lands in is visible beside this panel.
+ *
+ * Only on a desktop `/chats/:id`. On mobile the panel is a modal covering the
+ * chat, and on `/apps/:appId` it occupies the slot the Mini App chat panel uses.
+ */
+export const isComposerOnScreen = ({ isMobile, isChatRoute }: { isMobile: boolean; isChatRoute: boolean }) =>
+  isChatRoute && !isMobile
+
+/**
  * Side-panel view for a verified HTML artifact. Reuses the shared content-view
  * chrome; closing the panel returns the artifact inline in the transcript (they
  * are two sides of one toggle — it is only ever shown in one place at a time).
@@ -25,6 +36,7 @@ type ArtifactSidebarContentProps = {
  */
 export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContentProps) => {
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
+  const { isMobile } = useIsMobile()
   /*
    * The thread a highlighted passage belongs to.
    *
@@ -69,13 +81,14 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
     /*
      * Step out of the way when the composer is not on screen.
      *
-     * On `/chats/:id` the transcript is right there and closing would be
-     * obstructive. On `/apps/:appId` this panel occupies the slot the Mini App
-     * chat panel uses, so the quote would sit in a composer the user cannot
-     * see. Closing hands the slot back; the passage is already attached and
-     * waiting when they reopen the chat.
+     * On a desktop `/chats/:id` the transcript is right there and closing would
+     * be obstructive. Anywhere else the quote would sit in a composer the user
+     * cannot see, so closing takes them to it: the chat a mobile modal was
+     * covering, or the slot a Mini App's chat panel uses, where the passage is
+     * already attached and waiting when they reopen the chat.
      */
-    if (!routeChatThreadId) {
+    if (!isComposerOnScreen({ isMobile, isChatRoute: Boolean(routeChatThreadId) })) {
+      useAddedToChatStore.getState().show()
       onClose()
     }
   }

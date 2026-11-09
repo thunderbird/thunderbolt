@@ -24,7 +24,9 @@
  */
 
 export { createPendingRequests, elementAtTimeoutMs, type PendingRequests } from './pending-requests'
+export { ElementPickBanner } from './element-pick-banner'
 export { ElementPickOverlay } from './element-pick-overlay'
+export { ElementPickRing } from './element-pick-ring'
 export { SelectionPopover } from './selection-popover'
 export { useElementPicking, type ElementPickMode } from './use-element-picking'
 export { EmbeddedErrorStrip, EmbeddedSurfaceStatus } from './surface-status'

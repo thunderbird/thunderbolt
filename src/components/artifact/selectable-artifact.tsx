@@ -6,7 +6,13 @@ import { Trans } from '@lingui/react/macro'
 import type { ArtifactContext, ArtifactTextSelection } from '@/artifacts/harness'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
 import { cn } from '@/lib/utils'
-import { ElementPickOverlay, SelectionPopover, useElementPicking } from '@/components/embedded'
+import {
+  ElementPickBanner,
+  ElementPickOverlay,
+  ElementPickRing,
+  SelectionPopover,
+  useElementPicking,
+} from '@/components/embedded'
 import type { SurfaceHighlightedElement } from '@/components/embedded'
 
 import { Button } from '@/components/ui/button'
@@ -61,7 +67,10 @@ export const SelectableArtifact = ({
 
   const query = useCallback(async (point: { x: number; y: number }) => (await queryRef.current?.(point)) ?? null, [])
 
-  const { mode, startPicking, dismiss, pointAt, pickAt } = useElementPicking({ query, onAsk })
+  const { mode, canConfirm, startPicking, stepBack, pointAt, pickAt, selectAt, confirmPick } = useElementPicking({
+    query,
+    onAsk,
+  })
 
   const askAboutSelection = () => {
     if (selection) {
@@ -79,35 +88,54 @@ export const SelectableArtifact = ({
      * the side panel. When `autoHeight` is set the opposite is true: the
      * wrapper must track the reported content height, not fill its parent.
      */
-    <div className={cn('relative', autoHeight ? '' : 'h-full')}>
-      <SandboxedHtmlFrame
-        html={html}
-        title={title}
-        autoHeight={autoHeight}
-        allowScripts={allowScripts}
-        onError={onError}
-        onSelectionChange={setSelection}
-        onQueryReady={handleQueryReady}
-        onContextChange={onContextChange}
+    <div className={cn('flex flex-col overflow-hidden', autoHeight ? '' : 'h-full')}>
+      {/* The frame's own box, so the overlay stays flush with it and off the banner. */}
+      <div className={cn('relative', autoHeight ? '' : 'min-h-0 flex-1')}>
+        <SandboxedHtmlFrame
+          html={html}
+          title={title}
+          autoHeight={autoHeight}
+          allowScripts={allowScripts}
+          onError={onError}
+          onSelectionChange={setSelection}
+          onQueryReady={handleQueryReady}
+          onContextChange={onContextChange}
+        />
+
+        {mode.kind === 'idle' && selection?.rect && (
+          <SelectionPopover rect={selection.rect} onAsk={askAboutSelection} />
+        )}
+
+        {mode.kind === 'picking' && (
+          <ElementPickOverlay
+            element={mode.element}
+            onPoint={pointAt}
+            onPick={pickAt}
+            onSelect={selectAt}
+            onCancel={stepBack}
+          />
+        )}
+
+        <ElementPickRing active={mode.kind === 'picking'} />
+
+        {mode.kind === 'idle' && !selection && (
+          <Button
+            onClick={startPicking}
+            variant="secondary"
+            size="sm"
+            className="absolute bottom-3 right-3 z-10 rounded-full shadow-lg animate-in fade-in duration-200 motion-reduce:animate-none has-[>svg]:px-3"
+          >
+            <MousePointerClick className="size-[var(--icon-size-sm)]" />
+            <Trans>Select</Trans>
+          </Button>
+        )}
+      </div>
+      <ElementPickBanner
+        open={mode.kind === 'picking'}
+        canConfirm={canConfirm}
+        onConfirm={confirmPick}
+        onCancel={stepBack}
       />
-
-      {mode.kind === 'idle' && selection?.rect && <SelectionPopover rect={selection.rect} onAsk={askAboutSelection} />}
-
-      {mode.kind === 'picking' && (
-        <ElementPickOverlay element={mode.element} onPoint={pointAt} onPick={pickAt} onCancel={dismiss} />
-      )}
-
-      {mode.kind === 'idle' && !selection && (
-        <Button
-          onClick={startPicking}
-          variant="secondary"
-          size="sm"
-          className="absolute bottom-3 right-3 z-10 rounded-full shadow-lg"
-        >
-          <MousePointerClick className="size-[var(--icon-size-sm)]" />
-          <Trans>Select</Trans>
-        </Button>
-      )}
     </div>
   )
 }

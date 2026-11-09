@@ -10,6 +10,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { SidebarInset } from '@/components/ui/sidebar'
 import { ActiveContentView } from '@/content-view/active-content-view'
+import { AddedToChatToast } from '@/content-view/added-to-chat-toast'
 import { useContentView } from '@/content-view/context'
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { edgeSpacing } from '@/lib/constants'
@@ -149,6 +150,7 @@ export default function Page() {
           </ResponsiveModalContentComposable>
         </Dialog>
       )}
+      <AddedToChatToast />
     </SidebarInset>
   )
 }

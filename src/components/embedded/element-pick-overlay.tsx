@@ -41,6 +41,8 @@ type ElementPickOverlayProps = {
    * `pickAt`, which decides which of the two the click meant.
    */
   onPick: (point: { x: number; y: number }) => void
+  /** A touch tapped this point: highlight what's there without committing it. */
+  onSelect: (point: { x: number; y: number }) => void
   onCancel: () => void
 }
 
@@ -61,8 +63,14 @@ type ElementPickOverlayProps = {
  * than four surrounding divs: one element, no seams between panels, and the
  * "hole" tracks the highlighted element for free.
  */
-export const ElementPickOverlay = ({ element, onPoint, onPick, onCancel }: ElementPickOverlayProps) => {
+export const ElementPickOverlay = ({ element, onPoint, onPick, onSelect, onCancel }: ElementPickOverlayProps) => {
   const layerRef = useRef<HTMLDivElement>(null)
+  /**
+   * Read per gesture rather than from the viewport: a touchscreen laptop or a
+   * wide tablet needs the touch flow, and a narrow window with a mouse doesn't.
+   * Kept from pointerdown because not every browser's `click` carries it.
+   */
+  const pressedWith = useRef<string | null>(null)
   const lastSentAt = useRef(0)
   /** The most recent position the throttle suppressed, waiting on the flush. */
   const pendingPoint = useRef<{ x: number; y: number } | null>(null)
@@ -105,7 +113,20 @@ export const ElementPickOverlay = ({ element, onPoint, onPick, onCancel }: Eleme
     [onPoint],
   )
 
+  const handleClick = (event: { clientX: number; clientY: number }) => {
+    const point = toLocal(event)
+    if (pressedWith.current === 'touch') {
+      onSelect(point)
+      return
+    }
+    onPick(point)
+  }
+
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // Finger jitter during a tap isn't hover, and answering it would overwrite the tap.
+    if (event.pointerType === 'touch') {
+      return
+    }
     /*
      * Throttled rather than debounced: a debounce would only ask once the
      * pointer stopped, so the outline would lag behind a moving cursor and then
@@ -136,11 +157,14 @@ export const ElementPickOverlay = ({ element, onPoint, onPick, onCancel }: Eleme
   return (
     <div
       ref={layerRef}
-      className="absolute inset-0 z-30 cursor-crosshair"
+      className="absolute inset-0 z-30 cursor-crosshair overflow-hidden"
+      onPointerDown={(event) => {
+        pressedWith.current = event.pointerType
+      }}
       onPointerMove={handlePointerMove}
       // `onClick` rather than pointerdown: a click is the commit, and committing
       // on press would fire before the guest had answered for that position.
-      onClick={(event) => onPick(toLocal(event))}
+      onClick={handleClick}
     >
       {element && (
         <div

@@ -277,6 +277,7 @@ msgstr "Active"
 msgid "Activity"
 msgstr "Activity"
 
+#: src/components/embedded/element-pick-banner.tsx
 #: src/settings/encryption/passkey-section.tsx
 msgid "Add"
 msgstr "Add"
@@ -348,6 +349,10 @@ msgstr "Add summary instructions (optional)"
 msgid "Add to chat"
 msgstr "Add to chat"
 
+#: src/components/embedded/element-pick-banner.tsx
+msgid "Add to chat?"
+msgstr "Add to chat?"
+
 #: src/settings/passkeys.tsx
 #~ msgid "Add your first passkey"
 #~ msgstr "Add your first passkey"
@@ -364,6 +369,10 @@ msgstr "Add Your First Task"
 #: src/settings/passkeys.tsx
 #~ msgid "Added {0}"
 #~ msgstr "Added {0}"
+
+#: src/content-view/added-to-chat-toast.tsx
+msgid "Added to chat"
+msgstr "Added to chat"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -664,6 +673,7 @@ msgstr "Calendar"
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
 #: src/components/chat/external-link-dialog.tsx
+#: src/components/embedded/element-pick-banner.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
@@ -1719,6 +1729,10 @@ msgstr "Description"
 #: src/projects/project-form.tsx
 msgid "Description (optional)"
 msgstr "Description (optional)"
+
+#: src/components/embedded/element-pick-banner.tsx
+msgid "Deselect"
+msgstr "Deselect"
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -3875,6 +3889,10 @@ msgstr "Select"
 #: src/widgets/ask/display.tsx
 msgid "Select all that apply"
 msgstr "Select all that apply"
+
+#: src/components/embedded/element-pick-banner.tsx
+msgid "Select an element to add it to the chat"
+msgstr "Select an element to add it to the chat"
 
 #: src/components/location-search-combobox.tsx
 msgid "Select location…"

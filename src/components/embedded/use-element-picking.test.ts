@@ -294,6 +294,114 @@ describe('useElementPicking', () => {
   })
 })
 
+describe('touch selection', () => {
+  const tap = async (hook: ReturnType<typeof setup>['hook']) => {
+    act(() => hook.result.current.startPicking())
+    await act(async () => {
+      await hook.result.current.selectAt(point)
+    })
+  }
+
+  it('highlights a tapped element without attaching it', async () => {
+    const { hook, asked } = setup(async () => element('a'))
+    await tap(hook)
+
+    expect(hook.result.current.canConfirm).toBe(true)
+    expect(hook.result.current.mode.kind === 'picking' && hook.result.current.mode.element?.id).toBe('a')
+    expect(asked).toHaveLength(0)
+  })
+
+  it('attaches the tapped element once confirmed and leaves picking', async () => {
+    const { hook, asked } = setup(async () => element('a'))
+    await tap(hook)
+    act(() => hook.result.current.confirmPick())
+
+    expect(asked).toHaveLength(1)
+    expect(asked[0][0]).toContain('text a')
+    expect(hook.result.current.mode.kind).toBe('idle')
+  })
+
+  it('offers no confirm for a tap on empty space', async () => {
+    const { hook } = setup(async () => null)
+    await tap(hook)
+
+    expect(hook.result.current.canConfirm).toBe(false)
+  })
+
+  it('never makes a hovered element confirmable', async () => {
+    const { hook, asked } = setup(async () => element('a'))
+    act(() => hook.result.current.startPicking())
+    await act(async () => {
+      await hook.result.current.pointAt(point)
+    })
+    act(() => hook.result.current.confirmPick())
+
+    expect(hook.result.current.canConfirm).toBe(false)
+    expect(asked).toHaveLength(0)
+  })
+
+  it('does not confirm while a newer tap is being answered', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook, asked } = setup(query)
+    act(() => hook.result.current.startPicking())
+    await act(async () => {
+      const first = hook.result.current.selectAt(point)
+      releases[0](element('a'))
+      await first
+    })
+    act(() => {
+      void hook.result.current.selectAt(point)
+    })
+    act(() => hook.result.current.confirmPick())
+
+    expect(asked).toHaveLength(0)
+  })
+
+  it('steps back from a tapped element to choosing, then out of picking', async () => {
+    const { hook, asked } = setup(async () => element('a'))
+    await tap(hook)
+
+    act(() => hook.result.current.stepBack())
+    expect(hook.result.current.mode).toMatchObject({ kind: 'picking', element: null })
+    expect(hook.result.current.canConfirm).toBe(false)
+
+    act(() => hook.result.current.stepBack())
+    expect(hook.result.current.mode.kind).toBe('idle')
+    expect(asked).toHaveLength(0)
+  })
+
+  it('ignores an answer still in flight when the selection is cleared', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook } = setup(query)
+    act(() => hook.result.current.startPicking())
+    await act(async () => {
+      const first = hook.result.current.selectAt(point)
+      releases[0](element('a'))
+      await first
+    })
+    const late = hook.result.current.selectAt(point)
+    act(() => hook.result.current.stepBack())
+    await act(async () => {
+      releases[1](element('b'))
+      await late
+    })
+
+    expect(hook.result.current.mode).toMatchObject({ kind: 'picking', element: null })
+    expect(hook.result.current.canConfirm).toBe(false)
+  })
+
+  it('attaches once when confirm fires twice', async () => {
+    const { hook, asked } = setup(async () => element('a'))
+    await tap(hook)
+    act(() => {
+      hook.result.current.confirmPick()
+      hook.result.current.confirmPick()
+    })
+
+    expect(asked).toHaveLength(1)
+  })
+})
+
 it('consumes an outlined pick synchronously before another click can reuse it', async () => {
   const { hook, asked } = setup(async () => element('a'))
   act(() => hook.result.current.startPicking())

@@ -265,6 +265,7 @@ msgstr ""
 msgid "Activity"
 msgstr "アクティビティ"
 
+#: src/components/embedded/element-pick-banner.tsx
 #: src/settings/encryption/passkey-section.tsx
 msgid "Add"
 msgstr ""
@@ -336,6 +337,10 @@ msgstr ""
 msgid "Add to chat"
 msgstr "チャットに追加"
 
+#: src/components/embedded/element-pick-banner.tsx
+msgid "Add to chat?"
+msgstr ""
+
 #: src/settings/passkeys.tsx
 #~ msgid "Add your first passkey"
 #~ msgstr ""
@@ -352,6 +357,10 @@ msgstr "最初のタスクを追加"
 #: src/settings/passkeys.tsx
 #~ msgid "Added {0}"
 #~ msgstr ""
+
+#: src/content-view/added-to-chat-toast.tsx
+msgid "Added to chat"
+msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -652,6 +661,7 @@ msgstr "カレンダー"
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
 #: src/components/chat/external-link-dialog.tsx
+#: src/components/embedded/element-pick-banner.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
@@ -1707,6 +1717,10 @@ msgstr "説明"
 #: src/projects/project-form.tsx
 msgid "Description (optional)"
 msgstr "説明（任意）"
+
+#: src/components/embedded/element-pick-banner.tsx
+msgid "Deselect"
+msgstr ""
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -3863,6 +3877,10 @@ msgstr ""
 #: src/widgets/ask/display.tsx
 msgid "Select all that apply"
 msgstr "該当するものをすべて選択"
+
+#: src/components/embedded/element-pick-banner.tsx
+msgid "Select an element to add it to the chat"
+msgstr ""
 
 #: src/components/location-search-combobox.tsx
 msgid "Select location…"

@@ -35,19 +35,22 @@ export type ElementPickMode =
    * failure. `token` is the newest query issued; `answeredToken` is the one
    * `element` actually answers, so a slow reply for an earlier position can't
    * overwrite a newer one — and a click arriving mid-flight can tell that the
-   * outline it is looking at is already out of date.
+   * outline it is looking at is already out of date. `confirmable` means a tap
+   * chose `element` and it is waiting on an explicit confirm.
    */
   | {
       kind: 'picking'
       element: SurfaceHighlightedElement | null
       token: number
       answeredToken: number
+      confirmable: boolean
     }
 
 type Action =
   | { type: 'PICKING_STARTED' }
   | { type: 'POINTER_MOVED'; token: number }
-  | { type: 'ELEMENT_RESOLVED'; token: number; element: SurfaceHighlightedElement | null }
+  | { type: 'ELEMENT_RESOLVED'; token: number; element: SurfaceHighlightedElement | null; confirmable: boolean }
+  | { type: 'SELECTION_CLEARED'; token: number }
   | { type: 'DISMISSED' }
 
 /**
@@ -62,14 +65,23 @@ type Action =
 const modeReducer = (mode: ElementPickMode, action: Action): ElementPickMode => {
   switch (action.type) {
     case 'PICKING_STARTED':
-      return { kind: 'picking', element: null, token: 0, answeredToken: 0 }
+      return { kind: 'picking', element: null, token: 0, answeredToken: 0, confirmable: false }
     case 'POINTER_MOVED':
       // Keep the current outline while the next answer is in flight. Clearing it
       // here would make the outline strobe as the pointer moves.
       return mode.kind === 'picking' ? { ...mode, token: action.token } : mode
     case 'ELEMENT_RESOLVED':
       return mode.kind === 'picking' && mode.token === action.token
-        ? { ...mode, element: action.element, answeredToken: action.token }
+        ? {
+            ...mode,
+            element: action.element,
+            answeredToken: action.token,
+            confirmable: action.confirmable && action.element !== null,
+          }
+        : mode
+    case 'SELECTION_CLEARED':
+      return mode.kind === 'picking'
+        ? { ...mode, element: null, token: action.token, answeredToken: action.token, confirmable: false }
         : mode
     case 'DISMISSED':
       return { kind: 'idle' }
@@ -109,17 +121,45 @@ export const useElementPicking = ({ query, onAsk }: ElementPickingDeps) => {
     [],
   )
 
-  const pointAt = useCallback(
-    async (point: { x: number; y: number }) => {
+  const resolveAt = useCallback(
+    async (point: { x: number; y: number }, confirmable: boolean) => {
       // A ref rather than reducer state: the token has to be readable here, in
       // the same tick as the dispatch, and a dispatch doesn't hand back what it
       // produced.
       const token = ++lastQueryToken.current
       dispatch({ type: 'POINTER_MOVED', token })
-      dispatch({ type: 'ELEMENT_RESOLVED', token, element: await query(point) })
+      dispatch({ type: 'ELEMENT_RESOLVED', token, element: await query(point), confirmable })
     },
     [query],
   )
+
+  const pointAt = useCallback((point: { x: number; y: number }) => resolveAt(point, false), [resolveAt])
+
+  /**
+   * Choose the element under a tap without committing it.
+   *
+   * Touch has no hover, so the tap has to be the preview that hovering is on a
+   * mouse, and committing needs a separate step: `confirmPick`.
+   */
+  const selectAt = useCallback((point: { x: number; y: number }) => resolveAt(point, true), [resolveAt])
+
+  /**
+   * Commit the tapped element. Does nothing while a newer tap is still being
+   * answered, since the outline on screen is about to change.
+   */
+  const confirmPick = useCallback(() => {
+    if (
+      mode.kind !== 'picking' ||
+      !mode.element ||
+      !mode.confirmable ||
+      mode.token !== mode.answeredToken ||
+      gestureRef.current === null
+    ) {
+      return
+    }
+    dismiss()
+    onAsk([toPickedPassage(mode.element)])
+  }, [mode, onAsk, dismiss])
 
   /**
    * Commit the click at `point`.
@@ -163,5 +203,20 @@ export const useElementPicking = ({ query, onAsk }: ElementPickingDeps) => {
     [mode, onAsk, query, dismiss],
   )
 
-  return { mode, startPicking, dismiss, pointAt, pickAt }
+  /**
+   * Undo one step: a tapped element goes back to choosing, and choosing leaves
+   * picking. The new token also discards any answer still in flight, so a slow
+   * reply can't bring back the selection the user just cleared.
+   */
+  const stepBack = useCallback(() => {
+    if (mode.kind === 'picking' && mode.confirmable) {
+      dispatch({ type: 'SELECTION_CLEARED', token: ++lastQueryToken.current })
+      return
+    }
+    dismiss()
+  }, [mode, dismiss])
+
+  const canConfirm = mode.kind === 'picking' && mode.confirmable
+
+  return { mode, canConfirm, startPicking, dismiss, stepBack, pointAt, pickAt, selectAt, confirmPick }
 }

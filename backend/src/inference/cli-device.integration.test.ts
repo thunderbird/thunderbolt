@@ -10,7 +10,6 @@ import { inferenceUsage } from '@/db/inference-usage-schema'
 import { challengeNoncesTable, encryptionMetadataTable } from '@/db/encryption-schema'
 import { countActiveDevices } from '@/dal'
 import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
-import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
@@ -199,14 +198,6 @@ describe('CLI device cross-stack acceptance', () => {
               method: 'POST',
               headers: { Authorization: `Bearer ${cliBearer}` },
               body: 'opaque-bytes',
-            }),
-          ),
-        () =>
-          harness.app.handle(
-            new Request(`http://localhost/v1/${inferenceUsageReceiptPath}`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${cliBearer}`, 'Content-Type': 'application/json' },
-              body: '{}',
             }),
           ),
       ]

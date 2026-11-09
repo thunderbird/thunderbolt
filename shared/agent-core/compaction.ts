@@ -14,7 +14,6 @@ import {
   type BranchSummaryDetails,
   type Session,
 } from '@earendil-works/pi-agent-core'
-import type { ReceiptLifecycle } from './confidential-model.ts'
 
 /** Persisted with an app message, whose position supplies the transcript boundary. */
 export type CompactionCheckpoint = {
@@ -163,7 +162,6 @@ export const createHarnessCompaction = (
   harness: AgentHarness,
   session: Session,
   restored?: CompactionCheckpoint,
-  receipts?: ReceiptLifecycle,
 ): HarnessCompaction => {
   const state = {
     summary: restored?.summary,
@@ -252,18 +250,16 @@ export const createHarnessCompaction = (
         ? [...selected.messagesToSummarize, ...selected.turnPrefixMessages]
         : activeMessages
       const tail = hasSummaryInput ? selected.retainedTail : []
-      const summarize = () =>
-        generateSummary(
-          request.transformMessage ? summaryMessages.map(request.transformMessage) : summaryMessages,
-          harness.models,
-          model,
-          settings.reserveTokens,
-          signal,
-          request.instructions?.trim() || undefined,
-          selected.previousSummary,
-          harness.getThinkingLevel(),
-        )
-      const result = await (receipts ? receipts.withStandaloneRequests(summarize) : summarize())
+      const result = await generateSummary(
+        request.transformMessage ? summaryMessages.map(request.transformMessage) : summaryMessages,
+        harness.models,
+        model,
+        settings.reserveTokens,
+        signal,
+        request.instructions?.trim() || undefined,
+        selected.previousSummary,
+        harness.getThinkingLevel(),
+      )
       signal.throwIfAborted()
       if (!result.ok) {
         throw result.error

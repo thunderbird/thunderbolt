@@ -94,6 +94,8 @@ const routeChunkLoaders = {
   connections: () => import('@/settings/connections'),
   skills: () => import('@/settings/skills'),
   agents: () => import('@/routes/settings/agents'),
+  sharedChats: () => import('@/shared-chats/shared-chats-page'),
+  sharedChat: () => import('@/shared-chats/shared-chat-page'),
   // The CLI device-authorization approval page is off the chat/landing
   // critical path (only reached via a QR/link).
   deviceApproval: () => import('@/components/device-approval'),
@@ -109,6 +111,8 @@ const ConnectionsPage = lazy(routeChunkLoaders.connections)
 const SkillsPage = lazy(routeChunkLoaders.skills)
 const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
 const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
+const SharedChatsPage = lazy(routeChunkLoaders.sharedChats)
+const SharedChatPage = lazy(routeChunkLoaders.sharedChat)
 
 // Voice settings is feature-flagged and hidden by default, so it's a
 // deliberately-cold chunk (outside routeChunkLoaders) — lazy but not warmed.
@@ -232,6 +236,8 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route path="projects" element={<ProjectRedirect />} />
               <Route path="projects/:projectId" element={<ProjectRedirect />} />
               <Route path="apps/:appId" element={<MiniAppPage />} />
+              <Route path="shared" element={<SharedChatsPage />} />
+              <Route path="shared/:shareId" element={<SharedChatPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
 

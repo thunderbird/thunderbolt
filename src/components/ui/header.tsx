@@ -7,6 +7,7 @@ import { useState, type ReactNode } from 'react'
 
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { ProjectBadge } from '@/projects/project-badge'
+import { ShareChatButton } from '@/components/share-chat'
 import { useCreateItem } from '@/components/create-item/context'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
@@ -416,6 +417,9 @@ export const Header = () => {
       </div>
       {brandLogoImage}
       {privateSwitchDialog}
+      {isChatRoute && hasThread && chatThreadId && (
+        <ShareChatButton chatThreadId={chatThreadId} className={headerIconButtonClass} />
+      )}
     </header>
   )
 }

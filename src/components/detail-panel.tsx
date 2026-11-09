@@ -95,9 +95,11 @@ export const DetailPanel = ({
           </div>
           {/* Pin the controls to the card's top-right corner, 8px from both
               edges (right: 24px padding − 16px; top: 8px − the header's 10px
-              margin). Close sits outermost (the desktop convention); the
-              mobile shell instead splits them across the top corners. */}
-          <div className="absolute -right-4 -top-0.5 flex shrink-0 items-center gap-0.5">
+              margin). In flow rather than absolute, so a long title truncates
+              before the controls instead of running underneath them. Close
+              sits outermost (the desktop convention); the mobile shell
+              instead splits them across the top corners. */}
+          <div className="-mr-4 -mt-0.5 flex shrink-0 items-center gap-0.5 self-start">
             {actions}
             {showCloseButton && (
               <Button

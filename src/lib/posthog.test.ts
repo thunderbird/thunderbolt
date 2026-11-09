@@ -107,6 +107,11 @@ describe('analytics sanitizeUrl', () => {
     expect(sanitizeUrl('/chats/abc-123')).toBe('/chats/:chatThreadId')
   })
 
+  it('replaces shared chat IDs with the route param', () => {
+    expect(sanitizeUrl('/shared/2f6c1a0e-5d1b-4c39-9f7e-1a2b3c4d5e6f')).toBe('/shared/:shareId')
+    expect(sanitizeUrl('/shared')).toBe('/shared')
+  })
+
   it('replaces dynamic chat IDs and removes the query and hash', () => {
     const input = 'https://app.test/chats/abc-123?x=1#hash'
     const expected = 'https://app.test/chats/:chatThreadId'

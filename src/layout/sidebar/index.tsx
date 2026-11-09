@@ -174,6 +174,7 @@ export default function Sidebar() {
             onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
+            onSharedClick={() => handleNavigate('/shared')}
             onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
             onRename={handleRename}
             onChatClick={handleChatClick}

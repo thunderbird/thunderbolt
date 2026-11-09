@@ -15,13 +15,14 @@ import { useLongPress } from '@/hooks/use-long-press'
 import { useDraggable } from '@dnd-kit/core'
 import { chatDragId, type ChatDragData } from '@/projects/chat-drop'
 import { cn } from '@/lib/utils'
-import { FolderInput, Loader2, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { FolderInput, Loader2, MoreVertical, Pencil, Share2, Trash2 } from 'lucide-react'
 import { memo, useReducer, useRef, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 import type { ChatListItemProps } from './types'
 import { useChatStore } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { RenameChatDialog } from './rename-chat-dialog'
+import { ShareChatDialog } from '@/components/share-chat'
 import { MiniAppChatBadge } from '@/mini-apps/mini-app-chat-badge'
 
 /** `useChat` is injectable so tests exercise the real component without a global
@@ -34,6 +35,7 @@ type ChatItemMenu = 'dropdown' | 'context' | 'mobile'
 
 type ChatListItemState = {
   renameDialogOpen: boolean
+  shareDialogOpen: boolean
   openMenu: ChatItemMenu | null
   optimisticTitle: string | null
   observedTitle: string | null
@@ -42,11 +44,13 @@ type ChatListItemState = {
 type ChatListItemAction =
   | { type: 'MENU_CHANGED'; menu: ChatItemMenu; open: boolean }
   | { type: 'RENAME_DIALOG_CHANGED'; open: boolean }
+  | { type: 'SHARE_DIALOG_CHANGED'; open: boolean }
   | { type: 'RENAMED'; title: string }
   | { type: 'THREAD_TITLE_CHANGED'; title: string | null }
 
 const createChatListItemState = (title: string | null): ChatListItemState => ({
   renameDialogOpen: false,
+  shareDialogOpen: false,
   openMenu: null,
   optimisticTitle: null,
   observedTitle: title,
@@ -61,6 +65,8 @@ const chatListItemReducer = (state: ChatListItemState, action: ChatListItemActio
       }
     case 'RENAME_DIALOG_CHANGED':
       return { ...state, renameDialogOpen: action.open }
+    case 'SHARE_DIALOG_CHANGED':
+      return { ...state, shareDialogOpen: action.open }
     case 'RENAMED':
       return { ...state, optimisticTitle: action.title }
     case 'THREAD_TITLE_CHANGED':
@@ -86,11 +92,12 @@ type MenuItemComponent = ComponentType<{
   children?: ReactNode
 }>
 
-/** The same Rename/Delete actions back the context menu and desktop `⋯`
- *  dropdown — only the Radix item primitive differs. */
+/** The same Rename/Share/Move/Delete actions back the context menu and desktop
+ *  `⋯` dropdown — only the Radix item primitive differs. */
 const ChatItemActions = ({
   Item,
   onRename,
+  onShare,
   onMove,
   onDelete,
   deleteLabel,
@@ -98,6 +105,7 @@ const ChatItemActions = ({
 }: {
   Item: MenuItemComponent
   onRename: () => void
+  onShare: () => void
   /** Absent where chats cannot be moved into projects (minimal mode). */
   onMove?: () => void
   onDelete: () => void
@@ -108,6 +116,10 @@ const ChatItemActions = ({
     <Item onClick={onRename} className="cursor-pointer">
       <Pencil className="size-4 mr-2" />
       <Trans>Rename</Trans>
+    </Item>
+    <Item onClick={onShare} className="cursor-pointer">
+      <Share2 className="size-4 mr-2" />
+      <Trans>Share</Trans>
     </Item>
     {onMove && (
       <Item onClick={onMove} className="cursor-pointer">
@@ -142,7 +154,9 @@ export const ChatListItem = memo(
     const { status } = useChat(
       chatInstance ? { chat: chatInstance, experimental_throttle: statusOnlyThrottleMs } : undefined,
     )
-    const [{ renameDialogOpen, openMenu, optimisticTitle }, dispatch] = useChatListItemState(thread.title)
+    const [{ renameDialogOpen, shareDialogOpen, openMenu, optimisticTitle }, dispatch] = useChatListItemState(
+      thread.title,
+    )
     const isOpeningDialogRef = useRef(false)
     const longPressFiredRef = useRef(false)
     const mobileLongPressHandlers = useLongPress(() => {
@@ -178,6 +192,10 @@ export const ChatListItem = memo(
     const startRename = () => {
       isOpeningDialogRef.current = true
       dispatch({ type: 'RENAME_DIALOG_CHANGED', open: true })
+    }
+    const startShare = () => {
+      isOpeningDialogRef.current = true
+      dispatch({ type: 'SHARE_DIALOG_CHANGED', open: true })
     }
     // The picker is owned by the sidebar: one dialog for the whole list rather
     // than one per row, and it needs the database context that a row does not.
@@ -230,6 +248,14 @@ export const ChatListItem = memo(
       />
     )
 
+    const shareDialog = (
+      <ShareChatDialog
+        chatThreadId={thread.id}
+        open={shareDialogOpen}
+        onOpenChange={(open) => dispatch({ type: 'SHARE_DIALOG_CHANGED', open })}
+      />
+    )
+
     if (isMobile) {
       const trigger = (
         <SidebarMenuButton
@@ -270,6 +296,11 @@ export const ChatListItem = memo(
                 icon: <Pencil className="size-4" />,
                 onSelect: startRename,
               },
+              {
+                label: t`Share`,
+                icon: <Share2 className="size-4" />,
+                onSelect: startShare,
+              },
               ...(minimalMode
                 ? []
                 : [
@@ -288,6 +319,7 @@ export const ChatListItem = memo(
             ]}
           />
           {renameDialog}
+          {shareDialog}
         </>
       )
     }
@@ -349,6 +381,7 @@ export const ChatListItem = memo(
                 <ChatItemActions
                   Item={ContextMenuItem}
                   onRename={startRename}
+                  onShare={startShare}
                   onMove={minimalMode ? undefined : startMove}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
@@ -365,6 +398,7 @@ export const ChatListItem = memo(
                 <ChatItemActions
                   Item={DropdownMenuItem}
                   onRename={startRename}
+                  onShare={startShare}
                   onMove={minimalMode ? undefined : startMove}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
@@ -375,6 +409,7 @@ export const ChatListItem = memo(
           </ContextMenu>
         </DropdownMenu>
         {renameDialog}
+        {shareDialog}
       </>
     )
   },

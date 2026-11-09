@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/sidebar'
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
-import { CheckSquare, MessageCirclePlus } from 'lucide-react'
+import { CheckSquare, MessageCirclePlus, Users } from 'lucide-react'
 import { lazy, Suspense, type RefObject } from 'react'
 import { useLocation } from 'react-router'
 import {
@@ -68,6 +68,7 @@ type ChatSidebarContentProps = {
   onSectionChange: (section: SidebarSection) => void
   onCreateNewChat: () => void
   onTasksClick: () => void
+  onSharedClick: () => void
   onMiniAppClick: (appId: string) => void
   onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
@@ -77,6 +78,22 @@ type ChatSidebarContentProps = {
 type TasksMenuItemProps = {
   isActive: boolean
   onClick: () => void
+}
+
+/** Chats shared with you, and the ones you shared. */
+const SharedMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
+  const { t } = useLingui()
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton onClick={onClick} tooltip={t`Shared`} className="cursor-pointer" isActive={isActive}>
+        <Users className="size-[var(--icon-size-default)]" />
+        <span>
+          <Trans>Shared</Trans>
+        </span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
 }
 
 const TasksMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
@@ -135,6 +152,7 @@ export const ChatSidebarContent = ({
   onSectionChange,
   onCreateNewChat,
   onTasksClick,
+  onSharedClick,
   onMiniAppClick,
   onChatClick,
   onRename,
@@ -271,6 +289,7 @@ export const ChatSidebarContent = ({
                         </span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
+                    <SharedMenuItem isActive={location.pathname.startsWith('/shared')} onClick={onSharedClick} />
                     {showTasks && (
                       <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                     )}
@@ -301,6 +320,7 @@ export const ChatSidebarContent = ({
               mobileNavToggle={headerControls}
               mobileSecondaryNavigation={
                 <SidebarMenu className="mt-2 flex-shrink-0">
+                  <SharedMenuItem isActive={location.pathname.startsWith('/shared')} onClick={onSharedClick} />
                   {showProjects && <SidebarMenuItem>{projectTree}</SidebarMenuItem>}
                   {showTasks && (
                     <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />

@@ -33,7 +33,7 @@ export const resetPosthogClient = () => {
  */
 export const getPosthogClient = (): PostHog | null => posthogClient
 
-const routePatterns = ['/chats/:chatThreadId'] as const
+const routePatterns = ['/chats/:chatThreadId', '/shared/:shareId'] as const
 
 /**
  * Replaces dynamic URL segments and removes query strings and hashes so analytics do not collect secrets or raw IDs.

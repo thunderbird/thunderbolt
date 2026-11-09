@@ -107,6 +107,8 @@ export const createAudioEngine = (opts: AudioEngineOptions): VoiceEngine => {
     const form = new FormData()
     form.append('file', encodeWav(merged, sttSampleRate), 'utterance.wav')
     form.append('model', opts.sttModel)
+    // Greedy decoding: transcription wants the most likely words, not variety.
+    form.append('temperature', '0')
     const res = await opts.transport('/audio/transcriptions', form, undefined, signal)
     if (!res.ok) {
       throw new Error(`STT failed: ${await errorText(res)}`)

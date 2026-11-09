@@ -5,7 +5,7 @@
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { getClock } from '@/testing-library'
 import type { Agent } from '@/types/acp'
@@ -101,9 +101,11 @@ describe('AgentSelector', () => {
     fireEvent.click(screen.getByTestId('agent-selector-trigger'))
 
     // Built-in appears in both the trigger and the dropdown item; assert at least one match.
-    expect(screen.getAllByText('Thunderbolt').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Vesta').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('RAG Chat')).toBeInTheDocument()
     expect(screen.getByText('My Remote Agent')).toBeInTheDocument()
+    expect(screen.getByText(systemAgent.description!)).toBeInTheDocument()
+    expect(screen.getByText(customAgent.description!)).toBeInTheDocument()
   })
 
   it('invokes onSelect with the chosen agent', () => {
@@ -121,6 +123,48 @@ describe('AgentSelector', () => {
 
     expect(onSelect).toHaveBeenCalledTimes(1)
     expect(onSelect.mock.calls[0][0].id).toBe(customAgent.id)
+  })
+
+  it.each([{ enabled: 0 }, { deletedAt: '2026-01-01' }])(
+    'prevents selecting an unavailable agent (%j)',
+    (unavailable) => {
+      const onSelect = mock(() => {})
+      render(
+        <AgentSelector
+          selectedAgent={builtInAgent}
+          agents={[builtInAgent, { ...customAgent, ...unavailable }]}
+          onSelect={onSelect}
+        />,
+      )
+      fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+      const option = screen.getByText(customAgent.name).closest('button')
+      expect(option).toBeDisabled()
+      fireEvent.click(screen.getByText(customAgent.name))
+      expect(onSelect).not.toHaveBeenCalled()
+    },
+  )
+
+  it('describes each agent in the menu without a separate Private label', () => {
+    render(<AgentSelector selectedAgent={zeusAgent} agents={[builtInAgent, zeusAgent]} onSelect={() => {}} />)
+    expect(screen.queryByText('Private')).toBeNull()
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    expect(screen.queryByText('Private')).toBeNull()
+    expect(screen.getByText('Confidential AI')).toBeInTheDocument()
+    expect(screen.getByText('Powerful frontier AI')).toBeInTheDocument()
+  })
+
+  it('shows a fixed identity for an existing chat even when other agents are available', () => {
+    const onSelect = mock(() => {})
+    render(
+      <AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent, zeusAgent]} onSelect={onSelect} readOnly />,
+    )
+    const trigger = screen.getByTestId('agent-selector-trigger')
+    expect(trigger.closest('button')).toBeDisabled()
+    expect(trigger).toHaveTextContent('Vesta')
+    expect(trigger).not.toHaveTextContent('Private')
+    fireEvent.click(trigger)
+    expect(screen.queryByText('Zeus')).toBeNull()
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('does not open the dropdown while disabled', () => {
@@ -184,14 +228,14 @@ describe('AgentSelector', () => {
     render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={() => {}} disabled />)
 
     const trigger = screen.getByTestId('agent-selector-trigger')
-    expect(trigger).toHaveTextContent('Thunderbolt')
-    expect(trigger.closest('button')).toBeNull()
+    expect(trigger).toHaveTextContent('Vesta')
+    expect(trigger.closest('button')).toBeDisabled()
     // Not dimmed by `disabled`: there is no switch to hold back during a reply.
     expect(trigger).not.toHaveClass('opacity-60')
 
     fireEvent.click(trigger)
 
-    expect(screen.getAllByText('Thunderbolt')).toHaveLength(1)
+    expect(screen.getAllByText('Vesta')).toHaveLength(1)
   })
 
   describe('when the only available agent is not the selected one', () => {

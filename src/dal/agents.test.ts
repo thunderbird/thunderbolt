@@ -4,7 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { agentsSystemTable, agentsTable, chatThreadsTable } from '@/db/tables'
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, builtInAgents, zeusAgent } from '@/defaults/agents'
 import { HttpError, type HttpClient, type ResponsePromise } from '@/lib/http'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
 import { clearAdapterCache, getOrConnectAdapter } from '@/acp/adapter-cache'
@@ -154,8 +154,10 @@ describe('agents DAL', () => {
       expect(row?.enabled).toBe(0)
     })
 
-    it('refuses to edit the built-in agent', async () => {
-      await expect(updateAgent(getDb(), builtInAgent.id, { name: 'nope' })).rejects.toThrow(/built-in/)
+    it('refuses to edit either built-in agent', async () => {
+      for (const agent of builtInAgents) {
+        await expect(updateAgent(getDb(), agent.id, { name: 'nope' })).rejects.toThrow(/built-in/)
+      }
     })
 
     it('no-ops on an empty patch (does not touch DB)', async () => {
@@ -255,8 +257,10 @@ describe('agents DAL', () => {
       expect(row?.deletedAt).not.toBeNull()
     })
 
-    it('refuses to delete the built-in agent', async () => {
-      await expect(deleteAgent(getDb(), builtInAgent.id)).rejects.toThrow(/built-in/)
+    it('refuses to delete either built-in agent', async () => {
+      for (const agent of builtInAgents) {
+        await expect(deleteAgent(getDb(), agent.id)).rejects.toThrow(/built-in/)
+      }
     })
 
     it('disposes the agent warm ACP connection on delete', async () => {
@@ -301,7 +305,7 @@ describe('agents DAL', () => {
 
       const agents = await loadAllAgents(getDb())
 
-      expect(agents.map((agent) => agent.id)).toEqual([builtInAgent.id, 'hosted-agent', 'custom-agent'])
+      expect(agents.map((agent) => agent.id)).toEqual([builtInAgent.id, zeusAgent.id, 'hosted-agent', 'custom-agent'])
     })
 
     it('leaves the built-in agent out when the deployment disables it', async () => {
@@ -358,17 +362,17 @@ describe('agents DAL', () => {
         [customAgent('c-a', 'Alpha Custom'), customAgent('c-z', 'Zulu Custom')],
       )
 
-      expect(result.map((a) => a.id)).toEqual([builtInAgent.id, 'sys-a', 'sys-z', 'c-a', 'c-z'])
+      expect(result.map((a) => a.id)).toEqual([builtInAgent.id, zeusAgent.id, 'sys-a', 'sys-z', 'c-a', 'c-z'])
     })
 
     it('returns just built-in when no system or customs', () => {
       const result = composeAllAgents([], [])
-      expect(result).toEqual([builtInAgent])
+      expect(result).toEqual([...builtInAgents])
     })
 
     it('includes built-in when includeBuiltIn is true', () => {
       const result = composeAllAgents([systemAgent('sys-a', 'Alpha System')], [], { includeBuiltIn: true })
-      expect(result.map((a) => a.id)).toEqual([builtInAgent.id, 'sys-a'])
+      expect(result.map((a) => a.id)).toEqual([builtInAgent.id, zeusAgent.id, 'sys-a'])
     })
 
     it('omits built-in entirely when includeBuiltIn is false', () => {

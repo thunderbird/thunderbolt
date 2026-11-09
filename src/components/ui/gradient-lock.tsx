@@ -4,14 +4,7 @@
 
 import { BrandGradientIcon } from '@/components/ui/brand-gradient-icon'
 
-/**
- * Lucide's Lock outline drawn with the brand gradient stroke.
- *
- * `gradientEndX` stretches the sweep past the icon's right edge so the lock
- * samples only the leading slice. Used by the model selector's "Private"
- * badge, where a sibling text span clips the remainder of the same gradient —
- * together they read as one continuous sweep across lock + word.
- */
+/** Lucide's lock outline with the shared gold-to-pink brand gradient. */
 export const GradientLock = ({ className, gradientEndX = 24 }: { className?: string; gradientEndX?: number }) => (
   <BrandGradientIcon className={className} gradientEndX={gradientEndX}>
     {(stroke) => (

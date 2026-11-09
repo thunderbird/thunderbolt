@@ -30,6 +30,14 @@ env:
 - extendedWaitUntil:
     visible: ${DEFAULT_MODEL}
     timeout: 120000
+- tapOn: Vesta
+- extendedWaitUntil:
+    visible: Choose agent
+    timeout: 30000
+- tapOn: Zeus
+- extendedWaitUntil:
+    visible: Opus 5.5
+    timeout: 30000
 - retry:
     maxRetries: 2
     commands:

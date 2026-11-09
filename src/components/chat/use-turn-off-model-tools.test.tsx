@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultModelDeepSeekV41Flash, defaultModelGlm53 } from '@shared/defaults/models'
 import { useChatStore } from '@/chats/chat-store'
-import { createModel, getModel } from '@/dal'
+import { getModel } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { modelsTable } from '@/db/tables'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
@@ -15,21 +17,22 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } fro
 import { useTurnOffModelTools } from './use-turn-off-model-tools'
 
 const sessionId = 'session-1'
-const modelId = 'gemma-model'
+const modelId = defaultModelGlm53.id
 
 /** Saves a tools-on model and opens a chat session on it. */
 const setUpChatOnToolsModel = async (): Promise<Model> => {
   const db = getDb()
-  await createModel(db, {
-    id: modelId,
-    provider: 'custom',
-    name: 'Gemma',
-    model: 'gemma3:4b',
-    url: 'http://localhost:11434/v1',
-    isSystem: 0,
-    enabled: 1,
-    toolUsage: 1,
-  })
+  await db
+    .insert(modelsTable)
+    .values(
+      [defaultModelGlm53, defaultModelDeepSeekV41Flash].map((model) => ({
+        ...model,
+        isSystem: 1,
+        enabled: 1,
+        toolUsage: 1,
+      })),
+    )
+    .onConflictDoUpdate({ target: modelsTable.id, set: { enabled: 1, toolUsage: 1, deletedAt: null } })
   const savedModel = await getModel(db, modelId)
   if (!savedModel) {
     throw new Error('Fixture model was not saved')
@@ -80,7 +83,11 @@ describe('useTurnOffModelTools', () => {
 
   it('keeps a model the user picked while the save was running', async () => {
     const savedModel = await setUpChatOnToolsModel()
-    const pickedModel = { ...savedModel, id: 'llama-model', model: 'llama3.2:3b' }
+    const pickedModel = {
+      ...savedModel,
+      id: defaultModelDeepSeekV41Flash.id,
+      model: defaultModelDeepSeekV41Flash.model,
+    }
     const db = getDb()
     const runTransaction = db.transaction.bind(db)
     const transactionSpy = spyOn(db, 'transaction').mockImplementation(((
@@ -100,7 +107,7 @@ describe('useTurnOffModelTools', () => {
       })
 
       expect((await getModel(db, modelId))?.toolUsage).toBe(0)
-      expect(useChatStore.getState().sessions.get(sessionId)?.selectedModel.id).toBe('llama-model')
+      expect(useChatStore.getState().sessions.get(sessionId)?.selectedModel.id).toBe(defaultModelDeepSeekV41Flash.id)
     } finally {
       transactionSpy.mockRestore()
     }

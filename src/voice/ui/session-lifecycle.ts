@@ -4,8 +4,8 @@
 
 import type { SessionState, VoiceSession, VoiceSessionOptions } from '@/voice/session'
 
-type SessionCallbacks = Pick<VoiceSessionOptions, 'onState' | 'onError' | 'onLevel'>
-type SessionOwner = { session: VoiceSession | null }
+type SessionCallbacks = Pick<VoiceSessionOptions, 'onState' | 'onError' | 'onLevel'> & { signal: AbortSignal }
+type SessionOwner = { session: VoiceSession | null; controller: AbortController }
 
 type LifecycleOptions = {
   onStarting: () => void
@@ -23,6 +23,7 @@ export const createSessionLifecycle = (options: LifecycleOptions) => {
   const stop = async () => {
     const owner = active
     active = null
+    owner?.controller.abort()
     options.onActiveChange(false)
     options.onStopped()
     await owner?.session?.stop()
@@ -32,12 +33,13 @@ export const createSessionLifecycle = (options: LifecycleOptions) => {
     if (active) {
       return
     }
-    const owner: SessionOwner = { session: null }
+    const owner: SessionOwner = { session: null, controller: new AbortController() }
     active = owner
     options.onActiveChange(true)
     options.onStarting()
     try {
       const session = await prepare({
+        signal: owner.controller.signal,
         onState: (state) => {
           if (active === owner) {
             options.onState(state)

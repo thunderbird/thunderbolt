@@ -7,21 +7,20 @@
  * from the current chat's `Chat` instance so a voice turn is a real chat turn,
  * and exposes the state/transcripts the overlay renders.
  */
-import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
-import { useDatabase } from '@/contexts'
-import { builtInAgent } from '@/defaults/agents'
-import { getSettings } from '@/dal'
+import { assertSessionCanSend } from '@/chats/session-policy'
 import type { ThunderboltUIMessage } from '@/types'
+import { agentVoiceUnavailableMessage } from '@/voice/agent-voice'
 import type { ReplyChat } from '@/voice/chat-reply'
 import type { SessionState } from '@/voice/session'
-import { toVoiceErrorMessage } from '@/voice/voice-error'
 import { createSessionLifecycle } from './session-lifecycle'
 import { setVoiceModeActive } from '@/voice/voice-mode'
+import { toVoiceErrorMessage } from '@/voice/voice-error'
 import type { Chat } from '@ai-sdk/react'
-import { i18n, type MessageDescriptor } from '@lingui/core'
+import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { useEffect, useMemo, useReducer, useRef } from 'react'
 
 /** Thrown by a voice send the private auto-run hold refuses; `toVoiceOverlayError` translates it. */
@@ -35,11 +34,12 @@ class PrivateChatHeldError extends Error {
   }
 }
 
-// The composer notice's copy, so the overlay and the notice read alike in every locale.
-const privateChatHeldMessage = (agentName: string, builtInAgentName: string | null): MessageDescriptor =>
-  builtInAgentName
-    ? msg`This private chat won't run on ${agentName}. Switch to ${builtInAgentName} to run it.`
-    : msg`This private chat won't run on ${agentName}.`
+class VoiceAgentChangedError extends Error {
+  constructor() {
+    super('The agent for this voice session changed')
+    this.name = 'VoiceAgentChangedError'
+  }
+}
 
 /**
  * The line the voice overlay shows for a session error. A held private chat gets
@@ -47,11 +47,14 @@ const privateChatHeldMessage = (agentName: string, builtInAgentName: string | nu
  * a string; any other error is shown as thrown.
  */
 export const toVoiceOverlayError = (error: unknown): string => {
-  if (!(error instanceof PrivateChatHeldError)) {
-    return String(error)
+  if (error instanceof VoiceAgentChangedError) {
+    return i18n._(msg`The agent for this voice session changed. Start voice mode again.`)
   }
-  const builtInAgentName = selectBuiltInAgentEnabled(useConfigStore.getState().config) ? builtInAgent.name : null
-  return i18n._(privateChatHeldMessage(error.agentName, builtInAgentName))
+  if (error instanceof PrivateChatHeldError) {
+    const { agentName } = error
+    return i18n._(msg`This private chat won't run on ${agentName}.`)
+  }
+  return String(error)
 }
 
 /**
@@ -65,11 +68,13 @@ export const toVoiceOverlayError = (error: unknown): string => {
  * chat to a non-built-in agent either. The rejection lands in the session's
  * error state.
  */
-export const toReplyChat = (chat: Chat<ThunderboltUIMessage>, chatThreadId: string): ReplyChat => ({
+export const toReplyChat = (chat: Chat<ThunderboltUIMessage>, chatThreadId: string, agentId: string): ReplyChat => ({
   sendMessage: async (message) => {
     const session = useChatStore.getState().sessions.get(chatThreadId)
+    if (!session || session.selectedAgent.id !== agentId) {
+      throw new VoiceAgentChangedError()
+    }
     if (
-      session &&
       isPrivateAutoRunBlocked({
         chatThread: session.chatThread,
         agent: session.selectedAgent,
@@ -121,9 +126,21 @@ export const voiceUiReducer = (state: VoiceUiState, action: VoiceUiAction): Voic
   }
 }
 
-export const useVoiceSession = () => {
+/** Keep the audio graph out of the composer's entry bundle until voice starts. */
+const loadVoiceRuntime = async () => {
+  const [{ createVoiceSession }, { createVoiceEngine }, { createChatReply }] = await Promise.all([
+    import('@/voice/session'),
+    import('@/voice/engine/router'),
+    import('@/voice/chat-reply'),
+  ])
+  return { createVoiceSession, createVoiceEngine, createChatReply }
+}
+
+export const useVoiceSession = (loadRuntime = loadVoiceRuntime) => {
   const session = useCurrentChatSession()
-  const db = useDatabase()
+  const { i18n: activeI18n } = useLingui()
+  const unavailableMessage = agentVoiceUnavailableMessage(session.selectedAgent)
+  const unavailableReason = unavailableMessage ? activeI18n._(unavailableMessage) : null
   const [ui, dispatch] = useReducer(voiceUiReducer, { phase: 'closed' })
   // Live mic level, updated ~30×/s. A ref (not state) so the waveform can read it
   // in a rAF loop without re-rendering the composer on every frame.
@@ -141,7 +158,10 @@ export const useVoiceSession = () => {
           console.error('[voice]', error)
           dispatch({
             type: terminal ? 'START_FAILED' : 'ERROR',
-            error: error instanceof PrivateChatHeldError ? toVoiceOverlayError(error) : toVoiceErrorMessage(error),
+            error:
+              error instanceof PrivateChatHeldError || error instanceof VoiceAgentChangedError
+                ? toVoiceOverlayError(error)
+                : toVoiceErrorMessage(error),
           })
         },
         onLevel: (level) => {
@@ -168,28 +188,46 @@ export const useVoiceSession = () => {
   )
 
   const start = () =>
-    lifecycle.start(async (callbacks) => {
-      // Lazy-load the voice runtime (session + engines + VAD/playback/aggregator
-      // graph) only when the user actually starts voice — it's a non-critical
-      // feature and must stay out of the always-mounted chat composer's entry
-      // bundle. Read the flag authoritatively from the DB here too (not via a
-      // reactive hook that returns `false` until its query resolves) so a custom
-      // provider is never bypassed for the hardwired engine on a cold start.
-      const [{ createVoiceSession }, { createVoiceEngine }, { createChatReply }, { experimentalFeatureVoice }] =
-        await Promise.all([
-          import('@/voice/session'),
-          import('@/voice/engine/router'),
-          import('@/voice/chat-reply'),
-          getSettings(db, { experimental_feature_voice: false }),
-        ])
-      return createVoiceSession({
-        engine: createVoiceEngine(experimentalFeatureVoice),
-        reply: createChatReply(toReplyChat(session.chatInstance, session.id)),
+    lifecycle.start(async ({ signal, ...callbacks }) => {
+      const currentSession = useChatStore.getState().sessions.get(session.id)
+      if (!currentSession) {
+        throw new VoiceAgentChangedError()
+      }
+      assertSessionCanSend(currentSession)
+      const unavailable = agentVoiceUnavailableMessage(currentSession.selectedAgent)
+      if (unavailable) {
+        throw new Error(activeI18n._(unavailable))
+      }
+      const agentId = currentSession.selectedAgent.id
+      const { createVoiceSession, createVoiceEngine, createChatReply } = await loadRuntime()
+      signal.throwIfAborted()
+      const liveSession = useChatStore.getState().sessions.get(session.id)
+      if (!liveSession || liveSession.selectedAgent.id !== agentId) {
+        throw new VoiceAgentChangedError()
+      }
+      assertSessionCanSend(liveSession)
+      const voice = createVoiceSession({
+        engine: createVoiceEngine(liveSession.selectedAgent),
+        reply: createChatReply(toReplyChat(liveSession.chatInstance, session.id, agentId)),
         ...callbacks,
       })
+      return {
+        ...voice,
+        start: async () => {
+          await voice.start()
+          signal.throwIfAborted()
+          const startedSession = useChatStore.getState().sessions.get(session.id)
+          if (!startedSession || startedSession.selectedAgent.id !== agentId) {
+            throw new VoiceAgentChangedError()
+          }
+          useChatStore.getState().updateSession(session.id, { agentLocked: true })
+        },
+      }
     })
 
   return {
+    available: unavailableMessage === null,
+    unavailableReason,
     active: ui.phase !== 'closed',
     state: ui.phase === 'running' ? ui.state : ('idle' as const),
     error: ui.phase === 'failed' || ui.phase === 'running' ? ui.error : null,

@@ -13,6 +13,7 @@ import { act, cleanup, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { useContextTracking } from './use-context-tracking'
+import { defaultModelOpus55 } from '@shared/defaults/models'
 
 const TestContextTrackingComponent = ({ chatThreadId, model }: { chatThreadId: string; model: Model }) => {
   const { usedTokens } = useContextTracking({
@@ -62,14 +63,14 @@ describe('useContextTracking reactivity', () => {
 
   it('updates when chat_threads contextSize changes', async () => {
     const db = getDb()
-    const modelId = uuidv7()
+    const modelId = defaultModelOpus55.id
     const threadId = uuidv7()
 
     await createModel(db, {
       id: modelId,
-      provider: 'openai',
+      provider: defaultModelOpus55.provider,
       name: 'Test Model',
-      model: 'gpt-4',
+      model: defaultModelOpus55.model,
       isSystem: 0,
       enabled: 1,
       contextWindow: 128000,
@@ -114,15 +115,15 @@ describe('useContextTracking reactivity', () => {
 
   it('flips isOverflowing to true when additionalInputTokens (Skills v1) pushes total past the context window', async () => {
     const db = getDb()
-    const modelId = uuidv7()
+    const modelId = defaultModelOpus55.id
     const threadId = uuidv7()
 
     // Tiny model: 100-token window. Easy to overflow with skill instructions.
     await createModel(db, {
       id: modelId,
-      provider: 'openai',
+      provider: defaultModelOpus55.provider,
       name: 'Tiny Model',
-      model: 'gpt-4',
+      model: defaultModelOpus55.model,
       isSystem: 0,
       enabled: 1,
       contextWindow: 100,
@@ -154,13 +155,13 @@ describe('useContextTracking reactivity', () => {
 
   it('keeps isOverflowing false when additionalInputTokens is zero and the thread is well under the window', async () => {
     const db = getDb()
-    const modelId = uuidv7()
+    const modelId = defaultModelOpus55.id
     const threadId = uuidv7()
     await createModel(db, {
       id: modelId,
-      provider: 'openai',
+      provider: defaultModelOpus55.provider,
       name: 'Big Model',
-      model: 'gpt-4',
+      model: defaultModelOpus55.model,
       isSystem: 0,
       enabled: 1,
       contextWindow: 100_000,

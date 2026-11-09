@@ -29,6 +29,8 @@ try {
   await otp.setValue('12345678')
   const composer = await browser.$('textarea')
   await composer.waitForDisplayed({ timeout: 60_000 })
+  await (await browser.$('[data-testid="agent-selector-trigger"]')).click()
+  await (await browser.$('//*[normalize-space()="Zeus"]')).click()
   await (await browser.$('[data-testid="model-selector-trigger"]')).click()
   await (await browser.$('//button[normalize-space()="Opus 5.5"]')).click()
   await browser.keys(Key.Escape)

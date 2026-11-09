@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultModelOpus55 } from '@shared/defaults/models'
 import '@/testing-library'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
@@ -348,16 +349,21 @@ describe('chat compaction control', () => {
     expect(useChatStore.getState().sessions.get('chat')?.compactionStatus).toBe('idle')
   })
 
-  it('rejects compaction while generating and refuses an incompatible confidentiality model', async () => {
+  it('rejects compaction while generating and refuses a model outside the agent policy', async () => {
     const f = fixture()
     Object.assign(f.instance, { status: 'streaming' })
     await expect(f.instance.compactContext()).rejects.toThrow('current response')
     Object.assign(f.instance, { status: 'ready' })
     useChatStore.getState().updateSession('chat', {
       chatThread: createMockChatThread({ isEncrypted: 1 }),
-      selectedModel: createMockModel({ isConfidential: 0 }),
+      selectedModel: createMockModel({
+        id: defaultModelOpus55.id,
+        provider: 'thunderbolt',
+        model: defaultModelOpus55.model,
+        isConfidential: 0,
+      }),
     })
-    await expect(f.instance.compactContext()).rejects.toThrow('confidentiality')
+    await expect(f.instance.compactContext()).rejects.toThrow('not available for the selected agent')
     expect(f.adapterCompact).not.toHaveBeenCalled()
   })
 })

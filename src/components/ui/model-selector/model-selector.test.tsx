@@ -11,7 +11,7 @@ import { ModelSelector } from './model-selector'
 
 afterEach(cleanup)
 
-it('keeps the private lock in a standalone composer selector', () => {
+it('leaves privacy indicators to the agent in a standalone composer selector', () => {
   const model = createMockModel({ isConfidential: 1, apiKey: 'test-key' })
   render(
     <ModelSelector
@@ -22,7 +22,7 @@ it('keeps the private lock in a standalone composer selector', () => {
       onModelChange={() => {}}
     />,
   )
-  expect(screen.getByTestId('model-selector-trigger').querySelector('linearGradient')).not.toBeNull()
+  expect(screen.getByTestId('model-selector-trigger').querySelector('linearGradient')).toBeNull()
 })
 
 it('closes an embedded picker before opening model creation', () => {

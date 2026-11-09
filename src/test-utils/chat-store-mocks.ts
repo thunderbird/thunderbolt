@@ -4,8 +4,9 @@
 
 import { clearAdapterCache } from '@/acp/adapter-cache'
 import { useChatStore } from '@/chats/chat-store'
-import { builtInAgent, isHostedAgent } from '@/defaults/agents'
-import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { builtInAgent } from '@/defaults/agents'
+import { assertSessionCanSend } from '@/chats/session-policy'
+import { defaultModelDeepSeekV41Flash } from '@shared/defaults/models'
 import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
 import { mock } from 'bun:test'
@@ -15,13 +16,13 @@ import { mock } from 'bun:test'
  */
 export const createMockModel = (overrides?: Partial<Model>): Model =>
   ({
-    id: 'model-1',
-    provider: 'openai',
+    id: defaultModelDeepSeekV41Flash.id,
+    provider: 'tinfoil',
     name: 'Test Model',
-    model: 'gpt-4',
-    isSystem: 0,
+    model: 'deepseek-v4-1-flash',
+    isSystem: 1,
     enabled: 1,
-    isConfidential: 0,
+    isConfidential: 1,
     ...overrides,
   }) as Model
 
@@ -115,13 +116,7 @@ export const createMockChatInstanceWithValidation = (
       throw new Error('No selected model')
     }
 
-    const { chatThread, selectedAgent, selectedModel } = session
-
-    if (chatThread && !isHostedAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)) {
-      throw new Error(
-        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
-      )
-    }
+    assertSessionCanSend(session)
 
     return originalSendMessage(params)
   }
@@ -146,13 +141,13 @@ export const createMockChatInstanceWithValidation = (
  * Default model used when selectedModel is null but a session needs to be created
  */
 const defaultTestModel: Model = {
-  id: 'default-model',
-  provider: 'openai',
+  id: defaultModelDeepSeekV41Flash.id,
+  provider: 'tinfoil',
   name: 'Default Model',
-  model: 'gpt-4',
-  isSystem: 0,
+  model: 'deepseek-v4-1-flash',
+  isSystem: 1,
   enabled: 1,
-  isConfidential: 0,
+  isConfidential: 1,
 } as Model
 
 /**

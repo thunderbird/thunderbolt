@@ -105,6 +105,12 @@ export class SentenceAggregator {
     // time-to-audio for the rest of the turn. LLM inline code is reliably
     // balanced, so this is an accepted edge case rather than a guarded one.
     let inCode = false
+    // Never cut inside a parenthetical either: `toSpeakable` only rewrites an
+    // aside whose brackets are both in one chunk. Same trade-off as backticks
+    // for an unmatched `(`, except the first chunk's hard cap still applies,
+    // cutting just before the aside when it can.
+    let parenDepth = 0
+    let asideStart = -1
     for (let i = 0; i < buf.length; i++) {
       const ch = buf[i]
       if (ch === '`') {
@@ -113,6 +119,15 @@ export class SentenceAggregator {
       if (inCode) {
         continue
       }
+      if (ch === '(') {
+        if (parenDepth === 0) {
+          asideStart = i
+        }
+        parenDepth++
+      } else if (ch === ')') {
+        parenDepth = Math.max(0, parenDepth - 1)
+      }
+      const inAside = parenDepth > 0
       if (isWhitespace(ch)) {
         lastWordBreak = i
       }
@@ -120,7 +135,7 @@ export class SentenceAggregator {
       if (!this.firstEmitted) {
         // First chunk: earliest clause/sentence break past the floor, else a
         // hard cap at the last word boundary — bounds time-to-first-audio.
-        if (i + 1 >= firstMinChars) {
+        if (i + 1 >= firstMinChars && !inAside) {
           if (clausePunct.has(ch)) {
             return i + 1
           }
@@ -129,12 +144,18 @@ export class SentenceAggregator {
             return end
           }
         }
+        if (i + 1 >= firstMaxChars && inAside && asideStart > 0) {
+          return asideStart
+        }
         if (i + 1 >= firstMaxChars && lastWordBreak > 0) {
           return lastWordBreak + 1
         }
         continue
       }
 
+      if (inAside) {
+        continue
+      }
       const end = this.sentenceEnd(buf, i)
       if (end > 0) {
         return end

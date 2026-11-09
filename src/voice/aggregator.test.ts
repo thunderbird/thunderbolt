@@ -71,6 +71,22 @@ describe('SentenceAggregator', () => {
     expect(chunks.join(' ')).toContain('kilo.')
   })
 
+  test('keeps a parenthetical aside in one chunk so it can be spoken as an aside', () => {
+    // The first chunk's length cap lands inside the aside, so it cuts just before it.
+    expect(runStreamed('Sure, the system handles that (as we discussed, in detail) nicely. Next one. ')).toEqual([
+      'Sure, the system handles that',
+      '(as we discussed, in detail) nicely.',
+      'Next one.',
+    ])
+    expect(runStreamed('Sure, it is (as discussed, really) fine. ')).toEqual([
+      'Sure, it is (as discussed, really) fine.',
+    ])
+    expect(runStreamed('First sentence is long enough here. Then (an aside. With a stop) ends. ')).toEqual([
+      'First sentence is long enough here.',
+      'Then (an aside. With a stop) ends.',
+    ])
+  })
+
   test('flush on empty buffer yields nothing', () => {
     const agg = new SentenceAggregator()
     expect(agg.flush()).toEqual([])

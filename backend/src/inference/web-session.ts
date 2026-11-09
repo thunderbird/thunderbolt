@@ -17,8 +17,8 @@ type RequestContext = Readonly<{ request: Request }>
  * CLI and the browser already do.
  *
  * What a PAT does lack is the device binding a web session carries, and it
- * outlives one. Confidential inference is metered against the account through
- * signed usage receipts, so an operator enabling this is choosing to let a
+ * outlives one. Confidential inference is metered against the account from the
+ * enclave's own usage report, so an operator enabling this is choosing to let a
  * long-lived headless credential spend on that tier. Hence: off by default.
  */
 export const rejectPersonalAccessToken = (

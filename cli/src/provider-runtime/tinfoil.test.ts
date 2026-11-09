@@ -2,20 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, describe, expect, mock, spyOn, test } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { describe, expect, mock, spyOn, test } from 'bun:test'
 import { createModels } from '@earendil-works/pi-ai'
 import { AttestationError } from '@tinfoilsh/verifier'
 import { SecureClient } from 'tinfoil'
 import { defaultModelGlm53, defaultModelDeepSeekV41Flash, type SharedModel } from '../../../shared/defaults/models.ts'
-import { inferenceUsageReceiptHeader, inferenceModelHeader } from '../../../shared/inference-usage.ts'
+import { inferenceModelHeader } from '../../../shared/inference-usage.ts'
 import { noReasoningEffort, type ReasoningCapabilities } from '../../../shared/reasoning-effort.ts'
 import { parseTinfoilReasoningCatalog } from '../../../shared/reasoning-effort-catalog.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
-import { readFileOrNull } from '../lib/secure-fs.ts'
 import { cliVersion } from '../version.ts'
 import type { HarnessRuntime, PreparedPiBinding, ResolvedAccountCredential } from './types.ts'
 import { createTestProviderRuntime, testSessionCredential } from './test-fixtures.ts'
@@ -41,13 +37,6 @@ const reasoningCatalog = parseTinfoilReasoningCatalog({
   ],
 })
 
-const receiptOutboxDirectory = await mkdtemp(join(tmpdir(), 'thunderbolt-tinfoil-'))
-const testOutboxPath = (): string => join(receiptOutboxDirectory, `${crypto.randomUUID()}.json`)
-
-afterAll(async () => {
-  await rm(receiptOutboxDirectory, { recursive: true, force: true })
-})
-
 const sessionCredential = (
   overrides: Partial<Extract<ResolvedAccountCredential, { type: 'session' }>> = {},
 ): Extract<ResolvedAccountCredential, { type: 'session' }> => ({
@@ -65,13 +54,10 @@ const bindingOptions = (
   model: confidentialModel,
   supportsImages: false,
   onStoredSessionRejected: async () => {},
-  receiptOutboxPath: testOutboxPath(),
-  receiptRetryWait: async () => {},
-  reportError: () => {},
   loadReasoningCapabilities: async (modelId) => reasoningCatalog.get(modelId) ?? noReasoningEffort,
 })
 
-const successfulCompletion = (receipt: string): Response =>
+const successfulCompletion = (): Response =>
   new Response(
     [
       `data: ${JSON.stringify({
@@ -106,89 +92,10 @@ const successfulCompletion = (receipt: string): Response =>
       'data: [DONE]',
       '',
     ].join('\n\n'),
-    {
-      status: 200,
-      headers: {
-        'content-type': 'text/event-stream',
-        [inferenceUsageReceiptHeader]: receipt,
-      },
-    },
+    { status: 200, headers: { 'content-type': 'text/event-stream' } },
   )
 
-const failedCompletion = (receipt: string): Response =>
-  new Response(
-    [
-      `data: ${JSON.stringify({
-        id: 'chatcmpl-failed',
-        object: 'chat.completion.chunk',
-        created: 1,
-        model: confidentialModel.model,
-        choices: [{ index: 0, delta: { role: 'assistant', content: 'partial' }, finish_reason: null }],
-      })}`,
-      'data: [DONE]',
-      '',
-    ].join('\n\n'),
-    {
-      status: 200,
-      headers: {
-        'content-type': 'text/event-stream',
-        [inferenceUsageReceiptHeader]: receipt,
-      },
-    },
-  )
-
-const toolCompletion = (receipt: string): Response =>
-  new Response(
-    [
-      `data: ${JSON.stringify({
-        id: 'chatcmpl-tool',
-        object: 'chat.completion.chunk',
-        created: 1,
-        model: confidentialModel.model,
-        choices: [
-          {
-            index: 0,
-            delta: {
-              role: 'assistant',
-              tool_calls: [
-                {
-                  index: 0,
-                  id: 'call-read-package',
-                  type: 'function',
-                  function: { name: 'read', arguments: JSON.stringify({ path: 'cli/package.json' }) },
-                },
-              ],
-            },
-            finish_reason: null,
-          },
-        ],
-      })}`,
-      `data: ${JSON.stringify({
-        id: 'chatcmpl-tool',
-        object: 'chat.completion.chunk',
-        created: 1,
-        model: confidentialModel.model,
-        choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: 1,
-          total_tokens: 11,
-          prompt_tokens_details: { cached_tokens: 2, cache_write_tokens: 1 },
-        },
-      })}`,
-      'data: [DONE]',
-      '',
-    ].join('\n\n'),
-    {
-      status: 200,
-      headers: {
-        'content-type': 'text/event-stream',
-        [inferenceUsageReceiptHeader]: receipt,
-      },
-    },
-  )
-
-const hangingCompletion = (request: Request, receipt: string): Response =>
+const hangingCompletion = (request: Request): Response =>
   new Response(
     new ReadableStream<Uint8Array>({
       start: (controller) => {
@@ -200,13 +107,7 @@ const hangingCompletion = (request: Request, receipt: string): Response =>
         request.signal.addEventListener('abort', abort, { once: true })
       },
     }),
-    {
-      status: 200,
-      headers: {
-        'content-type': 'text/event-stream',
-        [inferenceUsageReceiptHeader]: receipt,
-      },
-    },
+    { status: 200, headers: { 'content-type': 'text/event-stream' } },
   )
 
 /** Injects a deterministic secure transport without patching the SDK prototype. */
@@ -265,7 +166,7 @@ describe('createTinfoilBinding', () => {
             discoveryStarted.resolve()
             return pendingDiscovery.promise
           },
-          createSecureClient: secureClientFactory(() => successfulCompletion(''), reset),
+          createSecureClient: secureClientFactory(() => successfulCompletion(), reset),
         }),
     })
     try {
@@ -315,7 +216,7 @@ describe('createTinfoilBinding', () => {
             ...bindingOptions(),
             ...options,
             loadReasoningCapabilities,
-            createSecureClient: secureClientFactory(() => successfulCompletion('')),
+            createSecureClient: secureClientFactory(() => successfulCompletion()),
           }),
       })
       try {
@@ -386,7 +287,7 @@ describe('createTinfoilBinding', () => {
       },
       createSecureClient: secureClientFactory(async (request) => {
         requests.push((await request.json()) as Record<string, unknown>)
-        return successfulCompletion('')
+        return successfulCompletion()
       }),
     })
     const runtime = await createRuntime(binding, 'medium')
@@ -409,7 +310,7 @@ describe('createTinfoilBinding', () => {
       const binding = await createTinfoilBinding({
         ...bindingOptions(),
         loadReasoningCapabilities: async () => capabilities,
-        createSecureClient: secureClientFactory(() => successfulCompletion('')),
+        createSecureClient: secureClientFactory(() => successfulCompletion()),
       })
       const runtime = await createRuntime(binding)
       try {
@@ -499,7 +400,7 @@ describe('createTinfoilBinding', () => {
     const binding = await createTinfoilBinding({
       ...bindingOptions(),
       createSecureClient: secureClientFactory(
-        () => successfulCompletion(''),
+        () => successfulCompletion(),
         () => {
           resets += 1
         },
@@ -552,7 +453,7 @@ describe('createTinfoilBinding', () => {
         expect(payload).toMatchObject({ model: modelId })
         requestThinking = payload.thinking
         requestEffort = payload.reasoning_effort
-        return successfulCompletion('')
+        return successfulCompletion()
       })
       const binding = await createTinfoilBinding({
         ...bindingOptions(),
@@ -580,7 +481,7 @@ describe('createTinfoilBinding', () => {
         model,
         createSecureClient: secureClientFactory(async (request) => {
           requests.push((await request.json()) as Record<string, unknown>)
-          return successfulCompletion('')
+          return successfulCompletion()
         }),
       })
       const runtime = await createRuntime(binding)
@@ -606,7 +507,7 @@ describe('createTinfoilBinding', () => {
     const requests: Record<string, unknown>[] = []
     const createSecureClient = secureClientFactory(async (request) => {
       requests.push((await request.json()) as Record<string, unknown>)
-      return successfulCompletion('')
+      return successfulCompletion()
     })
     const glm = await createTinfoilBinding({ ...bindingOptions(), createSecureClient })
     const runtime = await createRuntime(glm)
@@ -646,7 +547,7 @@ describe('createTinfoilBinding', () => {
       createSecureClient: secureClientFactory(async (request) => {
         const payload = (await request.json()) as { readonly reasoning_effort?: unknown }
         requestEfforts.push(payload.reasoning_effort)
-        return successfulCompletion('')
+        return successfulCompletion()
       }),
     })
     const runtime = await createRuntime(binding, 'medium')
@@ -659,65 +560,49 @@ describe('createTinfoilBinding', () => {
     }
   })
 
-  test.each([confidentialModel, defaultModelDeepSeekV41Flash])(
-    'sends $model identity and submits terminal usage',
-    async (model) => {
-      const secureRequests: Request[] = []
-      const receiptRequests: Request[] = []
-      const receipt = 'iu1.canonicalPayload.canonicalSignature'
-      const binding = await createTinfoilBinding({
-        ...bindingOptions(),
-        model,
-        createSecureClient: secureClientFactory((request) => {
-          secureRequests.push(request)
-          return successfulCompletion(receipt)
-        }),
-        fetchFn: async (input, init) => {
-          receiptRequests.push(new Request(String(input), init))
-          return new Response(null, { status: 204 })
-        },
+  test.each([confidentialModel, defaultModelDeepSeekV41Flash])('sends $model identity', async (model) => {
+    const secureRequests: Request[] = []
+    const binding = await createTinfoilBinding({
+      ...bindingOptions(),
+      model,
+      createSecureClient: secureClientFactory((request) => {
+        secureRequests.push(request)
+        return successfulCompletion()
+      }),
+    })
+    const runtime = await createHarnessRuntime(
+      {
+        cwd: process.cwd(),
+        thinking: 'high',
+      },
+      binding,
+    )
+
+    try {
+      const message = await runtime.prompt('keep this private')
+
+      expect(message.content).toContainEqual({
+        type: 'thinking',
+        thinking: 'private reasoning',
+        thinkingSignature: 'reasoning_content',
       })
-      const runtime = await createHarnessRuntime(
-        {
-          cwd: process.cwd(),
-          thinking: 'high',
-        },
-        binding,
-      )
-
-      try {
-        const message = await runtime.prompt('keep this private')
-
-        expect(message.content).toContainEqual({
-          type: 'thinking',
-          thinking: 'private reasoning',
-          thinkingSignature: 'reasoning_content',
-        })
-        expect(message.content).toContainEqual({ type: 'text', text: 'private answer' })
-        expect(secureRequests).toHaveLength(1)
-        expect(secureRequests[0]?.headers.get(inferenceModelHeader)).toBe(model.model)
-        expect(secureRequests[0]?.url).toBe('https://app.example.com/v1/tinfoil/chat/completions')
-        expect(secureRequests[0]?.headers.get('authorization')).toBe('Bearer stored-session')
-        expect(secureRequests[0]?.headers.get('x-app-version')).toBe(cliVersion)
-        expect(secureRequests[0]?.headers.get('x-api-key')).toBeNull()
-        const requestPayload = (await secureRequests[0]?.json()) as {
-          readonly model?: unknown
-          readonly stream?: unknown
-        }
-        expect(requestPayload.model).toBe(model.model)
-        expect(requestPayload.stream).toBe(true)
-        expect(receiptRequests).toHaveLength(1)
-        expect(await receiptRequests[0]?.json()).toEqual({
-          receipt,
-          promptTokens: 16,
-          completionTokens: 2,
-          totalTokens: 18,
-        })
-      } finally {
-        await runtime.dispose()
+      expect(message.content).toContainEqual({ type: 'text', text: 'private answer' })
+      expect(secureRequests).toHaveLength(1)
+      expect(secureRequests[0]?.headers.get(inferenceModelHeader)).toBe(model.model)
+      expect(secureRequests[0]?.url).toBe('https://app.example.com/v1/tinfoil/chat/completions')
+      expect(secureRequests[0]?.headers.get('authorization')).toBe('Bearer stored-session')
+      expect(secureRequests[0]?.headers.get('x-app-version')).toBe(cliVersion)
+      expect(secureRequests[0]?.headers.get('x-api-key')).toBeNull()
+      const requestPayload = (await secureRequests[0]?.json()) as {
+        readonly model?: unknown
+        readonly stream?: unknown
       }
-    },
-  )
+      expect(requestPayload.model).toBe(model.model)
+      expect(requestPayload.stream).toBe(true)
+    } finally {
+      await runtime.dispose()
+    }
+  })
 
   test('rejects a remote plain-HTTP backend before constructing a secure request', async () => {
     await expect(
@@ -813,319 +698,13 @@ describe('createTinfoilBinding', () => {
     }
   })
 
-  test('clears a header captured by a failed provider stream before the next step', async () => {
-    const receiptBodies: unknown[] = []
-    const responses = [() => failedCompletion('stale-receipt'), () => successfulCompletion('fresh-receipt')]
-    const ready = secureClientFactory(() => {
-      const respond = responses.shift()
-      if (!respond) throw new Error('Unexpected extra inference request.')
-      return respond()
-    })
-    const binding = await createTinfoilBinding({
-      ...bindingOptions(),
-      createSecureClient: ready,
-      fetchFn: async (_input, init) => {
-        receiptBodies.push(await new Response(init?.body).json())
-        return new Response(null, { status: 204 })
-      },
-    })
-    const runtime = await createRuntime(binding)
-    try {
-      const failed = await runtime.prompt('first step fails after response headers')
-      const succeeded = await runtime.prompt('second step succeeds')
-
-      expect(failed.stopReason).toBe('error')
-      expect(succeeded.stopReason).toBe('stop')
-      expect(receiptBodies).toEqual([
-        {
-          receipt: 'fresh-receipt',
-          promptTokens: 16,
-          completionTokens: 2,
-          totalTokens: 18,
-        },
-      ])
-    } finally {
-      await runtime.dispose()
-    }
-  })
-
-  test('does not carry a missing receipt into the following successful stream', async () => {
-    const receiptBodies: unknown[] = []
-    const responses = [() => successfulCompletion(''), () => successfulCompletion('second-receipt')]
-    const ready = secureClientFactory(() => {
-      const respond = responses.shift()
-      if (!respond) throw new Error('Unexpected extra inference request.')
-      return respond()
-    })
-    const binding = await createTinfoilBinding({
-      ...bindingOptions(),
-      createSecureClient: ready,
-      fetchFn: async (_input, init) => {
-        receiptBodies.push(await new Response(init?.body).json())
-        return new Response(null, { status: 204 })
-      },
-    })
-    const runtime = await createRuntime(binding)
-    try {
-      expect((await runtime.prompt('no receipt')).stopReason).toBe('stop')
-      expect((await runtime.prompt('with receipt')).stopReason).toBe('stop')
-      expect(receiptBodies).toEqual([
-        {
-          receipt: 'second-receipt',
-          promptTokens: 16,
-          completionTokens: 2,
-          totalTokens: 18,
-        },
-      ])
-    } finally {
-      await runtime.dispose()
-    }
-  })
-
-  test('receipt submission failure never alters the answer or retries inference', async () => {
-    let inferenceRequests = 0
-    let receiptRequests = 0
-    const ready = secureClientFactory(() => {
-      inferenceRequests += 1
-      return successfulCompletion('unavailable-receipt')
-    })
-    const binding = await createTinfoilBinding({
-      ...bindingOptions(),
-      createSecureClient: ready,
-      fetchFn: async () => {
-        receiptRequests += 1
-        return new Response(null, { status: 503 })
-      },
-    })
-    const runtime = await createRuntime(binding)
-    try {
-      const message = await runtime.prompt('answer despite accounting outage')
-
-      expect(message.stopReason).toBe('stop')
-      expect(message.content).toContainEqual({ type: 'text', text: 'private answer' })
-      expect(inferenceRequests).toBe(1)
-      expect(receiptRequests).toBe(3)
-    } finally {
-      await runtime.dispose()
-    }
-  })
-
-  test('does not flush account A receipts with account B credentials after an account switch', async () => {
-    const previousHome = process.env.THUNDERBOLT_HOME
-    process.env.THUNDERBOLT_HOME = receiptOutboxDirectory
-    const credentialA = sessionCredential({
-      bearer: 'account-a-session',
-      deviceId: 'cli-00000000-0000-7000-8000-00000000000a',
-    })
-    const credentialB = sessionCredential({
-      bearer: 'account-b-session',
-      deviceId: 'cli-00000000-0000-7000-8000-00000000000b',
-    })
-    const accountBReceiptRequests: Request[] = []
-    const accountBDemotions: string[] = []
-
-    try {
-      const bindingA = await createTinfoilBinding({
-        credential: credentialA,
-        model: confidentialModel,
-        supportsImages: false,
-        onStoredSessionRejected: async () => {},
-        receiptRetryWait: async () => {},
-        createSecureClient: secureClientFactory(() => successfulCompletion('account-a-receipt')),
-        fetchFn: async () => new Response(null, { status: 503 }),
-      })
-      const runtimeA = await createRuntime(bindingA)
-      try {
-        await runtimeA.prompt('account A request')
-      } finally {
-        await runtimeA.dispose()
-      }
-
-      const bindingB = await createTinfoilBinding({
-        credential: credentialB,
-        model: confidentialModel,
-        supportsImages: false,
-        onStoredSessionRejected: async () => {
-          accountBDemotions.push('demoted')
-        },
-        receiptRetryWait: async () => {},
-        createSecureClient: secureClientFactory(() => successfulCompletion('')),
-        fetchFn: async (input, init) => {
-          accountBReceiptRequests.push(new Request(String(input), init))
-          return new Response(null, { status: 403 })
-        },
-      })
-      await bindingB.dispose()
-
-      expect(accountBReceiptRequests).toEqual([])
-      expect(accountBDemotions).toEqual([])
-      expect(
-        await readFileOrNull(join(receiptOutboxDirectory, 'inference-usage-receipts', `${credentialA.deviceId}.json`)),
-      ).not.toBeNull()
-    } finally {
-      if (previousHome === undefined) delete process.env.THUNDERBOLT_HOME
-      else process.env.THUNDERBOLT_HOME = previousHome
-    }
-  })
-
-  test.each([
-    [401, 1, true],
-    [403, 0, false],
-  ] as const)(
-    'handles receipt submission HTTP %i with %i auth rejection(s)',
-    async (status, expectedRejections, retained) => {
-      const rejected: string[] = []
-      const outboxPath = testOutboxPath()
-      const ready = secureClientFactory(() => successfulCompletion('expired-session-receipt'))
-      const binding = await createTinfoilBinding({
-        ...bindingOptions(),
-        receiptOutboxPath: outboxPath,
-        createSecureClient: ready,
-        onStoredSessionRejected: async () => {
-          rejected.push('session')
-        },
-        fetchFn: async () => Response.json({ error: { message: 'session expired' } }, { status }),
-      })
-      const runtime = await createRuntime(binding)
-      try {
-        const message = await runtime.prompt('answer before receipt authentication fails')
-
-        expect(message.stopReason).toBe('stop')
-        expect(rejected).toHaveLength(expectedRejections)
-        expect((await readFileOrNull(outboxPath)) !== null).toBe(retained)
-      } finally {
-        await runtime.dispose()
-      }
-    },
-  )
-
-  test('bounds a stalled 401 receipt handler without altering the completed answer or inference retries', async () => {
-    let inferenceRequests = 0
-    let receiptRequests = 0
-    let unauthorizedCalls = 0
-    const ready = secureClientFactory(() => {
-      inferenceRequests += 1
-      return successfulCompletion('stalled-unauthorized-receipt')
-    })
-    const binding = await createTinfoilBinding({
-      ...bindingOptions(),
-      createSecureClient: ready,
-      receiptTimeoutMs: 1,
-      onStoredSessionRejected: async () => {
-        unauthorizedCalls += 1
-        return new Promise<void>(() => {})
-      },
-      fetchFn: async () => {
-        receiptRequests += 1
-        return new Response(null, { status: 401 })
-      },
-    })
-    const runtime = await createRuntime(binding)
-    try {
-      const message = await runtime.prompt('answer while receipt authorization stalls')
-
-      expect(message.stopReason).toBe('stop')
-      expect(message.content).toContainEqual({ type: 'text', text: 'private answer' })
-      expect(inferenceRequests).toBe(1)
-      expect(receiptRequests).toBe(1)
-      expect(unauthorizedCalls).toBe(1)
-    } finally {
-      await runtime.dispose()
-    }
-  })
-
-  test('correlates sequential tool-step receipts with each terminal assistant usage', async () => {
-    const receiptBodies: unknown[] = []
-    const responses = [() => toolCompletion('tool-step-receipt'), () => successfulCompletion('answer-step-receipt')]
-    const ready = secureClientFactory(() => {
-      const respond = responses.shift()
-      if (!respond) throw new Error('Unexpected extra inference request.')
-      return respond()
-    })
-    const binding = await createTinfoilBinding({
-      ...bindingOptions(),
-      createSecureClient: ready,
-      fetchFn: async (_input, init) => {
-        receiptBodies.push(await new Response(init?.body).json())
-        return new Response(null, { status: 204 })
-      },
-    })
-    const runtime = await createRuntime(binding)
-    try {
-      const message = await runtime.prompt('read the CLI manifest, then answer')
-
-      expect(message.stopReason).toBe('stop')
-      expect(message.content).toContainEqual({ type: 'text', text: 'private answer' })
-      expect(receiptBodies).toEqual([
-        {
-          receipt: 'tool-step-receipt',
-          promptTokens: 10,
-          completionTokens: 1,
-          totalTokens: 11,
-        },
-        {
-          receipt: 'answer-step-receipt',
-          promptTokens: 16,
-          completionTokens: 2,
-          totalTokens: 18,
-        },
-      ])
-    } finally {
-      await runtime.dispose()
-    }
-  })
-
-  test('clears a captured receipt when the active harness prompt is aborted', async () => {
-    const receiptBodies: unknown[] = []
+  test('dispose aborts the stream and resets SecureClient idempotently', async () => {
     const responseStarted = Promise.withResolvers<void>()
-    let inferenceRequests = 0
-    const ready = secureClientFactory((request) => {
-      inferenceRequests += 1
-      if (inferenceRequests === 1) {
-        responseStarted.resolve()
-        return hangingCompletion(request, 'aborted-receipt')
-      }
-      return successfulCompletion('post-abort-receipt')
-    })
-    const binding = await createTinfoilBinding({
-      ...bindingOptions(),
-      createSecureClient: ready,
-      fetchFn: async (_input, init) => {
-        receiptBodies.push(await new Response(init?.body).json())
-        return new Response(null, { status: 204 })
-      },
-    })
-    const runtime = await createRuntime(binding)
-    try {
-      const prompt = runtime.prompt('abort this private request')
-      await responseStarted.promise
-      await runtime.abort()
-      const aborted = await prompt
-      const succeeded = await runtime.prompt('new private request')
-
-      expect(aborted.stopReason).toBe('aborted')
-      expect(succeeded.stopReason).toBe('stop')
-      expect(receiptBodies).toEqual([
-        {
-          receipt: 'post-abort-receipt',
-          promptTokens: 16,
-          completionTokens: 2,
-          totalTokens: 18,
-        },
-      ])
-    } finally {
-      await runtime.dispose()
-    }
-  })
-
-  test('dispose aborts the stream, clears its receipt, and resets SecureClient idempotently', async () => {
-    const responseStarted = Promise.withResolvers<void>()
-    let receiptRequests = 0
     let resets = 0
     const ready = secureClientFactory(
       (request) => {
         responseStarted.resolve()
-        return hangingCompletion(request, 'disposed-receipt')
+        return hangingCompletion(request)
       },
       () => {
         resets += 1
@@ -1134,10 +713,6 @@ describe('createTinfoilBinding', () => {
     const binding = await createTinfoilBinding({
       ...bindingOptions(),
       createSecureClient: ready,
-      fetchFn: async () => {
-        receiptRequests += 1
-        return new Response(null, { status: 204 })
-      },
     })
     const runtime = await createRuntime(binding)
     const prompt = runtime.prompt('dispose this private request')
@@ -1146,37 +721,25 @@ describe('createTinfoilBinding', () => {
     try {
       await Promise.all([runtime.dispose(), runtime.dispose()])
       expect((await prompt).stopReason).toBe('aborted')
-      expect(receiptRequests).toBe(0)
       expect(resets).toBe(1)
     } finally {
       await runtime.dispose()
     }
   })
 
-  test('keeps concurrent binding receipt state isolated per harness', async () => {
+  test('keeps concurrent binding session auth isolated per harness', async () => {
     const observedAuthorization: string[] = []
-    const receiptsA: unknown[] = []
-    const receiptsB: unknown[] = []
     const ready = secureClientFactory((request) => {
-      const authorization = request.headers.get('authorization') ?? ''
-      observedAuthorization.push(authorization)
-      return successfulCompletion(`${authorization}-receipt`)
+      observedAuthorization.push(request.headers.get('authorization') ?? '')
+      return successfulCompletion()
     })
     const bindingA = await createTinfoilBinding({
       ...bindingOptions(sessionCredential({ bearer: 'session-a' })),
       createSecureClient: ready,
-      fetchFn: async (_input, init) => {
-        receiptsA.push(await new Response(init?.body).json())
-        return new Response(null, { status: 204 })
-      },
     })
     const bindingB = await createTinfoilBinding({
       ...bindingOptions(sessionCredential({ bearer: 'session-b', userCacheSecret: new Uint8Array(32).fill(0xcd) })),
       createSecureClient: ready,
-      fetchFn: async (_input, init) => {
-        receiptsB.push(await new Response(init?.body).json())
-        return new Response(null, { status: 204 })
-      },
     })
     const [runtimeA, runtimeB] = await Promise.all([createRuntime(bindingA), createRuntime(bindingB)])
     try {
@@ -1185,22 +748,6 @@ describe('createTinfoilBinding', () => {
       expect(messageA.stopReason).toBe('stop')
       expect(messageB.stopReason).toBe('stop')
       expect(observedAuthorization).toEqual(expect.arrayContaining(['Bearer session-a', 'Bearer session-b']))
-      expect(receiptsA).toEqual([
-        {
-          receipt: 'Bearer session-a-receipt',
-          promptTokens: 16,
-          completionTokens: 2,
-          totalTokens: 18,
-        },
-      ])
-      expect(receiptsB).toEqual([
-        {
-          receipt: 'Bearer session-b-receipt',
-          promptTokens: 16,
-          completionTokens: 2,
-          totalTokens: 18,
-        },
-      ])
     } finally {
       await Promise.all([runtimeA.dispose(), runtimeB.dispose()])
     }

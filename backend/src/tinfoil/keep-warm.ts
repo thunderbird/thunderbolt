@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Settings } from '@/config/settings'
+import { fetchWithTrailers, type TinfoilFetch } from './trailer-fetch'
 import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
 
 const defaultIntervalMs = 60_000
@@ -13,7 +14,8 @@ export type TinfoilKeepWarmLogger = {
 }
 
 type TinfoilKeepWarmOptions = {
-  fetchFn?: typeof fetch
+  /** Defaults to the proxy's own transport, whose connection pool this keeps warm. */
+  fetchFn?: TinfoilFetch
   intervalMs?: number
   timeoutMs?: number
   logger: TinfoilKeepWarmLogger
@@ -26,13 +28,13 @@ type TinfoilKeepWarmController = {
 }
 
 /**
- * Create a lifecycle controller that keeps Bun's Tinfoil connection pool warm.
+ * Create a lifecycle controller that keeps the Tinfoil proxy's connection pool warm.
  */
 export const createTinfoilKeepWarm = (
   settings: Pick<Settings, 'tinfoilApiKey' | 'tinfoilEnclaveUrl'>,
   options: TinfoilKeepWarmOptions,
 ): TinfoilKeepWarmController => {
-  const fetchFn = options.fetchFn ?? globalThis.fetch
+  const fetchFn = options.fetchFn ?? fetchWithTrailers
   const intervalMs = options.intervalMs ?? defaultIntervalMs
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs
   const upstreamOriginStore = options.upstreamOriginStore ?? tinfoilUpstreamOriginStore

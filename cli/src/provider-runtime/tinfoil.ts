@@ -16,15 +16,12 @@ import {
   type ReasoningCapabilities,
   type ReasoningEffort,
 } from '../../../shared/reasoning-effort.ts'
-import { join } from 'node:path'
 import { SecureClient } from 'tinfoil'
 import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
-import { thunderboltHomeDir } from '../paths.ts'
 import { abortable } from '../lib/abort.ts'
 import { providerRuntimeError } from './types.ts'
 import type { AccountFetch, PreparedPiBinding, ProviderRuntimeError, SessionCredential } from './types.ts'
-import { createUsageReceiptLifecycle, submitInferenceUsageReceipt } from './usage-receipt.ts'
 import { loadTinfoilReasoningCapabilities } from './tinfoil-catalog.ts'
 
 type TinfoilBindingError = Error & ProviderRuntimeError
@@ -38,11 +35,6 @@ export type CreateTinfoilBindingOptions = {
   /** Whether to send images; known only from the catalog the model came from. */
   readonly supportsImages: boolean
   readonly onStoredSessionRejected: () => Promise<void>
-  readonly fetchFn?: AccountFetch
-  readonly receiptTimeoutMs?: number
-  readonly receiptOutboxPath?: string
-  readonly receiptRetryWait?: (milliseconds: number) => Promise<void>
-  readonly reportError?: (error: Error) => void
   readonly createSecureClient?: (options: ConstructorParameters<typeof SecureClient>[0]) => SecureClient
   readonly loadReasoningCapabilities?: (modelId: string) => Promise<ReasoningCapabilities>
   readonly advisorySignal?: AbortSignal
@@ -130,25 +122,6 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     },
   )
 
-  const reportError =
-    options.reportError ?? ((error: Error) => console.error('Confidential usage receipt bookkeeping failed.', error))
-  const receipts = await createUsageReceiptLifecycle({
-    outboxPath:
-      options.receiptOutboxPath ??
-      join(thunderboltHomeDir(), 'inference-usage-receipts', `${options.credential.deviceId}.json`),
-    reportError,
-    wait: options.receiptRetryWait,
-    submit: (usage) =>
-      submitInferenceUsageReceipt({
-        backendUrl: options.credential.backendUrl,
-        bearer: options.credential.bearer,
-        usage,
-        fetchFn: options.fetchFn,
-        onUnauthorized: options.onStoredSessionRejected,
-        reportError,
-        timeoutMs: options.receiptTimeoutMs,
-      }),
-  })
   const hasNativeEfforts = capabilities.efforts.length > 0
   let getReasoningEffort: () => ReasoningEffort | undefined = () => undefined
   const built = buildConfidentialModel({
@@ -158,7 +131,6 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     baseURL: baseUrl,
     apiKey: sdkPlaceholderCredential,
     fetch: fetchFn,
-    receipts,
     getReasoningEffort: () => getReasoningEffort(),
     thinkingLevelMap: hasNativeEfforts
       ? Object.fromEntries(
@@ -175,7 +147,6 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
   const provider = built.models.getProvider(providerId)
   if (!provider) throw new Error('Tinfoil provider construction failed.')
   const dispose: PreparedPiBinding['dispose'] = async () => {
-    receipts.clear()
     if (client === null) return
     const activeClient = client
     client = null
@@ -194,10 +165,8 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
         const level = clampThinkingLevel(built.model, harness.getThinkingLevel())
         return resolveReasoningEffort(level === 'off' ? 'none' : level, capabilities)
       }
-      const detach = receipts.attach(harness)
       return () => {
         getReasoningEffort = () => undefined
-        detach()
       }
     },
     observePromptError: async () => {

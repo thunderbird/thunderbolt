@@ -39,9 +39,6 @@ const aesKwWrappedKeyLength = 40 // AES-KW(256-bit key) = 32 + 8
 const minEnvelopeLength = 1 + ephemeralPubKeyLength + mlkemCiphertextLength + aesKwWrappedKeyLength
 const rawAkLength = 32
 const gcmTagLength = 16
-// AK(32) + at least one pointer character + the GCM tag.
-const minAkEnvelopeLength =
-  1 + ephemeralPubKeyLength + mlkemCiphertextLength + ivLength + rawAkLength + 1 + gcmTagLength
 const hybridHkdfInfo = new TextEncoder().encode('thunderbolt-hybrid-ck-wrap-v1')
 // Distinct info for the v2 AEAD seal — the derived key drives a different
 // algorithm (AES-GCM vs AES-KW), so it gets its own derivation domain.
@@ -349,17 +346,18 @@ const deriveHybridWrappingKey = async (
   )
 }
 
-/** The v2 counterpart: an AES-GCM key for the AK envelope's AEAD seal. */
+/** The AEAD counterpart: an AES-GCM key for a hybrid seal, derived under its domain's `info`. */
 const deriveHybridSealKey = async (
   ssEcdh: ArrayBuffer,
   ssMlkem: Uint8Array,
   ephPubRaw: Uint8Array,
   mlkemCiphertext: Uint8Array,
+  info: Uint8Array,
   usage: 'encrypt' | 'decrypt',
 ): Promise<CryptoKey> => {
   const { hkdfKey, salt } = await hybridHkdfInputs(ssEcdh, ssMlkem, ephPubRaw, mlkemCiphertext)
   return crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: hkdfHash, salt: salt as BufferSource, info: hybridSealHkdfInfo },
+    { name: 'HKDF', hash: hkdfHash, salt: salt as BufferSource, info: info as BufferSource },
     hkdfKey,
     { name: aesGcmAlgorithm, length: aesKeyLength },
     false,
@@ -385,49 +383,81 @@ const beginHybridSeal = async (
   return { ephPubRaw, mlkemCiphertext, ssEcdh, ssMlkem }
 }
 
-/** Seal an opaque payload into a v2 AK envelope for one recipient. */
-const sealAkPayload = async (
+/**
+ * One use of the hybrid seal. Every field is part of the wire contract: the
+ * version byte leads the blob, `info` keys the HKDF derivation and `aad` is
+ * bound into the GCM tag, so two domains can never open each other's seals.
+ */
+export type HybridSealDomain = {
+  version: number
+  info: Uint8Array
+  aad: Uint8Array
+  /** Smallest legitimate payload, checked before any crypto runs. */
+  minPayloadLength: number
+  /** Names the blob in error messages. */
+  label: string
+}
+
+const hybridSealHeaderLength = 1 + ephemeralPubKeyLength + mlkemCiphertextLength + ivLength
+
+const akSealDomain: HybridSealDomain = {
+  version: akEnvelopeVersion,
+  info: hybridSealHkdfInfo,
+  aad: akEnvelopeAad,
+  // AK(32) + at least one pointer character.
+  minPayloadLength: rawAkLength + 1,
+  label: 'AK envelope',
+}
+
+/**
+ * Seal an opaque payload for one recipient's hybrid public keys:
+ * [version][ephPub 65B][mlkemCiphertext 1088B][iv 12B][AES-GCM(payload)]
+ */
+export const sealHybridPayload = async (
   payload: Uint8Array,
   ecdhPublicKey: CryptoKey,
   mlkemPublicKey: Uint8Array,
+  domain: HybridSealDomain,
 ): Promise<string> => {
   const { ephPubRaw, mlkemCiphertext, ssEcdh, ssMlkem } = await beginHybridSeal(ecdhPublicKey, mlkemPublicKey)
-  const sealKey = await deriveHybridSealKey(ssEcdh, ssMlkem, ephPubRaw, mlkemCiphertext, 'encrypt')
+  const sealKey = await deriveHybridSealKey(ssEcdh, ssMlkem, ephPubRaw, mlkemCiphertext, domain.info, 'encrypt')
   const iv = crypto.getRandomValues(new Uint8Array(ivLength))
   const sealed = new Uint8Array(
     await crypto.subtle.encrypt(
-      { name: aesGcmAlgorithm, iv: iv as BufferSource, additionalData: akEnvelopeAad as BufferSource },
+      { name: aesGcmAlgorithm, iv: iv as BufferSource, additionalData: domain.aad as BufferSource },
       sealKey,
       payload as BufferSource,
     ),
   )
 
-  const envelope = new Uint8Array(1 + ephPubRaw.length + mlkemCiphertext.length + iv.length + sealed.length)
-  envelope[0] = akEnvelopeVersion
+  const envelope = new Uint8Array(hybridSealHeaderLength + sealed.length)
+  envelope[0] = domain.version
   envelope.set(ephPubRaw, 1)
   envelope.set(mlkemCiphertext, 1 + ephPubRaw.length)
   envelope.set(iv, 1 + ephPubRaw.length + mlkemCiphertext.length)
-  envelope.set(sealed, 1 + ephPubRaw.length + mlkemCiphertext.length + iv.length)
+  envelope.set(sealed, hybridSealHeaderLength)
   return uint8ArrayToBase64(envelope)
 }
 
 /**
- * Open a v2 AK envelope back to its payload bytes. Throws `DecryptionError` on
- * a wrong recipient, a tampered byte anywhere (the transcript feeds the key
- * derivation and the version byte is the AAD, so nothing outside the tag is
- * malleable either), or a non-v2 version byte.
+ * Open a hybrid seal back to its payload bytes. Throws `DecryptionError` on a
+ * wrong recipient, a tampered byte anywhere (the transcript feeds the key
+ * derivation and the AAD is bound into the tag, so nothing outside the tag is
+ * malleable either), a different domain, or a wrong version byte.
  */
-const openAkPayload = async (
+export const openHybridPayload = async (
   wrappedBase64: string,
   ecdhPrivateKey: CryptoKey,
   mlkemSecretKey: Uint8Array,
+  domain: HybridSealDomain,
 ): Promise<Uint8Array> => {
   const envelope = base64ToUint8Array(wrappedBase64)
-  if (envelope[0] !== akEnvelopeVersion) {
-    throw new DecryptionError(`Unsupported AK envelope version: ${envelope[0]}`)
+  if (envelope[0] !== domain.version) {
+    throw new DecryptionError(`Unsupported ${domain.label} version: ${envelope[0]}`)
   }
-  if (envelope.length < minAkEnvelopeLength) {
-    throw new DecryptionError(`Invalid AK envelope: ${envelope.length} bytes, need >= ${minAkEnvelopeLength}`)
+  const minLength = hybridSealHeaderLength + domain.minPayloadLength + gcmTagLength
+  if (envelope.length < minLength) {
+    throw new DecryptionError(`Invalid ${domain.label}: ${envelope.length} bytes, need >= ${minLength}`)
   }
 
   let offset = 1
@@ -452,15 +482,26 @@ const openAkPayload = async (
     256,
   )
   const ssMlkem = ml_kem768.decapsulate(mlkemCiphertext, mlkemSecretKey)
-  const sealKey = await deriveHybridSealKey(ssEcdh, ssMlkem, ephPubRaw, mlkemCiphertext, 'decrypt')
+  const sealKey = await deriveHybridSealKey(ssEcdh, ssMlkem, ephPubRaw, mlkemCiphertext, domain.info, 'decrypt')
   return new Uint8Array(
     await crypto.subtle.decrypt(
-      { name: aesGcmAlgorithm, iv: iv as BufferSource, additionalData: akEnvelopeAad as BufferSource },
+      { name: aesGcmAlgorithm, iv: iv as BufferSource, additionalData: domain.aad as BufferSource },
       sealKey,
       sealed as BufferSource,
     ),
   )
 }
+
+/** Seal an opaque payload into a v2 AK envelope for one recipient. */
+const sealAkPayload = (payload: Uint8Array, ecdhPublicKey: CryptoKey, mlkemPublicKey: Uint8Array): Promise<string> =>
+  sealHybridPayload(payload, ecdhPublicKey, mlkemPublicKey, akSealDomain)
+
+/** Open a v2 AK envelope back to its payload bytes. */
+const openAkPayload = (
+  wrappedBase64: string,
+  ecdhPrivateKey: CryptoKey,
+  mlkemSecretKey: Uint8Array,
+): Promise<Uint8Array> => openHybridPayload(wrappedBase64, ecdhPrivateKey, mlkemSecretKey, akSealDomain)
 
 /**
  * Wrap the AK for one recipient using hybrid ECDH P-256 + ML-KEM-768, sealing

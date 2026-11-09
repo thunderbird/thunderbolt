@@ -43,7 +43,8 @@ export {
 // caller needs. Import them with `await import('@/crypto/canary')` /
 // `await import('@/crypto/recovery-key')` inside the user-initiated flow that
 // needs them (see src/services/encryption.ts) so the weight stays out of the
-// entry bundle. Their types are free to re-export.
+// entry bundle. The inbox-key check at start loads only `hybrid-keypair`, not
+// BIP-39. Their types are free to re-export.
 export type { RecoveryAnchor, SigningKeyPair } from './canary'
 
 // Local witness to DEK "0"'s material — gates inbound AK adoption (THU-869)

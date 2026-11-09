@@ -4,7 +4,7 @@
 
 import { KeyDerivationError } from './errors'
 import type { StoredKeyPair } from './key-storage'
-import { deriveHybridKeyPair } from './recovery-key'
+import { deriveHybridKeyPair } from './hybrid-keypair'
 
 // Wire contracts, like the recovery labels: changing any of them re-derives a
 // different keypair and strands every enrolled passkey slot.

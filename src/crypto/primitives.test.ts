@@ -32,7 +32,11 @@ import {
   decryptBytes,
   base64ToUint8Array,
   uint8ArrayToBase64,
+  sealHybridPayload,
+  openHybridPayload,
+  type HybridSealDomain,
 } from './primitives'
+import { derivePasskeyKeyPair } from './passkey-key'
 
 describe('generateKeyPair', () => {
   it('generates an ECDH P-256 key pair', async () => {
@@ -248,6 +252,86 @@ describe('wrapAK / unwrapAK (v2 AEAD envelope, THU-890)', () => {
     const mlkem = generateMlKemKeyPair()
     const legacy = await wrapLegacyCK(await generateAK(true), ecdh.publicKey, mlkem.publicKey)
     await expect(unwrapAK(legacy, ecdh.privateKey, mlkem.secretKey)).rejects.toThrow('Unsupported AK envelope version')
+  })
+})
+
+describe('AK envelope golden vector', () => {
+  // Minted by `wrapAK` before the hybrid seal was generalised into
+  // `sealHybridPayload`. Opening it pins the v2 wire format: a refactor that
+  // changes the layout, the HKDF info or the AAD breaks every stored envelope.
+  const goldenEnvelope =
+    'AgRGEdCgL/UHx4d97mqiiQv7qd52yMN1tNlNOXKzdQu9TkKatZCk8JbS3C1NzHY1V6+yGM7qD1AkMi3gqZU5uV1Q+EWuqxVAP3qd5GK2hh6qXDNNGVYj0kuP3RzqiUS0ZGQixWVT62FJhafXFnVSEtAt+GtANjQpktmseoaPYHX3sCiPk/W4Fz1sBI0a98VgimFiLztNeFda5w6T0qQeXuiAJgxf2ofxYf50MMjWsPANXptC4Pa06QC1Jj1aLGjL9KsoyJ8Qz0+OG3NIbVet2K4lvTyFWSfFiaGZdlVOfRgqDd6HAhhXi2xA2QtnC5p0UClYaKJYIfJ5ThIuRgec+zVjvRH9hpHHD9r4yaHdTcFN9rLwrwGdbpaFRz2mGCONQeTP6z17EbPKTrJ3czlumk3uvE0QDXQq5w1icRuuNWr7wk6giTf/Ik0Fq+znRZtYNHLp8oWh/FSfLaG7d69l9ntR4wVwD/D50z0pV0vfBslf9uziSjqBq/37x148NSS+HUaz/+JmORbhM8CPtAsPJ8aGTTzok6aNq8Hyc/Fk+r0uMPZLrBt3G3JAVIHN5uJ36EB4kTl6ZPObfFw3VYBBqCnCKSLpWpyi1Ay0khv5hknFreuYjN73iGXsmXaszqWK04FlBFuw1YnC0f8yuVzbLpJHd6ZlZYfP4qEQeWV8t1pUxV5SEWYPXBzDTQJ9mGH0mhu4AChTSRPTnE9UQJVhmFAPOyfEdLYgCkXBnc29H2c9H3yq+bTAFrCkvx7RMNfaPenNaC66FQNDHSZoLveoTnUU3QMFZC8DZnoaL0VEw7LwmIga8vKVIFTX461G3TTiXHem4Sz+MmAYoEmTt+yssbkiAfGwc7wAaYSGoMdX4RPXWXHtzgOf/FQ56R7+6r9UyvMCIXvB6dNZvxdHZ2iOBxB3OPWoGkZxtZE1TE2tg7BWkqxBxRCeRYlcvnMBF7+keAFrJhrf63pXVj35EwvnRGfUrqXi+cZRo2/jK1YxqNAc6ide0XOd2kbLHO8rP5kxHLo+S7ou+wBOYr+Ap7LjSb5vHjRSzLdsEPHfyU3SdSTZBNf/iLVIyZ5uBA6p12YRXZSU5GMer281cjHvrEotCXGlGv7xtuW9++M/eC5MkxBAohKK8miuhEIeLOQoq9apF+22DTUhTuzlIwF+NcFgzSscaNhRQYq/q8f8OJ1cssaLXhMsOkbJlIGybk7DKki1Oa9TEigesJELvHYFXUPkXCZtEn44/97kU3bFcf337UqFWeumJv6knnIB2avePHbjyg3aCyXnxrcTP0ecJLNwHUM0/wfUD6Rwv86kfT6kps8JtHmUqZF4xRGxd+haZgux9gh2v/7BAzINLngyxn+anqPYA3hAGAzHi4fU6eoyc1jlnTlrGSgfqPJYJ2A5aEYC0lhYr3lH57aRITOZnBaZXCGmjYfW5EDmvhppOnborhnlvFtgO8zePdVGk9kOkTPi2lNK0Ntf0Gh68xvCaZBYtZ/y+cAIYyMXyIGxSXByEgZtfKeAYk4r7TQoBmFaep0cxFwcpfJQPZa2BuIdOngBIRcyyNsmJhcm/auotZma/Gbh5yCTV/Nv/vJuBp+6SMiryyfjNjNNfXqhwHtErzMI'
+  const fixedSeed = new Uint8Array(32).map((_, i) => i + 1)
+  const fixedRawAk = new Uint8Array(32).map((_, i) => 255 - i)
+
+  it('still opens, yielding the original AK and pointer', async () => {
+    const keyPair = await derivePasskeyKeyPair(fixedSeed)
+    const { ak, primaryKeyId } = await unwrapAK(goldenEnvelope, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
+    expect(primaryKeyId).toBe('7')
+
+    const originalAk = await crypto.subtle.importKey('raw', fixedRawAk, { name: 'AES-GCM', length: 256 }, true, [
+      'wrapKey',
+      'unwrapKey',
+    ])
+    const dek = await generateDEK(true)
+    const encrypted = await encrypt('golden', dek)
+    const wrappedDek = await wrapDEK(dek, originalAk, '0')
+    expect(await decrypt(encrypted, await unwrapDEK(wrappedDek, ak, '0'))).toBe('golden')
+  })
+})
+
+describe('sealHybridPayload / openHybridPayload', () => {
+  const domain = (overrides: Partial<HybridSealDomain> = {}): HybridSealDomain => ({
+    version: 0x01,
+    info: new TextEncoder().encode('test-seal-v1'),
+    aad: new TextEncoder().encode('test-aad'),
+    minPayloadLength: 32,
+    label: 'test seal',
+    ...overrides,
+  })
+  const payload = new Uint8Array(32).map((_, i) => i)
+
+  it('round-trips a payload', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const sealed = await sealHybridPayload(payload, ecdh.publicKey, mlkem.publicKey, domain())
+    expect(await openHybridPayload(sealed, ecdh.privateKey, mlkem.secretKey, domain())).toEqual(payload)
+  })
+
+  it.each([
+    ['a different AAD', { aad: new TextEncoder().encode('other-aad') }],
+    ['a different HKDF info', { info: new TextEncoder().encode('other-seal-v1') }],
+  ])('refuses to open under %s', async (_, overrides) => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const sealed = await sealHybridPayload(payload, ecdh.publicKey, mlkem.publicKey, domain())
+    await expect(openHybridPayload(sealed, ecdh.privateKey, mlkem.secretKey, domain(overrides))).rejects.toThrow()
+  })
+
+  it('refuses a different version byte before any crypto runs', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const sealed = await sealHybridPayload(payload, ecdh.publicKey, mlkem.publicKey, domain())
+    await expect(
+      openHybridPayload(sealed, ecdh.privateKey, mlkem.secretKey, domain({ version: 0x02 })),
+    ).rejects.toThrow('Unsupported test seal version: 1')
+  })
+
+  it('refuses the wrong recipient', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const other = generateMlKemKeyPair()
+    const sealed = await sealHybridPayload(payload, ecdh.publicKey, mlkem.publicKey, domain())
+    await expect(openHybridPayload(sealed, ecdh.privateKey, other.secretKey, domain())).rejects.toThrow()
+  })
+
+  it('refuses a payload shorter than the domain minimum', async () => {
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    const sealed = await sealHybridPayload(new Uint8Array(4), ecdh.publicKey, mlkem.publicKey, domain())
+    await expect(openHybridPayload(sealed, ecdh.privateKey, mlkem.secretKey, domain())).rejects.toThrow(
+      'Invalid test seal',
+    )
   })
 })
 

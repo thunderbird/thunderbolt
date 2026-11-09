@@ -2,25 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { p256 } from '@noble/curves/nist.js'
-import { ml_kem768 } from '@noble/post-quantum/ml-kem.js'
 import { entropyToMnemonic, mnemonicToEntropy } from '@scure/bip39'
 import { wordlist } from '@scure/bip39/wordlists/english.js'
 import { kdfAlgorithm, kdfHash, kdfIterations, kdfSaltLength } from '@shared/e2ee-types'
 
 import { KeyDerivationError, ValidationError } from './errors'
+import { deriveHybridKeyPair } from './hybrid-keypair'
 import type { StoredKeyPair } from './key-storage'
-import { base64ToUint8Array, importPublicKey, uint8ArrayToBase64, uint8ArrayToBase64Url } from './primitives'
+import { base64ToUint8Array, uint8ArrayToBase64 } from './primitives'
 
 const seedLength = 32 // bytes → 24 BIP-39 words
 
 // Recovery keypair derivation — every constant below is a wire contract. Changing
 // any of them re-derives a different keypair and bricks every existing phrase.
-const ecdhCurve = 'P-256'
-const hkdfHash = 'SHA-256'
 const masterSecretLength = 64 // one PBKDF2-SHA512 block — a wider ask doubles the 600k cost
-const ecdhSeedLength = 48 // getMinHashLength(P-256 order) — noble's bias-free scalar width
-const mlkemSeedLength = 64 // ML-KEM-768 keygen seed (d || z)
 const ecdhHkdfInfo = new TextEncoder().encode('thunderbolt-recovery-ecdh-v1')
 const mlkemHkdfInfo = new TextEncoder().encode('thunderbolt-recovery-mlkem-v1')
 
@@ -52,66 +47,6 @@ export const decodeRecoveryKey = (mnemonic: string): Uint8Array => {
   }
 
   return bytes
-}
-
-/**
- * Expand the PBKDF2 master secret into one domain-separated sub-seed. HKDF-SHA256
- * with a distinct `info` label per key type is what keeps the ECDH scalar and the
- * ML-KEM seed independent — never feed the master secret to both directly.
- */
-const expandSubSeed = async (masterKey: CryptoKey, info: Uint8Array, byteLength: number): Promise<Uint8Array> =>
-  new Uint8Array(
-    await crypto.subtle.deriveBits(
-      { name: 'HKDF', hash: hkdfHash, salt: new Uint8Array(0), info: info as BufferSource },
-      masterKey,
-      byteLength * 8,
-    ),
-  )
-
-/**
- * Import a raw P-256 scalar as a WebCrypto ECDH private key. WebCrypto cannot
- * seed-derive EC keys, so the scalar comes from noble and is handed back through
- * JWK — the only import format that carries a private scalar.
- */
-const importEcdhPrivateKey = async (privateScalar: Uint8Array, publicKeyRaw: Uint8Array): Promise<CryptoKey> =>
-  crypto.subtle.importKey(
-    'jwk',
-    {
-      kty: 'EC',
-      crv: ecdhCurve,
-      d: uint8ArrayToBase64Url(privateScalar),
-      x: uint8ArrayToBase64Url(publicKeyRaw.slice(1, 33)),
-      y: uint8ArrayToBase64Url(publicKeyRaw.slice(33, 65)),
-      ext: false,
-    },
-    { name: 'ECDH', namedCurve: ecdhCurve },
-    false,
-    ['deriveBits'],
-  )
-
-/**
- * Derive a hybrid keypair (ECDH P-256 + ML-KEM-768) from an HKDF master key, one
- * HKDF-SHA256 sub-seed per key type. Shared by every virtual device: the
- * recovery phrase and the passkey slot differ only in where the master secret
- * comes from and in their `info` labels, which keep their keypairs independent.
- */
-export const deriveHybridKeyPair = async (
-  masterKey: CryptoKey,
-  labels: { ecdh: Uint8Array; mlkem: Uint8Array },
-): Promise<StoredKeyPair> => {
-  const ecdhSeed = await expandSubSeed(masterKey, labels.ecdh, ecdhSeedLength)
-  const ecdhPrivateScalar = p256.utils.randomSecretKey(ecdhSeed)
-  const ecdhPublicKeyRaw = p256.getPublicKey(ecdhPrivateScalar, false)
-
-  const mlkemSeed = await expandSubSeed(masterKey, labels.mlkem, mlkemSeedLength)
-  const { publicKey: mlkemPublicKey, secretKey: mlkemSecretKey } = ml_kem768.keygen(mlkemSeed)
-
-  return {
-    ecdhPrivateKey: await importEcdhPrivateKey(ecdhPrivateScalar, ecdhPublicKeyRaw),
-    ecdhPublicKey: await importPublicKey(uint8ArrayToBase64(ecdhPublicKeyRaw)),
-    mlkemPublicKey,
-    mlkemSecretKey,
-  }
 }
 
 /**

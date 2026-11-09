@@ -113,7 +113,9 @@ Android specifics and the `gen/android` re-init trap:
 Registration is not enough.
 [`capabilities/default.json`](../../../src-tauri/capabilities/default.json) is the allowlist the webview
 is held to, scoped to `webviews: ["main"]` so child previews inherit no native permissions. A command or window operation that works in a scratch
-build and fails in the app is almost always missing an entry there.
+build and fails in the app is almost always missing an entry there. The Quick Entry window has its
+own, much smaller manifest, [`capabilities/quick-entry.json`](../../../src-tauri/capabilities/quick-entry.json)
+(see [Quick Entry](#quick-entry-macos)).
 
 - `remote.urls` permits `http://localhost:1420/*` because in dev Vite serves the frontend, which
   counts as remote content.
@@ -160,6 +162,51 @@ deep-link and updater config.
   through `IDBBatchAtomicVFS`, eventually OOM-killing the web process. Set it before the webview is
   created, since WebKitGTK reads `JSC_*` at its own init. Tracked at
   [webkit.org bug 319572](https://bugs.webkit.org/show_bug.cgi?id=319572); remove when it lands.
+
+### Quick Entry (macOS)
+
+A left click on the menu bar icon opens a small floating prompt; the menu moves to a right click.
+The menu (built in [`src/lib/tray.tsx`](../../../src/lib/tray.tsx)) is the app's name and icon with
+its version greyed out below, then New Chat, Quick Entry and Settings (which opens Preferences, since `/settings` alone is an empty
+page), then Quit. Native menu items
+take no subtitle or badge, hence the separate version row. New Chat and Settings need the router,
+which the tray (built during initialization) has no access to, so they bring the main window
+forward and fire a DOM event that `useTrayCommands` handles inside the router. It is a second window, `quick-entry`, declared only in `tauri.macos.conf.json`
+(that file's `windows` array replaces the base one, so it does not exist on Windows or Linux). It
+is created hidden at launch, so opening it is a `setPosition()` (bottom center of the work area of
+the screen under the cursor) + `show()` + `setFocus()` ([`src/lib/tray.tsx`](../../../src/lib/tray.tsx)).
+The window is transparent with no native blur; the page paints a rounded panel styled like the chat
+composer.
+
+- **It is its own page, not the app.** `quick-entry.html` is a second Vite input, emitted only by
+  the macOS Tauri build (`TAURI_ENV_PLATFORM=darwin`), that loads
+  [`src/quick-entry/`](../../../src/quick-entry/), built on the composer's `PromptInput`. No
+  database, sync or auth runs there, so it opens instantly. It is **not** a security boundary: it
+  loads the main window's origin, so script in it can read the same localStorage (auth token
+  included) and IndexedDB. Its capability limits only what it can do over IPC. The window resizes
+  to the panel's height, keeping its bottom edge, so the textarea and the inline lists grow it
+  upward.
+- **Chats and models come from the main window.** Each time it opens, the panel emits
+  `quick-entry:request-options`; the main window answers with `quick-entry:options`: recent chats
+  (Mini App chats left out, since they open inside their app), and the models a new chat could use
+  with every API key replaced by a placeholder, or no models (no picker) when a new chat would run
+  on an external agent. Both pickers open their lists inline above the input; a popover would be
+  clipped by the window.
+- **Pasted files go through the composer's own attachment hook** (`useComposerAttachments`), so they
+  are checked, compressed and stored in IndexedDB exactly as in the app. Both windows load the same
+  origin and share that store, so only the references cross to the main window, as in any send.
+  The panel listens for paste on its whole window, not just the textarea, and holds a send until
+  every pasted file is stored.
+- **The main window does the work.** On send, the panel emits `quick-entry:submit` to `main` with
+  the prompt, the picked chat (null for "New Chat") and the picked model, and hides.
+  `useQuickEntryListener` shows the main window and navigates to the chat, or to `/chats/new` after
+  writing the model to `selected_model` (what a new chat starts on; an existing chat keeps its
+  own). The prompt rides in router state; `ChatPromptInput` seeds it and sends it through its
+  normal `handleSubmit`, unless the chat already holds a draft, which it merges into instead.
+- **It hides when it loses focus, or on Escape**, like Spotlight. Escape also hides the app:
+  hiding only the panel leaves the app active, and macOS then brings the main window forward.
+- **It is a regular window, not an `NSPanel`.** Focusing it activates the app, which can bring a
+  visible main window forward with it. A non-activating panel would avoid that.
 
 ## Native HTTP
 

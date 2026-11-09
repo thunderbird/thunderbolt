@@ -34,7 +34,7 @@ import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
 } from '@/skills/use-skills'
-import { type Model, type Skill } from '@/types'
+import { type AttachmentData, type Model, type Skill } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
@@ -63,6 +63,7 @@ import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
 import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
+import type { QuickEntryNavState } from '@/quick-entry/use-quick-entry-listener'
 import { EffortSelector } from './effort-selector'
 import { ChatModelPicker } from './chat-model-picker'
 import { ChatAttestation } from './attestation'
@@ -615,6 +616,63 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
         )
       }
     }
+
+    // A prompt sent from the macOS Quick Entry panel (`useQuickEntryListener`),
+    // in the same consume-once router-state shape as `focusComposer`. The text
+    // and any pasted files are seeded into the composer and sent through
+    // `handleSubmit` once that render commits, so they get the same checks and
+    // skill-token normalization as a typed send; a blocked send leaves them in
+    // the composer. The latest-ref matters: `useEffectEvent` handed back the
+    // pre-seed `handleSubmit` here, which saw an empty input and sent nothing.
+    //
+    // An existing chat can hold a draft: typed text, queued files or quote
+    // replies. Sending would clear it, and sending it along with the prompt was
+    // never asked for, so the prompt is merged in and left for the user to send.
+    const quickEntry = location.state as Partial<QuickEntryNavState> | null
+    const quickEntryPrompt = quickEntry?.quickEntryPrompt
+    const quickEntryAttachments = quickEntry?.quickEntryAttachments
+    const quickEntrySubmitRef = useRef<{ prompt: string; attachments: AttachmentData[] } | null>(null)
+    const hasQueuedPartsRef = useRef(false)
+    hasQueuedPartsRef.current = attachments.length > 0 || quotes.length > 0
+    useEffect(() => {
+      if (quickEntryPrompt === undefined) {
+        return
+      }
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+      const seeded = quickEntryAttachments ?? []
+      const draft = inputRef.current
+      const hasDraft = (draft.trim() !== '' && draft !== quickEntryPrompt) || hasQueuedPartsRef.current
+      if (hasDraft) {
+        setInput(mergeIntoDraft(draft, quickEntryPrompt))
+        // Deduplicated: StrictMode runs this twice against the same state.
+        setAttachments((prev) => [
+          ...prev,
+          ...seeded.filter((file) => !prev.some(({ localFileId }) => localFileId === file.localFileId)),
+        ])
+        return
+      }
+      quickEntrySubmitRef.current = { prompt: quickEntryPrompt, attachments: seeded }
+      setInput(quickEntryPrompt)
+      setAttachments(seeded)
+    }, [
+      quickEntryPrompt,
+      quickEntryAttachments,
+      setInput,
+      setAttachments,
+      navigate,
+      location.pathname,
+      location.search,
+    ])
+    const handleSubmitRef = useRef(handleSubmit)
+    handleSubmitRef.current = handleSubmit
+    useEffect(() => {
+      const pending = quickEntrySubmitRef.current
+      if (!pending || pending.prompt !== input || pending.attachments !== attachments) {
+        return
+      }
+      quickEntrySubmitRef.current = null
+      void handleSubmitRef.current()
+    }, [input, attachments])
 
     const handleNewChat = async () => {
       await navigate('/chats/new')

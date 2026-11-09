@@ -135,13 +135,13 @@ without ping-ponging: the rule in
 
 Generated rather than shipped, so they are not reconciled: no default row, no `reset()`.
 
-| Key                                | Written by                                                                                                                                           |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `anonymous_id`                     | Seeded once with `createSetting`, which leaves an existing row alone ([`src/lib/reconcile-defaults.ts:655`](../../../src/lib/reconcile-defaults.ts)) |
-| `selected_model`, `selected_agent` | The chat store, when you switch either ([`src/chats/chat-store.ts:272`, `:302`](../../../src/chats/chat-store.ts))                                   |
-| `onboarding_current_step`          | Onboarding                                                                                                                                           |
-| `sidebar_state`                    | The sidebar                                                                                                                                          |
-| `defaults_version.*`               | Reconcile, for itself                                                                                                                                |
+| Key                                | Written by                                                                                                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `anonymous_id`                     | Seeded once with `createSetting`, which leaves an existing row alone ([`src/lib/reconcile-defaults.ts:655`](../../../src/lib/reconcile-defaults.ts))                                         |
+| `selected_model`, `selected_agent` | The chat store, when you switch either ([`src/chats/chat-store.ts:272`, `:302`](../../../src/chats/chat-store.ts)); Quick Entry writes `selected_model` when you pick a model for a new chat |
+| `onboarding_current_step`          | Onboarding                                                                                                                                                                                   |
+| `sidebar_state`                    | The sidebar                                                                                                                                                                                  |
+| `defaults_version.*`               | Reconcile, for itself                                                                                                                                                                        |
 
 Export copies the table wholesale ([export-format.md](export-format.md)) and import upserts by
 key, so an export carries the exporting device's version markers and anonymous id.

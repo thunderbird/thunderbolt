@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { buildAttachmentPart } from '@/lib/attachments'
+import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import {
   createMockChatInstance,
@@ -1450,6 +1452,87 @@ describe('ChatPromptInput', () => {
 
       expect(textarea).not.toHaveFocus()
       expect(navigate).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Quick Entry prompt', () => {
+    const fakeUseLocation =
+      (state: unknown): typeof import('react-router').useLocation =>
+      () => ({ pathname: '/chats/new', search: '', hash: '', state, key: 'test' })
+
+    const renderWithState = (state: unknown) => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      const navigate = mock(() => {})
+      render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useLocation={fakeUseLocation(state)}
+          useNavigate={(() => navigate) as unknown as typeof import('react-router').useNavigate}
+          useImageSupportCheck={() => ({ notice: undefined, tryAnyway: undefined })}
+        />,
+        { wrapper: TestWrapper },
+      )
+      return { navigate, sendMessage: mockChatInstance.sendMessage }
+    }
+
+    const pastedImage = { localFileId: 'file-1', filename: 'screenshot.png', mimeType: 'image/png' }
+    const setQuotesForThread = (threadId: string, quotes: { text: string }[]) =>
+      act(() => usePendingQuotesStore.getState().setQuotes(threadId, quotes))
+
+    it('sends pasted files along with the prompt', () => {
+      const { sendMessage } = renderWithState({
+        quickEntryPrompt: 'What is this?',
+        quickEntryAttachments: [pastedImage],
+      })
+
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+      expect(sendMessage).toHaveBeenCalledWith({
+        parts: [{ type: 'text', text: 'What is this?' }, buildAttachmentPart(pastedImage)],
+      })
+    })
+
+    it('sends a pasted file with no text', () => {
+      const { sendMessage } = renderWithState({ quickEntryPrompt: '', quickEntryAttachments: [pastedImage] })
+
+      expect(sendMessage).toHaveBeenCalledWith({ parts: [buildAttachmentPart(pastedImage)] })
+    })
+
+    it('sends the prompt as the first message on arrival', () => {
+      const { sendMessage } = renderWithState({ quickEntryPrompt: 'Plan my week', newChatRequestId: 'request-1' })
+
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+      expect(sendMessage).toHaveBeenCalledWith({ parts: [{ type: 'text', text: 'Plan my week' }] })
+    })
+
+    it('consumes the request so back/forward cannot send it again', () => {
+      const { navigate } = renderWithState({ quickEntryPrompt: 'Plan my week', newChatRequestId: 'request-1' })
+
+      expect(navigate).toHaveBeenCalledWith('/chats/new', { replace: true, state: {} })
+    })
+
+    it('merges into a draft the chat already holds instead of sending both', () => {
+      localStorage.setItem('draft:thread-1', 'half a thought')
+      const { sendMessage } = renderWithState({ quickEntryPrompt: 'Plan my week' })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(screen.getByPlaceholderText('Ask me anything…')).toHaveValue('half a thought\n\nPlan my week')
+    })
+
+    it('leaves a pending quote reply alone instead of sending it along with the prompt', () => {
+      setQuotesForThread('thread-1', [{ text: 'quoted passage' }])
+      const { sendMessage } = renderWithState({ quickEntryPrompt: 'Plan my week', quickEntryAttachments: [] })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(screen.getByPlaceholderText('Ask me anything…')).toHaveValue('Plan my week')
+      usePendingQuotesStore.getState().clearQuotes('thread-1')
+    })
+
+    it('sends nothing when the navigation carries no prompt', () => {
+      const { sendMessage, navigate } = renderWithState({ focusComposer: true })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+      expect(navigate).not.toHaveBeenCalledWith('/chats/new', { replace: true, state: {} })
     })
   })
 

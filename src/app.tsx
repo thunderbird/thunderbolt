@@ -30,6 +30,7 @@ import { useAnalyticsConsent } from '@/hooks/use-analytics-consent'
 import { useAppLanguage } from '@/hooks/use-app-language'
 import { useUnitDefaults } from '@/hooks/use-unit-defaults'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
+import { useQuickEntryListener } from '@/quick-entry/use-quick-entry-listener'
 import { useTrayCommands } from '@/hooks/use-tray-commands'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
@@ -190,6 +191,7 @@ const HomeShell = ({ sidebarOpen }: { sidebarOpen: boolean }) => {
 const AppRoutes = ({ initData }: { initData: InitData }) => {
   usePageTracking()
   useDeepLinkListener()
+  useQuickEntryListener()
   useTrayCommands()
 
   const { experimentalFeatureTasks, experimentalFeatureVoice } = useSettings({

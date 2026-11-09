@@ -11,7 +11,7 @@
 
 import '@/testing-library'
 
-import { beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ConnectToAgentContext } from './connect'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { clearAdapterCache, disposeAdapter, disposeAllAdapters, getOrConnectAdapter } from './adapter-cache'
@@ -111,6 +111,12 @@ describe('adapter-cache', () => {
   beforeEach(() => {
     clearAdapterCache()
     useChatStore.setState({ sessions: new Map() })
+  })
+
+  afterEach(() => {
+    clearAdapterCache()
+    useChatStore.setState({ sessions: new Map() })
+    mock.restore()
   })
 
   it('reuses ONE adapter for the same agentId across two different sessionIds (connect once)', async () => {

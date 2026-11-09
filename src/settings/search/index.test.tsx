@@ -172,9 +172,10 @@ it.each(['disabled', 'disconnected'] as const)(
     expect(await openManageMenu()).toBeTruthy()
   },
 )
-it('offers adding a connection when none exists', () => {
+it('offers adding a connection when none exists', async () => {
   renderPage()
-  fireEvent.click(screen.getByRole('button', { name: 'New Search Connection' }))
+  expect(await waitForElement(() => screen.queryByText('No search connections available'))).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Add connection' }))
   expect(screen.getByRole('link', { name: 'Manage all connections' })).toHaveAttribute('href', '/settings/connections')
   fireEvent.click(screen.getByRole('button', { name: 'Exa Search' }))
   expect(screen.getByRole('button', { name: 'Connect Exa' })).toBeVisible()
@@ -184,6 +185,29 @@ it('offers adding a connection when none exists', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
   expect(screen.getByLabelText('API key')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'OpenAI Models' })).toBeNull()
+})
+
+it('continues an existing Otari connection to its search availability details', async () => {
+  await saveProviderConnection(getDb(), {
+    provider: 'otari',
+    name: 'Inference only',
+    authMethod: 'oauth',
+    url: 'https://otari.example/api/v1',
+    credentials: { access_token: 'test-token' },
+  })
+  spyOn(otariCapabilities, 'loadOtariSearchStatus').mockResolvedValue('not_configured')
+  renderPage()
+  await waitForElement(() => screen.queryByText('No search connections available'))
+  fireEvent.click(screen.getByRole('button', { name: 'New Search Connection' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
+  expect(screen.getByRole('status')).toHaveTextContent('Connected to Otari')
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  expect(
+    await waitForElement(() =>
+      screen.queryByText('Otari web search isn’t available. Configure a search provider in Otari to use it here.'),
+    ),
+  ).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Inference only' })).toBeVisible()
 })
 
 it.each(['New Search Connection', 'Open Existing search', 'Edit', 'Remove'])(

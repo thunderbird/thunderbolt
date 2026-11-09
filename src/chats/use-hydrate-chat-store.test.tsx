@@ -217,6 +217,82 @@ describe('useHydrateChatStore', () => {
   })
 
   describe('hydrateChatStore', () => {
+    it('lets a changed provider mode replace pending hydration without creating the session twice', async () => {
+      const id = uuidv7()
+      const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true }), { wrapper: TestWrapper })
+      const previous = new AbortController()
+
+      await act(async () => {
+        const superseded = result.current.hydrateChatStore(previous.signal)
+        previous.abort()
+        await Promise.all([superseded, result.current.hydrateChatStore(new AbortController().signal)])
+      })
+
+      expect(useChatStore.getState().sessions.size).toBe(1)
+      expect(getCurrentSession()?.id).toBe(id)
+      expect(result.current.isReady).toBe(true)
+    })
+
+    it('does not create a session after its host unmounts', async () => {
+      const id = uuidv7()
+      const { result, unmount } = renderHook(() => useHydrateChatStore({ id, isNew: true }), {
+        wrapper: TestWrapper,
+      })
+      const controller = new AbortController()
+      const pending = result.current.hydrateChatStore(controller.signal)
+      controller.abort()
+      unmount()
+      await pending
+
+      expect(useChatStore.getState().sessions.has(id)).toBe(false)
+      expect(getCurrentSession()).toBeNull()
+    })
+
+    it('does not let a previous route publish its session after the next route hydrates', async () => {
+      const previousId = uuidv7()
+      const nextId = uuidv7()
+      const { result, rerender } = renderHook(({ id }) => useHydrateChatStore({ id, isNew: true }), {
+        initialProps: { id: previousId },
+        wrapper: TestWrapper,
+      })
+      const controller = new AbortController()
+      const previous = result.current.hydrateChatStore(controller.signal)
+      controller.abort()
+      rerender({ id: nextId })
+      await act(async () => {
+        await Promise.all([previous, result.current.hydrateChatStore(new AbortController().signal)])
+      })
+
+      expect(useChatStore.getState().sessions.has(previousId)).toBe(false)
+      expect(getCurrentSession()?.id).toBe(nextId)
+    })
+
+    it('does not publish a cancelled refresh of an existing session', async () => {
+      const id = uuidv7()
+      const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      const originalSession = getCurrentSession()
+      const models = [...useChatStore.getState().models]
+      useChatStore.getState().setModels(models)
+      const controller = new AbortController()
+      const pending = result.current.hydrateChatStore(controller.signal)
+      controller.abort()
+      await pending
+
+      expect(getCurrentSession()).toBe(originalSession)
+      expect(useChatStore.getState().models).toBe(models)
+      expect(useChatStore.getState().sessions.size).toBe(1)
+
+      await act(async () => {
+        await result.current.hydrateChatStore(new AbortController().signal)
+      })
+      expect(useChatStore.getState().models).not.toBe(models)
+      expect(getCurrentSession()?.chatInstance).toBe(originalSession?.chatInstance)
+      expect(useChatStore.getState().sessions.size).toBe(1)
+    })
+
     it('should hydrate useChatStore with correct state', async () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId, 'My Test Thread')

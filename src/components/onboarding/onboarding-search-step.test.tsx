@@ -10,6 +10,7 @@ import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/da
 import { getDb } from '@/db/database'
 import {
   disconnectProviderConnection,
+  getProviderConnection,
   getProviderConnections,
   getProviderCredentials,
   saveProviderConnection,
@@ -208,5 +209,44 @@ it.each(['exa', 'tavily'] as const)(
     fireEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(screen.getAllByRole('radio')).toHaveLength(3)
     expect(screen.getByRole('radio', { name })).toBeChecked()
+  },
+)
+
+it.each(['exa', 'tavily'] as const)(
+  'lets the user explicitly enable a reauthorized disabled %s connection',
+  async (provider) => {
+    const name = provider === 'exa' ? 'Exa' : 'Tavily'
+    const id = await saveProviderConnection(getDb(), {
+      provider,
+      name,
+      authMethod: 'oauth',
+      credentials: { access_token: 'old-access' },
+      enabled: false,
+    })
+    spyOn(mcpOAuth, 'startMcpOAuthFlow').mockImplementation(async (args) => {
+      await args.saveCredentials!({
+        type: 'oauth',
+        access_token: 'new-access',
+        clientId: 'registered',
+        issuer: 'https://auth.example',
+        tokenEndpoint: 'https://auth.example/token',
+      })
+      return { status: 'completed' }
+    })
+    renderStep()
+    fireEvent.click(screen.getByRole('radio', { name }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.click(screen.getByRole('button', { name: `Connect ${name}` }))
+    await waitForElement(() => screen.queryByText(`Connected to ${name}`))
+    expect((await getProviderConnection(getDb(), id))?.enabled).toBe(0)
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Enable connection' })))
+    await waitForElement(() =>
+      screen.getByRole('button', { name: 'Continue' }).hasAttribute('disabled') ? null : document.body,
+    )
+    expect((await getProviderConnection(getDb(), id))?.enabled).toBe(1)
+    expect(await getProviderCredentials(getDb(), id)).toMatchObject({ access_token: 'new-access' })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(next).toHaveBeenCalledTimes(1)
   },
 )

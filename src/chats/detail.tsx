@@ -77,7 +77,9 @@ export const ChatHydrateHandler = ({
   useHandleIntegrationCompletion({ saveMessages })
 
   useEffect(() => {
-    hydrateChatStore()
+    const controller = new AbortController()
+    void hydrateChatStore(controller.signal)
+    return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, cloudUrl, needsOwnModel])
 

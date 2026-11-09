@@ -13,6 +13,8 @@ import {
   updateProviderConnection,
 } from '@/dal/provider-connections'
 import { createModel, updateModel } from '@/dal/models'
+import { updateSettings } from '@/dal/settings'
+import * as providerConnections from '@/dal/provider-connections'
 import { tinfoilSession } from '@/lib/tinfoil-session'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { http } from '@/lib/http'
@@ -26,7 +28,10 @@ const toolsResponse = (search = true, fetch = true) =>
       { id: 'otari_web_fetch', direct_available: fetch },
     ],
   })
-const connect = async (provider: 'otari' | 'tinfoil' | 'exa' | 'brave' | 'tavily' = 'otari') => {
+const connect = async (provider: 'otari' | 'tinfoil' | 'exa' | 'brave' | 'tavily' = 'otari', enableOtari = true) => {
+  if (provider === 'otari' && enableOtari) {
+    await updateSettings(getDb(), { experimental_feature_otari: true })
+  }
   const id = await saveProviderConnection(getDb(), {
     id: 'connection',
     provider,
@@ -47,6 +52,68 @@ afterEach(async () => {
   mock.restore()
   useSearchProviderStore.getState().clearSearchProvider()
   await resetTestDatabase()
+})
+
+it.each(['missing', 'disabled'] as const)(
+  'blocks hidden Otari before credentials or discovery when %s',
+  async (flag) => {
+    const id = await connect('otari', false)
+    if (flag === 'disabled') {
+      await updateSettings(getDb(), { experimental_feature_otari: false })
+    }
+    const credentials = spyOn(providerConnections, 'getProviderCredentials')
+    const resolve = spyOn(providerConnections, 'resolveProviderConnection')
+    const fetch = spyOn(globalThis, 'fetch').mockClear()
+
+    expect(await getSearchConnectionAuthorization(getDb(), id)).toBeNull()
+    expect(await getSearchConnectionApi(getDb(), id)).toBeUndefined()
+    expect(credentials).not.toHaveBeenCalled()
+    expect(resolve).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'connection', connectionId: id })
+  },
+)
+
+it.each(['search', 'fetch'] as const)(
+  'blocks an existing Otari %s API before credentials when preview is disabled',
+  async (tool) => {
+    const id = await connect()
+    const api = await getSearchConnectionApi(getDb(), id)
+    await updateSettings(getDb(), { experimental_feature_otari: false })
+    const resolve = spyOn(providerConnections, 'resolveProviderConnection')
+    const fetch = spyOn(globalThis, 'fetch').mockClear()
+
+    const request =
+      tool === 'search'
+        ? api!.search({ query: 'private query', max_results: 1 }, http)
+        : api!.fetchContent!({ url: 'https://example.com/private' }, http)
+    await expect(request).rejects.toThrow('Otari preview is disabled')
+    expect(resolve).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'connection', connectionId: id })
+  },
+)
+
+it('rejects Otari if its preview is disabled while credentials resolve', async () => {
+  const id = await connect()
+  const api = await getSearchConnectionApi(getDb(), id)
+  const started = Promise.withResolvers<void>()
+  const pending = Promise.withResolvers<void>()
+  const resolve = providerConnections.resolveProviderConnection
+  spyOn(providerConnections, 'resolveProviderConnection').mockImplementation(async (...args) => {
+    const authorization = await resolve(...args)
+    started.resolve()
+    await pending.promise
+    return authorization
+  })
+  const fetch = spyOn(globalThis, 'fetch').mockClear()
+  const request = api!.search({ query: 'private query', max_results: 1 }, http)
+  await started.promise
+  await updateSettings(getDb(), { experimental_feature_otari: false })
+  pending.resolve()
+
+  await expect(request).rejects.toThrow('Otari preview is disabled')
+  expect(fetch).not.toHaveBeenCalled()
 })
 
 it('uses Otari with no models and keeps search after a model is disabled', async () => {
@@ -144,6 +211,7 @@ it('does not expose a missing connection or substitute another account', async (
 it.each(['exa', 'brave', 'tavily', 'tinfoil'] as const)(
   'resolves %s credentials at call time without models',
   async (provider) => {
+    await updateSettings(getDb(), { experimental_feature_otari: false })
     const id = await connect(provider)
     const authorization = await getSearchConnectionAuthorization(getDb(), id)
     expect(await authorization!.getApiKey()).toBe('key')

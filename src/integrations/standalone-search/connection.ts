@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getProviderConnection, getProviderCredentials, resolveProviderConnection } from '@/dal/provider-connections'
+import { getSettings } from '@/dal/settings'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { createOtariWebApi } from '@/integrations/otari-search/api'
 import { loadOtariWebCapabilities } from '@/integrations/otari-search/capabilities'
@@ -13,17 +14,33 @@ import { createMcpSearchApi } from './mcp-api'
 import { createStandaloneWebApi } from './api'
 import { isSearchProvider } from './providers'
 import { canSupplySearch } from './eligibility'
+import type { ProviderType } from '@/providers/types'
+
+/** Applies preview visibility to execution without changing the saved search selection. */
+const isSearchProviderEnabled = async (db: AnyDrizzleDatabase, provider: ProviderType) =>
+  provider !== 'otari' || (await getSettings(db, { experimental_feature_otari: false })).experimentalFeatureOtari
 
 /** Pins a turn to one authorization while allowing its OAuth token to refresh normally. */
 export const getSearchConnectionAuthorization = async (db: AnyDrizzleDatabase, connectionId: string) => {
   const connection = await getProviderConnection(db, connectionId)
+  if (!connection || !canSupplySearch(connection) || !(await isSearchProviderEnabled(db, connection.provider))) {
+    return null
+  }
   const credentials = await getProviderCredentials(db, connectionId)
-  if (!connection || !canSupplySearch(connection) || !credentials) {
+  if (!credentials) {
     return null
   }
 
+  /** Checks both sides of credential resolution, which can wait for an OAuth refresh. */
+  const assertProviderEnabled = async () => {
+    if (!(await isSearchProviderEnabled(db, connection.provider))) {
+      throw new Error('Otari preview is disabled. Enable it in Settings to use this connection.')
+    }
+  }
   const getApiKey = async () => {
+    await assertProviderEnabled()
     const live = await resolveProviderConnection(db, connectionId)
+    await assertProviderEnabled()
     if (
       !canSupplySearch(live.connection) ||
       live.connection.provider !== connection.provider ||

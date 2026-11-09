@@ -346,6 +346,7 @@ msgstr "Add another instance via API key"
 
 #: src/components/chat/chat-model-setup.tsx
 #: src/settings/connections/connections-list.tsx
+#: src/settings/search/index.tsx
 msgid "Add connection"
 msgstr "Add connection"
 
@@ -1185,6 +1186,10 @@ msgstr "Connect a local model or use an API key."
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Connect a remote agent that speaks the Agent Client Protocol."
 msgstr "Connect a remote agent that speaks the Agent Client Protocol."
+
+#: src/settings/search/index.tsx
+msgid "Connect a search provider to let your agents search the web."
+msgstr "Connect a search provider to let your agents search the web."
 
 #: src/components/otari-connection/otari-connection.tsx
 #~ msgid "Connect another account"
@@ -2430,6 +2435,10 @@ msgstr "Enable {title}"
 msgid "Enable cloud sync"
 msgstr "Enable cloud sync"
 
+#: src/components/onboarding/onboarding-search-step.tsx
+msgid "Enable connection"
+msgstr "Enable connection"
+
 #: src/settings/search/index.tsx
 #~ msgid "Enable or reconnect Tinfoil in Connections to use this provider."
 #~ msgstr "Enable or reconnect Tinfoil in Connections to use this provider."
@@ -3594,6 +3603,10 @@ msgstr "No projects yet. Create one in the sidebar, then move this chat into it.
 #: src/search/palette/search-palette.tsx
 msgid "No results found."
 msgstr "No results found."
+
+#: src/settings/search/index.tsx
+msgid "No search connections available"
+msgstr "No search connections available"
 
 #: src/skills/skills-list.tsx
 msgid "No skills yet"

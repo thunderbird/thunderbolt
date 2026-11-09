@@ -195,12 +195,18 @@ export const useHydrateChatStore = ({
     [db],
   )
 
-  const hydrateChatStore = async () => {
+  const hydrateChatStore = async (signal?: AbortSignal) => {
+    if (signal?.aborted) {
+      return
+    }
     const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModels } =
       useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
     const isDeleted = !isNew && (await isChatThreadDeleted(db, id))
+    if (signal?.aborted) {
+      return
+    }
     if (isDeleted) {
       navigate('/not-found', { replace: true })
       return
@@ -208,10 +214,12 @@ export const useHydrateChatStore = ({
 
     // If the session already exists, set the current session id and update the mcp clients and models
     if (sessions.has(id)) {
-      setCurrentSessionId(id)
-
       const models = await getAvailableModels(db)
+      if (signal?.aborted) {
+        return
+      }
 
+      setCurrentSessionId(id)
       // Store the provider's getter (not a snapshot) so each send reads the
       // current connected clients, including any swapped in by a reconnect.
       setGetMcpClients(getEnabledClients)
@@ -240,6 +248,9 @@ export const useHydrateChatStore = ({
         getAllAgents(db),
         getAllSystemAgents(db),
       ])
+    if (signal?.aborted) {
+      return
+    }
 
     // Built-in is implicit (lives in code); the DB rows are only customs + system.
     // Respect the deployment's `disableBuiltInAgent` flag so the resolved agent

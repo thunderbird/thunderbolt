@@ -70,7 +70,7 @@ export const ProviderConnectionForm = ({
     return (
       <>
         <ProviderConnectionSummary connection={existingSignIn} onAddApiKey={toggleAuthMethod} />
-        {onBack && <ConnectionSetupFooter onBack={onBack} onContinue={onCancel} ready />}
+        {onBack && <ConnectionSetupFooter onBack={onBack} onContinue={() => onSaved(existingSignIn.id)} ready />}
       </>
     )
   }

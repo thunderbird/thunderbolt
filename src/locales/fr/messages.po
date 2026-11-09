@@ -358,6 +358,7 @@ msgstr ""
 
 #: src/components/chat/chat-model-setup.tsx
 #: src/settings/connections/connections-list.tsx
+#: src/settings/search/index.tsx
 msgid "Add connection"
 msgstr ""
 
@@ -1197,6 +1198,10 @@ msgstr ""
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Connect a remote agent that speaks the Agent Client Protocol."
 msgstr "Connectez un agent distant qui parle l'Agent Client Protocol."
+
+#: src/settings/search/index.tsx
+msgid "Connect a search provider to let your agents search the web."
+msgstr ""
 
 #: src/components/otari-connection/otari-connection.tsx
 #~ msgid "Connect another account"
@@ -2442,6 +2447,10 @@ msgstr "Activer {title}"
 msgid "Enable cloud sync"
 msgstr "Activer la synchronisation cloud"
 
+#: src/components/onboarding/onboarding-search-step.tsx
+msgid "Enable connection"
+msgstr ""
+
 #: src/settings/search/index.tsx
 #~ msgid "Enable or reconnect Tinfoil in Connections to use this provider."
 #~ msgstr ""
@@ -3606,6 +3615,10 @@ msgstr ""
 #: src/search/palette/search-palette.tsx
 msgid "No results found."
 msgstr "Aucun résultat trouvé."
+
+#: src/settings/search/index.tsx
+msgid "No search connections available"
+msgstr ""
 
 #: src/skills/skills-list.tsx
 msgid "No skills yet"

@@ -13,6 +13,7 @@ import { isOnboardingSearchAuthorization } from '@/providers/authorization-draft
 import { getConnectionsOAuthCallback } from '@/settings/connections/oauth-callback'
 import { getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getMcpSearchProvider } from '@/providers/mcp-search-auth'
+import { useAiProviderConnections } from '@/settings/connections/use-ai-provider-connections'
 
 export type OnboardingSearchStepProps = {
   onBack?: () => void
@@ -24,6 +25,7 @@ type State = { selection: string | null; view: 'choices' | 'connect' | 'ready' }
 /** Share Connections authorization while keeping search setup inside onboarding. */
 export const useOnboardingSearchState = ({ onContinue }: OnboardingSearchStepProps) => {
   const stored = useSearchProviderStore()
+  const connectionControls = useAiProviderConnections()
   const { connections, configuredConnections, otariEnabled } = useSearchProviderAvailability()
   const available = connections.filter(canSupplySearch)
   const [state, update] = useReducer((state: State, patch: Partial<State>): State => ({ ...state, ...patch }), {
@@ -115,12 +117,16 @@ export const useOnboardingSearchState = ({ onContinue }: OnboardingSearchStepPro
     otariEnabled,
     choices,
     connected,
+    connectionControls,
     provider,
     saved,
     choose,
     back,
     continueSetup,
-    canContinue: !authorization.isPending && Boolean(selectedConnection || (state.view === 'choices' && provider)),
+    canContinue:
+      !authorization.isPending &&
+      !connectionControls.pending &&
+      Boolean(selectedConnection || (state.view === 'choices' && provider)),
     authorization: {
       ...authorization,
       authorize: (input: Parameters<typeof authorization.authorize>[0]) =>

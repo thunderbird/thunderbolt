@@ -6,6 +6,9 @@ import { useCreateItem } from '@/components/create-item/context'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Link } from 'react-router'
 import { useState } from 'react'
+import { Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { PageSearch } from '@/components/ui/page-search'
 import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
@@ -70,6 +73,18 @@ const SearchSettingsPage = () => {
             <PageSearch.Input placeholder={t`Search connections`} onSearch={setSearch} />
           </PageSearch>
           <SettingsListBody className={settingsListBodyRowsClass}>
+            {page.ready && !query && page.connections.length === 0 && !page.cloudVisible && (
+              <EmptyState
+                icon={Search}
+                title={t`No search connections available`}
+                description={t`Connect a search provider to let your agents search the web.`}
+                action={
+                  <Button onClick={() => selectPanel('new')}>
+                    <Trans>Add connection</Trans>
+                  </Button>
+                }
+              />
+            )}
             {filteredConnections.map((connection) => (
               <SettingsSelectableRow
                 key={connection.id}

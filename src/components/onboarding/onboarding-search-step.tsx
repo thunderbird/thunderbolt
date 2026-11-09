@@ -7,6 +7,7 @@ import { Search } from 'lucide-react'
 import { ProviderConnectionForm } from '@/settings/connections/provider-connection-form'
 import { ProviderConnectionSummary } from '@/settings/connections/provider-connection-summary'
 import { ProviderConnectionIcon } from '@/settings/connections/provider-connection-icon'
+import { Button } from '@/components/ui/button'
 import { OnboardingStepHeader } from './onboarding-step-header'
 import { OnboardingChoiceCard } from './onboarding-choice-card'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
@@ -18,7 +19,8 @@ export const OnboardingSearchStep = (props: OnboardingSearchStepProps) => {
   const { t } = useLingui()
   const { onBack, onSkip } = props
   const state = useOnboardingSearchState(props)
-  const { stored, choices, connected, otariEnabled, provider, authorization, choose, back, saved } = state
+  const { stored, choices, connected, connectionControls, otariEnabled, provider, authorization, choose, back, saved } =
+    state
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col">
       <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
@@ -80,6 +82,20 @@ export const OnboardingSearchStep = (props: OnboardingSearchStepProps) => {
               {!canSupplySearch(connected) && (
                 <p className="text-sm text-muted-foreground">
                   <Trans>Connect or enable this connection to use search</Trans>
+                </p>
+              )}
+              {connected.connected && connected.enabled === 0 && (
+                <Button
+                  onClick={() => connectionControls.toggle(connected.id, true)}
+                  disabled={!connectionControls.ready || connectionControls.pending}
+                  isLoading={connectionControls.pending}
+                >
+                  <Trans>Enable connection</Trans>
+                </Button>
+              )}
+              {connectionControls.error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {connectionControls.error}
                 </p>
               )}
             </ProviderConnectionSummary>

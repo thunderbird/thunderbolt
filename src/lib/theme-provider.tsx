@@ -107,11 +107,15 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
-export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  // A user who never picked a theme follows the operator's default, then the OS.
+/** The theme setting in effect: the user's choice, then the operator's default, then the OS. */
+export const useThemeSetting = (): Theme => {
   const chosenTheme = useLocalSettingsStore((s) => s.theme)
   const defaultTheme = useConfigStore((s) => selectBranding(s.config)?.defaultThemeMode)
-  const theme = chosenTheme ?? defaultTheme ?? 'system'
+  return chosenTheme ?? defaultTheme ?? 'system'
+}
+
+export const ThemeProvider = ({ children }: { children: ReactNode }) => {
+  const theme = useThemeSetting()
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   const setTheme = useCallback((newTheme: Theme) => setLocalSetting('theme', newTheme), [setLocalSetting])
@@ -168,8 +172,10 @@ const subscribeToSystemTheme = (onChange: () => void) => {
  * effect keyed on the setting: a user on `'system'` toggling dark mode watched
  * Thunderbolt repaint while the embedded app stayed light for the session.
  */
-export const useResolvedTheme = (): 'light' | 'dark' => {
-  const { theme } = useTheme()
+export const useResolvedTheme = (): 'light' | 'dark' => useResolveTheme(useTheme().theme)
+
+/** Resolve a theme setting to the appearance on screen, following the OS while it is `'system'`. */
+export const useResolveTheme = (theme: Theme): 'light' | 'dark' => {
   const systemIsDark = useSyncExternalStore(
     subscribeToSystemTheme,
     () => darkQuery().matches,

@@ -66,6 +66,17 @@ export const activateLocale = async (locale: AppLocale): Promise<void> => {
 }
 
 /**
+ * Render `locale` without publishing it: loads and activates its catalog but
+ * leaves the active-locale mirror alone. For a secondary window (Quick Entry)
+ * that follows the main window's language rather than owning it — publishing
+ * from there would write back whatever it read at its own boot.
+ */
+export const showLocale = async (locale: AppLocale): Promise<void> => {
+  const { messages } = await catalogLoaders[locale]()
+  i18n.loadAndActivate({ locale, messages })
+}
+
+/**
  * Resolve a `language` setting value to a locale and activate it.
  *
  * Call this from the handler that changes the setting, not from an effect: the

@@ -7,10 +7,14 @@ import { OAuthError } from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { AuthorizationServerMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
 import { resourceUrlFromServerUrl } from '@modelcontextprotocol/sdk/shared/auth-utils.js'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
-import { and, eq, exists, isNull } from 'drizzle-orm'
-import type { McpServerCredentials } from '@/dal/mcp-secrets'
+import { eq } from 'drizzle-orm'
+import {
+  getMcpServerCredentialSnapshot,
+  updateMcpServerCredentialsIfCurrent,
+  type McpServerCredentials,
+} from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { mcpSecretsTable, mcpServersTable } from '@/db/tables'
+import { mcpServersTable } from '@/db/tables'
 import { isTokenFresh } from '@/integrations/oauth-credentials'
 import { getIdentitySignal } from '@/lib/identity-lifetime'
 
@@ -113,10 +117,10 @@ const resolveValidMcpOAuthToken = async (
   signal: AbortSignal,
 ): Promise<string> => {
   signal.throwIfAborted()
-  const row = await db.select().from(mcpSecretsTable).where(eq(mcpSecretsTable.id, serverId)).get()
+  const snapshot = await getMcpServerCredentialSnapshot(db, serverId)
   signal.throwIfAborted()
-  const cred = row?.credentials ? (JSON.parse(row.credentials) as McpServerCredentials) : null
-  if (cred?.type !== 'oauth') {
+  const cred = snapshot?.credentials
+  if (!snapshot || cred?.type !== 'oauth') {
     throw new Error(`MCP server ${serverId} has no OAuth credentials`)
   }
 
@@ -166,30 +170,10 @@ const resolveValidMcpOAuthToken = async (
     expires_at: tokens.expires_in !== undefined ? Date.now() + tokens.expires_in * 1000 : undefined,
     scope: tokens.scope ?? cred.scope,
   }
-  await db.transaction(async (tx) => {
-    signal.throwIfAborted()
-    const activeServer = tx
-      .select({ id: mcpServersTable.id })
-      .from(mcpServersTable)
-      .where(
-        and(
-          eq(mcpServersTable.id, serverId),
-          eq(mcpServersTable.enabled, 1),
-          isNull(mcpServersTable.deletedAt),
-          server?.url ? eq(mcpServersTable.url, server.url) : isNull(mcpServersTable.url),
-        ),
-      )
-    const updated = await tx
-      .update(mcpSecretsTable)
-      .set({ credentials: JSON.stringify(credentials) })
-      .where(
-        and(eq(mcpSecretsTable.id, serverId), eq(mcpSecretsTable.credentials, row!.credentials!), exists(activeServer)),
-      )
-      .returning({ id: mcpSecretsTable.id })
-    signal.throwIfAborted()
-    if (!updated.length) {
-      throw new Error('MCP connection changed during token refresh')
-    }
+  await updateMcpServerCredentialsIfCurrent(db, serverId, credentials, {
+    expectedCredentials: snapshot.serialized,
+    expectedUrl: server?.url ?? null,
+    signal,
   })
 
   signal.throwIfAborted()

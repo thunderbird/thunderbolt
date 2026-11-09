@@ -710,3 +710,56 @@ export const countDeviceSessions = async (userId: string, deviceId: string): Pro
   `
   return rows[0]?.count ?? 0
 }
+
+/** One inbox key version as the server holds it — the public half other accounts seal to. */
+export type InboxKeyRow = { version: number; keyId: string; ecdhPublicKey: string; mlkemPublicKey: string }
+
+/** Every inbox key version a user has published, oldest first. */
+export const getInboxKeys = async (userId: string): Promise<InboxKeyRow[]> => {
+  const rows = await sql<{ version: number; key_id: string; ecdh_public_key: string; mlkem_public_key: string }[]>`
+    SELECT version, key_id, ecdh_public_key, mlkem_public_key FROM inbox_keys
+    WHERE user_id = ${userId} ORDER BY version
+  `
+  return rows.map((row) => ({
+    version: row.version,
+    keyId: row.key_id,
+    ecdhPublicKey: row.ecdh_public_key,
+    mlkemPublicKey: row.mlkem_public_key,
+  }))
+}
+
+/** The first live chat a user has synced to the server — the row a share is checked against. */
+export const waitForSyncedChatThread = async (userId: string): Promise<string> =>
+  poll(async () => {
+    const rows = await sql<{ id: string }[]>`
+      SELECT id FROM powersync.chat_threads WHERE user_id = ${userId} AND deleted_at IS NULL LIMIT 1
+    `
+    return rows[0]?.id ?? null
+  }, 60_000)
+
+/** A user's shares as the server holds them: ids and the ciphertext it can never open. */
+export const getChatShares = async (
+  ownerUserId: string,
+): Promise<Array<{ id: string; encryptedSnapshot: string; encryptedTitle: string; recipientCount: number }>> => {
+  const rows = await sql<
+    { id: string; encrypted_snapshot: string; encrypted_title: string; recipient_count: number }[]
+  >`
+    SELECT s.id, s.encrypted_snapshot, s.encrypted_title,
+      (SELECT COUNT(*)::int FROM chat_share_recipients r WHERE r.share_id = s.id) AS recipient_count
+    FROM chat_shares s WHERE s.owner_user_id = ${ownerUserId}
+  `
+  return rows.map((row) => ({
+    id: row.id,
+    encryptedSnapshot: row.encrypted_snapshot,
+    encryptedTitle: row.encrypted_title,
+    recipientCount: row.recipient_count,
+  }))
+}
+
+/** The titles the server syncs to a recipient's "Shared with me" list, by share id. */
+export const getReceivedShareTitles = async (recipientUserId: string): Promise<Map<string, string>> => {
+  const rows = await sql<{ id: string; encrypted_title: string }[]>`
+    SELECT id, encrypted_title FROM powersync.received_shares WHERE user_id = ${recipientUserId}
+  `
+  return new Map(rows.map((row) => [row.id, row.encrypted_title]))
+}

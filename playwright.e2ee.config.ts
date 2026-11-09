@@ -41,8 +41,13 @@ const postgresPort = process.env.E2E_POSTGRES_PORT ?? '5434'
 const powersyncPort = process.env.E2E_POWERSYNC_PORT ?? '8081'
 
 const databaseUrl = `postgresql://postgres:postgres@localhost:${postgresPort}/postgres`
+/** The fake model provider `share.spec.ts` starts — the port must match `fakeProviderPort` there. */
+const e2eeFakeProviderPort = Number(process.env.E2EE_FAKE_PROVIDER_PORT ?? 9879)
 
 const backendEnv = (port: number, extra: Record<string, string> = {}): Record<string, string> => ({
+  // Pointed at the fake provider a chat-creating spec starts; nothing calls it otherwise.
+  ANTHROPIC_API_KEY: 'e2e-fake-provider-key',
+  ANTHROPIC_BASE_URL: `http://localhost:${e2eeFakeProviderPort}`,
   APP_URL: `http://localhost:${frontendPort}`,
   AUTH_MODE: 'consumer',
   BETTER_AUTH_SECRET: 'e2e-test-secret-at-least-32-characters-long',

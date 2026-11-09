@@ -145,7 +145,7 @@ up to two layers:
 MCP tools merge last, namespaced `<prefix>_<tool>` via `sanitizeToolPrefix` (`shared/mcp-tool-names.ts`),
 so two servers exposing `list_services` stay distinct. Colliding prefixes probe upward (`render`,
 `render_2`, …); a name that still collides is skipped, first registered winning. Failed discovery
-skips the server this send; it reconnects in the background.
+reconnects and retries once in the same send, skipping the server only if that fails or takes over 3s.
 
 `mergeMcpTools` alone knows the final name → server mapping, so it returns `mcpTools` metadata on
 the assistant message: chat history resolves a `dynamic-tool` part to its server's name, URL and

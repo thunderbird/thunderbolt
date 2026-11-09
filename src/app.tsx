@@ -29,6 +29,7 @@ import { usePageTracking } from '@/hooks/use-analytics'
 import { useAnalyticsConsent } from '@/hooks/use-analytics-consent'
 import { useAppLanguage } from '@/hooks/use-app-language'
 import { useUnitDefaults } from '@/hooks/use-unit-defaults'
+import { useMiniAppsUserSync } from '@/mini-apps/use-mini-apps'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
@@ -145,6 +146,7 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useAppLanguage()
   useAnalyticsConsent()
   useUnitDefaults()
+  useMiniAppsUserSync()
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()

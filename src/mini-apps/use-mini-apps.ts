@@ -3,17 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * The Mini App registry, fetched once per session.
+ * The Mini App registry, fetched once per identity.
  *
  * Held in a module-level store rather than component state so the sidebar and
  * the app route share one fetch and one answer — two independent fetches could
  * briefly disagree about whether an app exists, which surfaces as a Not Found
  * flashing over a page that is about to work.
  *
- * Ungated: `GET /mini-apps` is unauthenticated and carries no secret, so every
- * session resolves to the same two terminal states — apps, or none. There is no
+ * `GET /mini-apps` works without a session and carries no secret, so every
+ * caller resolves to the same two terminal states — apps, or none. There is no
  * third "you may not ask" state to model, which is what used to leave
- * `/apps/:id` on `loading` forever for anonymous and signed-out callers.
+ * `/apps/:id` on `loading` forever for anonymous and signed-out callers. The
+ * answer can still depend on the caller: an app with `allowedEmails` is only
+ * listed for the users on it. So the list is fetched again when the signed-in
+ * user changes (see {@link syncMiniAppsUser}), not once per page session.
  *
  * Every path out of `loading` is now bounded. Removing the auth gate fixed the
  * cases where we *chose* not to ask; it left the case where we ask and are never
@@ -60,11 +63,13 @@ let inFlight: Promise<void> | null = null
 /**
  * Which era of the store a load belongs to.
  *
- * Only {@link resetMiniAppsForTesting} advances it, and only tests call that —
- * but without it a load started by one test file could still be in flight when
- * the next file resets the store, and its `setState` would land afterwards.
- * That made two tests here fail roughly one randomized run in four, which is
- * exactly the kind of flake nobody can reproduce on demand.
+ * Advanced when the signed-in user changes, so a request still in flight for the
+ * previous identity cannot land its answer over the new one's, and by
+ * {@link resetMiniAppsForTesting}: without that, a load started by one test file
+ * could still be in flight when the next file resets the store, and its
+ * `setState` would land afterwards. That made two tests here fail roughly one
+ * randomized run in four, which is exactly the kind of flake nobody can
+ * reproduce on demand.
  */
 let generation = 0
 const listeners = new Set<() => void>()
@@ -115,9 +120,9 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
       if (era !== generation) {
         return
       }
-      // A refetch that fails keeps the list already on screen; only a first
-      // load (or one that already failed) has nothing to keep.
-      setState(state.loading || state.failed ? { apps: [], loading: false, failed: true } : state)
+      // Never keeps the previous list: after an identity change it belongs to
+      // someone else, and showing it would be showing the wrong user's apps.
+      setState({ apps: [], loading: false, failed: true })
       // Cleared so the next mount retries, rather than the session being stuck.
       inFlight = null
     }
@@ -125,26 +130,34 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
   return inFlight
 }
 
-/** The user the current registry was fetched for; `undefined` until a session settles. */
-let registryUserId: string | undefined
+/**
+ * The identity the current registry was fetched for: a user id, `null` for
+ * signed out, `undefined` until a session settles.
+ */
+let registryIdentity: string | null | undefined
 
 /**
- * Fetch again when the signed-in user changes, keeping what is on screen meanwhile.
+ * Fetch again when the signed-in identity changes, including signing out.
  *
  * The registry depends on who is asking: an app with `allowedEmails` is left
  * out for an anonymous session, and the in-tab sign-in modal turns that session
  * into a real one without a reload. Keyed on the user id rather than on the
  * modal's success event, so it also fires when the modal is dismissed after the
- * code was accepted. Advancing the era drops any request still in flight for the
- * old identity.
+ * code was accepted. The list on screen stays while the refetch is in flight;
+ * if that fails the store drops to `failed`. Advancing the era drops any request
+ * still in flight for the old identity.
+ *
+ * `undefined` means the session has not settled and is ignored. The first
+ * settled identity is recorded without a refetch: the initial load already
+ * covers it.
  */
-export const syncMiniAppsUser = (userId: string | undefined, httpClient: HttpClient) => {
-  if (userId === undefined || userId === registryUserId) {
+export const syncMiniAppsUser = (identity: string | null | undefined, httpClient: HttpClient) => {
+  if (identity === undefined || identity === registryIdentity) {
     return
   }
-  const isFirstUser = registryUserId === undefined
-  registryUserId = userId
-  if (isFirstUser) {
+  const isFirstIdentity = registryIdentity === undefined
+  registryIdentity = identity
+  if (isFirstIdentity) {
     return
   }
   generation += 1
@@ -153,15 +166,17 @@ export const syncMiniAppsUser = (userId: string | undefined, httpClient: HttpCli
 }
 
 /**
- * Keeps the registry in step with the session. Mount once, beside the sidebar;
- * `useMiniApps` consumers stay free of auth.
+ * Keeps the registry in step with the session. Mount once at app level, so every
+ * reader of the store is covered at every width; `useMiniApps` consumers stay
+ * free of auth.
  */
 export const useMiniAppsUserSync = () => {
   const httpClient = useHttpClient()
-  const userId = useAuth().useSession().data?.user?.id
+  const { data: session, isPending } = useAuth().useSession()
+  const identity = isPending ? undefined : (session?.user?.id ?? null)
   useEffect(() => {
-    syncMiniAppsUser(userId, httpClient)
-  }, [userId, httpClient])
+    syncMiniAppsUser(identity, httpClient)
+  }, [identity, httpClient])
 }
 
 /**
@@ -175,7 +190,7 @@ export const resetMiniAppsForTesting = () => {
   generation += 1
   state = emptyState
   inFlight = null
-  registryUserId = undefined
+  registryIdentity = undefined
   listeners.clear()
 }
 

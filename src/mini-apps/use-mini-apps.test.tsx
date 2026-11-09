@@ -153,7 +153,47 @@ describe('useMiniApps', () => {
       expect(result.current.apps.map((entry) => entry.id)).toEqual(['finance-model'])
     })
 
-    it('keeps the list on screen when the refetch fails', async () => {
+    it('refetches when the user signs out, and ignores a session that has not settled', async () => {
+      let requests = 0
+      const client = clientWith(() => {
+        requests += 1
+        return Response.json({ apps: [app] })
+      })
+      setup(client)
+      syncMiniAppsUser('user-1', client)
+      await settle()
+
+      syncMiniAppsUser(undefined, client)
+      await settle()
+      expect(requests).toBe(1)
+
+      syncMiniAppsUser(null, client)
+      await settle()
+      expect(requests).toBe(2)
+    })
+
+    it('keeps the list on screen while the refetch is in flight', async () => {
+      let release: (response: Response) => void = () => {}
+      let calls = 0
+      const client = clientWith(() => {
+        calls += 1
+        return calls === 1 ? Response.json({ apps: [app] }) : new Promise<Response>((resolve) => (release = resolve))
+      })
+      const { result } = setup(client)
+      syncMiniAppsUser('anon-1', client)
+      await settle()
+
+      syncMiniAppsUser('user-1', client)
+      await settle()
+      expect(result.current).toMatchObject({ loading: false, failed: false })
+      expect(result.current.apps).toHaveLength(1)
+
+      release(Response.json({ apps: [] }))
+      await settle()
+      expect(result.current.apps).toEqual([])
+    })
+
+    it("shows failed, not the previous user's list, when the refetch fails", async () => {
       let fail = false
       const client = clientWith(() => (fail ? new Response('nope', { status: 500 }) : Response.json({ apps: [app] })))
       const { result } = setup(client)
@@ -164,8 +204,7 @@ describe('useMiniApps', () => {
       syncMiniAppsUser('user-1', client)
       await settle()
 
-      expect(result.current).toMatchObject({ loading: false, failed: false })
-      expect(result.current.apps).toHaveLength(1)
+      expect(result.current).toMatchObject({ loading: false, failed: true, apps: [] })
     })
   })
 

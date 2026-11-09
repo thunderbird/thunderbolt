@@ -72,11 +72,9 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
    * log volume any caller could drive.
    */
   const publicApps = toPublicMiniApps(apps)
-  // Parallel to `publicApps`, so the per-request filter is a zip, not a re-parse.
-  const appList = [...apps.values()]
   // Only a gated app makes the list depend on the caller. Without one the route
   // does no session lookup, as before, so an auth or DB outage cannot fail it.
-  const hasGatedApps = appList.some((app) => app.allowedEmails)
+  const hasGatedApps = [...apps.values()].some((app) => app.allowedEmails)
 
   // Mounted even with an empty registry. Skipping the routes made `GET
   // /mini-apps` 404, which the client cannot tell apart from a network failure
@@ -126,7 +124,10 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
         const user = session?.user as User | undefined
         // An anonymous user's email is a generated placeholder, not an identity.
         const email = user?.isAnonymous ? null : user?.email
-        return { apps: publicApps.filter((_, index) => isMiniAppAllowed(appList[index], email)) }
+        // Filtered on the config entries, then made public, so an allowlist is
+        // always checked against its own app whatever order the public list takes.
+        const visible = new Map([...apps].filter(([, app]) => isMiniAppAllowed(app, email)))
+        return { apps: toPublicMiniApps(visible) }
       })
       .post(
         '/:appId/token',

@@ -36,7 +36,7 @@ import {
 import { MessageCircle } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useProjectsState } from '@/dal/projects'
-import { useMiniApps, useMiniAppsUserSync } from '@/mini-apps/use-mini-apps'
+import { useMiniApps } from '@/mini-apps/use-mini-apps'
 import { miniAppPath } from '@/mini-apps/use-chat-destination'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
@@ -100,7 +100,6 @@ const TasksMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
  */
 const MiniAppMenuItems = ({ pathname, onClick }: { pathname: string; onClick: (appId: string) => void }) => {
   const { apps } = useMiniApps()
-  useMiniAppsUserSync()
   return (
     <>
       {apps.map((app) => (

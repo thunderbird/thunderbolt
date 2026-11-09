@@ -15,6 +15,7 @@
     "core:window:allow-hide",
     "core:window:allow-show",
     "core:window:allow-set-focus",
+    "core:window:allow-set-position",
     "core:window:allow-set-skip-taskbar",
     "core:window:allow-create",
     "core:window:allow-close",

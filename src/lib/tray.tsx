@@ -5,7 +5,12 @@
 import { msg } from '@lingui/core/macro'
 import { i18n } from '@lingui/core'
 import { createContext, useContext, type ReactNode } from 'react'
-import { isTauri, isTauriDesktop } from './platform'
+import { selectAppName } from '@/lib/branding-selectors'
+import { useConfigStore } from '@/api/config-store'
+import { quickEntryWindowLabel } from '@/quick-entry/events'
+import type { TrayIconEvent } from '@tauri-apps/api/tray'
+import type { Window } from '@tauri-apps/api/window'
+import { isMacDesktop, isTauri, isTauriDesktop } from './platform'
 
 // Lazy load Tauri modules only when needed
 let tauriApp: any = null
@@ -29,6 +34,46 @@ const loadTauriModules = async () => {
     }
   }
 }
+
+/** Show the main window and its Dock icon, undoing the close-to-tray in `setupWindowBehavior`. */
+export const showMainWindow = async (appWindow: Pick<Window, 'show' | 'setSkipTaskbar'>) => {
+  await appWindow.show()
+  await appWindow.setSkipTaskbar(false)
+
+  if (!isTauriDesktop()) {
+    return
+  }
+  await loadTauriModules()
+  try {
+    await tauriCore?.invoke('toggle_dock_icon', { show: true })
+  } catch (error) {
+    console.error('Failed to show dock icon:', error)
+  }
+}
+
+/** Logical gap between the Quick Entry panel and the bottom of the work area, which already excludes the Dock. */
+const quickEntryBottomGap = 24
+
+/** Bottom-center of the work area of the screen the cursor is on, falling back to the primary screen. */
+const getQuickEntryPosition = async (quickEntry: Window) => {
+  const cursor = await tauriWindow.cursorPosition()
+  const monitor = (await tauriWindow.monitorFromPoint(cursor.x, cursor.y)) ?? (await tauriWindow.primaryMonitor())
+  if (!monitor) {
+    return null
+  }
+  const size = await quickEntry.outerSize()
+  const { position, size: area } = monitor.workArea
+  return new tauriWindow.PhysicalPosition(
+    Math.round(position.x + (area.width - size.width) / 2),
+    Math.round(position.y + area.height - size.height - quickEntryBottomGap * monitor.scaleFactor),
+  )
+}
+
+/** DOM event the tray menu fires in the main webview for actions that need the router. */
+export const trayCommandEvent = 'thunderbolt:tray-command'
+
+/** What a tray menu item asks the app to do once the main window is showing. */
+export type TrayCommand = 'new-chat' | 'settings'
 
 type TrayContextType = {
   tray: any | undefined // Changed from TrayIcon to any for compatibility
@@ -88,21 +133,17 @@ export class TrayManager {
     if (!isTauri() || !this.appWindow) {
       return
     }
+    await showMainWindow(this.appWindow)
+    await this.appWindow.setFocus()
+  }
 
-    await loadTauriModules()
-    if (!tauriCore) {
-      return
-    }
-
-    await this.appWindow.show()
-    await this.appWindow.setSkipTaskbar(false)
-
-    if (isTauriDesktop()) {
-      try {
-        await tauriCore.invoke('toggle_dock_icon', { show: true })
-      } catch (error) {
-        console.error('Failed to show dock icon:', error)
-      }
+  /** Bring the main window forward, then hand `command` to `useTrayCommands`, which owns the router. */
+  private async runCommand(command: TrayCommand) {
+    try {
+      await this.handleShowClick()
+      window.dispatchEvent(new CustomEvent<TrayCommand>(trayCommandEvent, { detail: command }))
+    } catch (error) {
+      console.error(`Failed to run tray command ${command}:`, error)
     }
   }
 
@@ -116,6 +157,24 @@ export class TrayManager {
     await loadTauriModules()
     if (tauriProcess) {
       await tauriProcess.exit(0)
+    }
+  }
+
+  /** Bring up the Quick Entry panel at the bottom center of the screen under the cursor. */
+  private async showQuickEntry() {
+    try {
+      const quickEntry: Window | null = await tauriWindow?.Window.getByLabel(quickEntryWindowLabel)
+      if (!quickEntry) {
+        return
+      }
+      const position = await getQuickEntryPosition(quickEntry)
+      if (position) {
+        await quickEntry.setPosition(position)
+      }
+      await quickEntry.show()
+      await quickEntry.setFocus()
+    } catch (error) {
+      console.error('Failed to show Quick Entry:', error)
     }
   }
 
@@ -170,16 +229,31 @@ export class TrayManager {
       await this.setupWindowBehavior()
 
       try {
+        const appName = selectAppName(useConfigStore.getState().config)
+        const version: string = await tauriApp.getVersion()
         const menu = await tauriMenu.Menu.new({
           items: [
+            // Header: the app, with its version on a greyed-out row below, which
+            // is as close as a native menu gets to a subtitle.
             {
               id: 'show',
-              text: i18n._(msg`Show`),
+              text: appName,
+              icon: await tauriApp.defaultWindowIcon(),
               action: this.handleShowClick.bind(this),
             },
+            { id: 'version', text: i18n._(msg`Version ${version}`), enabled: false },
+            { item: 'Separator' },
+            { id: 'new-chat', text: i18n._(msg`New Chat`), action: () => void this.runCommand('new-chat') },
+            // The panel exists only on macOS (see tauri.macos.conf.json).
+            ...(isMacDesktop()
+              ? [{ id: 'quick-entry', text: i18n._(msg`Quick Entry`), action: () => void this.showQuickEntry() }]
+              : []),
+            { id: 'settings', text: i18n._(msg`Settings`), action: () => void this.runCommand('settings') },
+            { item: 'Separator' },
             {
               id: 'quit',
               text: i18n._(msg`Quit`),
+              accelerator: 'CmdOrCtrl+Q',
               action: this.handleQuitClick.bind(this),
             },
           ],
@@ -192,6 +266,16 @@ export class TrayManager {
           iconAsTemplate: true,
           tooltip: 'Thunderbolt',
           menu,
+          // macOS: a left click opens Quick Entry, like other menu bar prompts;
+          // the menu moves to a right click.
+          ...(isMacDesktop() && {
+            showMenuOnLeftClick: false,
+            action: (event: TrayIconEvent) => {
+              if (event.type === 'Click' && event.button === 'Left' && event.buttonState === 'Up') {
+                void this.showQuickEntry()
+              }
+            },
+          }),
         })
       } catch (error) {
         console.error('Failed to create tray:', error)

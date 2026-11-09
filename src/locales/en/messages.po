@@ -13,11 +13,11 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/use-composer-attachments.ts
 msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgstr "\"{filename}\" is too large (max {maxMegabytes}MB)."
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/use-composer-attachments.ts
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "\"{filename}\" isn't a supported file type."
 
@@ -550,6 +550,7 @@ msgid "Ask about this"
 msgstr "Ask about this"
 
 #: src/components/chat/chat-prompt-input.tsx
+#: src/quick-entry/quick-entry.tsx
 msgid "Ask me anything…"
 msgstr "Ask me anything…"
 
@@ -719,6 +720,7 @@ msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Changes were saved, but reconnecting failed. Please retry."
 
 #: src/mini-apps/mini-app-page.tsx
+#: src/quick-entry/quick-entry-chat-list.tsx
 msgid "Chat"
 msgstr "Chat"
 
@@ -1311,7 +1313,7 @@ msgstr "Couldn't add the agent. Please try again."
 msgid "Couldn't approve this device. Please try again."
 msgstr "Couldn't approve this device. Please try again."
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/use-composer-attachments.ts
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 
@@ -2857,6 +2859,9 @@ msgstr "New chat"
 #: src/components/sidebar-footer.tsx
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/lib/title-generator.ts
+#: src/lib/tray.tsx
+#: src/quick-entry/quick-entry-chat-list.tsx
+#: src/quick-entry/quick-entry.tsx
 msgid "New Chat"
 msgstr "New Chat"
 
@@ -3436,6 +3441,10 @@ msgid "Q3 planning"
 msgstr "Q3 planning"
 
 #: src/lib/tray.tsx
+msgid "Quick Entry"
+msgstr "Quick Entry"
+
+#: src/lib/tray.tsx
 msgid "Quit"
 msgstr "Quit"
 
@@ -3494,6 +3503,7 @@ msgstr "Recent chat options"
 
 #: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
+#: src/quick-entry/quick-entry-chat-list.tsx
 msgid "Recents"
 msgstr "Recents"
 
@@ -4007,6 +4017,7 @@ msgstr "Setting up…"
 
 #: src/layout/sidebar/nav-toggle.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
+#: src/lib/tray.tsx
 msgid "Settings"
 msgstr "Settings"
 
@@ -4019,8 +4030,8 @@ msgid "Shared instructions for project chats"
 msgstr "Shared instructions for project chats"
 
 #: src/lib/tray.tsx
-msgid "Show"
-msgstr "Show"
+#~ msgid "Show"
+#~ msgstr "Show"
 
 #. placeholder {0}: project.name
 #: src/layout/sidebar/project-tree-row.tsx
@@ -5156,6 +5167,10 @@ msgstr "Version {updateVersion}"
 msgid "Version {updateVersion} is available. See the update prompt to install."
 msgstr "Version {updateVersion} is available. See the update prompt to install."
 
+#: src/lib/tray.tsx
+msgid "Version {version}"
+msgstr "Version {version}"
+
 #: src/settings/preferences.tsx
 msgid "Vibrate on tap"
 msgstr "Vibrate on tap"
@@ -5375,7 +5390,7 @@ msgstr "You"
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
 msgstr "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/use-composer-attachments.ts
 msgid "You can attach up to {maxAttachmentCount} files."
 msgstr "You can attach up to {maxAttachmentCount} files."
 

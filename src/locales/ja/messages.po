@@ -13,11 +13,11 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/use-composer-attachments.ts
 msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgstr "「{filename}」はサイズが大きすぎます（最大 {maxMegabytes}MB）。"
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/use-composer-attachments.ts
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "「{filename}」はサポートされていないファイル形式です。"
 
@@ -538,6 +538,7 @@ msgid "Ask about this"
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
+#: src/quick-entry/quick-entry.tsx
 msgid "Ask me anything…"
 msgstr "何でも質問してください…"
 
@@ -707,6 +708,7 @@ msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "変更は保存されましたが、再接続に失敗しました。もう一度お試しください。"
 
 #: src/mini-apps/mini-app-page.tsx
+#: src/quick-entry/quick-entry-chat-list.tsx
 msgid "Chat"
 msgstr ""
 
@@ -1299,7 +1301,7 @@ msgstr "エージェントを追加できませんでした。もう一度お試
 msgid "Couldn't approve this device. Please try again."
 msgstr ""
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/use-composer-attachments.ts
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "「{filename}」を添付できませんでした — ブラウザーのストレージが満杯か利用できません。"
 
@@ -2845,6 +2847,9 @@ msgstr "新しいチャット"
 #: src/components/sidebar-footer.tsx
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/lib/title-generator.ts
+#: src/lib/tray.tsx
+#: src/quick-entry/quick-entry-chat-list.tsx
+#: src/quick-entry/quick-entry.tsx
 msgid "New Chat"
 msgstr "新しいチャット"
 
@@ -3424,6 +3429,10 @@ msgid "Q3 planning"
 msgstr "第 3 四半期の計画"
 
 #: src/lib/tray.tsx
+msgid "Quick Entry"
+msgstr ""
+
+#: src/lib/tray.tsx
 msgid "Quit"
 msgstr "終了"
 
@@ -3482,6 +3491,7 @@ msgstr ""
 
 #: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
+#: src/quick-entry/quick-entry-chat-list.tsx
 msgid "Recents"
 msgstr ""
 
@@ -3995,6 +4005,7 @@ msgstr "設定しています…"
 
 #: src/layout/sidebar/nav-toggle.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
+#: src/lib/tray.tsx
 msgid "Settings"
 msgstr "設定"
 
@@ -4007,8 +4018,8 @@ msgid "Shared instructions for project chats"
 msgstr "プロジェクト内のチャットに共通の指示"
 
 #: src/lib/tray.tsx
-msgid "Show"
-msgstr "表示"
+#~ msgid "Show"
+#~ msgstr "表示"
 
 #. placeholder {0}: project.name
 #: src/layout/sidebar/project-tree-row.tsx
@@ -5144,6 +5155,10 @@ msgstr "バージョン {updateVersion}"
 msgid "Version {updateVersion} is available. See the update prompt to install."
 msgstr "バージョン {updateVersion} が利用できます。インストールするには更新の案内を確認してください。"
 
+#: src/lib/tray.tsx
+msgid "Version {version}"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Vibrate on tap"
 msgstr "タップ時に振動"
@@ -5363,7 +5378,7 @@ msgstr ""
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
 msgstr "<0>localhost</0> のバックエンドを使用しているようです。コードまたはマジックリンクはバックエンドサーバーのログで確認してください。"
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/use-composer-attachments.ts
 msgid "You can attach up to {maxAttachmentCount} files."
 msgstr "添付できるファイルは {maxAttachmentCount} 件までです。"
 

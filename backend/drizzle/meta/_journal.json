@@ -285,8 +285,15 @@
     {
       "idx": 40,
       "version": "7",
-      "when": 1793926107392,
-      "tag": "0040_huge_gamora",
+      "when": 1794158108434,
+      "tag": "0040_tinfoil-list-prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794266654619,
+      "tag": "0041_provider-connections",
       "breakpoints": true
     }
   ]

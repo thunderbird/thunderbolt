@@ -59,7 +59,9 @@ export const SkillsView = () => {
   // No first-skill fallback: the detail panel only opens when the user
   // explicitly selects a skill (or a deep link does), matching the
   // slide-in-from-the-right behavior. `undefined` means "nothing selected".
-  const activeSkill = skills.find((s) => s.id === activeId)
+  // Ids resolve against `allSkills` so a hidden system skill reached from the
+  // palette or a deep link can still be viewed, edited and removed.
+  const activeSkill = allSkills.find((s) => s.id === activeId)
 
   // Disabling a pinned skill auto-unpins it so no inert chip remains.
   const disableSkill = useCallback(
@@ -134,7 +136,7 @@ export const SkillsView = () => {
   const onCreate = () => requestLeave({ type: 'create' })
 
   const onDelete = (id: string) => {
-    const target = skills.find((s) => s.id === id)
+    const target = allSkills.find((s) => s.id === id)
     if (!target) {
       return
     }

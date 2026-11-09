@@ -150,8 +150,10 @@ export const useSlashCommand = ({
         skill: s,
       }))
     // A skill and an agent command can share a name; the skill wins so the
-    // menu doesn't show two identical `/foo` rows.
-    const skillNames = new Set(skillItems.map((s) => s.name.toLowerCase()))
+    // menu doesn't show two identical `/foo` rows. Hidden system skills count
+    // too: the composer resolves their slug, so a same-named command would
+    // insert a token that runs our skill instead of the agent's command.
+    const skillNames = new Set(library.filter((s) => isEnabled(s.name)).map((s) => s.name.toLowerCase()))
     const commandItems: SlashItem[] = [...agentCommands]
       .filter((c) => c.name.toLowerCase().includes(query) && !skillNames.has(c.name.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name))

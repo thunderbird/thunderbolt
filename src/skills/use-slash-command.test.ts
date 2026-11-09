@@ -203,6 +203,25 @@ describe('useSlashCommand hidden system skills', () => {
     act(() => hook.result.current.setCursorPos(1))
     expect(hook.result.current.popupItems.map((i) => i.name)).toEqual(['daily-brief'])
   })
+
+  it('drops an agent command that shares a hidden system skill name', () => {
+    const hidden = { ...defaultSkillResearch, defaultHash: hashSkill(defaultSkillResearch) }
+    const hook = renderHook(() =>
+      useSlashCommand({
+        value: '/',
+        setValue: () => undefined,
+        inputRef: createRef<HTMLTextAreaElement>(),
+        library: [hidden],
+        isEnabled: () => true,
+        agentCommands: [
+          { name: 'research', description: 'agent research' },
+          { name: 'review', description: 'agent review' },
+        ],
+      }),
+    )
+    act(() => hook.result.current.setCursorPos(1))
+    expect(hook.result.current.popupItems.map((i) => `${i.kind}:${i.name}`)).toEqual(['command:review'])
+  })
 })
 
 describe('useSlashCommand label search', () => {

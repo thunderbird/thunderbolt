@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { formatEuroCompact, horizon, parseMonth, type MonthRow, type Plan } from '@/lib/model'
+import { formatEuro, formatEuroCompact, horizon, parseMonth, type MonthRow, type Plan } from '@/lib/model'
 import { useTween } from './use-tween'
 
 const width = 960
@@ -14,10 +14,26 @@ const plotHeight = height - pad.top - pad.bottom
 
 type Props = {
   rows: MonthRow[]
+  hires: Plan['hires']
   rounds: Plan['rounds']
   selectedMonth: string | null
   flash: string | null
   onSelect: (label: string) => void
+}
+
+/** One-line summary of a month: the text the host's Select tool reads from its hit column. */
+const describeMonth = (row: MonthRow, hires: Plan['hires'], rounds: Plan['rounds']) => {
+  const active = hires.filter((hire) => (parseMonth(hire.startMonth) ?? horizon) <= row.index).length
+  const starting = hires.filter((hire) => parseMonth(hire.startMonth) === row.index).map((hire) => hire.role)
+  const funded = rounds.filter((round) => parseMonth(round.month) === row.index)
+  return [
+    `${row.label}: cash ${formatEuro(row.cash)}`,
+    `revenue ${formatEuro(row.revenue)}`,
+    `costs ${formatEuro(row.costs)}`,
+    `${active} planned hires`,
+    ...(starting.length ? [`new hire ${starting.join(', ')}`] : []),
+    ...funded.map((round) => `${round.label} +${formatEuro(round.amount)}`),
+  ].join(', ')
 }
 
 const toPath = (points: [number, number][]) =>
@@ -43,7 +59,7 @@ const niceScale = (low: number, high: number) => {
  * runs out are dashed and muted; the row of lights along the bottom is lit
  * while cash is positive.
  */
-export const CashChart = ({ rows, rounds, selectedMonth, flash, onSelect }: Props) => {
+export const CashChart = ({ rows, hires, rounds, selectedMonth, flash, onSelect }: Props) => {
   const cash = useTween(rows.map((row) => row.cash))
   const zero = rows.find((row) => row.cash < 0)?.index ?? null
   const solidEnd = zero ?? rows.length - 1
@@ -138,14 +154,17 @@ export const CashChart = ({ rows, rounds, selectedMonth, flash, onSelect }: Prop
             className={`light${row.cash >= 0 ? ' lit' : ''}`}
             style={{ transitionDelay: `${row.index * 18}ms` }}
           />
-          <rect
-            x={x(row.index) - step / 2}
-            y={pad.top}
-            width={step}
-            height={plotHeight}
-            className="hit"
-            onClick={() => onSelect(row.label)}
-          />
+          <g data-tb-select data-tb-label={row.label}>
+            <title>{describeMonth(row, hires, rounds)}</title>
+            <rect
+              x={x(row.index) - step / 2}
+              y={pad.top}
+              width={step}
+              height={plotHeight}
+              className="hit"
+              onClick={() => onSelect(row.label)}
+            />
+          </g>
         </g>
       ))}
     </svg>

@@ -266,6 +266,7 @@ const Page = () => {
         </div>
         <CashChart
           rows={rows}
+          hires={plan.hires}
           rounds={plan.rounds}
           selectedMonth={selectedMonth}
           flash={flash}

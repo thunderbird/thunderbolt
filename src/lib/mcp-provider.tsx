@@ -46,12 +46,12 @@ type ReconnectClient = (client: MCPClient, error?: Error) => Promise<MCPClient |
  *  tool-namespacing prefix consumed by `mergeMcpTools` so different servers'
  *  tools don't collide; `name` and `url` flow through to the assistant message's
  *  `mcpTools` metadata so chat history can resolve a tool call back to its
- *  server (name, url, icon). A server mid-reconnect has no client yet and
- *  carries the in-flight reconnect instead, so a send can wait for it rather
- *  than drop the server's tools for the turn. */
+ *  server (name, url, icon). A server still connecting (first connect or
+ *  reconnect) has no client yet and carries that connect instead, so a send can
+ *  wait for it rather than drop the server's tools for the turn. */
 type NamedMCPClient = { id: string; name: string; url: string } & (
   | { client: MCPClient }
-  | { client: null; reconnecting: Promise<MCPClient | null> }
+  | { client: null; connecting: Promise<MCPClient | null> }
 )
 
 type MCPContextType = {
@@ -87,10 +87,10 @@ const MCPContext = createContext<MCPContextType | undefined>(undefined)
  *  `createClient` prop without touching the AI SDK / proxy stack. */
 type CreateClientFn = (serverId: string, url: string, type: MCPTransportType) => Promise<MCPClient>
 
-/** Longest a reconnect may run before it fails. Sends hand the in-flight
- *  reconnect to each other, so one that never settled would cost every send its
- *  wait and keep Retry joined to it forever. */
-const reconnectDeadlineMs = 30_000
+/** Longest a connect or reconnect may run before it fails. Sends wait on an
+ *  in-flight connect, so one that never settled would cost every send its wait
+ *  and keep Retry joined to it forever. */
+const connectDeadlineMs = 30_000
 
 type MCPProviderProps = {
   children: ReactNode
@@ -105,7 +105,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   // replaced, and must be able to find its server to join the reconnect.
   const clientToServerId = useRef<WeakMap<MCPClient, string>>(new WeakMap())
   const reconnectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
-  const connectsInFlight = useRef<Map<string, Promise<void>>>(new Map())
+  const connectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const db = useDatabase()
@@ -137,14 +137,31 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     clientToServerId.current.set(client, serverId)
   }
 
-  const connectServer = (server: MCPServer): Promise<void> => {
+  /** Open a client for `server`, failing after {@link connectDeadlineMs}. A
+   *  client that lands after the deadline is closed rather than left open; a
+   *  late failure needs nothing, the deadline already reported it. */
+  const connectWithDeadline = async (server: MCPServer): Promise<MCPClient> => {
+    const connecting = createClient(server.id, server.url, server.type)
+    try {
+      return await withDeadline(
+        connecting,
+        connectDeadlineMs,
+        () => new Error(`MCP connect timed out after ${connectDeadlineMs}ms`),
+      )
+    } catch (err) {
+      void connecting.then(closeClient, () => {})
+      throw err
+    }
+  }
+
+  const connectServer = (server: MCPServer): Promise<MCPClient | null> => {
     if (!server.enabled) {
       commitServers((prev) =>
         prev.map((s) =>
           s.id === server.id ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
         ),
       )
-      return Promise.resolve()
+      return Promise.resolve(null)
     }
 
     // Coalesce overlapping connects for the same server into one in-flight
@@ -157,9 +174,9 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       return inFlight
     }
 
-    const promise = (async (): Promise<void> => {
+    const promise = (async (): Promise<MCPClient | null> => {
       try {
-        const client = await createClient(server.id, server.url, server.type)
+        const client = await connectWithDeadline(server)
 
         // The server may have been removed/disabled while we were connecting —
         // close the orphan rather than caching/committing (and re-enabling) a
@@ -167,7 +184,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         const current = serversRef.current.find((s) => s.id === server.id)
         if (!current || !current.enabled) {
           closeClient(client)
-          return
+          return null
         }
 
         cacheClient(server.id, client)
@@ -175,6 +192,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         commitServers((prev) =>
           prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
         )
+        return client
       } catch (err) {
         // A 401 means the server requires authorization and is waiting for a
         // credential / OAuth — expected, not a failure. Keep other errors as errors.
@@ -187,7 +205,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         // mid-connect — its row is gone or intentionally off.
         const current = serversRef.current.find((s) => s.id === server.id)
         if (!current || !current.enabled) {
-          return
+          return null
         }
         commitServers((prev) =>
           prev.map((s) =>
@@ -196,6 +214,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
               : s,
           ),
         )
+        return null
       }
     })()
 
@@ -316,13 +335,8 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       // Tear down the stale connection before opening a new one.
       disconnectServer(serverId)
 
-      const connecting = createClient(server.id, server.url, server.type)
       try {
-        const client = await withDeadline(
-          connecting,
-          reconnectDeadlineMs,
-          () => new Error(`MCP reconnect timed out after ${reconnectDeadlineMs}ms`),
-        )
+        const client = await connectWithDeadline(server)
 
         // The server may have been removed/disabled while we were connecting —
         // close the orphan rather than caching a client nothing can reach.
@@ -338,9 +352,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         )
         return client
       } catch (err) {
-        // Close a connect that lands after the deadline instead of leaving it
-        // open; a late failure needs nothing, the deadline already reported it.
-        void connecting.then(closeClient, () => {})
         console.error('Failed to reconnect MCP server:', server.name, err)
         // Skip committing an error onto a server that was removed/disabled
         // mid-reconnect — its row is gone or intentionally off.
@@ -387,10 +398,11 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       }
       const identity = { id: server.id, name: server.name, url: server.url }
       // An in-flight reconnect wins over the row's client, which it has already
-      // closed even when the row still reads as connected.
-      const reconnecting = reconnectsInFlight.current.get(server.id)
-      if (reconnecting) {
-        return [{ ...identity, client: null, reconnecting }]
+      // closed even when the row still reads as connected. A first connect has
+      // no client yet either.
+      const connecting = reconnectsInFlight.current.get(server.id) ?? connectsInFlight.current.get(server.id)
+      if (connecting) {
+        return [{ ...identity, client: null, connecting }]
       }
       return server.isConnected && server.client ? [{ ...identity, client: server.client }] : []
     })

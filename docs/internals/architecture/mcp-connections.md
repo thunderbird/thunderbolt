@@ -282,11 +282,12 @@ reconnects, and retries discovery once in the same send, waiting at most 3s per 
 that server for the turn. Servers are discovered in parallel and merged in order, so the send waits for
 the slowest server rather than the sum. Unexpected errors propagate.
 
-- `getEnabledClients` returns a server with a reconnect in flight as `client: null` plus that
-  `reconnecting` promise, so a send that starts mid-reconnect waits for it rather than dropping the tools.
+- `getEnabledClients` returns a server whose first connect or reconnect is in flight as `client: null`
+  plus that `connecting` promise, so a send that starts mid-connect waits for it rather than dropping the
+  tools.
 - The client → server lookup is never pruned, so a send still holding a client the provider has
   replaced joins the in-flight reconnect, or gets the current client, without redialing.
-- A reconnect fails after 30s, so one that never settles cannot keep every later send, or
+- A connect or reconnect fails after 30s, so one that never settles cannot keep every later send, or
   **Retry connection**, waiting on it.
 
 ## Tool namespacing and attribution

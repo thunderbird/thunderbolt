@@ -438,9 +438,9 @@ describe('mergeMcpTools', () => {
     const result = await merging
 
     expect(result.toolset).toEqual({ github_beta: tool('b') })
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('"MCP reconnect of render" timed out after 20ms'))
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('"MCP connect of render" timed out after 20ms'))
     // The reconnect is still running, so only the timeout is reported.
-    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('did not reconnect'))
+    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('did not connect'))
     slow.resolve(null)
   })
 
@@ -449,7 +449,7 @@ describe('mergeMcpTools', () => {
     const reconnecting: NamedMCPClient = {
       ...named('render', async () => ({})),
       client: null,
-      reconnecting: Promise.resolve(fresh),
+      connecting: Promise.resolve(fresh),
     }
     const reconnect = mock(async () => null)
 
@@ -464,7 +464,7 @@ describe('mergeMcpTools', () => {
     const reconnecting: NamedMCPClient = {
       ...named('render', async () => ({})),
       client: null,
-      reconnecting: Promise.resolve(null),
+      connecting: Promise.resolve(null),
     }
     const healthy = named('github', async () => ({ beta: tool('b') }))
 
@@ -475,7 +475,7 @@ describe('mergeMcpTools', () => {
     )
 
     expect(result.toolset).toEqual({ github_beta: tool('b') })
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render" did not reconnect'))
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render" did not connect'))
     expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('timed out'))
   })
 
@@ -484,7 +484,7 @@ describe('mergeMcpTools', () => {
     const reconnecting: NamedMCPClient = {
       ...named('render', async () => ({})),
       client: null,
-      reconnecting: slow.promise,
+      connecting: slow.promise,
     }
 
     const merging = mergeMcpTools(

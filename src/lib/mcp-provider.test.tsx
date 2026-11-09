@@ -142,7 +142,7 @@ describe('MCPProvider reconnect', () => {
         expect(result.current.servers[0]).toMatchObject({ isConnected: false, error: discoveryError, client: null })
         // Still in flight, so a later send gets the reconnect to wait on instead of nothing.
         expect(result.current.getEnabledClients()).toEqual([
-          expect.objectContaining({ id: server.id, client: null, reconnecting: expect.any(Promise) }),
+          expect.objectContaining({ id: server.id, client: null, connecting: expect.any(Promise) }),
         ])
         expect(initial.closeCount()).toBe(1)
         await act(async () => {
@@ -197,7 +197,7 @@ describe('MCPProvider reconnect', () => {
         await getClock().tickAsync(0)
         const enabled = result.current.getEnabledClients()
         expect(enabled).toEqual([
-          expect.objectContaining({ id: server.id, client: null, reconnecting: expect.any(Promise) }),
+          expect.objectContaining({ id: server.id, client: null, connecting: expect.any(Promise) }),
         ])
         const second = mergeMcpTools({}, enabled, result.current.reconnectClient)
         gate.resolve()
@@ -267,6 +267,66 @@ describe('MCPProvider reconnect', () => {
     } finally {
       gate.resolve()
       warn.mockRestore()
+    }
+  })
+
+  it('hands a send that starts during the first connect that connect, so it keeps the tools', async () => {
+    const recoveredTool = { description: 'First tool', inputSchema: z.object({}) }
+    const client = Object.assign(fakeClient(), { tools: async () => ({ search: recoveredTool }) })
+    const gate = deferred<void>()
+    const { result } = renderProvider(async () => {
+      await gate.promise
+      return client
+    })
+    let adding!: Promise<void>
+    act(() => {
+      adding = result.current.addServer(server)
+    })
+    try {
+      const enabled = result.current.getEnabledClients()
+      expect(enabled).toEqual([
+        expect.objectContaining({ id: server.id, client: null, connecting: expect.any(Promise) }),
+      ])
+      await act(async () => {
+        const sending = mergeMcpTools({}, enabled, result.current.reconnectClient)
+        gate.resolve()
+        expect((await sending).toolset).toEqual({ server_1_search: recoveredTool })
+      })
+    } finally {
+      await act(async () => {
+        gate.resolve()
+        await adding
+      })
+    }
+    expect(result.current.servers[0]).toMatchObject({ isConnected: true, client })
+  })
+
+  it('fails a first connect that never settles, so sends stop waiting on it', async () => {
+    const late = fakeClient()
+    const gate = deferred<void>()
+    const { result } = renderProvider(async () => {
+      await gate.promise
+      return late
+    })
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await act(async () => {
+        const adding = result.current.addServer(server)
+        await getClock().tickAsync(30_000)
+        await adding
+      })
+      expect(result.current.servers[0]).toMatchObject({ isConnected: false, client: null })
+      expect(result.current.servers[0].error?.message).toContain('timed out')
+      expect(result.current.getEnabledClients()).toEqual([])
+
+      await act(async () => {
+        gate.resolve()
+        await getClock().tickAsync(0)
+      })
+      expect(late.closeCount()).toBe(1)
+    } finally {
+      gate.resolve()
+      error.mockRestore()
     }
   })
 
@@ -365,7 +425,7 @@ describe('MCPProvider reconnect', () => {
       expect(result.current.servers[0]).toMatchObject({ isConnected: true, client: initial })
       expect(initial.closeCount()).toBe(1)
       expect(result.current.getEnabledClients()).toEqual([
-        expect.objectContaining({ id: server.id, client: null, reconnecting: expect.any(Promise) }),
+        expect.objectContaining({ id: server.id, client: null, connecting: expect.any(Promise) }),
       ])
     } finally {
       await act(async () => {

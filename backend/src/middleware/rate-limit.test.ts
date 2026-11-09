@@ -21,6 +21,7 @@ import {
   type RateLimitSettings,
   type UserRateLimitTier,
 } from './rate-limit'
+import { countLookupEmails } from '@/api/shares'
 
 /**
  * Helper that creates a tiny Elysia app with a given rate limit middleware.
@@ -251,6 +252,31 @@ describe('Rate Limiting', () => {
       expect(blockedResponse.status).toBe(429)
       expect(blockedResponse.headers.get('ratelimit-limit')).toBe('10')
       expect(Number(blockedResponse.headers.get('ratelimit-reset'))).toBeGreaterThan(3500)
+    })
+  })
+
+  describe('share lookup rate limiting', () => {
+    it('charges each request by its cost, so 400 emails an hour pass and the next one does not', async () => {
+      const app = new Elysia()
+        .derive(() => ({ user: { id: 'lookup-user' } }))
+        .use(createUserTierRateLimit(database, enabledSettings, 'share-lookup', countLookupEmails))
+        .post('/v1/test', () => ({ ok: true }))
+      const lookUp = (count: number) =>
+        app.handle(
+          new Request('http://localhost/v1/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ emails: Array.from({ length: count }, (_, index) => `${index}@test.com`) }),
+          }),
+        )
+
+      for (let batch = 0; batch < 20; batch++) {
+        expect((await lookUp(20)).status).toBe(200)
+      }
+
+      const blocked = await lookUp(1)
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('ratelimit-limit')).toBe('400')
     })
   })
 

@@ -124,6 +124,21 @@ msgid "If this wasn’t you, secure your account now: revoke unknown devices fro
 msgstr ""
 
 #. js-lingui-explicit-id
+#: src/emails/chat-shared.tsx
+msgid "{sharerName} shared a chat with you"
+msgstr "{sharerName} ha compartido un chat contigo"
+
+#. js-lingui-explicit-id
+#: src/emails/chat-shared.tsx
+msgid "{sharerName} ({sharerEmail}) shared a chat with you on {appName}. Open it to read it — shared chats are view-only."
+msgstr "{sharerName} ({sharerEmail}) ha compartido un chat contigo en {appName}. Ábrelo para leerlo: los chats compartidos son de solo lectura."
+
+#. js-lingui-explicit-id
+#: src/emails/chat-shared.tsx
+msgid "Open shared chat"
+msgstr "Abrir chat compartido"
+
+#. js-lingui-explicit-id
 #: src/emails/email-layout.tsx
 msgid "Questions?"
 msgstr "¿Tienes dudas?"

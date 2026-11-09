@@ -8,6 +8,7 @@ import { inferenceUsage } from '@/db/inference-usage-schema'
 import { and, eq, gt, gte, inArray, lt, notExists, or } from 'drizzle-orm'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
 import type * as schema from '@/db/schema'
+import { deleteSharesWithSoleRecipient, rebuildShareRows } from './shares'
 
 /** Get a user by ID. Returns null if not found. */
 export const getUserById = async (database: typeof DbType, id: string) =>
@@ -27,8 +28,19 @@ export const getUserByEmail = async (database: typeof DbType, email: string) =>
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Hard-delete a user. Cascades to all related tables via FK constraints. */
-export const deleteUser = async (database: typeof DbType, id: string) => database.delete(user).where(eq(user.id, id))
+/**
+ * Hard-delete a user. Cascades to all related tables via FK constraints, the
+ * shares they own and every synced row of those included; shares sent only to
+ * this user go first, since the cascade would leave them with nobody on them.
+ * The owners' synced rows of the shares they were on are rebuilt once the
+ * cascade has run.
+ */
+export const deleteUser = async (database: typeof DbType, id: string) =>
+  database.transaction(async (tx) => {
+    const sharesOnIds = await deleteSharesWithSoleRecipient(tx, id)
+    await tx.delete(user).where(eq(user.id, id))
+    await rebuildShareRows(tx, sharesOnIds)
+  })
 
 /** Mark a user as no longer new (after first sign-in). */
 export const markUserNotNew = async (database: typeof DbType, id: string) =>

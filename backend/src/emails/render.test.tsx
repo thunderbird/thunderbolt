@@ -12,6 +12,7 @@ import type { StepUpAction } from '@/lib/step-up-otp'
 import { getEmailI18n } from './i18n'
 import { emailLogoUrl } from '@/branding/email-logo'
 import { emailColorsFor } from './email-layout'
+import { ChatSharedEmail, chatSharedSubject } from './chat-shared'
 import { MagicLinkEmail, magicLinkSubject } from './magic-link'
 import { SecurityCodeEmail } from './security-code'
 import { WaitlistJoinedEmail, waitlistJoinedSubject } from './waitlist-joined'
@@ -56,6 +57,30 @@ describe('email rendering', () => {
   it('localizes the shared layout footer', async () => {
     expect(await renderCopy(magicLink('en'))).toContain('You can reply to this email')
     expect(await renderCopy(magicLink('en-XA'))).not.toContain('You can reply to this email')
+  })
+
+  describe('chat shared', () => {
+    const chatShared = (locale: AppLocale) => (
+      <ChatSharedEmail
+        i18n={getEmailI18n(locale)}
+        sharerName="Ada"
+        sharerEmail="ada@example.test"
+        shareUrl="https://example.test/shared/abc"
+      />
+    )
+
+    it('names the sharer and links the share, and nothing else about the chat', async () => {
+      const html = await renderCopy(chatShared('en'))
+
+      expect(chatSharedSubject(getEmailI18n('en'), 'Ada')).toBe('Ada shared a chat with you')
+      expect(html).toContain('Ada (ada@example.test) shared a chat with you')
+      expect(html).toContain('href="https://example.test/shared/abc"')
+      expect(html).toContain('Open shared chat')
+    })
+
+    it('resolves its copy through the catalog', async () => {
+      expect(await renderCopy(chatShared('en-XA'))).not.toContain('Open shared chat')
+    })
   })
 
   describe('step-up code', () => {

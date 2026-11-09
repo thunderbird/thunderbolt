@@ -9,10 +9,16 @@ import {
   powersyncPkColumn,
   powersyncTablesByName,
 } from '@/db/powersync-schema'
-import { type PowerSyncTableName, legacyPowerSyncTableNames, powersyncTableNames } from '@shared/powersync-tables'
+import {
+  type PowerSyncTableName,
+  legacyPowerSyncTableNames,
+  powersyncTableNames,
+  readOnlyPowerSyncTableNames,
+} from '@shared/powersync-tables'
 import { and, eq } from 'drizzle-orm'
 import type { AnyPgTable } from 'drizzle-orm/pg-core'
 import { bridgeDeviceIdPrefix, cliDeviceIdPrefix } from './devices'
+import { deleteSharesForThread } from './shares'
 
 const validTables = new Set<string>(powersyncTableNames)
 const legacyTables = new Set<string>(legacyPowerSyncTableNames)
@@ -40,6 +46,13 @@ const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
 
 /** Tables that cannot be deleted via PowerSync upload — must use dedicated API endpoints. */
 const uploadDenyDelete = new Set<PowerSyncTableName>(['devices'])
+
+/**
+ * Server-written projections of the share tables. A client write to one has
+ * nothing to apply: it is accepted and ignored, so the queue drains, and the
+ * next checkpoint puts the server's row back on the device.
+ */
+const readOnlyTables = new Set<string>(readOnlyPowerSyncTableNames)
 
 /**
  * Bridge and CLI device IDs are written exclusively by their server routes. Reserving both
@@ -141,6 +154,11 @@ export const applyOperation = async (
     return false
   }
 
+  if (readOnlyTables.has(op.type)) {
+    console.warn(`[powersync] ignoring ${op.op} on read-only ${op.type}/${op.id} from user ${userId}`)
+    return true
+  }
+
   const tableName = op.type as PowerSyncTableName
   const table = powersyncTablesByName[tableName]
   const dbNameToKey = powersyncDbNameToSchemaKey[tableName]
@@ -186,6 +204,10 @@ export const applyOperation = async (
           setWhere: eq(tableWithUserId.userId, userId),
         })
       }
+      // A create-only write never changes a row that is already there.
+      if (tableName === 'chat_threads' && schemaValues.deletedAt != null && !op.ifAbsent) {
+        await deleteSharesForThread(database, userId, op.id)
+      }
       return true
     }
     case 'PATCH': {
@@ -217,6 +239,9 @@ export const applyOperation = async (
       if (patched.length === 0) {
         logMissingTarget(op, userId)
       }
+      if (tableName === 'chat_threads' && schemaPatch.deletedAt != null) {
+        await deleteSharesForThread(database, userId, op.id)
+      }
       return true
     }
     case 'DELETE': {
@@ -232,6 +257,9 @@ export const applyOperation = async (
       // A delete whose row is already gone has reached its intended end state.
       if (deleted.length === 0) {
         logMissingTarget(op, userId)
+      }
+      if (tableName === 'chat_threads') {
+        await deleteSharesForThread(database, userId, op.id)
       }
       return true
     }

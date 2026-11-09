@@ -51,6 +51,7 @@ import { createMiniAppRoutes } from '@/api/mini-apps'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import { createDebugTranscriptsIntakeRoutes, ensureSelfDebugTranscriptClient } from '@/api/debug-transcripts-intake'
 import { createDebugTranscriptsRoutes } from '@/api/debug-transcripts'
+import { countLookupEmails, createShareRoutes } from '@/api/shares'
 import type { AppDeps } from '@/types'
 import { Elysia } from 'elysia'
 
@@ -234,6 +235,15 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createMiniAppRoutes(auth, settings))
       .use(createEncryptionRoutes(auth, database, settings))
+      .use(
+        createShareRoutes({
+          auth,
+          database,
+          settings,
+          lookupRateLimit: createUserTierRateLimit(database, rateLimitSettings, 'share-lookup', countLookupEmails),
+          shareRateLimit: createUserTierRateLimit(database, rateLimitSettings, 'share'),
+        }),
+      )
       .use(createAccountRoutes(auth, settings, database))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))

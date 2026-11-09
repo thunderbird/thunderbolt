@@ -75,6 +75,10 @@ export {
   listWrappedKeys,
   insertWrappedKey,
   updateWrappedKey,
+  listInboxKeys,
+  getLatestInboxKey,
+  lockUserKeys,
+  insertInboxKey,
   issueChallengeNonce,
   consumeChallengeNonce,
   deleteExpiredOrConsumedNonces,
@@ -83,3 +87,19 @@ export type { PasskeySlot } from './encryption'
 
 // Passkeys
 export { userHasPasskey, passkeyHoldsSyncSlot, isUserPasskeyCredential } from './passkeys'
+
+// Shared chats
+export {
+  getCurrentInboxKey,
+  getUsersByEmails,
+  getUsersByIds,
+  lockLiveOwnedThread,
+  lockRecipients,
+  lockShare,
+  getShareIdForThread,
+  putShare,
+  getReceivedShare,
+  deleteShare,
+  removeShareRecipient,
+  claimShareNotifications,
+} from './shares'

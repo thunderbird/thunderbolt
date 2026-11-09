@@ -124,6 +124,21 @@ msgid "If this wasn’t you, secure your account now: revoke unknown devices fro
 msgstr "If this wasn’t you, secure your account now: revoke unknown devices from Settings → Devices."
 
 #. js-lingui-explicit-id
+#: src/emails/chat-shared.tsx
+msgid "{sharerName} shared a chat with you"
+msgstr "{sharerName} shared a chat with you"
+
+#. js-lingui-explicit-id
+#: src/emails/chat-shared.tsx
+msgid "{sharerName} ({sharerEmail}) shared a chat with you on {appName}. Open it to read it — shared chats are view-only."
+msgstr "{sharerName} ({sharerEmail}) shared a chat with you on {appName}. Open it to read it — shared chats are view-only."
+
+#. js-lingui-explicit-id
+#: src/emails/chat-shared.tsx
+msgid "Open shared chat"
+msgstr "Open shared chat"
+
+#. js-lingui-explicit-id
 #: src/emails/email-layout.tsx
 msgid "Questions?"
 msgstr "Questions?"

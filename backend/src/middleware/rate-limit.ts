@@ -24,6 +24,8 @@ type RateLimitTier =
   | 'captcha-challenge'
   | 'debug-transcript'
   | 'debug-transcript-intake'
+  | 'share'
+  | 'share-lookup'
 /** Tiers with a hardcoded limit; the anonymous sign-in and captcha challenge tiers are configured by the operator. */
 type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in' | 'anonymous-sign-in-global' | 'captcha-challenge'>
 export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>
@@ -53,6 +55,12 @@ const tierConfigs = {
   auth: { max: 10, durationSecs: 60 },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },
   'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
+  // Storing a share, per request: each sends email to every new recipient.
+  share: { max: 60, durationSecs: 60 * 60 },
+  // Email lookups, charged per email, not per request: the lookup reveals
+  // which emails hold an account that can receive shares. Room for re-checking
+  // a full 20-person share every few minutes; a slow crawl, not enumeration.
+  'share-lookup': { max: 400, durationSecs: 60 * 60 },
 } satisfies Record<FixedRateLimitTier, RateLimitTierConfig>
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
@@ -78,14 +86,15 @@ const setRateLimitHeaders = (
   headers['RateLimit-Reset'] = String(resetSecs)
 }
 
-/** Consume a rate limit point or return a 429 response. */
+/** Consume `points` rate limit points or return a 429 response. */
 const consumeOrReject = async (
   limiter: RateLimiterAbstract,
   key: string,
   set: { status?: number | string; headers: Record<string, string | string[] | number> },
+  points = 1,
 ) => {
   try {
-    const res = await limiter.consume(key)
+    const res = await limiter.consume(key, points)
     setRateLimitHeaders(set.headers, limiter.points, res.remainingPoints, Math.ceil(res.msBeforeNext / 1000))
   } catch (err) {
     if (err instanceof RateLimiterRes) {
@@ -110,7 +119,7 @@ const consumeOrReject = async (
  * macro resolve to run after onBeforeHandle, making rate limiting
  * a silent no-op.
  */
-const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
+const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle, cost?: RequestCost) =>
   new Elysia()
     .onBeforeHandle(async (ctx) => {
       const { set } = ctx
@@ -118,20 +127,28 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
       if (!user?.id) {
         return
       }
-      return consumeOrReject(limiter, `user:${user.id}`, set)
+      return consumeOrReject(limiter, `user:${user.id}`, set, cost ? cost(ctx.body) : 1)
     })
     .as('scoped')
 
-/** Create user-keyed middleware for one configured rate-limit tier. */
+/** Points one request spends, from its parsed body. Defaults to 1 per request. */
+type RequestCost = (body: unknown) => number
+
+/**
+ * Create user-keyed middleware for one configured rate-limit tier. `cost`
+ * charges a request by what it asks for rather than once — a batch lookup of
+ * 20 emails spends 20 points.
+ */
 export const createUserTierRateLimit = (
   database: typeof DbType,
   settings: RateLimitSettings,
   tier: UserRateLimitTier,
+  cost?: RequestCost,
 ) => {
   if (!settings.enabled) {
     return new Elysia()
   }
-  return createUserRateLimitMiddleware(createLimiter(database, tier, tierConfigs[tier]))
+  return createUserRateLimitMiddleware(createLimiter(database, tier, tierConfigs[tier]), cost)
 }
 
 /**

@@ -26,10 +26,10 @@ import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { cliRegistrationPendingDeviceId, linkCliSessionToDevice } from '@/dal/sessions'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { verifyChallengeSignature } from '@/lib/canary'
+import { proofSchema } from '@/lib/challenge-proof-schema'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
 import type { StepUpAction } from '@/lib/step-up-otp'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { challengeOperations } from '@shared/e2ee-types'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 import { burnStepUpCode, requireStepUpCode, sendStepUpCode } from './step-up'
@@ -51,14 +51,6 @@ const anonymousRefusal = {
 } as const
 
 const unknownDeviceName = 'Unknown device'
-
-/** Elysia schema for the shared ChallengeProof request DTO. */
-const proofSchema = t.Object({
-  signature: t.String({ maxLength: 200 }),
-  nonce: t.String({ maxLength: 128 }),
-  operation: t.Union(challengeOperations.map((op) => t.Literal(op))),
-  deviceId: t.String({ maxLength: 36 }),
-})
 
 class SessionDeviceBindingConflictError extends Error {}
 class PersistedSessionInvalidError extends Error {}

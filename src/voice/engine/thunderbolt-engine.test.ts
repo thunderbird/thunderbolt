@@ -8,7 +8,7 @@ import {
   isAppVersionBlocked,
   resetAppVersionBlockedForTesting,
 } from '@/lib/app-version-unsupported'
-import { createTinfoilTransport } from './thunderbolt-engine'
+import { createTinfoilTransport, pickVoiceProfile } from './thunderbolt-engine'
 
 /** Fake attested client capturing the last request so the transport can be
  *  driven without attestation or a network. */
@@ -213,5 +213,22 @@ describe('createTinfoilTransport', () => {
     expect(evictClient).toHaveBeenCalledTimes(2)
     expect(evictClient).toHaveBeenCalledWith(first)
     expect(evictClient).toHaveBeenCalledWith(second)
+  })
+})
+
+describe('pickVoiceProfile', () => {
+  it('uses Voxtral for the app languages it supports', () => {
+    for (const locale of ['en', 'de', 'fr', 'es', 'pt-BR', 'en-XA']) {
+      expect(pickVoiceProfile(locale)).toMatchObject({ sttModel: 'voxtral-small-24b', ttsModel: 'voxtral-tts' })
+    }
+  })
+
+  it('falls back to Whisper and Qwen3 for Japanese, which Voxtral does not cover', () => {
+    expect(pickVoiceProfile('ja')).toMatchObject({ sttModel: 'whisper-large-v3-turbo', ttsModel: 'qwen3-tts' })
+  })
+
+  it('sends style instructions only to Qwen3', () => {
+    expect(pickVoiceProfile('en').ttsInstructions).toBeUndefined()
+    expect(pickVoiceProfile('ja').ttsInstructions).toBeString()
   })
 })

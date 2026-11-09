@@ -12,35 +12,61 @@
  * request/response orchestration is shared via `createAudioEngine`.
  */
 import { evictSystemTinfoilClient, getSystemTinfoilClient, isTinfoilTransportWedgedError } from '@/ai/tinfoil-client'
+import { getActiveLocale } from '@/i18n/active-locale'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
+import { baseLanguage } from '@shared/i18n/base-language'
 import type { SecureClient } from 'tinfoil'
 import { type AudioTransport, createAudioEngine } from './audio-engine'
 import type { VoiceEngine } from './types'
 
-const sttModel = 'whisper-large-v3-turbo' // batch transcription; voxtral-realtime (streaming) is a follow-up
+/** One STT + TTS pairing on the enclave. */
+type VoiceProfile = {
+  sttModel: string
+  ttsModel: string
+  ttsVoice: string
+  ttsInstructions?: string
+}
 
-type TtsProfile = { model: string; voice: string }
-// TTS model + its preset voice. voxtral-tts + casual_male is the verified-working
-// combo; qwen3-tts is steadier/less improvisational. qwen3 voices on this enclave
-// (from /audio/speech error bodies): aiden, dylan, eric, ono_anna, ryan, serena,
-// sohee, uncle_fu, vivian. Flip ttsProfile to A/B; user-selectable engines land in
-// the voice settings (THU-718) via createOpenAiCompatibleEngine.
-const ttsProfiles = {
-  voxtral: { model: 'voxtral-tts', voice: 'casual_male' },
-  // `ryan` chosen after an A/B listen across the qwen3 voices above (THU-683).
-  qwen3: { model: 'qwen3-tts', voice: 'ryan' },
-} satisfies Record<string, TtsProfile>
-const ttsProfile: TtsProfile = ttsProfiles.qwen3
-// Expressive models improvise emphasis/pacing/laughter; steer delivery via the
-// `instructions` style control (honored by qwen3-tts / voxtral-tts).
-const ttsInstructions =
-  'Speak naturally and conversationally, like a warm, helpful friend. Relaxed and ' +
-  'clear, with an even, moderate pace. Sound genuinely engaged but never theatrical ' +
-  '— no shouting, exaggerated emphasis, or laughter.'
+// Voxtral sounds the most natural, but only covers some languages. It takes no
+// style instructions and infers delivery from the text; the voice-mode system
+// note steers it by shaping what the model writes.
+const voxtralProfile: VoiceProfile = {
+  sttModel: 'voxtral-small-24b',
+  ttsModel: 'voxtral-tts',
+  ttsVoice: 'casual_male',
+}
+
+// Whisper and Qwen3 cover every app language. Qwen3 voices on this enclave (from
+// /audio/speech error bodies): aiden, dylan, eric, ono_anna, ryan, serena, sohee,
+// uncle_fu, vivian; `ryan` was chosen after an A/B listen.
+const qwen3Profile: VoiceProfile = {
+  sttModel: 'whisper-large-v3-turbo',
+  ttsModel: 'qwen3-tts',
+  ttsVoice: 'ryan',
+  ttsInstructions:
+    'Speak naturally and conversationally, like a warm, helpful friend. Relaxed and ' +
+    'clear, with an even, moderate pace. Sound genuinely engaged but never theatrical ' +
+    '— no shouting, exaggerated emphasis, or laughter.',
+}
+
+/**
+ * Languages both Voxtral models support: voxtral-small-24b transcribes
+ * en/es/fr/pt/hi/de/nl/it and voxtral-tts speaks en/fr/es/de/it/pt/nl/ar/hi.
+ */
+const voxtralLanguages = new Set(['en', 'es', 'fr', 'pt', 'hi', 'de', 'nl', 'it'])
+
+/**
+ * Pick the voice profile for the app locale, read when a voice session starts.
+ * The app locale stands in for the spoken language, which is not known up
+ * front: a user who speaks a language Voxtral lacks under a Voxtral-covered UI
+ * language still gets Voxtral, and switching the app language is their fix.
+ */
+export const pickVoiceProfile = (locale: string): VoiceProfile =>
+  voxtralLanguages.has(baseLanguage(locale)) ? voxtralProfile : qwen3Profile
 
 /** The slice of the attested `SecureClient` the transport drives — injectable for tests. */
 type TinfoilTransportDeps = {
@@ -125,9 +151,6 @@ export const createThunderboltEngine = (): VoiceEngine =>
     warm: async () => {
       await getSystemTinfoilClient() // prime attestation
     },
-    sttModel,
-    ttsModel: ttsProfile.model,
-    ttsVoice: ttsProfile.voice,
-    ttsInstructions,
+    ...pickVoiceProfile(getActiveLocale()),
     ttsSpeed: 1,
   })

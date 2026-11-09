@@ -32,6 +32,7 @@ import { getClock } from '@/testing-library'
 import type { AvailableModel } from '@/settings/models/model-catalog'
 import OnboardingModelStep from '@/components/onboarding/onboarding-model-step'
 import { useOtariConnectionState } from './use-otari-connection-state'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 
 describe('Otari connection', () => {
   beforeEach(async () => {
@@ -330,6 +331,32 @@ describe('Otari connection', () => {
     expect(result.current.busy).toBe(false)
   })
 
+  it.each(['authorization', 'catalog'] as const)(
+    'ignores a late Otari %s result after the initiating identity is retired',
+    async (phase) => {
+      const deps = {
+        connect: mock(async () => {
+          if (phase === 'authorization') {
+            invalidateIdentityLifetime()
+          }
+          return 'retired-key'
+        }),
+        loadModels: mock(async () => {
+          invalidateIdentityLifetime()
+          return [{ id: 'old-account-model' }]
+        }),
+      }
+      const { result } = renderHook(() => useOtariConnectionState(undefined, deps), { wrapper: createTestProvider() })
+      await act(async () => result.current.connect())
+      expect(result.current.models).toEqual([])
+      expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+      if (phase === 'authorization') {
+        expect(deps.loadModels).not.toHaveBeenCalled()
+        expect(await getProviderCredentials(getDb(), 'oauth:otari')).toBeNull()
+      }
+    },
+  )
+
   it('clears pending browser PKCE when setup is explicitly cancelled after navigation starts', async () => {
     const nonce = 'n'.repeat(43)
     const currentUrl = () => new URL('https://app.example/chats/new')
@@ -457,7 +484,7 @@ describe('Otari connection', () => {
     expect(result.current.busy).toBe(false)
   })
 
-  it.each(['cancel', 'unmount', 'disconnect'] as const)(
+  it.each(['cancel', 'unmount', 'disconnect', 'identity teardown'] as const)(
     'does not save a model after %s during verification of an already connected provider',
     async (action) => {
       const verification = Promise.withResolvers<'supported'>()
@@ -473,6 +500,8 @@ describe('Otari connection', () => {
       })
       if (action === 'disconnect') {
         await disconnectProviderConnection(getDb(), 'oauth:otari')
+      } else if (action === 'identity teardown') {
+        invalidateIdentityLifetime()
       } else if (action === 'unmount') {
         unmount()
       } else {

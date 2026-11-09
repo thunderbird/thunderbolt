@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { currentOAuthReturnPath, oauthReturnPath } from './oauth-return-route'
 import { mobileOAuthRedirectUri } from './oauth-redirect'
 import { generateCodeChallenge, generateCodeVerifier } from './pkce'
+import { getIdentitySignal } from './identity-lifetime'
 import type { ProviderConnectionAttempt } from './provider-connection-attempt'
 import {
   getTinfoilAuthorizationUrl,
@@ -63,9 +64,10 @@ const defaultDependencies = {
 export const startTinfoilMobileConnection = async (
   context: TinfoilReturnContext,
   attempt: ProviderConnectionAttempt,
-  signal: AbortSignal,
+  callerSignal: AbortSignal,
   dependencies: Partial<typeof defaultDependencies> = {},
 ): Promise<void> => {
+  const signal = AbortSignal.any([callerSignal, getIdentitySignal()])
   const deps = { ...defaultDependencies, ...dependencies }
   signal.throwIfAborted()
   const returnTo = deps.currentPath()
@@ -141,6 +143,7 @@ export const captureTinfoilMobileReturn = (
     url.searchParams.getAll('code').length !== 1 ||
     url.searchParams.has('error')
   const controller = new AbortController()
+  const signal = AbortSignal.any([controller.signal, getIdentitySignal()])
   let completion: Promise<TinfoilCredentials> | undefined
   mobileReturn = {
     id: flow.data.state,
@@ -150,14 +153,16 @@ export const captureTinfoilMobileReturn = (
     cancel: () => controller.abort(),
     complete: () => {
       completion ??= (async () => {
-        controller.signal.throwIfAborted()
+        signal.throwIfAborted()
         if (invalid) {
           throw new TinfoilConnectionError()
         }
-        return deps.exchange(
+        const credentials = await deps.exchange(
           { code: code!, verifier: flow.data.verifier, redirectUri: mobileOAuthRedirectUri },
-          controller.signal,
+          signal,
         )
+        signal.throwIfAborted()
+        return credentials
       })()
       return completion
     },

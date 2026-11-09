@@ -7,6 +7,9 @@ import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { setActiveLocale } from '@/i18n/active-locale'
 import { resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
+import { getOAuthState, setOAuthState } from '@/lib/oauth-state'
+import { getMcpOAuthState, isMcpOAuthCallback, setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/session-cache'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -608,6 +611,24 @@ describe('AuthProvider — cross-tab auth-token listener', () => {
 
     expect(reloadSpy).toHaveBeenCalledTimes(1)
     expect(getCachedSession()).toBeNull()
+  })
+
+  it.each(['new-token', null])('retires this tab’s OAuth state before processing an identity change: %s', (token) => {
+    renderAuthProvider()
+    const identity = getIdentitySignal()
+    sessionStorage.setItem('thunderbolt.otari.authorization', 'pending-pkce')
+    sessionStorage.setItem('thunderbolt.provider.browser-authorization', 'pending-pkce')
+    setOAuthState({ state: 'google-nonce', provider: 'google', verifier: 'google-verifier' })
+    setMcpOAuthState({ serverId: 'oauth:exa', stateNonce: 'mcp-nonce', codeVerifier: 'mcp-verifier' })
+
+    fireStorageEvent(token, 'old-token')
+
+    expect(identity.aborted).toBe(true)
+    expect(sessionStorage.getItem('thunderbolt.otari.authorization')).toBeNull()
+    expect(sessionStorage.getItem('thunderbolt.provider.browser-authorization')).toBeNull()
+    expect(getOAuthState().state).toBeNull()
+    expect(getMcpOAuthState().stateNonce).toBeNull()
+    expect(isMcpOAuthCallback({ code: 'late-code', state: 'mcp-nonce', error: null })).toBe(false)
   })
 
   it('dispatches session_expired when another tab clears the token', () => {

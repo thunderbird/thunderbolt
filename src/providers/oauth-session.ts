@@ -12,6 +12,7 @@ import { searchOAuthFetch } from './mcp-search-auth'
 import { createOAuthRequestSignal } from '@/lib/openrouter-auth'
 import { providerCredentialConnected } from './credentials'
 import type { ProviderCredentials } from './types'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 export const oauthTokensSchema = z.object({
   access_token: z.string().min(1),
@@ -42,14 +43,17 @@ export const withProviderOAuthLock = <T>(id: string, action: () => Promise<T>): 
   navigator.locks.request(`provider-oauth:${id}`, () => action())
 
 /** Refreshes only the still-enabled, locally approved session; late results never restore disconnected access. */
-export const resolveOAuthAccessToken = (db: AnyDrizzleDatabase, id: string): Promise<string> =>
-  withProviderOAuthLock(id, async () => {
+export const resolveOAuthAccessToken = (db: AnyDrizzleDatabase, id: string): Promise<string> => {
+  const signal = getIdentitySignal()
+  return withProviderOAuthLock(id, async () => {
+    signal.throwIfAborted()
     const row = await db
       .select({ credentials: secrets.credentials })
       .from(connections)
       .innerJoin(secrets, eq(secrets.id, connections.id))
       .where(and(eq(connections.id, id), eq(connections.enabled, 1), providerCredentialConnected))
       .get()
+    signal.throwIfAborted()
     if (!row?.credentials) {
       throw new Error('Reconnect this provider')
     }
@@ -60,27 +64,30 @@ export const resolveOAuthAccessToken = (db: AnyDrizzleDatabase, id: string): Pro
     if (current.expires_at === undefined || current.expires_at > Date.now() + 60_000) {
       return current.access_token
     }
-    const save = async (next: ProviderCredentials) => {
-      const active = db
-        .select({ id: connections.id })
-        .from(connections)
-        .where(
-          and(
-            eq(connections.id, id),
-            eq(connections.enabled, 1),
-            isNull(connections.deletedAt),
-            providerCredentialConnected,
-          ),
-        )
-      const updated = await db
-        .update(secrets)
-        .set({ credentials: JSON.stringify(next) })
-        .where(and(eq(secrets.id, id), eq(secrets.credentials, row.credentials!), exists(active)))
-        .returning({ id: secrets.id })
-      if (!updated.length) {
-        throw new Error('OAuth connection changed during refresh')
-      }
-    }
+    const save = (next: ProviderCredentials) =>
+      db.transaction(async (tx) => {
+        signal.throwIfAborted()
+        const active = tx
+          .select({ id: connections.id })
+          .from(connections)
+          .where(
+            and(
+              eq(connections.id, id),
+              eq(connections.enabled, 1),
+              isNull(connections.deletedAt),
+              providerCredentialConnected,
+            ),
+          )
+        const updated = await tx
+          .update(secrets)
+          .set({ credentials: JSON.stringify(next) })
+          .where(and(eq(secrets.id, id), eq(secrets.credentials, row.credentials!), exists(active)))
+          .returning({ id: secrets.id })
+        signal.throwIfAborted()
+        if (!updated.length) {
+          throw new Error('OAuth connection changed during refresh')
+        }
+      })
     if (!current.refresh_token) {
       await save({ ...current, reauth_required: true })
       throw new Error('Reconnect this provider')
@@ -98,7 +105,7 @@ export const resolveOAuthAccessToken = (db: AnyDrizzleDatabase, id: string): Pro
             fetch: id === 'oauth:openai' ? desktopFetch : searchOAuthFetch(),
             redirect: 'error',
             credentials: 'omit',
-            signal: createOAuthRequestSignal(),
+            signal: createOAuthRequestSignal(signal),
           })
           .json(),
       )
@@ -126,3 +133,4 @@ export const resolveOAuthAccessToken = (db: AnyDrizzleDatabase, id: string): Pro
       throw error
     }
   })
+}

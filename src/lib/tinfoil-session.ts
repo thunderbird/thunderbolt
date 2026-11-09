@@ -10,6 +10,7 @@ import { tinfoilAuth, TinfoilReauthorizationError } from './tinfoil-auth'
 import { providerConnectionsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
 import { writeProviderCredentials } from '@/providers/credentials'
+import { getIdentitySignal } from './identity-lifetime'
 
 const lockName = 'thunderbolt-tinfoil-session'
 /** A single origin-wide lock protects rotating Tinfoil credentials. */
@@ -44,22 +45,28 @@ export const setTinfoilSessionEnabledInTransaction = async (
 
 /** Serialize session changes across windows: Tinfoil revokes replayed refresh-token families. */
 export const createTinfoilSession = (deps = defaultDependencies) => ({
-  getAccessToken: () =>
-    deps.lock(async () => {
+  getAccessToken: () => {
+    const signal = getIdentitySignal()
+    return deps.lock(async () => {
+      signal.throwIfAborted()
       const db = deps.db()
       // Re-read after acquiring the lock; another window may have rotated or disconnected.
       const row = await getIntegrationCredentials(db, 'tinfoil')
+      signal.throwIfAborted()
       const current = row?.credentials
       if (!row?.enabled || !current?.access_token || current.reauth_required) {
         throw new TinfoilReauthorizationError()
       }
       const saveRefresh = (credentials: typeof current) =>
         db.transaction(async (tx) => {
+          signal.throwIfAborted()
           const latest = await getIntegrationCredentials(tx, 'tinfoil')
+          signal.throwIfAborted()
           if (!latest?.enabled || JSON.stringify(latest.credentials) !== JSON.stringify(current)) {
             throw new Error('Tinfoil connection changed during token refresh')
           }
           await saveIntegrationCredentials(tx, 'tinfoil', credentials, true, true)
+          signal.throwIfAborted()
         })
       if (current.expires_at && current.expires_at > deps.now() + 60_000) {
         return current.access_token
@@ -72,6 +79,7 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
         const tokens = await deps.auth.refresh(current.refresh_token)
         await saveRefresh({ ...tokens, sessionRevision: current.sessionRevision })
         const latest = await getIntegrationCredentials(db, 'tinfoil')
+        signal.throwIfAborted()
         if (
           !latest?.enabled ||
           latest.credentials.sessionRevision !== current.sessionRevision ||
@@ -86,7 +94,8 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
         }
         throw error
       }
-    }),
+    })
+  },
   setEnabled: (enabled: boolean) =>
     deps.lock(() => deps.db().transaction((tx) => setTinfoilSessionEnabledInTransaction(tx, enabled))),
   disconnect: () =>

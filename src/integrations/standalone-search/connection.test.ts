@@ -19,6 +19,7 @@ import { tinfoilSession } from '@/lib/tinfoil-session'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { http } from '@/lib/http'
 import { getSearchConnectionApi, getSearchConnectionAuthorization } from './connection'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 
 const url = 'https://gateway.example/api/v1'
 const toolsResponse = (search = true, fetch = true) =>
@@ -132,6 +133,42 @@ it('uses Otari with no models and keeps search after a model is disabled', async
   const fetch = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ results: [] }))
   await api!.search({ query: 'test', max_results: 1 }, http)
   expect(new Request(fetch.mock.calls.at(-1)![0]).headers.get('Authorization')).toBe('Bearer key')
+})
+it.each(['otari', 'tinfoil', 'exa', 'brave', 'tavily'] as const)(
+  'retires a retained %s search client after identity teardown before reading credentials',
+  async (provider) => {
+    const id = await connect(provider)
+    const api = await getSearchConnectionApi(getDb(), id)
+    const fetch = spyOn(globalThis, 'fetch').mockClear()
+    const resolve = spyOn(providerConnections, 'resolveProviderConnection')
+    invalidateIdentityLifetime()
+    await expect(api!.search({ query: 'private query', max_results: 1 }, http)).rejects.toHaveProperty(
+      'name',
+      'AbortError',
+    )
+    expect(resolve).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  },
+)
+
+it('aborts an in-flight Otari search request on identity teardown', async () => {
+  const id = await connect()
+  const api = await getSearchConnectionApi(getDb(), id)
+  const started = Promise.withResolvers<AbortSignal>()
+  const send = async (input: RequestInfo | URL) => {
+    const signal = (input as Request).signal
+    started.resolve(signal)
+    return new Promise<Response>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+    })
+  }
+  send.preconnect = globalThis.fetch.preconnect
+  spyOn(globalThis, 'fetch').mockImplementation(send)
+  const request = api!.search({ query: 'private query', max_results: 1 }, http)
+  const signal = await started.promise
+  invalidateIdentityLifetime()
+  expect(signal.aborted).toBe(true)
+  await expect(request).rejects.toHaveProperty('name', 'AbortError')
 })
 it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
   'rediscovers Otari after cached %s',

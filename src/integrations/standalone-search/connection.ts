@@ -15,6 +15,7 @@ import { createStandaloneWebApi } from './api'
 import { isSearchProvider } from './providers'
 import { canSupplySearch } from './eligibility'
 import type { ProviderType } from '@/providers/types'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 /** Applies preview visibility to execution without changing the saved search selection. */
 const isSearchProviderEnabled = async (db: AnyDrizzleDatabase, provider: ProviderType) =>
@@ -22,7 +23,9 @@ const isSearchProviderEnabled = async (db: AnyDrizzleDatabase, provider: Provide
 
 /** Pins a turn to one authorization while allowing its OAuth token to refresh normally. */
 export const getSearchConnectionAuthorization = async (db: AnyDrizzleDatabase, connectionId: string) => {
+  const signal = getIdentitySignal()
   const connection = await getProviderConnection(db, connectionId)
+  signal.throwIfAborted()
   if (!connection || !canSupplySearch(connection) || !(await isSearchProviderEnabled(db, connection.provider))) {
     return null
   }
@@ -33,9 +36,11 @@ export const getSearchConnectionAuthorization = async (db: AnyDrizzleDatabase, c
 
   /** Checks both sides of credential resolution, which can wait for an OAuth refresh. */
   const assertProviderEnabled = async () => {
+    signal.throwIfAborted()
     if (!(await isSearchProviderEnabled(db, connection.provider))) {
       throw new Error('Otari preview is disabled. Enable it in Settings to use this connection.')
     }
+    signal.throwIfAborted()
   }
   const getApiKey = async () => {
     await assertProviderEnabled()
@@ -52,7 +57,7 @@ export const getSearchConnectionAuthorization = async (db: AnyDrizzleDatabase, c
     }
     return live.apiKey
   }
-  return { connection, getApiKey }
+  return { connection, getApiKey, signal }
 }
 
 /** Builds only the selected connection's API; Otari capabilities are discovered again for every turn. */
@@ -80,7 +85,7 @@ export const getSearchConnectionApi = async (
     return createTinfoilWebApi(getApiKey)
   }
   if (connection.provider === 'otari' && connection.url) {
-    const capabilities = await loadOtariWebCapabilities(connection.url, await getApiKey(), new AbortController().signal)
+    const capabilities = await loadOtariWebCapabilities(connection.url, await getApiKey(), authorization.signal)
     if (capabilities.search !== 'available') {
       return undefined
     }

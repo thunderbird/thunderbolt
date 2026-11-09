@@ -8,6 +8,7 @@ import { generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { exchangeOpenRouterCode } from './openrouter-auth'
 import { getTinfoilAuthorizationUrl, tinfoilAuth, type TinfoilCredentials } from './tinfoil-auth'
 import type { ProviderConnectionAttempt } from './provider-connection-attempt'
+import { getIdentitySignal } from './identity-lifetime'
 type Credentials = TinfoilCredentials | { access_token: string }
 
 type Provider = 'openrouter' | 'tinfoil'
@@ -51,9 +52,10 @@ export const startProviderBrowserConnection = async (
   provider: Provider,
   context: Context,
   attempt: ProviderConnectionAttempt,
-  signal: AbortSignal,
+  callerSignal: AbortSignal,
   overrides: Partial<typeof defaults> = {},
 ) => {
+  const signal = AbortSignal.any([callerSignal, getIdentitySignal()])
   const deps = { ...defaults, ...overrides }
   signal.throwIfAborted()
   const returnTo = deps.currentPath()
@@ -154,6 +156,7 @@ export const captureProviderBrowserReturn = (
     url.searchParams.getAll('code').length !== 1 ||
     url.searchParams.has('error')
   const controller = new AbortController()
+  const signal = AbortSignal.any([controller.signal, getIdentitySignal()])
   let completion: Promise<Credentials> | undefined
   returned = {
     callbackUrl: flow.redirectUri,
@@ -164,16 +167,19 @@ export const captureProviderBrowserReturn = (
     cancel: () => controller.abort(),
     complete: () =>
       (completion ??= (async () => {
-        controller.signal.throwIfAborted()
+        signal.throwIfAborted()
         if (invalid) {
           throw new Error('Invalid or expired provider authorization')
         }
-        return flow.provider === 'tinfoil'
-          ? deps.exchangeTinfoil(
-              { code: code!, verifier: flow.verifier, redirectUri: flow.redirectUri },
-              controller.signal,
-            )
-          : { access_token: await deps.exchangeOpenRouter(code!, flow.verifier, controller.signal) }
+        const credentials =
+          flow.provider === 'tinfoil'
+            ? await deps.exchangeTinfoil(
+                { code: code!, verifier: flow.verifier, redirectUri: flow.redirectUri },
+                signal,
+              )
+            : { access_token: await deps.exchangeOpenRouter(code!, flow.verifier, signal) }
+        signal.throwIfAborted()
+        return credentials
       })()),
   }
   return returned

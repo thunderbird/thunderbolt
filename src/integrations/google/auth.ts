@@ -95,6 +95,12 @@ export const getUserInfo = async (accessToken: string): Promise<GoogleUserInfo> 
   return response.json()
 }
 
-export const refreshAccessToken = async (httpClient: HttpClient, refreshToken: string): Promise<OAuthTokens> => {
-  return await httpClient.post('auth/google/refresh', { json: { refresh_token: refreshToken } }).json<OAuthTokens>()
+export const refreshAccessToken = async (
+  httpClient: HttpClient,
+  refreshToken: string,
+  signal?: AbortSignal,
+): Promise<OAuthTokens> => {
+  return await httpClient
+    .post('auth/google/refresh', { json: { refresh_token: refreshToken }, signal })
+    .json<OAuthTokens>()
 }

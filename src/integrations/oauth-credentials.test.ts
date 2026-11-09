@@ -13,7 +13,10 @@ import {
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createClient } from '@/lib/http'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import { ensureValidOAuthToken, isTokenFresh } from './oauth-credentials'
+import { ensureValidOAuthToken, getOAuthCredentials, isTokenFresh } from './oauth-credentials'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
+import type { RemoteCallback } from 'drizzle-orm/sqlite-proxy'
+import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
 
 describe('isTokenFresh', () => {
   const now = 1_700_000_000_000
@@ -67,7 +70,10 @@ describe('OAuth refresh without a cloud session', () => {
       },
     })
   })
-  beforeEach(resetTestDatabase)
+  beforeEach(async () => {
+    await resetTestDatabase()
+    rejectNestedTransactions(getDb())
+  })
   afterEach(() => mock.restore())
   afterAll(teardownTestDatabase)
   afterAll(() => Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks }))
@@ -79,6 +85,104 @@ describe('OAuth refresh without a cloud session', () => {
     oauthRelayUrl: 'https://original.example/v1',
     profile: { email: 'user@example.com', name: 'User' },
   }
+
+  it.each(['google', 'microsoft'] as const)(
+    'rejects a late %s refresh after identity teardown and aborts the transport',
+    async (provider) => {
+      await saveIntegrationCredentials(getDb(), provider, credentials, true)
+      const before = await getIntegrationCredentials(getDb(), provider)
+      const response = Promise.withResolvers<Response>()
+      const started = Promise.withResolvers<AbortSignal>()
+      spyOn(globalThis, 'fetch').mockImplementation(
+        Object.assign(
+          (input: RequestInfo | URL, init?: RequestInit) => {
+            started.resolve(new Request(input, init).signal)
+            return response.promise
+          },
+          { preconnect: globalThis.fetch.preconnect },
+        ),
+      )
+      const pending = ensureValidOAuthToken(createClient(), provider, credentials)
+      const signal = await started.promise
+      invalidateIdentityLifetime()
+      response.resolve(Response.json({ access_token: 'late-access', refresh_token: 'late-refresh', expires_in: 3600 }))
+      await expect(pending).rejects.toHaveProperty('name', 'AbortError')
+      expect(signal.aborted).toBe(true)
+      expect(await getIntegrationCredentials(getDb(), provider)).toEqual(before)
+    },
+  )
+
+  it.each(['google', 'microsoft'] as const)(
+    'rolls back %s refresh credentials when identity teardown interrupts the SQL write',
+    async (provider) => {
+      await saveIntegrationCredentials(getDb(), provider, credentials, true)
+      const before = await getIntegrationCredentials(getDb(), provider)
+      spyOn(globalThis, 'fetch').mockResolvedValue(
+        Response.json({ access_token: 'late-access', refresh_token: 'late-refresh', expires_in: 3600 }),
+      )
+      const session = (getDb() as unknown as { session: { client: RemoteCallback } }).session
+      const execute = session.client
+      const write = spyOn(session, 'client').mockImplementation(async (sql, params, method) => {
+        const result = await execute(sql, params, method)
+        if (sql.startsWith('update "integrations_secrets"')) {
+          invalidateIdentityLifetime()
+        }
+        return result
+      })
+      try {
+        await expect(ensureValidOAuthToken(createClient(), provider, credentials)).rejects.toHaveProperty(
+          'name',
+          'AbortError',
+        )
+        expect(await getIntegrationCredentials(getDb(), provider)).toEqual(before)
+      } finally {
+        write.mockRestore()
+      }
+    },
+  )
+
+  it('does not start a refresh queued before identity teardown', async () => {
+    await saveIntegrationCredentials(getDb(), 'google', credentials, true)
+    const release = Promise.withResolvers<void>()
+    const holder = navigator.locks.request('integration-oauth:google', () => release.promise)
+    const fetch = spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ access_token: 'late-access', expires_in: 3600 }),
+    )
+    const pending = ensureValidOAuthToken(createClient(), 'google', credentials)
+    invalidateIdentityLifetime()
+    release.resolve()
+    await holder
+    await expect(pending).rejects.toHaveProperty('name', 'AbortError')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it.each(['acquire', 'refresh'] as const)(
+    'rejects an integration credential %s interrupted by identity teardown during its database read',
+    async (operation) => {
+      const fresh = { ...credentials, expires_at: Date.now() + 3600_000 }
+      await saveIntegrationCredentials(getDb(), 'google', fresh, true)
+      const fetch = spyOn(globalThis, 'fetch')
+      const session = (getDb() as unknown as { session: { client: RemoteCallback } }).session
+      const execute = session.client
+      const read = spyOn(session, 'client').mockImplementation(async (sql, params, method) => {
+        const result = await execute(sql, params, method)
+        if (sql.startsWith('select') && sql.includes('"integrations_secrets"')) {
+          invalidateIdentityLifetime()
+        }
+        return result
+      })
+      try {
+        const pending =
+          operation === 'acquire'
+            ? getOAuthCredentials('google')
+            : ensureValidOAuthToken(createClient(), 'google', fresh)
+        await expect(pending).rejects.toHaveProperty('name', 'AbortError')
+        expect(fetch).not.toHaveBeenCalled()
+      } finally {
+        read.mockRestore()
+      }
+    },
+  )
 
   it.each([undefined, 'rotated-refresh'])(
     'refreshes through the issuing relay and preserves or rotates the token: %s',

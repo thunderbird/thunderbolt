@@ -31,6 +31,7 @@ import {
 import { revokeChatGPTSession } from '@/providers/chatgpt-auth'
 import { writeChatGPTRegistration } from '@/providers/chatgpt-registration'
 import { resolveOAuthAccessToken, withProviderOAuthLock } from '@/providers/oauth-session'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 import { tinfoilSession, withTinfoilSessionLock } from '@/lib/tinfoil-session'
 import { getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
 import { getProviderConnectionRevision } from '@/providers/revision'
@@ -352,12 +353,14 @@ export const resolveProviderConnection = async (
   db: AnyDrizzleDatabase,
   id: string,
 ): Promise<{ connection: ProviderConnection; apiKey: string; revision?: string }> => {
+  const signal = getIdentitySignal()
   const row = await db
     .select({ ...getTableColumns(connections), credentials: secrets.credentials })
     .from(connections)
     .innerJoin(secrets, eq(secrets.id, connections.id))
     .where(and(eq(connections.id, id), eq(connections.enabled, 1), providerCredentialConnected))
     .get()
+  signal.throwIfAborted()
   if (!row?.credentials) {
     throw new Error('Connect this provider on this device before using it')
   }
@@ -376,5 +379,6 @@ export const resolveProviderConnection = async (
       throw new Error('The provider connection changed during token refresh')
     }
   }
+  signal.throwIfAborted()
   return { connection, apiKey, revision: credentials.sessionRevision }
 }

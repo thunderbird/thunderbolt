@@ -38,6 +38,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { AvailableModel } from '@/settings/models/model-catalog'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { loadOtariSearchStatus, type OtariSearchStatus } from '@/integrations/otari-search/capabilities'
+import { createIdentityController } from '@/lib/identity-lifetime'
+
+type ConnectionController = ReturnType<typeof createIdentityController>
 
 type State = {
   origin: string
@@ -110,13 +113,13 @@ export const useOtariConnectionState = (
     selected: '',
     error: '',
   })
-  const pending = useRef<AbortController | null>(null)
+  const pending = useRef<ConnectionController | null>(null)
 
   const loadModels = async (
     origin: string,
     key: string,
     attempt: ProviderConnectionAttempt,
-    controller: AbortController,
+    controller: ConnectionController,
   ) => {
     controller.signal.throwIfAborted()
     const searchSelection = useSearchProviderStore.getState()
@@ -167,7 +170,7 @@ export const useOtariConnectionState = (
   }
 
   // The callback owns a single exchange; StrictMode can subscribe again without replaying the code.
-  const resume = useEffectEvent(async (controller: AbortController) => {
+  const resume = useEffectEvent(async (controller: ConnectionController) => {
     if (!returned) {
       return
     }
@@ -194,7 +197,7 @@ export const useOtariConnectionState = (
     }
     if (returned) {
       clearOtariBrowserReturn(returned.id)
-      const controller = new AbortController()
+      const controller = createIdentityController()
       pending.current = controller
       void resume(controller)
     }
@@ -216,7 +219,7 @@ export const useOtariConnectionState = (
     if (!origin) {
       return
     }
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     update({ operation: state.key ? 'models' : 'connect', error: '' })
     try {
@@ -244,7 +247,7 @@ export const useOtariConnectionState = (
     if (pending.current || !state.key || !state.attempt || !state.selected) {
       return
     }
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     update({ error: '', operation: 'save' })
     try {
@@ -285,8 +288,10 @@ export const useOtariConnectionState = (
         { expectedUpdatedAt: connectionUpdatedAt, signal: controller.signal },
       )
       await assertCurrent()
-      await updateSettings(db, { selected_model: id })
-      useChatStore.getState().setModels(await getAvailableModels(db))
+      await updateSettings(db, { selected_model: id }, { signal: controller.signal })
+      const models = await getAvailableModels(db)
+      controller.signal.throwIfAborted()
+      useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
       await queryClient.invalidateQueries({ queryKey: ['settings'] })
       await assertCurrent()

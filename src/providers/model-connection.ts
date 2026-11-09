@@ -7,6 +7,7 @@ import { getDb } from '@/db/database'
 import { resolveProviderConnection } from '@/dal/provider-connections'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 /** Bind an inference turn to one authorized connection, rechecking access before every request. */
 export const bindModelProvider = async (
@@ -21,14 +22,18 @@ export const bindModelProvider = async (
   if (!id) {
     return { model, wrapFetch: (fetch) => fetch, assertCurrent: async () => {} }
   }
+  const identity = getIdentitySignal()
   const db = getDb()
   const resolved = await resolveProviderConnection(db, id)
+  identity.throwIfAborted()
   if (resolved.connection.provider !== model.provider) {
     throw new Error('The model provider connection changed')
   }
   const isChatGPT = resolved.connection.provider === 'openai' && resolved.connection.authMethod === 'oauth'
   const resolveCurrent = async () => {
+    identity.throwIfAborted()
     const live = await resolveProviderConnection(db, id)
+    identity.throwIfAborted()
     if (
       live.revision !== resolved.revision ||
       live.connection.provider !== model.provider ||
@@ -41,7 +46,12 @@ export const bindModelProvider = async (
   const wrapFetch = (fetch: FetchFn): FetchFn =>
     Object.assign(
       async (input: RequestInfo | URL, init?: RequestInit) => {
+        const callerSignal =
+          init?.signal !== undefined ? init.signal : input instanceof Request ? input.signal : undefined
+        const signal = AbortSignal.any([identity, ...(callerSignal ? [callerSignal] : [])])
+        signal.throwIfAborted()
         const live = await resolveCurrent()
+        signal.throwIfAborted()
         const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
         if (model.provider === 'anthropic') {
           headers.set('x-api-key', live.apiKey)
@@ -64,11 +74,12 @@ export const bindModelProvider = async (
           return nativeFetch(input, {
             ...init,
             headers,
+            signal,
             redirect: 'error',
             body: JSON.stringify({ ...body, store: false }),
           })
         }
-        return fetch(input, { ...init, headers })
+        return fetch(input, { ...init, headers, signal })
       },
       { preconnect: fetch.preconnect },
     )

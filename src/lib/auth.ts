@@ -7,6 +7,7 @@ import type { GoogleUserInfo } from '@/integrations/google/types'
 import * as microsoft from '@/integrations/microsoft/auth'
 import type { HttpClient } from '@/lib/http'
 import { setOAuthState } from '@/lib/oauth-state'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import { isTauri } from '@/lib/platform'
 import { v4 as uuidv4 } from 'uuid'
@@ -130,8 +131,9 @@ export const refreshAccessToken = async (
   httpClient: HttpClient,
   provider: OAuthProvider,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<OAuthTokens> => {
-  return providers[provider].refreshAccessToken(httpClient, refreshToken)
+  return providers[provider].refreshAccessToken(httpClient, refreshToken, signal)
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +145,7 @@ export const redirectOAuthFlow = async (
   provider: OAuthProvider,
   oauthRelayUrl?: string,
 ): Promise<never> => {
+  const signal = getIdentitySignal()
   if (isTauri()) {
     throw new Error('redirectOAuthFlow should only be used in the web environment')
   }
@@ -150,10 +153,12 @@ export const redirectOAuthFlow = async (
   const state = uuidv4()
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = await generateCodeChallenge(codeVerifier)
+  signal.throwIfAborted()
 
   const authUrl = await buildAuthUrl(httpClient, provider, state, codeChallenge)
+  signal.throwIfAborted()
 
-  await setOAuthState({
+  setOAuthState({
     state,
     provider,
     verifier: codeVerifier,

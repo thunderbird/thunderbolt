@@ -8,6 +8,7 @@ import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import type { SearchResultData } from '@/integrations/thunderbolt-pro/schemas'
 import { fetch as nativeFetch } from '@/lib/fetch'
 import { http, HttpError, type HttpClient } from '@/lib/http'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 const publicUrl = z.url().refine(isPublicWebUrl)
 const searchResponse = z.object({
@@ -28,9 +29,12 @@ export const createOtariWebApi = (
   getApiKey: () => Promise<string>,
   client: HttpClient = http,
 ): Required<WebToolApi> => {
+  const signal = getIdentitySignal()
   const sources = new Map<string, SearchResultData>()
   const request = async (path: 'search' | 'fetch', json: unknown) => {
+    signal.throwIfAborted()
     const apiKey = await getApiKey()
+    signal.throwIfAborted()
     try {
       return await client
         .post(`${baseUrl}/${path}`, {
@@ -40,10 +44,12 @@ export const createOtariWebApi = (
           redirect: 'error',
           fetch: nativeFetch,
           timeout: 30_000,
+          signal,
         })
         .json<unknown>()
       // Gateway errors can contain credentials; expose safe instructions without retaining their response bodies.
     } catch (error) {
+      signal.throwIfAborted()
       if (error instanceof HttpError && (error.response.status === 401 || error.response.status === 403)) {
         // eslint-disable-next-line preserve-caught-error
         throw new Error('Otari web access was denied. Reconnect Otari or check your workspace’s web access settings.')

@@ -4,6 +4,7 @@
 
 import { http } from '@/lib/http'
 import { fetch as nativeFetch } from '@/lib/fetch'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 import {
   createProviderAuthorization,
   createOAuthRequestSignal,
@@ -56,9 +57,10 @@ export const getOtariAuthorizationUrl = (
 /** Authorize through the desktop app’s external browser and loopback callback. */
 export const connectOtari = async (
   origin: string,
-  signal: AbortSignal,
+  callerSignal: AbortSignal,
   dependencies: Partial<OpenRouterAuthDependencies> = {},
 ): Promise<string> => {
+  const signal = AbortSignal.any([callerSignal, getIdentitySignal()])
   const endpoints = getOtariEndpoints(origin)
   const flow = createProviderAuthorization(
     {

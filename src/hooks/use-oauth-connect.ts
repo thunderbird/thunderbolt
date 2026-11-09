@@ -13,6 +13,7 @@ import {
   getIntegrationOAuthErrorMessage,
 } from '@/lib/integration-oauth-client'
 import { clearOAuthState, getOAuthState, setOAuthState } from '@/lib/oauth-state'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import type { ReturnContext } from '@/lib/oauth-state'
 import { isMobile, isTauri } from '@/lib/platform'
@@ -150,7 +151,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     tokens: { access_token: string; refresh_token?: string; expires_in: number },
     userInfo: { email: string; name: string; picture?: string },
     oauthRelayUrl: string,
+    signal: AbortSignal,
   ) => {
+    signal.throwIfAborted()
     const credentials = {
       oauthRelayUrl,
       sessionRevision: crypto.randomUUID(),
@@ -164,11 +167,16 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       },
     }
 
-    await saveIntegrationCredentials(db, provider, credentials, true)
+    await db.transaction(async (tx) => {
+      signal.throwIfAborted()
+      await saveIntegrationCredentials(tx, provider, credentials, true)
+      signal.throwIfAborted()
+    })
     await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
+    signal.throwIfAborted()
 
     if (setPreferredName && userInfo.name) {
-      await updateSettings(db, { preferred_name: userInfo.name })
+      await updateSettings(db, { preferred_name: userInfo.name }, { signal })
     }
   }
 
@@ -196,6 +204,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
   }, [isConnecting, activeKey])
 
   const connect = async (provider: OAuthProvider) => {
+    const identitySignal = getIdentitySignal()
     setError(null)
     const key = connectingKey ?? provider
 
@@ -220,6 +229,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           const state = uuidv4()
           const codeVerifier = generateCodeVerifier()
           const codeChallenge = await generateCodeChallenge(codeVerifier)
+          identitySignal.throwIfAborted()
 
           // Store OAuth state for callback validation
           setOAuthState({
@@ -231,6 +241,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           })
 
           const authUrl = await buildAuthUrl(httpClient, provider, state, codeChallenge)
+          identitySignal.throwIfAborted()
 
           // Open in system browser (not webview)
           await openUrl(authUrl)
@@ -249,7 +260,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
             const { tokens, userInfo } = result
 
-            await saveCredentials(provider, tokens, userInfo, oauthRelayUrl)
+            await saveCredentials(provider, tokens, userInfo, oauthRelayUrl, identitySignal)
 
             clearConnecting(key)
             onSuccess?.()
@@ -280,6 +291,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
    * Returns true if successful, false otherwise.
    */
   const processCallback = async (callbackData: OAuthCallbackData): Promise<boolean> => {
+    const identitySignal = getIdentitySignal()
     setError(null)
 
     const { code, state: returnedState, error: oauthError } = callbackData
@@ -289,6 +301,11 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     const storedState = oauthState.state
     const provider = oauthState.provider
     const codeVerifier = oauthState.verifier
+
+    // Claim only this callback before any async work; native delivery or a remount can replay it.
+    if (returnedState && returnedState === storedState) {
+      clearOAuthState()
+    }
 
     // Helper to cleanup connecting state - uses connectingKey if available, otherwise provider
     const cleanup = () => {
@@ -322,11 +339,10 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     try {
       const oauthRelayUrl = oauthState.oauthRelayUrl ?? getIntegrationRelayUrl()
       const tokens = await exchangeTokens(createIntegrationOAuthClient(oauthRelayUrl), provider, code, codeVerifier)
+      identitySignal.throwIfAborted()
       const userInfo = await getUser(provider, tokens.access_token)
 
-      await saveCredentials(provider, tokens, userInfo, oauthRelayUrl)
-
-      clearOAuthState()
+      await saveCredentials(provider, tokens, userInfo, oauthRelayUrl, identitySignal)
 
       cleanup()
       onSuccess?.()

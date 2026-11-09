@@ -17,6 +17,7 @@ import { getModel } from '@/dal/models'
 import { providerConnectionsTable } from '@/db/tables'
 import { addProviderModels } from './models'
 import { bindModelProvider } from './model-connection'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 
 beforeEach(resetTestDatabase)
 afterEach(() => mock.restore())
@@ -49,6 +50,40 @@ it('uses the connection credential on every inference request', async () => {
     },
   )
   expect(send).toHaveBeenCalledTimes(1)
+})
+
+it('retires a bound inference client on identity teardown even when local credentials are retained', async () => {
+  const { model } = await setup()
+  const bound = await bindModelProvider(model)
+  const send = mock(async () => new Response('{}'))
+  invalidateIdentityLifetime()
+  await expect(
+    bound.wrapFetch(Object.assign(send, { preconnect: async () => false }))(
+      'https://otari.example/api/v1/chat/completions',
+    ),
+  ).rejects.toHaveProperty('name', 'AbortError')
+  expect(send).not.toHaveBeenCalled()
+})
+
+it('aborts an in-flight provider request when the device leaves its identity', async () => {
+  const { model } = await setup()
+  const bound = await bindModelProvider(model)
+  const started = Promise.withResolvers<AbortSignal>()
+  const send = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const signal = init?.signal ?? new AbortController().signal
+    started.resolve(signal)
+    return new Promise<Response>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+    })
+  })
+  const request = bound.wrapFetch(Object.assign(send, { preconnect: async () => false }))(
+    'https://otari.example/api/v1/chat/completions',
+  )
+  const signal = await started.promise
+  expect(signal).toBeInstanceOf(AbortSignal)
+  invalidateIdentityLifetime()
+  expect(signal.aborted).toBe(true)
+  await expect(request).rejects.toHaveProperty('name', 'AbortError')
 })
 
 it.each(['disabled', 'reenabled', 'disconnected', 'replaced', 'redirected'] as const)(

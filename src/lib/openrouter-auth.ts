@@ -9,6 +9,7 @@ import { fetch as nativeFetch } from '@/lib/fetch'
 import { http } from '@/lib/http'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import { isMobile, isTauri } from '@/lib/platform'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 export type ProviderAuthorizationConfig = {
   authorizationEndpoint: string
@@ -23,7 +24,7 @@ const connectionTimeoutMs = 5 * 60 * 1000
 /** Token deadlines must cover body parsing, since a partial response must not hold a credential lock forever. */
 export const createOAuthRequestSignal = (signal?: AbortSignal): AbortSignal => {
   const deadline = AbortSignal.timeout(30_000)
-  return signal ? AbortSignal.any([signal, deadline]) : deadline
+  return AbortSignal.any([getIdentitySignal(), deadline, ...(signal ? [signal] : [])])
 }
 
 const errorMessages = {
@@ -182,12 +183,13 @@ export const createProviderAuthorization = (
   let connecting = false
 
   /** Opens the browser immediately, validates the returned code, and returns a device-local API key. */
-  const startConnection = async ({ signal }: OpenRouterConnectionOptions = {}): Promise<{
+  const startConnection = async ({ signal: callerSignal }: OpenRouterConnectionOptions = {}): Promise<{
     code: string
     verifier: string
     redirectUri: string
     clientId?: string
   }> => {
+    const signal = AbortSignal.any([getIdentitySignal(), ...(callerSignal ? [callerSignal] : [])])
     if (signal?.aborted) {
       throw cancellationError()
     }
@@ -329,8 +331,12 @@ export const createOpenRouterAuth = (overrides: Partial<OpenRouterAuthDependenci
   }
 
   const startConnection = async (options: OpenRouterConnectionOptions = {}) => {
-    const grant = await authorization.startConnection(options)
-    return exchangeCode(grant.code, grant.verifier, options.signal)
+    const signal = AbortSignal.any([getIdentitySignal(), ...(options.signal ? [options.signal] : [])])
+    const grant = await authorization.startConnection({ signal })
+    signal.throwIfAborted()
+    const token = await exchangeCode(grant.code, grant.verifier, signal)
+    signal.throwIfAborted()
+    return token
   }
   return { startConnection, prepareManualConnection, exchangeCode }
 }

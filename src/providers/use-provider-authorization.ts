@@ -62,6 +62,9 @@ import { getMcpSearchProvider, searchMcpUrls, searchOAuthFetch, mcpSearchCredent
 import type { ProviderCredentials, OAuthProviderType } from './types'
 import { getProviderDefinition } from './registry'
 import { getProviderConnectionRevision } from './revision'
+import { createIdentityController } from '@/lib/identity-lifetime'
+
+type AuthorizationController = ReturnType<typeof createIdentityController>
 
 type AuthorizationInput = {
   purpose?: 'onboarding-search'
@@ -75,6 +78,7 @@ type Manual = {
   request: OpenRouterManualConnection
   input: AuthorizationInput
   attempt: ProviderConnectionAttempt<OAuthProviderType>
+  signal: AbortSignal
 }
 type State = { isPending: boolean; error: string | null; manual: Manual | null; code: string }
 /** Draft cleanup must not prevent cancellation or hide an already saved connection. */
@@ -122,13 +126,13 @@ export const useProviderAuthorization = ({
     manual: null,
     code: '',
   })
-  const pending = useRef<AbortController | null>(null)
+  const pending = useRef<AuthorizationController | null>(null)
 
   const complete = async (
     input: AuthorizationInput,
     credentials: ProviderCredentials,
     attempt: ProviderConnectionAttempt<OAuthProviderType>,
-    controller: AbortController,
+    controller: AuthorizationController,
   ) => {
     controller.signal.throwIfAborted()
     const url = input.provider === 'otari' ? getOtariEndpoints(otariOrigin(input.url)).inference : undefined
@@ -169,7 +173,9 @@ export const useProviderAuthorization = ({
       useSearchProviderStore.getState().configureProviderSearch(id, status, { select: false })
     }
     clearAuthorizationDraft()
-    useChatStore.getState().setModels(await getAvailableModels(db))
+    const models = await getAvailableModels(db)
+    controller.signal.throwIfAborted()
+    useChatStore.getState().setModels(models)
     await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
     await queryClient.invalidateQueries({ queryKey: ['models'] })
     await assertCurrent()
@@ -180,7 +186,7 @@ export const useProviderAuthorization = ({
     onConnected(id)
   }
 
-  const fail = (controller: AbortController, error?: unknown) => {
+  const fail = (controller: AuthorizationController, error?: unknown) => {
     if (!controller.signal.aborted) {
       update({
         isPending: false,
@@ -192,7 +198,7 @@ export const useProviderAuthorization = ({
     }
   }
 
-  const resume = useEffectEvent(async (controller: AbortController) => {
+  const resume = useEffectEvent(async (controller: AuthorizationController) => {
     if (!returned) {
       return
     }
@@ -229,7 +235,7 @@ export const useProviderAuthorization = ({
       } else {
         clearTinfoilMobileReturn(returned.id)
       }
-      const controller = new AbortController()
+      const controller = createIdentityController()
       pending.current = controller
       void resume(controller)
     }
@@ -238,7 +244,7 @@ export const useProviderAuthorization = ({
 
   const authorize = async (input: AuthorizationInput) => {
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     update({ isPending: true, error: null, manual: null, code: '' })
     try {
@@ -291,7 +297,7 @@ export const useProviderAuthorization = ({
           controller.signal.throwIfAborted()
           await openUrl(request.authorizationUrl)
           controller.signal.throwIfAborted()
-          update({ manual: { request, input, attempt }, isPending: false })
+          update({ manual: { request, input, attempt, signal: controller.signal }, isPending: false })
         }
         return
       }
@@ -303,13 +309,16 @@ export const useProviderAuthorization = ({
     } catch (error) {
       fail(controller, error)
     } finally {
-      if (input.provider === 'openai') {
-        useChatStore.getState().setModels(await getAvailableModels(db))
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['chatgpt-accounts'] }),
-          queryClient.invalidateQueries({ queryKey: ['provider-connections'] }),
-          queryClient.invalidateQueries({ queryKey: ['models'] }),
-        ])
+      if (input.provider === 'openai' && !controller.signal.aborted) {
+        const models = await getAvailableModels(db)
+        if (!controller.signal.aborted) {
+          useChatStore.getState().setModels(models)
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['chatgpt-accounts'] }),
+            queryClient.invalidateQueries({ queryKey: ['provider-connections'] }),
+            queryClient.invalidateQueries({ queryKey: ['models'] }),
+          ])
+        }
       }
     }
   }
@@ -319,7 +328,7 @@ export const useProviderAuthorization = ({
     if (!provider) {
       return
     }
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     update({ isPending: true, error: null })
     try {
@@ -350,7 +359,9 @@ export const useProviderAuthorization = ({
           complete(draft, mcpSearchCredentials(provider, credentials), draft.attempt, controller),
       })
     } catch {
-      clearMcpOAuthState()
+      if (!controller.signal.aborted) {
+        clearMcpOAuthState()
+      }
       fail(controller)
     }
   }
@@ -359,7 +370,7 @@ export const useProviderAuthorization = ({
     if (!state.manual || !state.code.trim() || state.isPending) {
       return
     }
-    const controller = new AbortController()
+    const controller = createIdentityController(state.manual.signal)
     pending.current = controller
     update({ isPending: true, error: null })
     try {

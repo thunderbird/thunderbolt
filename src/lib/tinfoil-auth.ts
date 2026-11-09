@@ -12,6 +12,7 @@ import {
 } from './openrouter-auth'
 import { fetch as nativeFetch } from './fetch'
 import { http, HttpError } from './http'
+import { getIdentitySignal } from './identity-lifetime'
 
 export const tinfoilClientId =
   import.meta.env.VITE_TINFOIL_CLIENT_ID || 'oauthc_SDVdLmN2tIicRCMaqNGijBTNKZceSmEjwolKnycjrypWSCvN'
@@ -115,11 +116,15 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
   return {
     exchangeCode,
     startConnection: async (options: OpenRouterConnectionOptions = {}): Promise<TinfoilCredentials> => {
+      const signal = AbortSignal.any([getIdentitySignal(), ...(options.signal ? [options.signal] : [])])
       try {
-        const result = await authorization.startConnection(options)
-        return await exchangeCode(result, options.signal)
+        const result = await authorization.startConnection({ signal })
+        signal.throwIfAborted()
+        const credentials = await exchangeCode(result, signal)
+        signal.throwIfAborted()
+        return credentials
       } catch (error) {
-        options.signal?.throwIfAborted()
+        signal.throwIfAborted()
         if (error instanceof TinfoilConnectionError) {
           throw error
         }

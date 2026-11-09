@@ -13,10 +13,13 @@ import {
   saveProviderConnection,
   disconnectProviderConnection,
   updateProviderConnection,
+  resolveProviderConnection,
 } from '@/dal/provider-connections'
 import { http, HttpError, type ResponsePromise } from '@/lib/http'
 import { stubJsonResponse } from '@/test-utils/http'
 import { resolveOAuthAccessToken } from './oauth-session'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
+import type { RemoteCallback } from 'drizzle-orm/sqlite-proxy'
 
 const originalLocks = navigator.locks
 beforeAll(() => {
@@ -85,6 +88,92 @@ test('uses a fresh token without an HTTP request', async () => {
   const id = await connect(Date.now() + 3_600_000)
   expect(await resolveOAuthAccessToken(getDb(), id)).toBe('old-access')
   expect(post).not.toHaveBeenCalled()
+})
+
+test('retains a retryable session after network interruption and releases the refresh lock', async () => {
+  const id = await connect()
+  const before = await getProviderCredentials(getDb(), id)
+  post.mockImplementationOnce(() => stubJsonResponse(Promise.reject(new TypeError('Failed to fetch'))))
+  await expect(resolveOAuthAccessToken(getDb(), id)).rejects.toThrow('Failed to fetch')
+  expect(await getProviderCredentials(getDb(), id)).toEqual(before)
+  post.mockReturnValue(stubJsonResponse({ access_token: 'recovered', token_type: 'Bearer', expires_in: 3600 }))
+  expect(await resolveOAuthAccessToken(getDb(), id)).toBe('recovered')
+  expect(post).toHaveBeenCalledTimes(2)
+})
+
+test('rejects a late refresh after identity teardown even when local credentials are retained', async () => {
+  const id = await connect()
+  const before = await getProviderCredentials(getDb(), id)
+  post.mockImplementation(() => {
+    invalidateIdentityLifetime()
+    return stubJsonResponse({ access_token: 'late-access', refresh_token: 'late-refresh', token_type: 'Bearer' })
+  })
+  await expect(resolveOAuthAccessToken(getDb(), id)).rejects.toHaveProperty('name', 'AbortError')
+  expect(await getProviderCredentials(getDb(), id)).toEqual(before)
+})
+
+test('rolls back refreshed credentials when identity teardown interrupts the SQL update', async () => {
+  const id = await connect()
+  const before = await getProviderCredentials(getDb(), id)
+  post.mockReturnValue(
+    stubJsonResponse({ access_token: 'late-access', refresh_token: 'late-refresh', token_type: 'Bearer' }),
+  )
+  const session = (getDb() as unknown as { session: { client: RemoteCallback } }).session
+  const execute = session.client
+  const write = spyOn(session, 'client').mockImplementation(async (sql, params, method) => {
+    const result = await execute(sql, params, method)
+    if (sql.startsWith('update "provider_connection_secrets"')) {
+      invalidateIdentityLifetime()
+    }
+    return result
+  })
+  try {
+    await expect(resolveOAuthAccessToken(getDb(), id)).rejects.toHaveProperty('name', 'AbortError')
+    expect(await getProviderCredentials(getDb(), id)).toEqual(before)
+  } finally {
+    write.mockRestore()
+  }
+})
+
+test('does not start a refresh if identity teardown interrupts the outer connection read', async () => {
+  const id = await connect()
+  const session = (getDb() as unknown as { session: { client: RemoteCallback } }).session
+  const execute = session.client
+  const read = spyOn(session, 'client').mockImplementation(async (sql, params, method) => {
+    const result = await execute(sql, params, method)
+    if (sql.startsWith('select') && sql.includes('"provider_connections"')) {
+      invalidateIdentityLifetime()
+    }
+    return result
+  })
+  try {
+    await expect(resolveProviderConnection(getDb(), id)).rejects.toHaveProperty('name', 'AbortError')
+    expect(post).not.toHaveBeenCalled()
+  } finally {
+    read.mockRestore()
+  }
+})
+
+test('does not replace a reconnected session with an older refresh result', async () => {
+  const id = await connect()
+  const replacement = { access_token: 'replacement', refresh_token: 'replacement-refresh', expires_at: 1 }
+  post.mockImplementation(() =>
+    stubJsonResponse(
+      (async () => {
+        await disconnectProviderConnection(getDb(), id)
+        await saveProviderConnection(getDb(), {
+          id,
+          provider: 'exa',
+          name: 'Exa',
+          authMethod: 'oauth',
+          credentials: replacement,
+        })
+        return { access_token: 'late-access', refresh_token: 'late-refresh', token_type: 'Bearer' }
+      })(),
+    ),
+  )
+  await expect(resolveOAuthAccessToken(getDb(), id)).rejects.toThrow('changed during refresh')
+  expect(await getProviderCredentials(getDb(), id)).toMatchObject(replacement)
 })
 
 test.each(['disable', 'disconnect'] as const)(

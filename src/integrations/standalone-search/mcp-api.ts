@@ -8,6 +8,7 @@ import { z } from 'zod'
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { searchMcpUrls, searchOAuthFetch, type McpSearchProvider } from '@/providers/mcp-search-auth'
 import { isPublicWebUrl, publicWebMediaUrl } from './url-policy'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 const toolResultSchema = z.object({
   isError: z.boolean().optional(),
@@ -49,15 +50,16 @@ export const readMcpSearchResults = (result: unknown) => {
 }
 
 /** Opens a bounded MCP session per operation and closes it on success or failure. */
-const createToolCaller =
-  (provider: McpSearchProvider, getAccessToken: () => Promise<string>): CallTool =>
-  async (name, args) => {
+const createToolCaller = (provider: McpSearchProvider, getAccessToken: () => Promise<string>): CallTool => {
+  const identity = getIdentitySignal()
+  return async (name, args) => {
+    identity.throwIfAborted()
     const url = new URL(searchMcpUrls[provider])
     if (provider === 'exa') {
       url.searchParams.set('tools', 'web_search_advanced_exa,web_fetch_exa')
     }
     const client = new Client({ name: 'Thunderbolt', version: '1.0.0' })
-    const signal = AbortSignal.timeout(60_000)
+    const signal = AbortSignal.any([identity, AbortSignal.timeout(60_000)])
     const send = searchOAuthFetch(signal)
     const transport = new StreamableHTTPClientTransport(url, {
       fetch: async (input, init) => {
@@ -77,6 +79,7 @@ const createToolCaller =
       await client.close()
     }
   }
+}
 
 /** Adapts OAuth-only MCP search to the same search widgets and web tools as API-key connections. */
 export const createMcpSearchApi = (

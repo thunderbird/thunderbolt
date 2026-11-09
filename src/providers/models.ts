@@ -16,6 +16,7 @@ import { fetch as nativeFetch } from '@/lib/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { getProviderDefinition } from './registry'
 import type { Model } from '@/types'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 /** Discover a connection's model capability using current device credentials. */
 export const fetchProviderModels = async (
@@ -23,7 +24,9 @@ export const fetchProviderModels = async (
   connectionId: string,
   getProxyFetch: () => FetchFn = () => nativeFetch,
 ): Promise<AvailableModel[]> => {
+  const signal = getIdentitySignal()
   const { connection, apiKey } = await resolveProviderConnection(db, connectionId)
+  signal.throwIfAborted()
   if (!getProviderDefinition(connection.provider).capabilities.includes('models')) {
     throw new Error('This provider does not supply models')
   }
@@ -39,18 +42,22 @@ export const fetchProviderModels = async (
             headers: { Authorization: `Bearer ${apiKey}` },
             redirect: 'error',
             credentials: 'omit',
-            signal: AbortSignal.timeout(30_000),
+            signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
           })
           .json(),
       )
+    signal.throwIfAborted()
     return catalog.models
       .filter((model) => model.visibility === 'list')
       .map((model) => ({ id: model.slug, name: model.display_name }))
   }
-  return fetchModelsForProvider(
+  const models = await fetchModelsForProvider(
     { provider: connection.provider as Model['provider'], apiKey, url: connection.url ?? undefined },
     getProxyFetch,
+    signal,
   )
+  signal.throwIfAborted()
+  return models
 }
 
 /** Add selected models without duplicating credentials or overwriting existing model preferences. */
@@ -59,9 +66,10 @@ export const addProviderModels = async (
   connectionId: string,
   models: AvailableModel[],
   { expectedUpdatedAt, signal }: { expectedUpdatedAt?: string; signal?: AbortSignal } = {},
-): Promise<string[]> =>
-  db.transaction(async (tx) => {
-    signal?.throwIfAborted()
+): Promise<string[]> => {
+  const operation = AbortSignal.any([getIdentitySignal(), ...(signal ? [signal] : [])])
+  return db.transaction(async (tx) => {
+    operation.throwIfAborted()
     const connection = await getProviderConnection(tx, connectionId)
     if (expectedUpdatedAt !== undefined && connection?.updatedAt !== expectedUpdatedAt) {
       throw new Error('The provider connection changed. Reload the model catalog.')
@@ -102,6 +110,7 @@ export const addProviderModels = async (
       })
       ids.push(id)
     }
-    signal?.throwIfAborted()
+    operation.throwIfAborted()
     return ids
   })
+}

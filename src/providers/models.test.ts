@@ -7,6 +7,7 @@ import * as native from '@/lib/native-fetch'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getAllModels, getModel, updateModel } from '@/dal/models'
+import * as modelDal from '@/dal/models'
 import {
   deleteProviderConnection,
   disconnectProviderConnection,
@@ -16,6 +17,10 @@ import {
 } from '@/dal/provider-connections'
 import { modelProfilesTable } from '@/db/tables'
 import { addProviderModels, fetchProviderModels } from './models'
+import * as connections from '@/dal/provider-connections'
+import { getIdentitySignal, invalidateIdentityLifetime } from '@/lib/identity-lifetime'
+import { http } from '@/lib/http'
+import { stubJsonResponse } from '@/test-utils/http'
 
 beforeEach(resetTestDatabase)
 afterAll(teardownTestDatabase)
@@ -82,6 +87,20 @@ it('does not add a model after its owning operation was canceled', async () => {
   expect(await getAllModels(getDb())).toEqual([])
 })
 
+it('rolls back models and profiles if identity teardown happens during model persistence', async () => {
+  const id = await connect()
+  const create = modelDal.createModelInTransaction
+  spyOn(modelDal, 'createModelInTransaction').mockImplementationOnce(async (...args) => {
+    await create(...args)
+    invalidateIdentityLifetime()
+  })
+  await expect(addProviderModels(getDb(), id, [{ id: 'old-profile-model' }])).rejects.toMatchObject({
+    name: 'AbortError',
+  })
+  expect(await getAllModels(getDb())).toEqual([])
+  expect(await getDb().select().from(modelProfilesTable)).toEqual([])
+})
+
 it('discovers ChatGPT models through native OAuth HTTP and excludes hidden models', async () => {
   const id = await getDb().transaction((tx) =>
     saveProviderConnectionInTransaction(tx, {
@@ -129,3 +148,48 @@ it('rejects a malformed ChatGPT catalog instead of saving unusable models', asyn
   await expect(fetchProviderModels(getDb(), id)).rejects.toThrow()
   expect(await getAllModels(getDb())).toEqual([])
 })
+
+it('does not start a catalog request when identity changes during credential resolution', async () => {
+  const id = await connect()
+  const resolve = connections.resolveProviderConnection
+  spyOn(connections, 'resolveProviderConnection').mockImplementationOnce(async (...args) => {
+    const resolved = await resolve(...args)
+    invalidateIdentityLifetime()
+    return resolved
+  })
+  const send = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+  await expect(fetchProviderModels(getDb(), id)).rejects.toMatchObject({ name: 'AbortError' })
+  expect(send).not.toHaveBeenCalled()
+})
+
+it.each(['api_key', 'oauth'] as const)(
+  'rejects a late %s catalog body and passes the original lifetime to HTTP',
+  async (authMethod) => {
+    const id = await getDb().transaction((tx) =>
+      saveProviderConnectionInTransaction(tx, {
+        provider: 'openai',
+        name: 'Work',
+        authMethod,
+        credentials: authMethod === 'oauth' ? { access_token: 'plan-token' } : { apiKey: 'key' },
+      }),
+    )
+    const original = getIdentitySignal()
+    const payload =
+      authMethod === 'oauth'
+        ? { models: [{ slug: 'old-model', display_name: 'Old account', visibility: 'list' }] }
+        : { data: [{ id: 'old-model' }] }
+    const send = spyOn(http, 'get').mockImplementation((_url, options) => {
+      expect(options?.signal).toBeInstanceOf(AbortSignal)
+      const response = stubJsonResponse(payload)
+      response.json = async <T>() => {
+        invalidateIdentityLifetime()
+        expect(options?.signal?.aborted).toBe(true)
+        return payload as T
+      }
+      return response
+    })
+    await expect(fetchProviderModels(getDb(), id)).rejects.toMatchObject({ name: 'AbortError' })
+    expect(original.aborted).toBe(true)
+    expect(send).toHaveBeenCalledTimes(1)
+  },
+)

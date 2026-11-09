@@ -9,6 +9,11 @@ export const providerAuthorizationDraftKey = 'thunderbolt-provider-authorization
 /** Mobile redirects must survive the OS terminating the app's webview. */
 export const providerAuthorizationDraftStorage = () => (isTauri() && isMobile() ? localStorage : sessionStorage)
 
+/** Retire redirect metadata together with the identity that started authorization. */
+export const clearProviderAuthorizationDraft = (): void => {
+  providerAuthorizationDraftStorage().removeItem(providerAuthorizationDraftKey)
+}
+
 /** Keep a validated search authorization return in its onboarding wizard. */
 export const isOnboardingSearchAuthorization = (): boolean => {
   try {

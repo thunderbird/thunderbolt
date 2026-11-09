@@ -7,6 +7,7 @@ import { getDb } from '@/db/database'
 import { refreshAccessToken, type OAuthProvider } from '@/lib/auth'
 import { createIntegrationOAuthClient } from '@/lib/integration-oauth-client'
 import type { HttpClient } from '@/lib/http'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 export type OAuthCredentials = {
   oauthRelayUrl?: string
@@ -21,8 +22,10 @@ export type OAuthCredentials = {
  * Throws if the integration has not been connected yet.
  */
 export const getOAuthCredentials = async (provider: OAuthProvider): Promise<OAuthCredentials> => {
+  const signal = getIdentitySignal()
   const db = getDb()
   const row = await getIntegrationCredentials(db, provider)
+  signal.throwIfAborted()
   if (!row) {
     throw new Error(`${provider} integration not connected`)
   }
@@ -44,10 +47,13 @@ export const ensureValidOAuthToken = async (
   httpClient: HttpClient,
   provider: OAuthProvider,
   credentials: OAuthCredentials,
-): Promise<string> =>
-  navigator.locks.request(`integration-oauth:${provider}`, async () => {
+): Promise<string> => {
+  const signal = getIdentitySignal()
+  return navigator.locks.request(`integration-oauth:${provider}`, async () => {
+    signal.throwIfAborted()
     const db = getDb()
     const row = await getIntegrationCredentials(db, provider)
+    signal.throwIfAborted()
     // Another window may have refreshed while this request waited, or the user may have switched accounts.
     if (!row?.enabled || row.credentials.sessionRevision !== credentials.sessionRevision) {
       throw new Error('The integration changed before token refresh. Try again.')
@@ -62,7 +68,8 @@ export const ensureValidOAuthToken = async (
     }
 
     const relayClient = current.oauthRelayUrl ? createIntegrationOAuthClient(current.oauthRelayUrl) : httpClient
-    const newTokens = await refreshAccessToken(relayClient, provider, current.refresh_token)
+    const newTokens = await refreshAccessToken(relayClient, provider, current.refresh_token, signal)
+    signal.throwIfAborted()
     const updated: OAuthCredentials = {
       ...current,
       access_token: newTokens.access_token,
@@ -70,7 +77,13 @@ export const ensureValidOAuthToken = async (
       expires_at: Date.now() + newTokens.expires_in * 1000,
     }
 
-    await updateIntegrationCredentials(db, provider, updated, current)
+    await db.transaction(async (tx) => {
+      signal.throwIfAborted()
+      await updateIntegrationCredentials(tx, provider, updated, current)
+      signal.throwIfAborted()
+    })
+    signal.throwIfAborted()
 
     return updated.access_token
   })
+}

@@ -101,6 +101,12 @@ export const getUserInfo = async (accessToken: string): Promise<MicrosoftUserInf
   }
 }
 
-export const refreshAccessToken = async (httpClient: HttpClient, refreshToken: string): Promise<OAuthTokens> => {
-  return await httpClient.post('auth/microsoft/refresh', { json: { refresh_token: refreshToken } }).json<OAuthTokens>()
+export const refreshAccessToken = async (
+  httpClient: HttpClient,
+  refreshToken: string,
+  signal?: AbortSignal,
+): Promise<OAuthTokens> => {
+  return await httpClient
+    .post('auth/microsoft/refresh', { json: { refresh_token: refreshToken }, signal })
+    .json<OAuthTokens>()
 }

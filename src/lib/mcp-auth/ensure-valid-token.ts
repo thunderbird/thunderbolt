@@ -7,11 +7,12 @@ import { OAuthError } from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { AuthorizationServerMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
 import { resourceUrlFromServerUrl } from '@modelcontextprotocol/sdk/shared/auth-utils.js'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
-import { eq } from 'drizzle-orm'
-import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secrets'
+import { and, eq, exists, isNull } from 'drizzle-orm'
+import type { McpServerCredentials } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { mcpServersTable } from '@/db/tables'
+import { mcpSecretsTable, mcpServersTable } from '@/db/tables'
 import { isTokenFresh } from '@/integrations/oauth-credentials'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 /**
  * Thrown when an MCP OAuth token can no longer be refreshed (refresh token
@@ -53,10 +54,13 @@ type RefreshFn = typeof sdkRefreshAuthorization
 /**
  * In-flight refreshes keyed by serverId so concurrent callers coalesce onto a
  * single refresh instead of each presenting the same rotating refresh token.
- * In-process only (one entry per tab); `mcp_secrets` is local-only, so a
- * cross-tab race at worst writes the same fresh token twice — harmless.
+ * Entries belong to one database and identity; the credential compare-and-swap
+ * below also rejects results superseded by another authorization.
  */
-const tokenRefreshInFlight = new Map<string, Promise<string>>()
+const tokenRefreshInFlight = new Map<
+  string,
+  { db: AnyDrizzleDatabase; signal: AbortSignal; promise: Promise<string> }
+>()
 
 /**
  * Returns a valid MCP OAuth access token for the server, refreshing proactively
@@ -81,18 +85,23 @@ export const ensureValidMcpOAuthToken = (
   fetchFn: FetchLike,
   refreshAuthorization: RefreshFn = sdkRefreshAuthorization,
 ): Promise<string> => {
+  const signal = getIdentitySignal()
   const inFlight = tokenRefreshInFlight.get(serverId)
-  if (inFlight) {
-    return inFlight
+  if (inFlight?.signal === signal && inFlight.db === db) {
+    return inFlight.promise
   }
   // Evict on settle so the next call re-reads credentials and a failed refresh
   // is retried rather than replaying a poisoned promise.
-  const promise = resolveValidMcpOAuthToken(db, serverId, fetchFn, refreshAuthorization).finally(() => {
-    if (tokenRefreshInFlight.get(serverId) === promise) {
-      tokenRefreshInFlight.delete(serverId)
-    }
-  })
-  tokenRefreshInFlight.set(serverId, promise)
+  const promise = navigator.locks
+    .request(`mcp-oauth:${serverId}`, { signal }, () =>
+      resolveValidMcpOAuthToken(db, serverId, fetchFn, refreshAuthorization, signal),
+    )
+    .finally(() => {
+      if (tokenRefreshInFlight.get(serverId)?.promise === promise) {
+        tokenRefreshInFlight.delete(serverId)
+      }
+    })
+  tokenRefreshInFlight.set(serverId, { db, signal, promise })
   return promise
 }
 
@@ -101,8 +110,12 @@ const resolveValidMcpOAuthToken = async (
   serverId: string,
   fetchFn: FetchLike,
   refreshAuthorization: RefreshFn,
+  signal: AbortSignal,
 ): Promise<string> => {
-  const cred = await getMcpServerCredentials(db, serverId)
+  signal.throwIfAborted()
+  const row = await db.select().from(mcpSecretsTable).where(eq(mcpSecretsTable.id, serverId)).get()
+  signal.throwIfAborted()
+  const cred = row?.credentials ? (JSON.parse(row.credentials) as McpServerCredentials) : null
   if (cred?.type !== 'oauth') {
     throw new Error(`MCP server ${serverId} has no OAuth credentials`)
   }
@@ -118,6 +131,7 @@ const resolveValidMcpOAuthToken = async (
   }
 
   const server = await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, serverId)).get()
+  signal.throwIfAborted()
   const resource = server?.url ? resourceUrlFromServerUrl(server.url) : undefined
 
   const tokens = await (async () => {
@@ -127,9 +141,17 @@ const resolveValidMcpOAuthToken = async (
         clientInformation: { client_id: clientId },
         refreshToken,
         resource,
-        fetchFn,
+        fetchFn: (input, init) => {
+          signal.throwIfAborted()
+          const requestSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+          return fetchFn(input, {
+            ...init,
+            signal: AbortSignal.any([signal, ...(requestSignal ? [requestSignal] : [])]),
+          })
+        },
       })
     } catch (err) {
+      signal.throwIfAborted()
       if (err instanceof OAuthError && credentialRejectedCodes.has(err.errorCode)) {
         throw new McpOAuthNeedsReauthError(serverId, err)
       }
@@ -137,13 +159,39 @@ const resolveValidMcpOAuthToken = async (
     }
   })()
 
-  await setMcpServerCredentials(db, serverId, {
+  const credentials: McpServerCredentials = {
     ...cred,
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token ?? cred.refresh_token,
     expires_at: tokens.expires_in !== undefined ? Date.now() + tokens.expires_in * 1000 : undefined,
     scope: tokens.scope ?? cred.scope,
+  }
+  await db.transaction(async (tx) => {
+    signal.throwIfAborted()
+    const activeServer = tx
+      .select({ id: mcpServersTable.id })
+      .from(mcpServersTable)
+      .where(
+        and(
+          eq(mcpServersTable.id, serverId),
+          eq(mcpServersTable.enabled, 1),
+          isNull(mcpServersTable.deletedAt),
+          server?.url ? eq(mcpServersTable.url, server.url) : isNull(mcpServersTable.url),
+        ),
+      )
+    const updated = await tx
+      .update(mcpSecretsTable)
+      .set({ credentials: JSON.stringify(credentials) })
+      .where(
+        and(eq(mcpSecretsTable.id, serverId), eq(mcpSecretsTable.credentials, row!.credentials!), exists(activeServer)),
+      )
+      .returning({ id: mcpSecretsTable.id })
+    signal.throwIfAborted()
+    if (!updated.length) {
+      throw new Error('MCP connection changed during token refresh')
+    }
   })
 
+  signal.throwIfAborted()
   return tokens.access_token
 }

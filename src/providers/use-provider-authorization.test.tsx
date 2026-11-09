@@ -6,7 +6,7 @@ import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as mcpOAuth from '@/lib/mcp-auth/web-oauth-flow'
-import { setMcpOAuthState, clearMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
+import { setMcpOAuthState, clearMcpOAuthState, getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import * as chatGPT from './chatgpt-auth'
 import * as oauthSession from './oauth-session'
 import { getMcpServerCredentials } from '@/dal/mcp-secrets'
@@ -39,6 +39,7 @@ import { getClock } from '@/testing-library'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { useProviderAuthorization } from './use-provider-authorization'
 import { useConnectionsOAuthCallback } from '@/settings/connections/use-connections-oauth-callback'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 
 /** Exercise real credential persistence while replacing external authorization transports. */
 const setup = () => {
@@ -227,6 +228,68 @@ describe('provider authorization without a model', () => {
     expect(result.current.isPending).toBe(false)
   })
 
+  it.each(['openrouter', 'tinfoil', 'otari'] as const)(
+    'rejects a late %s grant after identity teardown even when the transport returns it',
+    async (provider) => {
+      spyOn(openrouter, 'startOpenRouterConnection').mockImplementation(async () => {
+        invalidateIdentityLifetime()
+        return 'retired-token'
+      })
+      spyOn(tinfoilAuth, 'startConnection').mockImplementation(async () => {
+        invalidateIdentityLifetime()
+        return { access_token: 'retired-token', expires_at: Date.now() + 900_000 }
+      })
+      spyOn(otari, 'connectOtari').mockImplementation(async () => {
+        invalidateIdentityLifetime()
+        return 'retired-token'
+      })
+      const { result, onConnected } = setup()
+      await act(async () => result.current.authorize({ provider, name: 'Retired authorization' }))
+      expect(await getProviderConnections(getDb())).toEqual([])
+      expect(onConnected).not.toHaveBeenCalled()
+      expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+    },
+  )
+
+  it('rejects MCP provider persistence after the initiating identity was retired', async () => {
+    spyOn(mcpOAuth, 'startMcpOAuthFlow').mockImplementation(async (args) => {
+      invalidateIdentityLifetime()
+      await args.saveCredentials!({
+        type: 'oauth',
+        access_token: 'retired-token',
+        clientId: 'client',
+        issuer: 'https://auth.example',
+        tokenEndpoint: 'https://auth.example/token',
+      })
+      return { status: 'completed' }
+    })
+    const { result, onConnected } = setup()
+    await act(async () => result.current.authorize({ provider: 'exa', name: 'Retired Exa' }))
+    expect(await getProviderConnections(getDb())).toEqual([])
+    expect(onConnected).not.toHaveBeenCalled()
+  })
+
+  it('does not clear the next identity’s MCP handshake when an old callback rejects late', async () => {
+    setMcpOAuthState({ serverId: 'oauth:exa', stateNonce: 'old-nonce' })
+    sessionStorage.setItem(
+      'thunderbolt-provider-authorization-draft',
+      JSON.stringify({
+        provider: 'exa',
+        name: 'Old Exa',
+        attempt: await getProviderConnectionAttempt(getDb(), 'exa'),
+      }),
+    )
+    spyOn(mcpOAuth, 'completeMcpOAuthFlow').mockImplementation(async () => {
+      invalidateIdentityLifetime()
+      setMcpOAuthState({ serverId: 'oauth:tavily', stateNonce: 'next-identity-nonce' })
+      throw new Error('Retired callback')
+    })
+    const { result, onConnected } = setup()
+    await act(async () => result.current.processMcpCallback({ code: 'code', state: 'old-nonce' }))
+    expect(getMcpOAuthState()).toMatchObject({ serverId: 'oauth:tavily', stateNonce: 'next-identity-nonce' })
+    expect(onConnected).not.toHaveBeenCalled()
+  })
+
   it.each(['exa', 'tavily'] as const)(
     'stores %s MCP OAuth as a provider connection without creating an MCP credential',
     async (provider) => {
@@ -406,6 +469,24 @@ describe('provider authorization without a model', () => {
     expect(await getProviderConnections(getDb())).toEqual([])
     expect(onConnected).not.toHaveBeenCalled()
     expect(result.current.manual).toBeNull()
+  })
+
+  it('retires a manual OpenRouter verifier with its initiating identity before submission', async () => {
+    spyOn(platform, 'isMobile').mockReturnValue(true)
+    spyOn(openrouter, 'prepareOpenRouterManualConnection').mockResolvedValue({
+      authorizationUrl: 'https://openrouter.ai/auth',
+      verifier: 'retired-verifier',
+    })
+    spyOn(opener, 'openUrl').mockResolvedValue()
+    const exchange = spyOn(openrouter, 'exchangeOpenRouterCode').mockResolvedValue('retired-token')
+    const { result, onConnected } = setup()
+    await act(async () => result.current.authorize({ provider: 'openrouter', name: 'Manual' }))
+    invalidateIdentityLifetime()
+    act(() => result.current.manual!.setCode('code'))
+    await act(async () => result.current.manual!.submit())
+    expect(exchange).not.toHaveBeenCalled()
+    expect(await getProviderConnections(getDb())).toEqual([])
+    expect(onConnected).not.toHaveBeenCalled()
   })
 
   it('rejects a superseded manual authorization before exchanging its code', async () => {

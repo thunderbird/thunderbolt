@@ -84,12 +84,13 @@ export const fetchProviderContent = async (
   apiKey: string,
   { url, max_length }: FetchContentParams,
   client: HttpClient,
+  signal?: AbortSignal,
 ): Promise<FetchContentData> => {
   pageUrl.parse(url)
   const limit = Math.min(64000, Math.max(1, Math.floor(max_length ?? 16000)))
   const deadline = new AbortController()
   const timeout = setTimeout(() => deadline.abort(new DOMException('Request timed out', 'TimeoutError')), 30_000)
-  const requestSignal = deadline.signal
+  const requestSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal
   try {
     const response = await client.post(
       provider === 'exa' ? 'https://api.exa.ai/contents' : 'https://api.tavily.com/extract',

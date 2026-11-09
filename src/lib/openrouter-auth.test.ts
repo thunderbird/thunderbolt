@@ -6,6 +6,7 @@ import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { createOpenRouterAuth, createProviderAuthorization, type OpenRouterAuthDependencies } from './openrouter-auth'
 import { createTinfoilAuth, TinfoilReauthorizationError } from './tinfoil-auth'
+import { invalidateIdentityLifetime } from './identity-lifetime'
 
 /** Flushes the injected asynchronous platform boundaries without advancing timers. */
 const settle = async () => {
@@ -110,6 +111,41 @@ describe('Tinfoil OAuth', () => {
 })
 
 describe('provider loopback callback ownership', () => {
+  it.each(['openrouter', 'tinfoil'] as const)(
+    'keeps the %s identity lifetime across callback and exchange',
+    async (provider) => {
+      const harness = createHarness()
+      const dependencies = {
+        ...harness.deps,
+        listenForLoopback: async (callback: (url: string) => void) => {
+          harness.state.loopbackHandler = callback
+          return () => invalidateIdentityLifetime()
+        },
+      }
+      const auth =
+        provider === 'openrouter' ? createOpenRouterAuth(dependencies) : createTinfoilAuth('client', dependencies)
+      const pending = auth.startConnection()
+      await settle()
+      harness.state.loopbackHandler?.(successfulLoopback)
+      await expect(pending).rejects.toHaveProperty('name', 'AbortError')
+      expect(harness.requests).toHaveLength(0)
+    },
+  )
+
+  it('retires native authorization and its listener when the device leaves its identity', async () => {
+    const stopLoopback = mock(async (_flowId: string) => {})
+    const harness = createHarness(true, { stopLoopback })
+    const pending = harness.auth.startConnection()
+    await settle()
+
+    invalidateIdentityLifetime()
+
+    await expect(pending).rejects.toHaveProperty('name', 'AbortError')
+    expect(stopLoopback).toHaveBeenCalledWith('expected-nonce')
+    expect(harness.removeLoopbackListener).toHaveBeenCalledTimes(1)
+    expect(harness.requests).toHaveLength(0)
+  })
+
   it('keeps the code and client registration from the same first valid callback', async () => {
     const harness = createHarness()
     const auth = createProviderAuthorization({ authorizationEndpoint: 'https://auth.example/authorize' }, harness.deps)

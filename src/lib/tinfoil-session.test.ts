@@ -16,6 +16,8 @@ import { credentialBinding, writeProviderCredentials } from '@/providers/credent
 import { providerConnectionsTable, providerConnectionSecretsTable, integrationsSecretsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
 import { tinfoilAuth, TinfoilReauthorizationError, TinfoilConnectionError } from './tinfoil-auth'
+import { invalidateIdentityLifetime } from './identity-lifetime'
+import type { RemoteCallback } from 'drizzle-orm/sqlite-proxy'
 
 /** Deterministic stand-in for the browser's origin-wide Web Lock. */
 const serialLock = () => {
@@ -70,6 +72,42 @@ describe('Tinfoil session lifecycle', () => {
     const { auth, session } = harness()
     expect(await session.getAccessToken()).toBe('new-access')
     expect(auth.refresh).not.toHaveBeenCalled()
+  })
+  it('does not save a late refresh after identity teardown when local data is retained', async () => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)
+    const before = await getIntegrationCredentials(getDb(), 'tinfoil')
+    const { auth, session } = harness()
+    auth.refresh.mockImplementation(async () => {
+      invalidateIdentityLifetime()
+      return renewed
+    })
+    await expect(session.getAccessToken()).rejects.toHaveProperty('name', 'AbortError')
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual(before)
+  })
+  it.each(['legacy', 'canonical'] as const)('rolls back a %s refresh interrupted after the SQL write', async (kind) => {
+    if (kind === 'legacy') {
+      await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)
+    } else {
+      await saveCanonicalSession()
+    }
+    const before = await getIntegrationCredentials(getDb(), 'tinfoil')
+    const { session: provider } = harness()
+    const session = (getDb() as unknown as { session: { client: RemoteCallback } }).session
+    const execute = session.client
+    const table = kind === 'legacy' ? 'integrations_secrets' : 'provider_connection_secrets'
+    const write = spyOn(session, 'client').mockImplementation(async (sql, params, method) => {
+      const result = await execute(sql, params, method)
+      if (sql.startsWith(`update "${table}"`)) {
+        invalidateIdentityLifetime()
+      }
+      return result
+    })
+    try {
+      await expect(provider.getAccessToken()).rejects.toHaveProperty('name', 'AbortError')
+      expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual(before)
+    } finally {
+      write.mockRestore()
+    }
   })
   it('serializes concurrent refreshes and persists the rotated token before other readers proceed', async () => {
     await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)

@@ -12,6 +12,7 @@ import type { ProviderConnectionAttempt } from '@/lib/provider-connection-attemp
 import { isMobile, isTauri } from '@/lib/platform'
 import { mobileOAuthRedirectUri } from '@/lib/oauth-redirect'
 import { parseOAuthReturnPath } from '@/lib/oauth-return-route'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 export type OtariReturnContext = 'onboarding' | 'models' | 'connections'
 const storageKey = 'thunderbolt.otari.authorization'
@@ -125,10 +126,11 @@ export const discardOtariBrowserDraft = (id: string, storage?: Storage): void =>
 export const startOtariBrowserConnection = async (
   origin: string,
   context: OtariReturnContext,
-  signal: AbortSignal,
+  callerSignal: AbortSignal,
   attempt: ProviderConnectionAttempt,
   dependencies: Partial<typeof defaultDependencies> = {},
 ): Promise<void> => {
+  const signal = AbortSignal.any([callerSignal, getIdentitySignal()])
   signal.throwIfAborted()
   const deps = { ...defaultDependencies, ...dependencies }
   const current = deps.currentUrl()
@@ -226,6 +228,7 @@ export const captureOtariBrowserReturn = (
           ? msg`Otari returned an invalid response. Please connect again.`
           : null
   const controller = new AbortController()
+  const signal = AbortSignal.any([controller.signal, getIdentitySignal()])
   let completion: Promise<string> | undefined
   browserReturn = {
     id: flow.state,
@@ -237,15 +240,17 @@ export const captureOtariBrowserReturn = (
     cancel: () => controller.abort(),
     complete: () => {
       completion ??= (async () => {
-        controller.signal.throwIfAborted()
+        signal.throwIfAborted()
         if (error) {
           throw new Error('Otari authorization failed')
         }
-        return deps.exchange(
+        const token = await deps.exchange(
           flow.origin,
           { code: code!, verifier: flow.verifier, redirectUri: flow.redirectUri },
-          controller.signal,
+          signal,
         )
+        signal.throwIfAborted()
+        return token
       })()
       return completion
     },

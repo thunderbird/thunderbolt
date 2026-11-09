@@ -57,3 +57,13 @@ export const setOAuthState = (update: Partial<OAuthState>): void => {
 export const clearOAuthState = (): void => {
   localStorage.removeItem(storageKey)
 }
+
+/** Forget provider and widget OAuth loading markers when this device leaves its identity. */
+export const clearAllOAuthConnectingState = (): void => {
+  const keys = Array.from({ length: sessionStorage.length }, (_, index) => sessionStorage.key(index))
+  for (const key of keys) {
+    if (key?.startsWith('oauth_connecting_')) {
+      sessionStorage.removeItem(key)
+    }
+  }
+}

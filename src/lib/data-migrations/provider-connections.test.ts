@@ -3,8 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 import { afterAll, beforeEach, expect, it } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { getDb } from '@/db/database'
+import { Database, getDb } from '@/db/database'
+import { applySchema } from '@/db/apply-schema'
+import { getModel, getSelectedModel } from '@/dal/models'
+import { getSettings, updateSettings } from '@/dal/settings'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import {
   integrationsSecretsTable,
   modelsSecretsTable,
@@ -17,6 +24,7 @@ import {
   getProviderConnections,
   disconnectProviderConnection,
   saveProviderConnectionInTransaction,
+  updateProviderConnection,
 } from '@/dal/provider-connections'
 import { credentialBinding } from '@/providers/credentials'
 import { migrateProviderConnections } from './provider-connections'
@@ -288,4 +296,126 @@ it('retains a legacy OAuth reference when another device has linked the model to
   await syncedConnection('different-device-auth', { provider: 'tinfoil', url: null })
   await migrateProviderConnections(getDb())
   expect((await getDb().select().from(modelsSecretsTable).get())?.oauthProvider).toBe('tinfoil')
+})
+
+it('persists an upgraded model and its local disconnect across actual database restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'thunderbolt-provider-upgrade-'))
+  const path = join(directory, 'profile.sqlite')
+  const original = new Database()
+  const reopened = new Database()
+  const restarted = new Database()
+  try {
+    const db = await original.initialize({ type: 'bun-sqlite', path })
+    await applySchema(db)
+    await db.insert(modelsTable).values({
+      id: 'old-profile',
+      provider: 'custom',
+      name: 'Existing model',
+      model: 'existing',
+      url: 'http://localhost:11434/v1/',
+      enabled: 1,
+      isSystem: 0,
+    })
+    await db.insert(modelsSecretsTable).values({ modelId: 'old-profile', apiKey: 'existing-device-key' })
+    await updateSettings(db, { selected_model: 'old-profile' })
+    await migrateProviderConnections(db)
+    await original.close()
+
+    const restored = await reopened.initialize({ type: 'bun-sqlite', path })
+    await migrateProviderConnections(restored)
+    expect(await getModel(restored, 'old-profile')).toMatchObject({
+      id: 'old-profile',
+      model: 'existing',
+      enabled: 1,
+      providerConnectionId: 'legacy-model:old-profile',
+      apiKey: 'existing-device-key',
+      url: 'http://localhost:11434/v1',
+      connectionReady: true,
+    })
+    expect((await getSelectedModel(restored)).id).toBe('old-profile')
+    await disconnectProviderConnection(restored, 'legacy-model:old-profile')
+    await reopened.close()
+
+    const disconnected = await restarted.initialize({ type: 'bun-sqlite', path })
+    await migrateProviderConnections(disconnected)
+    expect(await getModel(disconnected, 'old-profile')).toMatchObject({ enabled: 1, connectionReady: false })
+    expect(await getProviderCredentials(disconnected, 'legacy-model:old-profile')).toBeNull()
+    expect((await disconnected.select().from(modelsSecretsTable).get())?.apiKey).toBeNull()
+    expect(await getSettings(disconnected, { selected_model: String })).toEqual({ selectedModel: 'old-profile' })
+  } finally {
+    await original.close()
+    await reopened.close()
+    await restarted.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+it('keeps different local keys and selected-model intent when metadata moves between two profile databases', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'thunderbolt-provider-devices-'))
+  const deviceA = new Database()
+  const deviceB = new Database()
+  const localSettings = useLocalSettingsStore.getState()
+  useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
+  try {
+    const a = await deviceA.initialize({ type: 'bun-sqlite', path: join(directory, 'device-a.sqlite') })
+    const b = await deviceB.initialize({ type: 'bun-sqlite', path: join(directory, 'device-b.sqlite') })
+    for (const [db, apiKey] of [
+      [a, 'device-a-key'],
+      [b, 'device-b-key'],
+    ] as const) {
+      await applySchema(db)
+      await db.insert(modelsTable).values({
+        id: 'shared-model',
+        provider: 'custom',
+        name: 'Shared model',
+        model: 'shared',
+        url: 'https://approved.example/v1',
+        enabled: 1,
+        isSystem: 0,
+      })
+      await db.insert(modelsSecretsTable).values({ modelId: 'shared-model', apiKey })
+      await updateSettings(db, { selected_model: 'shared-model' })
+    }
+    await migrateProviderConnections(a)
+    const [metadata] = await a.select().from(providerConnectionsTable)
+    const [model] = await a.select().from(modelsTable)
+    // Emulate metadata-first delivery; local-only tables are never copied.
+    await b.insert(providerConnectionsTable).values(metadata)
+    await b.update(modelsTable).set(model).where(eq(modelsTable.id, model.id))
+    expect(await getProviderCredentials(b, metadata.id)).toBeNull()
+    await migrateProviderConnections(b)
+    expect((await getProviderCredentials(a, metadata.id))?.apiKey).toBe('device-a-key')
+    expect((await getProviderCredentials(b, metadata.id))?.apiKey).toBe('device-b-key')
+    expect((await getSelectedModel(b)).id).toBe('shared-model')
+
+    await updateProviderConnection(a, metadata.id, { name: 'Renamed elsewhere', enabled: false })
+    const [disabled] = await a.select().from(providerConnectionsTable)
+    await b.update(providerConnectionsTable).set(disabled).where(eq(providerConnectionsTable.id, metadata.id))
+    await migrateProviderConnections(b)
+    expect(await getModel(b, model.id)).toMatchObject({
+      enabled: 1,
+      connectionName: 'Renamed elsewhere',
+      connectionReady: false,
+    })
+    expect(await getSettings(b, { selected_model: String })).toEqual({ selectedModel: 'shared-model' })
+    await b.update(providerConnectionsTable).set({ enabled: 1 }).where(eq(providerConnectionsTable.id, metadata.id))
+    expect((await getSelectedModel(b)).id).toBe('shared-model')
+    expect((await getProviderCredentials(b, metadata.id))?.apiKey).toBe('device-b-key')
+
+    await b
+      .update(providerConnectionsTable)
+      .set({ url: 'https://unapproved.example/v1' })
+      .where(eq(providerConnectionsTable.id, metadata.id))
+    await migrateProviderConnections(b)
+    expect(await getProviderCredentials(b, metadata.id)).toBeNull()
+    expect(await getModel(b, model.id)).toMatchObject({ enabled: 1, connectionReady: false })
+    expect(await getProviderCredentials(a, metadata.id)).toBeNull()
+    const [local] = await b.select().from(providerConnectionSecretsTable)
+    expect(JSON.parse(local.credentials!).apiKey).toBe('device-b-key')
+  } finally {
+    useLocalSettingsStore.setState(localSettings)
+    await deviceA.close()
+    await deviceB.close()
+    await rm(directory, { recursive: true, force: true })
+  }
 })

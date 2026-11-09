@@ -53,6 +53,14 @@ import {
   ValidationError,
   type StoredKeyPair,
 } from '@/crypto'
+import { supportsKeyStoreLock, withKeyStoreLock, type KeyStoreLock } from '@/crypto/key-store-lock'
+import { requireEncryptedSyncSupport } from '@/lib/encrypted-sync-support'
+import { createEncryptionOperationClient } from './encryption-request'
+import {
+  captureKeyStorageLifetime,
+  EncryptionOperationCancelledError,
+  getEncryptionOperationSignal,
+} from '@/crypto/key-storage-lifetime'
 import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { clearRecoveryPhrasePending, markRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { getDeviceDisplayName } from '@/lib/platform'
@@ -324,8 +332,21 @@ const getUserId = (): string => {
   return userId
 }
 
+/** Fence account-key mutations to the account and key-store lifetime that started them. */
+const captureEncryptionOperation = (): (() => void) => {
+  const assertLifetime = captureKeyStorageLifetime()
+  const userId = getCachedSession()?.user?.id
+  return () => {
+    assertLifetime()
+    if (getCachedSession()?.user?.id !== userId) {
+      throw new EncryptionOperationCancelledError()
+    }
+  }
+}
+
 /** Get existing key pairs from IndexedDB or generate and store new ones. */
 const getOrCreateKeyPair = async (): Promise<StoredKeyPair> => {
+  const assertCurrent = captureEncryptionOperation()
   const existing = await getKeyPair()
   if (existing) {
     return existing
@@ -333,6 +354,7 @@ const getOrCreateKeyPair = async (): Promise<StoredKeyPair> => {
 
   const ecdhKeyPair = await generateKeyPair()
   const mlkemKeyPair = generateMlKemKeyPair()
+  assertCurrent()
   await storeKeyPair(ecdhKeyPair.privateKey, ecdhKeyPair.publicKey, mlkemKeyPair.publicKey, mlkemKeyPair.secretKey)
   return {
     ecdhPrivateKey: ecdhKeyPair.privateKey,
@@ -374,6 +396,7 @@ const readCanaryKey = async (httpClient: HttpClient): Promise<CryptoKey> => {
  * step instead.
  */
 const getCanaryKey = async (httpClient: HttpClient, opts: { refresh?: boolean } = {}): Promise<CryptoKey> => {
+  const assertCurrent = captureEncryptionOperation()
   try {
     return await readCanaryKey(httpClient)
   } catch (err) {
@@ -383,6 +406,7 @@ const getCanaryKey = async (httpClient: HttpClient, opts: { refresh?: boolean } 
     if (opts.refresh === false) {
       throw new StaleKeyMaterialError({ cause: err })
     }
+    assertCurrent()
     await refreshAK(httpClient)
     return readCanaryKey(httpClient)
   }
@@ -585,6 +609,7 @@ const buildPasskeySlot = async (
  * recovery slot. A substituted slot fails closed rather than receiving the AK.
  */
 const readStoredPasskeyPlan = async (httpClient: HttpClient, canaryKey: CryptoKey): Promise<PasskeyPlan> => {
+  const assertCurrent = captureEncryptionOperation()
   const metadata = await fetchEncryptionMetadata(httpClient)
   if (!metadata.passkey_credential_id) {
     return { mode: 'none' }
@@ -600,6 +625,7 @@ const readStoredPasskeyPlan = async (httpClient: HttpClient, canaryKey: CryptoKe
     passkeyMlkemPublicKey: metadata.passkey_mlkem_public_key,
   })
   if (!verified) {
+    assertCurrent()
     await throwIfRotatedElsewhere(httpClient, metadata.key_version)
     throw new PasskeyAnchorError()
   }
@@ -619,10 +645,12 @@ const readStoredPasskeyPlan = async (httpClient: HttpClient, canaryKey: CryptoKe
  * instead of telling the user to remove a working passkey.
  */
 const throwIfRotatedElsewhere = async (httpClient: HttpClient, serverKeyVersion: number): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const localKeyVersion = await getKeyVersion()
   if (localKeyVersion === null || serverKeyVersion <= localKeyVersion) {
     return
   }
+  assertCurrent()
   await refreshAKForRotation(httpClient)
   throw new RotationStaleError()
 }
@@ -648,13 +676,15 @@ const importSlotPublicKeys = async (ecdh: string, mlkem: string): Promise<Recove
  * Idempotent: reuses existing key pair from IndexedDB if present.
  * Returns the registration response so the caller can determine first vs additional device.
  */
-export const registerThisDevice = async (httpClient: HttpClient): Promise<RegisterDeviceResponse> => {
+const registerThisDevice = async (httpClient: HttpClient): Promise<RegisterDeviceResponse> => {
+  const assertCurrent = captureEncryptionOperation()
   const keyPair = await getOrCreateKeyPair()
 
   const publicKeyBase64 = await exportPublicKey(keyPair.ecdhPublicKey)
   const mlkemPublicKeyBase64 = exportMlKemPublicKey(keyPair.mlkemPublicKey)
   const deviceId = getDeviceId()
 
+  assertCurrent()
   return registerDevice(httpClient, {
     deviceId,
     publicKey: publicKeyBase64,
@@ -691,6 +721,7 @@ let inflightBind: { token: string | null; promise: Promise<void> } | null = null
  * is nothing to bind and registration will link the session anyway.
  */
 export const ensureSessionBound = async (httpClient: HttpClient): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const keyPair = await getKeyPair()
   if (!keyPair) {
     return
@@ -708,7 +739,9 @@ export const ensureSessionBound = async (httpClient: HttpClient): Promise<void> 
   const bind = async () => {
     const { sealed } = await fetchBindChallenge(httpClient)
     const nonce = await openBindNonce(keyPair.ecdhPrivateKey, sealed)
+    assertCurrent()
     await bindSession(httpClient, { deviceId: getDeviceId(), nonce })
+    assertCurrent()
     lastBoundToken = token
   }
   const entry = { token, promise: bind() }
@@ -791,6 +824,7 @@ const localDek0 = async (): Promise<CryptoKey | null> => {
  * reader before replacing it rather than minting blind.
  */
 const reconcileKeyringAnchor = async (): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const anchor = await getKeyringAnchor()
   if (anchor?.version === anchorVersion) {
     return
@@ -799,7 +833,9 @@ const reconcileKeyringAnchor = async (): Promise<void> => {
   if (!dek0) {
     return
   }
-  await storeKeyringAnchor(await mintKeyringAnchor(dek0))
+  const mintedAnchor = await mintKeyringAnchor(dek0)
+  assertCurrent()
+  await storeKeyringAnchor(mintedAnchor)
 }
 
 /**
@@ -857,6 +893,7 @@ const assertCandidateAKIsOurs = async (candidate: CryptoKey, keyring: FetchedKey
  * already had and carries on using them.
  */
 const acceptCandidateAK = async (httpClient: HttpClient, candidate: CryptoKey): Promise<FetchedKeyring> => {
+  const assertCurrent = captureEncryptionOperation()
   await reconcileKeyringAnchor()
   const keyring = await fetchKeyring(httpClient)
   try {
@@ -868,6 +905,7 @@ const acceptCandidateAK = async (httpClient: HttpClient, candidate: CryptoKey): 
     }
     throw err
   }
+  assertCurrent()
   await storeAK(candidate)
   return keyring
 }
@@ -893,9 +931,11 @@ const unwrapEnvelopeAK = async (wrappedCK: string): Promise<OpenedAkEnvelope> =>
  * reads 404 as "not approved yet" narrows that catch itself.
  */
 const adoptEnvelopeAK = async (httpClient: HttpClient): Promise<{ keyring: FetchedKeyring; primaryKeyId: KeyId }> => {
+  const assertCurrent = captureEncryptionOperation()
   const { wrappedCK, attestation } = await fetchMyEnvelope(httpClient)
   const envelope = await unwrapEnvelopeAK(wrappedCK)
   await assertFirstEnvelopeRecipient(httpClient, envelope.ak, attestation)
+  assertCurrent()
   const keyring = await acceptCandidateAK(httpClient, envelope.ak)
   return { keyring, primaryKeyId: envelope.primaryKeyId }
 }
@@ -972,6 +1012,7 @@ const keyringUnwrapsUnderLocalAK = async (keyring: FetchedKeyring): Promise<bool
  *   have moved, so it is deliberately left alone.
  */
 const applyKeyring = async (keyring: FetchedKeyring, adoptedPrimaryKeyId?: KeyId): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   // An empty keyring is never a legitimate state for an account that has one:
   // DEK "0" is minted at setup and retained for the life of the account. Left
   // unguarded it is DESTRUCTIVE rather than merely withholding — the currency
@@ -986,11 +1027,14 @@ const applyKeyring = async (keyring: FetchedKeyring, adoptedPrimaryKeyId?: KeyId
   }
   // Witness DEK "0" BEFORE the staging below, so an established device mints
   // from the blob it already held rather than the one now arriving.
+  assertCurrent()
   await reconcileKeyringAnchor()
+  assertCurrent()
   await stageWrappedDEKs(keyring.keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key })))
   // Mirror the server's keyring rather than accumulating a superset of it: a
   // key_id that is gone server-side would otherwise keep a stale wrapped blob
   // here forever, which resolves to a permanent `unwrap-failed` (THU-871).
+  assertCurrent()
   await pruneStagedDEKs(keyring.keys.map((key) => key.key_id))
   // A non-mintable id is a steer — most sharply onto the decrypt-only `"v1"`
   // slot (THU-876) — even when it arrives sealed by an honest writer's bug.
@@ -999,10 +1043,12 @@ const applyKeyring = async (keyring: FetchedKeyring, adoptedPrimaryKeyId?: KeyId
   // failing here would turn a steer into a read outage.
   const pointerAdopted = adoptedPrimaryKeyId !== undefined && isMintableKeyId(adoptedPrimaryKeyId)
   if (pointerAdopted) {
+    assertCurrent()
     await storePrimaryKeyId(adoptedPrimaryKeyId)
   } else if (adoptedPrimaryKeyId !== undefined) {
     console.error(`[e2ee] refused a non-mintable primary key_id from the adopted envelope: '${adoptedPrimaryKeyId}'`)
   }
+  assertCurrent()
   await storeKeyVersion(keyring.keyVersion)
   // Again, for a device being ESTABLISHED: before the staging above it had no
   // local DEK "0" to witness, so the call at the top could not mint. Idempotent
@@ -1014,6 +1060,7 @@ const applyKeyring = async (keyring: FetchedKeyring, adoptedPrimaryKeyId?: KeyId
   // since a new device shares no secret with the account and an existing one
   // holds only blobs the server previously served. See the residuals in
   // `.red-team/thu-869-plan.md`.
+  assertCurrent()
   await reconcileKeyringAnchor()
   // The plain invalidation deliberately KEEPS the codec's in-memory primary
   // pointer, so an adoption that moved it must use the pointer-clearing variant
@@ -1022,8 +1069,10 @@ const applyKeyring = async (keyring: FetchedKeyring, adoptedPrimaryKeyId?: KeyId
   // keeps encoding under the pre-rotation primary — the DEK the revoked device
   // retains — for the rest of its session.
   if (pointerAdopted) {
+    assertCurrent()
     invalidateAdoptedKeyring()
   } else {
+    assertCurrent()
     invalidateKeyringCache()
   }
 }
@@ -1044,19 +1093,23 @@ const applyKeyring = async (keyring: FetchedKeyring, adoptedPrimaryKeyId?: KeyId
  * Track F wires the responder's zero-arg `stageKeyring: () => Promise<void>`
  * with `() => stageKeyring(client)`.
  */
-export const stageKeyring = async (httpClient: HttpClient): Promise<void> => {
+const stageKeyring = async (httpClient: HttpClient): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const keyring = await fetchKeyring(httpClient)
   // The fast path also requires a local pointer: the pointer's only trusted
   // source is the AK envelope (THU-890), so a device that somehow lost its
   // pointer alone must re-adopt to restore it — never take the metadata value.
   if ((await getPrimaryKeyId()) !== null && (await keyringUnwrapsUnderLocalAK(keyring))) {
+    assertCurrent()
     await applyKeyring(keyring)
     return
   }
   // Behind a rotation (or missing its pointer). Adopt, and apply the keyring
   // the adoption VERIFIED — not the one fetched above, which was never tied to
   // the new AK — with the pointer the envelope sealed.
+  assertCurrent()
   const adopted = await adoptEnvelopeAK(httpClient)
+  assertCurrent()
   await applyKeyring(adopted.keyring, adopted.primaryKeyId)
 }
 
@@ -1074,8 +1127,10 @@ export const stageKeyring = async (httpClient: HttpClient): Promise<void> => {
  * Track F wires the responder's zero-arg `refreshAK: () => Promise<void>` with
  * `() => refreshAK(client)`.
  */
-export const refreshAK = async (httpClient: HttpClient): Promise<void> => {
+const refreshAK = async (httpClient: HttpClient): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const adopted = await adoptEnvelopeAK(httpClient)
+  assertCurrent()
   await applyKeyring(adopted.keyring, adopted.primaryKeyId)
 }
 
@@ -1094,10 +1149,13 @@ export const refreshAK = async (httpClient: HttpClient): Promise<void> => {
  * timing artefacts — re-reading cannot change them, and they must surface.
  */
 const refreshAKForRotation = async (httpClient: HttpClient): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   try {
+    assertCurrent()
     await refreshAK(httpClient)
   } catch (err) {
     if (err instanceof AKAnchorError && err.reason === 'unopenable') {
+      assertCurrent()
       await refreshAK(httpClient)
       return
     }
@@ -1116,7 +1174,8 @@ const refreshAKForRotation = async (httpClient: HttpClient): Promise<void> => {
  * bootstrap envelope. Returns the 24-word recovery key. Must be called after
  * `registerThisDevice` (key pair already in IndexedDB).
  */
-export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<string> => {
+const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<string> => {
+  const assertCurrent = captureEncryptionOperation()
   const keyPair = await getKeyPair()
   if (!keyPair) {
     throw new Error('Key pair not found — call registerThisDevice first')
@@ -1152,6 +1211,7 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   // account whose recovery slot nobody can open, with nothing recording that a
   // phrase is owed. Setting it first costs at most one unnecessary prompt when
   // the call really did fail before committing, which is the right way round.
+  assertCurrent()
   markRecoveryPhrasePending()
 
   // Self-signed: this device minted the AK and the canary, and its own public
@@ -1166,6 +1226,8 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
     mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
   })
 
+  const orgEnvelope = await buildOrgEnvelope(extractableAK)
+  assertCurrent()
   await storeEnvelope(httpClient, {
     deviceId: getDeviceId(),
     wrappedCK,
@@ -1176,7 +1238,7 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
     kdfSalt: recovery.kdfSalt,
     wrappedKeys: [{ keyId: initialKeyId, wrappedKey }],
     ...recoverySlot,
-    orgEnvelope: await buildOrgEnvelope(extractableAK),
+    orgEnvelope,
   })
 
   // AK stored LAST, so a crash mid-sequence leaves no AK rather than an AK with
@@ -1187,15 +1249,21 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   // account-wide invariant, and `hasStagedAK` does not rely on it being one: it
   // arms the quarantine, and an AK with an incomplete keyring makes `codec.encode`
   // fail CLOSED, which is the safe side of that window.
+  assertCurrent()
   await storeDEK(initialKeyId, wrappedKey)
+  assertCurrent()
   await storePrimaryKeyId(initialKeyId)
+  assertCurrent()
   await storeKeyVersion(1)
+  assertCurrent()
   await storeAK(ak)
   // Witness DEK "0" now, from an AK this device generated itself — the most
   // trustworthy moment that will ever exist on this account. Waiting for the
   // first `stageKeyring` would leave a window in which an adoption could be
   // driven before any witness exists.
+  assertCurrent()
   await reconcileKeyringAnchor()
+  assertCurrent()
   invalidateKeyringCache()
 
   return recovery.recoveryPhrase
@@ -1224,13 +1292,14 @@ export const getThisDeviceApprovalFingerprint = async (): Promise<string> => {
  * served AK against the local witness, then rewrap its envelope for that recipient.
  * The stored non-extractable AK is never exported. An 'approve' proof gates the POST.
  */
-export const approveDevice = async (
+const approveDevice = async (
   httpClient: HttpClient,
   pendingDeviceId: string,
   pendingEcdhPublicKeyBase64: string,
   pendingMlkemPublicKeyBase64: string,
   fingerprint: string,
 ): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const anchor = {
     userId: getUserId(),
     deviceId: pendingDeviceId,
@@ -1245,12 +1314,14 @@ export const approveDevice = async (
     throw new Error('Key pair not found in IndexedDB')
   }
 
+  assertCurrent()
   const [{ wrappedCK: myWrappedCK }, proof] = await Promise.all([
     fetchMyEnvelope(httpClient),
     buildProof(httpClient, 'approve'),
   ])
   const pendingEcdhPub = await importPublicKey(pendingEcdhPublicKeyBase64)
   const pendingMlkemPub = importMlKemPublicKey(pendingMlkemPublicKeyBase64)
+  assertCurrent()
   await reconcileKeyringAnchor()
   const candidate = await unwrapAK(myWrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
   await assertCandidateAKIsOurs(candidate.ak, await fetchKeyring(httpClient))
@@ -1263,14 +1334,18 @@ export const approveDevice = async (
   )
 
   const { signDeviceAttestation } = await loadCanary()
+  assertCurrent()
   const attestation = await signDeviceAttestation(await getCanaryKey(httpClient), anchor)
 
+  assertCurrent()
   await storeEnvelope(httpClient, { deviceId: pendingDeviceId, wrappedCK, attestation, proof })
 }
 
 /** Deny a pending device, gated by a 'deny' challenge proof. */
-export const denyDeviceWithProof = async (httpClient: HttpClient, deviceId: string): Promise<void> => {
+const denyDeviceWithProof = async (httpClient: HttpClient, deviceId: string): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const proof = await buildProof(httpClient, 'deny')
+  assertCurrent()
   await denyDeviceApi(httpClient, deviceId, proof)
 }
 
@@ -1280,12 +1355,10 @@ export const denyDeviceWithProof = async (httpClient: HttpClient, deviceId: stri
  * op — attesting a device is a trusted-device admin action); the node_id then
  * syncs down via PowerSync.
  */
-export const setDeviceNodeIdWithProof = async (
-  httpClient: HttpClient,
-  deviceId: string,
-  nodeId: string,
-): Promise<void> => {
+const setDeviceNodeIdWithProof = async (httpClient: HttpClient, deviceId: string, nodeId: string): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const proof = await buildProof(httpClient, 'approve')
+  assertCurrent()
   await setDeviceNodeIdApi(httpClient, deviceId, nodeId, proof)
 }
 
@@ -1295,6 +1368,7 @@ export const setDeviceNodeIdWithProof = async (
  * (the backend skips verification for those accounts).
  */
 const buildRevokeProof = async (httpClient: HttpClient, canaryKey?: CryptoKey): Promise<ChallengeProof | undefined> => {
+  const assertCurrent = captureEncryptionOperation()
   const metadata = await fetchEncryptionMetadata(httpClient).catch((err: unknown) => {
     if (err instanceof HttpError && err.response.status === 404) {
       return null
@@ -1304,6 +1378,8 @@ const buildRevokeProof = async (httpClient: HttpClient, canaryKey?: CryptoKey): 
   if (!metadata || metadata.signing_public_key == null) {
     return undefined
   }
+  assertCurrent()
+  requireEncryptedSyncSupport()
   return buildProof(httpClient, 'revoke', canaryKey)
 }
 
@@ -1317,17 +1393,19 @@ const buildRevokeProof = async (httpClient: HttpClient, canaryKey?: CryptoKey): 
  * `revokeDeviceAndRotate` so the whole revocation recovers it once instead of
  * once per step.
  */
-export const revokeDeviceWithProof = async (
+const revokeDeviceWithProof = async (
   httpClient: HttpClient,
   deviceId: string,
   canaryKey?: CryptoKey,
 ): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const proof = await buildRevokeProof(httpClient, canaryKey).catch((err: unknown) => {
     trackError(
       createHandleError('CANARY_EXTRACTION_FAILED', 'Failed to build challenge proof during device revocation', err),
     )
     throw err
   })
+  assertCurrent()
   await revokeDeviceApi(httpClient, deviceId, proof)
 }
 
@@ -1340,7 +1418,8 @@ export const revokeDeviceWithProof = async (
  * On success also stages the full DEK keyring + primary key_id for the worker.
  * Returns true if the AK was unwrapped and stored, false if not yet approved.
  */
-export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<boolean> => {
+const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<boolean> => {
+  const assertCurrent = captureEncryptionOperation()
   // The 404 catch is scoped to the ENVELOPE fetch alone. A single try/catch
   // around the whole body would also read a 404 from the keyring or metadata
   // route as "this device is not approved yet" and poll forever.
@@ -1356,7 +1435,10 @@ export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<bo
 
   const opened = await unwrapEnvelopeAK(envelope.wrappedCK)
   await assertFirstEnvelopeRecipient(httpClient, opened.ak, envelope.attestation)
-  await applyKeyring(await acceptCandidateAK(httpClient, opened.ak), opened.primaryKeyId)
+  assertCurrent()
+  const keyring = await acceptCandidateAK(httpClient, opened.ak)
+  assertCurrent()
+  await applyKeyring(keyring, opened.primaryKeyId)
   return true
 }
 
@@ -1371,7 +1453,8 @@ export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<bo
  * device with a challenge proof (pending devices may fetch wrapped keys and
  * challenges — the signature is the gate).
  */
-export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: string): Promise<void> => {
+const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: string): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const { decodeRecoveryKey, deriveRecoveryKeyPairFromSeed } = await loadRecoveryKey()
   const seed = decodeRecoveryKey(recoveryPhrase)
 
@@ -1405,6 +1488,7 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
     throw new ValidationError('Invalid recovery key')
   }
 
+  assertCurrent()
   await selfApproveWithVirtualDevice(httpClient, {
     wrappedAK: metadata.recovery_wrapped_ak,
     keyPair: recoveryKeyPair,
@@ -1420,10 +1504,11 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
  * passkey keypair, check it matches the stored slot, open the slot to get the AK,
  * verify it against the canary, then self-approve.
  */
-export const unlockWithPasskey = async (
+const unlockWithPasskey = async (
   httpClient: HttpClient,
   { credentialId, prfOutput }: { credentialId: string; prfOutput: Uint8Array },
 ): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const metadata = await fetchEncryptionMetadata(httpClient)
   if (
     metadata.passkey_credential_id !== credentialId ||
@@ -1445,6 +1530,7 @@ export const unlockWithPasskey = async (
     throw new ValidationError('This passkey cannot unlock sync for this account.')
   }
 
+  assertCurrent()
   await selfApproveWithVirtualDevice(httpClient, {
     wrappedAK: metadata.passkey_wrapped_ak,
     keyPair: passkeyKeyPair,
@@ -1471,6 +1557,7 @@ const selfApproveWithVirtualDevice = async (
     invalidMessage,
   }: { wrappedAK: string; keyPair: StoredKeyPair; canaryIv: string; canaryCtext: string; invalidMessage: string },
 ): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const { ak, primaryKeyId: sealedPrimaryKeyId } = await unwrapAK(
     wrappedAK,
     virtualKeyPair.ecdhPrivateKey,
@@ -1479,11 +1566,13 @@ const selfApproveWithVirtualDevice = async (
 
   // Register first: the keys/challenge endpoints require a registered
   // (pending is fine) caller device.
+  assertCurrent()
   const keyPair = await getOrCreateKeyPair()
   const publicKeyBase64 = await exportPublicKey(keyPair.ecdhPublicKey)
   const mlkemPublicKeyBase64 = exportMlKemPublicKey(keyPair.mlkemPublicKey)
   const deviceId = getDeviceId()
 
+  assertCurrent()
   await registerDevice(httpClient, {
     deviceId,
     publicKey: publicKeyBase64,
@@ -1517,6 +1606,7 @@ const selfApproveWithVirtualDevice = async (
     keyPair.ecdhPublicKey,
     keyPair.mlkemPublicKey,
   )
+  assertCurrent()
   const proof = await buildProof(httpClient, 'approve', canaryKey)
   // Self-attested, like bootstrap: the keys being signed are this device's own,
   // so the server had no hand in them. The canary key comes from the AK the
@@ -1528,6 +1618,7 @@ const selfApproveWithVirtualDevice = async (
     ecdhPublicKey: await exportPublicKey(keyPair.ecdhPublicKey),
     mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
   })
+  assertCurrent()
   await storeEnvelope(httpClient, { deviceId, wrappedCK, attestation, proof })
 
   // DELIBERATELY NOT gated by the DEK "0" witness check: the phrase is the
@@ -1548,14 +1639,19 @@ const selfApproveWithVirtualDevice = async (
   // An established device with a poisoned witness recovers by signing out, which
   // wipes the store outright.
   const hadLocalAK = (await getAK()) !== null
+  assertCurrent()
   await storeAK(ak)
   if (!hadLocalAK) {
-    await storeKeyringAnchor(await mintKeyringAnchor(dek0))
+    const mintedAnchor = await mintKeyringAnchor(dek0)
+    assertCurrent()
+    await storeKeyringAnchor(mintedAnchor)
   }
   // The pointer sealed into the recovery envelope is this device's only trusted
   // source for it (THU-890) — stored BEFORE `stageKeyring`, whose fast path
   // deliberately never writes a pointer.
+  assertCurrent()
   await storePrimaryKeyId(sealedPrimaryKeyId)
+  assertCurrent()
   await stageKeyring(httpClient)
 }
 
@@ -1768,13 +1864,16 @@ const runAKRotation = async (
   opts: RotateAKOptions,
   resolvePasskey: ResolvePasskeyPlan = (canaryKey) => readStoredPasskeyPlan(httpClient, canaryKey),
 ): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   // Recovered once and used twice: the 'rotate' proof and the recovery-anchor
   // verification both need the OLD epoch's signing key. Deriving it from local
   // key material is what makes the anchor check server-independent.
+  assertCurrent()
   const oldCanaryKey = await getCanaryKey(httpClient)
 
   // Proof FIRST — it must be signed with the OLD signing key, which the server
   // still holds until the rotate transaction commits.
+  assertCurrent()
   const proof = await buildProof(httpClient, 'rotate', oldCanaryKey)
 
   const oldAK = await getAK()
@@ -1782,7 +1881,9 @@ const runAKRotation = async (
     throw new Error('Account key not found in IndexedDB')
   }
 
+  assertCurrent()
   const recovery = await resolveRecovery(oldCanaryKey)
+  assertCurrent()
   const passkey = await resolvePasskey(oldCanaryKey)
   // Random and machine-only — wrapping it to the recovery public keys needs no
   // private key, which is what makes a phrase-preserving rotation possible.
@@ -1816,6 +1917,7 @@ const runAKRotation = async (
   // so any device can offer to finish it, and `src/settings/devices.tsx` gates
   // its resume action on that list rather than on `revokedAt`.
   if (strandedKeyIds.includes(initialKeyId)) {
+    assertCurrent()
     await refreshAKForRotation(httpClient)
     throw new RotationStaleError()
   }
@@ -1893,11 +1995,13 @@ const runAKRotation = async (
   // discards, and the OLD phrase dead with it. The two branches below that
   // prove the rotation did not commit clear it again.
   if (recovery.mode === 'new') {
+    assertCurrent()
     markRecoveryPhrasePending()
   }
 
   let committedKeyVersion: number
   try {
+    assertCurrent()
     const { key_version: keyVersion } = await postRotate(httpClient, {
       proof,
       envelopes,
@@ -1919,6 +2023,7 @@ const runAKRotation = async (
     const refusal = await stepUpRefusalCode(err)
     if (refusal) {
       // Refused at the gate: nothing committed, so no phrase is owed.
+      assertCurrent()
       clearRecoveryPhrasePending()
       throw new StepUpVerificationError(refusal, { cause: err })
     }
@@ -1933,7 +2038,9 @@ const runAKRotation = async (
       // fail the same way.
       // 400/409 are the server REJECTING the rotation, so it did not commit and
       // the candidate phrase was never anchored.
+      assertCurrent()
       clearRecoveryPhrasePending()
+      assertCurrent()
       await refreshAKForRotation(httpClient)
       throw new RotationStaleError({ cause: err })
     }
@@ -1948,14 +2055,20 @@ const runAKRotation = async (
   // surface as a rotation failure either.) A staging failure is caught below and
   // re-adopted rather than propagated.
   try {
-    await storeAK(await reimportAsNonExtractable(newAK))
+    const nonExtractableAK = await reimportAsNonExtractable(newAK)
+    assertCurrent()
+    await storeAK(nonExtractableAK)
+    assertCurrent()
     await stageWrappedDEKs(newPrimaryKey ? [...wrappedKeys, newPrimaryKey] : wrappedKeys)
+    assertCurrent()
     invalidateKeyringCache()
     if (newPrimaryKey) {
+      assertCurrent()
       await storePrimaryKeyId(newPrimaryKey.keyId)
       // `invalidateKeyringCache` deliberately KEEPS the in-memory primary
       // pointer, so without this the codec would keep encrypting under the old
       // primary for the rest of the session even though the server moved on.
+      assertCurrent()
       resetCodecState()
     }
     // Store the committed epoch LAST, so it means "every local write above
@@ -1964,6 +2077,7 @@ const runAKRotation = async (
     // the device self-consistently on the OLD primary with the epoch already
     // current — the "re-adopt me" signal consumed, the repair skipped, and new
     // writes sealed under the DEK the just-revoked device holds.
+    assertCurrent()
     await storeKeyVersion(committedKeyVersion)
   } catch (err) {
     // The server committed the new epoch but this device did not adopt it. It
@@ -1980,7 +2094,9 @@ const runAKRotation = async (
     // under the old primary. Closing that requires a boot-time local-vs-server
     // epoch check, which is tracked with the recovery-phrase-loss dual it shares
     // a fix with; it is out of scope for this best-effort retry.
+    assertCurrent()
     console.error('[e2ee] AK rotation committed but local key staging failed — re-adopting from the server:', err)
+    assertCurrent()
     await refreshAK(httpClient).catch((refreshErr) => {
       console.error(
         '[e2ee] re-adoption after a staging failure also failed — keys will re-stage on next use:',
@@ -2000,7 +2116,7 @@ const runAKRotation = async (
  * Throws if the account has no stored recovery slot (see `readStoredRecoveryPlan`);
  * throws a retryable `RotationStaleError` when the server rejects a stale payload.
  */
-export const rotateAccountKey = (httpClient: HttpClient, opts: RotateAKOptions = {}): Promise<void> =>
+const rotateAccountKey = (httpClient: HttpClient, opts: RotateAKOptions = {}): Promise<void> =>
   runAKRotation(httpClient, (canaryKey) => readStoredRecoveryPlan(httpClient, canaryKey), opts)
 
 /**
@@ -2008,14 +2124,16 @@ export const rotateAccountKey = (httpClient: HttpClient, opts: RotateAKOptions =
  * slot to a freshly minted phrase, so the old phrase stops working. Returns the
  * NEW 24-word phrase — the caller MUST display it, it exists nowhere else.
  */
-export const changeRecoveryPhrase = async (
+const changeRecoveryPhrase = async (
   httpClient: HttpClient,
   opts: Pick<RotateAKOptions, 'listTrustedDevices' | 'stepUpOtp'> = {},
 ): Promise<string> => {
+  const assertCurrent = captureEncryptionOperation()
   const recovery = await mintRecoveryPlan()
   // Nothing to verify: this device minted the keys itself, so the served anchor
   // is never read. This is also the un-wedge for a v2 account whose row predates
   // the attestation column — one phrase change re-anchors it with a signed slot.
+  assertCurrent()
   await runAKRotation(httpClient, async () => recovery, opts)
   return recovery.recoveryPhrase
 }
@@ -2026,13 +2144,15 @@ export const changeRecoveryPhrase = async (
  * recovery phrase. Unlike a phrase change there is no step-up — the rotate proof
  * is the gate.
  */
-export const enrollPasskey = async (
+const enrollPasskey = async (
   httpClient: HttpClient,
   { credentialId, prfOutput }: { credentialId: string; prfOutput: Uint8Array },
   opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
 ): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   const { derivePasskeyKeyPair } = await loadPasskeyKey()
   const publicKeys = await derivePasskeyKeyPair(prfOutput)
+  assertCurrent()
   await runAKRotation(
     httpClient,
     (canaryKey) => readStoredRecoveryPlan(httpClient, canaryKey),
@@ -2051,7 +2171,7 @@ export const enrollPasskey = async (
  * out of a `PasskeyAnchorError`. Run BEFORE deleting the passkey itself — the
  * server refuses to delete a passkey that still holds the slot.
  */
-export const removePasskeySlot = (
+const removePasskeySlot = (
   httpClient: HttpClient,
   opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
 ): Promise<void> =>
@@ -2133,11 +2253,12 @@ const rotateForLockout = (httpClient: HttpClient, opts: RotateAKOptions): Promis
  * DEK that won't unwrap under their old AK, which triggers the responder's
  * `refreshAK` + re-staging path.
  */
-export const revokeDeviceAndRotate = async (
+const revokeDeviceAndRotate = async (
   httpClient: HttpClient,
   deviceId: string,
   opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
 ): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   // Recovered ONCE for the whole revocation: the pre-flight below and the
   // revoke proof both need it. `refresh: false` is deliberate (THU-872): the
   // canary now opens only under the CURRENT AK, so a stale device cannot build
@@ -2145,6 +2266,7 @@ export const revokeDeviceAndRotate = async (
   // AK inside the emergency cut is exactly the dependency THU-887 removed.
   // Surface `StaleKeyMaterialError` instead; the UI offers an explicit
   // "refresh keys, then retry" step.
+  assertCurrent()
   const canaryKey = await getCanaryKey(httpClient, { refresh: false })
 
   // PRE-FLIGHT, DELIBERATELY DISCARDED. This is the check that fails closed on
@@ -2159,12 +2281,14 @@ export const revokeDeviceAndRotate = async (
   // metadata fetch is the price of that, and it buys the narrower window.
   await readStoredRecoveryPlan(httpClient, canaryKey)
 
+  assertCurrent()
   await revokeDeviceWithProof(httpClient, deviceId, canaryKey)
 
   // Past the cut. Everything from here is the rotation, and a failure means the
   // device is revoked but not locked out — tagged rather than propagated raw so
   // the UI can say which of the two happened instead of hedging both.
   try {
+    assertCurrent()
     await rotateForLockout(httpClient, { ...opts, excludeDeviceIds: [deviceId] })
   } catch (err) {
     throw new LockoutIncompleteError({ cause: err })
@@ -2187,13 +2311,15 @@ export const revokeDeviceAndRotate = async (
  * every rotation mints a keyring row — inventing a denial-of-service to fix a
  * visibility bug.
  */
-export const finishDeviceLockout = async (httpClient: HttpClient): Promise<void> => {
+const finishDeviceLockout = async (httpClient: HttpClient): Promise<void> => {
+  const assertCurrent = captureEncryptionOperation()
   // Tagged for the same reason as the rotation half of `revokeDeviceAndRotate`,
   // and it matters MORE here: this path exists only because a cut already
   // committed, so an untagged failure reaches `describeRevokeFailure` as an
   // unknown error and is reported as "Nothing was changed. The device was not
   // revoked." — false on every run of this function.
   try {
+    assertCurrent()
     await rotateForLockout(httpClient, {})
   } catch (err) {
     throw new LockoutIncompleteError({ cause: err })
@@ -2355,7 +2481,8 @@ const resolveLegacyCK = async (
  * (another device migrated first) nothing local is written. The follower path
  * waits for verified approval unless this device already has a valid recipient envelope.
  */
-export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Options = {}): Promise<MigrateResult> => {
+const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Options = {}): Promise<MigrateResult> => {
+  const assertCurrent = captureEncryptionOperation()
   const metadata = await fetchEncryptionMetadata(httpClient)
   if (metadata.scheme_version !== 1) {
     return { outcome: 'not-eligible' }
@@ -2421,10 +2548,12 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
   // kills the v1 one, so an unmarked loss leaves the account with no openable
   // recovery slot at all. The 409 CAS-loss branch below clears it again, since
   // that genuinely did not commit.
+  assertCurrent()
   markRecoveryPhrasePending()
 
   let keyVersion: number
   try {
+    assertCurrent()
     const upgraded = await postUpgrade(httpClient, {
       nonce,
       possessionProof,
@@ -2451,7 +2580,9 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     if (err instanceof HttpError && err.response.status === 409) {
       // Another device won the CAS: this candidate phrase was never anchored,
       // so the account does not owe one on its account.
+      assertCurrent()
       clearRecoveryPhrasePending()
+      assertCurrent()
       return followToV2(httpClient, { getLegacyV1Sample: opts.getLegacyV1Sample })
     }
     throw err
@@ -2468,18 +2599,26 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
   // implies a complete keyring (a crash mid-write leaves no AK → the device
   // re-runs migration/follow rather than an AK-without-primary state).
   try {
+    assertCurrent()
     await stageWrappedDEKs([
       { keyId: initialKeyId, wrappedKey: wrappedDek0 },
       { keyId: legacyKeyId, wrappedKey: wrappedV1 },
     ])
+    assertCurrent()
     await storePrimaryKeyId(initialKeyId)
+    assertCurrent()
     await storeKeyVersion(keyVersion)
-    await storeAK(await reimportAsNonExtractable(newAK))
+    const nonExtractableAK = await reimportAsNonExtractable(newAK)
+    assertCurrent()
+    await storeAK(nonExtractableAK)
     // Same reasoning as first-device setup: witness DEK "0" from the AK this
     // device just minted, not from whatever a later keyring fetch returns.
+    assertCurrent()
     await reconcileKeyringAnchor()
+    assertCurrent()
     invalidateKeyringCache()
   } catch (err) {
+    assertCurrent()
     console.error(
       '[e2ee] v2 migration committed on the server but local key staging failed — this device will re-follow on next boot; returning the phrase so it is not lost:',
       err,
@@ -2627,7 +2766,8 @@ const runContinuityCheck = async (
  * Nothing is written until the keyring proves it can read this account's legacy
  * data, so a rejection leaves the device untouched and the check re-runs.
  */
-export const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options = {}): Promise<FollowResult> => {
+const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options = {}): Promise<FollowResult> => {
+  const assertCurrent = captureEncryptionOperation()
   const metadata = await fetchEncryptionMetadata(httpClient)
   if (metadata.scheme_version !== 2) {
     return { outcome: 'not-applicable' }
@@ -2659,6 +2799,7 @@ export const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options
   const keyring: WrappedKeyEntry[] = fetched.keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key }))
   await runContinuityCheck(ak, keyring, opts.getLegacyV1Sample ?? defaultGetLegacyV1Sample)
 
+  assertCurrent()
   await storeAK(ak)
   // Persist the keyring the continuity check just VERIFIED. This used to call
   // `stageKeyring`, which re-fetched — so the checked keyring and the stored one
@@ -2670,6 +2811,7 @@ export const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options
   // No DEK "0" witness check here: a follow only runs with no local AK
   // (`ensureV2Encryption` short-circuits on one), so there is never an anchor to
   // check against. The v1 continuity check above is this path's anchor.
+  assertCurrent()
   await applyKeyring(fetched, sealedPrimaryKeyId)
 
   return { outcome: 'followed' }
@@ -2694,10 +2836,8 @@ export type EnsureV2Result =
  *  - `scheme_version == 2`, no local AK → follow
  *  - no metadata / not eligible → `not-applicable`
  */
-export const ensureV2Encryption = async (
-  httpClient: HttpClient,
-  opts: FollowToV2Options = {},
-): Promise<EnsureV2Result> => {
+const ensureV2Encryption = async (httpClient: HttpClient, opts: FollowToV2Options = {}): Promise<EnsureV2Result> => {
+  const assertCurrent = captureEncryptionOperation()
   const metadata = await fetchEncryptionMetadata(httpClient).catch((err: unknown) => {
     if (err instanceof HttpError && err.response.status === 404) {
       return null
@@ -2722,17 +2862,20 @@ export const ensureV2Encryption = async (
     // (init already tolerates throws from the migrate/follow paths below).
     const localKeyVersion = await getKeyVersion()
     if (localKeyVersion !== null && localKeyVersion < metadata.key_version) {
+      assertCurrent()
       await refreshAK(httpClient)
     }
     return { outcome: 'already-v2' }
   }
 
   if (metadata.scheme_version === 1) {
+    assertCurrent()
     const result = await migrateToV2(httpClient, { getLegacyV1Sample: opts.getLegacyV1Sample })
     // 'not-eligible' is a migrator-internal outcome; surface it as not-applicable.
     return result.outcome === 'not-eligible' ? { outcome: 'not-applicable' } : result
   }
 
+  assertCurrent()
   return followToV2(httpClient, opts)
 }
 
@@ -2740,7 +2883,74 @@ export const ensureV2Encryption = async (
 // Flow G — Full wipe (clear all keys)
 // =============================================================================
 
-export const handleFullWipe = async (): Promise<void> => {
-  await clearAllKeys()
+export const handleFullWipe = async (lock?: KeyStoreLock): Promise<void> => {
+  await clearAllKeys(lock)
   resetCodecState()
+}
+
+// All public key-changing flows share one writer. Internal calls stay inside the
+// admitted operation, so a rotation can refresh or migrate without re-queuing itself.
+
+/** Serialize local key publication and reject work queued by a previous account lifetime. */
+const serializeKeyOperation =
+  <Args extends unknown[], Result>(
+    operation: (client: HttpClient, ...args: Args) => Promise<Result>,
+  ): ((client: HttpClient, ...args: Args) => Promise<Result>) =>
+  async (client, ...args) => {
+    requireEncryptedSyncSupport()
+    const assertCurrent = captureEncryptionOperation()
+    const scopedClient = createEncryptionOperationClient(client, getEncryptionOperationSignal(), assertCurrent)
+    return withKeyStoreLock(async (lock) => {
+      assertCurrent()
+      await getKeyPair(lock)
+      assertCurrent()
+      return operation(scopedClient, ...args)
+    })
+  }
+
+const serializedRegisterThisDevice = serializeKeyOperation(registerThisDevice)
+const serializedStageKeyring = serializeKeyOperation(stageKeyring)
+const serializedRefreshAK = serializeKeyOperation(refreshAK)
+const serializedCompleteFirstDeviceSetup = serializeKeyOperation(completeFirstDeviceSetup)
+const serializedApproveDevice = serializeKeyOperation(approveDevice)
+const serializedDenyDeviceWithProof = serializeKeyOperation(denyDeviceWithProof)
+const serializedSetDeviceNodeIdWithProof = serializeKeyOperation(setDeviceNodeIdWithProof)
+const lockedRevokeDeviceWithProof = serializeKeyOperation(revokeDeviceWithProof)
+// Pre-encryption revocation uses no account keys and remains available on older runtimes.
+const serializedRevokeDeviceWithProof = (...args: Parameters<typeof revokeDeviceWithProof>): Promise<void> =>
+  supportsKeyStoreLock() ? lockedRevokeDeviceWithProof(...args) : revokeDeviceWithProof(...args)
+const serializedCheckApprovalAndUnwrap = serializeKeyOperation(checkApprovalAndUnwrap)
+const serializedRecoverWithKey = serializeKeyOperation(recoverWithKey)
+const serializedUnlockWithPasskey = serializeKeyOperation(unlockWithPasskey)
+const serializedRotateAccountKey = serializeKeyOperation(rotateAccountKey)
+const serializedChangeRecoveryPhrase = serializeKeyOperation(changeRecoveryPhrase)
+const serializedEnrollPasskey = serializeKeyOperation(enrollPasskey)
+const serializedRemovePasskeySlot = serializeKeyOperation(removePasskeySlot)
+const serializedRevokeDeviceAndRotate = serializeKeyOperation(revokeDeviceAndRotate)
+const serializedFinishDeviceLockout = serializeKeyOperation(finishDeviceLockout)
+const serializedMigrateToV2 = serializeKeyOperation(migrateToV2)
+const serializedFollowToV2 = serializeKeyOperation(followToV2)
+const serializedEnsureV2Encryption = serializeKeyOperation(ensureV2Encryption)
+
+export {
+  serializedRegisterThisDevice as registerThisDevice,
+  serializedStageKeyring as stageKeyring,
+  serializedRefreshAK as refreshAK,
+  serializedCompleteFirstDeviceSetup as completeFirstDeviceSetup,
+  serializedApproveDevice as approveDevice,
+  serializedDenyDeviceWithProof as denyDeviceWithProof,
+  serializedSetDeviceNodeIdWithProof as setDeviceNodeIdWithProof,
+  serializedRevokeDeviceWithProof as revokeDeviceWithProof,
+  serializedCheckApprovalAndUnwrap as checkApprovalAndUnwrap,
+  serializedRecoverWithKey as recoverWithKey,
+  serializedUnlockWithPasskey as unlockWithPasskey,
+  serializedRotateAccountKey as rotateAccountKey,
+  serializedChangeRecoveryPhrase as changeRecoveryPhrase,
+  serializedEnrollPasskey as enrollPasskey,
+  serializedRemovePasskeySlot as removePasskeySlot,
+  serializedRevokeDeviceAndRotate as revokeDeviceAndRotate,
+  serializedFinishDeviceLockout as finishDeviceLockout,
+  serializedMigrateToV2 as migrateToV2,
+  serializedFollowToV2 as followToV2,
+  serializedEnsureV2Encryption as ensureV2Encryption,
 }

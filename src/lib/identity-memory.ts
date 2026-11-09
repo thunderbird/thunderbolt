@@ -3,8 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { clearDebugTranscriptRecorder } from '@/debug-transcript/recorder'
+import { clearTinfoilClients } from '@/ai/tinfoil-client'
+import { attestationStore } from '@/attestation/store'
 
 /** Clear session memory that must never survive an identity transition. */
 export const clearIdentityScopedMemory = (): void => {
   clearDebugTranscriptRecorder()
+  clearTinfoilClients()
+  attestationStore.clearAll()
 }

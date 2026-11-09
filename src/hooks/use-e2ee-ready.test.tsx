@@ -76,3 +76,20 @@ describe('useE2eeReady', () => {
     expect(result.current).toBe(true)
   })
 })
+
+it('ignores a pre-provisioning read that finishes after the post-provisioning read', async () => {
+  const initial = Promise.withResolvers<boolean>()
+  const fresh = Promise.withResolvers<boolean>()
+  const queue = [initial, fresh]
+  const readReady = () => queue.shift()!.promise
+  const { result } = renderHook(() => useE2eeReady(readReady))
+  act(() => dispatchE2eeProvisioningSettled())
+  await act(async () => {
+    fresh.resolve(true)
+  })
+  expect(result.current).toBe(true)
+  await act(async () => {
+    initial.resolve(false)
+  })
+  expect(result.current).toBe(true)
+})

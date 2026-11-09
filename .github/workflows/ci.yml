@@ -182,6 +182,9 @@ jobs:
       - name: Run tests
         run: bun run test:5x
 
+      - name: Check performance harness
+        run: bun run test:performance
+
       # Upload source maps to PostHog only for main branch
       - name: Build application with source maps
         if: github.ref == 'refs/heads/main'

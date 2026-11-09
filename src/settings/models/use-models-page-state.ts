@@ -7,6 +7,7 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { useMutation } from '@tanstack/react-query'
 import { useCallback, useReducer } from 'react'
 
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useDatabase } from '@/contexts'
 import { deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@shared/defaults/models'
@@ -17,6 +18,7 @@ import { useAddModelForm } from './use-add-model-form'
 /** Owns Models page reducer, forms, catalog requests, tests, and DAL mutations. */
 export const useModelsPageState = () => {
   const db = useDatabase()
+  const editing = useAsyncAttempt()
   const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
   const { panel, deleteConfirmId, mutationError } = state
   const isAddPanelOpen = panel?.kind === 'add'
@@ -56,9 +58,6 @@ export const useModelsPageState = () => {
       const { id, ...fields } = values
       await updateModel(db, id, { ...fields, url: fields.url || null })
     },
-    onMutate: clearMutationError,
-    onSuccess: (_result, values) => dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'detail', modelId: values.id } }),
-    onError: failMutation('Failed to save the model.'),
   })
   const resetMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -74,10 +73,12 @@ export const useModelsPageState = () => {
   })
 
   const openAddPanel = () => {
+    editing.cancel()
     dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'add' } })
     addForm.prepareForOpen()
   }
   const changePanel = (nextPanel: ModelPanel) => {
+    editing.cancel()
     if (isAddPanelOpen) {
       // Reset every add-form resource (draft fields, selected model,
       // connection probe, and catalog) before another panel replaces it.
@@ -86,6 +87,7 @@ export const useModelsPageState = () => {
     dispatch({ type: 'PANEL_CHANGED', panel: nextPanel })
   }
   const closePanel = () => {
+    editing.cancel()
     if (isAddPanelOpen) {
       addForm.onCancel()
       return
@@ -94,6 +96,26 @@ export const useModelsPageState = () => {
       type: 'PANEL_CHANGED',
       panel: panel?.kind === 'edit' ? { kind: 'detail', modelId: panel.modelId } : null,
     })
+  }
+
+  const submitEdit = async (values: EditModelSubmission) => {
+    const attempt = editing.begin()
+    if (!attempt) {
+      return
+    }
+    try {
+      clearMutationError()
+      await editMutation.mutateAsync(values)
+      if (attempt.isCurrent()) {
+        changePanel({ kind: 'detail', modelId: values.id })
+      }
+    } catch (error) {
+      if (attempt.isCurrent()) {
+        failMutation('Failed to save the model.')(error)
+      }
+    } finally {
+      attempt.finish()
+    }
   }
 
   return {
@@ -111,8 +133,8 @@ export const useModelsPageState = () => {
     selectActiveModel: (modelId: string) => changePanel(activeModelId === modelId ? null : { kind: 'detail', modelId }),
     toggleModel: (id: string, enabled: boolean) => toggleMutation.mutate({ id, enabled }),
     openEditPanel: (modelId: string) => changePanel({ kind: 'edit', modelId }),
-    closeEditPanel: (modelId: string) => dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'detail', modelId } }),
-    submitEdit: (values: EditModelSubmission) => editMutation.mutate(values),
+    closeEditPanel: (modelId: string) => changePanel({ kind: 'detail', modelId }),
+    submitEdit,
     isEditPending: editMutation.isPending,
     requestDelete: (modelId: string | null) =>
       modelId ? dispatch({ type: 'DELETE_REQUESTED', modelId }) : dispatch({ type: 'DELETE_DISMISSED' }),

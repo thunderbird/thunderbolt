@@ -14,13 +14,18 @@ class Probe extends ThunderboltSharedSyncImplementation {
   }
 }
 
-/** The constructor holds a Web Lock for the worker's lifetime; the test runtime has no `navigator.locks`. */
+/** Hold the worker's lifetime lock without running its callback. */
 const withNavigatorLocks = <T>(run: () => T): T => {
+  const previous = Object.getOwnPropertyDescriptor(navigator, 'locks')
   Object.defineProperty(navigator, 'locks', { value: { request: () => new Promise(() => {}) }, configurable: true })
   try {
     return run()
   } finally {
-    delete (navigator as { locks?: unknown }).locks
+    if (previous) {
+      Object.defineProperty(navigator, 'locks', previous)
+    } else {
+      delete (navigator as { locks?: unknown }).locks
+    }
   }
 }
 

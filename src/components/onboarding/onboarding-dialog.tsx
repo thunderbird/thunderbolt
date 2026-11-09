@@ -4,7 +4,7 @@
 
 import { useAppName } from '@/lib/branding-selectors'
 import { Trans } from '@lingui/react/macro'
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useEffectEvent, useTransition } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { useDatabase } from '@/contexts'
@@ -31,34 +31,42 @@ import { Loader2 } from 'lucide-react'
 const passkeyStep = 6
 
 export const OnboardingDialog = () => {
-  const appName = useAppName()
   const { isMobile } = useIsMobile()
-  const db = useDatabase()
-  const queryClient = useQueryClient()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })
-  const { state, actions } = useOnboardingState()
-  // The account gets one passkey, so the step is offered only while it has none.
-  const accountPasskey = useAccountPasskey()
-  const shouldOfferPasskeyStep = accountPasskey.isSettled && !accountPasskey.isUnavailable && !accountPasskey.passkey
-
-  /**
-   * Derived during render rather than mirrored into state. The previous effect
-   * only ever called `setIsOpen(true)`, so nothing closed the wizard when the
-   * flag flipped to true — a device that learned it was already onboarded, via
-   * sign-in or a sync download, kept it on screen (GH #1299).
-   */
   const isOpen =
     import.meta.env.VITE_SKIP_ONBOARDING !== 'true' &&
     !userHasCompletedOnboarding.isLoading &&
     !userHasCompletedOnboarding.value
 
+  return (
+    <Dialog open={isOpen}>
+      <ResponsiveModalContentComposable
+        className={cn('overflow-hidden p-0', !isMobile && 'h-[650px] max-h-[calc(100dvh-2rem)]')}
+        showCloseButton={false}
+      >
+        {/* The portal mounts wizard queries only when shown and retains them through the exit animation. */}
+        <OnboardingWizard isOpen={isOpen} isMobile={isMobile} />
+      </ResponsiveModalContentComposable>
+    </Dialog>
+  )
+}
+
+const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boolean }) => {
+  const appName = useAppName()
+  const db = useDatabase()
+  const queryClient = useQueryClient()
+  const { state, actions } = useOnboardingState()
+  // The account gets one passkey, so the step is offered only while it has none.
+  const accountPasskey = useAccountPasskey()
+  const shouldOfferPasskeyStep = accountPasskey.isSettled && !accountPasskey.isUnavailable && !accountPasskey.passkey
+
   // Skip the step when it isn't offered (no passkey support, or the account
   // already has one), but only once that's known: the skip is persisted, so
   // skipping while still loading would lose the step for good.
   const skipPasskeyStep = useEffectEvent(() => {
-    actions.skipStep().catch((error) => console.error('Failed to skip the passkey step:', error))
+    runAction(actions.skipStep)
   })
   useEffect(() => {
     if (isOpen && state.currentStep === passkeyStep && accountPasskey.isSettled && !shouldOfferPasskeyStep) {
@@ -72,142 +80,109 @@ export const OnboardingDialog = () => {
     await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
   }
 
-  // Celebration step completion handler
-  const [isCompleting, setIsCompleting] = useState(false)
-  const [isFormDirty, setIsFormDirty] = useState(false)
-  const { onboardingCurrentStep } = useSettings({
-    onboarding_current_step: '1',
-  })
+  const [isNavigating, startNavigation] = useTransition()
+  const isCelebration = state.currentStep === onboardingStepCount
+  const isBusy = isNavigating || state.isSubmittingName || state.isSubmittingLocation
+  const continueDisabled =
+    isBusy || (!isCelebration && !state.canGoNext) || (state.currentStep === passkeyStep && !accountPasskey.isSettled)
 
-  const handleCelebrationComplete = async () => {
-    setIsCompleting(true)
-    await Promise.all([userHasCompletedOnboarding.setValue(true), onboardingCurrentStep.setValue('1')])
-    setIsCompleting(false)
+  const runAction = (action: () => Promise<void>) => {
+    startNavigation(async () => {
+      try {
+        await action()
+      } catch (error) {
+        console.error('Failed to update onboarding:', error)
+      }
+    })
   }
 
-  // Unified action handlers
-  const handleContinue = async () => {
-    if (state.currentStep === onboardingStepCount) {
-      // Special handling for celebration step
-      handleCelebrationComplete()
-    } else if (state.currentStep === 2) {
-      // Auth step - only allow continue if connected
-      if (state.isProviderConnected) {
-        actions.nextStep()
-      }
-    } else if (state.currentStep === 3) {
-      // Name step - save name to database before proceeding
-      if (state.isNameValid && state.nameValue) {
-        try {
-          await actions.submitName(state.nameValue)
-          actions.nextStep()
-        } catch (error) {
-          console.error('Failed to save name:', error)
-        }
-      }
-    } else if (state.canGoNext) {
-      actions.nextStep()
+  const handleContinue = () => {
+    if (!continueDisabled) {
+      runAction(isCelebration ? actions.completeOnboarding : actions.nextStep)
     }
   }
 
-  const isCelebration = state.currentStep === onboardingStepCount
-
   const handleBackAction = () => {
-    if (state.canGoBack) {
-      actions.prevStep()
+    if (!isBusy && state.canGoBack) {
+      runAction(actions.prevStep)
     }
   }
 
   const handleSkipAction = () => {
-    if (state.canSkip) {
-      actions.skipStep()
+    if (!isBusy && state.canSkip) {
+      runAction(actions.skipStep)
     }
   }
 
   return (
-    <Dialog open={isOpen}>
-      <ResponsiveModalContentComposable
-        className={cn('overflow-hidden p-0', !isMobile && 'h-[650px] max-h-[calc(100dvh-2rem)]')}
-        showCloseButton={false}
+    <>
+      <DialogTitle className="sr-only">
+        <Trans>Onboarding Wizard</Trans>
+      </DialogTitle>
+      <DialogDescription className="sr-only">
+        <Trans>Complete the setup process to get started with {appName}</Trans>
+      </DialogDescription>
+      <div
+        className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}
+        style={isMobile ? { paddingBottom: 'var(--kb, 0px)' } : undefined}
       >
-        <DialogTitle className="sr-only">
-          <Trans>Onboarding Wizard</Trans>
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          <Trans>Complete the setup process to get started with {appName}</Trans>
-        </DialogDescription>
-        <div
-          className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}
-          style={isMobile ? { paddingBottom: 'var(--kb, 0px)' } : undefined}
-        >
-          <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
-            <StepIndicators currentStep={state.currentStep} totalSteps={onboardingStepCount} />
-          </div>
-          <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
-            {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
-            {state.currentStep === 2 && (
-              <OnboardingAuthStep
-                isProcessing={state.processingOAuth}
-                isConnected={state.isProviderConnected}
-                onConnectionChange={actions.setProviderConnected}
-                onDisconnect={handleProviderDisconnect}
-              />
-            )}
-            {state.currentStep === 3 && (
-              <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
-            )}
-            {state.currentStep === 4 && (
-              <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
-            )}
-            {state.currentStep === 5 && <OnboardingLanguageStep />}
-            {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
-              <div className="flex flex-1 items-center justify-center">
-                <Loader2 className="size-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
-            {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
-          </div>
-          <div className="relative flex w-full shrink-0 px-5 pt-2">
-            <OnboardingActionButtons
-              onBack={isCelebration ? undefined : state.canGoBack ? handleBackAction : undefined}
-              onSkip={isCelebration ? undefined : state.canSkip ? handleSkipAction : undefined}
-              onContinue={handleContinue}
-              showBack={isCelebration ? false : state.canGoBack}
-              showSkip={isCelebration ? false : state.canSkip}
-              skipDisabled={
-                (state.currentStep === 2 && state.isProviderConnected) ||
-                (state.currentStep === 3 && state.isNameValid) ||
-                (state.currentStep === 4 && isFormDirty)
-              }
-              continueDisabled={
-                state.currentStep === 1
-                  ? !state.privacyAgreed
-                  : state.currentStep === 2
-                    ? !state.isProviderConnected
-                    : state.currentStep === 3
-                      ? !state.isNameValid
-                      : state.currentStep === 4
-                        ? !state.isLocationValid
-                        : state.currentStep === passkeyStep
-                          ? !accountPasskey.isSettled
-                          : isCelebration && isCompleting
-              }
-              continueText={
-                isCelebration ? (
-                  isCompleting ? (
-                    <Trans>Completing…</Trans>
-                  ) : (
-                    <Trans>Start Using {appName}</Trans>
-                  )
-                ) : (
-                  <Trans>Continue</Trans>
-                )
-              }
-            />
-          </div>
+        <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
+          <StepIndicators currentStep={state.currentStep} totalSteps={onboardingStepCount} />
         </div>
-      </ResponsiveModalContentComposable>
-    </Dialog>
+        <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
+          {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
+          {state.currentStep === 2 && (
+            <OnboardingAuthStep
+              isProcessing={state.processingOAuth}
+              isConnected={state.isProviderConnected}
+              onConnectionChange={actions.setProviderConnected}
+              onDisconnect={handleProviderDisconnect}
+            />
+          )}
+          {state.currentStep === 3 && (
+            <OnboardingNameStep state={{ ...state, isSubmittingName: isBusy }} actions={actions} />
+          )}
+          {state.currentStep === 4 && (
+            <OnboardingLocationStep state={{ ...state, isSubmittingLocation: isBusy }} actions={actions} />
+          )}
+          {state.currentStep === 5 && <OnboardingLanguageStep />}
+          {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
+            <div className="flex flex-1 items-center justify-center">
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
+          {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
+        </div>
+        <div className="relative flex w-full shrink-0 px-5 pt-2">
+          <OnboardingActionButtons
+            onBack={handleBackAction}
+            onSkip={handleSkipAction}
+            onContinue={handleContinue}
+            showBack={!isCelebration && state.canGoBack}
+            showSkip={!isCelebration && state.canSkip}
+            backDisabled={isBusy}
+            skipDisabled={
+              isBusy ||
+              (state.currentStep === 2 && state.isProviderConnected) ||
+              (state.currentStep === 3 && state.isNameValid) ||
+              (state.currentStep === 4 && state.isLocationValid)
+            }
+            continueDisabled={continueDisabled}
+            continueText={
+              isCelebration ? (
+                isNavigating ? (
+                  <Trans>Completing…</Trans>
+                ) : (
+                  <Trans>Start Using {appName}</Trans>
+                )
+              ) : (
+                <Trans>Continue</Trans>
+              )
+            }
+          />
+        </div>
+      </div>
+    </>
   )
 }

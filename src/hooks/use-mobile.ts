@@ -7,7 +7,10 @@ import { useSyncExternalStore } from 'react'
 import { isMobile as isPlatformMobile, isTauriDesktop } from '@/lib/platform'
 
 const mobileBreakpoint = 768
-const mql = () => window.matchMedia(`(max-width: ${mobileBreakpoint - 1}px)`)
+let mobileMediaQuery: MediaQueryList | undefined
+
+/** Reuse the browser's live query across subscribers and snapshot reads. */
+const mql = () => (mobileMediaQuery ??= window.matchMedia(`(max-width: ${mobileBreakpoint - 1}px)`))
 
 const subscribe = (callback: () => void) => {
   const mediaQuery = mql()

@@ -7,6 +7,7 @@ import type { SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types
 import { type PropsWithChildren, useEffect } from 'react'
 import { useCurrentChatSession } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import { messageBookkeepingThrottleMs } from './chat-throttle'
 
 /**
  * How often, at most, an in-flight assistant message is persisted while it
@@ -36,9 +37,9 @@ export const SavePartialAssistantMessagesHandler = ({
 }: SavePartialAssistantMessagesHandlerProps) => {
   const { chatInstance, id: chatThreadId } = useCurrentChatSession()
 
-  // Subscribe without throttling so the trailing save is cancelled as soon as
-  // streaming ends. Database writes already have their own throttle below.
-  const { status, messages } = useChat({ chat: chatInstance })
+  // Only message notifications are throttled. The SDK's separate status
+  // subscription still cancels trailing saves immediately when streaming ends.
+  const { status, messages } = useChat({ chat: chatInstance, experimental_throttle: messageBookkeepingThrottleMs })
 
   const isStreaming = status === 'streaming'
 

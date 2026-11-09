@@ -196,7 +196,7 @@ describe('Encryption API (v2)', () => {
   const proofFor = async (
     token: string,
     callerDeviceId: string,
-    operation: 'approve' | 'deny' | 'rotate',
+    operation: 'approve' | 'deny' | 'rotate' | 'inbox',
     keypair: CryptoKeyPair,
   ) => {
     const res = await app.handle(
@@ -811,6 +811,135 @@ describe('Encryption API (v2)', () => {
   })
 
   // ─── AK rotation ────────────────────────────────────────────────────
+
+  // ─── Inbox keys ─────────────────────────────────────────────────────
+
+  describe('POST /encryption/inbox + GET /encryption/inbox', () => {
+    const inboxBody = (overrides: Record<string, unknown> = {}) => ({
+      version: 1,
+      keyId: initialKeyId,
+      ecdhPublicKey: 'E'.repeat(88),
+      mlkemPublicKey: 'M'.repeat(1580),
+      encryptedSeed: 'S'.repeat(80),
+      ...overrides,
+    })
+
+    /** A trusted device on a set-up v2 account, plus the keypair its proofs are signed with. */
+    const setUpAccount = async () => {
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertDevice(p('d'), p('u'), { trusted: true })
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      return keypair
+    }
+
+    const mint = async (body: Record<string, unknown>) =>
+      app.handle(
+        new Request(`${baseUrl}/encryption/inbox`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+          body: JSON.stringify(body),
+        }),
+      )
+
+    const listInbox = async () =>
+      app.handle(new Request(`${baseUrl}/encryption/inbox`, { headers: authHeaders(p('tok'), p('d')) }))
+
+    it('mints version 1 under the current primary and serves it back', async () => {
+      const keypair = await setUpAccount()
+      const proof = await proofFor(p('tok'), p('d'), 'inbox', keypair)
+
+      const response = await mint(inboxBody({ proof }))
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ version: 1 })
+
+      const listed = await listInbox()
+      expect(listed.status).toBe(200)
+      expect(await listed.json()).toEqual({
+        inbox_keys: [
+          {
+            version: 1,
+            key_id: initialKeyId,
+            ecdh_public_key: 'E'.repeat(88),
+            mlkem_public_key: 'M'.repeat(1580),
+            encrypted_seed: 'S'.repeat(80),
+          },
+        ],
+      })
+    })
+
+    it('mints the next version on top of an existing one', async () => {
+      const keypair = await setUpAccount()
+      expect((await mint(inboxBody({ proof: await proofFor(p('tok'), p('d'), 'inbox', keypair) }))).status).toBe(200)
+
+      const second = await mint(inboxBody({ version: 2, proof: await proofFor(p('tok'), p('d'), 'inbox', keypair) }))
+      expect(second.status).toBe(200)
+      expect((await (await listInbox()).json()).inbox_keys.map((row: { version: number }) => row.version)).toEqual([
+        1, 2,
+      ])
+    })
+
+    it('refuses a proof signed for another operation', async () => {
+      const keypair = await setUpAccount()
+      const proof = await proofFor(p('tok'), p('d'), 'rotate', keypair)
+      expect((await mint(inboxBody({ proof }))).status).toBe(403)
+    })
+
+    it('refuses a proof signed with a key that is not the account signing key', async () => {
+      await setUpAccount()
+      const proof = await proofFor(p('tok'), p('d'), 'inbox', await generateSigningKeypair())
+      expect((await mint(inboxBody({ proof }))).status).toBe(403)
+    })
+
+    it('refuses an untrusted caller device', async () => {
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertDevice(p('d'), p('u'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      const proof = await proofFor(p('tok'), p('d'), 'inbox', keypair)
+      expect((await mint(inboxBody({ proof }))).status).toBe(403)
+    })
+
+    it('refuses a seed sealed under a DEK that is not the current primary', async () => {
+      const keypair = await setUpAccount()
+      const proof = await proofFor(p('tok'), p('d'), 'inbox', keypair)
+      expect((await mint(inboxBody({ keyId: '1', proof }))).status).toBe(409)
+    })
+
+    it.each([
+      ['skips a version', 2],
+      ['reuses an existing version', 1],
+    ])('refuses a mint that %s', async (_, version) => {
+      const keypair = await setUpAccount()
+      if (version === 1) {
+        expect((await mint(inboxBody({ proof: await proofFor(p('tok'), p('d'), 'inbox', keypair) }))).status).toBe(200)
+      }
+      const proof = await proofFor(p('tok'), p('d'), 'inbox', keypair)
+      expect((await mint(inboxBody({ version, proof }))).status).toBe(409)
+    })
+
+    it('refuses an account that has not set up v2 encryption', async () => {
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertDevice(p('d'), p('u'), { trusted: true })
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair), { schemeVersion: 1 })
+      const proof = await proofFor(p('tok'), p('d'), 'inbox', keypair)
+      expect((await mint(inboxBody({ proof }))).status).toBe(400)
+    })
+
+    it('refuses public keys of the wrong size before touching the database', async () => {
+      const keypair = await setUpAccount()
+      const proof = await proofFor(p('tok'), p('d'), 'inbox', keypair)
+      expect((await mint(inboxBody({ ecdhPublicKey: 'E'.repeat(87), proof }))).status).not.toBe(200)
+      expect(await (await listInbox()).json()).toEqual({ inbox_keys: [] })
+    })
+
+    it('serves a revoked device nothing', async () => {
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertDevice(p('d'), p('u'), { trusted: true, revokedAt: now })
+      expect((await listInbox()).status).toBe(403)
+    })
+  })
 
   describe('POST /devices/me/cancel-pending', () => {
     const pendingFlag = async (deviceId: string) => {

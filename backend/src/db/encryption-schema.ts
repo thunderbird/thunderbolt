@@ -193,3 +193,31 @@ export const challengeNoncesTable = pgTable(
   },
   (table) => [index('idx_challenge_nonces_user_id').on(table.userId)],
 )
+
+/**
+ * The account's inbox keypairs — what other accounts seal share keys to. One row
+ * per version; the newest is current. `encrypted_seed` is the 32-byte seed the
+ * keypair derives from, AES-GCM-encrypted under the DEK named by `key_id`, so
+ * only the account's own key holders can open it. Rows are never rewritten:
+ * old versions stay so shares sealed to them still open.
+ *
+ * A version is current only while its `key_id` is the account's primary DEK. A
+ * rotation that mints a new primary (revocation, passkey removal) makes the
+ * newest row stale, and the next trusted device mints a successor under the new
+ * primary — the one a revoked device never held.
+ */
+export const inboxKeysTable = pgTable(
+  'inbox_keys',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    keyId: text('key_id').notNull(),
+    ecdhPublicKey: text('ecdh_public_key').notNull(),
+    mlkemPublicKey: text('mlkem_public_key').notNull(),
+    encryptedSeed: text('encrypted_seed').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.version] })],
+)

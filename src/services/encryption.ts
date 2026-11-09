@@ -72,6 +72,8 @@ import {
   fetchWrappedKey,
   fetchEnvelopeTargets,
   fetchChallenge,
+  fetchInboxKeys,
+  postInboxKey,
   postRotate,
   postUpgrade,
   denyDevice as denyDeviceApi,
@@ -90,11 +92,13 @@ import {
 import { encryptedColumnsMap } from '@/db/encryption'
 import { sql } from 'drizzle-orm'
 import {
+  inboxSeedAAD,
   initialKeyId,
   isMintableKeyId,
   legacyKeyId,
   type ChallengeOperation,
   type ChallengeProof,
+  type InboxKeyResponse,
   type KeyId,
   type PasskeySlotRequest,
   type RecoverySlotRequest,
@@ -103,13 +107,15 @@ import {
 
 /**
  * The canary/signing and recovery-key modules carry ~44 KB (minified) of
- * @noble P-256/BIP-39 code that only these user-initiated flows need, so they
- * load lazily to stay out of the entry bundle (see src/crypto/index.ts).
- * Every caller is already network-bound, so the one-time chunk fetch is free.
+ * @noble P-256/BIP-39 code that the first paint never needs, so they load
+ * lazily to stay out of the entry bundle (see src/crypto/index.ts). Every
+ * caller is network-bound: the key flows, and the inbox-key check that runs in
+ * the background after start. The one-time chunk fetch is free next to that.
  */
 const loadCanary = () => import('@/crypto/canary')
 const loadRecoveryKey = () => import('@/crypto/recovery-key')
 const loadPasskeyKey = () => import('@/crypto/passkey-key')
+const loadInboxKey = () => import('@/crypto/inbox-key')
 
 // =============================================================================
 // Errors
@@ -751,14 +757,17 @@ const fetchKeyring = async (httpClient: HttpClient): Promise<FetchedKeyring> => 
 const servedWrappedDek0 = (keyring: FetchedKeyring): string | null =>
   keyring.keys.find((key) => key.key_id === initialKeyId)?.wrapped_key ?? null
 
-/** DEK `"0"` as derived from purely LOCAL state, or null when either half is absent. */
-const localDek0 = async (): Promise<CryptoKey | null> => {
-  const [ak, wrapped] = await Promise.all([getAK(), getDEK(initialKeyId)])
+/** A DEK as derived from purely LOCAL state, or null when either half is absent. */
+const localDek = async (keyId: KeyId): Promise<CryptoKey | null> => {
+  const [ak, wrapped] = await Promise.all([getAK(), getDEK(keyId)])
   if (!ak || !wrapped) {
     return null
   }
-  return unwrapDEK(wrapped, ak, initialKeyId).catch(() => null)
+  return unwrapDEK(wrapped, ak, keyId).catch(() => null)
 }
+
+/** DEK `"0"` as derived from purely LOCAL state, or null when either half is absent. */
+const localDek0 = (): Promise<CryptoKey | null> => localDek(initialKeyId)
 
 /**
  * Create the local DEK `"0"` witness when this device has none, or replace it
@@ -1197,9 +1206,141 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   // driven before any witness exists.
   await reconcileKeyringAnchor()
   invalidateKeyringCache()
+  await ensureInboxKeyBestEffort(httpClient)
 
   return recovery.recoveryPhrase
 }
+
+// =============================================================================
+// Inbox keys — what other accounts seal share keys to
+// =============================================================================
+
+/** Whether a served inbox row opens under `dek` to the public keys it publishes. */
+const inboxKeyOpens = async (userId: string, row: InboxKeyResponse, dek: CryptoKey): Promise<boolean> => {
+  const { openInboxKeyPair } = await loadInboxKey()
+  try {
+    await openInboxKeyPair(
+      { ecdhPublicKey: row.ecdh_public_key, mlkemPublicKey: row.mlkem_public_key, encryptedSeed: row.encrypted_seed },
+      dek,
+      inboxSeedAAD(userId, row.version, row.key_id),
+    )
+    return true
+  } catch (err) {
+    if (err instanceof DecryptionError) {
+      return false
+    }
+    throw err
+  }
+}
+
+/**
+ * Make sure the account's newest inbox key is current: sealed under the primary
+ * DEK this device trusts, and opening to the public keys it publishes. Mints the
+ * next version otherwise — on a new account, after a rotation that minted a new
+ * primary (so a revoked device cannot read shares sent from now on), or when the
+ * newest row is planted or corrupt.
+ *
+ * The primary comes from local state, never from the server: a seed sealed under
+ * a served pointer could be steered onto a DEK a revoked device still holds. If
+ * the server's primary disagrees it answers 409 and nothing is minted; the next
+ * run, after this device catches up, converges.
+ */
+export const ensureInboxKey = async (httpClient: HttpClient): Promise<void> => {
+  const primaryKeyId = await getPrimaryKeyId()
+  if (!primaryKeyId) {
+    return
+  }
+  const primaryDek = await localDek(primaryKeyId)
+  if (!primaryDek) {
+    // A device with a primary pointer but no DEK it can open cannot mint, and
+    // until another device does, nobody can share with this account.
+    console.warn('No inbox key: this device cannot open its primary DEK', primaryKeyId)
+    return
+  }
+  const userId = getUserId()
+  const { inbox_keys: inboxKeys } = await fetchInboxKeys(httpClient)
+  const latest = inboxKeys.at(-1)
+  if (latest?.key_id === primaryKeyId && (await inboxKeyOpens(userId, latest, primaryDek))) {
+    return
+  }
+
+  const { deriveInboxKeyPair, encryptInboxSeed, exportInboxPublicKeys, generateInboxSeed } = await loadInboxKey()
+  const version = (latest?.version ?? 0) + 1
+  const seed = generateInboxSeed()
+  try {
+    const publicKeys = await exportInboxPublicKeys(await deriveInboxKeyPair(seed))
+    const encryptedSeed = await encryptInboxSeed(seed, primaryDek, inboxSeedAAD(userId, version, primaryKeyId))
+    const proof = await buildProof(httpClient, 'inbox')
+    await postInboxKey(httpClient, { version, keyId: primaryKeyId, ...publicKeys, encryptedSeed, proof })
+  } catch (err) {
+    // Another device minted first, or the server's primary moved past ours.
+    // The first converges on its own; the second leaves the account unable to
+    // receive shares until this device catches up, so it is worth seeing.
+    if (err instanceof HttpError && err.response.status === 409) {
+      console.warn('[e2ee] inbox key not minted: another device minted first, or the primary moved on', err)
+      return
+    }
+    throw err
+  } finally {
+    seed.fill(0)
+  }
+}
+
+/** One of this account's inbox key versions, opened: the keypair and the public keys it publishes. */
+export type OpenedInboxKey = { keyPair: StoredKeyPair; ecdhPublicKey: string; mlkemPublicKey: string }
+
+/**
+ * Open this account's inbox key versions, for reading what was shared with it.
+ * A version this device cannot open — a DEK it does not hold, or a row whose
+ * seed does not derive to its published keys — is left out, so the shares
+ * sealed to it read as unopenable rather than failing the whole list.
+ */
+export const openInboxKeys = async (
+  httpClient: HttpClient,
+  versions: number[],
+): Promise<Map<number, OpenedInboxKey>> => {
+  const userId = getUserId()
+  const { openInboxKeyPair } = await loadInboxKey()
+  const wanted = new Set(versions)
+  const { inbox_keys: inboxKeys } = await fetchInboxKeys(httpClient)
+  const opened = new Map<number, OpenedInboxKey>()
+  for (const row of inboxKeys.filter((candidate) => wanted.has(candidate.version))) {
+    const dek = await localDek(row.key_id)
+    if (!dek) {
+      continue
+    }
+    try {
+      const keyPair = await openInboxKeyPair(
+        { ecdhPublicKey: row.ecdh_public_key, mlkemPublicKey: row.mlkem_public_key, encryptedSeed: row.encrypted_seed },
+        dek,
+        inboxSeedAAD(userId, row.version, row.key_id),
+      )
+      opened.set(row.version, { keyPair, ecdhPublicKey: row.ecdh_public_key, mlkemPublicKey: row.mlkem_public_key })
+    } catch (err) {
+      if (!(err instanceof DecryptionError)) {
+        throw err
+      }
+    }
+  }
+  return opened
+}
+
+/**
+ * `ensureInboxKey` that never rejects, for the tail of a key flow and for app
+ * start. The flow has already committed, so a failure must not fail it; the
+ * next start retries. Logged as an error: after a rotation, this is what moves
+ * new shares off a key a revoked device may hold.
+ */
+export const ensureInboxKeyBestEffort = async (httpClient: HttpClient): Promise<void> => {
+  try {
+    await ensureInboxKey(httpClient)
+  } catch (err) {
+    console.error('[e2ee] inbox key refresh failed — retrying on next start:', err)
+  }
+}
+
+/** A `share` challenge proof, required to store a share: only a key holder can send one in the account's name. */
+export const buildShareProof = (httpClient: HttpClient): Promise<ChallengeProof> => buildProof(httpClient, 'share')
 
 // =============================================================================
 // Flow D (trusted device) — Approve / deny / revoke / node-id
@@ -1357,6 +1498,7 @@ export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<bo
   const opened = await unwrapEnvelopeAK(envelope.wrappedCK)
   await assertFirstEnvelopeRecipient(httpClient, opened.ak, envelope.attestation)
   await applyKeyring(await acceptCandidateAK(httpClient, opened.ak), opened.primaryKeyId)
+  await ensureInboxKeyBestEffort(httpClient)
   return true
 }
 
@@ -1557,6 +1699,7 @@ const selfApproveWithVirtualDevice = async (
   // deliberately never writes a pointer.
   await storePrimaryKeyId(sealedPrimaryKeyId)
   await stageKeyring(httpClient)
+  await ensureInboxKeyBestEffort(httpClient)
 }
 
 // =============================================================================
@@ -1987,6 +2130,12 @@ const runAKRotation = async (
         refreshErr,
       )
     })
+  }
+
+  // A new primary makes the current inbox key stale: shares sent from now on
+  // must go to a key the device just locked out never held.
+  if (newPrimaryKey) {
+    await ensureInboxKeyBestEffort(httpClient)
   }
 }
 

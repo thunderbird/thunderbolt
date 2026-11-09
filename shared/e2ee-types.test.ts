@@ -14,6 +14,8 @@ import {
   encodeChallengePayload,
   encPrefix,
   encV2Prefix,
+  encryptedColumnsMap,
+  inboxSeedAAD,
   initialKeyId,
   isMintableKeyId,
   isWireKeyId,
@@ -43,7 +45,16 @@ describe('e2ee wire/AAD constants', () => {
   })
 
   test('challenge operations are the frozen set (exact order pins additions/removals)', () => {
-    expect([...challengeOperations] as string[]).toEqual(['approve', 'deny', 'revoke', 'rotate', 'recover', 'upgrade'])
+    expect([...challengeOperations] as string[]).toEqual([
+      'approve',
+      'deny',
+      'revoke',
+      'rotate',
+      'recover',
+      'upgrade',
+      'inbox',
+      'share',
+    ])
   })
 
   test('crypto algorithm params are pinned', () => {
@@ -147,6 +158,24 @@ describe('dekWrapAAD', () => {
 
   test('is disjoint from every encodeAAD value (the "__kw" prefix is not a table name)', () => {
     expect(Array.from(dekWrapAAD('0'))).not.toEqual(Array.from(encodeAAD('__kw', '', '', '0')))
+  })
+})
+
+describe('inboxSeedAAD', () => {
+  test('pins exact bytes — a wire contract, not an implementation detail', () => {
+    // "__inbox" ␟ userId ␟ version ␟ key_id. Changing this strands every inbox seed.
+    expect(Array.from(inboxSeedAAD('u', 2, '0'))).toEqual([95, 95, 105, 110, 98, 111, 120, 31, 117, 31, 50, 31, 48])
+  })
+
+  test('binds account, version and key_id', () => {
+    const aad = Array.from(inboxSeedAAD('u', 1, '0'))
+    expect(Array.from(inboxSeedAAD('v', 1, '0'))).not.toEqual(aad)
+    expect(Array.from(inboxSeedAAD('u', 2, '0'))).not.toEqual(aad)
+    expect(Array.from(inboxSeedAAD('u', 1, '1'))).not.toEqual(aad)
+  })
+
+  test('is a synthetic cell no synced table can produce', () => {
+    expect(Object.keys(encryptedColumnsMap)).not.toContain('__inbox')
   })
 })
 

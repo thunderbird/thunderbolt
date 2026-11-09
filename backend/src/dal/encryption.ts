@@ -2,16 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { QueryableDatabase } from '@/db/client'
+import type { db as DbType, QueryableDatabase } from '@/db/client'
 import {
   challengeNoncesTable,
   encryptionMetadataTable,
   envelopesTable,
+  inboxKeysTable,
   orgEnvelopesTable,
   wrappedKeysTable,
 } from '@/db/schema'
 import { isMintableKeyId, type KeyId, type NonceOperation } from '@shared/e2ee-types'
-import { and, eq, gt, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, lte, or, sql } from 'drizzle-orm'
 
 // ─── Envelopes ────────────────────────────────────────────────────────
 // NOTE (v2): the `wrapped_ck` column now carries the ACCOUNT KEY (AK), not the
@@ -351,6 +352,55 @@ export const updateWrappedKey = async (database: QueryableDatabase, userId: stri
     .where(and(eq(wrappedKeysTable.userId, userId), eq(wrappedKeysTable.keyId, keyId)))
     .returning()
 
+// ─── Inbox keys ───────────────────────────────────────────────────────
+
+const inboxKeyColumns = {
+  version: inboxKeysTable.version,
+  keyId: inboxKeysTable.keyId,
+  ecdhPublicKey: inboxKeysTable.ecdhPublicKey,
+  mlkemPublicKey: inboxKeysTable.mlkemPublicKey,
+  encryptedSeed: inboxKeysTable.encryptedSeed,
+}
+
+/** Every inbox key version a user has, oldest first. */
+export const listInboxKeys = async (database: QueryableDatabase, userId: string) =>
+  database
+    .select(inboxKeyColumns)
+    .from(inboxKeysTable)
+    .where(eq(inboxKeysTable.userId, userId))
+    .orderBy(inboxKeysTable.version)
+
+/** The user's newest inbox key version, or null when none was ever minted. */
+export const getLatestInboxKey = async (database: QueryableDatabase, userId: string) =>
+  database
+    .select(inboxKeyColumns)
+    .from(inboxKeysTable)
+    .where(eq(inboxKeysTable.userId, userId))
+    .orderBy(desc(inboxKeysTable.version))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+/**
+ * Insert a new inbox key version. Returns the inserted rows; 0 rows means the
+ * version already exists, which callers treat as a conflict.
+ */
+export const insertInboxKey = async (
+  database: QueryableDatabase,
+  entry: {
+    userId: string
+    version: number
+    keyId: KeyId
+    ecdhPublicKey: string
+    mlkemPublicKey: string
+    encryptedSeed: string
+  },
+) =>
+  database
+    .insert(inboxKeysTable)
+    .values(entry)
+    .onConflictDoNothing({ target: [inboxKeysTable.userId, inboxKeysTable.version] })
+    .returning()
+
 // ─── Challenge nonces ─────────────────────────────────────────────────
 
 /** Generate a 32-byte base64url nonce. */
@@ -414,3 +464,12 @@ export const deleteExpiredOrConsumedNonces = async (database: QueryableDatabase)
   database
     .delete(challengeNoncesTable)
     .where(or(eq(challengeNoncesTable.consumed, true), lte(challengeNoncesTable.expiresAt, new Date())))
+
+/**
+ * Take an account's per-user transaction lock — the one every change to its
+ * keys holds. A share write takes it for each recipient so its check of their
+ * current inbox key and the write see the same key as a mint in progress.
+ */
+export const lockUserKeys = async (database: Pick<typeof DbType, 'execute'>, userId: string): Promise<void> => {
+  await database.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+}

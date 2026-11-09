@@ -47,7 +47,16 @@ import {
 import { derivePasskeyKeyPair } from '@/crypto/passkey-key'
 import { createDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
 import { clearRecoveryPhrasePending, isRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
-import { type KeyId, deviceBindHkdfInfo, ecdhKeyAlgorithm, initialKeyId, isMintableKeyId } from '@shared/e2ee-types'
+import {
+  type InboxKeyResponse,
+  type KeyId,
+  deviceBindHkdfInfo,
+  ecdhKeyAlgorithm,
+  inboxSeedAAD,
+  initialKeyId,
+  isMintableKeyId,
+} from '@shared/e2ee-types'
+import { deriveInboxKeyPair, exportInboxPublicKeys, generateInboxSeed, openInboxKeyPair } from '@/crypto/inbox-key'
 
 // ---------------------------------------------------------------------------
 // In-memory key storage (replaces IndexedDB)
@@ -177,6 +186,7 @@ const {
   migrateToV2,
   followToV2,
   ensureV2Encryption,
+  ensureInboxKey,
   handleFullWipe,
 } = await import('./encryption')
 
@@ -248,6 +258,8 @@ type FakeServer = {
   lastBindNonce: string | null
   /** Status GET /devices/me/envelope answers with, instead of serving the envelope. */
   failEnvelopeFetchWith?: number
+  /** Inbox key versions, oldest first, in their served shape. */
+  inboxKeys: InboxKeyResponse[]
   fetch: (input: Request) => Promise<Response>
 }
 
@@ -310,6 +322,7 @@ const createFakeServer = (): FakeServer => {
     lastOrgEnvelope: null,
     boundDeviceId: null,
     lastBindNonce: null,
+    inboxKeys: [],
     fetch: async () => jsonResponse({}),
   }
 
@@ -496,6 +509,24 @@ const createFakeServer = (): FakeServer => {
         keyVersion: server.metadata!.keyVersion + 1,
       }
       return jsonResponse({ key_version: server.metadata.keyVersion })
+    }
+    if (path === '/encryption/inbox' && method === 'GET') {
+      return jsonResponse({ inbox_keys: server.inboxKeys })
+    }
+    if (path === '/encryption/inbox' && method === 'POST') {
+      // Mirrors the server's consistency checks: one version at a time, sealed
+      // under the account's current primary.
+      if (body!.keyId !== server.metadata?.primaryKeyId || body!.version !== server.inboxKeys.length + 1) {
+        return jsonResponse({ error: 'stale inbox key' }, 409)
+      }
+      server.inboxKeys.push({
+        version: body!.version as number,
+        key_id: body!.keyId as KeyId,
+        ecdh_public_key: body!.ecdhPublicKey as string,
+        mlkem_public_key: body!.mlkemPublicKey as string,
+        encrypted_seed: body!.encryptedSeed as string,
+      })
+      return jsonResponse({ version: body!.version })
     }
     if (path === '/encryption/upgrade' && method === 'POST') {
       if (server.upgradeConflict) {
@@ -2727,6 +2758,96 @@ describe('encryption service (v2)', () => {
       // pointer. Same object identity proves refreshAK was never called.
       expect(storedAK).toBe(akBefore)
       expect(storedPrimaryKeyId).toBe('0')
+    })
+  })
+
+  describe('ensureInboxKey', () => {
+    /** Open a served inbox row the way a recipient would, with the DEK it names. */
+    const openServedInboxKey = async (row: InboxKeyResponse) =>
+      openInboxKeyPair(
+        { ecdhPublicKey: row.ecdh_public_key, mlkemPublicKey: row.mlkem_public_key, encryptedSeed: row.encrypted_seed },
+        await unwrapDEK(storedDEKs.get(row.key_id)!, storedAK!, row.key_id),
+        inboxSeedAAD(testUserId, row.version, row.key_id),
+      )
+
+    /** A trusted device on a seeded v2 account, with its keys staged locally. */
+    const seedTrustedDevice = async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      return { server, kp }
+    }
+
+    it('first-device setup mints version 1 under DEK "0", opening to its published keys', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+
+      await completeFirstDeviceSetup(clientFor(server))
+
+      expect(server.inboxKeys.map((row) => [row.version, row.key_id])).toEqual([[1, '0']])
+      expect(await openServedInboxKey(server.inboxKeys[0])).toBeDefined()
+    })
+
+    it('an approved device mints the missing inbox key', async () => {
+      const { server } = await seedTrustedDevice()
+      expect(server.inboxKeys.map((row) => row.version)).toEqual([1])
+    })
+
+    it('leaves a current inbox key alone', async () => {
+      const { server } = await seedTrustedDevice()
+      server.requests.length = 0
+
+      await ensureInboxKey(clientFor(server))
+
+      expect(server.requests.filter((request) => request === 'POST /encryption/inbox')).toEqual([])
+      expect(server.inboxKeys).toHaveLength(1)
+    })
+
+    it('mints a successor under the new primary after a device revocation', async () => {
+      const { server, kp } = await seedTrustedDevice()
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(server.inboxKeys.map((row) => [row.version, row.key_id])).toEqual([
+        [1, '0'],
+        [2, '1'],
+      ])
+      // The old version still opens, so shares sealed to it stay readable.
+      expect(await openServedInboxKey(server.inboxKeys[0])).toBeDefined()
+      expect(await openServedInboxKey(server.inboxKeys[1])).toBeDefined()
+    })
+
+    it('replaces a newest row whose public keys do not match its seed', async () => {
+      const { server } = await seedTrustedDevice()
+      const planted = await exportInboxPublicKeys(await deriveInboxKeyPair(generateInboxSeed()))
+      server.inboxKeys[0] = { ...server.inboxKeys[0], ecdh_public_key: planted.ecdhPublicKey }
+
+      await ensureInboxKey(clientFor(server))
+
+      expect(server.inboxKeys.map((row) => row.version)).toEqual([1, 2])
+      expect(await openServedInboxKey(server.inboxKeys[1])).toBeDefined()
+    })
+
+    it('seals under the local primary, so a server pointer it disagrees with mints nothing', async () => {
+      const { server } = await seedTrustedDevice()
+      server.inboxKeys.length = 0
+      server.metadata = { ...server.metadata!, primaryKeyId: '7' }
+
+      await ensureInboxKey(clientFor(server))
+
+      expect(server.inboxKeys).toEqual([])
+    })
+
+    it('does nothing on a device that holds no keys', async () => {
+      const server = createFakeServer()
+
+      await ensureInboxKey(clientFor(server))
+
+      expect(server.requests).toEqual([])
     })
   })
 

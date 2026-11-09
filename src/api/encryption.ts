@@ -10,7 +10,9 @@ import type {
   ChallengeProof,
   ChallengeResponse,
   EncryptionMetadataResponse,
+  InboxKeysListResponse,
   KeyId,
+  MintInboxKeyRequest,
   RecoverySlotRequest,
   RotateRequest,
   RotateResponse,
@@ -214,6 +216,15 @@ export const fetchChallenge = async (
   operation: ChallengeOperation,
 ): Promise<ChallengeResponse> =>
   httpClient.get('encryption/challenge', { searchParams: { operation } }).json<ChallengeResponse>()
+
+/** Every inbox key version on this account. Any non-revoked device may read them; seeds are sealed under DEKs. */
+export const fetchInboxKeys = async (httpClient: HttpClient): Promise<InboxKeysListResponse> =>
+  httpClient.get('encryption/inbox').json<InboxKeysListResponse>()
+
+/** Mint the next inbox key version (proof `inbox`, trusted device). 409 means another device got there first. */
+export const postInboxKey = async (httpClient: HttpClient, body: MintInboxKeyRequest): Promise<void> => {
+  await httpClient.post('encryption/inbox', { json: body })
+}
 
 /**
  * Atomic AK rotation: replaces every trusted device's envelope, re-anchors the

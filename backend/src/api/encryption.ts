@@ -8,6 +8,7 @@ import {
   bridgeDeviceId,
   cliDeviceIdPrefix,
   isTrustedAppDevice,
+  lockUserKeys,
   maxActiveDevicesPerUser,
   countActiveDevices,
   getDeviceById,
@@ -36,6 +37,9 @@ import {
   listWrappedKeys,
   insertWrappedKey,
   updateWrappedKey,
+  listInboxKeys,
+  getLatestInboxKey,
+  insertInboxKey,
   issueChallengeNonce,
   consumeChallengeNonce,
   revokeDeviceSessions,
@@ -48,7 +52,10 @@ import { isPasskeyEnabled, type Settings } from '@/config/settings'
 import type { QueryableDatabase, db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyAccountSignature, verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
+import { proofSchema } from '@/lib/challenge-proof-schema'
+import { getCallerDevice } from '@/lib/caller-device'
 import { sealBindNonce } from '@/lib/device-bind'
+import { notifyBestEffort } from '@/lib/notify-best-effort'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
 import type { StepUpAction } from '@/lib/step-up-otp'
 import { burnStepUpCode, requireStepUpCode, sendStepUpCode, stepUpRequiredMessage } from './step-up'
@@ -64,11 +71,20 @@ import {
   challengeOperations,
   initialKeyId,
   encodeDeviceAttestationPayload,
+  encryptedInboxSeedLength,
+  inboxPublicKeyLengths,
   keyIdPattern,
   legacyKeyId,
 } from '@shared/e2ee-types'
+import { base64Length } from '@shared/chat-shares'
 import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
+
+/** Schema bounds for base64 of exactly `byteLength` bytes. */
+const exactBase64 = (byteLength: number) => ({
+  minLength: base64Length(byteLength),
+  maxLength: base64Length(byteLength),
+})
 
 /** Hardcoded at module scope so a client can never pick what its step-up code buys. */
 const stepUpAction = 'recovery-phrase-change' satisfies StepUpAction
@@ -100,14 +116,6 @@ class SchemeConflictError extends Error {}
  * row was actually inserted, so a conflict aborts its transaction instead.
  */
 class KeyConflictError extends Error {}
-
-/** Elysia schema for the shared ChallengeProof request DTO. */
-const proofSchema = t.Object({
-  signature: t.String({ maxLength: 200 }),
-  nonce: t.String({ maxLength: 128 }),
-  operation: t.Union(challengeOperations.map((op) => t.Literal(op))),
-  deviceId: t.String({ maxLength: 36 }),
-})
 
 /**
  * Elysia schema for one wrapped-DEK keyring entry. key_id is a wire-format
@@ -145,54 +153,6 @@ const envelopeEntrySchema = t.Object({
    */
   attestation: t.String({ maxLength: 200 }),
 })
-
-type CallerDeviceResult =
-  | { status: 400 | 403 | 404; error: string }
-  | { deviceId: string; device: NonNullable<Awaited<ReturnType<typeof getDeviceById>>> }
-
-/** The session fields the caller gate reads. Narrowed so callers pass anything session-shaped. */
-type CallerSession = { deviceId?: string | null }
-
-/**
- * Resolve the caller's device: the `X-Device-ID` header must be present AND
- * match the device this session is bound to server-side. The device must belong
- * to the authenticated user and not be revoked. Trust is NOT required here —
- * routes that need a trusted caller check `device.trusted` themselves.
- *
- * THU-873: the header is client-set, so on its own it is a CLAIM, not an
- * identity — any session could name any device and inherit its authority. The
- * authority is `session.deviceId`, which is written only by the sealed-nonce
- * bind handshake (`POST /devices/me/bind`) and by first registration. A session
- * that was never bound fails closed rather than falling back to the header.
- *
- * The match is checked BEFORE the device lookup, so a session cannot probe which
- * device ids exist on its own account either.
- */
-const getCallerDevice = async (
-  database: typeof DbType,
-  userId: string,
-  request: Request,
-  session: CallerSession,
-): Promise<CallerDeviceResult> => {
-  const deviceId = request.headers.get('x-device-id')?.trim()
-  if (!deviceId) {
-    return { status: 400, error: 'X-Device-ID header is required' }
-  }
-  if (!session.deviceId) {
-    return { status: 403, error: 'Session is not bound to a device' }
-  }
-  if (session.deviceId !== deviceId) {
-    return { status: 403, error: 'X-Device-ID does not match the authenticated device' }
-  }
-  const device = await getDeviceById(database, deviceId)
-  if (!device || device.userId !== userId) {
-    return { status: 404, error: 'Device not found' }
-  }
-  if (device.revokedAt != null) {
-    return { status: 403, error: 'Device has been revoked' }
-  }
-  return { deviceId, device }
-}
 
 /**
  * Envelope coverage validation: rotation covers all envelope-capable devices;
@@ -483,11 +443,6 @@ const mapEncryptionError = (err: unknown, set: { status?: number | string }): { 
  * the handler, which converts it to the same 409 as before.
  */
 class DeviceIdTakenError extends Error {}
-
-/** Security emails ride committed transactions — a send failure is logged, never surfaced. */
-const notifyBestEffort = (label: string, send: Promise<void>): void => {
-  send.catch((err) => console.error(`[security-email] ${label} failed:`, err))
-}
 
 export const createEncryptionRoutes = (
   auth: Auth,
@@ -1180,6 +1135,101 @@ export const createEncryptionRoutes = (
       {
         auth: true,
         query: t.Object({ operation: t.String({ maxLength: 20 }) }),
+      },
+    )
+    // The caller's own inbox keys, every version. Each seed is sealed under a
+    // DEK, so serving them to any non-revoked device of the account is as safe
+    // as serving the keyring.
+    .get(
+      '/encryption/inbox',
+      async ({ request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+        const rows = await listInboxKeys(database, userId)
+        return {
+          inbox_keys: rows.map((row) => ({
+            version: row.version,
+            key_id: row.keyId,
+            ecdh_public_key: row.ecdhPublicKey,
+            mlkem_public_key: row.mlkemPublicKey,
+            encrypted_seed: row.encryptedSeed,
+          })),
+        }
+      },
+      { auth: true },
+    )
+    // Mint the next inbox key version. Gated by an 'inbox' proof: the server
+    // cannot check that the public keys match the sealed seed, so only a
+    // current key holder may publish them — otherwise a stolen session could
+    // swap in keys it controls and receive every share sent to the account.
+    // The version and key_id checks keep honest clients consistent (one
+    // version at a time, sealed under the current primary); they are not what
+    // stops a malicious server.
+    .post(
+      '/encryption/inbox',
+      async ({ body, request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+        if (!caller.device.trusted) {
+          set.status = 403
+          return { error: 'Only trusted devices can mint inbox keys' }
+        }
+
+        try {
+          await database.transaction(async (tx) => {
+            const txDb: QueryableDatabase = tx
+            await lockUserKeys(tx, userId)
+
+            if (!(await verifyChallengeSignature(txDb, userId, body.proof, 'inbox', caller.deviceId))) {
+              throw new ForbiddenError('Invalid challenge proof')
+            }
+            const metadata = await getEncryptionMetadata(txDb, userId)
+            if (metadata?.schemeVersion !== 2 || !metadata.primaryKeyId) {
+              throw new BadRequestError('Encryption is not set up for this account')
+            }
+            if (body.keyId !== metadata.primaryKeyId) {
+              throw new KeyConflictError('Inbox seed must be sealed under the current primary key')
+            }
+            const latest = await getLatestInboxKey(txDb, userId)
+            if (body.version !== (latest?.version ?? 0) + 1) {
+              throw new KeyConflictError('Inbox key version is stale')
+            }
+            const inserted = await insertInboxKey(txDb, {
+              userId,
+              version: body.version,
+              keyId: body.keyId,
+              ecdhPublicKey: body.ecdhPublicKey,
+              mlkemPublicKey: body.mlkemPublicKey,
+              encryptedSeed: body.encryptedSeed,
+            })
+            if (inserted.length === 0) {
+              throw new KeyConflictError('Inbox key version already exists')
+            }
+          })
+        } catch (err) {
+          return mapEncryptionError(err, set)
+        }
+
+        return { version: body.version }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          version: t.Integer({ minimum: 1 }),
+          keyId: t.String({ minLength: 1, maxLength: 15, pattern: keyIdPattern }),
+          ecdhPublicKey: t.String(exactBase64(inboxPublicKeyLengths.ecdh)),
+          mlkemPublicKey: t.String(exactBase64(inboxPublicKeyLengths.mlkem)),
+          encryptedSeed: t.String(exactBase64(encryptedInboxSeedLength)),
+          proof: proofSchema,
+        }),
       },
     )
     // Atomic AK rotation: replace every trusted device's envelope, re-anchor the

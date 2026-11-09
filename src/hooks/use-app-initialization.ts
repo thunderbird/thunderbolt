@@ -9,7 +9,13 @@ import { getSettings, hasCurrentDefaultsVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import { startKeyRequestResponder } from '@/db/encryption'
-import { ensureSessionBound, ensureV2Encryption, refreshAK, stageKeyring } from '@/services/encryption'
+import {
+  ensureInboxKeyBestEffort,
+  ensureSessionBound,
+  ensureV2Encryption,
+  refreshAK,
+  stageKeyring,
+} from '@/services/encryption'
 import { fetchEncryptionMetadata } from '@/api/encryption'
 import { getKeyPair } from '@/crypto'
 import { dispatchE2eeProvisioningSettled } from '@/hooks/use-e2ee-ready'
@@ -167,6 +173,9 @@ export const runEncryptionInit = async (client: HttpClient): Promise<void> => {
     if (result.outcome === 'migrated') {
       dispatchMigrationRecoveryKey(result.recoveryKey)
     }
+    // Not awaited: it is a network round trip (and a mint now and then) that
+    // nothing here waits on, and the settled signal below must not wait for it.
+    void ensureInboxKeyBestEffort(client)
   } catch (error) {
     console.warn('[init] E2EE migration/follow check failed:', error)
   } finally {

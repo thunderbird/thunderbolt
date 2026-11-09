@@ -280,6 +280,11 @@ const utf8 = new TextEncoder()
  * cross-account relocation a real disclosure on fixed-id rows and MUST bind the
  * account here. Such a design changes the wire format anyway, so the binding
  * rides along at that point rather than costing a v3 tag of its own.
+ *
+ * Shared chats are the one cross-account key delivery, and they keep the
+ * precondition: a share key is its own random key, sealed to the recipient's
+ * inbox key, and never enters the keyring, the codec or this AAD. Its account
+ * binding lives in the share AADs below (`shareSnapshotAAD` and friends).
  */
 export const encodeAAD = (table: string, column: string, rowId: string, keyId: KeyId): Uint8Array =>
   utf8.encode([table, column, rowId, keyId].join(payloadSeparator))
@@ -330,6 +335,59 @@ export const akCanaryAnchor = '__ak' as const
  */
 export const dekWrapAAD = (keyId: KeyId): Uint8Array => utf8.encode(`__kw${payloadSeparator}${keyId}`)
 
+/**
+ * AAD binding an inbox seed to its account, version and the DEK that encrypts
+ * it. The seed is AES-GCM-encrypted under a DEK like a data cell, so this is a
+ * synthetic cell in the `canaryAAD` mould: table `__inbox`, a name no synced
+ * table can have, so a seed can never be replayed as a cell value or the
+ * reverse. Same rule as `dekWrapAAD`: the decrypting side builds it from the
+ * version and key_id it is resolving, never from a separately served field.
+ */
+export const inboxSeedAAD = (userId: string, version: number, keyId: KeyId): Uint8Array =>
+  encodeAAD('__inbox', userId, String(version), keyId)
+
+/** Byte length of an inbox seed — the secret an inbox keypair derives from. */
+export const inboxSeedLength = 32
+
+/**
+ * Shared chats. A share is one snapshot encrypted under a random per-share key,
+ * and that key sealed to each recipient's inbox key. These AADs are the account
+ * binding the cross-account precondition on `encodeAAD` asks for: every one
+ * names the share and its owner, and the key seal also names the recipient and
+ * the exact inbox public keys it was sealed to, so nothing moves between shares,
+ * owners, recipients or inbox versions. The share key never enters the keyring,
+ * the codec or `encodeAAD`, so no DEK material crosses accounts.
+ */
+const shareAAD = (...fields: string[]): Uint8Array => utf8.encode(['__share', ...fields].join(payloadSeparator))
+
+/** AAD for a share's snapshot ciphertext. */
+export const shareSnapshotAAD = (shareId: string, ownerUserId: string): Uint8Array =>
+  shareAAD('snapshot', shareId, ownerUserId)
+
+/** AAD for a share's title ciphertext — a separate blob so a list can show it without the snapshot. */
+export const shareTitleAAD = (shareId: string, ownerUserId: string): Uint8Array =>
+  shareAAD('title', shareId, ownerUserId)
+
+/**
+ * AAD for the share key sealed to one recipient. `inboxKeyHash` is SHA-256
+ * (hex) over the recipient's inbox ECDH ‖ ML-KEM public keys, which binds the
+ * seal to the static keys it targets — the hybrid transcript alone binds only
+ * the ephemeral half.
+ */
+export const shareKeySealAAD = (
+  shareId: string,
+  ownerUserId: string,
+  recipientUserId: string,
+  inboxVersion: number,
+  inboxKeyHash: string,
+): Uint8Array => shareAAD('key', shareId, ownerUserId, recipientUserId, String(inboxVersion), inboxKeyHash)
+
+/** Version byte of the share-key seal (`sealHybridPayload`), its own wire format. */
+export const shareKeySealVersion = 0x01
+
+/** HKDF info for the share-key seal — a domain no other hybrid seal shares. */
+export const shareKeySealHkdfInfo = 'thunderbolt-share-key-seal-v1'
+
 // =============================================================================
 // Challenge-response — ECDSA P-256 over nonce ‖ operation ‖ device_id
 // =============================================================================
@@ -339,8 +397,21 @@ export const dekWrapAAD = (keyId: KeyId): Uint8Array => utf8.encode(`__kw${paylo
  * the signature. `upgrade` is present only to type its replay nonce — it is the
  * BOOTSTRAP op and is NOT signature-verified (the signing key is null pre-flip);
  * `/upgrade` is gated solely by the D1 canary-possession proof (plan §2.4).
+ * `inbox` gates minting an inbox key version: without it a stolen session could
+ * publish public keys it controls and receive every share sent to the account.
+ * `share` gates storing a share: sealing one needs only public keys, so without
+ * it a stolen session could send content of its own in the account's name.
  */
-export const challengeOperations = ['approve', 'deny', 'revoke', 'rotate', 'recover', 'upgrade'] as const
+export const challengeOperations = [
+  'approve',
+  'deny',
+  'revoke',
+  'rotate',
+  'recover',
+  'upgrade',
+  'inbox',
+  'share',
+] as const
 
 export type ChallengeOperation = (typeof challengeOperations)[number]
 
@@ -594,6 +665,26 @@ export const orgEscrowHkdfInfo = 'thunderbolt-org-escrow-ak-wrap-v1'
 /** Byte length of a raw uncompressed P-256 point (the operator public key and the ephemeral key). */
 export const p256RawPublicKeyLength = 65
 
+// Wire sizes of the inbox and share blobs, so the backend validates bodies
+// against the same numbers the client builds them from.
+const mlkem768PublicKeyLength = 1184
+const mlkem768CiphertextLength = 1088
+const aesGcmIvLength = 12
+const aesGcmTagLength = 16
+
+/** A share key: one AES-256 key. */
+export const shareKeyLength = 32
+
+/** Bytes of an inbox public key pair as stored: uncompressed P-256 point, ML-KEM-768 encapsulation key. */
+export const inboxPublicKeyLengths = { ecdh: p256RawPublicKeyLength, mlkem: mlkem768PublicKeyLength } as const
+
+/** Bytes of an inbox seed encrypted under a DEK: iv ‖ seed ‖ tag. */
+export const encryptedInboxSeedLength = aesGcmIvLength + inboxSeedLength + aesGcmTagLength
+
+/** Bytes of a share key sealed to an inbox key: version ‖ ephemeral P-256 ‖ ML-KEM ciphertext ‖ iv ‖ key ‖ tag. */
+export const sealedShareKeyLength =
+  1 + p256RawPublicKeyLength + mlkem768CiphertextLength + aesGcmIvLength + shareKeyLength + aesGcmTagLength
+
 // =============================================================================
 // Migration — scheme_version (plan §6.1, Decision D2)
 // =============================================================================
@@ -665,6 +756,32 @@ export type WrappedKeyResponse = {
 /** GET /v1/encryption/keys — the full keyring for staging (`stageKeyring`). */
 export type WrappedKeysListResponse = {
   keys: WrappedKeyResponse[]
+}
+
+/** One inbox key version, as served by GET /v1/encryption/inbox. */
+export type InboxKeyResponse = {
+  version: number
+  /** The DEK that encrypts `encrypted_seed`. */
+  key_id: KeyId
+  ecdh_public_key: string
+  mlkem_public_key: string
+  /** base64 `iv ‖ AES-GCM(seed)` under DEK `key_id`, AAD `inboxSeedAAD`. */
+  encrypted_seed: string
+}
+
+/** GET /v1/encryption/inbox — every inbox key version on the account, oldest first. */
+export type InboxKeysListResponse = {
+  inbox_keys: InboxKeyResponse[]
+}
+
+/** POST /v1/encryption/inbox — mint the next inbox key version. */
+export type MintInboxKeyRequest = {
+  version: number
+  keyId: KeyId
+  ecdhPublicKey: string
+  mlkemPublicKey: string
+  encryptedSeed: string
+  proof: ChallengeProof
 }
 
 /**

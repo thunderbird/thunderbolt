@@ -217,6 +217,9 @@ export const createVoiceSession = (options: VoiceSessionOptions): VoiceSession =
       if (ac.signal.aborted) {
         return
       }
+      // Streamed TTS can fail mid-sentence; drop the audio already queued so the
+      // VAD never hears it as a user turn once we are back to listening.
+      playback.flush()
       onError?.(error)
       setState('listening')
     }

@@ -53,11 +53,14 @@ mock.module('@/voice/audio/vad', () => ({
 
 let enqueued: AudioChunk[] = []
 let playbackRunning = false
+let flushCount = 0
 mock.module('@/voice/audio/playback', () => ({
   createPlaybackQueue: (): PlaybackQueue =>
     ({
       enqueue: (chunk: AudioChunk) => enqueued.push(chunk),
-      flush: () => {},
+      flush: () => {
+        flushCount++
+      },
       close: () => {},
       getLevel: () => 0,
       get isPlaying() {
@@ -330,6 +333,29 @@ describe('createVoiceSession', () => {
     await session.start()
     await vadHandlers!.onUtterance(new Float32Array(16000))
     expect(errors).toEqual([error])
+    expect(session.state).toBe('listening')
+    await session.stop()
+  })
+
+  test('drops queued audio when synthesis fails mid-reply', async () => {
+    const error = new Error('stream broke')
+    const errors: unknown[] = []
+    const session = createVoiceSession({
+      earcons: makeEarcons().earcons,
+      engine: makeEngine('hi', {
+        synthesize: async function* () {
+          yield { pcm: new Float32Array(1), sampleRate: 24_000 }
+          throw error
+        },
+      }),
+      reply: makeReply(['A reply that fails partway.']),
+      onError: (failure) => errors.push(failure),
+    })
+    await session.start()
+    const flushesBefore = flushCount
+    await vadHandlers!.onUtterance(new Float32Array(16000))
+    expect(errors).toEqual([error])
+    expect(flushCount).toBe(flushesBefore + 1)
     expect(session.state).toBe('listening')
     await session.stop()
   })

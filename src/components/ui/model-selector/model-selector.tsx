@@ -13,13 +13,14 @@ import {
 } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { GradientLock } from '@/components/ui/gradient-lock'
+import { PickerTrigger } from '@/components/ui/picker-trigger'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, Check, ChevronDown, Lock, Plus } from 'lucide-react'
+import { AlertTriangle, Check, Lock, Plus } from 'lucide-react'
 import { useCallback } from 'react'
 import { flushSync } from 'react-dom'
 
@@ -115,6 +116,37 @@ export const categorizeModels = (
   return groups
 }
 
+type ModelSelectorTriggerProps = {
+  model: Model | null
+  isOpen: boolean
+  variant: NonNullable<ModelSelectorProps['variant']>
+}
+
+/**
+ * The selector's closed state: the selected model's name, flagged with a
+ * warning when it has no API key or the gradient lock when it is private.
+ * Exported for surfaces that open the list themselves (Quick Entry) so their
+ * trigger stays identical to the composer's.
+ */
+export const ModelSelectorTrigger = ({ model, isOpen, variant }: ModelSelectorTriggerProps) => {
+  const { t } = useLingui()
+  return (
+    <PickerTrigger
+      data-testid="model-selector-trigger"
+      label={model?.name ?? t`Select model`}
+      isOpen={isOpen}
+      variant={variant}
+      icon={
+        model && needsApiKey(model) ? (
+          <AlertTriangle className="size-3.5 shrink-0 text-warning" />
+        ) : model?.isConfidential === 1 ? (
+          <GradientLock className="size-3.5 shrink-0" />
+        ) : null
+      }
+    />
+  )
+}
+
 export const ModelSelector = ({
   embedded = false,
   onClose,
@@ -136,33 +168,7 @@ export const ModelSelector = ({
   const groupedItems = categorizeModels(models, chatThread, i18n)
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
-    <div
-      data-testid="model-selector-trigger"
-      className={cn(
-        'flex min-w-0 items-center cursor-pointer transition-colors',
-        variant === 'composer'
-          ? cn(
-              'gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)]',
-              isOpen ? 'bg-accent' : 'hover:bg-accent/50',
-            )
-          : cn(
-              'gap-2 px-3 h-[var(--touch-height-sm)] rounded-full text-[length:var(--font-size-body)]',
-              isOpen ? 'bg-secondary' : 'hover:bg-secondary/50',
-            ),
-      )}
-    >
-      {selected?.data?.model && needsApiKey(selected.data.model) ? (
-        <AlertTriangle className="size-3.5 shrink-0 text-warning" />
-      ) : selected?.data?.model.isConfidential === 1 ? (
-        <GradientLock className="size-3.5 shrink-0" />
-      ) : null}
-      {/* Muted in both variants — trigger labels are chrome, not content.
-          Truncates instead of wrapping when the composer gets narrow. */}
-      <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? t`Select model`}</span>
-      <ChevronDown
-        className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')}
-      />
-    </div>
+    <ModelSelectorTrigger model={selected?.data?.model ?? null} isOpen={isOpen} variant={variant} />
   )
 
   const renderItem = (item: SearchableMenuItem<ModelItemData>, isSelected: boolean) => {

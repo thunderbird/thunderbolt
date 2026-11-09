@@ -28,3 +28,6 @@ export * from './inference-usage-schema'
 
 // Re-export solved captcha challenges (server-only replay protection)
 export * from './captcha-schema'
+
+// Re-export shared chats (server-only, not synced via PowerSync)
+export * from './share-schema'

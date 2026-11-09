@@ -139,6 +139,8 @@ describe('Export DAL', () => {
     expect(tableKeys).not.toContain('devices')
     expect(tableKeys).not.toContain('integrations_secrets')
     expect(tableKeys).not.toContain('agents_system')
+    expect(tableKeys).not.toContain('received_shares')
+    expect(tableKeys).not.toContain('sent_shares')
   })
 
   it('preserves chat message JSON columns (parts / metadata / cache) as parsed objects', async () => {

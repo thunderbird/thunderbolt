@@ -49,7 +49,7 @@ const initialSyncTimeoutMs = 10_000
 
 /**
  * Sync stream priority we block app init on. Covers `user_essentials` (settings, models,
- * model_profiles, devices, chat_threads) and `device_self` in
+ * model_profiles, devices, chat_threads, sent_shares) and `device_self` in
  * `powersync-service/config/config.yaml`. The lower-priority `user_data` stream (chat_messages, tasks,
  * etc.) streams in the background after the app is interactive.
  *
@@ -510,7 +510,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
 
   /**
    * Wait for PowerSync's priority-1 streams to complete their initial sync (`user_essentials` —
-   * settings, models, model_profiles, devices, chat_threads — and `device_self`). Lower-priority data
+   * settings, models, model_profiles, devices, chat_threads, sent_shares — and `device_self`). Lower-priority data
    * (chat_messages, tasks, etc.) continues streaming in the background. Also waits for this
    * device's own row, without which priority 1 can complete empty (see `waitForOwnDeviceRow`).
    *

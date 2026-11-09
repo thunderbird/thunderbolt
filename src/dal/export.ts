@@ -4,6 +4,7 @@
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { localOnlyTables, syncedTables } from '@/db/powersync/schema'
+import { readOnlyPowerSyncTableNames } from '@shared/powersync-tables'
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
 
 export const exportFormat = 'thunderbolt-export'
@@ -18,6 +19,8 @@ type AllTableName = keyof typeof syncedTables | keyof typeof localOnlyTables
  * - `integrations_secrets`: third-party OAuth tokens (Google / Microsoft).
  *   The importing user re-authenticates instead.
  * - `agents_system`: backend-hydrated catalog, not user content.
+ * - `received_shares`, `sent_shares`: server-written share lists, read-only on
+ *   the client; the shares themselves live on the server.
  *
  * Typed against {@link AllTableName} so a future schema rename/removal trips
  * the compiler. Anything not in this list is included.
@@ -26,6 +29,7 @@ const excludedFromExport = [
   'devices',
   'integrations_secrets',
   'agents_system',
+  ...readOnlyPowerSyncTableNames,
 ] as const satisfies readonly AllTableName[]
 type ExcludedTableName = (typeof excludedFromExport)[number]
 export type IncludedTableName = Exclude<AllTableName, ExcludedTableName>

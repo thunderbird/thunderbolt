@@ -17,6 +17,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { getTableColumns } from 'drizzle-orm'
 import { user } from './auth-schema'
+import { chatSharesTable } from './share-schema'
 
 /**
  * PowerSync tables - mirror of frontend SQLite schema.
@@ -316,6 +317,59 @@ export const agentsTable = powersyncSchema.table(
 )
 
 /**
+ * Synced via PowerSync, read-only: the chats shared with this user, one row per
+ * share. A projection of `chat_shares` and its recipients that the server
+ * rebuilds whenever who is on a share changes (`rebuildShareRows`) and that
+ * cascades away with the share; clients never write it. Holds what listing
+ * needs — the title, encrypted under the share key, and that key sealed to the
+ * recipient's inbox key — while the snapshot is fetched on open. `updated_at`
+ * is ISO text the server formats, so the client sorts and parses it as is.
+ */
+export const receivedSharesTable = powersyncSchema.table(
+  'received_shares',
+  {
+    id: text('id')
+      .notNull()
+      .references(() => chatSharesTable.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    ownerUserId: text('owner_user_id').notNull(),
+    ownerName: text('owner_name').notNull(),
+    ownerEmail: text('owner_email').notNull(),
+    encryptedTitle: text('encrypted_title').notNull(),
+    sealedShareKey: text('sealed_share_key').notNull(),
+    inboxVersion: integer('inbox_version').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  // One row per (share, recipient); each recipient syncs only their own.
+  (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_received_shares_user_id').on(table.userId)],
+)
+
+/**
+ * Synced via PowerSync, read-only: the chats this user shared and with whom,
+ * one row per share. Rebuilt by the server like `received_shares`.
+ */
+export const sentSharesTable = powersyncSchema.table(
+  'sent_shares',
+  {
+    id: text('id')
+      .primaryKey()
+      .references(() => chatSharesTable.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    chatThreadId: text('chat_thread_id').notNull(),
+    /** JSON `ShareUser[]`. */
+    recipients: text('recipients').notNull(),
+    /** `chat_shares.version`, sent back as `replacesVersion` when the share is replaced. */
+    version: integer('version').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('idx_sent_shares_user_id').on(table.userId)],
+)
+
+/**
  * Map of PowerSync table names to Drizzle tables for account delete.
  * Must have an entry for every PowerSyncTableName (type-checked).
  */
@@ -332,6 +386,8 @@ export const powersyncTablesByName = {
   devices: devicesTable,
   agents: agentsTable,
   projects: projectsTable,
+  received_shares: receivedSharesTable,
+  sent_shares: sentSharesTable,
 } satisfies Record<PowerSyncTableName, AnyPgTable>
 
 /**
@@ -347,6 +403,8 @@ export const powersyncDbNameToSchemaKey: Record<PowerSyncTableName, Record<strin
 
 /**
  * Primary key column for each PowerSync table (for PATCH/DELETE where clauses).
+ * Read-only tables have entries only because the record is keyed by every table:
+ * applyOperation ignores their uploads before it gets here.
  */
 export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   settings: settingsTable.key,
@@ -361,6 +419,8 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   devices: devicesTable.id,
   agents: agentsTable.id,
   projects: projectsTable.id,
+  received_shares: receivedSharesTable.id,
+  sent_shares: sentSharesTable.id,
 }
 
 /**
@@ -384,4 +444,6 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   // rows needing the composite (id, user_id) treatment (see
   // docs/composite-primary-keys-and-default-data.md).
   projects: [projectsTable.id],
+  received_shares: [receivedSharesTable.id, receivedSharesTable.userId],
+  sent_shares: [sentSharesTable.id],
 }

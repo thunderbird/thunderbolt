@@ -20,6 +20,16 @@ tests:
       - matchRegex:
           path: data["config.yaml"]
           pattern: '(?s)user_essentials:.*user_id IN active_device_account.*user_data:.*user_id IN active_device_account'
+  - it: syncs the read-only share lists, gated on revocation, the sent one with the chats
+    template: templates/configmaps.yaml
+    documentIndex: 0
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "(?s)user_essentials:.*SELECT \\* FROM powersync\\.sent_shares WHERE user_id IN active_device_account.*user_data:"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "(?s)user_data:.*SELECT \\* FROM powersync\\.received_shares WHERE user_id IN active_device_account"
   - it: runs the pinned PowerSync version the sync config was tested on
     template: templates/powersync.yaml
     documentSelector:

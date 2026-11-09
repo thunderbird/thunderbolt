@@ -6,6 +6,7 @@ import type { WidgetCacheData } from '@/widgets'
 import type { UIMessage } from 'ai'
 import type { UIMessageMetadata } from '@/types'
 import { customAgentTypes, systemAgentTypes } from '@shared/acp-types'
+import type { ShareUser } from '@shared/chat-shares'
 import { sql } from 'drizzle-orm'
 import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
@@ -311,6 +312,35 @@ export const devicesTable = sqliteTable('devices', {
   // cross-device — pairing is inert, never errors.
   nodeId: text('node_id'),
   nodeIdAttestedAt: text('node_id_attested_at'),
+})
+
+/**
+ * Synced via PowerSync, read-only: chats shared with this account, written by
+ * the server and never uploaded. The title is encrypted under the share key,
+ * which is sealed to this account's inbox key; the snapshot is fetched from the
+ * backend on open.
+ */
+export const receivedSharesTable = sqliteTable('received_shares', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  ownerUserId: text('owner_user_id').notNull(),
+  ownerName: text('owner_name').notNull(),
+  ownerEmail: text('owner_email').notNull(),
+  encryptedTitle: text('encrypted_title').notNull(),
+  sealedShareKey: text('sealed_share_key').notNull(),
+  inboxVersion: integer('inbox_version').notNull(),
+  updatedAt: text('updated_at').notNull(),
+})
+
+/** Synced via PowerSync, read-only: chats this account shared and with whom, written by the server. */
+export const sentSharesTable = sqliteTable('sent_shares', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  chatThreadId: text('chat_thread_id').notNull(),
+  recipients: text('recipients', { mode: 'json' }).$type<ShareUser[]>().notNull(),
+  /** Sent back as `replacesVersion` when the share is replaced. */
+  version: integer('version').notNull(),
+  updatedAt: text('updated_at').notNull(),
 })
 
 /** Synced via PowerSync. User-created ACP agents only. `isSystem` is always 0; built-ins and system agents are not rows. */

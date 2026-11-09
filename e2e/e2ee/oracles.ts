@@ -21,19 +21,22 @@
  */
 
 import { encPrefix, encV2Prefix, encryptedColumnsMap, keyIdPattern, legacyKeyId } from '../../shared/e2ee-types'
-import { powersyncTableNames } from '../../shared/powersync-tables'
+import { type PowerSyncTableName, powersyncTableNames } from '../../shared/powersync-tables'
 import { sql } from './db'
 
 const powersyncSchema = 'powersync'
 
 /**
  * Synced tables that legitimately carry no encryptable user content, so their
- * absence from `encryptedColumnsMap` is intentional rather than drift. Empty
- * today — every live synced table has user-authored columns — but the seam
- * exists so a future pure-structural table can be documented here explicitly
- * rather than by silent omission.
+ * absence from `encryptedColumnsMap` is intentional rather than drift. Listed
+ * by hand, with a reason each: being server-written is not by itself a reason.
  */
-const syncedTablesWithoutUserContent: ReadonlySet<string> = new Set()
+const syncedTablesWithoutUserContent: ReadonlySet<PowerSyncTableName> = new Set<PowerSyncTableName>([
+  // The share lists: the title is already encrypted under a share key the
+  // server never holds, and the rest is account identity the server knows.
+  'received_shares',
+  'sent_shares',
+])
 const valuePreviewLength = 120
 
 /** One configured table+column pair that exists in the database. */

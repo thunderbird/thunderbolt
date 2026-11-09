@@ -57,6 +57,7 @@ data:
               - SELECT * FROM powersync.model_profiles WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
               - SELECT * FROM powersync.devices WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
               - SELECT * FROM powersync.chat_threads WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+              - SELECT * FROM powersync.sent_shares WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
           user_data:
             priority: 2
             auto_subscribe: true
@@ -68,6 +69,7 @@ data:
               - SELECT * FROM powersync.triggers WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
               - SELECT * FROM powersync.agents WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
               - SELECT * FROM powersync.projects WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+              - SELECT * FROM powersync.received_shares WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
 
     client_auth:
       supabase: false

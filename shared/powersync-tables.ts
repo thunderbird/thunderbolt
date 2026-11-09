@@ -25,9 +25,22 @@ export const powersyncTableNames = [
   'devices',
   'agents',
   'projects',
+  'received_shares',
+  'sent_shares',
 ] as const
 
 export type PowerSyncTableName = (typeof powersyncTableNames)[number]
+
+/**
+ * Synced tables only the server writes: the share lists, rewritten by the
+ * backend on each write to a share and deleted with it. Uploads to them are
+ * accepted and ignored (see applyOperation), and they stay out of the data
+ * export.
+ */
+export const readOnlyPowerSyncTableNames = [
+  'received_shares',
+  'sent_shares',
+] as const satisfies readonly PowerSyncTableName[]
 
 /**
  * Tables dropped from the synced schema. The backend accepts and ignores
@@ -74,4 +87,6 @@ export const powersyncTableToQueryKeys: {
   // Would cover the chat sidebar grouping as well as the project list, if the
   // map above were ever wired up.
   projects: [['projects'], ['chatThreads']],
+  received_shares: [['shared-chats', 'received']],
+  sent_shares: [['shared-chats', 'sent']],
 }

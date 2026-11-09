@@ -208,6 +208,23 @@ describe('useMiniApps', () => {
       expect(result.current.apps).toHaveLength(1)
     })
 
+    it('shows failed when an anonymous session signs in before its first load settles and the refetch fails', async () => {
+      let calls = 0
+      const client = clientWith(() => {
+        calls += 1
+        return calls === 1 ? new Promise<Response>(() => {}) : new Response('nope', { status: 500 })
+      })
+      const { result } = setup(client)
+      syncMiniAppsUser('anon-1', client, true)
+      await settle()
+      expect(result.current.loading).toBe(true)
+
+      syncMiniAppsUser('user-1', client)
+      await settle()
+
+      expect(result.current).toMatchObject({ loading: false, failed: true, apps: [] })
+    })
+
     it("shows failed, not the previous user's list, when one real user becomes another and the refetch fails", async () => {
       let fail = false
       const client = clientWith(() => (fail ? new Response('nope', { status: 500 }) : Response.json({ apps: [app] })))

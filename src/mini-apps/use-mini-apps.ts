@@ -124,9 +124,12 @@ const loadMiniApps = (httpClient: HttpClient, keepListOnFailure = false): Promis
       // became a real user: an anonymous session never sees gated apps, so its
       // list is a subset of what the new user may see and stays valid. For a
       // different user, or signing out, the old list belongs to someone else and
-      // showing it would be showing the wrong user's apps. No retry either way;
-      // the next mount tries again.
-      setState(keepListOnFailure ? { ...state, loading: false } : { apps: [], loading: false, failed: true })
+      // showing it would be showing the wrong user's apps. Only a list that
+      // actually loaded is kept: one still pending is not an answer, and calling
+      // it settled would read as "no apps configured". No retry either way; the
+      // next mount tries again.
+      const keep = keepListOnFailure && !state.loading && !state.failed
+      setState(keep ? state : { apps: [], loading: false, failed: true })
       // Cleared so the next mount retries, rather than the session being stuck.
       inFlight = null
     }

@@ -63,22 +63,32 @@ test('anonymous user signs in with the code sent by email and lands on the chat'
   expect(errors).toEqual([])
 })
 
-test('going back during OTP verification aborts the request without publishing its session', async ({ page }) => {
-  const verification = await holdVerificationResponse(page)
-  const dialog = await requestModalCode(page)
-  await dialog.locator('input[data-input-otp]').fill('12345678')
-  await verification.ready
-  await expect(dialog.getByText('Verifying…', { exact: true })).toBeVisible()
-  const aborted = page.waitForEvent('requestfailed', (request) => request.url().endsWith('/sign-in/email-otp'))
-  await dialog.getByRole('button', { name: 'Go back', exact: true }).click()
-  await expect(dialog.getByPlaceholder('Email address', { exact: true })).toBeVisible()
-  await verification.release()
-  expect((await aborted).failure()).not.toBeNull()
+// At mobile width the modal pins its close button top-left, where this step's back button sits.
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test.describe(`at ${viewport.width}px`, () => {
+    test.use({ viewport })
 
-  await expectNoPublishedSession(page)
-  await expect(page.locator('textarea')).toHaveCount(0)
-  await expect(dialog.getByRole('button', { name: 'Send Magic Link', exact: true })).toBeEnabled()
-})
+    test('going back during OTP verification aborts the request without publishing its session', async ({ page }) => {
+      const verification = await holdVerificationResponse(page)
+      const dialog = await requestModalCode(page)
+      await dialog.locator('input[data-input-otp]').fill('12345678')
+      await verification.ready
+      await expect(dialog.getByText('Verifying…', { exact: true })).toBeVisible()
+      const aborted = page.waitForEvent('requestfailed', (request) => request.url().endsWith('/sign-in/email-otp'))
+      await dialog.getByRole('button', { name: 'Go back', exact: true }).click()
+      await expect(dialog.getByPlaceholder('Email address', { exact: true })).toBeVisible()
+      await verification.release()
+      expect((await aborted).failure()).not.toBeNull()
+
+      await expectNoPublishedSession(page)
+      await expect(page.locator('textarea')).toHaveCount(0)
+      await expect(dialog.getByRole('button', { name: 'Send Magic Link', exact: true })).toBeEnabled()
+    })
+  })
+}
 
 test('leaving the waitlist during OTP verification aborts without publishing its session', async ({ page }) => {
   const verification = await holdVerificationResponse(page)

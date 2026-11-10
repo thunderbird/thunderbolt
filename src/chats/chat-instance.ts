@@ -353,8 +353,10 @@ export const createAgentRoutingFetch = (
       throw new Error('No session found')
     }
 
-    await session.configurationChange
     const { chatThread, selectedAgent, selectedModel } = session
+    const reasoningEffort = isBuiltInAgent(selectedAgent)
+      ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
+      : undefined
     const telemetry =
       operation === 'prompt' && isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
     telemetry?.setDimensions({
@@ -392,7 +394,10 @@ export const createAgentRoutingFetch = (
     }
     if (operation === 'prompt') {
       telemetry?.startPhase('persist_user_message')
-      await saveMessages({ id, messages: requestMessages })
+      // Hydration supplies a durable prefix, and historical edits save themselves.
+      // Keep the predecessor too: the SDK does not await the previous onFinish,
+      // so its assistant row may still need inserting before the new user's parent is set.
+      await saveMessages({ id, messages: requestMessages.slice(-2) })
       telemetry?.endPhase('persist_user_message')
     }
 
@@ -471,9 +476,7 @@ export const createAgentRoutingFetch = (
       acpSessionId: chatThread?.acpSessionId ?? null,
       saveMessages,
       selectedModel,
-      reasoningEffort: isBuiltInAgent(selectedAgent)
-        ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
-        : undefined,
+      reasoningEffort,
       mcpClients,
       reconnectClient,
       httpClient,

@@ -197,7 +197,9 @@ export const useHydrateChatStore = ({
 
     // Generate title in background if needed
     if (thread?.title === defaultChatTitle) {
-      updateThreadTitle(messages, id)
+      // A prompt save contains only the tail; the title still comes from the first prompt.
+      const transcript = session.chatInstance.messages
+      updateThreadTitle(transcript.length > 0 ? transcript : messages, id)
     }
 
     if (!session.chatThread) {

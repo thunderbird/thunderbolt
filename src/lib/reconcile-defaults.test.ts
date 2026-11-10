@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { deleteModel, getAllModels, updateSettings } from '@/dal'
+import { deleteModel, getAllModels, resetModelToDefault, updateModel, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import type { AnyColumn } from 'drizzle-orm'
 import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core'
+import { SQLiteRemoteSession } from 'drizzle-orm/sqlite-proxy'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfileOpus55, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
@@ -56,6 +57,7 @@ const buildRetiredModel = (overrides: Partial<Model> = {}): Model => {
     contextWindow: 131072,
     toolUsage: 1,
     startWithReasoning: 0,
+    reasoningEffort: null,
     supportsParallelToolCalls: 0,
     deletedAt: null,
     apiKey: null,
@@ -120,7 +122,68 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
+describe('returning boot before initial sync', () => {
+  test('skips read-only default passes while preserving rows, markers, and missing profile repair', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    /** Read persisted defaults in stable order, including their version markers. */
+    const snapshot = async () =>
+      Promise.all([
+        db.select().from(modelsTable).orderBy(modelsTable.id),
+        db.select().from(modelProfilesTable).orderBy(modelProfilesTable.modelId),
+        db.select().from(tasksTable).orderBy(tasksTable.id),
+        db.select().from(skillsTable).orderBy(skillsTable.id),
+        db.select().from(settingsTable).orderBy(settingsTable.key),
+      ])
+    const before = await snapshot()
+    await db.delete(modelProfilesTable).where(eq(modelProfilesTable.modelId, defaultModelProfiles[0].modelId))
+
+    // Observe the real transaction's SQL without replacing its behavior.
+    const prepareQuery = spyOn(SQLiteRemoteSession.prototype, 'prepareQuery')
+    try {
+      await reconcileDefaults(db, { initialSyncCompleted: false })
+
+      const queries = prepareQuery.mock.calls.map(([query]) => query.sql)
+      expect({
+        cleanupModels: queries.filter((query) => query.includes(' from "models" where "models"."deleted_at" is null'))
+          .length,
+        tasks: queries.filter((query) => query.includes(' from "tasks"')).length,
+        skills: queries.filter((query) => query.includes(' from "skills"')).length,
+        settings: queries.filter((query) => query.includes(' from "settings"')).length,
+      }).toEqual({ cleanupModels: 0, tasks: 0, skills: 1, settings: 1 })
+    } finally {
+      prepareQuery.mockRestore()
+    }
+
+    expect(await snapshot()).toEqual(before)
+  })
+})
+
 describe('seedModels', () => {
+  test('catalog updates and resets preserve effort without treating the model as customized', async () => {
+    const db = getDb()
+    const original = defaultModels[0]
+    await reconcileDefaultsForTable(db, modelsTable, [original], hashModel)
+    await updateModel(db, original.id, { reasoningEffort: 'high' })
+
+    const updated = { ...original, name: 'Updated catalog name' }
+    await reconcileDefaultsForTable(db, modelsTable, [updated], hashModel)
+    const readModel = () => db.select().from(modelsTable).where(eq(modelsTable.id, original.id)).get()
+    expect(await readModel()).toMatchObject({
+      name: updated.name,
+      reasoningEffort: 'high',
+      defaultHash: hashModel(updated),
+    })
+
+    await resetModelToDefault(db, original.id, original)
+    expect(await readModel()).toMatchObject({
+      name: original.name,
+      reasoningEffort: 'high',
+      defaultHash: hashModel(original),
+    })
+  })
+
   test('inserts new defaults on first run', async () => {
     const db = getDb()
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
@@ -833,6 +896,7 @@ for (const [target, model, name] of [
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()).toEqual({
       ...edited,
+      reasoningEffort: null,
       model: target.model,
     })
   })
@@ -862,6 +926,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
+      reasoningEffort: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
   })
@@ -887,6 +952,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...customizedLegacy,
+      reasoningEffort: null,
       model: defaultModelOpus55.model,
     })
   })
@@ -909,6 +975,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
+      reasoningEffort: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
     expect(
@@ -933,6 +1000,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
+      reasoningEffort: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
     expect(
@@ -1613,6 +1681,43 @@ describe('reconcileDefaults version gate (THU-637)', () => {
 })
 
 describe('widget skill reconciliation', () => {
+  test('still re-stamps a legacy widget hash when the sync-incomplete gate skips the skills pass', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+    const legacy = {
+      ...defaultSkillWeather,
+      instruction: 'Shipped v4 inline weather instruction',
+      enabled: 0,
+      pinnedOrder: 4,
+    }
+    const legacyHash = hashValues([
+      legacy.name,
+      legacy.label,
+      legacy.description,
+      legacy.instruction,
+      legacy.enabled,
+      legacy.pinnedOrder,
+      legacy.deletedAt,
+    ])
+    await db
+      .update(skillsTable)
+      .set({ ...legacy, defaultHash: legacyHash })
+      .where(eq(skillsTable.id, legacy.id))
+    const markerBefore = await db
+      .select()
+      .from(settingsTable)
+      .where(eq(settingsTable.key, versionMarkerKeys.skills))
+      .get()
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    const updated = await db.select().from(skillsTable).where(eq(skillsTable.id, legacy.id)).get()
+    expect(updated).toMatchObject({ ...legacy, defaultHash: hashSkill(legacy) })
+    expect(await db.select().from(settingsTable).where(eq(settingsTable.key, versionMarkerKeys.skills)).get()).toEqual(
+      markerBefore,
+    )
+  })
+
   test('upgrades shipped v4 weather to canonical widget instructions on the first v5 pass', async () => {
     const db = getDb()
     const shippedV4Weather = {

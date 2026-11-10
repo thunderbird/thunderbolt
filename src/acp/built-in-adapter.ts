@@ -42,7 +42,7 @@
  * adapter's teardown (agent delete / config edit / sign-out).
  */
 
-import { piThinkingLevels } from '@shared/reasoning-effort'
+import { readProfileThinkingLevel } from '@/ai/profile-thinking-level'
 import {
   aiFetchStreamingResponse,
   prepareAiRequestConfig,
@@ -51,7 +51,6 @@ import {
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
 import { getKnownImageSupport } from '@/ai/image-support'
-import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import {
@@ -93,8 +92,6 @@ import { managedAnthropicCatalogId } from '@/ai/managed-model-id'
  *  {@link fetchViaHarness}, never on the chat entry bundle. */
 type AgentCoreModule = typeof import('@shared/agent-core')
 
-type CurrentHttpClient = { current: AgentAdapterContext['httpClient'] }
-
 /** A thread's live harness plus the workspace it is bound to. Kept in the
  *  per-adapter cache so the conversation (which lives in the harness session) and
  *  its isolated OPFS workspace persist across the thread's turns. */
@@ -104,8 +101,6 @@ type HarnessRecord = {
   readonly baseTools: AgentHarnessTool<undefined>[]
   /** Mutable prompt cell read by the harness's per-turn system-prompt callback. */
   readonly systemPrompt: { current: string }
-  /** Mutable transport cell read by the attached receipt lifecycle. */
-  readonly receiptHttpClient?: CurrentHttpClient
 }
 
 /** A thread's cached build, tagged with the config {@link harnessSignature} it was
@@ -165,101 +160,10 @@ type TinfoilClientOptions = Pick<
   | 'isSsoMode'
 >
 
-const piThinkingLevelSchema = z.enum(piThinkingLevels)
-const profileThinkingOptionsSchema = z
-  .object({
-    reasoningEffort: z.string().optional().catch(undefined),
-    effort: z.string().optional().catch(undefined),
-    reasoning_effort: z.string().optional().catch(undefined),
-    reasoning: z
-      .object({ effort: z.string().optional().catch(undefined) })
-      .optional()
-      .catch(undefined),
-    thinking: z
-      .object({
-        type: z.string().optional().catch(undefined),
-        budgetTokens: z.number().optional().catch(undefined),
-      })
-      .optional()
-      .catch(undefined),
-  })
-  .passthrough()
-
 /** Reasoning depth used when a model carries no explicit profile config. Mirrors
  *  the adaptive default the anthropic path has always used, so deriving the level
  *  never regresses a model that didn't configure one. */
 const fallbackThinkingLevel: ThinkingLevel = 'medium'
-
-/** Maps an Anthropic-style thinking budget (tokens) to a Pi level by upper bound:
- *  ≤0 → off, ≤1024 → minimal, ≤4096 → low, ≤12288 → medium, else high. */
-const budgetToThinkingLevel = (budget: number): ThinkingLevel => {
-  if (budget <= 0) {
-    return 'off'
-  }
-  if (budget <= 1024) {
-    return 'minimal'
-  }
-  if (budget <= 4096) {
-    return 'low'
-  }
-  if (budget <= 12288) {
-    return 'medium'
-  }
-  return 'high'
-}
-
-/** Coerce a profile effort string to a Pi level. Maps the explicit "off" signals
- *  ('off'/'none') to `off`, accepts the Pi levels verbatim, and rejects anything
- *  else (returning null so the caller can keep looking / fall back). */
-const effortToThinkingLevel = (value: string | undefined): ThinkingLevel | null => {
-  if (value === undefined) {
-    return null
-  }
-  if (value === 'none') {
-    return 'off'
-  }
-  const parsed = piThinkingLevelSchema.safeParse(value)
-  return parsed.success ? parsed.data : null
-}
-
-/** Pull a Pi thinking level out of a profile's `providerOptions`, the only
- *  per-model reasoning signal in the data model (there is no thinking-level
- *  column). Recognizes the OpenAI `reasoningEffort`/`reasoning_effort` strings,
- *  a nested `reasoning.effort`, Anthropic's top-level `effort`, and its `thinking` object
- *  (`{ type: 'disabled' }` → off; `{ budgetTokens }` → bucketed level). Returns
- *  null when no reasoning config is present. */
-export const readProfileThinkingLevel = (
-  providerOptions: ModelProfile['providerOptions'] | undefined,
-): ThinkingLevel | null => {
-  if (!providerOptions) {
-    return null
-  }
-  const parsed = profileThinkingOptionsSchema.safeParse(providerOptions)
-  if (!parsed.success) {
-    return null
-  }
-  const options = parsed.data
-  const direct = effortToThinkingLevel(options.reasoningEffort) ?? effortToThinkingLevel(options.reasoning_effort)
-  if (direct) {
-    return direct
-  }
-  const reasoning = options.reasoning
-  if (reasoning) {
-    const nested = effortToThinkingLevel(reasoning.effort)
-    if (nested) {
-      return nested
-    }
-  }
-  const thinking = options.thinking
-  if (thinking?.type === 'disabled') {
-    return 'off'
-  }
-  const adaptiveEffort = effortToThinkingLevel(options.effort)
-  if (adaptiveEffort) {
-    return adaptiveEffort
-  }
-  return thinking?.budgetTokens === undefined ? null : budgetToThinkingLevel(thinking.budgetTokens)
-}
 
 /** The Pi thinking level for a model: its explicit profile reasoning config, else
  *  the adaptive fallback. Used for the anthropic path (whose catalog model is
@@ -295,8 +199,6 @@ export type ResolvedPiModel = {
   readonly thinkingLevel: ThinkingLevel
   /** Attested transport identity used only to invalidate the local harness cache. */
   readonly tinfoilClient?: SecureClient
-  /** Current receipt transport for the persistent managed harness. */
-  readonly receiptHttpClient?: CurrentHttpClient
 }
 
 /** Time a Tinfoil client acquisition without changing its error behavior. */
@@ -362,7 +264,6 @@ export const resolvePiModel = async (
       const evictClient = options.evictSystemTinfoilClient ?? evictSystemTinfoilClient
       const readAuthToken = options.getAuthToken ?? getAuthToken
       const readSsoMode = options.isSsoMode ?? isSsoMode
-      const receiptHttpClient = { current: context.httpClient }
       const fetch: PiModelDescriptor['fetch'] = async (input, init) => {
         const token = readAuthToken()
         const headers = new Headers(init?.headers)
@@ -382,10 +283,6 @@ export const resolvePiModel = async (
         await handleSessionRejected(response)
         return response
       }
-      const receipts = agentCore.createReceiptLifecycle({
-        submit: (usage) => submitInferenceUsageReceipt(usage, receiptHttpClient.current),
-        reportError: (error) => console.error(error),
-      })
       return {
         descriptor: {
           kind: 'confidential',
@@ -395,14 +292,12 @@ export const resolvePiModel = async (
           baseURL: client.getBaseURL()!,
           apiKey: 'thunderbolt-managed',
           fetch,
-          receipts,
           reasoning: true,
           contextWindow: model.contextWindow ?? undefined,
           supportsImages,
         },
         thinkingLevel,
         tinfoilClient: client,
-        receiptHttpClient,
       }
     }
     if (!model.apiKey) {
@@ -581,12 +476,7 @@ const buildHarnessRecord = async (
     history,
     compaction,
   })
-  return {
-    harness,
-    baseTools: harness.getTools(),
-    systemPrompt,
-    receiptHttpClient: resolved.receiptHttpClient,
-  }
+  return { harness, baseTools: harness.getTools(), systemPrompt }
 }
 
 /** Refresh per-send prompt and app/MCP tool closures on a persistent harness. */
@@ -594,12 +484,8 @@ const prepareHarnessForSend = async (
   agentCore: AgentCoreModule,
   record: HarnessRecord,
   config: PreparedAiRequestConfig,
-  httpClient: AgentAdapterContext['httpClient'],
 ): Promise<void> => {
   record.systemPrompt.current = composeAppHarnessSystemPrompt(config)
-  if (record.receiptHttpClient) {
-    record.receiptHttpClient.current = httpClient
-  }
   const tools = await agentCore.toPiAgentTools(config.toolset)
   const allTools = [...record.baseTools, ...tools]
   const activeToolNames = config.model.toolUsage === 0 ? [] : allTools.map((tool) => tool.name)
@@ -870,7 +756,7 @@ const fetchViaHarness = async (
   init.signal?.throwIfAborted()
   await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
   init.signal?.throwIfAborted()
-  await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+  await prepareHarnessForSend(agentCore, record, config)
   init.signal?.throwIfAborted()
   // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
   const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
@@ -1108,7 +994,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     init.signal?.throwIfAborted()
     await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
     init.signal?.throwIfAborted()
-    await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+    await prepareHarnessForSend(agentCore, record, config)
     init.signal?.throwIfAborted()
     const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
     init.signal?.throwIfAborted()

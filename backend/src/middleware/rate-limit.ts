@@ -16,7 +16,6 @@ type AuthResolvedContext = {
 
 type RateLimitTier =
   | 'inference'
-  | 'receipt'
   | 'pro'
   | 'auth'
   | 'contact'
@@ -50,7 +49,6 @@ export type AuthPluginIpRateLimitSettings = IpRateLimitSettings & {
 /** Hardcoded per-tier limits. */
 const tierConfigs = {
   inference: { max: 60, durationSecs: 60 },
-  receipt: { max: 100, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
   contact: { max: 3, durationSecs: 60 * 60, enforceWhenDisabled: true },

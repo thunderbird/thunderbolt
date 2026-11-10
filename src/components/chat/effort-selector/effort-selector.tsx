@@ -47,7 +47,7 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
       aria-label={modelPicker ? undefined : t`Reasoning effort`}
       title={choices.length ? effortDescription : selectedModel.name}
       aria-description={accessibleDescription}
-      className="flex shrink-0 cursor-pointer items-center gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)] font-medium text-muted-foreground transition-colors hover:bg-accent/50 data-[state=open]:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
+      className="flex min-w-0 cursor-pointer items-center gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)] font-medium text-muted-foreground transition-colors hover:bg-accent/50 data-[state=open]:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
     >
       {modelPicker &&
         (needsApiKey(selectedModel) ? (

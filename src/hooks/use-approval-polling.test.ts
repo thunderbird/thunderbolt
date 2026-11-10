@@ -143,6 +143,35 @@ describe('useApprovalPolling', () => {
     expect(checkApproval.mock.calls.length).toBe(callsBefore)
   })
 
+  it('ignores a late approval after disabling and polls again when re-enabled', async () => {
+    const pendingApproval = Promise.withResolvers<boolean>()
+    const checkApproval = mock(() => pendingApproval.promise)
+    const onApproved = mock(() => {})
+    const { rerender } = renderHook(
+      ({ enabled }) => useApprovalPolling({ enabled, checkApproval, onApproved, intervalMs: 50 }),
+      { initialProps: { enabled: true } },
+    )
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+    expect(checkApproval).toHaveBeenCalledTimes(1)
+
+    rerender({ enabled: false })
+    await act(async () => {
+      pendingApproval.resolve(true)
+      await getClock().tickAsync(200)
+    })
+    expect(onApproved).not.toHaveBeenCalled()
+    expect(checkApproval).toHaveBeenCalledTimes(1)
+
+    rerender({ enabled: true })
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+    expect(checkApproval).toHaveBeenCalledTimes(2)
+    expect(onApproved).toHaveBeenCalledTimes(1)
+  })
+
   it('calls onRevoked and stops polling on 403 error', async () => {
     const error403 = createRevokedError()
     const checkApproval = mock(() => Promise.reject(error403))

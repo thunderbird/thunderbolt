@@ -49,6 +49,7 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -226,7 +227,7 @@ type ChatPromptInputProps = {
   useWarmAcpCommands?: typeof useWarmAcpCommands_default
 }
 
-export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
+const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
   (
     {
       useNavigate = useNavigate_default,
@@ -425,16 +426,19 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // one for the form and one for the textarea) avoids two cached pointers
     // to the same node drifting out of sync.
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-    const hasPreloadedSendDependencies = useRef(false)
+    const preloadedAgentType = useRef<typeof selectedAgent.type | null>(null)
 
     const preloadSendDependencies = useCallback(() => {
-      if (hasPreloadedSendDependencies.current) {
+      if (preloadedAgentType.current === selectedAgent.type) {
         return
       }
-      hasPreloadedSendDependencies.current = true
-      preloadAgentConnection()
-      preloadChatMessageList()
-    }, [])
+      const firstInput = preloadedAgentType.current === null
+      preloadedAgentType.current = selectedAgent.type
+      preloadAgentConnection(selectedAgent.type)
+      if (firstInput) {
+        preloadChatMessageList()
+      }
+    }, [selectedAgent.type])
 
     const getTextarea = (): HTMLTextAreaElement | null => {
       textareaRef.current = formRef.current?.querySelector('textarea') ?? null
@@ -796,7 +800,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const voice = useVoiceSession()
 
     const footerStartElements = (
-      <div className="flex items-center gap-2">
+      <>
         <ChatAddMenu
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
           onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
@@ -805,17 +809,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           <div
             role="status"
             aria-live="polite"
-            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
+            className="flex min-w-0 items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
           >
             <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin" />
-            <span>
+            <span className="truncate">
               <Trans>Connecting to {agentName}…</Trans>
             </span>
           </div>
         ) : isConnectionError ? (
           <div
             role="alert"
-            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
+            className="flex min-w-0 items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
           >
             <AlertCircle className="size-[var(--icon-size-default)] shrink-0" />
             <span className="truncate" title={i18n._(extractErrorDisplay(connectionError))}>
@@ -836,7 +840,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onViewSummary={summaryView.onViewSummary}
           />
         )}
-      </div>
+      </>
     )
 
     // The model picker sits in the footer's right cluster, next to the send
@@ -935,11 +939,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           // so a dropped file is ignored rather than opened by the browser in
           // place of the app.
           onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) {
+              return
+            }
             e.preventDefault()
             setIsDragging(acceptsAttachments)
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) {
+              return
+            }
             e.preventDefault()
             setIsDragging(false)
             if (acceptsAttachments) {
@@ -974,16 +984,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               they slide back down on dismiss. pointer-events gated so the empty
               overlay area doesn't eat clicks behind it. */}
           <div className="pointer-events-none absolute inset-x-0 bottom-full flex flex-col">
-            {/* Chips keep their normal resting gap above the composer (pb-2). */}
-            <div className="pointer-events-auto pb-2">
-              <ChatSkillsBar
-                onAddToChat={handleAddChipFromBar}
-                onAddInstruction={insertInstructionText}
-                // Pinning is a "starting a new chat" affordance — once the thread
-                // has any message, hide the bar so chips don't compete for space.
-                hidden={messages.length > 0}
-              />
-            </div>
+            {/* Pinning is a new-chat affordance. Unmount its queries once the
+                thread starts; the composer owns ongoing skill insertion. */}
+            {messages.length === 0 && (
+              <div className="pointer-events-auto pb-2">
+                <ChatSkillsBar onAddToChat={handleAddChipFromBar} onAddInstruction={insertInstructionText} />
+              </div>
+            )}
             <AnimatePresence initial={false}>
               {attachError && (
                 <ComposerAlert key="attach-error" onDismiss={() => setAttachError(null)}>
@@ -1139,3 +1146,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     )
   },
 )
+
+ChatPromptInputComponent.displayName = 'ChatPromptInput'
+
+// The composer owns its draft and throttled chat subscription. Parent scroll
+// updates must not force it (and its menus) to render between those updates.
+export const ChatPromptInput = memo(ChatPromptInputComponent)

@@ -33,7 +33,7 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
-import { getMessage } from '@/dal/chat-messages'
+import { getMessageCache } from '@/dal/chat-messages'
 import { isWidgetSkillId } from '@/defaults/skills'
 import { getActiveLocale } from '@/i18n/active-locale'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -843,10 +843,14 @@ export const aiFetchStreamingResponse = async ({
       reasoningEffort !== undefined &&
       effortProvider === 'anthropic' &&
       (await loadReasoningCapabilities(model)).kind === 'toggle'
-    const providerOptions =
-      reasoningEffort === undefined
-        ? { [providerOptionsKey]: rawOptions }
-        : { [effortProvider]: reasoningProviderOptions(rawOptions, effortProvider, reasoningEffort, toggleThinking) }
+    const providerOptions = {
+      [reasoningEffort === undefined ? providerOptionsKey : effortProvider]: reasoningProviderOptions(
+        rawOptions,
+        effortProvider,
+        reasoningEffort,
+        toggleThinking,
+      ),
+    }
 
     /**
      * Run a single streamText attempt and return the result along with metadata
@@ -986,7 +990,7 @@ export const aiFetchStreamingResponse = async ({
             messages
               .filter((message) => message.role === 'assistant')
               .map(async (message) => {
-                const stored = await getMessage(db, message.id)
+                const stored = await getMessageCache(db, message.id)
                 return stored?.cache ? collectAskEntriesFromCache(stored.cache) : []
               }),
           )

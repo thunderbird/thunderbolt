@@ -144,12 +144,16 @@ export default function ChatUI() {
                     <ChatContentReady />
                   </Suspense>
                 </div>
+                {/* Keep the floating control inside the scroller so touch and
+                    wheel gestures starting on it scroll the conversation. */}
+                <div className="sticky bottom-0 z-10">
+                  <ScrollToBottomButton
+                    isVisible={!isAtBottom}
+                    onClick={() => scrollToBottomAndActivate(true)}
+                    className="bottom-6 md:bottom-7"
+                  />
+                </div>
               </m.div>
-              <ScrollToBottomButton
-                isVisible={!isAtBottom}
-                onClick={() => scrollToBottomAndActivate(true)}
-                className="bottom-6 md:bottom-7"
-              />
             </div>
           ) : isSyncingMessages ? (
             <div
@@ -166,10 +170,8 @@ export default function ChatUI() {
               className="flex flex-1 flex-col items-center justify-center gap-4 text-center"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              // Fast exit: with `mode="wait"` the logo's fade-out gates the
-              // message list's slide-in, so a leisurely default (~0.3s) would
-              // hold the just-sent message invisible for that long.
-              exit={{ opacity: 0, transition: { duration: 0.15 } }}
+              // Remove the empty state immediately: an exit animation inside
+              // mode="wait" would hide the sent message until it finishes.
             >
               <AppLogo size={72} className="opacity-60" />
               <span className="font-heading text-2xl font-medium text-muted-foreground">{i18n._(getGreeting())}</span>

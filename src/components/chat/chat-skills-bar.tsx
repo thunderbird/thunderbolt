@@ -72,12 +72,6 @@ type ChatSkillsBarProps = {
   onAddToChat: (skill: Skill) => void
   /** Insert the resolved skill's instruction prose into the chat input. */
   onAddInstruction: (instruction: string) => void
-  /**
-   * When `true`, render nothing. The composer toggles this on once any
-   * message has been sent so the chips don't compete for space in an
-   * ongoing thread — pinning is a "starting a new chat" affordance.
-   */
-  hidden?: boolean
   // Dependency injection for tests / Storybook.
   usePinnedSkills?: typeof usePinnedSkills_default
   useLibrarySkills?: typeof useLibrarySkills_default
@@ -97,7 +91,6 @@ type ChatSkillsBarProps = {
 export const ChatSkillsBar = ({
   onAddToChat,
   onAddInstruction,
-  hidden,
   usePinnedSkills = usePinnedSkills_default,
   useLibrarySkills = useLibrarySkills_default,
   useEnabledSkills = useEnabledSkills_default,
@@ -138,7 +131,7 @@ export const ChatSkillsBar = ({
     }
   }
 
-  if (hidden || minimalMode || !configLoaded) {
+  if (minimalMode || !configLoaded) {
     return null
   }
 

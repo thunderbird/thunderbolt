@@ -424,7 +424,6 @@ Apart from anonymous sign-in, the limits are not configurable:
 | Request group                                                                    | Limit          |
 | -------------------------------------------------------------------------------- | -------------- |
 | Standard-tier chat responses                                                     | 60 per minute  |
-| Usage receipts                                                                   | 100 per minute |
 | Private chat, the bring-your-own-key relay, tools, search and previews, together | 100 per minute |
 | Sign-in                                                                          | 10 per minute  |
 | Debug transcript upload                                                          | 10 per hour    |

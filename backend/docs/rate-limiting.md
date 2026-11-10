@@ -6,7 +6,6 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | -------------------------- | ------------ | ------------------------ | ---------------------------------------------------------------------------------------- |
 | `inference`                | 60 / minute  | user                     | `/v1/chat/*` (managed inference)                                                         |
 | `pro`                      | 100 / minute | user                     | `/v1/pro/*`, `/v1/proxy/*`, `/v1/proxy/ws`, `/v1/tinfoil/*`, `/v1/search`, `/v1/preview` |
-| `receipt`                  | 100 / minute | user                     | `/v1/inference-usage/receipts`                                                           |
 | `auth`                     | 10 / minute  | client IP                | `/v1/api/auth/*` (except anonymous sign-in and GET get-session), `/v1/waitlist/*`        |
 | `anonymous-sign-in`        | 10 / minute  | client IP                | `POST /v1/api/auth/sign-in/anonymous`                                                    |
 | `anonymous-sign-in-global` | 2000 / hour  | one key, deployment-wide | `POST /v1/api/auth/sign-in/anonymous`, while `AUTH_ALLOW_ANONYMOUS=true`                 |
@@ -14,7 +13,7 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | `debug-transcript`         | 10 / hour    | user                     | `POST /v1/debug-transcripts`                                                             |
 | `debug-transcript-intake`  | 600 / hour   | intake client, and IP    | `POST /v1/debug-transcripts/intake`                                                      |
 
-Limits are hardcoded in `tierConfigs` ([rate-limit.ts:49](../src/middleware/rate-limit.ts)), not configurable, so every deployment enforces a known floor and no env var can quietly raise it. The exceptions are `anonymous-sign-in` and `captcha-challenge`, whose budgets both come from `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS` (with ALTCHA, every anonymous sign-in fetches one challenge first) and cannot be raised without a captcha while anonymous auth is on, and `anonymous-sign-in-global`, sized by `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX` / `_WINDOW_SECS`. That last one is a single `anonymous-sign-in-global:all` bucket every client shares, and it is the cap on scripted anonymous sign-up. It counts only sign-ins that passed the captcha (all of them with `CAPTCHA_PROVIDER=none`): `createAuth` charges it through `createRateLimitConsumer` in the Better Auth before-hook, after captcha verification and the session-fixation guard, so the per-IP bucket runs first and an unsolved request never spends a point. Its 429 comes from Better Auth (`{ message }` with `Retry-After` and `RateLimit-*` headers), not from the Elysia limiter.
+Limits are hardcoded in `tierConfigs` ([rate-limit.ts:48](../src/middleware/rate-limit.ts)), not configurable, so every deployment enforces a known floor and no env var can quietly raise it. The exceptions are `anonymous-sign-in` and `captcha-challenge`, whose budgets both come from `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS` (with ALTCHA, every anonymous sign-in fetches one challenge first) and cannot be raised without a captcha while anonymous auth is on, and `anonymous-sign-in-global`, sized by `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX` / `_WINDOW_SECS`. That last one is a single `anonymous-sign-in-global:all` bucket every client shares, and it is the cap on scripted anonymous sign-up. It counts only sign-ins that passed the captcha (all of them with `CAPTCHA_PROVIDER=none`): `createAuth` charges it through `createRateLimitConsumer` in the Better Auth before-hook, after captcha verification and the session-fixation guard, so the per-IP bucket runs first and an unsolved request never spends a point. Its 429 comes from Better Auth (`{ message }` with `Retry-After` and `RateLimit-*` headers), not from the Elysia limiter.
 
 Being Postgres-backed rather than in-process, all replicas share one budget. It runs independent of any edge or CDN because several `/v1` routes spend real money or send real email (managed inference, Exa-backed search, link previews, OTP send, waitlist join) and self-hosted deployments have no edge.
 
@@ -22,10 +21,10 @@ Operator configuration (`RATE_LIMIT_ENABLED`, `TRUSTED_PROXY`) is in [docs/self-
 
 ## How tiers map to buckets
 
-The tier name is the limiter's `keyPrefix` ([rate-limit.ts:63](../src/middleware/rate-limit.ts)); `rate-limiter-flexible` stores rows under `<keyPrefix>:<key>`. Two load-bearing consequences:
+The tier name is the limiter's `keyPrefix` ([rate-limit.ts:61](../src/middleware/rate-limit.ts)); `rate-limiter-flexible` stores rows under `<keyPrefix>:<key>`. Two load-bearing consequences:
 
-- **One tier is one bucket, however many times it is mounted.** `proRateLimit` is built once ([index.ts:96](../src/index.ts)) and passed to six route groups, so a user's 100 per minute covers proxy, tinfoil, search and preview combined. The Better Auth mount's `createAuthPluginIpRateLimit` ([index.ts:108](../src/index.ts)) and the waitlist's `createAuthIpRateLimit` ([index.ts:229](../src/index.ts)) build two limiter objects that share one `auth:<ip>` bucket.
-- **Different tiers never interfere.** Exhausting `inference` leaves `pro` and `receipt` untouched; `rate-limit.test.ts` pins both pairs.
+- **One tier is one bucket, however many times it is mounted.** `proRateLimit` is built once ([index.ts:98](../src/index.ts)) and passed to six route groups, so a user's 100 per minute covers proxy, tinfoil, search and preview combined. The Better Auth mount's `createAuthPluginIpRateLimit` ([index.ts:110](../src/index.ts)) and the waitlist's `createAuthIpRateLimit` ([index.ts:222](../src/index.ts)) build two limiter objects that share one `auth:<ip>` bucket.
+- **Different tiers never interfere.** Exhausting `inference` leaves `pro` untouched; `rate-limit.test.ts` pins it.
 
 ## The three ways to apply a tier
 

@@ -32,6 +32,7 @@ const ResizablePanel = ({ className, ...props }: ComponentProps<typeof Resizable
 const ResizableHandle = ({
   withHandle,
   className,
+  children,
   ...props
 }: ComponentProps<typeof ResizablePrimitive.Separator> & {
   withHandle?: boolean
@@ -51,6 +52,7 @@ const ResizableHandle = ({
           <GripVerticalIcon className="size-2.5" />
         </div>
       )}
+      {children}
     </ResizablePrimitive.Separator>
   )
 }

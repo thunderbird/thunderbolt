@@ -85,7 +85,7 @@ checkouts use this configuration; an old checkout can otherwise reinstall its ol
 The app's in-browser adapter around the npm `@earendil-works/pi-agent-core` package, not that package itself. Its nested unit tests sit outside frontend discovery, so they are intentionally **not** in `bun run test`.
 
 - `bun run test:agent-core` (or `test:agent-core:5x` for the stability gate) runs the unit tests. CI's `agent-core` job in [`ci.yml`](../../../.github/workflows/ci.yml) runs the 5x gate and browser check when the module, dependencies, build configuration, browser check, or workflow changes.
-- The CLI imports the npm Pi package directly, plus the OpenAI-compatible and confidential-model builders and receipt lifecycle from `shared/agent-core`. Its integration coverage stays in the CLI suite.
+- The CLI imports the npm Pi package directly, plus the OpenAI-compatible and confidential-model builders from `shared/agent-core`. Its integration coverage stays in the CLI suite.
 
 `test:agent-core:browser` builds into a temp directory, imports the emitted chunk in both engines (with and without native iterator helpers), runs two turns through the OpenRouter, Thunderbolt and confidential-model harness paths on injected SSE responses, then checks OPFS data survives reload. It is a dependency/runtime regression check, not authenticated-provider or native-device coverage.
 

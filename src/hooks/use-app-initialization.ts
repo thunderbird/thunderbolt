@@ -36,8 +36,6 @@ import { defaultTasksVersion } from '@/defaults/tasks'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
 import type { HandleResult } from '@/types/handle-errors'
-import type { TrayIcon } from '@tauri-apps/api/tray'
-import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
 import { sql } from 'drizzle-orm'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -138,12 +136,6 @@ export const waitForDatabaseReady = async (
   return (await withTimeout(firstQuery, timeoutMs, 'waitForDatabaseReady')) ?? { outcome: 'timed_out' }
 }
 
-type TrayInitResult = { tray: TrayIcon | undefined; window: Window | undefined }
-
-const initializeTray = async (): Promise<TrayInitResult> => {
-  return await TrayManager.initIfSupported()
-}
-
 const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | null> => {
   const result = await initPosthog(httpClient)
   return result.success ? result.data : null
@@ -195,15 +187,14 @@ const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
   }
 }
 
-/** Step 7 wrapper: never throws — falls back to an empty tray on failure. */
-const initializeTraySafely = async (): Promise<TrayInitResult> => {
+/** Keep boot usable if the platform cannot create its native tray. */
+const initializeTraySafely = async (): Promise<void> => {
   try {
-    return await time('step7_initialize_tray', () => initializeTray())
+    await time('step7_initialize_tray', () => TrayManager.initIfSupported())
   } catch (error) {
     console.warn('Failed to initialize tray, continuing without tray support:', error)
     const trayError = createHandleError('TRAY_INIT_FAILED', 'Failed to initialize tray', error)
     trackError(trayError, { initialization_step: 'tray' })
-    return { tray: undefined, window: undefined }
   }
 }
 
@@ -218,7 +209,7 @@ const initializePostHogSafely = async (httpClient: HttpClient): Promise<PostHog 
 }
 
 type CoreInitialization = {
-  initData: Omit<InitData, 'tray' | 'window'>
+  initData: InitData
   timing: Record<string, unknown>
   startedAt: number
 }
@@ -532,11 +523,11 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
       }
       const core = result.data
       // Native readiness gates rendering, but owns no database files and must not block reset.
-      const tray = await initializeTraySafely()
+      await initializeTraySafely()
       if (!isCurrent()) {
         return
       }
-      const initData = { ...core.initData, ...tray }
+      const { initData } = core
       const initCoreMs = Math.round(performance.now() - core.startedAt)
       const timing = { ...core.timing, ...getInitTimingPayload(), init_core_ms: initCoreMs }
       console.info(`[init] complete (total ${initCoreMs}ms)`)

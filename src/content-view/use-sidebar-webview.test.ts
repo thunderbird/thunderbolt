@@ -75,6 +75,7 @@ describe('useSidebarWebview', () => {
     await act(async () => {
       await getClock().runAllAsync()
     })
+    expect(registration).toHaveBeenCalledTimes(1)
     unmount()
     await act(async () => {
       pending.resolve(unlisten)

@@ -20,11 +20,13 @@ const setup = (
   status: updater.UpdateStatus,
   {
     desktop = true,
+    enabled = true,
     mobile = false,
     tauri = true,
     errorPhase = null,
   }: {
     desktop?: boolean
+    enabled?: boolean
     mobile?: boolean
     tauri?: boolean
     errorPhase?: updater.UpdateErrorPhase | null
@@ -39,6 +41,7 @@ const setup = (
     spyOn(updater, 'useDesktopUpdate').mockReturnValue({
       ...updater.initialUpdateState,
       status,
+      enabled,
       errorPhase,
       primaryAction,
       checkForUpdates,
@@ -87,6 +90,16 @@ describe('Settings update recovery', () => {
     setup('available', { tauri: false })
     render(<AppVersionSection />)
     expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('shows the app version without update controls in development builds', () => {
+    const { primaryAction, checkForUpdates } = setup('initial', { enabled: false })
+    render(<AppVersionSection />)
+    expect(screen.getByText('Current version')).toBeInTheDocument()
+    expect(screen.queryByText('Updates')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(primaryAction).not.toHaveBeenCalled()
+    expect(checkForUpdates).not.toHaveBeenCalled()
   })
 })
 

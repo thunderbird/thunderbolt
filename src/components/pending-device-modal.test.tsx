@@ -245,10 +245,15 @@ describe('PendingDeviceModal', () => {
       mlkemPublicKey,
     })
     const requests: string[] = []
+    const envelopeRequested = Promise.withResolvers<void>()
     const httpClient = createClient({
       prefixUrl: 'http://test-api.local',
       fetch: async (request) => {
-        requests.push(new URL(request instanceof Request ? request.url : String(request)).pathname)
+        const path = new URL(request instanceof Request ? request.url : String(request)).pathname
+        requests.push(path)
+        if (path === '/devices/me/envelope') {
+          envelopeRequested.resolve()
+        }
         return Response.json({ error: 'Test stops at the envelope boundary' }, { status: 404 })
       },
     })
@@ -289,8 +294,14 @@ describe('PendingDeviceModal', () => {
     })
     fireEvent.change(screen.getByLabelText('Device fingerprint'), { target: { value: fingerprint } })
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
-    await waitForElement(() => screen.queryByRole('alert'))
-    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't approve this device. Please try again.")
+    await act(async () => {
+      // WebCrypto and IndexedDB progress in real time, independently of the fake clock.
+      await envelopeRequested.promise
+      await getClock().runAllAsync()
+    })
+    expect(await waitForElement(() => screen.queryByRole('alert'))).toHaveTextContent(
+      "Couldn't approve this device. Please try again.",
+    )
     expect(requests).toContain('/devices/me/envelope')
     expect(requests.filter((path) => path === '/devices/me/envelope')).toHaveLength(1)
   })

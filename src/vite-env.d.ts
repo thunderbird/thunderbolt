@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   /** `altcha` solves a proof-of-work challenge before anonymous sign-in. Must match the API's CAPTCHA_PROVIDER. */
   readonly VITE_CAPTCHA_PROVIDER?: 'altcha'
   readonly VITE_APP_VERSION?: string
+  readonly TAURI_ENV_DEBUG: boolean
   /** Operator key-escrow public key (THU-804): base64 raw uncompressed P-256 point. Unset = no escrow. */
   readonly VITE_ORG_ESCROW_PUBLIC_KEY?: string
   readonly VITE_GOOGLE_BASE_URL?: string

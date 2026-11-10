@@ -41,7 +41,7 @@ describe.each([desktopWidth, mobileWidth])('ContextUsageIndicator at %dpx', (wid
     const menu = screen.getByRole('dialog')
     expect(menu).toHaveAccessibleName('Context usage')
     expect(menu).toHaveAttribute('data-slot', width === mobileWidth ? 'drawer-content' : 'popover-content')
-    expect(within(menu).queryByText(/context window/i)).toBeNull()
+    expect(within(menu).getByText('Using 800 of 1K Context Window')).toBeInTheDocument()
     if (width === mobileWidth) {
       expect(menu).toHaveAttribute('data-swipe-direction', 'down')
     }
@@ -57,13 +57,15 @@ describe.each([desktopWidth, mobileWidth])('ContextUsageIndicator at %dpx', (wid
     const pending = Promise.withResolvers<void>()
     const compact = mock(() => pending.promise)
     render(<ContextUsageIndicator usedTokens={20} maxTokens={1000} onCompact={compact} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Context usage' }))
+    const trigger = screen.getByRole('button', { name: 'Context usage' })
+    fireEvent.click(trigger)
     fireEvent.change(screen.getByLabelText('Compaction instructions (optional)'), {
       target: { value: '  Keep decisions  ' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Compact now' }))
     expect(compact).toHaveBeenCalledWith('Keep decisions')
     expect(screen.getByRole('button', { name: 'Compacting context…' })).toBeDisabled()
+    expect(trigger).toHaveAttribute('aria-busy', 'true')
     await act(async () => pending.resolve())
   })
 
@@ -122,7 +124,7 @@ describe.each([desktopWidth, mobileWidth])('ContextUsageIndicator at %dpx', (wid
   it('explains unsupported agents and handles an unknown context window without NaN', () => {
     render(<ContextUsageIndicator usedTokens={0} maxTokens={0} />)
     const trigger = screen.getByRole('button', { name: 'Context usage' })
-    expect(trigger).toHaveTextContent('—')
+    expect(trigger.textContent).toBe('')
     fireEvent.click(trigger)
     expect(screen.queryByRole('button', { name: 'Compact now' })).toBeNull()
     expect(screen.getByText('This model or agent does not offer context compaction.')).toBeInTheDocument()
@@ -132,7 +134,7 @@ describe.each([desktopWidth, mobileWidth])('ContextUsageIndicator at %dpx', (wid
     const compact = mock(async () => {})
     const { rerender } = render(<ContextUsageIndicator usedTokens={null} maxTokens={null} onCompact={compact} />)
     const trigger = screen.getByRole('button', { name: 'Context usage' })
-    expect(trigger).toHaveTextContent('—')
+    expect(trigger.textContent).toBe('')
     fireEvent.focus(trigger)
     expect(screen.getByRole('tooltip')).toHaveTextContent('Context usage is not available.')
     fireEvent.click(trigger)
@@ -160,5 +162,37 @@ describe.each([desktopWidth, mobileWidth])('ContextUsageIndicator at %dpx', (wid
     await act(async () => getClock().runAllAsync())
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(compact).not.toHaveBeenCalled()
+  })
+
+  it('shows no text for zero usage, even when the context limit is known', () => {
+    render(<ContextUsageIndicator usedTokens={0} maxTokens={1000} />)
+    const trigger = screen.getByRole('button', { name: 'Context usage' })
+    expect(trigger.textContent).toBe('')
+    fireEvent.focus(trigger)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Using 0 of 1K Context Window')
+  })
+
+  it.each([
+    [null, 1000],
+    [10, null],
+    [10, 0],
+    [10, -1],
+    [-1, 1000],
+  ])('treats usage %s / %s as unavailable', (usedTokens, maxTokens) => {
+    render(<ContextUsageIndicator usedTokens={usedTokens} maxTokens={maxTokens} />)
+    const trigger = screen.getByRole('button', { name: 'Context usage' })
+    expect(trigger.textContent).toBe('')
+    fireEvent.focus(trigger)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Context usage is not available.')
+    fireEvent.click(trigger)
+    expect(within(screen.getByRole('dialog')).queryByText(/Context Window/)).toBeNull()
+  })
+
+  it('caps an overflowing ring at 100% while retaining the actual usage in its details', () => {
+    render(<ContextUsageIndicator usedTokens={1500} maxTokens={1000} />)
+    const trigger = screen.getByRole('button', { name: 'Context usage' })
+    expect(trigger).toHaveTextContent('100%')
+    fireEvent.focus(trigger)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Using 1.5K of 1K Context Window')
   })
 })

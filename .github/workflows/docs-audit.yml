@@ -31,6 +31,8 @@ env:
   DOCS_AUDIT_MAX_BUDGET_USD: 15
   DOCS_AUDIT_MAX_TURNS: 200
   DOCS_AUDIT_OUT: docs-audit-out
+  DOCS_AUDIT_PATCH: docs-audit-out/docs.patch
+  DOCS_AUDIT_SUMMARY: docs-audit-out/summary.md
 
 jobs:
   audit:
@@ -83,25 +85,22 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write"
-            --allowedTools "Read(./**),Glob,Grep,Edit(docs/**/*.md),Edit(AGENTS.md),Edit(**/AGENTS.md),Edit(${{ env.DOCS_AUDIT_OUT }}/summary.md)"
+            --allowedTools "Read(./**),Glob,Grep,Edit(docs/**/*.md),Edit(AGENTS.md),Edit(**/AGENTS.md),Edit(${{ env.DOCS_AUDIT_SUMMARY }})"
             --disallowedTools "Read(//proc/**)"
             --max-budget-usd ${{ env.DOCS_AUDIT_MAX_BUDGET_USD }}
             --max-turns ${{ env.DOCS_AUDIT_MAX_TURNS }}
 
       # The diff covers exactly the selector's scope. git diff leaves out untracked files, so a new doc never gets in.
       - name: Save the patch
-        env:
-          PATCH: ${{ env.DOCS_AUDIT_OUT }}/docs.patch
-          SUMMARY: ${{ env.DOCS_AUDIT_OUT }}/summary.md
         run: |
           mapfile -t scope < <(jq --raw-output '.scope[]' "$DOCS_AUDIT_OUT/input.json")
-          git diff --binary -- "${scope[@]}" > "$PATCH"
+          git diff --binary -- "${scope[@]}" > "$DOCS_AUDIT_PATCH"
           git diff --stat -- "${scope[@]}"
-          if [ -s "$PATCH" ] && [ ! -s "$SUMMARY" ]; then
+          if [ -s "$DOCS_AUDIT_PATCH" ] && [ ! -s "$DOCS_AUDIT_SUMMARY" ]; then
             echo "::error::The agent changed docs without writing a summary, so there is no evidence to review."
             exit 1
           fi
-          test -s "$SUMMARY" || echo 'No issues found.' > "$SUMMARY"
+          test -s "$DOCS_AUDIT_SUMMARY" || echo 'No issues found.' > "$DOCS_AUDIT_SUMMARY"
 
       # The last line of defence if the agent read the key anyway: the patch becomes a public PR.
       - name: Check the output for the key
@@ -135,23 +134,22 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: docs-audit
-          path: ${{ runner.temp }}/docs-audit
+          path: ${{ env.DOCS_AUDIT_OUT }}
 
+      # --index stages exactly the checked patch, and the commit below takes only the index: nothing the build
+      # writes reaches the PR.
       - name: Apply the patch
         id: patch
-        env:
-          PATCH: ${{ runner.temp }}/docs-audit/docs.patch
-          SUMMARY: ${{ runner.temp }}/docs-audit/summary.md
         run: |
-          cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
-          if [ ! -s "$PATCH" ]; then
+          cat "$DOCS_AUDIT_SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -s "$DOCS_AUDIT_PATCH" ]; then
             echo "No doc changes."
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          bun .github/scripts/docs-audit-check-patch.ts "$PATCH"
-          git apply "$PATCH"
-          printf '\n<details><summary>Patch</summary>\n\n```diff\n%s\n```\n</details>\n' "$(cat "$PATCH")" >> "$GITHUB_STEP_SUMMARY"
+          bun .github/scripts/docs-audit-check-patch.ts "$DOCS_AUDIT_PATCH"
+          git apply --index "$DOCS_AUDIT_PATCH"
+          printf '\n<details><summary>Patch</summary>\n\n```diff\n%s\n```\n</details>\n' "$(cat "$DOCS_AUDIT_PATCH")" >> "$GITHUB_STEP_SUMMARY"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       # The site publishes docs/ through web/src/loaders/repo-docs-loader.ts, so a doc that breaks it fails here.
@@ -179,7 +177,6 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          SUMMARY: ${{ runner.temp }}/docs-audit/summary.md
         run: |
           day=$(date -u +%Y-%m-%d)
           branch="docs-audit/$day"
@@ -187,10 +184,10 @@ jobs:
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
           git switch --create "$branch"
-          git commit --all --no-verify --quiet --message "docs: weekly audit $day"
+          git commit --no-verify --quiet --message "docs: weekly audit $day"
           basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 --wrap=0)
           GIT_CONFIG_COUNT=1 \
             GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $basic" \
             git push --no-verify --force-with-lease="refs/heads/$branch:" origin "HEAD:refs/heads/$branch"
-          gh pr create --base main --head "$branch" --title "docs: weekly audit $day" --body-file "$SUMMARY"
+          gh pr create --base main --head "$branch" --title "docs: weekly audit $day" --body-file "$DOCS_AUDIT_SUMMARY"

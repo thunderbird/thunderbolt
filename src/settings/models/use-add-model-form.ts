@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createModelInTransaction } from '@/dal/models'
-import { withTinfoilSessionLock } from '@/lib/tinfoil-session'
-import { type ProviderAuthorization } from '@/lib/provider-connection-attempt'
-import { saveProviderConnectionInTransaction } from '@/dal/provider-connections'
+import { revokeReplacedTinfoilAuthorization, withTinfoilSessionLock } from '@/lib/tinfoil-session'
+import { assertProviderConnectionAttemptCurrent, type ProviderAuthorization } from '@/lib/provider-connection-attempt'
+import { getProviderConnectionRevision, saveProviderConnectionInTransaction } from '@/dal/provider-connections'
 import { getProviderDefinition } from '@/providers/registry'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
@@ -166,7 +166,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
         > & { providerAuthorization?: ProviderAuthorization; signal?: AbortSignal },
     ) => {
       const { providerAuthorization, signal, supportsTools = true, ...modelValues } = values
-      const save = () =>
+      const save = (attempt = providerAuthorization?.attempt, expectedRevision?: string | null) =>
         db.transaction(async (tx) => {
           // Authorization can be cancelled while this save waits for the session lock or database.
           signal?.throwIfAborted()
@@ -181,7 +181,8 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
                   credentials:
                     providerAuthorization?.tinfoilCredentials ??
                     (providerAuthorization ? { access_token: values.apiKey } : { apiKey: values.apiKey ?? '' }),
-                  attempt: providerAuthorization?.attempt,
+                  attempt,
+                  expectedRevision,
                 })
           const previous = providerConnectionId
             ? (await getAllModels(tx)).find(
@@ -206,7 +207,16 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
           return { id, created: !previous }
         })
       const { id, created } =
-        providerAuthorization?.attempt.provider === 'tinfoil' ? await withTinfoilSessionLock(save) : await save()
+        providerAuthorization?.attempt.provider === 'tinfoil'
+          ? await withTinfoilSessionLock(async () => {
+              await assertProviderConnectionAttemptCurrent(db, providerAuthorization.attempt)
+              const revision = await getProviderConnectionRevision(db, 'oauth:tinfoil')
+              const retired = providerAuthorization.tinfoilCredentials
+                ? await revokeReplacedTinfoilAuthorization(db, providerAuthorization.tinfoilCredentials, signal)
+                : undefined
+              return save(retired ?? providerAuthorization.attempt, revision)
+            })
+          : await save()
       if (isStandalone && created) {
         await updateSettings(db, { selected_model: id })
       }

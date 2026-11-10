@@ -49,6 +49,7 @@ const makeDependencies = (overrides: Partial<Dependencies> = {}) => ({
     expires_at: Date.now() + 900_000,
   })),
   startTinfoilMobile: mock(async (..._args: Parameters<typeof startTinfoilMobileConnection>) => {}),
+  discardTinfoil: mock(async (_credentials: Parameters<Dependencies['discardTinfoil']>[0]) => {}),
   prepareManual: mock(
     async (): Promise<OpenRouterManualConnection> => ({
       authorizationUrl: 'https://openrouter.ai/auth?code_challenge=test',
@@ -411,6 +412,57 @@ describe('useOnboardingProviderState', () => {
     expect((await getAvailableModels(getDb()))[0].apiKey).toBe('openrouter-key')
   })
 
+  it('revokes a late Tinfoil grant after cancellation without saving it', async () => {
+    const granted = Promise.withResolvers<Awaited<ReturnType<typeof tinfoilAuth.startConnection>>>()
+    const deps = makeDependencies({ startTinfoil: () => granted.promise })
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+    let connection!: Promise<void>
+    await act(async () => {
+      connection = result.current.connectTinfoil()
+    })
+    act(() => result.current.cancelConnection())
+    const credentials = { access_token: 'unused', refresh_token: 'unused-refresh', expires_at: Date.now() + 900_000 }
+    await act(async () => {
+      granted.resolve(credentials)
+      await connection
+    })
+    expect(deps.discardTinfoil).toHaveBeenCalledWith(credentials)
+    expect(deps.prepareModel).not.toHaveBeenCalled()
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+  })
+
+  it('retains a failed Tinfoil setup for retry, then releases its unused grant when leaving', async () => {
+    const deps = makeDependencies({
+      prepareModel: async () => {
+        throw new Error('verification failed')
+      },
+    })
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+    await act(async () => result.current.connectTinfoil())
+    expect(deps.discardTinfoil).not.toHaveBeenCalled()
+    act(() => result.current.showChoices())
+    expect(deps.discardTinfoil).toHaveBeenCalledWith(expect.objectContaining({ access_token: 'tinfoil-oauth-key' }))
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+  })
+
+  it('replaces a saved Tinfoil grant only after revoking it, and preserves the old session on failure', async () => {
+    const original = { access_token: 'previous', refresh_token: 'previous-refresh', expires_at: Date.now() + 900_000 }
+    await saveIntegrationCredentials(getDb(), 'tinfoil', original, true)
+    const revoke = spyOn(tinfoilAuth, 'revoke')
+      .mockRejectedValueOnce(new Error('temporarily unavailable'))
+      .mockResolvedValue(undefined)
+    const deps = makeDependencies()
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+    await act(async () => result.current.connectTinfoil())
+    expect(revoke).toHaveBeenCalledWith('previous-refresh')
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(original)
+    expect(await getAvailableModels(getDb())).toEqual([])
+    await act(async () => result.current.connectTinfoil())
+    expect(deps.startTinfoil).toHaveBeenCalledTimes(1)
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe('tinfoil-oauth-key')
+    expect(await getAvailableModels(getDb())).toHaveLength(1)
+  })
+
   it('does not save a late default-model verification after cancellation', async () => {
     const preparation = Promise.withResolvers<Awaited<ReturnType<Dependencies['prepareModel']>>>()
     const deps = makeDependencies({ prepareModel: () => preparation.promise })
@@ -650,6 +702,7 @@ describe('useOnboardingProviderState', () => {
     act(() => result.current.addForm.form.setValue('apiKey', 'mobile-key'))
     await act(async () => result.current.connectApiKey())
     expect(deps.startTinfoil).not.toHaveBeenCalled()
+    expect(deps.discardTinfoil).not.toHaveBeenCalled()
     expect((await getAvailableModels(getDb()))[0]).toMatchObject({
       provider: 'tinfoil',
       apiKey: 'mobile-key',
@@ -753,7 +806,8 @@ describe('useOnboardingProviderState', () => {
       openUrl: async () => {},
     })
     captureTinfoilMobileReturn(new URL(`${mobileOAuthRedirectUri}?code=code&state=${nonce}`), { exchange })
-    const { result } = renderHook(() => useOnboardingProviderState([], makeDependencies()), {
+    const deps = makeDependencies()
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), {
       wrapper: createTestProvider(),
     })
     await act(async () => {})
@@ -764,6 +818,38 @@ describe('useOnboardingProviderState', () => {
     expect(result.current.view).toBe('choices')
     expect(await getAvailableModels(getDb())).toHaveLength(0)
     expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+    expect(deps.discardTinfoil).toHaveBeenCalledWith(expect.objectContaining({ access_token: 'late-key' }))
+  })
+
+  it('releases a cancelled mobile grant even when a different authorization starts before it returns', async () => {
+    const nonce = 'n'.repeat(43)
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    const original = Promise.withResolvers<Awaited<ReturnType<typeof tinfoilAuth.startConnection>>>()
+    const replacement = Promise.withResolvers<Awaited<ReturnType<typeof tinfoilAuth.startConnection>>>()
+    await startTinfoilMobileConnection('onboarding', attempt, new AbortController().signal, {
+      verifier: () => nonce,
+      challenge: async () => 'challenge',
+      openUrl: async () => {},
+    })
+    captureTinfoilMobileReturn(new URL(`${mobileOAuthRedirectUri}?code=code&state=${nonce}`), {
+      exchange: () => original.promise,
+    })
+    const deps = makeDependencies({ startTinfoil: () => replacement.promise })
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+    await act(async () => {})
+    act(() => result.current.cancelConnection())
+    let connecting!: Promise<void>
+    await act(async () => {
+      connecting = result.current.connectTinfoil()
+    })
+    const unused = { access_token: 'unused-return', expires_at: Date.now() + 900_000 }
+    await act(async () => original.resolve(unused))
+    expect(deps.discardTinfoil).toHaveBeenCalledWith(unused)
+    await act(async () => {
+      replacement.resolve({ access_token: 'replacement', expires_at: Date.now() + 900_000 })
+      await connecting
+    })
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe('replacement')
   })
 
   it('refuses a mobile callback if another window disconnected before it returned', async () => {

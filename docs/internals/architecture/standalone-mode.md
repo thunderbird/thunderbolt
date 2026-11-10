@@ -84,20 +84,21 @@ call `https://api.tinfoil.sh/oauth/{token,revoke}` directly. No backend or clien
 secret is required. The registered redirects must include desktop loopbacks
 `http://localhost:17421/`, `:17422/`, `:17423/` and each web deployment's
 `/oauth/tinfoil` URL. Web callbacks use the random state to address the same-origin
-BroadcastChannel. Native mobile currently uses BYOK; the public-client mobile
-redirect registration and deep-link flow still need to be confirmed with Tinfoil.
+BroadcastChannel. Native mobile uses the verified app link
+`https://thunderbolt.mozilla.ai/oauth/tinfoil/mobile`, registered with Tinfoil.
+The pending PKCE verifier and return context survive an app restart; callbacks
+validate the exact link, unique state/code parameters, and a ten-minute lifetime.
 
 Provider setup captures a local connection revision before authorization or model
 verification and checks it again inside the model-save transaction. Disconnecting,
 toggling, or replacing a connection advances that revision, so an older attempt in
-another window cannot restore access. Revisions remain in `integrations_secrets`;
-OpenRouter's row contains only this lifecycle metadata, while its API keys stay in
-`models_secrets`. Tinfoil token refresh preserves the revision. Cancellation also
+another window cannot restore access. Local credential revisions live in
+`provider_connection_secrets`; legacy integrations and model keys migrate there.
+Tinfoil token refresh preserves the revision. Cancellation also
 aborts pending network work and rolls back saves that have not committed.
 
-OAuth sessions live in the existing local-only `integrations_secrets` table;
-`models_secrets.oauth_provider` links a user model to that session. Neither tokens
-nor the link sync to other devices. Refresh, reconnect persistence, enable/disable and disconnect
+OAuth sessions live in local-only `provider_connection_secrets`; synced connection
+and model metadata contains no credentials. Refresh, reconnect persistence, enable/disable and disconnect
 share a Web Lock; refresh re-reads credentials inside the lock and persists rotated
 refresh tokens before releasing it. A rejected grant requires reconnecting; it
 never falls back to Mozilla billing. Each encrypted inference request resolves a
@@ -108,6 +109,17 @@ not cancel the subscription. Disabling or disconnecting the subscription does no
 change individual model toggles: availability is derived from both the model
 preference and current connection access. A failed remote revocation keeps the
 local connection intact so disconnect can be retried.
+
+Reconnecting revokes the previous grant before saving its replacement. A failed
+revocation preserves the old session for retry; cancellation after successful
+revocation leaves it marked for reauthorization. Failed model verification retains
+the new grant for retry while setup remains open. Cancelling or leaving setup
+releases unused grants under the same session lock. A local `authorizationId`
+survives refresh and toggles so delayed cleanup cannot revoke a saved grant.
+Cleanup is best-effort, with a thirty-second request limit and a fixed warning
+without credentials on failure; users can also revoke access in Tinfoil's dashboard.
+Locally bound grants remain available for explicit revocation even when another
+device removes or changes their synced metadata.
 
 Open chats watch model and connection changes from the database, including other
 windows. Every new send independently checks availability again. These checks do
@@ -174,7 +186,8 @@ only after its gateway advertises direct search. Unavailable Otari search shows 
 explanation and keeps the optional search step. Existing named search connections
 can be reused without re-entering credentials. Each Tinfoil search or page
 retrieval opens and closes a short-lived MCP transport using the existing OAuth
-session or API key. Tinfoil SDK 1.4's injected `fetch` sends encrypted envelopes
+session or API key. Tinfoil SDK 2 uses explicit EHBP transport and an injected
+`fetch` to send encrypted envelopes
 through Thunderbolt's HTTP client. The SDK owns attestation, encryption, response
 decryption, and re-verification on key rotation; Thunderbolt does not implement
 EHBP. Desktop and mobile use native HTTP. The optional GET event stream is

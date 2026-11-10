@@ -178,7 +178,7 @@ export const captureProviderBrowserReturn = (
                 signal,
               )
             : { access_token: await deps.exchangeOpenRouter(code!, flow.verifier, signal) }
-        signal.throwIfAborted()
+        // The owning flow checks cancellation and releases an issued grant before discarding it.
         return credentials
       })()),
   }

@@ -175,3 +175,24 @@ it.each(['openrouter', 'tinfoil'] as const)(
     expect(returned?.returnTo).toBe('/chats/new?project=work#composer')
   },
 )
+
+it('hands a late issued Tinfoil grant back for cleanup after redirect cancellation', async () => {
+  const credentials = { access_token: 'issued', expires_at: 900_000 }
+  const exchanged = Promise.withResolvers<typeof credentials>()
+  const dependencies = { ...deps(), exchangeTinfoil: () => exchanged.promise }
+  await startProviderBrowserConnection(
+    'tinfoil',
+    'connections',
+    { provider: 'tinfoil', revision: '1' },
+    new AbortController().signal,
+    dependencies,
+  )
+  const returned = captureProviderBrowserReturn(
+    new URL(`https://app.example/oauth/tinfoil?code=code&state=${state}`),
+    dependencies,
+  )!
+  const completion = returned.complete()
+  returned.cancel()
+  exchanged.resolve(credentials)
+  expect(await completion).toEqual(credentials)
+})

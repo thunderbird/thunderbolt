@@ -13,6 +13,8 @@ type CredentialProvider = OAuthProvider | 'tinfoil' | 'openrouter' | 'otari'
 type IntegrationCredentials = {
   oauthRelayUrl?: string
   access_token: string
+  /** Stable local grant identity, retained across refresh-token rotation. */
+  authorizationId?: string
   refresh_token?: string
   expires_at?: number
   reauth_required?: boolean

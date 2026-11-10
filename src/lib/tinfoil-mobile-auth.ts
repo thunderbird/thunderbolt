@@ -161,7 +161,7 @@ export const captureTinfoilMobileReturn = (
           { code: code!, verifier: flow.data.verifier, redirectUri: mobileOAuthRedirectUri },
           signal,
         )
-        signal.throwIfAborted()
+        // The owning flow checks cancellation and releases an issued grant before discarding it.
         return credentials
       })()
       return completion

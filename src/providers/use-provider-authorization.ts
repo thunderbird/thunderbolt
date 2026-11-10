@@ -38,6 +38,7 @@ import {
   type OpenRouterManualConnection,
 } from '@/lib/openrouter-auth'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
+import { tinfoilSession } from '@/lib/tinfoil-session'
 import {
   getTinfoilMobileReturn,
   clearTinfoilMobileReturn,
@@ -189,10 +190,17 @@ export const useProviderAuthorization = ({
     } catch (error) {
       // StrictMode may transfer a shared redirect result to the replacement effect.
       const transferred =
-        returned &&
+        controller.returnId &&
         pending.current !== controller &&
-        pending.current?.returnId === returned.id &&
+        pending.current?.returnId === controller.returnId &&
         !pending.current.signal.aborted
+      if (input.provider === 'tinfoil' && !transferred) {
+        try {
+          await tinfoilSession.discardAuthorization(credentials)
+        } catch {
+          console.warn('Could not revoke an unused Tinfoil authorization.')
+        }
+      }
       if (input.provider === 'otari' && credentials.access_token && !transferred) {
         await discardOtariAuthorization(db, getOtariAuthorizationOrigin(input.url), credentials.access_token)
       }

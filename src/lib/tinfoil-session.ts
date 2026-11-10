@@ -7,10 +7,12 @@ import { getDb } from '@/db/database'
 import { getAllModels, updateModelInTransaction } from '@/dal/models'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { tinfoilAuth, TinfoilReauthorizationError } from './tinfoil-auth'
-import { providerConnectionsTable } from '@/db/tables'
+import { providerConnectionsTable, providerConnectionSecretsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
-import { writeProviderCredentials } from '@/providers/credentials'
+import { credentialBinding, writeProviderCredentials } from '@/providers/credentials'
 import { getIdentitySignal } from './identity-lifetime'
+import type { ProviderCredentials } from '@/providers/types'
+import { getProviderConnectionAttempt } from './provider-connection-attempt'
 
 const lockName = 'thunderbolt-tinfoil-session'
 /** A single origin-wide lock protects rotating Tinfoil credentials. */
@@ -22,6 +24,68 @@ const defaultDependencies = {
   auth: tinfoilAuth,
   lock: withTinfoilSessionLock,
   now: Date.now,
+}
+
+/** Local grant ownership survives metadata removal or changes synced from another device. */
+const readStoredAuthorization = async (db: AnyDrizzleDatabase) => {
+  const secret = await db
+    .select()
+    .from(providerConnectionSecretsTable)
+    .where(eq(providerConnectionSecretsTable.id, 'oauth:tinfoil'))
+    .get()
+  if (secret) {
+    const bound = secret.binding === credentialBinding({ provider: 'tinfoil', authMethod: 'oauth', url: null })
+    const credentials: ProviderCredentials = bound ? JSON.parse(secret.credentials ?? '{}') : {}
+    return { secret, legacy: null, credentials }
+  }
+  const legacy = await getIntegrationCredentials(db, 'tinfoil')
+  const credentials: ProviderCredentials = legacy?.credentials ?? {}
+  return { secret: null, legacy, credentials }
+}
+
+/** Match a saved grant through refresh rotation, with token fallback for older credentials. */
+const sameAuthorization = (current: ProviderCredentials, incoming: ProviderCredentials): boolean =>
+  Boolean(current.authorizationId && current.authorizationId === incoming.authorizationId) ||
+  Boolean(current.access_token && current.access_token === incoming.access_token) ||
+  Boolean(current.refresh_token && current.refresh_token === incoming.refresh_token)
+
+/** Retire a replaced grant under the caller's session lock, preserving its guarded save generation. */
+export const revokeReplacedTinfoilAuthorization = async (
+  db: AnyDrizzleDatabase,
+  incoming: ProviderCredentials,
+  signal?: AbortSignal,
+  auth = tinfoilAuth,
+) => {
+  const row = await readStoredAuthorization(db)
+  if (!row.credentials.access_token || sameAuthorization(row.credentials, incoming)) {
+    return
+  }
+  signal?.throwIfAborted()
+  // A failed revoke leaves the previous credentials available for retry.
+  await auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
+  return db.transaction(async (tx) => {
+    const current = await readStoredAuthorization(tx)
+    if (JSON.stringify(current) !== JSON.stringify(row)) {
+      throw new Error('Tinfoil connection changed during revocation')
+    }
+    if (row.secret) {
+      await writeProviderCredentials(
+        tx,
+        'oauth:tinfoil',
+        { ...row.credentials, reauth_required: true },
+        row.secret.binding,
+      )
+    } else if (row.legacy) {
+      await saveIntegrationCredentials(
+        tx,
+        'tinfoil',
+        { ...row.legacy.credentials, reauth_required: true },
+        row.legacy.enabled,
+      )
+    }
+    // Legacy fingerprints include credentials; capture our own retirement inside this transaction.
+    return getProviderConnectionAttempt(tx, 'tinfoil')
+  })
 }
 
 /** Updates OAuth access within a caller-owned transaction and session lock. */
@@ -77,7 +141,7 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
       }
       try {
         const tokens = await deps.auth.refresh(current.refresh_token)
-        await saveRefresh({ ...tokens, sessionRevision: current.sessionRevision })
+        await saveRefresh({ ...current, ...tokens })
         const latest = await getIntegrationCredentials(db, 'tinfoil')
         signal.throwIfAborted()
         if (
@@ -96,24 +160,38 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
       }
     })
   },
+  discardAuthorization: (credentials: ProviderCredentials) =>
+    deps.lock(async () => {
+      const current = await readStoredAuthorization(deps.db())
+      if (sameAuthorization(current.credentials, credentials)) {
+        return
+      }
+      const token = credentials.refresh_token ?? credentials.access_token
+      if (token) {
+        await deps.auth.revoke(token)
+      }
+    }),
   setEnabled: (enabled: boolean) =>
     deps.lock(() => deps.db().transaction((tx) => setTinfoilSessionEnabledInTransaction(tx, enabled))),
   disconnect: () =>
     deps.lock(async () => {
       const db = deps.db()
-      const row = await getIntegrationCredentials(db, 'tinfoil')
-      if (row?.credentials.access_token) {
+      const row = await readStoredAuthorization(db)
+      if (row.credentials.access_token) {
         // Keep the connection available for retry if server-side revocation fails.
         await deps.auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
       }
       await db.transaction(async (tx) => {
+        if (JSON.stringify(await readStoredAuthorization(tx)) !== JSON.stringify(row)) {
+          throw new Error('Tinfoil connection changed during revocation')
+        }
         const connection = await tx
           .select()
           .from(providerConnectionsTable)
           .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
           .get()
-        if (connection) {
-          await writeProviderCredentials(tx, connection.id, { sessionRevision: crypto.randomUUID() }, null)
+        if (connection || row.secret) {
+          await writeProviderCredentials(tx, 'oauth:tinfoil', { sessionRevision: crypto.randomUUID() }, null)
           return
         }
         for (const model of await getAllModels(tx)) {

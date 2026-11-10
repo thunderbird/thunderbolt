@@ -32,7 +32,7 @@ import { revokeChatGPTSession } from '@/providers/chatgpt-session'
 import { writeChatGPTRegistration } from '@/providers/chatgpt-registration'
 import { resolveOAuthAccessToken, withProviderOAuthLock } from '@/providers/oauth-session'
 import { getIdentitySignal } from '@/lib/identity-lifetime'
-import { tinfoilSession, withTinfoilSessionLock } from '@/lib/tinfoil-session'
+import { revokeReplacedTinfoilAuthorization, tinfoilSession, withTinfoilSessionLock } from '@/lib/tinfoil-session'
 import { getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
 import { isCurrentOtariAuthorization, revokeStoredOtariAuthorization } from '@/providers/otari-session'
 import { getProviderConnectionRevision } from '@/providers/revision'
@@ -118,7 +118,18 @@ export const saveProviderConnectionWithRevision = (
     return save()
   }
   if (input.provider === 'tinfoil') {
-    return withTinfoilSessionLock(save)
+    return withTinfoilSessionLock(async () => {
+      const guarded = {
+        ...input,
+        expectedRevision:
+          input.expectedRevision === undefined
+            ? await getProviderConnectionRevision(db, 'oauth:tinfoil')
+            : input.expectedRevision,
+      }
+      await prepareProviderConnectionSave(db, guarded)
+      const retired = await revokeReplacedTinfoilAuthorization(db, input.credentials, input.signal)
+      return save({ ...guarded, attempt: input.attempt ? (retired ?? input.attempt) : undefined })
+    })
   }
   if (input.provider === 'otari') {
     return withProviderOAuthLock('oauth:otari', async () => {
@@ -333,7 +344,7 @@ export const disconnectProviderConnection = async (db: AnyDrizzleDatabase, id: s
     await withProviderOAuthLock(id, () => revokeStoredOtariAuthorization(db, { disconnect: true }))
     return
   }
-  if (row?.provider === 'tinfoil' && row.authMethod === 'oauth') {
+  if (id === 'oauth:tinfoil') {
     await tinfoilSession.disconnect()
     return
   }

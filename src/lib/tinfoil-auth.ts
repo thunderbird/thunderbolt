@@ -44,6 +44,8 @@ const tokenSchema = z.object({
 })
 export type TinfoilCredentials = {
   access_token: string
+  /** Stable local grant identity, retained across refresh-token rotation. */
+  authorizationId?: string
   refresh_token?: string
   expires_at: number
   reauth_required?: boolean
@@ -108,10 +110,16 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
     }
   }
 
-  const exchangeCode = (
+  const exchangeCode = async (
     { code, verifier, redirectUri }: { code: string; verifier: string; redirectUri: string },
     signal?: AbortSignal,
-  ) => grant({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri }, signal)
+  ): Promise<TinfoilCredentials> => ({
+    ...(await grant(
+      { grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri },
+      signal,
+    )),
+    authorizationId: crypto.randomUUID(),
+  })
 
   return {
     exchangeCode,
@@ -120,9 +128,8 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
       try {
         const result = await authorization.startConnection({ signal })
         signal.throwIfAborted()
-        const credentials = await exchangeCode(result, signal)
-        signal.throwIfAborted()
-        return credentials
+        // Return issued credentials even if cancelled so the caller can revoke the unused grant.
+        return await exchangeCode(result, signal)
       } catch (error) {
         signal.throwIfAborted()
         if (error instanceof TinfoilConnectionError) {

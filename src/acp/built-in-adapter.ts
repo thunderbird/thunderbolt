@@ -42,7 +42,7 @@
  * adapter's teardown (agent delete / config edit / sign-out).
  */
 
-import { bindModelProvider } from '@/providers/model-connection'
+import { bindModelProvider, type ModelProviderBinding } from '@/providers/model-connection'
 import { readProfileThinkingLevel } from '@/ai/profile-thinking-level'
 import {
   aiFetchStreamingResponse,
@@ -200,6 +200,7 @@ const parseMessages = (init: RequestInit): ThunderboltUIMessage[] => {
 export type ResolvedPiModel = {
   readonly descriptor: PiModelDescriptor
   readonly thinkingLevel: ThinkingLevel
+  readonly providerBinding?: ModelProviderBinding
   /** Attested transport identity used only to invalidate the local harness cache. */
   readonly tinfoilClient?: SecureClient
 }
@@ -244,7 +245,7 @@ export const resolvePiModel = async (
   profile: ModelProfile | null,
   options: TinfoilClientOptions = {},
 ): Promise<ResolvedPiModel | null> => {
-  const { model, wrapFetch, api } = await bindModelProvider(context.selectedModel)
+  const { model, wrapFetch, api, binding: providerBinding } = await bindModelProvider(context.selectedModel)
   const thinkingLevel = deriveThinkingLevel(profile)
   // Pi strips image blocks from text-only descriptors. Only models known not to
   // read images are text-only: the composer checks an unknown model before an
@@ -300,6 +301,7 @@ export const resolvePiModel = async (
           supportsImages,
         },
         thinkingLevel,
+        providerBinding,
         tinfoilClient: client,
       }
     }
@@ -343,6 +345,7 @@ export const resolvePiModel = async (
         supportsImages,
       },
       thinkingLevel,
+      providerBinding,
       tinfoilClient: client,
     }
   }
@@ -359,6 +362,7 @@ export const resolvePiModel = async (
         fetch: wrapFetch(createLiveProxyFetch(context.getProxyFetch)),
       },
       thinkingLevel,
+      providerBinding,
     }
   }
   if (model.provider === 'thunderbolt' && model.vendor === 'anthropic') {
@@ -378,6 +382,7 @@ export const resolvePiModel = async (
         fetch: connection.fetch,
       },
       thinkingLevel,
+      providerBinding,
     }
   }
   const connection = resolveOpenAiCompatConnection(model, context.getProxyFetch)
@@ -402,6 +407,7 @@ export const resolvePiModel = async (
       supportsImages,
     },
     thinkingLevel,
+    providerBinding,
   }
 }
 
@@ -430,8 +436,8 @@ const hashSecret = (value: string): string => {
 
 /** Fingerprint every input baked into a thread's harness at build time — the
  *  descriptor (provider / model id / api key / base url / reasoning / context
- *  window), thinking level, stable system prompt, regeneration revision, and
- *  durable checkpoint. Another device can replace that checkpoint without
+ *  window), provider connection generation, thinking level, stable system prompt,
+ *  regeneration revision, and durable checkpoint. Another device can replace that checkpoint without
  *  adding a user turn, so the local harness must notice that change too.
  *  When it changes mid-thread (a model, provider, key, system-prompt,
  *  thinking, or MCP-server switch) the cached harness is stale and
@@ -451,7 +457,14 @@ export const harnessSignature = (
     d.kind === 'anthropic'
       ? `anthropic|${d.modelId}|${d.catalogModelId ?? ''}|${d.baseURL ?? ''}|${d.contextWindow ?? ''}|${hashSecret(d.apiKey)}`
       : `${d.kind}|${d.providerId}|${d.modelId}|${vendor}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}|${clientId}`
-  return JSON.stringify([model, resolved.thinkingLevel, stableSystemPrompt, regenerationRevision, compaction])
+  return JSON.stringify([
+    model,
+    resolved.providerBinding,
+    resolved.thinkingLevel,
+    stableSystemPrompt,
+    regenerationRevision,
+    compaction,
+  ])
 }
 
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */

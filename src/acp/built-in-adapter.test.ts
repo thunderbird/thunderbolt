@@ -22,7 +22,11 @@ import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-suppor
 import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
 import { createEvalAdapterContext } from '@/ai/eval/runner'
 import { createModel as insertModel } from '@/dal/models'
-import { saveProviderConnectionInTransaction } from '@/dal/provider-connections'
+import {
+  saveProviderConnection,
+  saveProviderConnectionInTransaction,
+  updateProviderConnection,
+} from '@/dal/provider-connections'
 import { updateSkill } from '@/dal/skills'
 import { useConfigStore } from '@/api/config-store'
 import { updateSettings } from '@/dal/settings'
@@ -218,6 +222,20 @@ describe('harnessSignature', () => {
 
   it('changes when the api key changes', () => {
     expect(harnessSignature(anthropic(), 'sys')).not.toBe(harnessSignature(anthropic({ apiKey: 'sk-b' }), 'sys'))
+  })
+
+  it.each([undefined, 'generation-1'])('keys provider bindings by connection ID with revision %s', (revision) => {
+    const resolved = { ...anthropic(), providerBinding: { connectionId: 'first', revision } }
+    const equivalent = { ...anthropic(), providerBinding: { connectionId: 'first', revision } }
+    const switched = { ...anthropic(), providerBinding: { connectionId: 'second', revision } }
+    expect(harnessSignature(resolved, 'sys')).toBe(harnessSignature(equivalent, 'sys'))
+    expect(harnessSignature(resolved, 'sys')).not.toBe(harnessSignature(switched, 'sys'))
+  })
+
+  it('keys the same connection by its captured credential generation', () => {
+    const resolved = { ...anthropic(), providerBinding: { connectionId: 'first', revision: 'generation-1' } }
+    const reconnected = { ...anthropic(), providerBinding: { connectionId: 'first', revision: 'generation-2' } }
+    expect(harnessSignature(resolved, 'sys')).not.toBe(harnessSignature(reconnected, 'sys'))
   })
 
   it('changes when the system prompt changes', () => {
@@ -1262,6 +1280,63 @@ const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) =>
   name: 'search',
   args: { query: `query-${index}`, max_results: 10 },
 }))
+
+it.each(['resaved', 're-enabled', 'switched'] as const)(
+  'rebuilds a real Pi harness when its provider connection is %s with the same key',
+  async (change) => {
+    await setupTestDatabase()
+    const builds: AgentHarness[] = []
+    const run = createBudgetAdapter(['First.', 'Second.', 'Third.', 'Fourth.'], undefined, (harness) => {
+      builds.push(harness)
+    })
+    try {
+      const input = {
+        provider: 'openai' as const,
+        name: 'OpenAI',
+        authMethod: 'api_key' as const,
+        credentials: { apiKey: 'test' },
+      }
+      const id = await saveProviderConnection(getDb(), input)
+      run.context.selectedModel = { ...run.context.selectedModel, providerConnectionId: id }
+      const messages: ThunderboltUIMessage[] = []
+      const send = async (reply: string) => {
+        messages.push({ id: `user-${messages.length}`, role: 'user', parts: [{ type: 'text', text: 'Continue.' }] })
+        const response = await run.adapter.fetch({ body: JSON.stringify({ messages }) }, run.context)
+        const output = await response.text()
+        expect(output).not.toContain('"type":"error"')
+        expect(output).toContain(reply)
+        messages.push({ id: `reply-${messages.length}`, role: 'assistant', parts: [{ type: 'text', text: reply }] })
+      }
+
+      await send('First.')
+      await updateProviderConnection(getDb(), id, { name: 'Renamed connection' })
+      await send('Second.')
+      expect(builds).toHaveLength(1)
+
+      if (change === 'resaved') {
+        await saveProviderConnection(getDb(), { ...input, id })
+      } else if (change === 're-enabled') {
+        await updateProviderConnection(getDb(), id, { enabled: false })
+        await updateProviderConnection(getDb(), id, { enabled: true })
+      } else {
+        const nextId = await saveProviderConnection(getDb(), input)
+        run.context.selectedModel = { ...run.context.selectedModel, providerConnectionId: nextId }
+      }
+      await send('Third.')
+      expect(builds).toHaveLength(2)
+
+      if (change === 'switched') {
+        await updateProviderConnection(getDb(), id, { enabled: false })
+      }
+      await send('Fourth.')
+      expect(builds).toHaveLength(2)
+      expect(run.requests).toHaveLength(4)
+    } finally {
+      run.adapter.disconnect()
+      await teardownTestDatabase()
+    }
+  },
+)
 
 describe('real Pi web-budget payload', () => {
   it('pairs a mixed batch, retains non-web tools and steers only once after concurrent denials', async () => {

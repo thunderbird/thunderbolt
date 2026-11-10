@@ -9,11 +9,18 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { getIdentitySignal } from '@/lib/identity-lifetime'
 
+/** Nonsecret identity of the connection generation captured by an inference transport. */
+export type ModelProviderBinding = {
+  readonly connectionId: string
+  readonly revision?: string
+}
+
 /** Bind an inference turn to one authorized connection, rechecking access before every request. */
 export const bindModelProvider = async (
   model: Model,
 ): Promise<{
   api?: 'openai-responses'
+  binding?: ModelProviderBinding
   model: Model
   wrapFetch: (fetch: FetchFn) => FetchFn
   assertCurrent: () => Promise<void>
@@ -85,6 +92,7 @@ export const bindModelProvider = async (
     )
   return {
     ...(isChatGPT ? { api: 'openai-responses' as const } : {}),
+    binding: { connectionId: id, revision: resolved.revision },
     model: { ...model, apiKey: resolved.apiKey, url: resolved.connection.url },
     wrapFetch,
     assertCurrent: async () => {

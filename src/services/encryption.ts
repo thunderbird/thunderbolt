@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { type HttpClient } from '@/contexts'
+// Type only: canary itself stays lazy-loaded (loadCanary below).
+import type { DeviceAnchor } from '@/crypto/canary'
 import { createHandleError } from '@/lib/error-utils'
 import { HttpError } from '@/lib/http'
 import { trackError } from '@/lib/posthog'
@@ -68,6 +70,12 @@ import { getCachedSession } from '@/lib/session-cache'
 import { pinnedOrgEscrowPublicKey } from '@/lib/org-escrow'
 import { DeviceApprovalError } from '@/crypto/errors'
 import { createDeviceApprovalFingerprint, matchesDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
+import {
+  type ApprovalCodeConfirmation,
+  createApprovalCodeContext,
+  deriveVerifiedApprovalCode,
+  matchesApprovalCode,
+} from '@/crypto/device-approval-code'
 import { StepUpVerificationError, stepUpRefusalCode } from '@/lib/step-up'
 import {
   bindSession,
@@ -1274,22 +1282,54 @@ const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<string>
 // =============================================================================
 
 /** Compute the pending device's confirmation from local keys, never a served device row. */
-export const getThisDeviceApprovalFingerprint = async (): Promise<string> => {
+export const getThisDeviceApprovalFingerprint = async (): Promise<string> =>
+  createDeviceApprovalFingerprint(await getThisDeviceAnchor())
+
+/** New device: the approval-code context for one session, from local keys only (like the fingerprint). */
+export const getThisDeviceApprovalCodeContext = async (sessionId: string): Promise<string> =>
+  createApprovalCodeContext(await getThisDeviceAnchor(), sessionId)
+
+/** This device's account, id and public keys, read from local storage only: never the server's copy. */
+const getThisDeviceAnchor = async (): Promise<DeviceAnchor> => {
   const keyPair = await getKeyPair()
   if (!keyPair) {
     throw new Error('Key pair not found in IndexedDB')
   }
-  return createDeviceApprovalFingerprint({
+  return {
     userId: getUserId(),
     deviceId: getDeviceId(),
     ecdhPublicKey: await exportPublicKey(keyPair.ecdhPublicKey),
     mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
-  })
+  }
 }
 
 /**
- * Approve a captured recipient after fingerprint confirmation. Verify this device's
- * served AK against the local witness, then rewrap its envelope for that recipient.
+ * Trusted device: the code for the pending device's keys as the dialog snapshotted them, with this
+ * device as the challenger, or null when the reveal does not open the commitment.
+ */
+export const deriveCodeForPendingDevice = (
+  device: { id: string; publicKey: string; mlkemPublicKey: string },
+  attempt: Omit<ApprovalCodeConfirmation, 'code'>,
+): Promise<string | null> =>
+  deriveVerifiedApprovalCode(
+    {
+      userId: getUserId(),
+      deviceId: device.id,
+      ecdhPublicKey: device.publicKey,
+      mlkemPublicKey: device.mlkemPublicKey,
+    },
+    attempt,
+    getDeviceId(),
+  )
+
+/** How the user confirmed the recipient: the typed fingerprint, or the approval code they picked. */
+export type DeviceApprovalConfirmation =
+  | { kind: 'fingerprint'; fingerprint: string }
+  | ({ kind: 'code' } & ApprovalCodeConfirmation)
+
+/**
+ * Approve a captured recipient after the user confirmed it (fingerprint or approval code). Verify
+ * this device's served AK against the local witness, then rewrap its envelope for that recipient.
  * The stored non-extractable AK is never exported. An 'approve' proof gates the POST.
  */
 const approveDevice = async (
@@ -1297,7 +1337,7 @@ const approveDevice = async (
   pendingDeviceId: string,
   pendingEcdhPublicKeyBase64: string,
   pendingMlkemPublicKeyBase64: string,
-  fingerprint: string,
+  confirmation: DeviceApprovalConfirmation,
 ): Promise<void> => {
   const assertCurrent = captureEncryptionOperation()
   const anchor = {
@@ -1306,8 +1346,15 @@ const approveDevice = async (
     ecdhPublicKey: pendingEcdhPublicKeyBase64,
     mlkemPublicKey: pendingMlkemPublicKeyBase64,
   }
-  if (!(await matchesDeviceApprovalFingerprint(anchor, fingerprint))) {
+  if (
+    confirmation.kind === 'fingerprint' &&
+    !(await matchesDeviceApprovalFingerprint(anchor, confirmation.fingerprint))
+  ) {
     throw new DeviceApprovalError('fingerprint-mismatch')
+  }
+  // The code binds our own device id as the challenger, so it is read locally, never from the attempt.
+  if (confirmation.kind === 'code' && !(await matchesApprovalCode(anchor, confirmation, getDeviceId()))) {
+    throw new DeviceApprovalError('code-mismatch')
   }
   const keyPair = await getKeyPair()
   if (!keyPair) {

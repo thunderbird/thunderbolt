@@ -43,15 +43,22 @@ export const LogoutModal = ({
   const { t } = useLingui()
   const authClient = useAuth()
   const [selectedOption, setSelectedOption] = useState<DataOption>('keep')
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'pending' | 'error'>('idle')
+  const isLoggingOut = status === 'pending'
 
   const handleLogout = async () => {
-    setIsLoggingOut(true)
+    setStatus('pending')
 
     try {
-      await authClient.signOut({ fetchOptions: { disableSignal: true } })
+      const result = await authClient.signOut({ fetchOptions: { disableSignal: true } })
+      if (result.error || !result.data?.success) {
+        setStatus('error')
+        return
+      }
     } catch (error) {
       console.error('Failed to sign out:', error)
+      setStatus('error')
+      return
     }
 
     try {
@@ -73,6 +80,7 @@ export const LogoutModal = ({
     }
     if (!newOpen) {
       setSelectedOption('keep')
+      setStatus('idle')
     }
     onOpenChange(newOpen)
   }
@@ -89,21 +97,28 @@ export const LogoutModal = ({
       </ResponsiveModalHeader>
 
       <ResponsiveModalContent centered className="gap-3">
-        <SelectableCard
-          selected={selectedOption === 'keep'}
-          onSelect={() => setSelectedOption('keep')}
-          icon={<HardDrive className="h-5 w-5" />}
-          title={t`Leave data on device`}
-          description={t`Your chats and settings will remain on this device for next time.`}
-        />
-        <SelectableCard
-          selected={selectedOption === 'delete'}
-          onSelect={() => setSelectedOption('delete')}
-          icon={<Trash2 className="h-5 w-5" />}
-          title={t`Delete data from device`}
-          description={t`Remove all chats, settings, and cached data from this device.`}
-          variant="destructive"
-        />
+        <fieldset disabled={isLoggingOut} className="contents">
+          <SelectableCard
+            selected={selectedOption === 'keep'}
+            onSelect={() => setSelectedOption('keep')}
+            icon={<HardDrive className="h-5 w-5" />}
+            title={t`Leave data on device`}
+            description={t`Your chats and settings will remain on this device for next time.`}
+          />
+          <SelectableCard
+            selected={selectedOption === 'delete'}
+            onSelect={() => setSelectedOption('delete')}
+            icon={<Trash2 className="h-5 w-5" />}
+            title={t`Delete data from device`}
+            description={t`Remove all chats, settings, and cached data from this device.`}
+            variant="destructive"
+          />
+        </fieldset>
+        {status === 'error' && (
+          <p role="alert" className="text-sm text-destructive">
+            <Trans>Could not confirm sign-out. Please try again.</Trans>
+          </p>
+        )}
       </ResponsiveModalContent>
 
       <FormFooter className="justify-end">

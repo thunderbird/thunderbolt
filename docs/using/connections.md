@@ -94,7 +94,7 @@ Every tool is prefixed with the server name, lowercased, with each run of non-al
 
 ### Switching off and removing
 
-A disabled server is not connected and its tools are not offered. Deleting a server also deletes its stored credential. If a server is unreachable when you send a message, that server's tools are skipped for that message and Thunderbolt reconnects in the background. The rest of the chat is unaffected.
+A disabled server is not connected and its tools are not offered. Deleting a server also deletes its stored credential. If a server has dropped its connection when you send a message, Thunderbolt reconnects and keeps its tools for that message. If it can't reconnect within a few seconds, its tools are skipped for that message. Use **Retry connection** on the server if they don't come back. The rest of the chat is unaffected.
 
 ### Where server settings are stored
 
@@ -191,7 +191,7 @@ Peer-to-peer connections are encrypted end to end between the app and the bridge
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Server tests fine on desktop, fails on web                  | It is on a private or loopback address. Bridge it                                           |
 | Server card says it needs authorization                     | OAuth was never completed, or a token refresh failed. Use **Authorize**                     |
-| Tools vanished mid-conversation                             | The server dropped. Tools are skipped for that message and reconnect follows                |
+| Tools vanished mid-conversation                             | The server dropped and could not reconnect. Use **Retry connection**                        |
 | A tool name is not what the server documents                | It is prefixed with the connection name, and possibly numbered to avoid a clash             |
 | Servers missing on a second device                          | Expected. MCP servers do not sync. Add them again or import a backup                        |
 | Bridge URL stopped working after a restart                  | The loopback bridge mints a new token each run. Copy the new URL                            |

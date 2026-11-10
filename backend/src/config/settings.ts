@@ -385,6 +385,13 @@ const settingsSchema = z
     allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
+    if (data.monitoringToken && data.monitoringToken.length < 32) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'MONITORING_TOKEN must be at least 32 characters when set',
+        path: ['monitoringToken'],
+      })
+    }
     if (data.passkeyEnabled && (!data.passkeyRpId || isIpLiteral(data.passkeyRpId))) {
       ctx.addIssue({
         code: 'custom',

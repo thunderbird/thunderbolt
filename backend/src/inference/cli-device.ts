@@ -8,7 +8,6 @@ import { and, eq, isNull } from 'drizzle-orm'
 import type { InferenceDatabase } from './usage-ledger'
 
 type CliDeviceRequestContext = Readonly<{
-  request: Request
   session: { deviceId?: string | null }
   user: { id: string }
 }>
@@ -17,9 +16,9 @@ type CliDeviceRequestContext = Readonly<{
 export const rejectUnregisteredCliDevice = async (
   database: InferenceDatabase,
   registrationEnabled: boolean,
-  { request, session, user }: CliDeviceRequestContext,
+  { session, user }: CliDeviceRequestContext,
 ): Promise<Response | undefined> => {
-  if (!registrationEnabled || request.headers.has('x-api-key')) {
+  if (!registrationEnabled) {
     return
   }
 

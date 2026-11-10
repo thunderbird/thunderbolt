@@ -25,9 +25,10 @@ Sign in on the new device with the same account. If the setup wizard does not op
 
 ## Approving a device
 
-A pending device shows an "Approve this device" screen with a fingerprint and polls for the result. Choose one of the available ways to unlock it:
+A pending device shows an "Approve this device" screen and polls for the result. Once a trusted device starts the approval, the screen shows a 2-digit approval code. Choose one of the available ways to unlock it:
 
-- **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**. Enter the fingerprint from the new device's screen or a separate channel you trust. Approval stops if it does not match; there is no override. The trusted device then wraps the account's encryption key to the verified device keys.
+- **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**, then tap the code that the new device shows among the six offered. If none match, choose **None of these match**; nothing is approved and there is no override. To retry, choose **New code** on the new device. **Use fingerprint instead** on both screens switches to typing the full fingerprint. The trusted device then wraps the account's encryption key to the verified device keys.
+- **Code limits.** Each trusted device allows three unsuccessful code attempts per 24 hours; after that it offers only the fingerprint until the window passes. A device running an older version shows only the fingerprint, and so does every device when the backend predates approval codes.
 - **Use the recovery key.** On the pending device, choose **Use my recovery key** and enter the current recovery phrase. This is the path when no other device is available.
 - **Use an available passkey.** If the account has an enrolled passkey that can unlock sync, choose **Unlock with passkey** on the pending device.
 
@@ -39,7 +40,7 @@ Among regular app devices, only the device running the upgrade stays trusted. Sa
 
 ### Approval limits
 
-Fingerprint verification requires trusted code on both the approving device and the new device. A web host can modify the approving device's checks or the new device's displayed fingerprint and keys. Independently distributed desktop/mobile builds provide the stronger boundary. Older approvers lack the check. A pending client from a release before fingerprint approval shows no fingerprint. Update it before approving it from an updated device. The current recovery phrase or a passkey enrolled for sync remains an alternative where the client supports that unlock method. On an honest deployment, `MIN_APP_VERSION` can require headers declaring the release introducing fingerprint approval or later on every gated API request; a malicious server can ignore that policy. These checks protect future approvals and do not repair an account key exposed by a past approval.
+Code and fingerprint verification require trusted code on both the approving device and the new device. A web host can modify the approving device's checks or the new device's displayed code, fingerprint and keys. A person who taps a code without comparing it picks the right one one time in six, so tell people to compare before tapping and to choose **Deny** for a request they did not start. Independently distributed desktop/mobile builds provide the stronger boundary. Older approvers lack the check. A pending client from a release before fingerprint approval shows no fingerprint. Update it before approving it from an updated device. The current recovery phrase or a passkey enrolled for sync remains an alternative where the client supports that unlock method. On an honest deployment, `MIN_APP_VERSION` can require headers declaring the release introducing fingerprint approval or later on every gated API request; a malicious server can ignore that policy. These checks protect future approvals and do not repair an account key exposed by a past approval.
 
 ## The recovery key
 

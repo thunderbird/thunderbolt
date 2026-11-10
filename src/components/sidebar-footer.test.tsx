@@ -169,7 +169,7 @@ describe('SidebarFooter', () => {
       if (mobile) {
         forceMobileViewport()
       }
-      const signOut = mock(async () => {})
+      const signOut = mock(async () => ({ data: { success: true }, error: null }))
       const authClient = createMockAuthClient({ session, signOut })
       renderWithProviders(authClient)
       const trigger = screen.getByRole('button', { name: 'Account menu' })

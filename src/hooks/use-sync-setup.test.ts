@@ -5,7 +5,7 @@
 import * as encryptionService from '@/services/encryption'
 import * as encryptionApi from '@/api/encryption'
 import * as passkeys from '@/lib/passkey'
-import { DeviceApprovalError, ValidationError } from '@/crypto/errors'
+import { DecryptionError, DeviceApprovalError, ValidationError } from '@/crypto/errors'
 import { EncryptedSyncUnsupportedError } from '@/lib/encrypted-sync-support'
 import { HttpError } from '@/lib/http'
 import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
@@ -259,6 +259,7 @@ describe('sync setup operation outcomes', () => {
     approve: spyOn(encryptionService, 'checkApprovalAndUnwrap').mockResolvedValue(true),
     prf: spyOn(passkeys, 'getPasskeyPrfOutput').mockResolvedValue(new Uint8Array([1, 2, 3])),
     unlock: spyOn(encryptionService, 'unlockWithPasskey').mockResolvedValue(undefined),
+    errorLog: spyOn(console, 'error').mockImplementation(() => {}),
   })
   let spies: ReturnType<typeof createSpies>
   beforeEach(() => {
@@ -382,7 +383,8 @@ describe('sync setup operation outcomes', () => {
     [false, 'intro', 'not been approved'],
     [httpError(422), 'denied', null],
     [new DeviceApprovalError('recipient-unverified'), 'intro', "Couldn't verify"],
-    [new Error('offline'), 'intro', 'offline'],
+    [new Error('Failed to unwrap account key'), 'intro', "Couldn't verify"],
+    [new EncryptionRequestTimeoutError(), 'intro', 'took too long'],
     [true, 'intro', null],
   ] as const)('settles approval outcome %s', async (outcome, step, message) => {
     if (outcome instanceof Error) {
@@ -399,6 +401,13 @@ describe('sync setup operation outcomes', () => {
     } else {
       expect(result.current.approvalError).toBeNull()
     }
+  })
+
+  it('logs a failed manual check without the error, its message or cause', async () => {
+    spies.approve.mockRejectedValueOnce(new Error('private response body', { cause: { key: 'private-key-marker' } }))
+    const { result } = mount()
+    await act(async () => expect(await result.current.confirmApproval()).toBe(false))
+    expect(spies.errorLog.mock.calls).toEqual([['Failed to check device approval.']])
   })
 
   it('does not prompt for a passkey when the account has no slot', async () => {
@@ -450,6 +459,18 @@ describe('sync setup operation outcomes', () => {
     expect(spies.unlock).toHaveBeenCalledTimes(1)
   })
 
+  it('shows a failure the automatic check keeps hitting, without its internal message', () => {
+    const { result } = mount()
+    act(() => result.current.approvalCheckFailed(new DecryptionError('Failed to unwrap account key')))
+    expect(result.current.approvalError).toBe(
+      "Couldn't verify this device's approval. Select Check now to try again, or choose another option below.",
+    )
+    act(() => result.current.approvalCheckFailed(new EncryptedSyncUnsupportedError()))
+    expect(result.current.approvalError).toBe(
+      'To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system.',
+    )
+  })
+
   it('ignores polling callbacks while a manual operation owns the wizard, before effect cleanup', async () => {
     const response = Promise.withResolvers<boolean>()
     spies.approve.mockImplementationOnce(() => response.promise)
@@ -458,6 +479,7 @@ describe('sync setup operation outcomes', () => {
     act(() => {
       pending = result.current.confirmApproval()
       result.current.approvalVerificationFailed()
+      result.current.approvalCheckFailed(new DecryptionError('Envelope could not be opened'))
       result.current.deviceDenied()
       result.current.completeSetup()
       result.current.goToPasskeyEnroll('complete')

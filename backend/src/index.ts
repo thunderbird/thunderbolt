@@ -46,6 +46,7 @@ import { createConfigRoutes } from '@/api/config'
 import { createBrandingAssets, noBrandingAssets } from '@/branding/assets'
 import { createSafeFetch } from '@/utils/url-validation'
 import { createEncryptionRoutes } from '@/api/encryption'
+import { createDeviceApprovalSessionRoutes } from '@/api/device-approval-sessions'
 import { createMiniAppRoutes } from '@/api/mini-apps'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import { createDebugTranscriptsIntakeRoutes, ensureSelfDebugTranscriptClient } from '@/api/debug-transcripts-intake'
@@ -225,6 +226,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createMiniAppRoutes(auth, settings))
       .use(createEncryptionRoutes(auth, database, settings))
+      .use(createDeviceApprovalSessionRoutes(auth, database))
       .use(createAccountRoutes(auth, settings, database))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))

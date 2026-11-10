@@ -9,7 +9,7 @@ server-side client for the operator's `AGENT_MCP_SERVERS` ([acp-agents.md](acp-a
 
 | `type`  | SDK transport                   | Routing                                                                         |
 | ------- | ------------------------------- | ------------------------------------------------------------------------------- |
-| `http`  | `StreamableHTTPClientTransport` | Proxy on web; native HTTP on Tauri with the proxy off or for loopback             |
+| `http`  | `StreamableHTTPClientTransport` | Proxy on web; native HTTP on Tauri with the proxy off or for loopback           |
 | `sse`   | `SSEClientTransport`            | Same as `http`                                                                  |
 | `iroh`  | `createMcpIrohTransport`        | Peer-to-peer over an iroh relay; no URL, proxy, or bearer applies               |
 | `stdio` | none                            | In the enum, never connected ([below](#stdio-is-in-the-enum-but-not-connected)) |
@@ -278,8 +278,19 @@ overlapping work:
 
 Recovery is at the `tools()` boundary, not on a timer: `mergeMcpTools`
 ([src/ai/fetch.ts](../../../src/ai/fetch.ts)) catches an expected discovery error (`isMcpDiscoveryError`),
-skips that server's tools for the current send, and kicks off one background reconnect. Unexpected
+reconnects, and retries discovery once in the same send. The reconnect and the retried discovery
+share a 3s limit per server, past which that server is skipped for the turn; the first discovery on a
+connected client has no limit, so a slow but healthy server isn't cut off. Servers are discovered in
+parallel and merged in order, so the send waits for the slowest server rather than the sum. Unexpected
 errors propagate.
+
+- `getEnabledClients` returns a server whose first connect or reconnect is in flight as `client: null`
+  plus that `connecting` promise, so a send that starts mid-connect waits for it rather than dropping the
+  tools.
+- The client → server lookup is never pruned, so a send still holding a client the provider has
+  replaced joins the in-flight reconnect, or gets the current client, without redialing.
+- A connect or reconnect fails after 30s, so one that never settles cannot keep every later send, or
+  **Retry connection**, waiting on it.
 
 ## Tool namespacing and attribution
 

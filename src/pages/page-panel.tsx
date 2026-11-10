@@ -94,7 +94,7 @@ export const PagePanel = ({
             onSelect={state.select}
             onClose={state.closeTab}
             onCloseAll={state.closeAllTabs}
-            onNewTab={state.newTab}
+            onNewTab={isTauri() ? state.newTab : undefined}
             onPin={(target, chrome) => {
               void state.pinPage(target, chrome)
             }}
@@ -132,7 +132,7 @@ export const PagePanel = ({
           </div>
         )}
       </div>
-      {session.chrome === 'browser' && session.page.source.kind !== 'html' && (
+      {session.chrome === 'browser' && session.page.source.kind !== 'html' && !webFallback && isTauri() && (
         <div data-page-address-row className="flex shrink-0 items-center gap-1 border-b px-2 py-2">
           <BrowserAddressBar
             key={session.id}
@@ -174,6 +174,18 @@ export const PagePanel = ({
           />
         </div>
       )}
+      {session.chrome === 'browser' && webFallback && session.page.source.kind === 'url' && (
+        <div
+          data-page-address-row
+          data-page-external-address
+          className="flex shrink-0 items-center gap-2 border-b px-3 py-2 text-sm text-muted-foreground"
+        >
+          <ExternalLink aria-hidden="true" className="size-4 shrink-0" />
+          <span className="min-w-0 select-text truncate" title={session.browser.url}>
+            {session.browser.url}
+          </span>
+        </div>
+      )}
       <BrowserAgentStatus tabId={session.id} />
       {(state.error || session.error || state.picker.error) && (
         <p role="alert" className="shrink-0 border-b px-3 py-2 text-sm text-destructive">
@@ -188,13 +200,20 @@ export const PagePanel = ({
       )}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {blank ? (
-          <BrowserNewTab />
+          <BrowserNewTab>
+            {!isTauri() && (
+              <Trans>
+                Ask your agent to create a page.
+                <br /> Websites open in your browser.
+              </Trans>
+            )}
+          </BrowserNewTab>
         ) : webFallback ? (
           <div className="m-auto max-w-sm space-y-4 p-6 text-center text-sm text-muted-foreground">
             {session.page.source.kind === 'url' ? (
               <>
                 <p>
-                  <Trans>This website opens in your browser.</Trans>
+                  <Trans>Open this website in a new browser tab.</Trans>
                 </p>
                 <a
                   className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-foreground hover:bg-accent"

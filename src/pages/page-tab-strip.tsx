@@ -38,7 +38,7 @@ export const PageTabStrip = ({
   onSelect: (id: string) => void
   onClose: (id: string) => void
   onCloseAll: () => void
-  onNewTab: () => void
+  onNewTab?: () => void
   onPin: (session: PageSession, chrome: PageChrome) => void
   onUnpin: (id: string) => void
   pinnedIds: Set<string>
@@ -57,7 +57,7 @@ export const PageTabStrip = ({
       className="flex shrink-0 items-center gap-2 border-b bg-muted/30 p-2"
       onDoubleClick={(event) => {
         if (event.target instanceof Element && !event.target.closest('button, [data-browser-tab]')) {
-          onNewTab()
+          onNewTab?.()
         }
       }}
     >
@@ -189,9 +189,11 @@ export const PageTabStrip = ({
         />
       </div>
       <div data-browser-tab-actions className="flex shrink-0 items-center">
-        <BrowserToolbarButton label={t`New tab`} onClick={onNewTab}>
-          <Plus className="size-4" />
-        </BrowserToolbarButton>
+        {onNewTab && (
+          <BrowserToolbarButton label={t`New tab`} onClick={onNewTab}>
+            <Plus className="size-4" />
+          </BrowserToolbarButton>
+        )}
         {actions}
       </div>
     </div>

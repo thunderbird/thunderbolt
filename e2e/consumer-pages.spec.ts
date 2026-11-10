@@ -131,6 +131,7 @@ test('the same artifact keeps DOM state through inline, sidebar and expanded pre
 test('a synced website pin opens an external browser fallback on web', async ({ page }) => {
   const email = await loginViaEmailCode(page)
   const id = crypto.randomUUID()
+  const secondId = crypto.randomUUID()
   const now = new Date().toISOString()
   await importBackup(page, {
     format: 'thunderbolt-export',
@@ -139,20 +140,21 @@ test('a synced website pin opens an external browser fallback on web', async ({ 
     user: { id: 'url-page-fixture', email },
     tables: {
       settings: [
-        {
-          key: `saved-page:${id}`,
-          value: JSON.stringify({
-            version: 1,
-            id,
-            title: 'Example website',
-            source: { kind: 'url', url: 'https://example.com/' },
-            chrome: 'browser',
-            createdAt: now,
-            updatedAt: now,
-            deletedAt: null,
-          }),
-        },
-      ],
+        { id, title: 'Example website', url: 'https://example.com/' },
+        { id: secondId, title: 'Second website', url: 'https://example.org/' },
+      ].map((site) => ({
+        key: `saved-page:${site.id}`,
+        value: JSON.stringify({
+          version: 1,
+          id: site.id,
+          title: site.title,
+          source: { kind: 'url', url: site.url },
+          chrome: 'browser',
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        }),
+      })),
     },
   })
   await page.goto(`/pages/${id}`)
@@ -167,14 +169,17 @@ test('a synced website pin opens an external browser fallback on web', async ({ 
   const bounds = await panel.boundingBox()
   expect(header!.y).toBe(bounds!.y)
   expect(address!.y).toBeCloseTo(header!.y + header!.height, 0)
-  const addressBar = panel.locator('[data-browser-address-bar]')
-  const navigation = addressBar.locator('[data-browser-page-navigation]')
-  await expect(navigation.getByRole('button', { name: 'Go back', exact: true })).toBeVisible()
-  await expect(navigation.getByRole('button', { name: 'Go forward', exact: true })).toBeVisible()
-  await expect(navigation.getByRole('button', { name: 'Reload page', exact: true })).toBeVisible()
-  const navBounds = await navigation.boundingBox()
-  const inputBounds = await addressBar.getByRole('textbox', { name: 'Address' }).boundingBox()
-  expect(navBounds!.x + navBounds!.width).toBeLessThanOrEqual(inputBounds!.x)
+  await expect(panel.getByRole('textbox', { name: 'Address' })).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'New tab', exact: true })).toHaveCount(0)
+  await expect(panel.locator('[data-browser-page-navigation]')).toHaveCount(0)
+  await expect(panel.locator('[data-page-external-address]')).toHaveText('https://example.com/')
+  await page.context().route('https://example.com/**', (route) => route.fulfill({ body: 'External website' }))
+  const opened = page.waitForEvent('popup')
+  await panel.getByRole('link', { name: 'Open in your browser' }).click()
+  const external = await opened
+  await expect(external).toHaveURL('https://example.com/')
+  await external.close()
+  await expect(page).toHaveURL(`/pages/${id}`)
   const tabs = await panel.getByRole('tab').count()
   const actionBounds = await panel.locator('[data-browser-tab-actions] button').evaluateAll((buttons) =>
     buttons.map((button) => {
@@ -182,7 +187,7 @@ test('a synced website pin opens an external browser fallback on web', async ({ 
       return { x, width }
     }),
   )
-  expect(actionBounds).toHaveLength(4)
+  expect(actionBounds).toHaveLength(3)
   const gaps = actionBounds
     .slice(1)
     .map((button, index) => button.x - actionBounds[index].x - actionBounds[index].width)
@@ -192,13 +197,15 @@ test('a synced website pin opens an external browser fallback on web', async ({ 
   await expect(page).toHaveURL('/chats/new')
   await expect(panel).toBeVisible()
   await expect(panel.getByRole('tab')).toHaveCount(tabs)
-  await expect(panel.getByRole('textbox', { name: 'Address' })).toHaveValue('https://example.com/')
-  await panel.getByRole('button', { name: 'New tab', exact: true }).click()
+  await expect(panel.locator('[data-page-external-address]')).toHaveText('https://example.com/')
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: 'Second website' }).click()
+  await panel.getByRole('button', { name: 'Restore to sidebar', exact: true }).click()
   await panel.getByRole('tab').first().click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Close tab', exact: true }).click()
   await expect(panel.getByRole('tab')).toHaveCount(1)
-  await expect(panel.getByRole('tab', { name: 'New tab', exact: true })).toHaveAttribute('aria-selected', 'true')
-  await panel.getByRole('button', { name: 'New tab', exact: true }).click()
+  await expect(panel.getByRole('tab', { name: 'Second website', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: 'Example website' }).click()
+  await panel.getByRole('button', { name: 'Restore to sidebar', exact: true }).click()
   await panel.getByRole('tab').first().click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Close all tabs', exact: true }).click()
   await expect(panel).toHaveCount(0)

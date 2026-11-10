@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, mock, spyOn } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
@@ -12,6 +12,7 @@ import { PowerSyncMockProvider } from '@/test-utils/powersync-mock'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { getClock } from '@/testing-library'
+import * as platform from '@/lib/platform'
 import { pageDefinitionForPin } from './page-display'
 import { pageReturnPath } from './page-path'
 import { usePageStore } from './page-store'
@@ -55,7 +56,7 @@ it('expands the exact HTML session without mounting another renderer or creating
   expect(container.querySelector('iframe')).toBeNull()
   expect(container.querySelector('[data-page-slot]')).toHaveAttribute('data-page-slot', id)
   const controls = screen.getByRole('button', { name: 'Select element on page' }).parentElement!
-  expect(controls.children[2]).toHaveAttribute('aria-label', 'Expand page')
+  expect(controls.children[1]).toHaveAttribute('aria-label', 'Expand page')
   fireEvent.click(screen.getByRole('button', { name: 'Expand page' }))
   expect(screen.getByTestId('location')).toHaveTextContent('/pages/stateful')
   expect(usePageStore.getState().sessions).toHaveLength(1)
@@ -90,7 +91,42 @@ it('shows an external browser fallback on web and never renders a remote iframe'
   const { container } = mount()
   expect(screen.getByRole('link', { name: 'Open in your browser' })).toHaveAttribute('href', 'https://example.com/')
   expect(screen.getByRole('button', { name: 'Select element on page' })).toBeDisabled()
+  expect(screen.queryByRole('textbox', { name: 'Address' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'New tab' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Go forward' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Reload page' })).toBeNull()
+  expect(container.querySelector('[data-page-external-address]')).toHaveTextContent('https://example.com/')
   expect(container.querySelector('iframe')).toBeNull()
+})
+
+it('explains web page support on a blank page without inviting URL entry or creating more empty tabs', () => {
+  usePageStore.getState().ensure({ id: 'blank', title: '', source: { kind: 'url', url: 'about:blank' } })
+  const { container } = mount()
+  expect(screen.queryByRole('textbox', { name: 'Address' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'New tab' })).toBeNull()
+  expect(container.querySelector('[data-browser-new-tab]')).toHaveTextContent('Ask your agent to create a page.')
+  expect(container.querySelector('[data-browser-new-tab]')).not.toHaveTextContent('Enter a URL above')
+  fireEvent.doubleClick(container.querySelector('[data-browser-tab-empty]')!)
+  expect(usePageStore.getState().sessions).toHaveLength(1)
+})
+
+it.each([true, false])('retains URL entry and tab creation in native apps (desktop: %s)', (desktop) => {
+  const native = spyOn(platform, 'isTauri').mockReturnValue(true)
+  const nativeDesktop = spyOn(platform, 'isTauriDesktop').mockReturnValue(desktop)
+  try {
+    usePageStore.getState().ensure({ id: 'native', title: '', source: { kind: 'url', url: 'about:blank' } })
+    const { container } = mount()
+    expect(screen.getByRole('textbox', { name: 'Address' })).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'New tab' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Go back' })).toBeDisabled()
+    expect(container.querySelector('[data-browser-new-tab]')).toHaveTextContent('Enter a URL above')
+    expect(container.querySelector('[data-page-external-address]')).toBeNull()
+  } finally {
+    cleanup()
+    native.mockRestore()
+    nativeDesktop.mockRestore()
+  }
 })
 
 it('closes the right-clicked tab and closes all browser tabs without removing inline pages', () => {

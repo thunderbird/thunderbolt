@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
+import type { ReactNode } from 'react'
 import { AppLogo } from '@/components/app-logo'
 import './browser-new-tab.css'
 
-export const BrowserNewTab = () => (
+export const BrowserNewTab = ({ children }: { children?: ReactNode }) => (
   <div data-browser-new-tab className="absolute inset-0 flex overflow-auto bg-background">
     <div
       aria-hidden="true"
@@ -17,10 +18,12 @@ export const BrowserNewTab = () => (
         <AppLogo size={96} className="browser-new-tab-logo" />
       </div>
       <p className="text-sm leading-relaxed text-muted-foreground">
-        <Trans>
-          Enter a URL above
-          <br /> or ask your agent to open a page.
-        </Trans>
+        {children || (
+          <Trans>
+            Enter a URL above
+            <br /> or ask your agent to open a page.
+          </Trans>
+        )}
       </p>
     </div>
   </div>

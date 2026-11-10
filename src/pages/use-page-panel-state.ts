@@ -7,7 +7,6 @@ import { useBrowserShortcuts } from '@/content-view/use-browser-shortcuts'
 import { useMutation } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router'
 import type { PageChrome, PageNavigation } from '@shared/page-protocol'
-import { isTauri } from '@/lib/platform'
 import { pageController } from './page-controller'
 import { openUrlPage, usePageStore, type PageSession } from './page-store'
 import { useSavePage, useSavedPages } from './use-saved-pages'
@@ -80,13 +79,6 @@ export const usePagePanelState = ({
     mutationFn: async (action: PageNavigation) => {
       if (!session) {
         return false
-      }
-      if (!isTauri() && session.page.source.kind === 'url' && action.type === 'navigate') {
-        usePageStore.getState().update(session.id, {
-          browser: { ...session.browser, url: action.url, title: URL.parse(action.url)?.hostname ?? '' },
-          error: null,
-        })
-        return true
       }
       const adapter = await pageController.adapter(session.id)
       if (!adapter.navigate) {

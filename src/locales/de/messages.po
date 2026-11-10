@@ -687,6 +687,10 @@ msgstr ""
 msgid "Ask me anything…"
 msgstr "Fragen Sie mich etwas…"
 
+#: src/pages/page-panel.tsx
+msgid "Ask your agent to create a page.<0/> Websites open in your browser."
+msgstr ""
+
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Assistant"
 msgstr ""
@@ -4277,6 +4281,10 @@ msgstr "Öffnen Sie den Store, um nach Updates zu suchen."
 msgid "Open this project in the desktop app to run its agent."
 msgstr ""
 
+#: src/pages/page-panel.tsx
+msgid "Open this website in a new browser tab."
+msgstr ""
+
 #: src/settings/search/index.tsx
 msgid "Open Thunderbolt"
 msgstr ""
@@ -6226,7 +6234,6 @@ msgid "This version of {appName} is no longer supported. Update the app to keep 
 msgstr "Diese Version von {appName} wird nicht mehr unterstützt. Aktualisieren Sie die App, um weiter zu chatten und zu synchronisieren."
 
 #: src/pages/page-message-part.tsx
-#: src/pages/page-panel.tsx
 msgid "This website opens in your browser."
 msgstr ""
 

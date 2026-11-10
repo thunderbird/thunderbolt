@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useMutation } from '@tanstack/react-query'
@@ -15,14 +16,14 @@ import { deleteModel, getAllModels, getAvailableModels, resetModelToDefault, upd
 import { useChatStore } from '@/chats/chat-store'
 import { defaultModels } from '@shared/defaults/models'
 import type { EditModelSubmission } from './edit-model-form'
-import { initialModelsPageState, modelsPageReducer, type ModelPanel } from './page-state'
-import { useAddModelForm } from './use-add-model-form'
+import { initialModelsPageState, modelsPageReducer, type ModelPanel, type ModelsPageAction } from './page-state'
 import { modelRequiresServer } from './model-policy'
 
-/** Owns Models page reducer, forms, catalog requests, tests, and DAL mutations. */
+/** Owns saved-model selection and mutations; each aside owns its form state. */
 export const useModelsPageState = () => {
   const { t } = useLingui()
   const db = useDatabase()
+  const { isProviderVisible } = useProviderVisibility()
   const localProviders = useLocalProviders()
   const editing = useAsyncAttempt()
   const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
@@ -33,22 +34,19 @@ export const useModelsPageState = () => {
     queryKey: ['models'],
     query: toCompilableQuery(getAllModels(db)),
   })
-  const models = localProviders ? allModels.filter((model) => !modelRequiresServer(model)) : allModels
+  const models = allModels.filter(
+    (model) => isProviderVisible(model.provider) && (!localProviders || !modelRequiresServer(model)),
+  )
   const activeModel = models.find((model) => model.id === activeModelId)
   const editingModel = panel?.kind === 'edit' ? activeModel : undefined
   const clearMutationError = useCallback(() => dispatch({ type: 'MUTATION_STARTED' }), [])
-  const closeAddPanel = useCallback(() => dispatch({ type: 'PANEL_CHANGED', panel: null }), [])
-  const addForm = useAddModelForm({
-    isOpen: isAddPanelOpen,
-    onClose: closeAddPanel,
-    onMutationStart: clearMutationError,
-  })
 
-  const failMutation = (message: string) => () => {
+  const reportFailure = (action: Extract<ModelsPageAction, { type: 'MUTATION_FAILED' }>) => {
     // Database errors can include the API key bound to an update statement.
-    console.error(message)
-    dispatch({ type: 'MUTATION_FAILED', error: message })
+    console.error(action.error)
+    dispatch(action)
   }
+  const failMutation = (message: string) => () => reportFailure({ type: 'MUTATION_FAILED', error: message })
   const refreshModels = async () => useChatStore.getState().setModels(await getAvailableModels(db))
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
@@ -60,17 +58,19 @@ export const useModelsPageState = () => {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteModel(db, id),
     onMutate: clearMutationError,
-    onSuccess: async () => {
+    onSuccess: async (_result, modelId) => {
       await refreshModels()
-      dispatch({ type: 'DELETE_DISMISSED' })
+      dispatch({ type: 'DELETE_COMPLETED', modelId })
     },
-    onError: failMutation(t`Failed to delete the model.`),
+    onError: (_error, modelId) =>
+      reportFailure({ type: 'MUTATION_FAILED', error: t`Failed to delete the model.`, expectedDeleteId: modelId }),
   })
   const editMutation = useMutation({
     mutationFn: async (values: EditModelSubmission) => {
       const { id, ...fields } = values
-      await updateModel(db, id, { ...fields, url: fields.url || null })
+      await updateModel(db, id, fields)
     },
+    onSuccess: refreshModels,
   })
   const resetMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -89,23 +89,13 @@ export const useModelsPageState = () => {
   const openAddPanel = () => {
     editing.cancel()
     dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'add' } })
-    addForm.prepareForOpen()
   }
   const changePanel = (nextPanel: ModelPanel) => {
     editing.cancel()
-    if (isAddPanelOpen) {
-      // Reset every add-form resource (draft fields, selected model,
-      // connection probe, and catalog) before another panel replaces it.
-      addForm.resetForm()
-    }
     dispatch({ type: 'PANEL_CHANGED', panel: nextPanel })
   }
   const closePanel = () => {
     editing.cancel()
-    if (isAddPanelOpen) {
-      addForm.onCancel()
-      return
-    }
     dispatch({
       type: 'PANEL_CHANGED',
       panel: panel?.kind === 'edit' ? { kind: 'detail', modelId: panel.modelId } : null,
@@ -120,7 +110,6 @@ export const useModelsPageState = () => {
     try {
       clearMutationError()
       await editMutation.mutateAsync(values)
-      await refreshModels()
       if (attempt.isCurrent()) {
         changePanel({ kind: 'detail', modelId: values.id })
       }
@@ -142,7 +131,6 @@ export const useModelsPageState = () => {
     editingModel,
     isAddPanelOpen,
     mutationError,
-    addForm,
     openAddPanel,
     closePanel,
     selectActiveModel: (modelId: string) => changePanel(activeModelId === modelId ? null : { kind: 'detail', modelId }),

@@ -495,6 +495,7 @@ describe('Config Settings', () => {
       'ALTCHA_DIFFICULTY',
       'ALTCHA_TTL_SECS',
       'AUTH_ALLOW_ANONYMOUS',
+      'INTEGRATION_OAUTH_ALLOW_PUBLIC',
       'ANONYMOUS_USER_IDLE_DAYS',
     ] as const
 
@@ -567,6 +568,18 @@ describe('Config Settings', () => {
       process.env.TRUSTED_PROXY = 'nginx'
       expect(() => getSettings()).toThrow()
     })
+
+    it.each([undefined, '', 'false', 'true'])(
+      'only enables public integration OAuth with an explicit true: %s',
+      (value) => {
+        if (value === undefined) {
+          delete process.env.INTEGRATION_OAUTH_ALLOW_PUBLIC
+        } else {
+          process.env.INTEGRATION_OAUTH_ALLOW_PUBLIC = value
+        }
+        expect(getSettings().integrationOAuthAllowPublic).toBe(value === 'true')
+      },
+    )
 
     it('should default the anonymous sign-in limit to 10 per 60 seconds and the captcha to none', () => {
       delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX

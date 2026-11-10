@@ -3,8 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { tinfoilSession } from '@/lib/tinfoil-session'
+import { bindModelProvider } from '@/providers/model-connection'
 import { useLingui } from '@lingui/react/macro'
 import { createModel } from '@/ai/fetch'
+import { streamProbe } from '@/ai/stream-probe'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
@@ -20,6 +22,7 @@ const connectionTestTimeoutMs = 10_000
 export type ToolSupport = 'supported' | 'unsupported'
 
 export type ModelConnectionConfig = {
+  providerConnectionId?: string | null
   provider: Model['provider']
   model: string
   url?: string | null
@@ -28,6 +31,7 @@ export type ModelConnectionConfig = {
 }
 
 type NormalizedConfig = {
+  providerConnectionId?: string | null
   provider: Model['provider']
   model: string
   url: string | null
@@ -77,6 +81,7 @@ const reducer = (_state: ConnectionTestState, action: ConnectionTestAction): Con
 }
 
 const normalize = (config: ModelConnectionConfig): NormalizedConfig => ({
+  providerConnectionId: config.providerConnectionId ?? null,
   provider: config.provider,
   model: config.model,
   url: config.url || null,
@@ -85,6 +90,7 @@ const normalize = (config: ModelConnectionConfig): NormalizedConfig => ({
 })
 
 const sameConfig = (left: NormalizedConfig, right: NormalizedConfig): boolean =>
+  left.providerConnectionId === right.providerConnectionId &&
   left.provider === right.provider &&
   left.model === right.model &&
   left.url === right.url &&
@@ -92,7 +98,7 @@ const sameConfig = (left: NormalizedConfig, right: NormalizedConfig): boolean =>
   left.oauthProvider === right.oauthProvider
 
 /**
- * Probe that issues a real `generateText` round-trip against the configured
+ * Probe that issues a real AI SDK round-trip against the configured
  * provider and reports whether the model accepts tools. Split out so tests can
  * swap in a synchronous stub without touching global module mocks.
  */
@@ -113,6 +119,7 @@ const connectionTestModel = (config: NormalizedConfig): Model => ({
   id: 'test',
   name: 'Test Model',
   provider: config.provider,
+  providerConnectionId: config.providerConnectionId ?? null,
   model: config.model,
   url: config.url,
   apiKey: config.apiKey,
@@ -133,17 +140,20 @@ const connectionTestModel = (config: NormalizedConfig): Model => ({
 
 /** Build a BYOK Tinfoil probe model over an attested enclave client. */
 const createTinfoilProbeModel = async (config: NormalizedConfig, acquireClient: typeof getTinfoilClient) => {
-  if (!config.apiKey) {
+  const { model, wrapFetch } = await bindModelProvider(connectionTestModel(config))
+  if (!model.apiKey) {
     throw new Error('No API key provided')
   }
   const client = await acquireClient()
   const provider = createOpenAICompatible({
     name: 'tinfoil',
-    baseURL: client.getBaseURL()!,
-    apiKey: config.apiKey,
-    fetch: Object.assign((input: RequestInfo | URL, init?: RequestInit) => client.fetch(input, init), {
-      preconnect: () => Promise.resolve(false),
-    }),
+    baseURL: client.baseURL,
+    apiKey: model.apiKey,
+    fetch: wrapFetch(
+      Object.assign((input: RequestInfo | URL, init?: RequestInit) => client.fetch(input, init), {
+        preconnect: () => Promise.resolve(false),
+      }),
+    ),
   })
   return provider(config.model)
 }
@@ -176,11 +186,14 @@ export const createDefaultProbe =
   }: DefaultProbeDependencies = {}): ConnectionTestProbe =>
   async (config, getProxyFetch, signal) => {
     const resolved =
-      config.oauthProvider === 'tinfoil' ? { ...config, apiKey: await tinfoilSession.getAccessToken() } : config
+      !config.providerConnectionId && config.oauthProvider === 'tinfoil'
+        ? { ...config, apiKey: await tinfoilSession.getAccessToken() }
+        : config
+    const { api } = await bindModelProvider(connectionTestModel(resolved))
     const aiModel =
       config.provider === 'tinfoil'
         ? await createTinfoilProbeModel(resolved, acquireTinfoilClient)
-        : await createAiModel(connectionTestModel(config), getProxyFetch)
+        : await createAiModel(connectionTestModel(resolved), getProxyFetch)
     const request = {
       model: aiModel,
       prompt: 'Say "test successful" if you can read this.',
@@ -188,7 +201,8 @@ export const createDefaultProbe =
       abortSignal: signal,
     }
     // Through the AI SDK, so the probe sends what real chats send (tool_choice included).
-    const sendWithTools = () => runGenerateText({ ...request, tools: probeTools })
+    const send = api === 'openai-responses' ? streamProbe : runGenerateText
+    const sendWithTools = () => send({ ...request, tools: probeTools })
     try {
       await sendWithTools()
       return 'supported'
@@ -196,7 +210,7 @@ export const createDefaultProbe =
       if (!isToolRejectionCandidate(error)) {
         throw error
       }
-      await runGenerateText(request)
+      await send(request)
       if (!isServerError(error)) {
         return 'unsupported'
       }
@@ -224,9 +238,9 @@ const defaultProbe = createDefaultProbe()
  * spinner immediately (no useEffect-based invalidation).
  *
  * The probe is bounded by a single 10s `AbortSignal.timeout` piped through
- * both the provider construction (via `Promise.race`) and the `generateText`
+ * both the provider construction (via `Promise.race`) and the inference
  * request (via `abortSignal`), so a hanging Tinfoil attestation or a stuck
- * `generateText` request both surface as a timeout error.
+ * inference request both surface as a timeout error.
  *
  * `test` resolves with the tool-support verdict so the caller can apply it in
  * its event handler, or `null` when the run was superseded or the config was
@@ -264,20 +278,23 @@ export const useModelConnectionTest = (current: ModelConnectionConfig, probe: Co
         }
         dispatch({ type: 'SUCCESS', tested, toolSupport })
         return sameConfig(tested, latestConfigRef.current) ? toolSupport : null
-      } catch (err) {
-        console.error('Connection test error:', err)
+      } catch {
         if (!isCurrent()) {
           return null
         }
+        // Provider errors can echo credentials or include the full authenticated request.
+        console.error('Model connection test failed.')
         dispatch({
           type: 'FAILURE',
           tested,
-          error: err instanceof Error ? err.message : t`Failed to connect to model`,
+          error: timeoutSignal.aborted
+            ? t`Connection test timed out. Please try again.`
+            : t`Could not connect to the model. Check your connection and credentials, then try again.`,
         })
         return null
       }
     },
-    [getProxyFetch, probe],
+    [getProxyFetch, probe, t],
   )
 
   const reset = useCallback(() => {

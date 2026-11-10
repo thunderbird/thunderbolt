@@ -334,6 +334,72 @@ describe('createAgentRoutingFetch — connection status', () => {
     expect(seenKeys).toEqual(['rotated'])
   })
 
+  it.each(['prompt', 'compact'] as const)(
+    'uses the logical turn model for prompts and the currently selected model for compaction: %s',
+    async (operation) => {
+      useChatStore.getState().updateSession(sessionId, { selectedModel: testModels[1] })
+      const seen: AgentAdapterContext[] = []
+      const route = createAgentRoutingFetch(
+        sessionId,
+        async () => {},
+        httpClient,
+        getProxyFetch,
+        {
+          getOrConnectAdapter: async () => ({
+            ...makeAdapter(builtInAgent),
+            fetch: async (_init, context) => {
+              seen.push(context)
+              return new Response('ok')
+            },
+            compact: async (_init, context) => {
+              seen.push(context)
+              return { version: 1, summary: 'Summary', tokensBefore: 100, contextTokens: 10, retainedTail: [] }
+            },
+          }),
+        },
+        { getTurnModel: () => testModels[0] },
+      )
+      if (operation === 'prompt') {
+        await route('https://backend.test', { body: '{}' })
+      } else {
+        await route.compact([], undefined, new AbortController().signal)
+      }
+      expect(seen).toHaveLength(1)
+      expect(seen[0].selectedModel.id).toBe(operation === 'prompt' ? 'm1' : 'm2')
+    },
+  )
+
+  it.each(['prompt', 'compact'] as const)('rechecks access after reasoning discovery before %s', async (operation) => {
+    const discovering = Promise.withResolvers<void>()
+    const effort = Promise.withResolvers<undefined>()
+    const fetch = mock(async () => new Response('ok'))
+    const compact = mock(async () => ({
+      version: 1 as const,
+      summary: 'Summary',
+      tokensBefore: 100,
+      contextTokens: 10,
+      retainedTail: [],
+    }))
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => {
+        discovering.resolve()
+        return effort.promise
+      },
+      getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch, compact }),
+    })
+    const request =
+      operation === 'prompt'
+        ? route('https://backend.test', { body: '{}' })
+        : route.compact([], undefined, new AbortController().signal)
+    await discovering.promise
+    useChatStore.getState().setModels([])
+    effort.resolve(undefined)
+    await expect(request).rejects.toThrow('Configure and select an available model')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(compact).not.toHaveBeenCalled()
+  })
+
   it('passes the newly persisted thread and ACP session to the adapter', async () => {
     const thread = createMockChatThread({ isEncrypted: 0, acpSessionId: 'persisted-acp' })
     const contexts: AgentAdapterContext[] = []
@@ -389,6 +455,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       },
     }
     const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
       getChatReasoningEffort,
       getOrConnectAdapter: async () => adapter,
     })

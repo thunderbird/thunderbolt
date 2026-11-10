@@ -5,6 +5,7 @@
 import openRouterGrape from '@/assets/openrouter-grape.svg'
 import openRouterVolt from '@/assets/openrouter-volt.svg'
 import tinfoilGreen from '@/assets/tinfoil-green.svg'
+import otariLogo from '@/assets/otari.svg'
 import { cn } from '@/lib/utils'
 
 /** Color provider marks for settings lists and detail panels. */
@@ -12,12 +13,14 @@ export const ProviderBrandLogo = ({
   provider,
   className,
 }: {
-  provider: 'openrouter' | 'tinfoil'
+  provider: 'openrouter' | 'tinfoil' | 'otari'
   className?: string
 }) => (
   <span aria-hidden="true" className={cn('inline-flex size-6 shrink-0 items-center justify-center', className)}>
     {provider === 'tinfoil' ? (
       <img src={tinfoilGreen} alt="" className="size-full object-contain dark:brightness-[2.5]" />
+    ) : provider === 'otari' ? (
+      <span className="size-full bg-current" style={{ mask: `url("${otariLogo}") center / contain no-repeat` }} />
     ) : (
       <>
         <img src={openRouterGrape} alt="" className="size-full object-contain dark:hidden" />

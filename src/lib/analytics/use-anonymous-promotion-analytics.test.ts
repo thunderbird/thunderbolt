@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createAnonymousPromotionAnalytics, pendingPromotionKey } from './use-anonymous-promotion-analytics'
 import { consumePendingSsoPromotion } from './anonymous-promotion-sso-bridge'
 import type { AuthClient } from '@/contexts'
@@ -13,6 +13,7 @@ const makeAuthClient = (isAnonymous?: boolean, id = 'real-account-id') =>
     getSession: mock(async () => ({ data: isAnonymous === undefined ? null : { user: { id, isAnonymous } } })),
   }) as unknown as AuthClient
 
+beforeEach(() => sessionStorage.clear())
 afterEach(() => sessionStorage.clear())
 
 describe('account-independent promotion analytics', () => {

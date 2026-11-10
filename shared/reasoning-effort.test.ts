@@ -100,6 +100,15 @@ describe('effort wire translation', () => {
     })
     expect(payload.reasoning.max_tokens).toBe(100)
   })
+  it('uses nested Responses effort while retaining summary preferences', () => {
+    const payload = { reasoning: { effort: 'low', summary: 'auto' }, stream: true }
+    expect(applyReasoningEffort(payload, 'high', 'openai-responses')).toEqual({
+      reasoning: { effort: 'high', summary: 'auto' },
+      stream: true,
+    })
+    expect(applyReasoningEffort(payload, undefined, 'openai-responses')).toBe(payload)
+    expect(payload.reasoning.effort).toBe('low')
+  })
   it('removes empty Tinfoil thinking overrides without mutating the profile', () => {
     const payload = { chat_template_kwargs: { enable_thinking: false, reasoning_effort: 'low' } }
     expect(applyReasoningEffort(payload, 'max', 'tinfoil')).toEqual({ reasoning_effort: 'max' })

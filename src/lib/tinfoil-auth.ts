@@ -4,7 +4,6 @@
 
 import { msg } from '@lingui/core/macro'
 import { z } from 'zod'
-import { i18n } from '@/i18n'
 import {
   createProviderAuthorization,
   createOAuthRequestSignal,
@@ -13,21 +12,29 @@ import {
 } from './openrouter-auth'
 import { fetch as nativeFetch } from './fetch'
 import { http, HttpError } from './http'
+import { getIdentitySignal } from './identity-lifetime'
 
 export const tinfoilClientId =
   import.meta.env.VITE_TINFOIL_CLIENT_ID || 'oauthc_SDVdLmN2tIicRCMaqNGijBTNKZceSmEjwolKnycjrypWSCvN'
-export const tinfoilManageSubscriptionUrl = 'https://dash.tinfoil.sh/?tab=billing'
 const failed = msg`Could not connect to Tinfoil. Try again, or use an API key.`
 const reconnect = msg`Your Tinfoil connection has expired. Reconnect Tinfoil in Settings → Connections.`
 
-/** Safe localized failures; provider responses and tokens never reach the UI or logs. */
-export class TinfoilConnectionError extends Error {}
+/** Safe internal failures; provider responses and tokens never reach the UI or logs. */
+export class TinfoilConnectionError extends Error {
+  constructor(message = 'Could not connect to Tinfoil') {
+    super(message)
+  }
+}
 /** A definitive rejected grant must not be retried with the spent refresh token. */
 export class TinfoilReauthorizationError extends TinfoilConnectionError {
   constructor() {
-    super(i18n._(reconnect))
+    super('Tinfoil authorization expired')
   }
 }
+
+/** Translate at the display boundary, keeping internal errors independent of the active locale. */
+export const getTinfoilErrorMessage = (error: unknown) =>
+  error instanceof TinfoilReauthorizationError ? reconnect : failed
 
 const tokenSchema = z.object({
   access_token: z.string().min(1),
@@ -65,8 +72,6 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
   const authorization = createProviderAuthorization(
     {
       authorizationEndpoint: 'https://dash.tinfoil.sh/oauth/authorize',
-      callbackPath: '/oauth/tinfoil',
-      fixedCallbackPath: true,
       buildUrl: (challenge, redirectUri, state) =>
         getTinfoilAuthorizationUrl({ challenge, redirectUri, state }, clientId),
     },
@@ -99,7 +104,7 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
           throw new TinfoilReauthorizationError()
         }
       }
-      throw new TinfoilConnectionError(i18n._(failed))
+      throw new TinfoilConnectionError()
     }
   }
 
@@ -111,15 +116,19 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
   return {
     exchangeCode,
     startConnection: async (options: OpenRouterConnectionOptions = {}): Promise<TinfoilCredentials> => {
+      const signal = AbortSignal.any([getIdentitySignal(), ...(options.signal ? [options.signal] : [])])
       try {
-        const result = await authorization.startConnection(options)
-        return await exchangeCode(result, options.signal)
+        const result = await authorization.startConnection({ signal })
+        signal.throwIfAborted()
+        const credentials = await exchangeCode(result, signal)
+        signal.throwIfAborted()
+        return credentials
       } catch (error) {
-        options.signal?.throwIfAborted()
+        signal.throwIfAborted()
         if (error instanceof TinfoilConnectionError) {
           throw error
         }
-        throw new TinfoilConnectionError(i18n._(failed))
+        throw new TinfoilConnectionError()
       }
     },
     refresh: async (refreshToken: string): Promise<TinfoilCredentials> => {
@@ -137,7 +146,7 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
           signal: createOAuthRequestSignal(),
         })
       } catch {
-        throw new TinfoilConnectionError(i18n._(failed))
+        throw new TinfoilConnectionError()
       }
     },
   }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { canManageAgent } from './agent-permissions'
 import { useAppName } from '@/lib/branding-selectors'
 import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -38,7 +39,6 @@ import { useLibrarySkills } from '@/skills/use-skills'
 import type { Agent } from '@/types/acp'
 import { acpEndpointLabel, agentProvenanceLine } from './agent-provenance'
 import type { TestAcpConnectionFn } from './add-custom-agent-form'
-import { canManageAgent } from './agent-permissions'
 
 /** On-demand probe result: the panel never polls on open — Status starts at
  *  `idle` and reflects the last explicit "Test connection" run. `error` holds
@@ -46,6 +46,7 @@ import { canManageAgent } from './agent-permissions'
 type TestState = 'idle' | 'testing' | { isReachable: boolean; testedAt: string; error?: string }
 
 type AgentDetailProps = {
+  initialAction?: 'edit' | 'remove'
   agent: Agent
   /** Custom agents can be managed locally or by their signed-in owner. */
   currentUserId: string | null
@@ -82,6 +83,7 @@ const agentFlavor = (agent: Agent): AgentFlavor => {
  */
 export const AgentDetail = ({
   agent,
+  initialAction,
   currentUserId,
   onClose,
   onRemoved,
@@ -94,7 +96,7 @@ export const AgentDetail = ({
   const Icon = iconForAgent(agent)
   const flavor = agentFlavor(agent)
   const isEditable = canManageAgent(agent, currentUserId)
-  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(initialAction === 'remove' && isEditable)
   const [removeError, setRemoveError] = useState<string | null>(null)
 
   const handleRemove = async () => {
@@ -202,7 +204,7 @@ const BuiltInBody = () => {
         <p className="text-base leading-snug text-foreground">
           <Trans>
             {appName} is the agent built into the app — always here, no setup needed. It draws on everything you have
-            enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on.
+            enabled in your library (skills, connections, and MCP servers) to help with whatever you are working on.
           </Trans>
         </p>
       </div>
@@ -233,12 +235,12 @@ const BuiltInBody = () => {
             </Link>
           </div>
           <div className="flex flex-col gap-1">
-            <FieldLabel>{t`Integrations`}</FieldLabel>
+            <FieldLabel>{t`Connections`}</FieldLabel>
             <Link
               to="/settings/connections"
               className="w-fit text-base text-primary underline underline-offset-4 transition-colors hover:text-foreground"
             >
-              <Trans>Manage integrations</Trans>
+              <Trans>Manage connections</Trans>
             </Link>
           </div>
         </div>

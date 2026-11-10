@@ -3,11 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Builds a Pi-compatible OpenAI-completions model whose HTTP goes through an
+ * Builds a Pi-compatible OpenAI model whose HTTP goes through an
  * injected `fetch`. Shared by the app and CLI, this is the OpenAI-family
  * analogue of {@link buildAnthropicModel}.
  *
- * Unlike the anthropic API, Pi's `openai-completions` provider exposes NO public
+ * Unlike the anthropic API, Pi's completions and Responses providers expose NO public
  * `client?`/`fetch?` seam: its `stream`/`streamSimple` construct the `openai` SDK
  * client internally via `new OpenAI({ apiKey, baseURL, defaultHeaders })` with no
  * `fetch` override, so the SDK resolves its fetch from `getDefaultFetch()` — the
@@ -27,7 +27,7 @@
  *     request flows through our fetch even after the global is restored.
  *
  * Documented reliances (re-verify on `@earendil-works/pi-ai` / `openai` bumps):
- *   1. openai-completions constructs its SDK client synchronously, before any
+ *   1. Both providers construct their SDK client synchronously, before any
  *      `await`, inside `stream()`/`streamSimple()`.
  *   2. The `openai` SDK reads the global `fetch` via `getDefaultFetch()` when no
  *      `fetch` is passed to its constructor.
@@ -51,13 +51,17 @@ import {
   stream as openaiStream,
   streamSimple as openaiStreamSimple,
 } from '@earendil-works/pi-ai/api/openai-completions'
+import {
+  stream as responsesStream,
+  streamSimple as responsesStreamSimple,
+} from '@earendil-works/pi-ai/api/openai-responses'
 import { applyReasoningEffort, reasoningEffortFormat, type ReasoningEffort } from '../reasoning-effort.ts'
 import { boundApiKeyAuth } from './bound-api-key-auth.ts'
 
 /** Fetch shape used by OpenAI's client, which dispatches a serialized URL. */
 export type OpenAiCompatFetch = (input: string | URL, init?: RequestInit) => Promise<Response>
 
-/** The Pi API this provider exclusively serves. */
+/** Default protocol for OpenAI-compatible providers. */
 const apiName = 'openai-completions'
 
 /** Context window used when the app model carries none. Only consumed by Pi's
@@ -72,6 +76,8 @@ const defaultMaxTokens = 8_192
 
 /** Inputs for {@link buildOpenAiCompatModel}. */
 export type BuildOpenAiCompatModelOptions = {
+  /** Public OpenAI wire protocol; ChatGPT plan tokens require Responses. */
+  readonly api?: 'openai-completions' | 'openai-responses'
   /** Pi provider id. Must equal the synthetic model's `provider` so
    * `MutableModels` dispatch resolves this provider. */
   readonly providerId: string
@@ -134,13 +140,13 @@ const requireOpenAiCompletions = (model: Model<Api>): Model<typeof apiName> => {
   return model
 }
 
-/** Synthesize the Pi `Model<"openai-completions">` descriptor. These models live
+/** Synthesize the Pi model descriptor for the requested protocol. These models live
  *  outside Pi's built-in catalog (custom URLs, backend-proxied ids), so we
  *  build the descriptor directly rather than resolving it. */
-const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof apiName> => ({
+const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<Api> => ({
   id: opts.modelId,
   name: opts.modelId,
-  api: apiName,
+  api: opts.api ?? apiName,
   provider: opts.providerId,
   baseUrl: opts.baseURL,
   reasoning: opts.reasoning,
@@ -167,7 +173,7 @@ export const buildOpenAiCompatModel = (
 
   // Inject the api key on every call (Pi's openai client reads `options.apiKey`)
   // and bind the fetch only around client construction via the synchronous swap.
-  const withEffort = (options: Parameters<typeof openaiStream>[2]) => ({
+  const withEffort = (options: Parameters<ProviderStreams['stream']>[2]) => ({
     ...options,
     apiKey: opts.apiKey,
     onPayload: async (payload: unknown, model: Model<Api>) => {
@@ -175,18 +181,24 @@ export const buildOpenAiCompatModel = (
       return applyReasoningEffort(
         transformed ?? payload,
         opts.getReasoningEffort?.(),
-        opts.effortFormat ?? reasoningEffortFormat(opts.providerId),
+        opts.api === 'openai-responses'
+          ? 'openai-responses'
+          : (opts.effortFormat ?? reasoningEffortFormat(opts.providerId)),
       )
     },
   })
   const api: ProviderStreams = {
     stream: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        openaiStream(requireOpenAiCompletions(resolved), context, withEffort(options)),
+        hasApi(resolved, 'openai-responses')
+          ? responsesStream(resolved, context, withEffort(options))
+          : openaiStream(requireOpenAiCompletions(resolved), context, withEffort(options)),
       ),
     streamSimple: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        openaiStreamSimple(requireOpenAiCompletions(resolved), context, withEffort(options)),
+        hasApi(resolved, 'openai-responses')
+          ? responsesStreamSimple(resolved, context, withEffort(options))
+          : openaiStreamSimple(requireOpenAiCompletions(resolved), context, withEffort(options)),
       ),
   }
 

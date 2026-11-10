@@ -38,7 +38,7 @@ const createPowerSync = (connected: boolean, downloading: boolean) => {
 
 describe('waitForSyncCatchUp', () => {
   beforeEach(() => {
-    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', syncEnabled: true })
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', syncEnabled: true })
   })
 
   it('does not wait when the device is connected and nothing is downloading', () => {

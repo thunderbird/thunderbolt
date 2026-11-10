@@ -7,7 +7,7 @@ import { openSidebarOnMobile } from '../../e2e/helpers'
 import { fakeProviderReply } from '../../e2e/fake-provider'
 import { performanceStreamEnd, performanceStreamPrompt, performanceStreamSections } from '../../e2e/streaming-fixture'
 import { longChatTitle, type MeasureScenario } from './scenarios'
-import { clickAction } from './driver'
+import { clickAction, modelOption } from './driver'
 
 export const defaultJourneyNames = ['open-chat', 'typing', 'overlays', 'stream'] as const
 export const journeyNames = [...defaultJourneyNames, 'first-token'] as const
@@ -98,8 +98,8 @@ export const runJourney = async (page: Page, journey: Journey, measure: MeasureS
     await expect(search).toBeVisible()
     await search.focus()
     await measure('model-menu-search', () => page.keyboard.type('Performance model 12', { delay: 20 }))
-    await expect(page.getByRole('button', { name: 'Performance model 12', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Performance model 1', exact: true })).toHaveCount(0)
+    await expect(modelOption(page, 'Performance model 12')).toBeVisible()
+    await expect(modelOption(page, 'Performance model 1')).toHaveCount(0)
     await measure('model-menu-close', () => page.keyboard.press('Escape'), 500)
     await expect(search).toBeHidden()
     if (page.viewportSize()!.width >= 768) {

@@ -2,10 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useCreateItem } from '@/components/create-item/context'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Link } from 'react-router'
-import { ProviderBrandLogo } from '@/components/provider-brand-logo'
-import { IconTile } from '@/components/settings/icon-tile'
+import { useState } from 'react'
+import { Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageSearch } from '@/components/ui/page-search'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import {
   SettingsListBody,
@@ -13,124 +18,175 @@ import {
   SettingsSelectableRow,
   settingsListBodyRowsClass,
 } from '@/components/settings/settings-list'
-import { SearchProviderSetup } from '@/components/search-provider-setup'
-import { Button } from '@/components/ui/button'
+import { PageCreateAction } from '@/components/ui/page-create-action'
+import { NewConnectionPicker } from '@/settings/connections/new-connection-picker'
+import { ProviderConnectionForm } from '@/settings/connections/provider-connection-form'
+import { getProviderDefinition, providerDefinitions } from '@/providers/registry'
+import { useProviderAuthorization } from '@/providers/use-provider-authorization'
 import { PageHeader } from '@/components/ui/page-header'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { Switch } from '@/components/ui/switch'
-import { isSearchProvider, searchProviders, type SearchProvider } from '@/integrations/standalone-search/providers'
+import { canSupplySearch } from '@/integrations/standalone-search/eligibility'
+import { isSearchProvider } from '@/integrations/standalone-search/providers'
 import { ModelProviderIconTile } from '@/settings/models/model-presentation'
 import { SearchProviderIconTile } from './search-provider-icon-tile'
+import { SearchConnectionDetail } from './search-connection-detail'
+import { ProviderConnectionIcon } from '@/settings/connections/provider-connection-icon'
 import { useSearchSettingsState } from './use-search-settings-state'
 
 const SearchSettingsPage = () => {
   const { t } = useLingui()
+  const { openCreateItem } = useCreateItem()
   const page = useSearchSettingsState()
-  const tinfoilName = 'Tinfoil'
-  const rows = [
-    {
-      id: 'tinfoil' as const,
-      name: tinfoilName,
-      subtitle: t`Exa search through Tinfoil`,
-    },
-    ...Object.entries(searchProviders).map(([id, provider]) => ({
-      id: id as SearchProvider,
-      name: provider.name,
-      subtitle:
-        page.available.custom && page.stored.provider === id ? t`Your API key` : t`Connect with your own API key`,
-    })),
-    ...(page.cloudVisible ? [{ id: 'cloud' as const, name: 'Thunderbolt', subtitle: t`Provided by your server` }] : []),
-  ]
-  const close = () => page.setPanel(null)
+  const [search, setSearch] = useState('')
+  const query = search.trim().toLowerCase()
+  const filteredConnections = page.connections.filter((connection) =>
+    `${connection.name} ${getProviderDefinition(connection.provider).name}`.toLowerCase().includes(query),
+  )
+  const showCloud = page.cloudVisible && 'thunderbolt'.includes(query)
+  const authorization = useProviderAuthorization({ resumeReturn: false, onConnected: (id) => page.setPanel(id) })
+  const adding = providerDefinitions.find(
+    (provider) => page.panel === `add:${provider.id}` && (provider.id !== 'otari' || page.otariEnabled),
+  )
+  const active = page.configuredConnections.find(({ id }) => id === page.panel)
+  const close = () => {
+    authorization.cancel()
+    page.setPanel(null)
+  }
+  const selectPanel = (panel: string) => {
+    authorization.cancel()
+    page.setPanel(panel)
+  }
+  const openConnectionAction = (id: string, action: 'edit' | 'remove') => {
+    close()
+    openCreateItem({ kind: 'connection', connectionId: id, action })
+  }
   return (
     <div className="relative flex h-full">
       <div className="min-w-0 flex-1 overflow-hidden">
         <SettingsListPane className="gap-6 md:pb-12">
-          <PageHeader title={t`Search`} />
+          <PageSearch onSearch={setSearch}>
+            <PageHeader title={t`Search`}>
+              <PageSearch.Button />
+              <PageCreateAction label={t`New Search Connection`} onClick={() => selectPanel('new')} />
+            </PageHeader>
+            <PageSearch.Input placeholder={t`Search connections`} onSearch={setSearch} />
+          </PageSearch>
           <SettingsListBody className={settingsListBodyRowsClass}>
-            {rows.map(({ id, name, subtitle }) => (
+            {page.ready && !query && page.connections.length === 0 && !page.cloudVisible && (
+              <EmptyState
+                icon={Search}
+                title={t`No search connections available`}
+                description={t`Connect a search provider to let your agents search the web.`}
+                action={
+                  <Button onClick={() => selectPanel('new')}>
+                    <Trans>Add connection</Trans>
+                  </Button>
+                }
+              />
+            )}
+            {filteredConnections.map((connection) => (
               <SettingsSelectableRow
-                key={id}
+                key={connection.id}
+                contextMenu={{
+                  onEdit: () => openConnectionAction(connection.id, 'edit'),
+                  onRemove: () => openConnectionAction(connection.id, 'remove'),
+                }}
                 title={
                   <span className="flex items-center gap-2">
-                    <span className="truncate">{name}</span>
-                    {id === 'tinfoil' && <PrivateBadge />}
+                    <span className="truncate">{connection.name}</span>
+                    {connection.provider === 'tinfoil' && <PrivateBadge />}
                   </span>
                 }
-                subtitle={subtitle}
-                ariaLabel={t`Open ${name}`}
-                isSelected={page.panel === id}
-                onSelect={() => page.setPanel(id)}
+                subtitle={canSupplySearch(connection) ? undefined : t`Connect or enable this connection to use search`}
+                ariaLabel={t`Open ${connection.name}`}
+                isSelected={page.panel === connection.id}
+                onSelect={() => selectPanel(connection.id)}
                 leading={
-                  isSearchProvider(id) ? (
-                    <SearchProviderIconTile provider={id} />
-                  ) : id === 'tinfoil' ? (
-                    <IconTile>
-                      <ProviderBrandLogo provider="tinfoil" className="size-5" />
-                    </IconTile>
+                  isSearchProvider(connection.provider) ? (
+                    <SearchProviderIconTile provider={connection.provider} />
                   ) : (
-                    <ModelProviderIconTile
-                      model={{
-                        provider: 'thunderbolt',
-                        isSystem: 1,
-                      }}
-                    />
+                    <ModelProviderIconTile model={{ provider: connection.provider, isSystem: 0 }} />
                   )
                 }
                 trailing={
                   <Switch
                     disabled={page.loading}
-                    checked={page.selected === id}
-                    onCheckedChange={(enabled) => page.toggle(id, enabled)}
-                    aria-label={page.selected === id ? t`Disable ${name}` : t`Use ${name}`}
+                    checked={page.selectedId === connection.id}
+                    onCheckedChange={(enabled) => page.toggle(connection.id, enabled)}
+                    aria-label={
+                      page.selectedId === connection.id ? t`Disable ${connection.name}` : t`Use ${connection.name}`
+                    }
                   />
                 }
               />
             ))}
+            {showCloud && (
+              <SettingsSelectableRow
+                contextMenu={{}}
+                title="Thunderbolt"
+                ariaLabel={t`Open Thunderbolt`}
+                isSelected={page.panel === 'cloud'}
+                onSelect={() => selectPanel('cloud')}
+                leading={<ModelProviderIconTile model={{ provider: 'thunderbolt', isSystem: 1 }} />}
+                trailing={
+                  <Switch
+                    disabled={page.loading}
+                    checked={page.selectedId === 'cloud'}
+                    onCheckedChange={(enabled) => page.toggle('cloud', enabled)}
+                    aria-label={t`Use Thunderbolt`}
+                  />
+                }
+              />
+            )}
+            {query && filteredConnections.length === 0 && !showCloud && (
+              <SettingsNoResults>
+                <Trans>No matching connections.</Trans>
+              </SettingsNoResults>
+            )}
           </SettingsListBody>
         </SettingsListPane>
       </div>
       <DetailPanelSurface open={page.panel !== null} onClose={close}>
-        {page.panel && isSearchProvider(page.panel) ? (
-          <DetailPanel title={searchProviders[page.panel].name} onClose={close}>
-            {page.available.custom && page.stored.provider !== page.panel && (
-              <p className="mb-4 text-sm text-muted-foreground">
-                <Trans>Connecting this provider replaces your saved search API key.</Trans>
-              </p>
-            )}
-            <SearchProviderSetup key={page.panel} provider={page.panel} />
+        {page.panel === 'new' && (
+          <DetailPanel title={t`New Search Connection`} onClose={close}>
+            <NewConnectionPicker
+              otariEnabled={page.otariEnabled}
+              capability="search"
+              onProvider={(id) => selectPanel(`add:${id}`)}
+            />
+            <Link
+              to="/settings/connections"
+              className="self-start text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              <Trans>Manage all connections</Trans>
+            </Link>
           </DetailPanel>
-        ) : (
-          page.panel && (
-            <DetailPanel title={page.panel === 'tinfoil' ? tinfoilName : 'Thunderbolt'} onClose={close}>
-              <div className="space-y-4 text-sm text-muted-foreground">
-                <p>
-                  {page.panel === 'tinfoil' ? (
-                    <Trans>
-                      Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters.
-                      No separate Exa API key is needed.
-                    </Trans>
-                  ) : (
-                    <Trans>Search and page content are provided by your connected Thunderbolt server.</Trans>
-                  )}
-                </p>
-                {page.panel === 'tinfoil' && !page.available.tinfoil && (
-                  <p>
-                    <Trans>Enable or reconnect Tinfoil in Connections to use this provider.</Trans>
-                  </p>
-                )}
-                <Button variant="outline" asChild>
-                  <Link to="/settings/connections">
-                    <Trans>Manage connection</Trans>
-                  </Link>
-                </Button>
-              </div>
-            </DetailPanel>
-          )
+        )}
+        {adding && (
+          <DetailPanel title={adding.name} icon={<ProviderConnectionIcon provider={adding.id} />} onClose={close}>
+            <ProviderConnectionForm
+              key={adding.id}
+              provider={adding.id}
+              authorization={authorization}
+              existingOAuth={page.configuredConnections.find(
+                (connection) => connection.provider === adding.id && connection.authMethod === 'oauth',
+              )}
+              onSaved={(id) => page.setPanel(id)}
+              onCancel={close}
+              onBack={() => selectPanel('new')}
+            />
+          </DetailPanel>
+        )}
+        {(active || page.panel === 'cloud') && (
+          <SearchConnectionDetail
+            connection={active}
+            searchAvailable={Boolean(active && page.connections.some(({ id }) => id === active.id))}
+            onClose={close}
+          />
         )}
       </DetailPanelSurface>
     </div>
   )
 }
-
 export default SearchSettingsPage

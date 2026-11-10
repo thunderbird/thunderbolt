@@ -4,44 +4,45 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { SearchProvider } from '@/integrations/standalone-search/providers'
+import type { OtariSearchStatus } from '@/integrations/otari-search/capabilities'
 
-export type SearchSelection = 'auto' | 'custom' | 'tinfoil' | 'cloud' | 'none'
+export type SearchSelection = 'auto' | 'connection' | 'cloud' | 'none'
+export type SearchConnectionStatus = { connectionId: string; status: OtariSearchStatus }
 
 type SearchProviderState = {
   selection: SearchSelection
-  selectSearchProvider: (selection: SearchSelection) => void
-  provider: SearchProvider | null
-  apiKey: string
-  configureSearchProvider: (apiKey: string, provider?: SearchProvider) => void
+  connectionId: string | null
+  connectionStatus: SearchConnectionStatus | null
+  selectSearchProvider: (selection: Exclude<SearchSelection, 'connection'>) => void
+  selectSearchConnection: (connectionId: string) => void
+  configureProviderSearch: (connectionId: string, status: OtariSearchStatus, options?: { select?: boolean }) => void
   clearSearchProvider: () => void
-  disconnectSearchProvider: () => void
 }
 
-const storageKey = 'thunderbolt-search-provider'
-const initialConfiguration = { selection: 'auto', provider: null, apiKey: '' } as const
+export const searchSelectionStorageKey = 'thunderbolt-search-selection'
+export const legacySearchStorageKey = 'thunderbolt-search-provider'
+const initialConfiguration = { selection: 'auto', connectionId: null, connectionStatus: null } as const
 
-/** Device-local search credentials, deliberately excluded from synced settings. */
+/** Device-local routing intent only. Credentials belong to the provider connection's local secret table. */
 export const useSearchProviderStore = create<SearchProviderState>()(
   persist(
     (set) => ({
       ...initialConfiguration,
-      selectSearchProvider: (selection) => set({ selection }),
-      configureSearchProvider: (apiKey, provider = 'brave') =>
-        set({ provider, apiKey: apiKey.trim(), selection: 'custom' }),
-      clearSearchProvider: () => set(initialConfiguration),
-      disconnectSearchProvider: () =>
-        set(({ selection }) => ({
-          provider: null,
-          apiKey: '',
-          selection: selection === 'custom' || selection === 'auto' ? 'none' : selection,
-        })),
+      selectSearchProvider: (selection) => set({ selection, connectionId: null }),
+      selectSearchConnection: (connectionId) => set({ selection: 'connection', connectionId }),
+      configureProviderSearch: (connectionId, status, { select = true } = {}) =>
+        set({
+          connectionStatus: { connectionId, status },
+          ...(select && status === 'available' ? { selection: 'connection', connectionId } : {}),
+        }),
+      clearSearchProvider: () => {
+        localStorage.removeItem(legacySearchStorageKey)
+        set(initialConfiguration)
+      },
     }),
     {
-      name: storageKey,
-      partialize: ({ provider, apiKey, selection }) => ({ provider, apiKey, selection }),
-      // Removal in another window must discard the in-memory key too. Rehydration
-      // otherwise merges missing storage over the current (still connected) state.
+      name: searchSelectionStorageKey,
+      partialize: ({ selection, connectionId, connectionStatus }) => ({ selection, connectionId, connectionStatus }),
       merge: (persisted, current) => ({
         ...current,
         ...initialConfiguration,
@@ -52,12 +53,11 @@ export const useSearchProviderStore = create<SearchProviderState>()(
 )
 
 const onStorage = (event: StorageEvent) => {
-  if (event.storageArea === localStorage && (event.key === storageKey || event.key === null)) {
+  if (event.storageArea === localStorage && (event.key === searchSelectionStorageKey || event.key === null)) {
     void useSearchProviderStore.persist.rehydrate()
   }
 }
 
-// The evaluation CLI imports provider selection too, but has no browser windows to synchronize.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', onStorage)
   import.meta.hot?.dispose(() => window.removeEventListener('storage', onStorage))

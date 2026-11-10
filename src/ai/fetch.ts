@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { bindModelProvider } from '@/providers/model-connection'
 import { loadReasoningCapabilities } from './reasoning-effort'
 import { reasoningProviderOptions } from './reasoning-provider-options'
 import type { ReasoningEffort } from '@shared/reasoning-effort'
@@ -55,8 +56,7 @@ import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import { createLiveProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
-import { getTinfoilSearchConnection } from '@/integrations/tinfoil-search/connection'
-import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
+import { createToolset, getAvailableTools, loadConnectedSearchApis, type ToolCallCache } from '@/lib/tools'
 import { recordDebugTranscriptRetry, recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
 import type { Model, ModelProfile, Skill, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
@@ -100,6 +100,14 @@ import { createMessageMetadata } from './message-metadata'
 const fetch: typeof baseFetch = (input, init) =>
   baseFetch(input, isSsoMode() ? { ...init, credentials: 'include' } : init)
 fetch.preconnect = baseFetch.preconnect
+
+// Otari supports browser CORS. Keep its delegated key and prompts on the chosen
+// gateway, independent of Thunderbolt's backend/proxy or SSO cookie settings.
+const otariFetch: FetchFn = Object.assign(
+  (input: RequestInfo | URL, init?: RequestInit) =>
+    baseFetch(input, { ...init, credentials: 'omit', redirect: 'error' }),
+  { preconnect: baseFetch.preconnect },
+)
 
 /**
  * Wrap a fetch so every request carries the `X-App-Version` header. Only apply
@@ -306,6 +314,14 @@ export const resolveOpenAiCompatConnection = (
             fetch: createLiveProxyFetch(getProxyFetch),
           }
         : null
+    case 'otari':
+      return modelConfig.url && modelConfig.apiKey
+        ? {
+            baseURL: normalizeOpenAiBaseUrl(modelConfig.url),
+            apiKey: modelConfig.apiKey,
+            fetch: otariFetch,
+          }
+        : null
     case 'custom': {
       if (!modelConfig.url) {
         return null
@@ -368,7 +384,8 @@ export const resolveManagedAnthropicConnection = (
   }
 }
 
-export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
+export const createModel = async (inputModel: Model, getProxyFetch: () => FetchFn) => {
+  const { model: modelConfig, wrapFetch } = await bindModelProvider(inputModel)
   // Resolve transports lazily so cloudUrl and proxy_enabled changes are picked
   // up. Managed models use backend auth; own-key models use platform/toggle
   // routing, except loopback Custom models, which always stay device-direct.
@@ -396,7 +413,8 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       if (!conn) {
         throw new Error('No connection resolved for thunderbolt provider')
       }
-      const { baseURL, apiKey, fetch: providerFetch } = conn
+      const { baseURL, apiKey } = conn
+      const providerFetch = wrapFetch(conn.fetch)
       // OpenAI-vendor thunderbolt models use createOpenAI with .chat() to force Chat Completions API
       // (AI SDK 5 defaults createOpenAI to Responses API which our backend doesn't support)
       if (modelConfig.vendor === 'openai') {
@@ -418,7 +436,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         apiKey: modelConfig.apiKey || '',
         // Native HTTP always sends an Origin, so Anthropic requires this opt-in there too.
         headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
-        fetch: createLiveProxyFetch(getProxyFetch),
+        fetch: wrapFetch(createLiveProxyFetch(getProxyFetch)),
       })
       return anthropic(modelConfig.model)
     }
@@ -429,14 +447,15 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       }
       const openai = createOpenAI({
         apiKey: conn.apiKey,
-        fetch: conn.fetch,
+        fetch: wrapFetch(conn.fetch),
       })
       return openai(modelConfig.model)
     }
+    case 'otari':
     case 'custom': {
       const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
       if (!conn) {
-        throw new Error('No URL provided for custom provider')
+        throw new Error(`No URL provided for ${modelConfig.provider} provider`)
       }
       // `conn.baseURL` and `conn.fetch` already carry the `/v1` normalization
       // and the loopback-vs-proxy dispatch (see resolveOpenAiCompatConnection).
@@ -444,10 +463,10 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // through the same connection object, so their upstream URL + transport
       // stay in lockstep by construction.
       const openaiCompatible = createOpenAICompatible({
-        name: 'custom',
+        name: modelConfig.provider,
         baseURL: conn.baseURL,
         apiKey: conn.apiKey || undefined,
-        fetch: conn.fetch,
+        fetch: wrapFetch(conn.fetch),
       })
       return openaiCompatible(modelConfig.model)
     }
@@ -462,7 +481,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         name: 'openrouter',
         baseURL: conn.baseURL,
         apiKey: conn.apiKey,
-        fetch: conn.fetch,
+        fetch: wrapFetch(conn.fetch),
       })
       return openrouter(modelConfig.model)
     }
@@ -570,7 +589,7 @@ export const prepareAiRequestConfig = async ({
     ? await getAvailableTools(httpClient, sourceCollector, {
         settings,
         integrationStatus,
-        ...(await getTinfoilSearchConnection(db)),
+        ...(await loadConnectedSearchApis(db)),
       })
     : []
   const appToolset = addSkillTool(
@@ -647,7 +666,6 @@ export const prepareAiRequestConfig = async ({
     appToolset[name] = miniAppTool
     registeredMiniAppTools.add(name)
   }
-  const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
@@ -696,7 +714,7 @@ export const prepareAiRequestConfig = async ({
       currency: settings.currency,
     },
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
-    hasWebTools,
+    availableToolNames: Object.keys(merged.toolset),
     mcpServersSummary: merged.summary,
     skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
     supportsTools: loadsSkillsByTool,

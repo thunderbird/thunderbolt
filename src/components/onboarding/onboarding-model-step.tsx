@@ -2,8 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useProviderVisibility } from '@/providers/use-provider-visibility'
+import { getOtariBrowserReturn, getOtariBrowserDraft } from '@/lib/otari-browser-auth'
+import { OtariConnection } from '@/components/otari-connection'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Monitor, Sparkles } from 'lucide-react'
+import { Loader2, Monitor, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,10 +22,30 @@ import { useOnboardingProviderState } from './use-onboarding-provider-state'
 
 type OnboardingModelStepProps = { onBack?: () => void; onContinue?: () => void; onSkip?: () => void }
 
-const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStepProps) => {
+const OnboardingModelStep = (props: OnboardingModelStepProps) => {
+  const { otariEnabled, isLoading } = useProviderVisibility()
+  if (isLoading) {
+    return <Loader2 className="size-6 animate-spin self-center text-muted-foreground" />
+  }
+  return <OnboardingModelStepContent key={String(otariEnabled)} {...props} otariEnabled={otariEnabled} />
+}
+
+const OnboardingModelStepContent = ({
+  onBack,
+  onContinue,
+  onSkip,
+  otariEnabled,
+}: OnboardingModelStepProps & { otariEnabled: boolean }) => {
   const { t } = useLingui()
   const { connectedProviders, isLoading, disconnectProvider } = useOnboardingModelState()
-  const state = useOnboardingProviderState(connectedProviders, undefined, onContinue)
+  const state = useOnboardingProviderState(
+    connectedProviders,
+    undefined,
+    onContinue,
+    otariEnabled && (getOtariBrowserReturn('onboarding') || getOtariBrowserDraft('onboarding'))
+      ? { initialProvider: 'otari', initialView: 'otari' }
+      : {},
+  )
   const busy = state.isConnecting || state.isDisconnecting || state.addForm.isPending
   const isConnectionStep = state.view === 'openrouter' || state.view === 'tinfoil'
   const providerName = state.provider === 'tinfoil' ? 'Tinfoil' : 'OpenRouter'
@@ -34,6 +57,10 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
     } else {
       state.showChoices()
     }
+  }
+
+  if (state.view === 'otari') {
+    return <OtariConnection onSaved={onContinue} onBack={state.showChoices} onSkip={onSkip} onboarding />
   }
 
   return (
@@ -68,6 +95,18 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
                   checked={state.selection === 'tinfoil'}
                   onSelect={() => state.selectProvider('tinfoil')}
                 />
+                {otariEnabled && (
+                  <OnboardingChoiceCard
+                    name="ai-provider"
+                    value="otari"
+                    label={t`Otari`}
+                    disabled={busy}
+                    description={<Trans>Sign in to connect Otari.</Trans>}
+                    icon={<OnboardingProviderLogo provider="otari" />}
+                    checked={state.selection === 'otari'}
+                    onSelect={() => state.selectProvider('otari')}
+                  />
+                )}
                 <OnboardingChoiceCard
                   name="ai-provider"
                   value="custom"
@@ -88,11 +127,6 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
                 title={<Trans>Connect {providerName}</Trans>}
                 description={<Trans>Connect your account to power your agents.</Trans>}
               />
-              {state.provider === 'tinfoil' && !state.isConnected && !state.showApiKey && (
-                <p className="text-center text-sm text-muted-foreground">
-                  <Trans>Connect with a paid Tinfoil subscription.</Trans>
-                </p>
-              )}
               <div className="mx-auto mt-5 flex w-full max-w-xs flex-col gap-3">
                 {state.showApiKey && !state.isConnected ? (
                   <form
@@ -139,26 +173,20 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
                       connectedLabel={t`Connected`}
                       connectingLabel={state.isDisconnecting ? t`Disconnecting…` : t`Connecting…`}
                       onConnect={state.connectSelectedProvider}
+                      onCancel={state.isConnecting && !state.addForm.isPending ? state.cancelConnection : undefined}
                       onDisconnect={() => state.disconnectProvider(() => disconnectProvider(state.provider))}
                       className="w-full"
                     />
                     <div className="flex min-h-[var(--touch-height-sm)] justify-center">
-                      {state.isConnecting && !state.addForm.isPending ? (
-                        <Button variant="ghost" size="sm" onClick={state.cancelConnection}>
-                          <Trans>Cancel connection</Trans>
+                      {!state.isConnected && !busy && (
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="text-sm font-normal text-muted-foreground"
+                          onClick={state.useApiKey}
+                        >
+                          <Trans>Use an API key instead</Trans>
                         </Button>
-                      ) : (
-                        !state.isConnected &&
-                        !busy && (
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="text-sm font-normal text-muted-foreground"
-                            onClick={state.useApiKey}
-                          >
-                            <Trans>Use an API key instead</Trans>
-                          </Button>
-                        )
                       )}
                     </div>
                   </>

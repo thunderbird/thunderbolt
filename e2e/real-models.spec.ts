@@ -20,6 +20,20 @@ for (const model of defaultModels) {
       .click()
     await page.keyboard.press('Escape')
 
+    if (model.provider === 'tinfoil') {
+      await page.getByTestId('model-selector-trigger').click()
+      const verified = page.getByRole('button', { name: 'Connection verified', exact: true })
+      await expect(verified).toBeVisible({ timeout: 30_000 })
+      await verified.click()
+      const details = page.getByRole('dialog', { name: 'Connection Verified', exact: true })
+      await details.getByText('Connection details', { exact: true }).click()
+      const measurement = details.getByText('Enclave measurement', { exact: true }).locator('..').locator('dd')
+      await expect(measurement).toBeVisible()
+      await expect(measurement).toHaveCSS('white-space', 'pre-line')
+      await expect(measurement).toHaveText(/\S/)
+      await details.getByRole('button', { name: 'Close', exact: true }).click()
+    }
+
     page.on('response', (response) => {
       if (response.request().method() !== 'POST' || !response.ok()) {
         return

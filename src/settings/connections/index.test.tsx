@@ -2,18 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { updateSettings } from '@/dal/settings'
 import { createMcpServer, createMcpServerWithCredentials, getAllMcpServers, getMcpServerCredentials } from '@/dal'
-import { tinfoilSession, createTinfoilSession } from '@/lib/tinfoil-session'
-import * as tinfoilSessions from '@/lib/tinfoil-session'
-import {
-  getProviderConnectionAttempt,
-  assertProviderConnectionAttemptCurrent,
-  invalidateProviderConnectionAttempts,
-} from '@/lib/provider-connection-attempt'
-import { tinfoilAuth, TinfoilReauthorizationError } from '@/lib/tinfoil-auth'
-import * as platform from '@/lib/platform'
-import { createModel, getModel, getAvailableModels } from '@/dal/models'
-import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { HttpClientProvider } from '@/contexts'
@@ -27,9 +17,36 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ReactNode } from 'react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import ConnectionsPage from '.'
+import {
+  getProviderConnection,
+  saveProviderConnection,
+  saveProviderConnectionInTransaction,
+  disconnectProviderConnection,
+} from '@/dal/provider-connections'
+import { addProviderModels } from '@/providers/models'
+import { getModel, getAvailableModels } from '@/dal/models'
+import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { clearOAuthState, setOAuthState } from '@/lib/oauth-state'
+import { clearMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
+import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
+import {
+  startProviderBrowserConnection,
+  captureProviderBrowserReturn,
+  cancelProviderBrowserConnection,
+} from '@/lib/provider-browser-auth'
+import { cancelTinfoilMobileConnection } from '@/lib/tinfoil-mobile-auth'
+import { CreateItemProvider } from '@/components/create-item/context'
+import { LazyCreateItemHost } from '@/components/create-item/lazy-create-item-host'
+import * as otariBrowser from '@/lib/otari-browser-auth'
+import * as platform from '@/lib/platform'
+import * as chatgptAuth from '@/providers/chatgpt-auth'
+import * as openrouterAuth from '@/lib/openrouter-auth'
+import * as opener from '@tauri-apps/plugin-opener'
+import { ChatModelSetup } from '@/components/chat/chat-model-setup'
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
 const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 })
@@ -68,6 +85,9 @@ const clickDetailMenuItem = async (label: string) => {
   })
   const item = await waitForElement(() => screen.queryByText(label))
   fireEvent.click(item)
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
 }
 
 describe('ConnectionsPage list', () => {
@@ -80,378 +100,513 @@ describe('ConnectionsPage list', () => {
   })
 
   beforeEach(async () => {
+    clearOAuthState()
+    clearMcpOAuthState()
+    cancelProviderBrowserConnection()
+    otariBrowser.cancelOtariBrowserConnection()
+    cancelTinfoilMobileConnection()
     await resetTestDatabase()
-    const session = createTinfoilSession({ db: getDb, auth: tinfoilAuth, lock: async (work) => work(), now: Date.now })
-    spyOn(tinfoilSession, 'setEnabled').mockImplementation(session.setEnabled)
-    spyOn(tinfoilSessions, 'withTinfoilSessionLock').mockImplementation(async (work) => work())
+    await updateSettings(getDb(), { experimental_feature_otari: true })
   })
 
   afterEach(() => {
     cleanup()
     mock.restore()
+    clearOAuthState()
+    clearMcpOAuthState()
+    cancelProviderBrowserConnection()
+    otariBrowser.cancelOtariBrowserConnection()
+    cancelTinfoilMobileConnection()
   })
 
-  it('shows disconnected providers as disabled switches in the same list as Google', async () => {
-    await invalidateProviderConnectionAttempts(getDb(), 'openrouter')
-    renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
-    const openrouter = await waitForElement(() => screen.queryByRole('switch', { name: 'Enable OpenRouter' }))
-    expect(openrouter).toBeDisabled()
-    expect(screen.getByRole('switch', { name: 'Enable Tinfoil' })).toBeDisabled()
-    expect(openrouter.closest('ul')).toBe(screen.getByRole('switch', { name: 'Enable Google' }).closest('ul'))
-    expect(screen.queryByText('Not connected')).not.toBeInTheDocument()
-  })
-
-  it('keeps the account enabled when its models are individually disabled', async () => {
-    await createModel(getDb(), {
-      id: 'disabled-tinfoil-model',
-      provider: 'tinfoil',
-      name: 'Disabled model',
-      model: 'model',
-      enabled: 0,
-      oauthProvider: 'tinfoil',
+  it('shows named connections independently of models and preserves per-model toggles when disabled or disconnected', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Work account',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'local-secret' },
     })
-    await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'test-token' }, true)
-    renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
-    const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Tinfoil' }))
-    expect(toggle).toBeChecked()
-    expect(toggle).not.toBeDisabled()
-  })
-
-  it('offers reconnect when token refresh expires the mounted Tinfoil connection', async () => {
-    await saveIntegrationCredentials(
-      getDb(),
-      'tinfoil',
-      { access_token: 'expired-token', refresh_token: 'expired-refresh', expires_at: 1 },
-      true,
-    )
+    const [modelId] = await addProviderModels(getDb(), id, [{ id: 'work-model' }])
     const { triggerChange } = renderWithReactivity(<ConnectionsPage />, {
-      tables: ['models', 'integrations_secrets'],
+      tables: ['provider_connections', 'provider_connection_secrets', 'models'],
       wrapper: McpProviderWrapper,
     })
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' })))
-    expect(await waitForElement(() => screen.queryByText('Connected'))).toBeTruthy()
-    spyOn(tinfoilAuth, 'refresh').mockRejectedValue(new TinfoilReauthorizationError())
-    const session = createTinfoilSession({ db: getDb, auth: tinfoilAuth, lock: async (work) => work(), now: Date.now })
+    fireEvent.click(await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Work account' })))
+    expect(await waitForElement(() => screen.queryByRole('alertdialog'))).toHaveTextContent('Disable Work account?')
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ enabled: 1 })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ enabled: 1 })
+    fireEvent.click(screen.getByRole('switch', { name: 'Disable Work account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Disable connection' }))
     await act(async () => {
-      await expect(session.getAccessToken()).rejects.toBeInstanceOf(TinfoilReauthorizationError)
-      triggerChange(['integrations_secrets'])
-    })
-    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Reconnect Tinfoil' }))).toBeTruthy()
-  })
-
-  it('updates the mounted detail when another window disconnects Tinfoil', async () => {
-    await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'test-token' }, true)
-    const { triggerChange } = renderWithReactivity(<ConnectionsPage />, {
-      tables: ['models', 'integrations_secrets'],
-      wrapper: McpProviderWrapper,
-    })
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' })))
-    expect(await waitForElement(() => screen.queryByText('Connected'))).toBeTruthy()
-    await act(async () => {
-      await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: '' }, false)
-      triggerChange(['integrations_secrets'])
-    })
-    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Connect Tinfoil' }))).toBeTruthy()
-    expect(screen.getByRole('switch', { name: 'Enable Tinfoil' })).toBeDisabled()
-    expect(screen.queryByText('Connected')).not.toBeInTheDocument()
-  })
-
-  it.each(['openrouter', 'tinfoil'] as const)(
-    'toggles %s models without removing credentials or unrelated models',
-    async (provider) => {
-      const id = uuidv7()
-      const otherId = uuidv7()
-      const providerName = provider === 'tinfoil' ? 'Tinfoil' : 'OpenRouter'
-      await createModel(getDb(), {
-        id,
-        name: 'Connected model',
-        provider,
-        model: 'test-model',
-        enabled: 1,
-        ...(provider === 'tinfoil'
-          ? { oauthProvider: 'tinfoil' as const }
-          : { apiKey: 'test-key', providerDefault: 1 }),
-      })
-      await createModel(getDb(), {
-        id: otherId,
-        name: 'Unrelated model',
-        provider,
-        model: 'byok-model',
-        apiKey: 'byok-key',
-        enabled: 1,
-      })
-      await saveIntegrationCredentials(
-        getDb(),
-        'tinfoil',
-        { access_token: 'test-token', refresh_token: 'test-refresh' },
-        true,
-      )
-      const { triggerChange } = renderWithReactivity(<ConnectionsPage />, {
-        tables: ['models', 'models_secrets'],
-        wrapper: McpProviderWrapper,
-      })
-      const pendingAttempt = await getProviderConnectionAttempt(getDb(), provider)
-      const toggle = await waitForElement(() => screen.queryByRole('switch', { name: `Disable ${providerName}` }))
-      await act(async () => {
-        fireEvent.click(toggle)
-        await getClock().runAllAsync()
-      })
-      if (provider === 'tinfoil') {
-        expect((await getModel(getDb(), id))?.enabled).toBe(1)
-        expect(screen.getByRole('alertdialog')).toHaveTextContent('models and Exa search')
-        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-        expect((await getModel(getDb(), id))?.enabled).toBe(1)
-        fireEvent.click(screen.getByRole('switch', { name: 'Disable Tinfoil' }))
-        await act(async () => {
-          fireEvent.click(screen.getByRole('button', { name: 'Disable Tinfoil' }))
-          await getClock().runAllAsync()
-        })
-        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-        expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.enabled).toBe(false)
-      }
-      await expect(assertProviderConnectionAttemptCurrent(getDb(), pendingAttempt)).rejects.toThrow(
-        'connection changed',
-      )
-      const disabledAttempt = await getProviderConnectionAttempt(getDb(), provider)
-      expect((await getModel(getDb(), id))?.enabled).toBe(provider === 'tinfoil' ? 1 : 0)
-      expect((await getAvailableModels(getDb())).some((model) => model.id === id)).toBe(false)
-      expect((await getModel(getDb(), otherId))?.enabled).toBe(1)
-      triggerChange(['models'])
-      const enable = await waitForElement(() => screen.queryByRole('switch', { name: `Enable ${providerName}` }))
-      expect(enable).not.toBeDisabled()
-      await act(async () => {
-        fireEvent.click(enable)
-        await getClock().runAllAsync()
-      })
-      await expect(assertProviderConnectionAttemptCurrent(getDb(), disabledAttempt)).rejects.toThrow(
-        'connection changed',
-      )
-      await expect(assertProviderConnectionAttemptCurrent(getDb(), pendingAttempt)).rejects.toThrow(
-        'connection changed',
-      )
-      const model = await getModel(getDb(), id)
-      expect(model?.enabled).toBe(1)
-      expect(model?.deletedAt).toBeNull()
-      if (provider === 'openrouter') {
-        expect(model?.apiKey).toBe('test-key')
-      } else {
-        expect(model?.oauthProvider).toBe('tinfoil')
-        expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.enabled).toBe(true)
-        expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual({
-          access_token: 'test-token',
-          refresh_token: 'test-refresh',
-          sessionRevision: expect.any(String),
-        })
-      }
-    },
-  )
-
-  it.each(['none', 'valid', 'expired'])(
-    'controls connection-owned Tinfoil API keys with OAuth state: %s',
-    async (oauthState) => {
-      const oauthConnected = oauthState !== 'none'
-      const db = getDb()
-      await createModel(db, {
-        id: 'connection-key',
-        provider: 'tinfoil',
-        name: 'Connection key',
-        model: 'model',
-        apiKey: 'connection-key',
-        providerDefault: 1,
-      })
-      await createModel(db, {
-        id: 'manual-key',
-        provider: 'tinfoil',
-        name: 'Manual key',
-        model: 'model',
-        apiKey: 'manual-key',
-      })
-      if (oauthConnected) {
-        await saveIntegrationCredentials(
-          db,
-          'tinfoil',
-          { access_token: 'oauth-token', reauth_required: oauthState === 'expired' },
-          true,
-        )
-      }
-      const session = createTinfoilSession({
-        db: getDb,
-        auth: { ...tinfoilAuth, revoke: async () => {} },
-        lock: async (work) => work(),
-        now: Date.now,
-      })
-      spyOn(tinfoilSession, 'disconnect').mockImplementation(session.disconnect)
-      const { triggerChange } = renderWithReactivity(<ConnectionsPage />, {
-        tables: ['models', 'models_secrets', 'integrations_secrets'],
-        wrapper: McpProviderWrapper,
-      })
-      const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Tinfoil' }))
-      expect(toggle).not.toBeDisabled()
-      fireEvent.click(toggle)
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'Disable Tinfoil' }))
-        await getClock().runAllAsync()
-        triggerChange(['models', 'integrations_secrets'])
-      })
-      expect(await getModel(db, 'connection-key')).toMatchObject({ enabled: 0, apiKey: 'connection-key' })
-      expect(await getModel(db, 'manual-key')).toMatchObject({ enabled: 1, apiKey: 'manual-key' })
-      const enable = await waitForElement(() => screen.queryByRole('switch', { name: 'Enable Tinfoil' }))
-      await act(async () => {
-        fireEvent.click(enable)
-        await getClock().runAllAsync()
-        triggerChange(['models', 'integrations_secrets'])
-      })
-      expect(await getModel(db, 'connection-key')).toMatchObject({ enabled: 1, apiKey: 'connection-key' })
-      fireEvent.click(screen.getByRole('button', { name: 'Open Tinfoil' }))
-      await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect' }))
-      expect(Boolean(screen.queryByRole('button', { name: 'Manage subscription' }))).toBe(oauthConnected)
-      expect(Boolean(screen.queryByRole('button', { name: 'Reconnect Tinfoil' }))).toBe(oauthState === 'expired')
-      fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'Disconnect Tinfoil' }))
-        await getClock().runAllAsync()
-        triggerChange(['models_secrets', 'integrations_secrets'])
-      })
-      expect(await getModel(db, 'connection-key')).toMatchObject({ enabled: 1, apiKey: null })
-      expect(await getModel(db, 'manual-key')).toMatchObject({ enabled: 1, apiKey: 'manual-key' })
-      expect((await getIntegrationCredentials(db, 'tinfoil'))?.credentials.access_token).toBe('')
-      expect(
-        await waitForElement(() => {
-          const toggle = screen.queryByRole('switch', { name: 'Enable Tinfoil' })
-          return toggle?.hasAttribute('disabled') ? toggle : null
-        }),
-      ).toBeDisabled()
-    },
-  )
-
-  it('offers API-key setup alongside sign-in on desktop', async () => {
-    renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' })))
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Use an API key instead' })))
-    expect(screen.getByLabelText('API Key')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Use sign-in instead' }))
-    expect(screen.getByRole('button', { name: 'Connect Tinfoil' })).toBeTruthy()
-  })
-
-  it('offers Tinfoil sign-in on native mobile', async () => {
-    spyOn(platform, 'isTauri').mockReturnValue(true)
-    spyOn(platform, 'isMobile').mockReturnValue(true)
-    renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' })))
-    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Connect Tinfoil' }))).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Use an API key instead' }))
-    expect(screen.getByLabelText('API Key')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Use sign-in instead' }))
-    expect(screen.getByRole('button', { name: 'Connect Tinfoil' })).toBeEnabled()
-  })
-
-  it('keeps healthy Tinfoil subscription controls in its provider detail without a reconnect action', async () => {
-    await saveIntegrationCredentials(
-      getDb(),
-      'tinfoil',
-      { access_token: 'test-token', expires_at: Date.now() + 3600000 },
-      true,
-    )
-    renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
-    await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' }))
-    expect(screen.queryByText('AI providers')).not.toBeInTheDocument()
-    expect(screen.queryByText('Connected')).not.toBeInTheDocument()
-    expect(screen.queryByText('Not connected')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Manage subscription' })).not.toBeInTheDocument()
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' })))
-    await waitForElement(() => screen.queryByRole('button', { name: 'Manage subscription' }))
-    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Reconnect Tinfoil' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Connect Tinfoil' })).not.toBeInTheDocument()
-  })
-
-  it('confirms Tinfoil disconnect, preserves the connection on cancel, and keeps errors retryable', async () => {
-    await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'test-token' }, true)
-    const disconnect = spyOn(tinfoilSession, 'disconnect').mockRejectedValue(new Error('Revocation failed'))
-    try {
-      renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
-      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' })))
-      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect' })))
-      expect(screen.getByRole('alertdialog')).toHaveTextContent('models and Exa search')
-      expect(disconnect).not.toHaveBeenCalled()
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-      expect(disconnect).not.toHaveBeenCalled()
-      expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe('test-token')
-      fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'Disconnect Tinfoil' }))
-        await getClock().runAllAsync()
-      })
-      expect(disconnect).toHaveBeenCalledTimes(1)
-      expect(screen.getByRole('alertdialog')).toHaveTextContent('Could not disconnect this provider. Please try again.')
-      disconnect.mockResolvedValue(undefined)
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'Disconnect Tinfoil' }))
-        await getClock().runAllAsync()
-      })
-      expect(disconnect).toHaveBeenCalledTimes(2)
-      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    } finally {
-      disconnect.mockRestore()
-    }
-  })
-
-  it('offers reconnect for a Tinfoil session that requires reauthorization', async () => {
-    await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'test-token', reauth_required: true }, true)
-    renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' })))
-    await waitForElement(() => screen.queryByRole('button', { name: 'Reconnect Tinfoil' }))
-    expect(screen.getByRole('button', { name: 'Manage subscription' })).toBeInTheDocument()
-  })
-
-  it('disconnects OpenRouter credentials even when its model is disabled, preserving the model', async () => {
-    const id = uuidv7()
-    await createModel(getDb(), {
-      id,
-      name: 'My OpenRouter model',
-      providerDefault: 1,
-      model: 'test-model',
-      provider: 'openrouter',
-      apiKey: 'test-key',
-      enabled: 0,
-    })
-    for (const enabled of [0, 1]) {
-      await createModel(getDb(), {
-        id: `manual-${enabled}`,
-        name: 'Manual OpenRouter model',
-        provider: 'openrouter',
-        model: 'test-model',
-        apiKey: `manual-key-${enabled}`,
-        enabled,
-      })
-    }
-    const { triggerChange } = renderWithReactivity(<ConnectionsPage />, {
-      tables: ['models', 'models_secrets'],
-      wrapper: McpProviderWrapper,
-    })
-    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open OpenRouter' })))
-    const disconnect = await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect' }))
-    await act(async () => {
-      fireEvent.click(disconnect)
       await getClock().runAllAsync()
     })
-    const model = await getModel(getDb(), id)
-    expect(model?.apiKey).toBeNull()
-    expect(model?.deletedAt).toBeNull()
-    expect(model?.enabled).toBe(0)
-    for (const enabled of [0, 1]) {
-      expect(await getModel(getDb(), `manual-${enabled}`)).toMatchObject({
-        apiKey: `manual-key-${enabled}`,
-        enabled,
-        deletedAt: null,
-      })
-    }
-    triggerChange(['models', 'models_secrets'])
-    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Connect OpenRouter' }))).toBeTruthy()
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ enabled: 0, connected: true })
+    expect(await getModel(getDb(), modelId)).toMatchObject({ enabled: 1, deletedAt: null })
+    expect(await getAvailableModels(getDb())).toEqual([])
+    triggerChange(['provider_connections'])
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Work account' })))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect this device' })))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ connected: false })
+    expect(await getModel(getDb(), modelId)).toMatchObject({ enabled: 1, deletedAt: null })
+    triggerChange(['provider_connections', 'provider_connection_secrets'])
+    expect(await waitForElement(() => screen.queryByLabelText('API key'))).toHaveValue('')
   })
 
-  it('shows the pre-baked integrations and updates when mcp_servers changes', async () => {
+  it.each(['add', 'existing'] as const)(
+    'opens the same OAuth details through %s and supports editing or another API-key instance',
+    async (entry) => {
+      await saveProviderConnection(getDb(), {
+        provider: 'otari',
+        name: 'Team account',
+        url: 'https://team.example/api/v1',
+        authMethod: 'oauth',
+        credentials: { access_token: 'local-token' },
+      })
+      renderWithReactivity(<ConnectionsPage />, {
+        tables: ['provider_connections', 'provider_connection_secrets'],
+        wrapper: McpProviderWrapper,
+      })
+      await waitForElement(() => screen.queryByRole('button', { name: 'Open Team account' }))
+      if (entry === 'add') {
+        fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+        fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Otari Models and search' })))
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: 'Open Team account' }))
+      }
+      expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Connected to Otari' }))).toBeVisible()
+      expect(screen.getByRole('status')).toHaveTextContent('https://team.example/api/v1')
+      expect(screen.getByRole('status')).not.toHaveTextContent('Team account')
+      expect(screen.getByRole('button', { name: 'Disconnect this device' })).toBeVisible()
+      expect(Boolean(screen.queryByRole('button', { name: 'Continue' }))).toBe(entry === 'add')
+      await clickDetailMenuItem('Edit')
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+      expect(screen.getByLabelText('Name')).toHaveValue('Team account')
+      expect(screen.queryByLabelText('API key')).toBeNull()
+      expect(screen.queryByLabelText('Server URL')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Add another instance via API key' }))
+      expect(await waitForElement(() => screen.queryByLabelText('API key'))).toBeEnabled()
+      expect(screen.getByLabelText('API key')).toHaveValue('')
+      fireEvent.click(screen.getByRole('button', { name: 'Use sign-in instead' }))
+      expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Connected to Otari' }))).toBeVisible()
+      expect(screen.getByRole('button', { name: 'More' })).toBeVisible()
+    },
+  )
+
+  it.each([
+    'Otari Models and search',
+    'Tinfoil Models and search',
+    'OpenRouter Models',
+    'OpenAI Models',
+    'Google Productivity',
+    'Microsoft Productivity',
+    'MCP server',
+  ])('returns from %s to the connection picker', async (name) => {
+    renderWithReactivity(<ConnectionsPage />, { wrapper: McpProviderWrapper })
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' })))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name })))
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Go back' }))).toBeVisible()
+    if (name !== 'MCP server') {
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
+    expect(screen.getByRole('heading', { name: 'New Connection' })).toBeVisible()
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Otari Models and search' }))).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
+  })
+
+  it('continues after saving an API key and finishes setup without changing existing-detail navigation', async () => {
+    renderWithReactivity(<ConnectionsPage />, {
+      tables: ['provider_connections', 'provider_connection_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' })))
+    fireEvent.click(screen.getByRole('button', { name: 'OpenAI Models' }))
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'test-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect this device' }))
+    expect(screen.getByRole('button', { name: 'Go back' })).toBeVisible()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    })
+    expect(Boolean(screen.queryByRole('button', { name: 'Close details' }))).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Open OpenAI' }))
+    expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+  })
+
+  it('opens a synced connection without device credentials and keeps two API-key accounts distinct', async () => {
+    const personal = await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Personal',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'personal' },
+    })
+    await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Team',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'team' },
+    })
+    await disconnectProviderConnection(getDb(), personal)
+    renderWithReactivity(<ConnectionsPage />, {
+      tables: ['provider_connections', 'provider_connection_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Open Team' }))).toBeInTheDocument()
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Personal' })))
+    expect(await waitForElement(() => screen.queryByLabelText('Name'))).toHaveValue('Personal')
+    expect(screen.getByLabelText('API key')).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Save connection' })).toBeDisabled()
+  })
+
+  it('opens the exact connection linked from a model', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Linked account',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'one' },
+    })
+    await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Other account',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'two' },
+    })
+    const LinkedConnectionWrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={[{ pathname: '/settings/connections', state: { providerConnectionId: id } }]}>
+        <HttpClientProvider httpClient={createMockHttpClient()}>
+          <MCPProvider createClient={neverResolves}>{children}</MCPProvider>
+        </HttpClientProvider>
+      </MemoryRouter>
+    )
+    renderWithReactivity(<ConnectionsPage />, {
+      tables: ['provider_connections', 'provider_connection_secrets'],
+      wrapper: LinkedConnectionWrapper,
+    })
+    expect(await waitForElement(() => screen.queryByRole('heading', { name: 'Linked account' }))).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Disconnect this device' })).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Manage models' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
+    expect(screen.queryByLabelText('Name')).toBeNull()
+    await clickDetailMenuItem('Edit')
+    expect(await waitForElement(() => screen.queryByLabelText('Name'))).toHaveValue('Linked account')
+  })
+
+  it('finishes a browser return in the chat aside without navigating to settings', async () => {
+    const nonce = 'n'.repeat(43)
+    const attempt = await getProviderConnectionAttempt(getDb(), 'openrouter')
+    const exchange = mock(async () => 'test-provider-key')
+    const deps = {
+      origin: () => 'https://app.example',
+      currentPath: () => '/chats/new?project=work' as const,
+      verifier: () => nonce,
+      challenge: async () => 'challenge',
+      navigate: () => {},
+      exchangeOpenRouter: exchange,
+    }
+    await startProviderBrowserConnection('openrouter', 'connections', attempt, new AbortController().signal, deps)
+    captureProviderBrowserReturn(
+      new URL(`https://app.example/oauth/openrouter/${nonce}?code=test&state=${nonce}`),
+      deps,
+    )
+    const RouteProbe = () => {
+      const location = useLocation()
+      return (
+        <p data-testid="return-path">
+          {location.pathname}
+          {location.search}
+        </p>
+      )
+    }
+    const ReturnWrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter
+        initialEntries={[{ pathname: '/chats/new', search: '?project=work', state: { connectionOAuthReturn: nonce } }]}
+      >
+        <HttpClientProvider httpClient={createMockHttpClient()}>
+          <MCPProvider createClient={neverResolves}>
+            <CreateItemProvider>
+              <RouteProbe />
+              {children}
+            </CreateItemProvider>
+          </MCPProvider>
+        </HttpClientProvider>
+      </MemoryRouter>
+    )
+    await act(async () => {
+      renderWithReactivity(<LazyCreateItemHost />, {
+        wrapper: ReturnWrapper,
+        tables: ['provider_connections', 'provider_connection_secrets'],
+      })
+    })
+    expect(await waitForElement(() => screen.queryByText('Connected to OpenRouter'))).toBeVisible()
+    expect(screen.getByTestId('return-path')).toHaveTextContent('/chats/new?project=work')
+    expect(exchange).toHaveBeenCalledTimes(1)
+    expect(await getProviderConnection(getDb(), 'oauth:openrouter')).toMatchObject({ connected: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
+    expect(screen.getByTestId('return-path')).toHaveTextContent('/chats/new?project=work')
+    expect(screen.queryByText('Connected to OpenRouter')).toBeNull()
+  })
+
+  it('consumes callback parameters without closing the restored aside or replaying an error', async () => {
+    setOAuthState({ provider: 'google', state: 'return-nonce', returnContext: '/chats/new' })
+    const RouteProbe = () => {
+      const location = useLocation()
+      return <p data-testid="callback-state">{JSON.stringify({ path: location.pathname, ...location.state })}</p>
+    }
+    const ReturnWrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/chats/new',
+            state: {
+              connectionOAuthReturn: 'return-nonce',
+              oauth: { state: 'return-nonce', error: 'Authorization denied' },
+            },
+          },
+        ]}
+      >
+        <HttpClientProvider httpClient={createMockHttpClient()}>
+          <MCPProvider createClient={neverResolves}>
+            <CreateItemProvider>
+              <RouteProbe />
+              {children}
+            </CreateItemProvider>
+          </MCPProvider>
+        </HttpClientProvider>
+      </MemoryRouter>
+    )
+    await act(async () => {
+      renderWithReactivity(<LazyCreateItemHost />, { wrapper: ReturnWrapper })
+    })
+    expect(await waitForElement(() => screen.queryByText('Authorization denied'))).toBeVisible()
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByRole('heading', { name: 'Google' })).toBeVisible()
+    expect(JSON.parse(screen.getByTestId('callback-state').textContent!)).toEqual({
+      path: '/chats/new',
+      connectionOAuthReturn: 'return-nonce',
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
+    expect(JSON.parse(screen.getByTestId('callback-state').textContent!)).toEqual({ path: '/chats/new' })
+  })
+
+  it('opens provider editing and removal confirmation from its context menu', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'exa',
+      name: 'Work Exa',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'test' },
+    })
+    renderWithReactivity(<ConnectionsPage />, {
+      wrapper: McpProviderWrapper,
+      tables: ['provider_connections', 'provider_connection_secrets'],
+    })
+    const row = await waitForElement(() => screen.queryByRole('button', { name: 'Open Work Exa' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'MCP server' }))
+    expect(screen.getByRole('heading', { name: 'Add MCP Server' })).toBeVisible()
+    fireEvent.contextMenu(row)
+    fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Edit' })))
+    expect(await waitForElement(() => screen.queryByLabelText('Name'))).toHaveValue('Work Exa')
+    fireEvent.contextMenu(row)
+    fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Remove' })))
+    expect(await waitForElement(() => screen.queryByRole('alertdialog'))).toHaveTextContent('Remove Work Exa?')
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ deletedAt: null })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await getProviderConnection(getDb(), id)).toMatchObject({ deletedAt: null })
+  })
+
+  it.each(['Edit', 'Remove'] as const)(
+    'cancels provider authorization when a context menu chooses %s',
+    async (action) => {
+      await saveProviderConnection(getDb(), {
+        provider: 'exa',
+        name: 'Saved search',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'test' },
+      })
+      spyOn(platform, 'isTauri').mockReturnValue(false)
+      const start = spyOn(otariBrowser, 'startOtariBrowserConnection').mockResolvedValue()
+      renderWithReactivity(<ConnectionsPage />, {
+        wrapper: McpProviderWrapper,
+        tables: ['provider_connections', 'provider_connection_secrets'],
+      })
+      const row = await waitForElement(() => screen.queryByRole('button', { name: 'Open Saved search' }))
+      fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Otari' }))
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(start).toHaveBeenCalledTimes(1)
+      const signal = start.mock.calls[0][2]
+      expect(signal.aborted).toBe(false)
+      fireEvent.contextMenu(row)
+      fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: action })))
+      expect(signal.aborted).toBe(true)
+    },
+  )
+
+  it('cancels an account switch when adding a separate API-key connection', async () => {
+    await getDb().transaction((tx) =>
+      saveProviderConnectionInTransaction(tx, {
+        provider: 'openai',
+        name: 'ChatGPT',
+        authMethod: 'oauth',
+        credentials: {
+          access_token: 'test',
+          oauth: {
+            issuer: 'https://auth.openai.com',
+            clientId: 'personal',
+            tokenEndpoint: 'https://auth.openai.com/oauth/token',
+            resource: 'https://api.openai.com/v1',
+            subject: 'person',
+            scope: 'chatgpt.tokens.use.direct',
+          },
+        },
+      }),
+    )
+    spyOn(chatgptAuth, 'canConnectChatGPT').mockReturnValue(true)
+    const connect = spyOn(chatgptAuth, 'connectChatGPT').mockImplementation(
+      async (_db, signal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        }),
+    )
+    renderWithReactivity(<ConnectionsPage />, {
+      wrapper: McpProviderWrapper,
+      tables: ['provider_connections', 'provider_connection_secrets'],
+    })
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open ChatGPT' })))
+    const picker = await waitForElement(() => screen.queryByRole('button', { name: 'Choose ChatGPT account' }))
+    await act(async () => {
+      fireEvent.pointerDown(picker, { button: 0 })
+    })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Use another ChatGPT account' }))
+    await waitForElement(() => (connect.mock.calls.length > 0 ? document.body : null))
+    expect(connect).toHaveBeenCalledTimes(1)
+    const signal = connect.mock.calls[0][1]
+    expect(signal.aborted).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Add another instance via API key' }))
+    expect(signal.aborted).toBe(true)
+    expect(await waitForElement(() => screen.queryByLabelText('API key'))).toBeVisible()
+  })
+
+  it.each(['desktop', 'manual'] as const)(
+    'shows connected controls after an in-place OAuth reconnect: %s',
+    async (flow) => {
+      const id = await saveProviderConnection(getDb(), {
+        provider: 'openrouter',
+        name: 'My OpenRouter',
+        authMethod: 'oauth',
+        credentials: { access_token: 'old' },
+      })
+      await disconnectProviderConnection(getDb(), id)
+      spyOn(platform, 'isTauri').mockReturnValue(true)
+      spyOn(platform, 'isMobile').mockReturnValue(flow === 'manual')
+      spyOn(openrouterAuth, 'startOpenRouterConnection').mockResolvedValue('new-token')
+      spyOn(openrouterAuth, 'prepareOpenRouterManualConnection').mockResolvedValue({
+        authorizationUrl: 'https://openrouter.ai/auth',
+        verifier: 'test-verifier',
+      })
+      spyOn(opener, 'openUrl').mockResolvedValue()
+      spyOn(openrouterAuth, 'exchangeOpenRouterCode').mockResolvedValue('new-token')
+      renderWithReactivity(<ConnectionsPage />, {
+        wrapper: McpProviderWrapper,
+        tables: ['provider_connections', 'provider_connection_secrets'],
+      })
+      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open My OpenRouter' })))
+      for (const attempt of [1, 2]) {
+        fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Connect OpenRouter' })))
+        if (flow === 'manual') {
+          const code = await waitForElement(() => screen.queryByLabelText('Authorization code'))
+          fireEvent.change(code, { target: { value: 'test-code' } })
+          fireEvent.click(screen.getByRole('button', { name: 'Complete connection' }))
+        }
+        const disconnect = await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect this device' }))
+        expect(Boolean(disconnect)).toBe(true)
+        expect(screen.queryByRole('button', { name: 'Connect OpenRouter' })).toBeNull()
+        expect(screen.queryByLabelText('Authorization code')).toBeNull()
+        expect(screen.getByRole('status')).toHaveTextContent('Connected to OpenRouter')
+        if (attempt === 1) {
+          fireEvent.click(disconnect)
+        }
+      }
+    },
+  )
+
+  it('opens the connection aside directly from empty chat and lets users choose a provider', async () => {
+    renderWithReactivity(
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <CreateItemProvider>
+              <ChatModelSetup />
+              <LazyCreateItemHost />
+            </CreateItemProvider>
+          }
+        />
+        <Route path="/settings/connections" element={<ConnectionsPage />} />
+      </Routes>,
+      {
+        tables: ['provider_connections', 'provider_connection_secrets'],
+        wrapper: McpProviderWrapper,
+      },
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add connection' }))
+      await getClock().runAllAsync()
+    })
+    expect(await waitForElement(() => screen.queryByRole('heading', { name: 'New Connection' }))).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Connect Otari' }))).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
+    expect(screen.queryByRole('button', { name: 'Connect Otari' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'New Connection' })).not.toBeInTheDocument()
+  })
+
+  it.each([true, false])(
+    'hides cloud connections until sign-in and hides them again on sign-out (local mode: %s)',
+    async (localMode) => {
+      useLocalSettingsStore.setState({ cloudUrl: 'https://test-api.local/v1', localMode })
+      renderWithReactivity(<ConnectionsPage />, { wrapper: McpProviderWrapper })
+      expect(await waitForElement(() => screen.queryByRole('heading', { name: 'No connections yet' }))).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+      expect(screen.queryByRole('button', { name: 'Thunderbolt Search' })).toBeNull()
+      for (const name of ['Google Productivity', 'Microsoft Productivity']) {
+        expect(screen.getByRole('button', { name })).toBeVisible()
+      }
+      expect(
+        await waitForElement(() => screen.queryByRole('button', { name: 'Otari Models and search' })),
+      ).toBeVisible()
+      expect(screen.getByRole('button', { name: 'MCP server' })).toBeVisible()
+      await act(async () => {
+        setAuthToken('cloud-session')
+        await getClock().runAllAsync()
+      })
+      for (const name of ['Thunderbolt Search', 'Google Productivity', 'Microsoft Productivity']) {
+        expect(screen.getByRole('button', { name })).toBeVisible()
+      }
+      expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeVisible()
+      act(() => clearAuthToken())
+      expect(screen.queryByRole('button', { name: 'Thunderbolt Search' })).toBeNull()
+      for (const name of ['Google Productivity', 'Microsoft Productivity']) {
+        expect(screen.getByRole('button', { name })).toBeVisible()
+      }
+      expect(screen.queryByRole('button', { name: 'Open Thunderbolt' })).toBeNull()
+    },
+  )
+
+  it('offers disconnected integrations in the create menu and updates MCP servers', async () => {
+    setAuthToken('cloud-session')
     const db = getDb()
 
     await createMcpServer(db, {
@@ -467,12 +622,12 @@ describe('ConnectionsPage list', () => {
       wrapper: McpProviderWrapper,
     })
 
-    // Pre-baked integrations render at the top (Thunderbolt renamed from
-    // "Thunderbolt Pro").
-    await waitForElement(() => screen.queryByText('Thunderbolt'))
-    expect(screen.getByText('Google')).toBeInTheDocument()
-    expect(screen.getByText('Microsoft')).toBeInTheDocument()
-    expect(screen.queryByText('Thunderbolt Pro')).not.toBeInTheDocument()
+    expect(screen.queryByText('Google')).not.toBeInTheDocument()
+    expect(screen.queryByText('Microsoft')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'New Connection' }))
+    expect(screen.getByRole('button', { name: 'Google Productivity' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Microsoft Productivity' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Thunderbolt Search' })).toBeInTheDocument()
 
     await waitForElement(() => screen.queryByText('First Server'))
     expect(screen.getByText('First Server')).toBeInTheDocument()
@@ -522,6 +677,7 @@ const renderAddForm = async (deps: ConnectionsPageDeps, { url, token }: { url: s
   })
   const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' }))
   fireEvent.click(openButton)
+  fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'MCP server' })))
   const urlInput = await waitForElement(() => screen.queryByPlaceholderText('http://localhost:8000/mcp/'))
   if (token) {
     fireEvent.change(screen.getByPlaceholderText('Bearer token or API key'), { target: { value: token } })
@@ -770,6 +926,7 @@ describe('ConnectionsPage iroh add flow', () => {
     )
     const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' }))
     fireEvent.click(openButton)
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'MCP server' })))
     const urlInput = await waitForElement(() => screen.queryByPlaceholderText('http://localhost:8000/mcp/'))
     fireEvent.change(screen.getByPlaceholderText('Server name (used to prefix tools)'), {
       target: { value: 'Laptop Bridge' },
@@ -1008,9 +1165,9 @@ describe('ConnectionsPage probe lifecycle', () => {
   it('does not auto-probe after the add form is closed', async () => {
     const probeMcpServerTools = mock(async () => ['tool'])
     await renderAddForm({ probeMcpServerTools }, { url: 'https://late.example.com/mcp' })
-    // Close the form before the 700ms debounce fires.
+    // Leave the form before the 700ms debounce fires.
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
     })
     await flushAutoProbe()
 
@@ -1224,6 +1381,7 @@ describe('ConnectionsPage add-form error labeling', () => {
     })
     const openButton = await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' }))
     fireEvent.click(openButton)
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'MCP server' })))
 
     // Advanced mode: paste a config with no servers, then import → error panel.
     fireEvent.click(await waitForElement(() => screen.queryByText('Advanced (JSON)')))

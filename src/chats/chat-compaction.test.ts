@@ -37,11 +37,11 @@ const fixture = (
   compact: NonNullable<AgentAdapter['compact']> = async () => checkpoint,
   save: SaveMessagesFunction = async () => {},
 ) => {
+  const model = createMockModel()
   const messages: ThunderboltUIMessage[] = [
     { id: 'user', role: 'user', parts: [{ type: 'text', text: 'Question' }] },
     { id: 'assistant', role: 'assistant', parts: [{ type: 'text', text: 'Answer' }] },
   ]
-  const model = createMockModel()
   const saved = mock(save)
   const adapterCompact = mock(compact)
   const adapter: AgentAdapter = {
@@ -60,8 +60,8 @@ const fixture = (
     createClient({ prefixUrl: 'https://backend.test' }),
     () => Object.assign(async () => new Response(), { preconnect: async () => false }),
     {
-      getAvailableModels: async () => [model],
       getChatReasoningEffort: async () => undefined,
+      getAvailableModels: async () => useChatStore.getState().models,
       getOrConnectAdapter: async () => adapter,
       createChat: (init) => {
         callbacks.current = init

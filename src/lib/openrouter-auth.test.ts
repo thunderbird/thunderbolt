@@ -4,9 +4,9 @@
 
 import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { createOpenRouterAuth, type OpenRouterAuthDependencies } from './openrouter-auth'
-import { createTinfoilAuth } from './tinfoil-auth'
-import type { OpenRouterCallbackChannel } from './openrouter-callback'
+import { createOpenRouterAuth, createProviderAuthorization, type OpenRouterAuthDependencies } from './openrouter-auth'
+import { createTinfoilAuth, TinfoilReauthorizationError } from './tinfoil-auth'
+import { invalidateIdentityLifetime } from './identity-lifetime'
 
 /** Flushes the injected asynchronous platform boundaries without advancing timers. */
 const settle = async () => {
@@ -16,54 +16,18 @@ const settle = async () => {
 }
 
 /** Captures platform I/O without global mocks or real OAuth requests. */
-const createHarness = (native = false, overrides: Partial<OpenRouterAuthDependencies> = {}) => {
+const createHarness = (native = true, overrides: Partial<OpenRouterAuthDependencies> = {}) => {
   const state = {
-    messageHandler: null as ((event: MessageEvent<unknown>) => void) | null,
     loopbackHandler: null as ((url: string) => void) | null,
     openedUrl: '',
-    popupClosed: false,
-    popupUrl: '',
-    channelName: '',
   }
   const requests: Request[] = []
-  const removeMessageListener = mock(() => {
-    state.messageHandler = null
-  })
   const removeLoopbackListener = mock(() => {
     state.loopbackHandler = null
   })
-  const popup = {
-    get closed() {
-      return state.popupClosed
-    },
-    close: mock(() => {
-      state.popupClosed = true
-    }),
-    location: {
-      get href() {
-        return state.popupUrl
-      },
-      set href(value: string) {
-        state.popupUrl = value
-      },
-    },
-  } as unknown as Window
-  const openPopup = mock(() => popup)
-  const closeChannel = mock(() => {})
-  const channel: OpenRouterCallbackChannel = { onmessage: null, postMessage: () => {}, close: closeChannel }
   const deps: OpenRouterAuthDependencies = {
     isTauri: () => native,
     isMobile: () => false,
-    origin: () => 'https://app.example',
-    openPopup,
-    listenForMessage: (handler) => {
-      state.messageHandler = handler
-      return removeMessageListener
-    },
-    createCallbackChannel: (name) => {
-      state.channelName = name
-      return channel
-    },
     startLoopback: async () => 17421,
     stopLoopback: async () => {},
     listenForLoopback: async (handler) => {
@@ -84,30 +48,9 @@ const createHarness = (native = false, overrides: Partial<OpenRouterAuthDependen
     timeoutMs: 1000,
     ...overrides,
   }
-  const sendMessage = (data: unknown, options: { origin?: string; source?: Window } = {}) => {
-    state.messageHandler?.({
-      data,
-      origin: options.origin ?? deps.origin(),
-      source: options.source ?? popup,
-    } as MessageEvent<unknown>)
-  }
-
-  return {
-    auth: createOpenRouterAuth(deps),
-    deps,
-    state,
-    requests,
-    popup,
-    openPopup,
-    sendMessage,
-    sendChannelMessage: (data: unknown) => channel.onmessage?.({ data } as MessageEvent<unknown>),
-    closeChannel,
-    removeMessageListener,
-    removeLoopbackListener,
-  }
+  return { auth: createOpenRouterAuth(deps), deps, state, requests, removeLoopbackListener }
 }
 
-const successfulMessage = { type: 'oauth-callback', code: 'authorization-code', state: 'expected-nonce' }
 const successfulLoopback = 'http://localhost:17421/?code=authorization-code&state=expected-nonce'
 
 describe('Tinfoil OAuth', () => {
@@ -127,14 +70,14 @@ describe('Tinfoil OAuth', () => {
     })
     const pending = auth.startConnection()
     await settle()
-    const url = new URL(harness.state.popupUrl)
+    const url = new URL(harness.state.openedUrl)
     expect(url.origin).toBe('https://dash.tinfoil.sh')
-    expect(url.searchParams.get('redirect_uri')).toBe('https://app.example/oauth/tinfoil')
+    expect(url.searchParams.get('redirect_uri')).toBe('http://localhost:17421/')
     expect(url.searchParams.get('client_id')).toBe('public-client')
     expect(url.searchParams.get('scope')).toBe('inference:api offline_access')
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(url.searchParams.has('callback_url')).toBe(false)
-    harness.sendMessage(successfulMessage)
+    harness.state.loopbackHandler?.(successfulLoopback)
     expect(await pending).toMatchObject({ access_token: 'bearer', refresh_token: 'refresh' })
     expect(harness.requests[0].url).toBe('https://api.tinfoil.sh/oauth/token')
     expect(harness.requests[0].redirect).toBe('error')
@@ -144,7 +87,7 @@ describe('Tinfoil OAuth', () => {
       client_id: 'public-client',
       code: 'authorization-code',
       code_verifier: 'secret-verifier',
-      redirect_uri: 'https://app.example/oauth/tinfoil',
+      redirect_uri: 'http://localhost:17421/',
     })
   })
 
@@ -163,37 +106,117 @@ describe('Tinfoil OAuth', () => {
     const rejected = createTinfoilAuth('public-client', {
       fetch: async () => Response.json({ error: 'invalid_grant', error_description: 'secret' }, { status: 400 }),
     })
-    await expect(rejected.refresh('refresh')).rejects.toThrow('Reconnect Tinfoil')
+    await expect(rejected.refresh('refresh')).rejects.toBeInstanceOf(TinfoilReauthorizationError)
   })
 })
 
-describe('OpenRouter web connection', () => {
-  it('opens the popup before hashing and exchanges a matching callback without persisting secrets', async () => {
-    const harness = createHarness(false, {
-      generateChallenge: async () => {
-        expect(harness.openPopup).toHaveBeenCalledTimes(1)
-        return 'hashed-challenge'
-      },
-    })
-    const beforeStorage = { ...localStorage }
-    const promise = harness.auth.startConnection()
-    expect(harness.openPopup).toHaveBeenCalledTimes(1)
+describe('provider loopback callback ownership', () => {
+  it.each(['openrouter', 'tinfoil'] as const)(
+    'keeps the %s identity lifetime across callback and exchange',
+    async (provider) => {
+      const harness = createHarness()
+      const dependencies = {
+        ...harness.deps,
+        listenForLoopback: async (callback: (url: string) => void) => {
+          harness.state.loopbackHandler = callback
+          return () => invalidateIdentityLifetime()
+        },
+      }
+      const auth =
+        provider === 'openrouter' ? createOpenRouterAuth(dependencies) : createTinfoilAuth('client', dependencies)
+      const pending = auth.startConnection()
+      await settle()
+      harness.state.loopbackHandler?.(successfulLoopback)
+      await expect(pending).rejects.toHaveProperty('name', 'AbortError')
+      expect(harness.requests).toHaveLength(0)
+    },
+  )
+
+  it('retires native authorization and its listener when the device leaves its identity', async () => {
+    const stopLoopback = mock(async (_flowId: string) => {})
+    const harness = createHarness(true, { stopLoopback })
+    const pending = harness.auth.startConnection()
     await settle()
 
-    const url = new URL(harness.state.popupUrl)
-    expect(url.origin + url.pathname).toBe('https://openrouter.ai/auth')
-    expect(Object.fromEntries(url.searchParams)).toEqual({
-      callback_url: 'https://app.example/oauth/openrouter/expected-nonce',
-      code_challenge: 'hashed-challenge',
-      code_challenge_method: 'S256',
-      state: 'expected-nonce',
-      key_label: 'Thunderbolt',
-    })
-    expect(url.toString()).not.toContain('secret-verifier')
+    invalidateIdentityLifetime()
 
-    harness.sendChannelMessage({ ...successfulMessage, type: 'openrouter-callback' })
+    await expect(pending).rejects.toHaveProperty('name', 'AbortError')
+    expect(stopLoopback).toHaveBeenCalledWith('expected-nonce')
+    expect(harness.removeLoopbackListener).toHaveBeenCalledTimes(1)
+    expect(harness.requests).toHaveLength(0)
+  })
+
+  it('keeps the code and client registration from the same first valid callback', async () => {
+    const harness = createHarness()
+    const auth = createProviderAuthorization({ authorizationEndpoint: 'https://auth.example/authorize' }, harness.deps)
+    const pending = auth.startConnection()
+    await settle()
+    harness.state.loopbackHandler?.(`${successfulLoopback}&client_id=first-client`)
+    harness.state.loopbackHandler?.(
+      'http://localhost:17421/?code=second-code&state=expected-nonce&client_id=second-client',
+    )
+    expect(await pending).toEqual({
+      code: 'authorization-code',
+      clientId: 'first-client',
+      verifier: 'secret-verifier',
+      redirectUri: 'http://localhost:17421/',
+    })
+  })
+})
+
+describe('OpenRouter native connection', () => {
+  it('keeps browser authorization in the separate redirect flow', async () => {
+    const startLoopback = mock(async () => 17421)
+    const harness = createHarness(false, { startLoopback })
+    await expect(harness.auth.startConnection()).rejects.toThrow('browser redirect flow')
+    expect(startLoopback).not.toHaveBeenCalled()
+    expect(harness.state.openedUrl).toBe('')
+  })
+
+  it('cancels during PKCE preparation without starting a listener', async () => {
+    const controller = new AbortController()
+    const startLoopback = mock(async () => 17421)
+    const harness = createHarness(true, { generateChallenge: () => new Promise(() => {}), startLoopback })
+    const promise = harness.auth.startConnection({ signal: controller.signal })
+    controller.abort('private reason')
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError', message: 'OpenRouter connection was cancelled.' })
+    expect(startLoopback).not.toHaveBeenCalled()
+    expect(harness.state.openedUrl).toBe('')
+  })
+
+  it('rejects concurrent authorization and allows retry after cancellation', async () => {
+    const controller = new AbortController()
+    const harness = createHarness()
+    const first = harness.auth.startConnection({ signal: controller.signal })
+    await expect(harness.auth.startConnection()).rejects.toThrow('already in progress')
+    await settle()
+    controller.abort()
+    await expect(first).rejects.toHaveProperty('name', 'AbortError')
+    expect(harness.removeLoopbackListener).toHaveBeenCalledTimes(1)
+    const second = harness.auth.startConnection()
+    await settle()
+    harness.state.loopbackHandler?.(successfulLoopback)
+    expect(await second).toBe('connected-api-key')
+    expect(harness.removeLoopbackListener).toHaveBeenCalledTimes(2)
+  })
+
+  it('opens a loopback authorization and ignores callbacks for other origins or ports', async () => {
+    const harness = createHarness(true)
+    const promise = harness.auth.startConnection()
+    await settle()
+    const url = new URL(harness.state.openedUrl)
+    expect(url.searchParams.get('callback_url')).toBe('http://localhost:17421/')
+    expect(url.searchParams.get('state')).toBe('expected-nonce')
+    expect(url.searchParams.get('code_challenge')).toBe('hashed-challenge')
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+    expect(url.toString()).not.toContain('secret-verifier')
+    harness.state.loopbackHandler?.('http://localhost:17422/?code=unrelated&state=expected-nonce')
+    harness.state.loopbackHandler?.('https://localhost:17421/?code=unrelated&state=expected-nonce')
+    harness.state.loopbackHandler?.('invalid-url')
+    expect(harness.requests).toHaveLength(0)
+    harness.state.loopbackHandler?.(successfulLoopback)
     expect(await promise).toBe('connected-api-key')
-    expect(harness.requests).toHaveLength(1)
+    expect(harness.removeLoopbackListener).toHaveBeenCalledTimes(1)
     const request = harness.requests[0]
     expect(request.url).toBe('https://openrouter.ai/api/v1/auth/keys')
     expect(request.method).toBe('POST')
@@ -205,173 +228,15 @@ describe('OpenRouter web connection', () => {
       code_verifier: 'secret-verifier',
       code_challenge_method: 'S256',
     })
-    expect(harness.removeMessageListener).toHaveBeenCalledTimes(1)
-    expect(harness.state.channelName).toBe('thunderbolt-openrouter-expected-nonce')
-    expect(harness.closeChannel).toHaveBeenCalledTimes(1)
-    expect(harness.popup.closed).toBe(true)
-    expect({ ...localStorage }).toEqual(beforeStorage)
-  })
-
-  it('ignores unrelated windows, origins, message types and malformed data', async () => {
-    const harness = createHarness()
-    const promise = harness.auth.startConnection()
-    await settle()
-    harness.sendMessage(successfulMessage, { origin: 'https://untrusted.example' })
-    harness.sendMessage(successfulMessage, { source: {} as Window })
-    harness.sendMessage({ ...successfulMessage, type: 'other-callback' })
-    harness.sendMessage(null)
-    expect(harness.requests).toHaveLength(0)
-    harness.sendMessage(successfulMessage)
-    expect(await promise).toBe('connected-api-key')
-  })
-
-  it.each([
-    { code: 'authorization-code', state: 'wrong' },
-    { code: 'authorization-code' },
-    { code: ' ', state: 'expected-nonce' },
-    { code: 123, state: 'expected-nonce' },
-  ])('rejects invalid owned callbacks without exchanging codes: %j', async (data) => {
-    const harness = createHarness()
-    const promise = harness.auth.startConnection()
-    await settle()
-    harness.sendMessage({ type: 'oauth-callback', ...data })
-    await expect(promise).rejects.toThrow('invalid authorization response')
-    expect(harness.requests).toHaveLength(0)
-    expect(harness.removeMessageListener).toHaveBeenCalledTimes(1)
-    expect(harness.popup.closed).toBe(true)
-  })
-
-  it('accepts a denied callback without state only from the owned popup and sanitizes its error', async () => {
-    const harness = createHarness()
-    const promise = harness.auth.startConnection()
-    await settle()
-    harness.sendMessage({ type: 'oauth-callback', error: 'secret-provider-response' })
-    await expect(promise).rejects.toThrow('connection was cancelled')
-    expect(harness.requests).toHaveLength(0)
-    expect(harness.removeMessageListener).toHaveBeenCalledTimes(1)
-  })
-
-  it('reports a blocked popup without starting authorization', async () => {
-    const harness = createHarness(false, { openPopup: () => null })
-    await expect(harness.auth.startConnection()).rejects.toThrow('Allow popups')
-    expect(harness.state.messageHandler).toBeNull()
-    expect(harness.requests).toHaveLength(0)
-  })
-
-  it('accepts a channel callback after COOP makes the live popup appear closed', async () => {
-    const harness = createHarness()
-    const result = harness.auth.startConnection()
-    await settle()
-    harness.state.popupClosed = true
-    await getClock().tickAsync(250)
-    expect(harness.removeMessageListener).not.toHaveBeenCalled()
-    harness.sendChannelMessage({ ...successfulMessage, type: 'openrouter-callback' })
-    expect(await result).toBe('connected-api-key')
-    expect(harness.removeMessageListener).toHaveBeenCalledTimes(1)
-    expect(harness.closeChannel).toHaveBeenCalledTimes(1)
-    expect(harness.requests).toHaveLength(1)
-  })
-
-  it('cancels on unmount and permits a subsequent connection', async () => {
-    const controller = new AbortController()
-    const harness = createHarness()
-    const promise = harness.auth.startConnection({ signal: controller.signal })
-    await settle()
-    controller.abort('must-not-appear-in-error')
-    await expect(promise).rejects.toMatchObject({ name: 'AbortError' })
-    expect(harness.removeMessageListener).toHaveBeenCalledTimes(1)
-    expect(harness.closeChannel).toHaveBeenCalledTimes(1)
-    expect(harness.popup.closed).toBe(true)
-
-    harness.state.popupClosed = false
-    const second = harness.auth.startConnection()
-    await settle()
-    harness.sendMessage(successfulMessage)
-    expect(await second).toBe('connected-api-key')
-  })
-
-  it('rejects a concurrent flow and times out the original without leaking listeners', async () => {
-    const harness = createHarness()
-    const first = harness.auth.startConnection().catch((error: unknown) => error)
-    await expect(harness.auth.startConnection()).rejects.toThrow('already in progress')
-    await getClock().tickAsync(1000)
-    expect(((await first) as Error).message).toContain('timed out')
-    expect(harness.openPopup).toHaveBeenCalledTimes(1)
-    expect(harness.removeMessageListener).toHaveBeenCalledTimes(1)
-    expect(harness.closeChannel).toHaveBeenCalledTimes(1)
-    expect(harness.popup.closed).toBe(true)
-  })
-
-  it('does not open a popup for an already cancelled operation', async () => {
-    const controller = new AbortController()
-    controller.abort()
-    const harness = createHarness()
-    await expect(harness.auth.startConnection({ signal: controller.signal })).rejects.toMatchObject({
-      name: 'AbortError',
-    })
-    expect(harness.openPopup).not.toHaveBeenCalled()
-  })
-
-  it('closes the blank popup when cancelled while preparing PKCE', async () => {
-    const controller = new AbortController()
-    const harness = createHarness(false, { generateChallenge: () => new Promise(() => {}) })
-    const promise = harness.auth.startConnection({ signal: controller.signal })
-    expect(harness.openPopup).toHaveBeenCalledTimes(1)
-    controller.abort()
-    await expect(promise).rejects.toMatchObject({ name: 'AbortError' })
-    expect(harness.popup.closed).toBe(true)
-    expect(harness.state.messageHandler).toBeNull()
-  })
-
-  it.each([
-    { type: 'openrouter-callback', code: 'authorization-code', state: 'wrong' },
-    { type: 'openrouter-callback', state: 'expected-nonce', error: 'invalid_response' },
-  ])('rejects invalid channel responses without exchanging codes: %j', async (data) => {
-    const harness = createHarness()
-    const promise = harness.auth.startConnection()
-    await settle()
-    harness.sendChannelMessage(data)
-    await expect(promise).rejects.toThrow('invalid authorization response')
-    expect(harness.requests).toHaveLength(0)
-    expect(harness.closeChannel).toHaveBeenCalledTimes(1)
-  })
-
-  it('ignores unrelated channel messages and handles a targeted denial', async () => {
-    const harness = createHarness()
-    const promise = harness.auth.startConnection()
-    await settle()
-    harness.sendChannelMessage(null)
-    harness.sendChannelMessage({ type: 'other' })
-    expect(harness.closeChannel).not.toHaveBeenCalled()
-    harness.sendChannelMessage({ type: 'openrouter-callback', state: 'expected-nonce', error: 'cancelled' })
-    await expect(promise).rejects.toThrow('connection was cancelled')
-    expect(harness.requests).toHaveLength(0)
-    expect(harness.closeChannel).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('OpenRouter native connection', () => {
-  it('opens a loopback authorization and ignores callbacks for other origins or ports', async () => {
-    const harness = createHarness(true)
-    const promise = harness.auth.startConnection()
-    await settle()
-    const url = new URL(harness.state.openedUrl)
-    expect(url.searchParams.get('callback_url')).toBe('http://localhost:17421/')
-    expect(url.searchParams.get('state')).toBe('expected-nonce')
-    expect(harness.openPopup).not.toHaveBeenCalled()
-    harness.state.loopbackHandler?.('http://localhost:17422/?code=unrelated&state=expected-nonce')
-    harness.state.loopbackHandler?.('https://localhost:17421/?code=unrelated&state=expected-nonce')
-    harness.state.loopbackHandler?.('invalid-url')
-    expect(harness.requests).toHaveLength(0)
-    harness.state.loopbackHandler?.(successfulLoopback)
-    expect(await promise).toBe('connected-api-key')
-    expect(harness.removeLoopbackListener).toHaveBeenCalledTimes(1)
   })
 
   it.each([
     'http://localhost:17421/?code=authorization-code&state=wrong',
     'http://localhost:17421/?state=expected-nonce',
     'http://localhost:17421/other?code=authorization-code&state=expected-nonce',
+    'http://localhost:17421/other?error=access_denied',
+    'http://localhost:17421/?code=authorization-code&code=other&state=expected-nonce',
+    'http://localhost:17421/?code=authorization-code&state=expected-nonce&state=other',
   ])('rejects invalid local callbacks: %s', async (callback) => {
     const harness = createHarness(true)
     const promise = harness.auth.startConnection()
@@ -449,7 +314,6 @@ describe('OpenRouter native connection', () => {
     const harness = createHarness(true, { isMobile: () => true })
     await expect(harness.auth.startConnection()).rejects.toThrow('authorization code option')
     expect(harness.state.loopbackHandler).toBeNull()
-    expect(harness.openPopup).not.toHaveBeenCalled()
   })
 
   it('cleans up a native listener when authorization times out', async () => {
@@ -473,7 +337,6 @@ describe('OpenRouter manual authorization and exchange', () => {
       key_label: 'Thunderbolt',
     })
     expect(result.authorizationUrl).not.toContain('secret-verifier')
-    expect(harness.openPopup).not.toHaveBeenCalled()
     expect(harness.requests).toHaveLength(0)
   })
 
@@ -578,11 +441,11 @@ it.each(['openrouter', 'tinfoil'] as const)(
   async (provider) => {
     const transport = stalledTokenTransport()
     const controller = new AbortController()
-    const harness = createHarness(false, { fetch: transport.fetch })
+    const harness = createHarness(true, { fetch: transport.fetch })
     const auth = provider === 'openrouter' ? harness.auth : createTinfoilAuth('client', harness.deps)
     const result = auth.startConnection({ signal: controller.signal }).catch((error: unknown) => error)
     await settle()
-    harness.sendMessage(successfulMessage)
+    harness.state.loopbackHandler?.(successfulLoopback)
     await settle()
     controller.abort()
     expect(await result).toHaveProperty('name', 'AbortError')

@@ -17,7 +17,10 @@ const verified: AttestationState = {
     verifiedAt: Date.now(),
     endpoint: 'router.tinfoil.sh',
     checks: ['hardware', 'code', 'measurement', 'channel'],
-    details: [{ label: 'release', value: 'release-digest' }],
+    details: [
+      { label: 'release', value: 'release-digest' },
+      { label: 'measurement', value: 'sev-snp\nlaunch: abc123' },
+    ],
   },
 }
 
@@ -37,6 +40,8 @@ describe('attestation control', () => {
     const details = screen.getByText('Connection details').closest('details')
     expect(details).not.toHaveAttribute('open')
     expect(screen.getByText('release-digest')).toBeInTheDocument()
+    expect(screen.getByText('Enclave measurement')).toBeInTheDocument()
+    expect(screen.getByText(/sev-snp/)).toHaveTextContent('sev-snp launch: abc123')
     expect(screen.queryByRole('button', { name: 'Verify connection' })).not.toBeInTheDocument()
   })
 

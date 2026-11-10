@@ -2,11 +2,49 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import * as google from '@/integrations/google/auth'
+import * as microsoft from '@/integrations/microsoft/auth'
+import { createMockHttpClient } from '@/test-utils/http-client'
+import { clearIdentityScopedMemory } from './identity-memory'
+import { getOAuthState } from './oauth-state'
+import { redirectOAuthFlow } from './auth'
 import { getClock } from '@/testing-library'
 import { waitForOAuthCallback } from './oauth-callback'
 
 const origin = 'http://localhost:1420'
+
+it.each(['google', 'microsoft'] as const)(
+  'does not restore %s PKCE or navigate after identity teardown interrupts authorization preparation',
+  async (provider) => {
+    const requested = Promise.withResolvers<void>()
+    const authorization = Promise.withResolvers<string>()
+    const build = spyOn(provider === 'google' ? google : microsoft, 'buildAuthUrl').mockImplementation(() => {
+      requested.resolve()
+      return authorization.promise
+    })
+    const assign = spyOn(window.location, 'assign').mockImplementation(() => {})
+    try {
+      const client = createMockHttpClient()
+      const pending = redirectOAuthFlow(client, provider).catch((error: unknown) => error)
+      await requested.promise
+      clearIdentityScopedMemory()
+      authorization.resolve('https://provider.example/authorize')
+      expect(await pending).toHaveProperty('name', 'AbortError')
+      expect(getOAuthState().state).toBeNull()
+      expect(assign).not.toHaveBeenCalled()
+
+      build.mockResolvedValue('https://provider.example/new-identity')
+      await expect(redirectOAuthFlow(client, provider)).rejects.toThrow('Redirecting for OAuth')
+      expect(getOAuthState()).toMatchObject({ provider, verifier: expect.any(String), state: expect.any(String) })
+      expect(assign).toHaveBeenCalledWith('https://provider.example/new-identity')
+    } finally {
+      build.mockRestore()
+      assign.mockRestore()
+      clearIdentityScopedMemory()
+    }
+  },
+)
 
 describe('waitForOAuthCallback', () => {
   let target: EventTarget

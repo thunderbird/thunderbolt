@@ -13,12 +13,14 @@ import {
 } from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { RemoteCallback } from 'drizzle-orm/sqlite-proxy'
 import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secrets'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { mcpServersTable } from '@/db/tables'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { ensureValidMcpOAuthToken, McpOAuthNeedsReauthError } from './ensure-valid-token'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 
 type RefreshFn = typeof refreshAuthorization
 
@@ -26,6 +28,7 @@ const serverId = 'server-1'
 const serverUrl = 'https://mcp.example.com/sse'
 const issuer = 'https://auth.example.com'
 const tokenEndpoint = 'https://auth.example.com/token'
+const originalLocks = navigator.locks
 
 const neverCalledFetch: FetchLike = () => {
   throw new Error('fetch should not be called')
@@ -41,11 +44,46 @@ const seedServer = async () => {
   })
 }
 
+/** Seed a refreshable session so lifecycle regressions exercise real SQLite writes. */
+const seedRefreshSession = async () => {
+  await seedServer()
+  const credentials = {
+    type: 'oauth' as const,
+    access_token: 'stale',
+    refresh_token: 'old-refresh',
+    expires_at: 1,
+    issuer,
+    tokenEndpoint,
+    clientId: 'old-client',
+  }
+  await setMcpServerCredentials(getDb(), serverId, credentials)
+  return credentials
+}
+
 beforeAll(async () => {
+  let tail = Promise.resolve()
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: async <T>(_name: string, options: LockOptions, work: () => Promise<T>) => {
+        const predecessor = tail
+        const released = Promise.withResolvers<void>()
+        tail = released.promise
+        await predecessor
+        try {
+          options.signal?.throwIfAborted()
+          return await work()
+        } finally {
+          released.resolve()
+        }
+      },
+    },
+  })
   await setupTestDatabase()
 })
 
 afterAll(async () => {
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks })
   await teardownTestDatabase()
 })
 
@@ -374,5 +412,131 @@ describe('ensureValidMcpOAuthToken', () => {
 
   it('throws when the server has no oauth credentials at all', async () => {
     await expect(ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch)).rejects.toThrow(/no OAuth credentials/)
+  })
+
+  it('rejects a retained-data refresh after identity teardown without changing its credential', async () => {
+    const before = await seedRefreshSession()
+    const refresh: RefreshFn = async () => {
+      invalidateIdentityLifetime()
+      return { access_token: 'retired-token', token_type: 'Bearer', refresh_token: 'retired-refresh' }
+    }
+    await expect(ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+    expect(await getMcpServerCredentials(getDb(), serverId)).toEqual(before)
+  })
+
+  it('preserves replacement credentials when an older refresh completes within the same identity', async () => {
+    await seedRefreshSession()
+    const replacement = { type: 'oauth' as const, access_token: 'replacement', clientId: 'new-client' }
+    const refresh: RefreshFn = async () => {
+      await setMcpServerCredentials(getDb(), serverId, replacement)
+      return { access_token: 'old-client-token', token_type: 'Bearer' }
+    }
+    await expect(ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)).rejects.toThrow(
+      'changed during token refresh',
+    )
+    expect(await getMcpServerCredentials(getDb(), serverId)).toEqual(replacement)
+  })
+
+  it('rolls back a refresh when identity teardown interrupts its SQL update', async () => {
+    const before = await seedRefreshSession()
+    const session = (getDb() as unknown as { session: { client: RemoteCallback } }).session
+    const execute = session.client
+    const write = spyOn(session, 'client').mockImplementation(async (sql, params, method) => {
+      const result = await execute(sql, params, method)
+      if (sql.startsWith('update "mcp_secrets"')) {
+        invalidateIdentityLifetime()
+      }
+      return result
+    })
+    try {
+      await expect(
+        ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, async () => ({
+          access_token: 'late-token',
+          token_type: 'Bearer',
+        })),
+      ).rejects.toMatchObject({ name: 'AbortError' })
+      expect(await getMcpServerCredentials(getDb(), serverId)).toEqual(before)
+    } finally {
+      write.mockRestore()
+    }
+  })
+
+  it('keeps a new identity’s refresh independent and does not evict it when the retired refresh settles', async () => {
+    const previous = await seedRefreshSession()
+    const startedOld = Promise.withResolvers<void>()
+    const oldTokens = Promise.withResolvers<OAuthTokens>()
+    const old = ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, async () => {
+      startedOld.resolve()
+      return oldTokens.promise
+    })
+    await startedOld.promise
+    invalidateIdentityLifetime()
+    await setMcpServerCredentials(getDb(), serverId, {
+      ...previous,
+      clientId: 'new-client',
+      refresh_token: 'new-refresh',
+    })
+    const startedNext = Promise.withResolvers<void>()
+    const nextTokens = Promise.withResolvers<OAuthTokens>()
+    const next = ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, async () => {
+      startedNext.resolve()
+      return nextTokens.promise
+    })
+    expect(next).not.toBe(old)
+    oldTokens.resolve({ access_token: 'retired-token', token_type: 'Bearer' })
+    await expect(old).rejects.toMatchObject({ name: 'AbortError' })
+    await startedNext.promise
+    expect(ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch)).toBe(next)
+    nextTokens.resolve({ access_token: 'next-token', token_type: 'Bearer', expires_in: 3600 })
+    expect(await next).toBe('next-token')
+    expect(await getMcpServerCredentials(getDb(), serverId)).toMatchObject({
+      access_token: 'next-token',
+      clientId: 'new-client',
+    })
+  })
+
+  it('serializes refreshes from independent callers and re-reads rotated credentials after acquiring the lock', async () => {
+    await seedRefreshSession()
+    const started = Promise.withResolvers<void>()
+    const tokens = Promise.withResolvers<OAuthTokens>()
+    const refresh = mock(async () => {
+      started.resolve()
+      return tokens.promise
+    })
+    const first = ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)
+    await started.promise
+    // A distinct handle bypasses the per-window promise cache, like another window.
+    const peer = new Proxy(getDb(), {})
+    const second = ensureValidMcpOAuthToken(peer, serverId, neverCalledFetch, refresh)
+    expect(second).not.toBe(first)
+    tokens.resolve({
+      access_token: 'rotated-once',
+      token_type: 'Bearer',
+      refresh_token: 'new-refresh',
+      expires_in: 3600,
+    })
+    expect(await first).toBe('rotated-once')
+    expect(await second).toBe('rotated-once')
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes the captured identity signal to refresh HTTP and rejects a response returned after cancellation', async () => {
+    const before = await seedRefreshSession()
+    const send: FetchLike = async (_input, init) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal)
+      invalidateIdentityLifetime()
+      expect(init?.signal?.aborted).toBe(true)
+      return Response.json({ access_token: 'retired-token', token_type: 'Bearer' })
+    }
+    const refresh: RefreshFn = async (_issuer, options) => {
+      await options.fetchFn!('https://auth.example/token', { method: 'POST' })
+      return { access_token: 'retired-token', token_type: 'Bearer' }
+    }
+    await expect(ensureValidMcpOAuthToken(getDb(), serverId, send, refresh)).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+    expect(await getMcpServerCredentials(getDb(), serverId)).toEqual(before)
   })
 })

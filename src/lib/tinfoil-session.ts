@@ -7,11 +7,15 @@ import { getDb } from '@/db/database'
 import { getAllModels, updateModelInTransaction } from '@/dal/models'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { tinfoilAuth, TinfoilReauthorizationError } from './tinfoil-auth'
+import { providerConnectionsTable } from '@/db/tables'
+import { eq } from 'drizzle-orm'
+import { writeProviderCredentials } from '@/providers/credentials'
+import { getIdentitySignal } from './identity-lifetime'
 
 const lockName = 'thunderbolt-tinfoil-session'
 /** A single origin-wide lock protects rotating Tinfoil credentials. */
 export const withTinfoilSessionLock = <T>(operation: () => Promise<T>): Promise<T> =>
-  navigator.locks.request(lockName, operation)
+  navigator.locks.request(lockName, () => operation())
 
 const defaultDependencies = {
   db: getDb,
@@ -41,33 +45,57 @@ export const setTinfoilSessionEnabledInTransaction = async (
 
 /** Serialize session changes across windows: Tinfoil revokes replayed refresh-token families. */
 export const createTinfoilSession = (deps = defaultDependencies) => ({
-  getAccessToken: () =>
-    deps.lock(async () => {
+  getAccessToken: () => {
+    const signal = getIdentitySignal()
+    return deps.lock(async () => {
+      signal.throwIfAborted()
       const db = deps.db()
       // Re-read after acquiring the lock; another window may have rotated or disconnected.
       const row = await getIntegrationCredentials(db, 'tinfoil')
+      signal.throwIfAborted()
       const current = row?.credentials
       if (!row?.enabled || !current?.access_token || current.reauth_required) {
         throw new TinfoilReauthorizationError()
       }
+      const saveRefresh = (credentials: typeof current) =>
+        db.transaction(async (tx) => {
+          signal.throwIfAborted()
+          const latest = await getIntegrationCredentials(tx, 'tinfoil')
+          signal.throwIfAborted()
+          if (!latest?.enabled || JSON.stringify(latest.credentials) !== JSON.stringify(current)) {
+            throw new Error('Tinfoil connection changed during token refresh')
+          }
+          await saveIntegrationCredentials(tx, 'tinfoil', credentials, true, true)
+          signal.throwIfAborted()
+        })
       if (current.expires_at && current.expires_at > deps.now() + 60_000) {
         return current.access_token
       }
       if (!current.refresh_token) {
-        await saveIntegrationCredentials(db, 'tinfoil', { ...current, reauth_required: true }, true)
+        await saveRefresh({ ...current, reauth_required: true })
         throw new TinfoilReauthorizationError()
       }
       try {
         const tokens = await deps.auth.refresh(current.refresh_token)
-        await saveIntegrationCredentials(db, 'tinfoil', { ...tokens, sessionRevision: current.sessionRevision }, true)
+        await saveRefresh({ ...tokens, sessionRevision: current.sessionRevision })
+        const latest = await getIntegrationCredentials(db, 'tinfoil')
+        signal.throwIfAborted()
+        if (
+          !latest?.enabled ||
+          latest.credentials.sessionRevision !== current.sessionRevision ||
+          latest.credentials.access_token !== tokens.access_token
+        ) {
+          throw new Error('Tinfoil connection changed during token refresh')
+        }
         return tokens.access_token
       } catch (error) {
         if (error instanceof TinfoilReauthorizationError) {
-          await saveIntegrationCredentials(db, 'tinfoil', { ...current, reauth_required: true }, true)
+          await saveRefresh({ ...current, reauth_required: true })
         }
         throw error
       }
-    }),
+    })
+  },
   setEnabled: (enabled: boolean) =>
     deps.lock(() => deps.db().transaction((tx) => setTinfoilSessionEnabledInTransaction(tx, enabled))),
   disconnect: () =>
@@ -79,6 +107,15 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
         await deps.auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
       }
       await db.transaction(async (tx) => {
+        const connection = await tx
+          .select()
+          .from(providerConnectionsTable)
+          .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+          .get()
+        if (connection) {
+          await writeProviderCredentials(tx, connection.id, { sessionRevision: crypto.randomUUID() }, null)
+          return
+        }
         for (const model of await getAllModels(tx)) {
           if (
             model.provider === 'tinfoil' &&

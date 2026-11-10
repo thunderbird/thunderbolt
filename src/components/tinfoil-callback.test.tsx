@@ -33,6 +33,7 @@ it.each(['onboarding', 'connections'] as const)(
       { provider: 'tinfoil', revision: 'initial' },
       new AbortController().signal,
       {
+        currentPath: () => '/settings/connections',
         verifier: () => nonce,
         challenge: async () => 'challenge',
         openUrl: async () => {},

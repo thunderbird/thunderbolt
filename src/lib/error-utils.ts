@@ -131,7 +131,7 @@ export const createChatErrorResponse = (
 
 /**
  * Classify a raw pipeline error into a stable user-facing chat error kind.
- * Classification uses only normalized error name, HTTP status, and message.
+ * Classification uses normalized error names, SDK categories, HTTP status, and message.
  */
 export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => {
   const { name, status: structuredStatus, message } = getErrorClassificationFields(error)
@@ -142,7 +142,11 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
   if (name === 'TinfoilAttestationTimeoutError') {
     return 'timeout'
   }
-  if (name === 'TinfoilAttestationError') {
+  if (
+    name === 'TinfoilAttestationError' ||
+    name === 'AttestationError' ||
+    (typeof error === 'object' && error !== null && 'category' in error && error.category === 'attestation')
+  ) {
     return 'attestation'
   }
   if (status === 429) {
@@ -160,9 +164,10 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
     return 'provider'
   }
   if (
-    name === 'TypeError' &&
-    normalizedMessage &&
-    networkErrorMarkers.some((marker) => normalizedMessage.includes(marker))
+    (typeof error === 'object' && error !== null && 'category' in error && error.category === 'network') ||
+    (name === 'TypeError' &&
+      normalizedMessage &&
+      networkErrorMarkers.some((marker) => normalizedMessage.includes(marker)))
   ) {
     return 'network'
   }

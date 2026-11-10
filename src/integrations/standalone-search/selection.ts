@@ -4,28 +4,15 @@
 
 import type { SearchSelection } from '@/stores/search-provider-store'
 
-type Availability = { custom: boolean; tinfoil: boolean; tinfoilConfigured?: boolean; cloud: boolean }
+type Availability = { connection: boolean; cloud: boolean }
 
-/** Resolves the same exclusive provider for Settings and tool execution; explicit choices never silently fall back. */
+/** Explicit connection intent never falls back to a different account or server. */
 export const resolveSearchSelection = (selection: SearchSelection, available: Availability) => {
   if (selection === 'none') {
     return null
   }
-  if (selection !== 'auto') {
-    return available[selection] ? selection : null
+  if (selection === 'connection') {
+    return available.connection ? 'connection' : null
   }
-  if (available.custom) {
-    return 'custom'
-  }
-  if (available.tinfoil) {
-    return 'tinfoil'
-  }
-  // A disconnected private provider is not permission to send the next query to a cloud server.
-  if (available.tinfoilConfigured) {
-    return null
-  }
-  if (available.cloud) {
-    return 'cloud'
-  }
-  return null
+  return (selection === 'auto' || selection === 'cloud') && available.cloud ? 'cloud' : null
 }

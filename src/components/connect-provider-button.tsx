@@ -2,14 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useSignInModal } from '@/contexts'
+import type { ReturnContext } from '@/lib/oauth-state'
 import { useLingui } from '@lingui/react/macro'
 import { ProviderConnectionButton } from './provider-connection-button'
-import { ServerConnectionModal } from '@/components/server-connection'
-import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
-import { useState } from 'react'
 
 type ConnectProviderButtonProps = {
   provider: OAuthProvider
@@ -19,7 +16,7 @@ type ConnectProviderButtonProps = {
   onError?: (error: Error) => void
   onDisconnect?: () => void
   setPreferredName?: boolean
-  returnContext?: 'onboarding' | 'integrations'
+  returnContext?: ReturnContext
   className?: string
   variant?: 'default' | 'ghost' | 'outline' | 'secondary' | 'destructive' | 'link'
   size?: 'default' | 'sm' | 'lg' | 'icon'
@@ -55,8 +52,6 @@ export const ConnectProviderButton = ({
   useOAuthConnectHook,
 }: ConnectProviderButtonProps) => {
   const { t } = useLingui()
-  const [serverConnectionOpen, setServerConnectionOpen] = useState(false)
-  const authenticated = useServerAuthentication()
   const connectingLabel = connectingLabelProp ?? t`Connecting…`
   const connectedLabel = connectedLabelProp ?? t`Connected!`
 
@@ -79,10 +74,6 @@ export const ConnectProviderButton = ({
     if (isConnected || isConnecting) {
       return
     }
-    if (!authenticated) {
-      setServerConnectionOpen(true)
-      return
-    }
 
     await connect(provider)
   }
@@ -91,35 +82,17 @@ export const ConnectProviderButton = ({
   const defaultConnectLabel = connectLabel || t`Connect ${providerName}`
 
   return (
-    <>
-      <ProviderConnectionButton
-        isConnected={isConnected}
-        isProcessing={isConnecting}
-        onConnect={handleClick}
-        onDisconnect={allowDisconnect ? onDisconnect : undefined}
-        connectLabel={defaultConnectLabel}
-        connectingLabel={connectingLabel}
-        connectedLabel={connectedLabel}
-        variant={variant}
-        size={size}
-        className={className}
-      />
-      {serverConnectionOpen && <ProviderSignInPrompt onClose={() => setServerConnectionOpen(false)} />}
-    </>
-  )
-}
-
-/** Mount the account sign-in bridge only when a provider connection requires it. */
-const ProviderSignInPrompt = ({ onClose }: { onClose: () => void }) => {
-  const { openSignInModal } = useSignInModal()
-  return (
-    <ServerConnectionModal
-      open
-      onOpenChange={onClose}
-      onConnected={() => {
-        onClose()
-        openSignInModal()
-      }}
+    <ProviderConnectionButton
+      isConnected={isConnected}
+      isProcessing={isConnecting}
+      onConnect={handleClick}
+      onDisconnect={allowDisconnect ? onDisconnect : undefined}
+      connectLabel={defaultConnectLabel}
+      connectingLabel={connectingLabel}
+      connectedLabel={connectedLabel}
+      variant={variant}
+      size={size}
+      className={className}
     />
   )
 }

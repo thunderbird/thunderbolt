@@ -7,6 +7,7 @@ import { expect, type Page } from '@playwright/test'
 import { defaultModelOpus55 } from '../../shared/defaults/models'
 import { fakeProviderReply } from '../../e2e/fake-provider'
 import { loginViaEmailCode, openSidebarOnMobile } from '../../e2e/helpers'
+import { modelOption } from './driver'
 
 export type MeasureScenario = (name: string, action: () => Promise<void>, settleMs?: number) => Promise<void>
 
@@ -112,7 +113,7 @@ export const prepare = async (page: Page, options: { uniqueIds?: boolean } = {})
   await page.goto('/chats/new')
   await expect(page.locator('textarea')).toBeVisible()
   await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await modelOption(page, defaultModelOpus55.name).click()
   await page.keyboard.press('Escape')
   return { email, longChatId: seededChatId, messageCount, sidebarChatCount, additionalModels: 12 }
 }
@@ -170,8 +171,8 @@ export const runScenarios = async (page: Page, measure: MeasureScenario) => {
   })
   await measure('model-menu-search', async () => {
     await modelSearch.pressSequentially('Performance model 12', { delay: 20 })
-    await expect(page.getByRole('button', { name: 'Performance model 12', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Performance model 1', exact: true })).toHaveCount(0)
+    await expect(modelOption(page, 'Performance model 12')).toBeVisible()
+    await expect(modelOption(page, 'Performance model 1')).toHaveCount(0)
   })
   await measure('model-menu-close', async () => {
     await page.keyboard.press('Escape')

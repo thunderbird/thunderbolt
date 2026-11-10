@@ -47,7 +47,7 @@ const baseParams: PromptParams = {
     currency: 'USD',
   },
   integrationStatus: 'READY',
-  hasWebTools: false,
+  availableToolNames: [],
 }
 
 describe('assembleBuiltInModelInput', () => {
@@ -170,15 +170,57 @@ describe('createPrompt', () => {
   })
 
   test('includes web tool rules in the stable prompt when the web tools are available', () => {
-    const result = createPromptParts({ ...baseParams, hasWebTools: true })
+    const result = createPromptParts({ ...baseParams, availableToolNames: ['search', 'fetch_content'] })
 
     expect(result.stablePrompt).toContain('Web lookups use the `search` and `fetch_content` tools')
+    expect(result.stablePrompt).not.toContain('Built-in web search is unavailable')
   })
 
-  test('omits web tool rules from the stable prompt when the web tools are unavailable', () => {
-    const result = createPromptParts({ ...baseParams, hasWebTools: false })
+  test('explains missing web access before search rules and prevents unrelated tool detours', () => {
+    const result = createPromptParts({ ...baseParams, availableToolNames: [] })
 
     expect(result.stablePrompt).not.toContain('Web lookups use the `search` and `fetch_content` tools')
+    expect(result.stablePrompt).toContain('Built-in web search is unavailable for this request.')
+    expect(result.stablePrompt).toContain('Say so clearly and briefly')
+    expect(result.stablePrompt).toContain("do not invent today's news, current facts, sources, or citations")
+    expect(result.stablePrompt).toContain('Do not load search/research skills')
+    expect(result.stablePrompt).toContain('other unrelated tools as substitutes for missing web access')
+    expect(result.stablePrompt).toContain('Skills provide instructions, not additional capabilities')
+    expect(result.stablePrompt).toContain(
+      'Tools and self-fetching widgets remain available for their documented purposes',
+    )
+    expect(result.stablePrompt).toContain('do not offer to check live sources until that capability is available')
+    expect(result.stablePrompt).toContain('take precedence over instructions to search, verify, research')
+    expect(result.stablePrompt.indexOf('Built-in web search is unavailable')).toBeLessThan(
+      result.stablePrompt.indexOf('Apply these rules in order'),
+    )
+  })
+
+  test('does not deny search when a provider supports searching without page fetching', () => {
+    const { stablePrompt } = createPromptParts({ ...baseParams, availableToolNames: ['search'] })
+
+    expect(stablePrompt).toContain('Web lookups use the `search` tool.')
+    expect(stablePrompt).toContain('run at most one search and answer from its snippets')
+    expect(stablePrompt).toContain('Built-in page fetching is unavailable')
+    expect(stablePrompt).not.toContain('Built-in web search is unavailable')
+    expect(stablePrompt).not.toContain('fetch the pages needed for evidence')
+  })
+
+  test('allows an available tool that actually supports the requested live lookup', () => {
+    const { stablePrompt } = createPromptParts({ ...baseParams, availableToolNames: ['news_latest_headlines'] })
+
+    expect(stablePrompt).toContain('Use another currently available tool')
+    expect(stablePrompt).toContain('only if its description explicitly supports public web search')
+    expect(stablePrompt).toContain('or retrieving the current information requested')
+    expect(stablePrompt).toContain('If no available tool supports that lookup')
+    expect(stablePrompt).toContain('a tool with "search" in its name does not by itself provide web access')
+  })
+
+  test('keeps known-URL fetching available without claiming it provides web search', () => {
+    const { stablePrompt } = createPromptParts({ ...baseParams, availableToolNames: ['fetch_content'] })
+
+    expect(stablePrompt).toContain('Built-in web search is unavailable')
+    expect(stablePrompt).toContain('The `fetch_content` tool can still read a known public webpage URL')
   })
 
   test('keeps the reuse gate while allowing research reloads in a new user turn', () => {
@@ -206,7 +248,7 @@ describe('createPrompt', () => {
   })
 
   test('limits quick web lookups to one search and conditional fetching', () => {
-    const result = createPrompt({ ...baseParams, hasWebTools: true })
+    const result = createPrompt({ ...baseParams, availableToolNames: ['search', 'fetch_content'] })
     expect(result).toContain('run at most one search')
     expect(result).toContain('Fetch a page only when the snippets are insufficient')
   })

@@ -11,7 +11,7 @@ import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useEffortSelectorState } from './use-effort-selector-state'
 import { needsApiKey } from '@/settings/models/model-policy'
-import { GradientLock } from '@/components/ui/gradient-lock'
+import { ModelProviderIcon } from '@/settings/models/model-presentation'
 import { AttestationMenuRow, AttestationModal, useChatAttestationState } from '@/components/chat/attestation'
 import { useEffortSelectorMenu } from './use-effort-selector-menu'
 import { EffortControls } from './effort-controls'
@@ -49,12 +49,10 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
       aria-description={accessibleDescription}
       className="flex min-w-0 cursor-pointer items-center gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)] font-medium text-muted-foreground transition-colors hover:bg-accent/50 data-[state=open]:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
     >
-      {modelPicker &&
-        (needsApiKey(selectedModel) ? (
-          <AlertTriangle aria-label={t`API key not configured`} className="size-3.5 shrink-0 text-warning" />
-        ) : selectedModel.isConfidential === 1 ? (
-          <GradientLock className="size-3.5 shrink-0" />
-        ) : null)}
+      {modelPicker && <ModelProviderIcon model={selectedModel} className="size-3.5 shrink-0" />}
+      {modelPicker && needsApiKey(selectedModel) && (
+        <AlertTriangle aria-label={t`API key not configured`} className="size-3.5 shrink-0 text-warning" />
+      )}
       {modelPicker && <span className="max-w-40 truncate">{selectedModel.name}</span>}
       {current >= 0 && <EffortRing value={value} values={choices.map((choice) => choice.value)} kind={kind} />}
       <ChevronDown aria-hidden="true" className="size-3.5 shrink-0" />

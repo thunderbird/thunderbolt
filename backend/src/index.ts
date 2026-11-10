@@ -95,6 +95,12 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
+  // Public token relays always enforce their IP budget, even when optional API limits are disabled.
+  const integrationOAuthRateLimit = createIpTierRateLimit(
+    database,
+    { ...ipRateLimitSettings, enabled: true },
+    'integration-oauth',
+  )
   const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
   const inferenceRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'inference')
   // Sizes both the anonymous sign-in bucket and the captcha challenge bucket: every anonymous
@@ -141,8 +147,8 @@ export const createApp = async (deps?: AppDeps) => {
       // Mount route groups
       .use(createMainRoutes(auth, fetchFn))
       .use(createHealthRoutes({ settings, database, fetchFn, logger: appLogger }))
-      .use(createGoogleAuthRoutes(auth, fetchFn))
-      .use(createMicrosoftAuthRoutes(auth, fetchFn))
+      .use(createGoogleAuthRoutes(auth, fetchFn, integrationOAuthRateLimit))
+      .use(createMicrosoftAuthRoutes(auth, fetchFn, integrationOAuthRateLimit))
       .use(createOidcConfigRoutes())
       .use(createSsoDesktopCallbackRoutes(settings, fetchFn))
       .use(createProToolsRoutes(auth, proRateLimit))

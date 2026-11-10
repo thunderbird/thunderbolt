@@ -9,9 +9,9 @@ import { CreateItemProvider, useCreateItem } from '@/components/create-item/cont
 import { ChatModelSetup } from './chat-model-setup'
 
 const Destination = () => {
-  const { request } = useCreateItem()
   const location = useLocation()
-  return <output>{request?.kind ?? location.pathname}</output>
+  const { request } = useCreateItem()
+  return <output>{JSON.stringify({ pathname: location.pathname, request: request?.kind })}</output>
 }
 
 const renderSetup = () =>
@@ -26,15 +26,20 @@ const renderSetup = () =>
 
 afterEach(cleanup)
 
-it('opens the model aside without navigating away from chat', () => {
+it('shows a title and one action without descriptive text', () => {
   renderSetup()
-  fireEvent.click(screen.getByRole('button', { name: 'Add a model' }))
-  expect(screen.getByRole('status')).toHaveTextContent('model')
-  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.getByRole('heading', { name: 'Connect your AI' })).toBeVisible()
+  expect(screen.getAllByRole('button')).toHaveLength(1)
+  expect(screen.getByRole('button', { name: 'Add connection' })).toBeVisible()
+  expect(screen.getByRole('region')).not.toHaveAttribute('aria-describedby')
+  expect(screen.getByRole('region').querySelector('p')).toBeNull()
 })
 
-it('opens Connections for provider setup', () => {
+it('opens the connection aside without leaving chat', () => {
   renderSetup()
-  fireEvent.click(screen.getByRole('button', { name: 'Connect a provider' }))
-  expect(screen.getByRole('status')).toHaveTextContent('/settings/connections')
+  fireEvent.click(screen.getByRole('button', { name: 'Add connection' }))
+  expect(JSON.parse(screen.getByRole('status').textContent ?? '')).toEqual({
+    pathname: '/chats/new',
+    request: 'connection',
+  })
 })

@@ -173,7 +173,7 @@ describe('effort selector state', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('shows the lock beside the model name and opens connection privacy from above effort', async () => {
+  it('shows the provider beside the model name and opens connection privacy from above effort', async () => {
     await loadReasoningCapabilities(model)
     useChatStore.getState().updateSession('effort-chat', {
       selectedModel: { ...model, name: 'Private model', isConfidential: 1, isSystem: 1, apiKey: null },
@@ -183,7 +183,8 @@ describe('effort selector state', () => {
     })
 
     const trigger = screen.getByRole('button', { name: 'Private model' })
-    expect(trigger.querySelector('linearGradient')).not.toBeNull()
+    expect(trigger.querySelector('img')).not.toBeNull()
+    expect(trigger.querySelector('linearGradient')).toBeNull()
     expect(trigger).toHaveTextContent('Private model')
     await act(async () => {
       fireEvent.click(trigger)
@@ -424,6 +425,9 @@ describe('effort selector state', () => {
         oauthProvider: null,
         providerDefault: null,
         hasLocalCredentialRecord: true,
+        providerConnectionId: null,
+        connectionName: null,
+        connectionReady: true,
       },
     ]
     const loaded = Promise.withResolvers<typeof saved>()

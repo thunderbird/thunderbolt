@@ -6,17 +6,28 @@ import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { http } from '@/lib/http'
 import { stubJsonResponse } from '@/test-utils/http'
 import { defaultModels } from '@shared/defaults/models'
+import { i18n } from '@/i18n'
 import {
   canFetchCatalog,
   catalogRequestKey,
   isFetchableCatalogUrl,
   catalogRowSupportsImages,
   fetchModelsForProvider,
+  describeModelFetchError,
   thunderboltModelCatalog,
   type CatalogRequest,
 } from './model-catalog'
 
 const catalogResponse = () => Response.json({ data: [] })
+
+it('does not expose provider error text or reflected secrets in catalog errors', () => {
+  expect(describeModelFetchError(i18n, new Error('Authorization: Bearer private-key'))).toBe('Failed to load models')
+  expect(
+    describeModelFetchError(i18n, {
+      response: new Response(null, { status: 401, statusText: 'private-key rejected' }),
+    }),
+  ).toBe('Server responded with status 401.')
+})
 
 const stubProxyFetch = () =>
   Object.assign(
@@ -89,10 +100,6 @@ describe('model catalog policy', () => {
 
   describe('fetchModelsForProvider', () => {
     it.each<[CatalogRequest, string]>([
-      [
-        { provider: 'custom', url: 'https://api.otari.ai/api/v1', apiKey: 'sk-test' },
-        'https://api.otari.ai/api/v1/models',
-      ],
       [{ provider: 'openai', apiKey: 'sk-test' }, 'https://api.openai.com/v1/models'],
       [{ provider: 'openrouter', apiKey: 'sk-test' }, 'https://openrouter.ai/api/v1/models/user'],
     ])('routes the %o catalog through the supplied transport', async (request, endpoint) => {
@@ -136,6 +143,25 @@ describe('model catalog policy', () => {
         await fetchModelsForProvider({ provider: 'custom', url: 'http://localhost:1234' }, () => proxyFetch)
 
         expect(new Request(directFetch.mock.calls[0][0]).url).toBe('http://localhost:1234/v1/models')
+        expect(proxyFetch).not.toHaveBeenCalled()
+      } finally {
+        directFetch.mockRestore()
+      }
+    })
+
+    it('keeps Otari catalog credentials direct and blocks redirects, like chat does', async () => {
+      const proxyFetch = stubProxyFetch()
+      const directFetch = spyOn(globalThis, 'fetch').mockResolvedValue(catalogResponse())
+      try {
+        await fetchModelsForProvider(
+          { provider: 'otari', url: 'https://api.otari.ai/api/v1', apiKey: 'delegated-key' },
+          () => proxyFetch,
+        )
+        const request = new Request(...directFetch.mock.calls[0])
+        expect(request.url).toBe('https://api.otari.ai/api/v1/models')
+        expect(request.headers.get('Authorization')).toBe('Bearer delegated-key')
+        expect(request.credentials).toBe('omit')
+        expect(request.redirect).toBe('error')
         expect(proxyFetch).not.toHaveBeenCalled()
       } finally {
         directFetch.mockRestore()

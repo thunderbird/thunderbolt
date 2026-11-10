@@ -491,6 +491,10 @@ Any OTLP collector works. We test with BetterStack.
 | ------------------ | ------- | ------------------------------------------------ |
 | `MONITORING_TOKEN` | none    | Bearer token for the routes under `/v1/health/`. |
 
+Set `MONITORING_TOKEN` to at least 32 characters. An empty value disables deep probes. A shorter nonempty value prevents backend startup with `MONITORING_TOKEN must be at least 32 characters when set`.
+
+Before upgrading a deployment with a shorter token, generate a replacement with `openssl rand -hex 32`. Update the backend and every monitor that sends the bearer token, then restart the backend. This applies even to securely generated shorter tokens. Existing tokens of 32 or more characters continue to work.
+
 ```bash
 curl -H "Authorization: Bearer $MONITORING_TOKEN" https://api.example.com/v1/health/database
 ```

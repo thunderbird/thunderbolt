@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { HttpError } from '@/lib/http'
 import { DeviceApprovalError } from '@/crypto/errors'
 
@@ -33,7 +33,6 @@ export const useApprovalPolling = ({
   onVerificationFailed,
   intervalMs = 3000,
 }: UseApprovalPollingOptions) => {
-  const [isPolling, setIsPolling] = useState(false)
   const isCheckingRef = useRef(false)
   const onApprovedRef = useRef(onApproved)
   onApprovedRef.current = onApproved
@@ -50,12 +49,10 @@ export const useApprovalPolling = ({
   // Refs avoid stale closures without adding callbacks to the dependency array.
   useEffect(() => {
     if (!enabled) {
-      setIsPolling(false)
       return
     }
 
     let cancelled = false
-    setIsPolling(true)
 
     const check = async () => {
       if (isCheckingRef.current) {
@@ -67,7 +64,6 @@ export const useApprovalPolling = ({
         const approved = await checkApprovalRef.current()
         if (approved && !cancelled) {
           clearInterval(intervalId)
-          setIsPolling(false)
           onApprovedRef.current()
         }
       } catch (err) {
@@ -89,18 +85,16 @@ export const useApprovalPolling = ({
           }
           if (body?.code === 'DEVICE_DISCONNECTED') {
             clearInterval(intervalId)
-            setIsPolling(false)
             onRevokedRef.current?.()
             return
           }
           if (err.response.status === 422) {
             clearInterval(intervalId)
-            setIsPolling(false)
             onDeniedRef.current?.()
             return
           }
         }
-        // Silently continue for other errors — manual button is fallback
+        // Other errors are transient: the next tick retries.
       } finally {
         isCheckingRef.current = false
       }
@@ -111,9 +105,6 @@ export const useApprovalPolling = ({
     return () => {
       cancelled = true
       clearInterval(intervalId)
-      setIsPolling(false)
     }
   }, [enabled, intervalMs])
-
-  return { isPolling }
 }

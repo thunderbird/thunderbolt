@@ -7,7 +7,7 @@ import { useDatabase } from '@/contexts'
 import { getAllDevices, getPendingDevices, type Device } from '@/dal'
 import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
-import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
+import { ApproveDeviceDialog } from '@/components/approve-device'
 import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { RemoveBridgeDialog } from '@/components/remove-bridge-dialog'
 import { Button } from '@/components/ui/button'
@@ -518,12 +518,17 @@ export default function DevicesSettingsPage() {
         device={confirmationTarget?.action === 'approve' ? confirmationTarget.device : null}
         open={confirmationTarget?.action === 'approve'}
         onOpenChange={(open) => !open && setConfirmationTarget(null)}
-        onConfirm={async (fingerprint) => {
+        onConfirm={async (confirmation) => {
           if (confirmationTarget?.action !== 'approve') {
             return
           }
-          await approveMutation.mutateAsync({ device: confirmationTarget.device, fingerprint })
+          await approveMutation.mutateAsync({ device: confirmationTarget.device, confirmation })
           setConfirmationTarget(null)
+        }}
+        onDeny={() => {
+          if (confirmationTarget?.action === 'approve') {
+            setConfirmationTarget({ action: 'deny', deviceId: confirmationTarget.device.id })
+          }
         }}
         isPending={approveMutation.isPending}
       />

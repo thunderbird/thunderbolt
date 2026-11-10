@@ -55,24 +55,6 @@ describe('useApprovalPolling', () => {
     expect(checkApproval).not.toHaveBeenCalled()
   })
 
-  it('returns isPolling=false when disabled', () => {
-    const checkApproval = mock(() => Promise.resolve(false))
-    const onApproved = mock(() => {})
-    const { result } = renderHook(() => useApprovalPolling({ enabled: false, checkApproval, onApproved }))
-
-    expect(result.current.isPolling).toBe(false)
-  })
-
-  it('returns isPolling=true when enabled', () => {
-    const checkApproval = mock(() => Promise.resolve(false))
-    const onApproved = mock(() => {})
-    const { result } = renderHook(() =>
-      useApprovalPolling({ enabled: true, checkApproval, onApproved, intervalMs: 5000 }),
-    )
-
-    expect(result.current.isPolling).toBe(true)
-  })
-
   it('polls and calls onApproved when approved', async () => {
     const checkApproval = mock(() => Promise.resolve(true))
     const onApproved = mock(() => {})
@@ -178,9 +160,7 @@ describe('useApprovalPolling', () => {
     const onApproved = mock(() => {})
     const onRevoked = mock(() => {})
 
-    const { result } = renderHook(() =>
-      useApprovalPolling({ enabled: true, checkApproval, onApproved, onRevoked, intervalMs: 50 }),
-    )
+    renderHook(() => useApprovalPolling({ enabled: true, checkApproval, onApproved, onRevoked, intervalMs: 50 }))
 
     await act(async () => {
       await getClock().tickAsync(60)
@@ -188,7 +168,6 @@ describe('useApprovalPolling', () => {
 
     expect(onRevoked).toHaveBeenCalledTimes(1)
     expect(onApproved).not.toHaveBeenCalled()
-    expect(result.current.isPolling).toBe(false)
 
     // Verify polling stopped
     const callsBefore = checkApproval.mock.calls.length
@@ -202,7 +181,7 @@ describe('useApprovalPolling', () => {
     const checkApproval = mock(() => Promise.reject(createHTTPError(403)))
     const onRevoked = mock(() => {})
 
-    const { result } = renderHook(() =>
+    renderHook(() =>
       useApprovalPolling({ enabled: true, checkApproval, onApproved: () => {}, onRevoked, intervalMs: 50 }),
     )
 
@@ -211,7 +190,6 @@ describe('useApprovalPolling', () => {
     })
 
     expect(onRevoked).not.toHaveBeenCalled()
-    expect(result.current.isPolling).toBe(true)
     expect(checkApproval.mock.calls.length).toBeGreaterThanOrEqual(3)
   })
 

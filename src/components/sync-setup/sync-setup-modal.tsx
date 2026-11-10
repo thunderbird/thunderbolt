@@ -147,7 +147,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
     onOpenChange(false)
   }
 
-  const { isPolling } = useApprovalPolling({
+  useApprovalPolling({
     // Paused while a passkey unlock (or a manual check) is in flight, so no new poll
     // starts staging keys alongside it. A check already in flight still finishes;
     // it can only stage the same account's keys.
@@ -237,7 +237,6 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
             onUseRecoveryKey={setup.goToRecoveryKeyEntry}
             onUnlockWithPasskey={canUnlockWithPasskey ? handleUnlockWithPasskey : undefined}
             isLoading={setup.isLoading}
-            isPolling={isPolling}
           />
         )}
 

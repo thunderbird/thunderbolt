@@ -286,6 +286,42 @@ export const waitForConsumedChallenge = async (userId: string, operation: string
 }
 
 // =============================================================================
+// Short-code approval relay (device_approval_sessions)
+// =============================================================================
+
+type ApprovalSessionRow = {
+  sessionId: string
+  commitment: string
+  challenge: string | null
+  challengerDeviceId: string | null
+  reveal: string | null
+}
+
+/** The pending device's current approval-session row, once it has started one (or `predicate` holds). */
+export const waitForApprovalSession = async (
+  deviceId: string,
+  predicate: (row: ApprovalSessionRow) => boolean = () => true,
+): Promise<ApprovalSessionRow> =>
+  poll(async () => {
+    const rows = await sql<ApprovalSessionRow[]>`
+      SELECT session_id AS "sessionId", commitment, challenge, challenger_device_id AS "challengerDeviceId", reveal
+      FROM device_approval_sessions
+      WHERE device_id = ${deviceId}
+    `
+    return rows[0] && predicate(rows[0]) ? rows[0] : null
+  })
+
+/** Overwrite the row as a malicious server would: every field the two devices read. */
+export const writeApprovalSession = async (deviceId: string, row: ApprovalSessionRow): Promise<void> => {
+  await sql`
+    UPDATE device_approval_sessions
+    SET session_id = ${row.sessionId}, commitment = ${row.commitment}, challenge = ${row.challenge},
+        challenger_device_id = ${row.challengerDeviceId}, reveal = ${row.reveal}
+    WHERE device_id = ${deviceId}
+  `
+}
+
+// =============================================================================
 // Devices
 // =============================================================================
 

@@ -4,7 +4,6 @@
 
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import {
   bytesToHex,
   deriveResponseKeys,
@@ -80,12 +79,7 @@ const createReadySecureClient = async (): Promise<{ client: SecureClient; privat
 }
 
 /** Build the enclave's encrypted response from the real request HPKE context. */
-const buildEncryptedResponse = async (
-  request: Request,
-  privateKey: Key,
-  plaintext: string,
-  headers: Record<string, string>,
-): Promise<Response> => {
+const buildEncryptedResponse = async (request: Request, privateKey: Key, plaintext: string): Promise<Response> => {
   const encapsulatedKey = request.headers.get('Ehbp-Encapsulated-Key')
   if (!encapsulatedKey) {
     throw new Error('Expected a real EHBP request')
@@ -102,21 +96,18 @@ const buildEncryptedResponse = async (
   const ciphertext = await encryptChunk(keyMaterial, 0, new TextEncoder().encode(plaintext))
 
   return new Response(toArrayBuffer(frameEncryptedChunk(ciphertext)), {
-    headers: { ...headers, 'Ehbp-Response-Nonce': bytesToHex(responseNonce) },
+    headers: { 'Ehbp-Response-Nonce': bytesToHex(responseNonce) },
   })
 }
 
 describe('SecureClient proxy response contract', () => {
-  it('preserves the usage receipt header through the real EHBP decrypt path', async () => {
+  it('decrypts a proxied response through the real EHBP path', async () => {
     const { client, privateKey } = await createReadySecureClient()
-    const receipt = 'iu1.canonicalPayload.canonicalSignature'
     const originalFetch = globalThis.fetch
     globalThis.fetch = Object.assign(
       async (input: RequestInfo | URL) => {
         const request = input instanceof Request ? input : new Request(input)
-        return buildEncryptedResponse(request, privateKey, 'decrypted response', {
-          [inferenceUsageReceiptHeader]: receipt,
-        })
+        return buildEncryptedResponse(request, privateKey, 'decrypted response')
       },
       { preconnect: originalFetch.preconnect },
     )
@@ -128,7 +119,6 @@ describe('SecureClient proxy response contract', () => {
       })
 
       expect(await response.text()).toBe('decrypted response')
-      expect(response.headers.get(inferenceUsageReceiptHeader)).toBe(receipt)
     } finally {
       globalThis.fetch = originalFetch
     }

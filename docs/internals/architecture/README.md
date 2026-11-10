@@ -108,7 +108,7 @@ Assistant responses embed interactive components (weather, link previews, maps, 
 
 ### Route Prefixes
 
-All groups mount on one Elysia app with `prefix: '/v1'` (`backend/src/index.ts`), so `/v1` comes from the mount, not the plugin; groups with no prefix of their own (encryption, preview, search, locations, usage receipts) sit at the top of `/v1`. Full per-route inventory: [backend-api-surface.md](backend-api-surface.md).
+All groups mount on one Elysia app with `prefix: '/v1'` (`backend/src/index.ts`), so `/v1` comes from the mount, not the plugin; groups with no prefix of their own (encryption, preview, search, locations) sit at the top of `/v1`. Full per-route inventory: [backend-api-surface.md](backend-api-surface.md).
 
 | Prefix                                      | Purpose                                                                                                                                |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -122,7 +122,6 @@ All groups mount on one Elysia app with `prefix: '/v1'` (`backend/src/index.ts`)
 | `/v1/devices/*`, `/v1/encryption`           | E2EE device registration, approval/deny, envelope exchange, node-id attestation, allowlist, canary                                     |
 | `/v1/powersync/*`                           | Sync JWT issuance (`/token`) and client write upload (`/upload`)                                                                       |
 | `/v1/chat/*`                                | Managed inference: `/completions` (OpenAI-shaped) and `/v1/messages` (Anthropic Messages-shaped)                                       |
-| `/v1/inference-usage/receipts`              | Signed usage receipts for managed inference                                                                                            |
 | `/v1/tinfoil/*`                             | Confidential-compute inference pass-through                                                                                            |
 | `/v1/proxy`, `/v1/proxy/ws`                 | Universal upstream proxy and WebSocket relay: hosted-mode egress for BYOK LLM, MCP, and page fetches                                   |
 | `/v1/pro/fetch-content`                     | Exa page-content extraction                                                                                                            |
@@ -230,7 +229,7 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 ### Backend surface
 
 - [Backend API Surface](backend-api-surface.md): per-route module, auth, rate limit, version gate, add-a-route checklist.
-- [Managed Inference](managed-inference.md): admission, pricing, the usage ledger, signed receipts.
+- [Managed Inference](managed-inference.md): admission, pricing, the usage ledger, confidential usage metering.
 - [The Universal Proxy](universal-proxy.md): the endpoint pair for BYOK, MCP and ACP upstreams.
 - [Debug Transcripts](debug-transcripts.md): what the opt-in report captures, redacts, and caps.
 - [Self-hosting the iroh relay](iroh-relay-self-hosting.md): the CLI↔app bridge relay, and running your own.

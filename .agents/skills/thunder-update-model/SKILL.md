@@ -146,8 +146,8 @@ leaving row's shipped `contextWindow` differs from the provider's value (131072 
 value" and "adopt the provider value" as options. In the same message, state the derived facts the
 implementer will use:
 
-- quota price: the leaving model's `inference_prices` row, copied from its seed migration
-  (checklist item 14); the provider list price is not used;
+- quota price: the incoming model's list price from its provider's catalog, with its cached-input
+  price when the provider publishes one (checklist item 14);
 - image support: `'supported'` iff `image` is in `modalities.input` and the provider agrees
   (`multimodal`);
 - reasoning: the profile inherits the leaving model's `reasoningEffort` unless the catalog says

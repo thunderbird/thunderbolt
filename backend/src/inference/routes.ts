@@ -32,7 +32,7 @@ import {
   type InferenceProxyLatencyLog,
 } from './client'
 import { resolveManagedDirectRuntime, type ManagedDirectRuntime } from './managed-models'
-import { admitManagedRequest, createUsageCallbacks, type UsageTelemetry } from './managed-request'
+import { admitManagedRequest, createUsageCallbacks, createUsageTelemetry } from './managed-request'
 import { createMeteredRouteGuard } from './metered-route-guard'
 import type { InferenceDatabase, InferenceTokenCounts } from './usage-ledger'
 
@@ -137,41 +137,6 @@ const getApiErrorMetadata = (error: unknown) => {
     requestId: openAiError?.requestID ?? anthropicError?.requestID ?? undefined,
   }
 }
-
-type UsageTelemetryOptions = {
-  eventId: string
-  logger?: InferenceLogger
-  model: string
-  provider: InferenceProvider
-  route: string
-}
-
-/** The `/v1/chat` usage log events around the shared ledger write. */
-const createUsageTelemetry = ({ eventId, logger, model, provider, route }: UsageTelemetryOptions): UsageTelemetry => ({
-  onUsageRecording: () => {
-    logInferenceSafely(
-      logger,
-      { event: 'inference_usage_completed', provider, model, eventId, transport: 'direct' },
-      'Inference usage completed',
-    )
-  },
-  onUsageRecorded: (outcome) => {
-    logInferenceSafely(
-      logger,
-      { event: 'inference_usage_inserted', provider, model, eventId, outcome },
-      'Inference usage inserted',
-    )
-  },
-  onUsageMissing: () => {
-    logger?.info({ event: 'inference_usage_missing', provider, model, route }, 'Inference usage missing')
-  },
-  onUsageError: () => {
-    logger?.info(
-      { event: 'inference_usage_callback_failed', provider, model, route },
-      'Inference usage callback failed',
-    )
-  },
-})
 
 /** Merge middleware headers into a raw streaming response. */
 export const streamingResponseHeaders = (headers: object): Record<string, string> => {
@@ -300,7 +265,14 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
             eventId: usageEventId,
             userId: ctx.user.id,
             price,
-            telemetry: createUsageTelemetry({ eventId: usageEventId, logger, model: internalName, provider, route }),
+            telemetry: createUsageTelemetry({
+              eventId: usageEventId,
+              logger,
+              model: internalName,
+              provider,
+              route,
+              transport: 'direct',
+            }),
           }),
           onError: (error) => {
             captureInferenceErrorFn({
@@ -451,7 +423,14 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           eventId: usageEventId,
           userId: ctx.user.id,
           price,
-          telemetry: createUsageTelemetry({ eventId: usageEventId, logger, model: internalName, provider, route }),
+          telemetry: createUsageTelemetry({
+            eventId: usageEventId,
+            logger,
+            model: internalName,
+            provider,
+            route,
+            transport: 'direct',
+          }),
         })
         const stream = createAnthropicSSEStream(upstream, {
           ...usageCallbacks,

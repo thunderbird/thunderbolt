@@ -11,6 +11,13 @@ import type { ModelProfile, ModelProfileRow } from '../types'
 
 const mapProfile = (row: ModelProfileRow): ModelProfile => row as ModelProfile
 
+/** Query only provider options for reasoning controls, including live synced profile updates. */
+export const getModelProviderOptionsQuery = (db: AnyDrizzleDatabase, modelId: string) =>
+  db
+    .select({ providerOptions: modelProfilesTable.providerOptions })
+    .from(modelProfilesTable)
+    .where(and(eq(modelProfilesTable.modelId, modelId), isNull(modelProfilesTable.deletedAt)))
+
 /** Get profile for a model (excluding soft-deleted) */
 export const getModelProfile = async (db: AnyDrizzleDatabase, modelId: string): Promise<ModelProfile | null> => {
   const profile = await db

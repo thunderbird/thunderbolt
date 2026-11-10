@@ -38,7 +38,6 @@ import { createTurnTelemetry } from '@/ai/turn-telemetry'
 import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getLocalSetting } from '@/stores/local-settings-store'
-import type { RequestOptions } from '@/lib/http'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { supersededAppContextOutput } from '@/mini-apps/mini-app-context-note'
@@ -47,7 +46,6 @@ import {
   composeAppHarnessSystemPrompt,
   harnessSignature,
   supersedeHarnessAppContext,
-  readProfileThinkingLevel,
   resolvePiModel,
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
@@ -55,7 +53,7 @@ import {
 import { isPiModelCandidate } from './built-in-model-support'
 import type { AppHarness } from '@shared/agent-core'
 import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
-import { createReceiptLifecycle, type BuildAppHarnessOptions, type PiModelDescriptor } from '@shared/agent-core'
+import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { createPromptParts, type PromptParams } from '@/ai/prompt'
 import {
@@ -65,7 +63,6 @@ import {
   type AgentMessage,
   type AgentTool,
 } from '@earendil-works/pi-agent-core'
-import type { AssistantMessage } from '@earendil-works/pi-ai'
 import type { SecureClient } from 'tinfoil'
 
 const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
@@ -113,35 +110,6 @@ describe('isPiModelCandidate', () => {
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 0 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'anthropic', toolUsage: 0 })).toBe(false)
-  })
-})
-
-describe('readProfileThinkingLevel', () => {
-  it.each(['high', 'max'] as const)('preserves adaptive Anthropic profile effort %s', (effort) => {
-    expect(readProfileThinkingLevel({ thinking: { type: 'adaptive' }, effort })).toBe(effort)
-  })
-
-  it('keeps disabled Anthropic thinking off despite a stored effort', () => {
-    expect(readProfileThinkingLevel({ thinking: { type: 'disabled' }, effort: 'max' })).toBe('off')
-  })
-
-  it('prefers native effort fields and ignores malformed adaptive effort', () => {
-    expect(readProfileThinkingLevel({ reasoningEffort: 'low', effort: 'max' })).toBe('low')
-    expect(readProfileThinkingLevel({ reasoning: { effort: 'high' }, effort: 'max' })).toBe('high')
-    expect(readProfileThinkingLevel({ effort: 'unsupported', thinking: { budgetTokens: 4096 } })).toBe('low')
-  })
-
-  it('ignores a non-object JSON value from the synced profile column', () => {
-    expect(readProfileThinkingLevel(['high'] as never)).toBeNull()
-  })
-
-  it('keeps valid reasoning fields when a sibling field is malformed', () => {
-    expect(
-      readProfileThinkingLevel({
-        reasoningEffort: null as never,
-        reasoning_effort: 'high',
-      }),
-    ).toBe('high')
   })
 })
 
@@ -387,7 +355,7 @@ const tinfoilContext = (model: Model, overrides: Partial<AgentAdapterContext> = 
     ...overrides,
   }) as AgentAdapterContext
 
-const tinfoilAgentCore = { createReceiptLifecycle } as Parameters<typeof resolvePiModel>[0]
+const tinfoilAgentCore = {} as Parameters<typeof resolvePiModel>[0]
 
 const requireDescriptor = <Kind extends PiModelDescriptor['kind']>(
   resolved: ResolvedPiModel | null,
@@ -397,42 +365,6 @@ const requireDescriptor = <Kind extends PiModelDescriptor['kind']>(
     throw new Error(`Expected ${kind} descriptor`)
   }
   return resolved.descriptor as Extract<PiModelDescriptor, { kind: Kind }>
-}
-
-const assistantMessage = (): AssistantMessage => ({
-  role: 'assistant',
-  content: [{ type: 'text', text: 'answer' }],
-  api: 'openai-completions',
-  provider: 'tinfoil',
-  model: 'glm-5-2',
-  usage: {
-    input: 11,
-    output: 2,
-    cacheRead: 3,
-    cacheWrite: 2,
-    totalTokens: 18,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  },
-  stopReason: 'stop',
-  timestamp: 0,
-})
-
-const createHarnessEvents = () => {
-  type Listener = Parameters<AgentHarness['subscribe']>[0]
-  const listeners = new Set<Listener>()
-  return {
-    harness: {
-      subscribe: (listener: Listener) => {
-        listeners.add(listener)
-        return () => listeners.delete(listener)
-      },
-    },
-    emit: async (event: AgentHarnessEvent): Promise<void> => {
-      for (const listener of listeners) {
-        await listener(event)
-      }
-    },
-  }
 }
 
 describe('resolvePiModel — Tinfoil', () => {
@@ -542,7 +474,7 @@ describe('resolvePiModel — Tinfoil', () => {
     expect(evictSystemTinfoilClient).toHaveBeenCalledWith(client)
   })
 
-  it.each(['high', 'max'] as const)('resolves BYOK with %s effort directly without receipts', async (effort) => {
+  it.each(['high', 'max'] as const)('resolves BYOK with %s effort directly', async (effort) => {
     const error = Object.assign(new Error('key changed'), { name: 'KeyConfigMismatchError' })
     const client = createSecureClient(async (_input, init) => {
       expect(new Headers(init?.headers).has(inferenceModelHeader)).toBe(false)
@@ -574,7 +506,6 @@ describe('resolvePiModel — Tinfoil', () => {
       reasoning: true,
       supportsImages: true,
     })
-    expect('receipts' in descriptor).toBe(false)
     expect(getTinfoilClient).toHaveBeenCalledWith({
       trace_id: undefined,
       engine: 'pi',
@@ -650,61 +581,6 @@ describe('resolvePiModel — Tinfoil', () => {
 
     await expect(adapter.fetch({ body: '{}' }, tinfoilContext(model))).rejects.toBe(error)
     expect(aiFetch).toHaveBeenCalledTimes(0)
-  })
-
-  it('submits one terminal receipt for every managed Tinfoil model', async () => {
-    const post = mock(async () => new Response())
-    const resolved = await resolvePiModel(
-      tinfoilAgentCore,
-      tinfoilContext(tinfoilModel({ model: 'deepseek-v4-flash', vendor: 'deepseek' }), {
-        httpClient: { post } as never,
-      }),
-      null,
-      { getSystemTinfoilClient: async () => createSecureClient() },
-    )
-    const descriptor = requireDescriptor(resolved, 'confidential')
-    const events = createHarnessEvents()
-    descriptor.receipts.attach(events.harness)
-    const message = assistantMessage()
-
-    descriptor.receipts.completeProviderStep({ receipt: 'signed-receipt', message })
-    await events.emit({ type: 'message_end', message })
-    await events.emit({ type: 'message_end', message })
-
-    expect(post).toHaveBeenCalledTimes(1)
-    expect(post).toHaveBeenCalledWith('inference-usage/receipts', {
-      json: { receipt: 'signed-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 },
-      timeout: 3_000,
-    })
-  })
-
-  it('reports a managed receipt POST failure without rejecting the terminal event', async () => {
-    const error = new Error('receipt unavailable')
-    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
-    const resolved = await resolvePiModel(
-      tinfoilAgentCore,
-      tinfoilContext(tinfoilModel(), {
-        httpClient: {
-          post: async () => {
-            throw error
-          },
-        } as never,
-      }),
-      null,
-      { getSystemTinfoilClient: async () => createSecureClient() },
-    )
-    const descriptor = requireDescriptor(resolved, 'confidential')
-    const events = createHarnessEvents()
-    descriptor.receipts.attach(events.harness)
-    const message = assistantMessage()
-
-    try {
-      descriptor.receipts.completeProviderStep({ receipt: 'signed-receipt', message })
-      await expect(events.emit({ type: 'message_end', message })).resolves.toBeUndefined()
-      expect(consoleError).toHaveBeenCalledWith(error)
-    } finally {
-      consoleError.mockRestore()
-    }
   })
 
   it('keys the harness cache by attested client identity', async () => {
@@ -838,96 +714,6 @@ describe('createBuiltInAdapter persistent harness', () => {
 
     expect(buildCalls).toHaveLength(1)
     expect(authorizationHeaders).toEqual(['Bearer first-token', 'Bearer second-token'])
-  })
-
-  it('submits each managed receipt through the current context client without rebuilding the harness', async () => {
-    const model = tinfoilModel()
-    const config = {
-      model,
-      profile: null,
-      supportsTools: true,
-      sourceCollector: [],
-      toolset: {},
-      skills: [],
-      mcpToolsMetadata: undefined,
-      stableSystemPrompt: 'stable',
-      volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
-    } satisfies PreparedAiRequestConfig
-    const receiptIds = ['first-receipt', 'second-receipt']
-    const buildCalls: BuildAppHarnessOptions[] = []
-    const agentCore = {
-      ...tinfoilAgentCore,
-      buildAppHarness: async (options: BuildAppHarnessOptions) => {
-        buildCalls.push(options)
-        if (options.model.kind !== 'confidential') {
-          throw new Error('Expected confidential descriptor')
-        }
-        const descriptor = options.model
-        const events = createHarnessEvents()
-        const harness = {
-          ...compactionStub,
-          ...events.harness,
-          getTools: () => [],
-          setTools: async () => {},
-          prompt: async () => {
-            const receipt = receiptIds.shift()
-            if (!receipt) {
-              throw new Error('Expected a receipt for each prompt')
-            }
-            const message = assistantMessage()
-            descriptor.receipts.completeProviderStep({ receipt, message })
-            await events.emit({ type: 'message_end', message })
-          },
-          waitForIdle: async () => {},
-          on: () => () => {},
-          abort: async () => ({ aborted: true }),
-          env: { remove: async () => {} },
-        }
-        descriptor.receipts.attach(harness as never)
-        return harness as never
-      },
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
-      writeAgentWorkspaceFiles: async () => [],
-      toPiAgentTools: async () => [],
-      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
-        new ReadableStream<Uint8Array>({
-          start: async (controller) => {
-            await runPrompt()
-            controller.close()
-          },
-        }),
-    } as never
-    const firstBodies: RequestOptions['json'][] = []
-    const secondBodies: RequestOptions['json'][] = []
-    const firstPost = mock(async (_url: string, options?: RequestOptions) => {
-      firstBodies.push(options?.json)
-      return new Response()
-    })
-    const secondPost = mock(async (_url: string, options?: RequestOptions) => {
-      secondBodies.push(options?.json)
-      return new Response()
-    })
-    const client = createSecureClient()
-    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
-      loadAgentCore: async () => agentCore,
-      prepareConfig: async () => config,
-      getSystemTinfoilClient: async () => client,
-    })
-    const request: RequestInit = {
-      body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }),
-    }
-
-    await (await adapter.fetch(request, tinfoilContext(model, { httpClient: { post: firstPost } as never }))).text()
-    await (await adapter.fetch(request, tinfoilContext(model, { httpClient: { post: secondPost } as never }))).text()
-
-    expect(buildCalls).toHaveLength(1)
-    expect(firstPost).toHaveBeenCalledTimes(1)
-    expect(secondPost).toHaveBeenCalledTimes(1)
-    expect(firstBodies).toEqual([{ receipt: 'first-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 }])
-    expect(secondBodies).toEqual([
-      { receipt: 'second-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 },
-    ])
   })
 
   it('keeps every harness tool inactive when Tinfoil tool usage is off', async () => {

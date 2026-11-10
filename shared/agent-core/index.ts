@@ -21,17 +21,11 @@ export {
 } from './anthropic-model.ts'
 export {
   buildConfidentialModel,
-  createReceiptLifecycle,
   isConfidentialModelError,
-  isNonnegativeSafeInteger,
   resolveConfidentialModelCompatibility,
   type BuildConfidentialModelOptions,
-  type CompletedProviderStep,
   type ConfidentialModelError,
   type ConfidentialModelErrorCode,
-  type CreateReceiptLifecycleOptions,
-  type ReceiptCapture,
-  type ReceiptLifecycle,
 } from './confidential-model.ts'
 export {
   buildOpenAiCompatModel,

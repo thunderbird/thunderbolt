@@ -204,10 +204,9 @@ describe('createAgentRoutingFetch — connection status', () => {
     resetStore()
   })
 
-  it.each(['prompt', 'compact'] as const)('waits for an effort write before routing %s', async (operation) => {
-    const write = Promise.withResolvers<void>()
-    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
-    const getChatReasoningEffort = mock(async () => 'high' as const)
+  it.each(['prompt', 'compact'] as const)('resolves the saved effort before routing %s', async (operation) => {
+    const effort = Promise.withResolvers<'high'>()
+    const getChatReasoningEffort = mock(() => effort.promise)
     const seen: AgentAdapterContext[] = []
     const adapter: AgentAdapter = {
       ...makeAdapter(builtInAgent),
@@ -229,9 +228,9 @@ describe('createAgentRoutingFetch — connection status', () => {
         ? route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
         : route.compact([], undefined, new AbortController().signal)
     await Promise.resolve()
-    expect(getChatReasoningEffort).not.toHaveBeenCalled()
+    expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
     expect(seen).toHaveLength(0)
-    write.resolve()
+    effort.resolve('high')
     await request
     expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
     expect(seen).toHaveLength(1)
@@ -239,10 +238,9 @@ describe('createAgentRoutingFetch — connection status', () => {
   })
 
   it('does not send with stale effort when its pending settings write fails', async () => {
-    const write = Promise.withResolvers<void>()
-    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
+    const write = Promise.withResolvers<never>()
     const connect = mock(async () => makeAdapter(builtInAgent))
-    const resolveEffort = mock(async () => 'low' as const)
+    const resolveEffort = mock(() => write.promise)
     const save = mock(async () => {})
     const route = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
       getChatReasoningEffort: resolveEffort,
@@ -251,7 +249,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const request = route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
     write.reject(new Error('Settings write failed'))
     await expect(request).rejects.toThrow('Settings write failed')
-    expect(resolveEffort).not.toHaveBeenCalled()
+    expect(resolveEffort).toHaveBeenCalledTimes(1)
     expect(connect).not.toHaveBeenCalled()
     expect(save).not.toHaveBeenCalled()
   })

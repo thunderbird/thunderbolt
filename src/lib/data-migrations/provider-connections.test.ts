@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-import { afterAll, beforeEach, expect, it } from 'bun:test'
+import { afterAll, beforeEach, expect, it, spyOn } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -27,6 +27,7 @@ import {
   updateProviderConnection,
 } from '@/dal/provider-connections'
 import { credentialBinding } from '@/providers/credentials'
+import * as providerConnections from '@/dal/provider-connections'
 import { migrateProviderConnections } from './provider-connections'
 
 beforeEach(resetTestDatabase)
@@ -137,6 +138,82 @@ it('normalizes a legacy Otari origin before comparing its existing binding', asy
   await syncedConnection('origin')
   await migrateProviderConnections(getDb())
   expect((await getProviderCredentials(getDb(), 'legacy-model:origin'))?.apiKey).toBe('key')
+})
+it.each([
+  { provider: 'custom' as const, url: 'https://legacy.example/v1?api-version=2026-01-01' },
+  { provider: 'custom' as const, url: 'https://username:password@legacy.example/v1' },
+  { provider: 'custom' as const, url: 'https://legacy.example/v1#fragment' },
+  { provider: 'custom' as const, url: 'ftp://legacy.example/v1' },
+  { provider: 'custom' as const, url: 'not-a-url' },
+  { provider: 'custom' as const, url: null },
+  { provider: 'custom' as const, url: '   ' },
+  { provider: 'otari' as const, url: 'https://legacy.example/unsupported-path' },
+])('preserves incompatible legacy settings while migrating other rows (%j)', async (legacy) => {
+  await legacyModel('a-valid')
+  await getDb()
+    .insert(modelsTable)
+    .values({
+      id: 'm-unsupported',
+      name: 'Legacy model',
+      model: 'legacy-model',
+      enabled: 1,
+      ...legacy,
+    })
+  await getDb().insert(modelsSecretsTable).values({
+    modelId: 'm-unsupported',
+    apiKey: 'retained-key',
+    providerDefault: 1,
+  })
+  await getDb().insert(modelsTable).values({
+    id: 'z-valid',
+    name: 'OpenAI model',
+    model: 'model',
+    provider: 'openai',
+  })
+  await getDb().insert(modelsSecretsTable).values({ modelId: 'z-valid', apiKey: 'openai-key' })
+  const originalModel = await getDb().select().from(modelsTable).where(eq(modelsTable.id, 'm-unsupported')).get()
+  const originalSecret = await getDb()
+    .select()
+    .from(modelsSecretsTable)
+    .where(eq(modelsSecretsTable.modelId, 'm-unsupported'))
+    .get()
+
+  await migrateProviderConnections(getDb())
+
+  expect((await getProviderConnections(getDb())).map(({ id }) => id).sort()).toEqual([
+    'legacy-model:a-valid',
+    'legacy-model:z-valid',
+  ])
+  expect((await getProviderCredentials(getDb(), 'legacy-model:a-valid'))?.apiKey).toBe('key')
+  expect((await getProviderCredentials(getDb(), 'legacy-model:z-valid'))?.apiKey).toBe('openai-key')
+  expect(await getDb().select().from(modelsTable).where(eq(modelsTable.id, 'm-unsupported')).get()).toEqual(
+    originalModel,
+  )
+  expect(
+    await getDb().select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'm-unsupported')).get(),
+  ).toEqual(originalSecret)
+  expect(await getModel(getDb(), 'm-unsupported')).toMatchObject({
+    url: legacy.url,
+    apiKey: 'retained-key',
+    providerConnectionId: null,
+    enabled: 1,
+  })
+  const beforeRetry = await getDb().get<{ changes: number }>(sql`SELECT total_changes() AS changes`)
+  await migrateProviderConnections(getDb())
+  expect(await getDb().get(sql`SELECT total_changes() AS changes`)).toEqual(beforeRetry)
+})
+it('still rejects and rolls back an unrelated connection write failure', async () => {
+  await legacyModel('valid')
+  const failure = new Error('Connection storage failed')
+  const save = spyOn(providerConnections, 'saveProviderConnectionInTransaction').mockRejectedValueOnce(failure)
+  try {
+    await expect(migrateProviderConnections(getDb())).rejects.toBe(failure)
+    expect(await getProviderConnections(getDb())).toHaveLength(0)
+    expect((await getDb().select().from(modelsSecretsTable).get())?.apiKey).toBe('key')
+    expect((await getDb().select().from(modelsTable).get())?.providerConnectionId).toBeNull()
+  } finally {
+    save.mockRestore()
+  }
 })
 it.each([true, false])(
   'moves one legacy Tinfoil OAuth session without changing its enabled state (%s)',

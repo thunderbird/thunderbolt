@@ -26,6 +26,15 @@ type LegacyConnection = {
   enabled?: boolean
 }
 
+/** Preserve legacy URLs the stricter connection policy cannot represent, without changing their credentials. */
+const normalizeLegacyConnectionUrl = (provider: ProviderType, value: string | null): string | null | undefined => {
+  try {
+    return normalizeProviderConnectionUrl(provider, value)
+  } catch {
+    return undefined
+  }
+}
+
 /** A synced reference may arrive before this device has moved its own credential. */
 export const migrateLegacyProviderCredential = async (
   db: AnyDrizzleDatabase,
@@ -125,7 +134,10 @@ export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promis
       }
       if (!oauth) {
         const definition = getProviderDefinition(model.provider)
-        const url = normalizeProviderConnectionUrl(model.provider, model.url)
+        const url = normalizeLegacyConnectionUrl(model.provider, model.url)
+        if (url === undefined) {
+          continue
+        }
         const moved = await migrateLegacyProviderCredential(tx, {
           id: connectionId,
           provider: model.provider,

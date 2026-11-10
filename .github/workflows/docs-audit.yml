@@ -1,0 +1,196 @@
+name: Docs audit
+
+# An agent checks the docs against last week's commits and a rotating quarter of the docs, and the fixes become a PR.
+# How it works and how to run it: .github/docs-audit/README.md.
+#
+# Trust zones: the audit job holds the Anthropic key and only a read token, and its agent can read files and edit docs
+# but run nothing. The publish job holds the write token and runs no model. It applies the patch only when every
+# path is a doc. `isInScope` in .github/scripts/docs-audit-select.ts is the one definition of "a doc".
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Monday 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Show the patch in the run summary instead of opening a PR
+        type: boolean
+        default: true
+      docs:
+        description: Comma-separated docs to review in place of this week's rotation (empty = the rotation)
+        type: string
+        default: ''
+
+concurrency:
+  group: docs-audit
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  DOCS_AUDIT_MAX_BUDGET_USD: 15
+  DOCS_AUDIT_MAX_TURNS: 200
+  DOCS_AUDIT_OUT: docs-audit-out
+
+jobs:
+  audit:
+    if: vars.DOCS_AUDIT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: qa-agent
+    permissions:
+      contents: read
+    steps:
+      - &checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Only the audit job reads history. A string: a bare 0 is falsy here.
+          fetch-depth: ${{ github.job == 'audit' && '0' || '1' }}
+
+      - &setup-bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Select the commits and docs to audit
+        env:
+          DOCS: ${{ inputs.docs }}
+        run: bun .github/scripts/docs-audit-select.ts --out "$DOCS_AUDIT_OUT/input.json" --docs "$DOCS"
+
+      - name: Build the prompt
+        id: prompt
+        run: |
+          {
+            echo 'text<<DOCS_AUDIT_PROMPT_EOF'
+            cat .github/docs-audit/prompt.md
+            echo 'DOCS_AUDIT_PROMPT_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      # The agent has no shell, no web access and no git. It reads only the checkout and writes only docs and its
+      # summary. /proc is denied because the session's own environment holds the key.
+      - name: Audit
+        timeout-minutes: 50
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+        uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
+        with:
+          anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: |
+            --model claude-opus-5-5
+            --setting-sources user
+            --permission-mode dontAsk
+            --tools "Read,Glob,Grep,Edit,Write"
+            --allowedTools "Read(./**),Glob,Grep,Edit(docs/**/*.md),Edit(AGENTS.md),Edit(**/AGENTS.md),Edit(${{ env.DOCS_AUDIT_OUT }}/summary.md)"
+            --disallowedTools "Read(//proc/**)"
+            --max-budget-usd ${{ env.DOCS_AUDIT_MAX_BUDGET_USD }}
+            --max-turns ${{ env.DOCS_AUDIT_MAX_TURNS }}
+
+      # The diff covers exactly the selector's scope. git diff leaves out untracked files, so a new doc never gets in.
+      - name: Save the patch
+        env:
+          PATCH: ${{ env.DOCS_AUDIT_OUT }}/docs.patch
+          SUMMARY: ${{ env.DOCS_AUDIT_OUT }}/summary.md
+        run: |
+          mapfile -t scope < <(jq --raw-output '.scope[]' "$DOCS_AUDIT_OUT/input.json")
+          git diff --binary -- "${scope[@]}" > "$PATCH"
+          git diff --stat -- "${scope[@]}"
+          if [ -s "$PATCH" ] && [ ! -s "$SUMMARY" ]; then
+            echo "::error::The agent changed docs without writing a summary, so there is no evidence to review."
+            exit 1
+          fi
+          test -s "$SUMMARY" || echo 'No issues found.' > "$SUMMARY"
+
+      # The last line of defence if the agent read the key anyway: the patch becomes a public PR.
+      - name: Check the output for the key
+        env:
+          AUDIT_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$AUDIT_KEY" ] && grep -rqsF -- "$AUDIT_KEY" "$DOCS_AUDIT_OUT"; then
+            echo "::error::The audit output holds the API key, so nothing is uploaded."
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-audit
+          path: ${{ env.DOCS_AUDIT_OUT }}
+          retention-days: 30
+
+  publish:
+    needs: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: qa-agent
+    permissions:
+      contents: read
+    env:
+      LIVE: ${{ !inputs.dry_run && github.ref == 'refs/heads/main' }}
+    steps:
+      - *checkout
+      - *setup-bun
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: docs-audit
+          path: ${{ runner.temp }}/docs-audit
+
+      - name: Apply the patch
+        id: patch
+        env:
+          PATCH: ${{ runner.temp }}/docs-audit/docs.patch
+          SUMMARY: ${{ runner.temp }}/docs-audit/summary.md
+        run: |
+          cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -s "$PATCH" ]; then
+            echo "No doc changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bun .github/scripts/docs-audit-check-patch.ts "$PATCH"
+          git apply "$PATCH"
+          printf '\n<details><summary>Patch</summary>\n\n```diff\n%s\n```\n</details>\n' "$(cat "$PATCH")" >> "$GITHUB_STEP_SUMMARY"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # The site publishes docs/ through web/src/loaders/repo-docs-loader.ts, so a doc that breaks it fails here.
+      - name: Build the docs site
+        if: steps.patch.outputs.changed == 'true'
+        working-directory: web
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Create the GitHub App token
+        id: app-token
+        if: steps.patch.outputs.changed == 'true' && env.LIVE == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.QA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.QA_APP_PRIVATE_KEY }}
+          repositories: thunderbolt
+          permission-contents: write
+          permission-pull-requests: write
+
+      # A new branch per run, so a push never overwrites a reviewer's commits on an earlier audit PR.
+      - name: Open the PR
+        if: steps.patch.outputs.changed == 'true' && env.LIVE == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          SUMMARY: ${{ runner.temp }}/docs-audit/summary.md
+        run: |
+          day=$(date -u +%Y-%m-%d)
+          branch="docs-audit/$day"
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git switch --create "$branch"
+          git commit --all --no-verify --quiet --message "docs: weekly audit $day"
+          basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 --wrap=0)
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $basic" \
+            git push --no-verify --force-with-lease="refs/heads/$branch:" origin "HEAD:refs/heads/$branch"
+          gh pr create --base main --head "$branch" --title "docs: weekly audit $day" --body-file "$SUMMARY"

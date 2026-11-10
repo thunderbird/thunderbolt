@@ -102,6 +102,9 @@
 }
 .spark-heading-accent {
   display: inline-block;
+  /* Keep descenders inside the gradient's painted area without shifting layout. */
+  padding-bottom: 0.15em;
+  margin-bottom: -0.15em;
   color: var(--spark-red);
   background: var(--spark-heading-gradient);
   background-clip: text;

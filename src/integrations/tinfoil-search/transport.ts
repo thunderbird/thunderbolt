@@ -33,8 +33,8 @@ type TransportDependencies = {
   acquire: () => Promise<{
     fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
     getBaseURL: () => string | undefined
+    evict: () => void
   }>
-  evict: () => void
 }
 const transportDependencies: TransportDependencies = {
   acquire: async () => {
@@ -47,9 +47,9 @@ const transportDependencies: TransportDependencies = {
     return {
       fetch: await createAttestedSearchFetch(secure.getVerificationDocument(), client),
       getBaseURL: () => secure.getBaseURL(),
+      evict: () => lifecycle.evictUserTinfoilClient(secure),
     }
   },
-  evict: lifecycle.evictUserTinfoilClient,
 }
 
 /** Uses MCP framing over an attested encrypted transport, refreshing authorization per request. */
@@ -75,7 +75,7 @@ export const createTinfoilToolCaller =
       )
     } catch (error) {
       if (isTinfoilTransportWedgedError(error)) {
-        deps.evict()
+        secure.evict()
       }
       throw error
     } finally {

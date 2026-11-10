@@ -3,8 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createModelInTransaction, updateModelInTransaction } from '@/dal/models'
-import { withTinfoilSessionLock } from '@/lib/tinfoil-session'
-import { saveProviderAuthorization, type ProviderAuthorization } from '@/lib/provider-connection-attempt'
+import { revokeReplacedTinfoilAuthorization, withTinfoilSessionLock } from '@/lib/tinfoil-session'
+import {
+  assertProviderConnectionAttemptCurrent,
+  saveProviderAuthorization,
+  type ProviderAuthorization,
+} from '@/lib/provider-connection-attempt'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
@@ -223,7 +227,15 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
           return { id, created: !previous }
         })
       const { id, created } =
-        providerAuthorization?.attempt.provider === 'tinfoil' ? await withTinfoilSessionLock(save) : await save()
+        providerAuthorization?.attempt.provider === 'tinfoil'
+          ? await withTinfoilSessionLock(async () => {
+              await assertProviderConnectionAttemptCurrent(db, providerAuthorization.attempt)
+              if (providerAuthorization.tinfoilCredentials) {
+                await revokeReplacedTinfoilAuthorization(db, providerAuthorization.tinfoilCredentials, signal)
+              }
+              return save()
+            })
+          : await save()
       if (isStandalone && created) {
         await updateSettings(db, { selected_model: id })
       }

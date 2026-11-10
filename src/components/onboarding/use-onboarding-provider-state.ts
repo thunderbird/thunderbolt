@@ -13,6 +13,7 @@ import {
   type OpenRouterManualConnection,
 } from '@/lib/openrouter-auth'
 import { tinfoilAuth, TinfoilConnectionError } from '@/lib/tinfoil-auth'
+import { tinfoilSession } from '@/lib/tinfoil-session'
 import {
   startTinfoilMobileConnection,
   cancelTinfoilMobileConnection,
@@ -93,6 +94,7 @@ const connectionDependencies = {
   prepareModel: prepareProviderDefaultModel,
   startTinfoil: tinfoilAuth.startConnection,
   startTinfoilMobile: startTinfoilMobileConnection,
+  discardTinfoil: tinfoilSession.discardAuthorization,
 }
 
 /** Coordinates provider authorization and the existing tested-model save flow. */
@@ -122,6 +124,7 @@ export const useOnboardingProviderState = (
   })
   const authorizedSession = useRef<{ key: string; authorization: ProviderAuthorization } | null>(null)
   const pending = useRef<AbortController | null>(null)
+  const returnedOwner = useRef<{ id: string; controller: AbortController } | null>(null)
   const isFormOpen = state.view === 'other'
   const provider: OnboardingProvider = state.selection === 'tinfoil' ? 'tinfoil' : 'openrouter'
   const isConnected = connectedProviders.includes(state.selection)
@@ -136,8 +139,24 @@ export const useOnboardingProviderState = (
     },
   })
 
-  // Authorization owns browser/native listeners and requests that must stop when this step unmounts.
-  useEffect(() => () => pending.current?.abort(), [])
+  const discardAuthorization = (authorization: ProviderAuthorization | undefined) => {
+    if (authorization?.tinfoilCredentials) {
+      void dependencies.discardTinfoil(authorization.tinfoilCredentials).catch(() => {
+        console.warn('Could not revoke an unused Tinfoil authorization.')
+      })
+    }
+  }
+  const discardPendingAuthorization = () => {
+    const previous = authorizedSession.current
+    authorizedSession.current = null
+    discardAuthorization(previous?.authorization)
+  }
+  const disposeAuthorization = useEffectEvent(() => {
+    pending.current?.abort()
+    discardPendingAuthorization()
+  })
+  // Stop authorization and release unused grants when setup leaves the screen.
+  useEffect(() => () => disposeAuthorization(), [])
 
   const saveProvider = async (
     provider: OnboardingProvider,
@@ -219,9 +238,14 @@ export const useOnboardingProviderState = (
           cached.tinfoilCredentials.expires_at > Date.now() + 60_000
             ? { tinfoilCredentials: cached.tinfoilCredentials, attempt: cached.attempt }
             : { tinfoilCredentials: await dependencies.startTinfoil({ signal: controller.signal }), attempt }
-        if (!controller.signal.aborted) {
-          await connectKey(provider, authorization.tinfoilCredentials.access_token, controller, authorization)
+        if (controller.signal.aborted) {
+          discardAuthorization(authorization)
+          return
         }
+        if (cached && cached.tinfoilCredentials !== authorization.tinfoilCredentials) {
+          discardAuthorization(cached)
+        }
+        await connectKey(provider, authorization.tinfoilCredentials.access_token, controller, authorization)
       } else {
         const key = await dependencies.start({ signal: controller.signal })
         if (!controller.signal.aborted) {
@@ -252,7 +276,14 @@ export const useOnboardingProviderState = (
       await assertProviderConnectionAttemptCurrent(db, returned.attempt)
       controller.signal.throwIfAborted()
       const credentials = await returned.complete()
-      controller.signal.throwIfAborted()
+      if (controller.signal.aborted) {
+        // StrictMode's replacement effect owns the same completion until it too stops.
+        const owner = returnedOwner.current
+        if (owner?.id !== returned.id || owner.controller === controller || owner.controller.signal.aborted) {
+          discardAuthorization({ attempt: returned.attempt, tinfoilCredentials: credentials })
+        }
+        return
+      }
       await connectKey('tinfoil', credentials.access_token, controller, {
         attempt: returned.attempt,
         tinfoilCredentials: credentials,
@@ -277,6 +308,7 @@ export const useOnboardingProviderState = (
     }
     clearTinfoilMobileReturn(returned.id)
     const controller = new AbortController()
+    returnedOwner.current = { id: returned.id, controller }
     pending.current = controller
     void resumeMobile(controller)
     return () => controller.abort()
@@ -312,13 +344,14 @@ export const useOnboardingProviderState = (
 
   const showChoices = () => {
     cancelAuthorization()
-    authorizedSession.current = null
+    discardPendingAuthorization()
     addForm.resetForm()
     dispatch({ type: 'view', view: 'choices' })
   }
 
   const chooseProvider = (provider: 'tinfoil' | 'custom' | 'openrouter') => {
     cancelAuthorization()
+    discardPendingAuthorization()
     addForm.onProviderChange(provider)
     dispatch({ type: 'select', selection: provider })
     dispatch({ type: 'view', view: provider === 'custom' ? 'other' : provider })
@@ -348,7 +381,7 @@ export const useOnboardingProviderState = (
 
   const cancelConnection = () => {
     cancelAuthorization()
-    authorizedSession.current = null
+    discardPendingAuthorization()
     addForm.resetForm()
     dispatch({ type: 'view', view: provider })
   }
@@ -391,7 +424,7 @@ export const useOnboardingProviderState = (
     isConnected,
     provider,
     useApiKey: () => {
-      authorizedSession.current = null
+      discardPendingAuthorization()
       addForm.form.setValue('apiKey', '')
       dispatch({ type: 'api-key' })
     },

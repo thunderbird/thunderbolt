@@ -8,7 +8,7 @@ import { createModel, getModel } from '@/dal/models'
 import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
 import { getDb } from '@/db/database'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
-import { createTinfoilSession } from './tinfoil-session'
+import { createTinfoilSession, revokeReplacedTinfoilAuthorization } from './tinfoil-session'
 import { getProviderConnectionAttempt, saveProviderAuthorization } from './provider-connection-attempt'
 import { tinfoilAuth, TinfoilReauthorizationError, TinfoilConnectionError } from './tinfoil-auth'
 
@@ -188,6 +188,59 @@ describe('Tinfoil session lifecycle', () => {
     auth.revoke.mockRejectedValue(new TinfoilConnectionError('unavailable'))
     await expect(session.disconnect()).rejects.toThrow('unavailable')
     expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(renewed)
+  })
+  it('revokes a replaced grant and preserves the guarded revision of a legacy session', async () => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    const { auth } = harness()
+    await revokeReplacedTinfoilAuthorization(getDb(), renewed, undefined, auth)
+    expect(auth.revoke).toHaveBeenCalledWith(expired.refresh_token)
+    expect(await getProviderConnectionAttempt(getDb(), 'tinfoil')).toEqual(attempt)
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.reauth_required).toBe(true)
+    await getDb().transaction((tx) => saveProviderAuthorization(tx, { attempt, tinfoilCredentials: renewed }))
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe(renewed.access_token)
+  })
+  it('keeps the old grant intact when replacement revocation fails', async () => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)
+    const { auth } = harness()
+    auth.revoke.mockRejectedValue(new TinfoilConnectionError('unavailable'))
+    await expect(revokeReplacedTinfoilAuthorization(getDb(), renewed, undefined, auth)).rejects.toThrow('unavailable')
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(expired)
+  })
+  it('does not revoke the saved grant during a same-authorization retry', async () => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', renewed, true)
+    const { auth } = harness()
+    await revokeReplacedTinfoilAuthorization(getDb(), renewed, undefined, auth)
+    expect(auth.revoke).not.toHaveBeenCalled()
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(renewed)
+  })
+  it('revokes only unused authorization credentials', async () => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)
+    const { auth, session } = harness()
+    await session.discardAuthorization(renewed)
+    expect(auth.revoke).toHaveBeenCalledWith(renewed.refresh_token)
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(expired)
+  })
+  it('retains grant ownership after refresh so late cleanup cannot revoke the current session', async () => {
+    const original = { ...expired, authorizationId: 'owned-grant' }
+    await saveIntegrationCredentials(getDb(), 'tinfoil', original, true)
+    const { auth, session } = harness()
+    const started = Promise.withResolvers<void>()
+    const refreshed = Promise.withResolvers<typeof renewed>()
+    auth.refresh.mockImplementation(() => {
+      started.resolve()
+      return refreshed.promise
+    })
+    const refresh = session.getAccessToken()
+    await started.promise
+    const discard = session.discardAuthorization(original)
+    expect(auth.revoke).not.toHaveBeenCalled()
+    refreshed.resolve(renewed)
+    await refresh
+    await discard
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.authorizationId).toBe('owned-grant')
+    expect(auth.revoke).not.toHaveBeenCalled()
+    expect(await session.getAccessToken()).toBe(renewed.access_token)
   })
   it('rolls back both owned BYOK and OAuth state if the disconnect transaction fails', async () => {
     const db = getDb()

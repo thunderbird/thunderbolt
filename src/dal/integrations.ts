@@ -14,6 +14,8 @@ type IntegrationCredentials = {
   refresh_token?: string
   expires_at?: number
   reauth_required?: boolean
+  /** Stable OAuth grant identity, retained across refreshes and connection toggles. */
+  authorizationId?: string
   /** Local generation invalidates OAuth attempts started before a connection change. */
   sessionRevision?: string
   profile?: {

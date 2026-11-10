@@ -36,6 +36,7 @@ const tokenSchema = z.object({
   token_type: z.string().refine((value) => value.toLowerCase() === 'bearer'),
 })
 export type TinfoilCredentials = {
+  authorizationId?: string
   access_token: string
   refresh_token?: string
   expires_at: number
@@ -103,10 +104,16 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
     }
   }
 
-  const exchangeCode = (
+  const exchangeCode = async (
     { code, verifier, redirectUri }: { code: string; verifier: string; redirectUri: string },
     signal?: AbortSignal,
-  ) => grant({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri }, signal)
+  ): Promise<TinfoilCredentials> => ({
+    ...(await grant(
+      { grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri },
+      signal,
+    )),
+    authorizationId: crypto.randomUUID(),
+  })
 
   return {
     exchangeCode,

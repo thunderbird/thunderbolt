@@ -84,8 +84,11 @@ call `https://api.tinfoil.sh/oauth/{token,revoke}` directly. No backend or clien
 secret is required. The registered redirects must include desktop loopbacks
 `http://localhost:17421/`, `:17422/`, `:17423/` and each web deployment's
 `/oauth/tinfoil` URL. Web callbacks use the random state to address the same-origin
-BroadcastChannel. Native mobile currently uses BYOK; the public-client mobile
-redirect registration and deep-link flow still need to be confirmed with Tinfoil.
+BroadcastChannel. Native mobile uses the verified app link
+`https://app.thunderbolt.io/oauth/callback`, which must also be registered with
+Tinfoil. The pending PKCE verifier and return context survive an app restart;
+callbacks validate the exact app-link origin/path, unique nonce and code, and a
+ten-minute lifetime before resuming setup. API keys remain an alternative.
 
 Provider setup captures a local connection revision before authorization or model
 verification and checks it again inside the model-save transaction. Disconnecting,
@@ -108,6 +111,16 @@ not cancel the subscription. Disabling or disconnecting the subscription does no
 change individual model toggles: availability is derived from both the model
 preference and current connection access. A failed remote revocation keeps the
 local connection intact so disconnect can be retried.
+
+Reconnecting revokes the previous grant before saving its replacement. A failed
+revocation preserves the old session for retry; cancellation after a successful
+revocation leaves that old session marked for reauthorization. Failed model
+verification retains the new grant for a retry while setup remains open.
+Leaving or cancelling setup releases unused grants on a best-effort basis, under
+the same session lock. A local `authorizationId` survives token refresh and
+connection toggles so delayed cleanup cannot revoke a grant another window now
+owns. Cleanup failures emit a fixed warning without credentials; the user can
+still revoke the app from Tinfoil's dashboard.
 
 Open chats watch model and connection changes from the database, including other
 windows. Every new send independently checks availability again. These checks do

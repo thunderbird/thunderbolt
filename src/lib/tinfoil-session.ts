@@ -6,7 +6,7 @@ import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/int
 import { getDb } from '@/db/database'
 import { getAllModels, updateModelInTransaction } from '@/dal/models'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { tinfoilAuth, TinfoilReauthorizationError } from './tinfoil-auth'
+import { tinfoilAuth, TinfoilReauthorizationError, type TinfoilCredentials } from './tinfoil-auth'
 
 const lockName = 'thunderbolt-tinfoil-session'
 /** A single origin-wide lock protects rotating Tinfoil credentials. */
@@ -18,6 +18,49 @@ const defaultDependencies = {
   auth: tinfoilAuth,
   lock: withTinfoilSessionLock,
   now: Date.now,
+}
+
+/** A rotating token belongs to the same grant even after another window refreshes it. */
+const sameAuthorization = (
+  current: { access_token: string; refresh_token?: string; authorizationId?: string },
+  incoming: TinfoilCredentials,
+): boolean =>
+  Boolean(current.authorizationId && current.authorizationId === incoming.authorizationId) ||
+  current.access_token === incoming.access_token ||
+  Boolean(current.refresh_token && current.refresh_token === incoming.refresh_token)
+
+/** Revoke the replaced grant while holding the session lock, before committing its replacement. */
+export const revokeReplacedTinfoilAuthorization = async (
+  db: AnyDrizzleDatabase,
+  incoming: TinfoilCredentials,
+  signal?: AbortSignal,
+  auth = tinfoilAuth,
+): Promise<void> => {
+  const row = await getIntegrationCredentials(db, 'tinfoil')
+  if (!row?.credentials.access_token || sameAuthorization(row.credentials, incoming)) {
+    return
+  }
+  signal?.throwIfAborted()
+  // A failed revoke leaves the old credential available for retry.
+  await auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
+  // Cancellation or a failed replacement cannot make the revoked session usable again.
+  // Preserve the attempt's snapshot, including legacy rows without an explicit revision.
+  await db.transaction(async (tx) => {
+    const current = await getIntegrationCredentials(tx, 'tinfoil')
+    if (JSON.stringify(current) !== JSON.stringify(row)) {
+      throw new Error('Tinfoil connection changed during revocation')
+    }
+    await saveIntegrationCredentials(
+      tx,
+      'tinfoil',
+      {
+        ...row.credentials,
+        sessionRevision: row.credentials.sessionRevision ?? JSON.stringify(row),
+        reauth_required: true,
+      },
+      row.enabled,
+    )
+  })
 }
 
 /** Updates OAuth access within a caller-owned transaction and session lock. */
@@ -59,7 +102,7 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
       }
       try {
         const tokens = await deps.auth.refresh(current.refresh_token)
-        await saveIntegrationCredentials(db, 'tinfoil', { ...tokens, sessionRevision: current.sessionRevision }, true)
+        await saveIntegrationCredentials(db, 'tinfoil', { ...current, ...tokens }, true)
         return tokens.access_token
       } catch (error) {
         if (error instanceof TinfoilReauthorizationError) {
@@ -70,6 +113,14 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
     }),
   setEnabled: (enabled: boolean) =>
     deps.lock(() => deps.db().transaction((tx) => setTinfoilSessionEnabledInTransaction(tx, enabled))),
+  discardAuthorization: (credentials: TinfoilCredentials) =>
+    deps.lock(async () => {
+      const current = await getIntegrationCredentials(deps.db(), 'tinfoil')
+      if (current && sameAuthorization(current.credentials, credentials)) {
+        return
+      }
+      await deps.auth.revoke(credentials.refresh_token ?? credentials.access_token)
+    }),
   disconnect: () =>
     deps.lock(async () => {
       const db = deps.db()

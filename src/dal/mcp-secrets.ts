@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, exists, isNull, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { mcpSecretsTable } from '../db/tables'
+import { mcpSecretsTable, mcpServersTable } from '../db/tables'
 import type { DrizzleQueryWithPromise } from '@/types'
 
 export type McpCredentialSummary = {
@@ -59,18 +59,68 @@ export type McpServerCredentials =
       scope?: string
     }
 
-/** Get credentials for an MCP server. Returns null when no row exists. */
-export const getMcpServerCredentials = async (
+export type McpCredentialSnapshot = { serialized: string; credentials: McpServerCredentials }
+
+/** Read parsed credentials with their exact stored representation for a later conditional replacement. */
+export const getMcpServerCredentialSnapshot = async (
   db: AnyDrizzleDatabase,
   id: string,
-): Promise<McpServerCredentials | null> => {
+): Promise<McpCredentialSnapshot | null> => {
   const row = await db.select().from(mcpSecretsTable).where(eq(mcpSecretsTable.id, id)).get()
 
   if (!row?.credentials) {
     return null
   }
 
-  return JSON.parse(row.credentials) as McpServerCredentials
+  return { serialized: row.credentials, credentials: JSON.parse(row.credentials) as McpServerCredentials }
+}
+
+/** Get credentials for an MCP server. Returns null when no row exists. */
+export const getMcpServerCredentials = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+): Promise<McpServerCredentials | null> => (await getMcpServerCredentialSnapshot(db, id))?.credentials ?? null
+
+/** Replace only the captured credential on an active, unchanged endpoint; cancellation rolls back the write. */
+export const updateMcpServerCredentialsIfCurrent = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  credentials: McpServerCredentials,
+  {
+    expectedCredentials,
+    expectedUrl,
+    signal,
+  }: {
+    expectedCredentials: string
+    expectedUrl: string | null
+    signal: AbortSignal
+  },
+): Promise<void> => {
+  await db.transaction(async (tx) => {
+    signal.throwIfAborted()
+    const activeServer = tx
+      .select({ id: mcpServersTable.id })
+      .from(mcpServersTable)
+      .where(
+        and(
+          eq(mcpServersTable.id, id),
+          eq(mcpServersTable.enabled, 1),
+          isNull(mcpServersTable.deletedAt),
+          expectedUrl === null ? isNull(mcpServersTable.url) : eq(mcpServersTable.url, expectedUrl),
+        ),
+      )
+    const updated = await tx
+      .update(mcpSecretsTable)
+      .set({ credentials: JSON.stringify(credentials) })
+      .where(
+        and(eq(mcpSecretsTable.id, id), eq(mcpSecretsTable.credentials, expectedCredentials), exists(activeServer)),
+      )
+      .returning({ id: mcpSecretsTable.id })
+    signal.throwIfAborted()
+    if (!updated.length) {
+      throw new Error('MCP connection changed during token refresh')
+    }
+  })
 }
 
 /**

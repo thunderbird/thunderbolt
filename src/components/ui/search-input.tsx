@@ -46,7 +46,9 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
         setInternalValue(newValue)
       }
       onChange?.(event)
-      debouncedCallback(newValue)
+      if (debouncedOnChange) {
+        debouncedCallback(newValue)
+      }
     }
 
     const handleClear = () => {

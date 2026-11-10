@@ -35,13 +35,15 @@ const historyFor = (threadId: string, length: number): ThunderboltUIMessage[] =>
 /** Route through the real message DAL while recording which messages cross the persistence boundary. */
 const createRoutingHarness = async (threadId: string, history: ThunderboltUIMessage[]) => {
   const db = getDb()
+  const model = createMockModel()
   await db.insert(chatThreadsTable).values({ id: threadId, title: 'Existing chat', isEncrypted: 0 })
   await saveMessagesWithContextUpdate(db, threadId, history)
   hydrateStore({
     id: threadId,
     chatInstance: createMockChatInstance(history),
     chatThread: null,
-    selectedModel: createMockModel(),
+    models: [model],
+    selectedModel: model,
     triggerData: null,
   })
   const save = mock<SaveMessagesFunction>(async ({ id, messages }) => {
@@ -58,6 +60,7 @@ const createRoutingHarness = async (threadId: string, history: ThunderboltUIMess
   const proxyFetch = Object.assign(async () => new Response('unused proxy'), { preconnect: async () => true })
   const connect = mock(async () => adapter)
   const route = createAgentRoutingFetch(threadId, save, {} as HttpClient, () => proxyFetch, {
+    getAvailableModels: async () => [model],
     getOrConnectAdapter: connect,
     getChatReasoningEffort: async () => undefined,
   })

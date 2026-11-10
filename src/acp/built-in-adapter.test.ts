@@ -12,6 +12,9 @@
 
 import '@/testing-library'
 
+import { tinfoilSession } from '@/lib/tinfoil-session'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { defaultModels } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -20,6 +23,11 @@ import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-suppor
 import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
 import { createEvalAdapterContext } from '@/ai/eval/runner'
 import { createModel as insertModel } from '@/dal/models'
+import {
+  saveProviderConnection,
+  saveProviderConnectionInTransaction,
+  updateProviderConnection,
+} from '@/dal/provider-connections'
 import { updateSkill } from '@/dal/skills'
 import { useConfigStore } from '@/api/config-store'
 import { updateSettings } from '@/dal/settings'
@@ -107,19 +115,21 @@ const openaiCompat = (
 describe('isPiModelCandidate', () => {
   it('matches the production provider and tool-usage routing boundary', () => {
     expect(
-      ['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'].map((provider) =>
+      ['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt', 'otari'].map((provider) =>
         isPiModelCandidate({ provider: provider as Model['provider'], toolUsage: 1 }),
       ),
-    ).toEqual([true, true, true, true, true])
+    ).toEqual([true, true, true, true, true, true])
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 0 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'anthropic', toolUsage: 0 })).toBe(false)
   })
 })
 
-/** Real prompt parts, so these tests break if the `# Language` section moves out of the
- *  stable half or stops reaching this engine. */
-const languagePromptParts = (appLanguage: PromptParams['appLanguage']) =>
+/** Real prompt parts to verify stable instructions reach the harness and drive cache invalidation. */
+const testPromptParts = (
+  appLanguage: PromptParams['appLanguage'],
+  availableToolNames: PromptParams['availableToolNames'] = [],
+) =>
   createPromptParts(
     {
       modelName: 'Test Model',
@@ -128,7 +138,7 @@ const languagePromptParts = (appLanguage: PromptParams['appLanguage']) =>
       location: {},
       localization: { distanceUnit: 'metric', temperatureUnit: 'c', timeFormat: '24h', currency: 'EUR' },
       integrationStatus: 'READY',
-      hasWebTools: false,
+      availableToolNames,
       appLanguage,
     },
     new Date('2026-07-10T12:00:00Z'),
@@ -136,7 +146,7 @@ const languagePromptParts = (appLanguage: PromptParams['appLanguage']) =>
 
 describe('reply-language directive delivery', () => {
   it('carries the language directive and its named fallback into the harness prompt', () => {
-    const { stablePrompt, volatilePrompt } = languagePromptParts('ja')
+    const { stablePrompt, volatilePrompt } = testPromptParts('ja')
     const composed = composeAppHarnessSystemPrompt({
       stableSystemPrompt: stablePrompt,
       volatileSystemPrompt: volatilePrompt,
@@ -149,7 +159,7 @@ describe('reply-language directive delivery', () => {
   })
 
   it('keeps the directive cacheable — in the stable half, ahead of the timestamp', () => {
-    const { stablePrompt, volatilePrompt } = languagePromptParts('ja')
+    const { stablePrompt, volatilePrompt } = testPromptParts('ja')
     const composed = composeAppHarnessSystemPrompt({
       stableSystemPrompt: stablePrompt,
       volatileSystemPrompt: volatilePrompt,
@@ -163,13 +173,32 @@ describe('reply-language directive delivery', () => {
 
   it('rebuilds the harness when the app language changes mid-thread', () => {
     // Otherwise a live harness would keep instructing the previous fallback language.
-    expect(harnessSignature(anthropic(), languagePromptParts('ja').stablePrompt)).not.toBe(
-      harnessSignature(anthropic(), languagePromptParts('pt-BR').stablePrompt),
+    expect(harnessSignature(anthropic(), testPromptParts('ja').stablePrompt)).not.toBe(
+      harnessSignature(anthropic(), testPromptParts('pt-BR').stablePrompt),
     )
   })
 })
 
 describe('composeAppHarnessSystemPrompt', () => {
+  it('updates the harness prompt and signature when web search becomes available or unavailable', () => {
+    const unavailable = testPromptParts('en')
+    const available = testPromptParts('en', ['search'])
+    const compose = ({ stablePrompt, volatilePrompt }: ReturnType<typeof testPromptParts>) =>
+      composeAppHarnessSystemPrompt({
+        stableSystemPrompt: stablePrompt,
+        volatileSystemPrompt: volatilePrompt,
+        supportsTools: true,
+      })
+
+    expect(compose(unavailable)).toContain('Built-in web search is unavailable')
+    expect(compose(available)).not.toContain('Built-in web search is unavailable')
+    expect(compose(available)).toContain('Web lookups use the `search` tool.')
+    expect(harnessSignature(anthropic(), unavailable.stablePrompt)).not.toBe(
+      harnessSignature(anthropic(), available.stablePrompt),
+    )
+    expect(compose(testPromptParts('en'))).toBe(compose(unavailable))
+  })
+
   it.each([false, true])('describes coding tools only when supportsTools is true (%s)', (supportsTools) => {
     const composed = composeAppHarnessSystemPrompt({
       stableSystemPrompt: 'Stable instructions',
@@ -205,6 +234,20 @@ describe('harnessSignature', () => {
 
   it('changes when the api key changes', () => {
     expect(harnessSignature(anthropic(), 'sys')).not.toBe(harnessSignature(anthropic({ apiKey: 'sk-b' }), 'sys'))
+  })
+
+  it.each([undefined, 'generation-1'])('keys provider bindings by connection ID with revision %s', (revision) => {
+    const resolved = { ...anthropic(), providerBinding: { connectionId: 'first', revision } }
+    const equivalent = { ...anthropic(), providerBinding: { connectionId: 'first', revision } }
+    const switched = { ...anthropic(), providerBinding: { connectionId: 'second', revision } }
+    expect(harnessSignature(resolved, 'sys')).toBe(harnessSignature(equivalent, 'sys'))
+    expect(harnessSignature(resolved, 'sys')).not.toBe(harnessSignature(switched, 'sys'))
+  })
+
+  it('keys the same connection by its captured credential generation', () => {
+    const resolved = { ...anthropic(), providerBinding: { connectionId: 'first', revision: 'generation-1' } }
+    const reconnected = { ...anthropic(), providerBinding: { connectionId: 'first', revision: 'generation-2' } }
+    expect(harnessSignature(resolved, 'sys')).not.toBe(harnessSignature(reconnected, 'sys'))
   })
 
   it('changes when the system prompt changes', () => {
@@ -277,6 +320,25 @@ describe('resolvePiModel — image capability', () => {
     setCachedImageSupport(openaiModel, 'unsupported')
     const resolved = await resolvePiModel(agentCore, contextFor(openaiModel), null)
     expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: false })
+  })
+})
+
+describe('resolvePiModel — live provider transport', () => {
+  it('keeps a cached Anthropic descriptor on the current proxy transport', async () => {
+    const first = mock(async () => new Response('first server'))
+    const next = mock(async () => new Response('next server'))
+    const transport = { current: Object.assign(first, { preconnect: async () => false }) }
+    const context = {
+      selectedModel: { provider: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'key' } as Model,
+      getProxyFetch: () => transport.current,
+    } as unknown as AgentAdapterContext
+    const resolved = await resolvePiModel({ isKnownAnthropicModel: () => true } as never, context, null)
+    const send = resolved!.descriptor.fetch!
+    expect(await (await send('https://api.anthropic.com/v1/messages')).text()).toBe('first server')
+    transport.current = Object.assign(next, { preconnect: async () => false })
+    expect(await (await send('https://api.anthropic.com/v1/messages')).text()).toBe('next server')
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(next).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -378,6 +440,94 @@ const requireDescriptor = <Kind extends PiModelDescriptor['kind']>(
 }
 
 describe('resolvePiModel — Tinfoil', () => {
+  it('refreshes linked OAuth credentials once per request and never bypasses their binding', async () => {
+    await setupTestDatabase()
+    const access = spyOn(tinfoilSession, 'getAccessToken').mockResolvedValue('initial')
+    const send = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer refreshed')
+      return new Response()
+    })
+    try {
+      const id = await getDb().transaction((tx) =>
+        saveProviderConnectionInTransaction(tx, {
+          provider: 'tinfoil',
+          name: 'Private account',
+          authMethod: 'oauth',
+          credentials: { access_token: 'initial', refresh_token: 'refresh', expires_at: Date.now() + 120_000 },
+        }),
+      )
+      const model = tinfoilModel({ isSystem: 0, providerConnectionId: id, oauthProvider: 'tinfoil', apiKey: 'stale' })
+      const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(model), null, {
+        getTinfoilClient: async () => createSecureClient(send),
+      })
+      const descriptor = requireDescriptor(resolved, 'openai-compat')
+      expect(access).toHaveBeenCalledTimes(1)
+      expect(descriptor.apiKey).toBe('initial')
+      access.mockResolvedValue('refreshed')
+      await descriptor.fetch('https://enclave.example.com/v1/chat/completions', {
+        headers: { Authorization: 'Bearer initial' },
+      })
+      expect(access).toHaveBeenCalledTimes(2)
+      expect(send).toHaveBeenCalledTimes(1)
+
+      await getDb().transaction((tx) =>
+        saveProviderConnectionInTransaction(tx, {
+          id,
+          provider: 'tinfoil',
+          name: 'Replacement account',
+          authMethod: 'oauth',
+          credentials: {
+            access_token: 'replacement',
+            refresh_token: 'replacement-refresh',
+            expires_at: Date.now() + 120_000,
+          },
+        }),
+      )
+      await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toThrow(
+        'connection changed',
+      )
+      expect(send).toHaveBeenCalledTimes(1)
+    } finally {
+      access.mockRestore()
+      await teardownTestDatabase()
+    }
+  })
+
+  it('uses fresh OAuth bearer tokens inside the direct encrypted transport, never the managed proxy', async () => {
+    const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const access = spyOn(tinfoilSession, 'getAccessToken')
+      .mockResolvedValueOnce('initial')
+      .mockResolvedValue('refreshed')
+    const client = createSecureClient(async (_input, init) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer refreshed')
+      expect(JSON.parse(init?.body as string).web_search_options).toBeUndefined()
+      return new Response()
+    })
+    const managed = mock(async () => {
+      throw new Error('must not use managed billing')
+    })
+    try {
+      const model = tinfoilModel({ isSystem: 0, apiKey: null, oauthProvider: 'tinfoil', toolUsage: 1 })
+      const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(model), null, {
+        getTinfoilClient: async () => client,
+        getSystemTinfoilClient: managed,
+      })
+      const descriptor = requireDescriptor(resolved, 'openai-compat')
+      expect(descriptor.apiKey).toBe('initial')
+      await descriptor.fetch('https://enclave.example.com/v1/chat/completions', {
+        headers: { Authorization: 'Bearer initial' },
+        method: 'POST',
+        body: JSON.stringify({ model: 'test-model', messages: [] }),
+      })
+      expect(access).toHaveBeenCalledTimes(2)
+      expect(managed).not.toHaveBeenCalled()
+    } finally {
+      access.mockRestore()
+      useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
+    }
+  })
+
   it('resolves a managed model as a confidential descriptor and records Pi attestation', async () => {
     const client = createSecureClient()
     const getSystemTinfoilClient = mock(async () => client)
@@ -525,6 +675,28 @@ describe('resolvePiModel — Tinfoil', () => {
     await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
     expect(evictUserTinfoilClient).toHaveBeenCalledTimes(1)
     expect(evictUserTinfoilClient).toHaveBeenCalledWith(client)
+  })
+
+  it.each([0, 1])('keeps Tinfoil search in the visible agent tool loop (%s)', async (toolUsage) => {
+    const original = useLocalSettingsStore.getState().cloudUrl
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    try {
+      const client = createSecureClient(async (_input, init) => {
+        const body = JSON.parse(init?.body as string)
+        expect(body.web_search_options).toBeUndefined()
+        return new Response()
+      })
+      const model = tinfoilModel({ isSystem: 0, apiKey: 'own-key', toolUsage })
+      const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(model), null, {
+        getTinfoilClient: async () => client,
+      })
+      await requireDescriptor(resolved, 'openai-compat').fetch('https://enclave.example.com/v1/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify({ model: 'test', messages: [] }),
+      })
+    } finally {
+      useLocalSettingsStore.setState({ cloudUrl: original })
+    }
   })
 
   it('rejects a BYOK model without an API key', async () => {
@@ -1500,6 +1672,62 @@ describe('real Pi approvals', () => {
     }
   })
 })
+it.each(['resaved', 're-enabled', 'switched'] as const)(
+  'rebuilds a real Pi harness when its provider connection is %s with the same key',
+  async (change) => {
+    await setupTestDatabase()
+    const builds: AgentHarness[] = []
+    const run = createBudgetAdapter(['First.', 'Second.', 'Third.', 'Fourth.'], undefined, (harness) => {
+      builds.push(harness)
+    })
+    try {
+      const input = {
+        provider: 'openai' as const,
+        name: 'OpenAI',
+        authMethod: 'api_key' as const,
+        credentials: { apiKey: 'test' },
+      }
+      const id = await saveProviderConnection(getDb(), input)
+      run.context.selectedModel = { ...run.context.selectedModel, providerConnectionId: id }
+      const messages: ThunderboltUIMessage[] = []
+      const send = async (reply: string) => {
+        messages.push({ id: `user-${messages.length}`, role: 'user', parts: [{ type: 'text', text: 'Continue.' }] })
+        const response = await run.adapter.fetch({ body: JSON.stringify({ messages }) }, run.context)
+        const output = await response.text()
+        expect(output).not.toContain('"type":"error"')
+        expect(output).toContain(reply)
+        messages.push({ id: `reply-${messages.length}`, role: 'assistant', parts: [{ type: 'text', text: reply }] })
+      }
+
+      await send('First.')
+      await updateProviderConnection(getDb(), id, { name: 'Renamed connection' })
+      await send('Second.')
+      expect(builds).toHaveLength(1)
+
+      if (change === 'resaved') {
+        await saveProviderConnection(getDb(), { ...input, id })
+      } else if (change === 're-enabled') {
+        await updateProviderConnection(getDb(), id, { enabled: false })
+        await updateProviderConnection(getDb(), id, { enabled: true })
+      } else {
+        const nextId = await saveProviderConnection(getDb(), input)
+        run.context.selectedModel = { ...run.context.selectedModel, providerConnectionId: nextId }
+      }
+      await send('Third.')
+      expect(builds).toHaveLength(2)
+
+      if (change === 'switched') {
+        await updateProviderConnection(getDb(), id, { enabled: false })
+      }
+      await send('Fourth.')
+      expect(builds).toHaveLength(2)
+      expect(run.requests).toHaveLength(4)
+    } finally {
+      run.adapter.disconnect()
+      await teardownTestDatabase()
+    }
+  },
+)
 
 describe('real Pi web-budget payload', () => {
   it('pairs a mixed batch, retains non-web tools and steers only once after concurrent denials', async () => {
@@ -1648,6 +1876,12 @@ it.each([
 
 it('keeps real adapter citation metadata across a below-cap harness rebuild', async () => {
   await setupTestDatabase()
+  const previousSettings = useLocalSettingsStore.getState()
+  const previousSearch = useSearchProviderStore.getState()
+  const previousToken = localStorage.getItem('thunderbolt_auth_token')
+  useLocalSettingsStore.setState({ cloudUrl: 'https://backend.test', localMode: false })
+  useSearchProviderStore.getState().selectSearchProvider('cloud')
+  setAuthToken('test-session')
   const run = createBudgetAdapter(
     [
       [{ name: 'search', args: { query: 'one', max_results: 10 } }],
@@ -1679,6 +1913,12 @@ it('keeps real adapter citation metadata across a below-cap harness rebuild', as
     expect(JSON.stringify(results[1]!.content)).toContain('[Source 2]')
     expect(run.registrations.size).toBe(0)
   } finally {
+    clearAuthToken()
+    useLocalSettingsStore.setState(previousSettings)
+    useSearchProviderStore.setState(previousSearch)
+    if (previousToken !== null) {
+      localStorage.setItem('thunderbolt_auth_token', previousToken)
+    }
     run.adapter.disconnect()
     await teardownTestDatabase()
   }

@@ -147,6 +147,7 @@ describe('Header', () => {
   })
 
   beforeEach(() => {
+    resetStore()
     forceMobileViewport()
     useConfigStore.setState({ config: {}, configLoaded: true })
   })

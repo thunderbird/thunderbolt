@@ -5,12 +5,26 @@
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
+import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { OnboardingLocationStep } from './onboarding-location-step'
 
 beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
+let originalCloudUrl: string
+
+beforeEach(() => {
+  originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+  useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1' })
+  setAuthToken('test-session')
+})
+
+afterEach(() => {
+  clearAuthToken()
+  useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
+})
 
 const response = [{ id: 123, name: 'Zero', region: 'Region', country: 'Country', countryCode: 'ZZ', lat: 0, lon: 0 }]
 const chooseLocation = async () => {

@@ -18,6 +18,7 @@ type RateLimitTier =
   | 'inference'
   | 'pro'
   | 'auth'
+  | 'integration-oauth'
   | 'anonymous-sign-in'
   | 'anonymous-sign-in-global'
   | 'captcha-challenge'
@@ -49,6 +50,7 @@ const tierConfigs = {
   inference: { max: 60, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
+  'integration-oauth': { max: 30, durationSecs: 60 },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },
   'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
 } satisfies Record<FixedRateLimitTier, RateLimitTierConfig>

@@ -41,7 +41,7 @@ export const readTinfoilEvidence = (document: VerificationDocument): Attestation
  * Loaded lazily with Tinfoil so the UI never pulls crypto into the entry bundle.
  */
 export class AttestedTinfoilClient extends SecureClient {
-  private verifiedDocument: VerificationDocument | undefined
+  private verified = false
   private readiness: Promise<void> | undefined
   private failure: { error: unknown } | undefined
 
@@ -57,7 +57,8 @@ export class AttestedTinfoilClient extends SecureClient {
     if (this.failure) {
       return Promise.reject(this.failure.error)
     }
-    if (this.verifiedDocument === this.getVerificationDocument()) {
+    // SDK documents are cloned on read; reset() marks the end of a verified transport.
+    if (this.verified) {
       return Promise.resolve()
     }
     this.readiness ??= this.verify()
@@ -78,11 +79,11 @@ export class AttestedTinfoilClient extends SecureClient {
       }
       const document = this.getVerificationDocument()
       const evidence = readTinfoilEvidence(document)
-      this.verifiedDocument = document
+      this.verified = true
       this.reporter.publish({ status: 'verified', evidence })
     } catch (error) {
       this.failure = { error }
-      this.verifiedDocument = undefined
+      this.verified = false
       this.reporter.publish({
         status: 'failed',
         reason: getErrorName(error) === 'TinfoilAttestationTimeoutError' ? 'timeout' : 'verification',
@@ -95,7 +96,7 @@ export class AttestedTinfoilClient extends SecureClient {
 
   override reset(): void {
     super.reset()
-    this.verifiedDocument = undefined
+    this.verified = false
     // SDK initialization cannot be aborted and can still overwrite its own
     // transport after reset. Retire this instance instead of starting a second
     // initialization on it; the lifecycle will construct a fresh SDK instance.

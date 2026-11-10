@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
-import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
+import { selectBuiltInAgentEnabled } from '@/api/config-store'
 import { useAppName } from '@/lib/branding-selectors'
 import { disposeAdapter } from '@/acp/adapter-cache'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
@@ -120,7 +121,7 @@ export const loadAllAgents = async (
 /** Combined list hook: built-in first (unless disabled by deployment), then
  *  system (alpha), then customs (alpha). Matches the Settings/Agents visual order. */
 export const useAllAgents = (): Agent[] => {
-  const includeBuiltIn = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+  const includeBuiltIn = useConfigCapability(selectBuiltInAgentEnabled)
   // `builtInAgent.name` reads the app name live, so the same object stays current
   // wherever it is held (the chat store keeps the selected agent by reference;
   // a copy with the name baked in would go stale there). The value is unused:
@@ -143,11 +144,11 @@ export type CreateAgentInput = {
   description?: string | null
   icon?: string | null
   enabled?: 0 | 1
-  userId: string
+  userId: string | null
 }
 
 /** Insert a new custom agent into the synced table.
- *  `userId` is required — synced tables must carry it from the caller's session. */
+ *  Local agents have no owner until sync stamps the authenticated user, like other local-first rows. */
 export const createAgent = async (db: AnyDrizzleDatabase, data: CreateAgentInput): Promise<void> => {
   await db.insert(agentsTable).values({
     id: data.id,

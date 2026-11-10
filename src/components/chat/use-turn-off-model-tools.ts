@@ -24,13 +24,8 @@ export const useTurnOffModelTools = ({ regenerate }: UseTurnOffModelToolsOptions
       if (!session) {
         throw new Error('No session found')
       }
-      const model = { ...session.selectedModel, toolUsage: 0 }
-      await updateModel(db, model.id, { toolUsage: 0 })
-      // setModels keeps each session's current model object, so swap the updated one in,
-      // unless the user picked another model while this saved.
-      if (useChatStore.getState().sessions.get(sessionId)?.selectedModel.id === model.id) {
-        store.updateSession(sessionId, { selectedModel: model })
-      }
+      await updateModel(db, session.selectedModel.id, { toolUsage: 0 })
+      // Refresh canonical model rows while preserving any newer user selection.
       store.setModels(await getAvailableModels(db))
     },
     onSuccess: () => regenerate(),

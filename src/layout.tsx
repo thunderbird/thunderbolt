@@ -11,14 +11,15 @@ import { SearchPaletteProvider } from '@/search/search-palette-context'
 import { AppContentOverlayProvider } from '@/components/app-content-overlay'
 import SidebarComponent from '@/layout/sidebar'
 import { ContentViewLayout } from '@/layout/content-view-layout'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import './index.css'
 
 const LayoutContent = () => {
   const { isMobile, openMobile, setOpenMobile, notifyMobileSidebarCloseSettled } = useSidebar()
+  const { pathname } = useLocation()
 
   return (
-    <CreateItemProvider>
+    <CreateItemProvider pathname={pathname}>
       <MobileSidebar
         enabled={isMobile}
         open={openMobile}

@@ -86,7 +86,7 @@ describe('SettingsSidebarContent — Agents entry visibility', () => {
   it('keeps global search available alongside the Settings tab', () => {
     const onSearchClick = mock()
     renderSidebar(createMockAuthClient({ session: anonSession }), onSearchClick)
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    fireEvent.click(screen.getByLabelText('Search', { selector: 'button' }))
     expect(onSearchClick).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
   })

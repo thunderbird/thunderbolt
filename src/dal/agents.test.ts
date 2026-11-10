@@ -85,6 +85,21 @@ const httpErrorOf = (status: number): HttpError => new HttpError(new Response(nu
 
 describe('agents DAL', () => {
   describe('createAgent', () => {
+    it('persists an agent locally before the user connects a cloud account', async () => {
+      const db = getDb()
+      await createAgent(db, {
+        id: 'local-agent',
+        name: 'Local agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.test/ws',
+        userId: null,
+      })
+
+      const row = await db.select().from(agentsTable).get()
+      expect(row).toMatchObject({ id: 'local-agent', userId: null })
+    })
+
     it('inserts a custom agent with the caller-supplied userId', async () => {
       const db = getDb()
       await createAgent(db, {

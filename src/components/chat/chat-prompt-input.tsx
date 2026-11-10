@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { agentAcceptsAttachments, isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
 import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
@@ -24,7 +25,7 @@ import {
 } from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
-import { useSkillTelemetry } from '@/skills/telemetry'
+import { trackSkillEvent } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import { useAgentCommands } from '@/acp/agent-commands-store'
 import { useAcpSessionStore } from '@/acp/session-state-store'
@@ -85,6 +86,7 @@ import { isBuiltInAgent } from '@/defaults/agents'
 import { useAppName } from '@/lib/branding-selectors'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { useModelNeedsSetup } from './use-model-needs-setup'
 import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
 import { useImageSupportCheck as useImageSupportCheck_default } from './use-image-support-check'
@@ -286,11 +288,10 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
-    const trackSkillEvent = useSkillTelemetry()
     // Minimal mode treats `/` as ordinary text: no popup, token resolution,
     // highlighting or token-aware editing (resolution is gated in
     // `resolveSkillTokenInstructions`).
-    const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+    const minimalMode = useConfigCapability(selectMinimalMode)
     const configSettled = useConfigStore(selectConfigSettled)
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
     // Display-title → slug, for the whole library (disabled skills still
@@ -388,6 +389,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     // Only when no model fits the thread's confidentiality lock: otherwise
     // `resolveSessionModel` already swapped one in for the built-in.
     const noModelForThread = isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)
+    const modelNeedsSetup = useModelNeedsSetup()
     // `useChatAutomation` holds back the unanswered last turn of a private chat
     // on a non-built-in agent. Say so, and hold a typed send too: it would carry
     // the private history to that agent unencrypted.
@@ -399,9 +401,13 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
       lastRole: messages.at(-1)?.role,
     })
     const builtInAgentName = useAppName()
-    const builtInAgentEnabled = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+    const builtInAgentEnabled = useConfigCapability(selectBuiltInAgentEnabled)
     const sendBlocked =
-      imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread || privateAutoRunBlocked
+      imageSupportBlocksSend ||
+      queuedAttachmentsBlockSend ||
+      noModelForThread ||
+      modelNeedsSetup ||
+      privateAutoRunBlocked
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -546,7 +552,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
         navigate(location.pathname, { replace: true, state: {} })
         const resolved = skillBySlug.get(runSkill)
         if (resolved) {
-          trackSkillEvent('skill_used', resolved.id, { via: 'settings-nav' })
+          trackSkillEvent('skill_used', { via: 'settings-nav' })
         }
       })
     }
@@ -875,9 +881,9 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     const handleAddChipFromBar = useCallback(
       (skill: Skill) => {
         addSkillChip(skill)
-        trackSkillEvent('skill_used', skill.id, { via: 'chip' })
+        trackSkillEvent('skill_used', { via: 'chip' })
       },
-      [addSkillChip, trackSkillEvent],
+      [addSkillChip],
     )
 
     // Backspace treats a display-title chip (`/Daily Brief`) as atomic: one
@@ -922,10 +928,10 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
         selectItemFromPopup(item)
         // Telemetry is for the user's own skills; agent commands are external.
         if (item.kind === 'skill') {
-          trackSkillEvent('skill_used', item.skill.id, { via: 'slash' })
+          trackSkillEvent('skill_used', { via: 'slash' })
         }
       },
-      [selectItemFromPopup, trackSkillEvent],
+      [selectItemFromPopup],
     )
 
     if (!isAgentAvailable(selectedAgent)) {
@@ -1012,6 +1018,28 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
                   <Trans>{agentName} can&apos;t take attachments. Remove the attached files to send.</Trans>
                 </ComposerAlert>
               )}
+              {modelNeedsSetup && (
+                <ComposerAlert key="model-needs-setup" tone="info">
+                  <Trans>
+                    <button
+                      type="button"
+                      className="cursor-pointer underline underline-offset-2"
+                      onClick={() => navigate('/settings/connections')}
+                    >
+                      Connect a model provider
+                    </button>{' '}
+                    or{' '}
+                    <button
+                      type="button"
+                      className="cursor-pointer underline underline-offset-2"
+                      onClick={() => openCreateItem({ kind: 'model' })}
+                    >
+                      add a model
+                    </button>{' '}
+                    to enable chat.
+                  </Trans>
+                </ComposerAlert>
+              )}
               {noModelForThread && (
                 <ComposerAlert key="no-model-for-thread">
                   <Trans>None of your models can be used in this chat. Choose another agent to send.</Trans>
@@ -1092,12 +1120,12 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
             // but not on existing chats, where popping the keyboard over the
             // history the user came to read would be hostile. Mobile web keeps no
             // autofocus: browsers won't show the keyboard for it anyway.
-            autoFocus={!isMobile || (isPlatformMobile() && isNewChat)}
+            autoFocus={!modelNeedsSetup && (!isMobile || (isPlatformMobile() && isNewChat))}
             submitOnEnter={!isBusy && !shouldInsertNewlineOnEnter}
             // Voice mode covers the composer with an overlay; make the underlying
             // input non-interactive so Tab/Enter can't reach the hidden textarea.
             inert={voice.active}
-            className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
+            className="composer-surface relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
             // Empty + idle composer shows the voice-mode trigger in the send slot (swaps back to Send

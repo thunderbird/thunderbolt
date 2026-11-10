@@ -77,7 +77,7 @@ export const openRouterReasoningCapabilities = (
 export const applyReasoningEffort = (
   payload: unknown,
   effort: ReasoningEffort | undefined,
-  format: 'openai' | 'openrouter' | 'tinfoil',
+  format: 'openai' | 'openai-responses' | 'openrouter' | 'tinfoil',
 ): unknown => {
   if (effort === undefined) {
     return payload
@@ -87,7 +87,7 @@ export const applyReasoningEffort = (
   }
   const result = { ...payload } as Record<string, unknown>
   delete result.reasoning_effort
-  if (format === 'openrouter') {
+  if (format === 'openrouter' || format === 'openai-responses') {
     const existing = result.reasoning
     const reasoning = existing && typeof existing === 'object' ? ({ ...existing } as Record<string, unknown>) : {}
     delete reasoning.max_tokens

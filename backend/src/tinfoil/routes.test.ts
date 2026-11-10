@@ -1054,8 +1054,6 @@ describe('createTinfoilRoutes', () => {
           provider: 'tinfoil',
           status,
           errorKind,
-          subpath: '/v1/chat/completions',
-          distinctId: 'test-user',
         })
       })
     }
@@ -1072,8 +1070,6 @@ describe('createTinfoilRoutes', () => {
         provider: 'tinfoil',
         status: 500,
         errorKind: 'connection',
-        subpath: '/v1/models',
-        distinctId: 'test-user',
       })
     })
 
@@ -1093,8 +1089,6 @@ describe('createTinfoilRoutes', () => {
         provider: 'tinfoil',
         status: 504,
         errorKind: 'connection',
-        subpath: '/v1/models',
-        distinctId: 'test-user',
       })
     })
 
@@ -1149,8 +1143,6 @@ describe('createTinfoilRoutes', () => {
         provider: 'tinfoil',
         status: 504,
         errorKind: 'connection',
-        subpath: '/v1/models',
-        distinctId: 'test-user',
         phase: 'stream',
       })
     })

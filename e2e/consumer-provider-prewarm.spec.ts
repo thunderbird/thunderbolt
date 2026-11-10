@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { defaultModelDeepSeekV41Flash } from '../shared/defaults/models'
 import { collectPageErrors, loginViaEmailCode } from './helpers'
+import { importBackup } from './import-backup'
 import { expect, isolateProviderRequests, resetOriginStorage, test, type Page } from './test'
 
 /** Boot the real app and wait until its default-model prewarm has handled attestation failure. */
@@ -18,7 +19,7 @@ const expectIsolatedPrewarm = async (page: Page) => {
   })
   const [response] = await Promise.all([
     page.waitForResponse((response) => new URL(response.url()).hostname === 'atc.tinfoil.sh'),
-    page.waitForEvent('console', (message) => message.text().includes('runSystemModelPrewarm: warm-up skipped')),
+    page.waitForEvent('console', (message) => message.text().includes('prewarmTinfoilModel: warm-up skipped')),
     loginViaEmailCode(page),
   ])
   await expect(page.getByTestId('model-selector-trigger')).toContainText(defaultModelDeepSeekV41Flash.name)
@@ -26,6 +27,71 @@ const expectIsolatedPrewarm = async (page: Page) => {
   expect(response.status()).toBe(503)
   expect(await response.json()).toEqual({ error: 'Attestation is disabled in this test project' })
   expect(errors).toEqual([])
+}
+
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test.describe(`direct Tinfoil prewarm at ${viewport.width}px`, () => {
+    test.use({ viewport })
+
+    test('verifies automatically on selection and after restoring the selected model', async ({ page }) => {
+      const email = await loginViaEmailCode(page)
+      const connectionId = crypto.randomUUID()
+      const model = {
+        ...defaultModelDeepSeekV41Flash,
+        id: crypto.randomUUID(),
+        name: 'Personal DeepSeek',
+        isSystem: 0,
+        providerConnectionId: connectionId,
+      }
+      await importBackup(page, {
+        format: 'thunderbolt-export',
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        user: { id: 'prewarm-fixture', email },
+        tables: {
+          models: [model],
+          provider_connections: [
+            {
+              id: connectionId,
+              provider: 'tinfoil',
+              name: 'Tinfoil',
+              authMethod: 'api_key',
+              url: null,
+              enabled: 1,
+            },
+          ],
+          provider_connection_secrets: [
+            {
+              id: connectionId,
+              binding: JSON.stringify(['tinfoil', 'api_key', null]),
+              credentials: JSON.stringify({ apiKey: 'test-prewarm-key' }),
+            },
+          ],
+        },
+      })
+      await page.goto('/chats/new')
+      const selector = page.getByTestId('model-selector-trigger')
+      await selector.click()
+      await expect(page.getByRole('button', { name: 'Verification failed', exact: true })).toBeVisible()
+
+      const attestation = () =>
+        page.waitForResponse((response) => response.url() === 'https://atc.tinfoil.sh/attestation')
+      await Promise.all([
+        attestation(),
+        page.getByRole('button', { name: `${model.name} Tinfoil`, exact: true }).click(),
+      ])
+      await expect(selector).toContainText(model.name)
+      await expect(page.getByRole('button', { name: 'Verification failed', exact: true })).toBeVisible()
+
+      await Promise.all([attestation(), page.reload()])
+      await expect(selector).toContainText(model.name)
+      await selector.click()
+      await expect(page.getByRole('button', { name: 'Verification failed', exact: true })).toBeVisible()
+    })
+  })
 }
 
 for (const extraPage of [false, true]) {

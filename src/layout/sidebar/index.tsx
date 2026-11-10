@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { useConfigCapability } from '@/hooks/use-config-capability'
+import { selectMinimalMode } from '@/api/config-store'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
@@ -51,7 +52,7 @@ export default function Sidebar() {
   // Subscribed here rather than in `ChatSidebarContent`, which is unmounted
   // while the Settings section is open: a minimal-mode `/config` answer that
   // lands then must still pull the sidebar back to chats.
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   const activeSection = minimalMode ? 'chats' : routeSection
 
   const { experimentalFeatureTasks } = useSettings({

@@ -4,14 +4,16 @@
 
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { SiAnthropic } from '@icons-pack/react-simple-icons'
 import { Server } from 'lucide-react'
 
 import openAiLogoSrc from '@/assets/openai.svg'
-import openRouterLogoSrc from '@/assets/openrouter.svg'
-import tinfoilLogoSrc from '@/assets/tinfoil.svg'
 import { AppLogo } from '@/components/app-logo'
+import { ProviderBrandLogo } from '@/components/provider-brand-logo'
 import { IconTile } from '@/components/settings/icon-tile'
+import { cn } from '@/lib/utils'
+import { useAppName } from '@/lib/branding-selectors'
 import type { Model } from '@/types'
 
 /** The one provider label that is copy rather than a brand name. */
@@ -23,6 +25,7 @@ export const customProviderLabel = msg`Custom`
 // here or `getProviderLabel` fails to compile.
 const providerBrandNames: Record<Exclude<Model['provider'], 'thunderbolt' | 'custom'>, string> = {
   tinfoil: 'Tinfoil',
+  otari: 'Otari',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
   anthropic: 'Anthropic',
@@ -57,21 +60,28 @@ export const getProviderLabel = (i18n: I18n, provider: Model['provider'], appNam
 const isThunderboltManagedModel = (model: Pick<Model, 'provider' | 'isSystem'>): boolean =>
   model.provider === 'thunderbolt' || (model.provider === 'tinfoil' && model.isSystem === 1)
 
-const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSystem'> }) => {
+/** Provider mark shared by compact model selectors and settings icon tiles. */
+export const ModelProviderIcon = ({
+  model,
+  className,
+}: {
+  model: Pick<Model, 'provider' | 'isSystem'>
+  className?: string
+}) => {
   if (isThunderboltManagedModel(model)) {
-    return <AppLogo size={20} alt="" />
+    return <AppLogo size={20} alt="" className={className} />
   }
   switch (model.provider) {
     case 'openai':
-      return <img src={openAiLogoSrc} alt="" className="size-5 dark:invert" />
+      return <img src={openAiLogoSrc} alt="" className={cn('size-5 dark:invert', className)} />
     case 'anthropic':
-      return <SiAnthropic size={20} aria-hidden="true" />
+      return <SiAnthropic className={cn('size-5', className)} aria-hidden="true" />
     case 'openrouter':
-      return <img src={openRouterLogoSrc} alt="" className="h-5 w-auto dark:invert" />
     case 'tinfoil':
-      return <img src={tinfoilLogoSrc} alt="" className="size-5 dark:invert" />
+    case 'otari':
+      return <ProviderBrandLogo provider={model.provider} className={cn('size-5', className)} />
     case 'custom':
-      return <Server className="size-5 text-muted-foreground" aria-hidden="true" />
+      return <Server className={cn('size-5 text-muted-foreground', className)} aria-hidden="true" />
     case 'thunderbolt':
       // Unreachable — isThunderboltManagedModel covers it — but keeps the
       // switch exhaustive.
@@ -86,6 +96,18 @@ export const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider'
   </IconTile>
 )
 
+/** Compact, labeled mark that distinguishes otherwise identically named models. */
+export const ModelProviderMark = ({ model }: { model: Pick<Model, 'provider' | 'isSystem' | 'connectionName'> }) => {
+  const { i18n } = useLingui()
+  const appName = useAppName()
+  const label = getProviderDisplay(i18n, model, appName)
+  return (
+    <span role="img" aria-label={label} title={label} className="inline-flex shrink-0 items-center">
+      <ModelProviderIcon model={model} className="size-3.5" />
+    </span>
+  )
+}
+
 /**
  * Provider label for a model: managed models, system Tinfoil included, carry the app name.
  *
@@ -93,5 +115,13 @@ export const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider'
  * @param model - The model to label.
  * @param appName - The deployment's app name, from `useAppName()`.
  */
-export const getProviderDisplay = (i18n: I18n, model: Pick<Model, 'provider' | 'isSystem'>, appName: string): string =>
-  getProviderLabel(i18n, isThunderboltManagedModel(model) ? 'thunderbolt' : model.provider, appName)
+export const getProviderDisplay = (
+  i18n: I18n,
+  model: Pick<Model, 'provider' | 'isSystem' | 'connectionName'>,
+  appName: string,
+): string => {
+  const provider = getProviderLabel(i18n, isThunderboltManagedModel(model) ? 'thunderbolt' : model.provider, appName)
+  return model.connectionName && model.connectionName !== provider && !isThunderboltManagedModel(model)
+    ? `${provider} · ${model.connectionName}`
+    : provider
+}

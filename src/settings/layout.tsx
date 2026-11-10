@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { useConfigCapability } from '@/hooks/use-config-capability'
+import { selectMinimalMode } from '@/api/config-store'
 import { FloatingHeader } from '@/components/floating-header'
 import { PageFallback } from '@/loading'
 import { Suspense, type CSSProperties } from 'react'
@@ -14,7 +15,7 @@ import { Navigate, Outlet } from 'react-router'
  * to the chat home.
  */
 const SettingsLayout = () => {
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   if (minimalMode) {
     return <Navigate to="/chats/new" replace />
   }

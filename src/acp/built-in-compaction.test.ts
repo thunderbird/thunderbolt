@@ -47,6 +47,7 @@ const fixture = (
   const status: CompactionStatus[] = []
   const model = {
     id: 'compaction-test',
+    enabled: 1,
     provider: 'openai',
     model: 'gpt-test',
     apiKey: 'test',
@@ -409,6 +410,7 @@ describe('built-in compaction integration', () => {
         f.context.httpClient,
         f.context.getProxyFetch,
         {
+          getAvailableModels: async () => [f.context.selectedModel],
           getChatReasoningEffort: async () => undefined,
           getOrConnectAdapter: async () => adapter,
           createChat: () => createMockChatInstance(messages),
@@ -419,6 +421,7 @@ describe('built-in compaction integration', () => {
         id: f.context.threadId,
         chatInstance: instance,
         chatThread: createMockChatThread(),
+        models: [f.context.selectedModel],
         selectedModel: f.context.selectedModel,
         triggerData: null,
       })
@@ -454,6 +457,7 @@ describe('built-in compaction integration', () => {
       f.context.httpClient,
       f.context.getProxyFetch,
       {
+        getAvailableModels: async () => [f.context.selectedModel],
         getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => adapter,
         createChat: () => createMockChatInstance(messages),
@@ -464,6 +468,7 @@ describe('built-in compaction integration', () => {
       id: f.context.threadId,
       chatInstance: instance,
       chatThread: createMockChatThread(),
+      models: [f.context.selectedModel],
       selectedModel: f.context.selectedModel,
       triggerData: null,
     })

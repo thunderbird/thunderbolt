@@ -855,6 +855,7 @@ describe('ChatPromptInput', () => {
 
       it('opens the slash popup on `/` only when active', () => {
         const textarea = setupWithToken(1, '/')
+        act(() => textarea.focus())
         fireEvent.select(textarea)
         expect(screen.queryByRole('listbox') !== null).toBe(active)
       })

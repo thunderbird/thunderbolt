@@ -7,7 +7,6 @@ import { getErrorName } from '@/lib/error-utils'
 import { trackEvent } from '@/lib/posthog'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { getLocalSetting } from '@/stores/local-settings-store'
-import type { Model } from '@/types'
 import type { SecureClient } from 'tinfoil'
 import { attestationStore, type AttestationStore } from '@/attestation/store'
 import { tinfoilAttestationKey } from '@/attestation/target'
@@ -260,21 +259,6 @@ export const {
   evictUserTinfoilClient,
   clearTinfoilClients,
 } = lifecycle
-
-/**
- * Best-effort warm-up of the Tinfoil system enclave so first chat send avoids
- * attestation on its critical path. Errors surface on real sends.
- */
-export const runSystemModelPrewarm = async (model: Pick<Model, 'provider' | 'isSystem'> | null | undefined) => {
-  if (!model || model.provider !== 'tinfoil' || !model.isSystem) {
-    return
-  }
-  try {
-    await getSystemTinfoilClient()
-  } catch (error) {
-    console.warn('runSystemModelPrewarm: warm-up skipped', error)
-  }
-}
 
 /**
  * Match transport failures that require replacing the cached SecureClient.

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { HttpClient } from '@/lib/http'
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useRef, type ReactNode } from 'react'
 
 export type { HttpClient }
 
@@ -13,8 +13,21 @@ type HttpClientContextType = {
 
 const HttpClientContext = createContext<HttpClientContextType | undefined>(undefined)
 
+/** Keep clients captured by chat sessions pointed at the currently selected server. */
 export const HttpClientProvider = ({ children, httpClient }: { children: ReactNode; httpClient: HttpClient }) => {
-  return <HttpClientContext.Provider value={{ httpClient }}>{children}</HttpClientContext.Provider>
+  const clientRef = useRef(httpClient)
+  clientRef.current = httpClient
+  const value = useMemo<HttpClientContextType>(
+    () => ({
+      httpClient: {
+        get: (url, options) => clientRef.current.get(url, options),
+        post: (url, options) => clientRef.current.post(url, options),
+        delete: (url, options) => clientRef.current.delete(url, options),
+      },
+    }),
+    [],
+  )
+  return <HttpClientContext.Provider value={value}>{children}</HttpClientContext.Provider>
 }
 
 export const useHttpClient = () => {

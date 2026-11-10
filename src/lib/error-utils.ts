@@ -300,6 +300,9 @@ const getAgentErrorCode = (error: Error | null | undefined, status: number): str
  * 408s with deterministic 400s.
  */
 export const getErrorRetryable = (error?: Error | null): boolean | undefined => {
+  if (error && 'isRetryable' in error && typeof error.isRetryable === 'boolean') {
+    return error.isRetryable
+  }
   if (!error?.message) {
     return undefined
   }

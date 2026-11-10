@@ -57,7 +57,7 @@ env:
           commands:
             - tapOn: '${DEFAULT_MODEL}|Opus 5.5'
       - waitForAnimationToEnd
-      - tapOn: Opus 5.5
+      - tapOn: Opus 5.5 Thunderbolt
       # A pick leaves the sheet open; a tap above it closes it.
       - tapOn:
           point: 50%,30%

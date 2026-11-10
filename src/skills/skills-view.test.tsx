@@ -72,7 +72,7 @@ const flush = async () => {
 
 describe('SkillsView state machine', () => {
   describe('widget rendering contracts', () => {
-    it('offers enable/disable without edit or delete affordances', async () => {
+    it('disables edit and remove for built-in skills while allowing enable/disable', async () => {
       await getDb().insert(skillsTable).values(defaultSkillWeather)
 
       renderWithReactivity(<SkillsView />, { tables: ['skills'], wrapper: Wrapper })
@@ -80,9 +80,11 @@ describe('SkillsView state machine', () => {
       const rowLabel = await waitForElement(() => screen.queryByText('Weather'))
       fireEvent.contextMenu(rowLabel)
       await flush()
-      expect(screen.queryByText('Edit')).not.toBeInTheDocument()
-      expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true')
+      expect(screen.getByRole('menuitem', { name: 'Remove' })).toHaveAttribute('aria-disabled', 'true')
 
+      fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+      await flush()
       fireEvent.click(rowLabel)
       await flush()
       expect(screen.getByText('Built-in skill · Read-only')).toBeInTheDocument()

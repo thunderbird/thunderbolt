@@ -4,6 +4,10 @@
 
 import type { Locator, Page } from '@playwright/test'
 
+/** Match the visible model name across builds with or without accessible provider logos. */
+export const modelOption = (page: Page, name: string) =>
+  page.getByRole('button').filter({ has: page.getByText(name, { exact: true }) })
+
 /** Resolve actionability outside recording; the measured action still dispatches real pointer input. */
 export const clickAction = async (page: Page, locator: Locator) => {
   await locator.click({ trial: true })

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { chatTitleLabel } from '@/lib/title-generator'
 
 import { Trans, useLingui } from '@lingui/react/macro'
@@ -119,7 +120,7 @@ export const ChatSidebarContent = ({
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
   const { moveChat, error: moveError, clearError: clearMoveError } = useProjectMoveFeedback()
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   const configLoaded = useConfigStore(selectConfigSettled)
   // Projects wait for `/config` like the section toggle, so they never paint and vanish.
   const showProjects = configLoaded && !minimalMode

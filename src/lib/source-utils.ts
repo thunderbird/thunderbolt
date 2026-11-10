@@ -16,6 +16,7 @@ export const sourceToCitation = (source: SourceMetadata, isPrimary = true): Cita
   url: source.url,
   siteName: source.siteName,
   favicon: source.favicon ?? undefined,
+  ...(source.allowRemoteImages === false && { allowRemoteImages: false }),
   isPrimary,
 })
 

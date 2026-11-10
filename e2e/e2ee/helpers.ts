@@ -151,7 +151,8 @@ export const encryptionApiRequest = async (
   page.evaluate(
     async ({ url, method, deviceId, body }) => {
       const headers: Record<string, string> = {}
-      const token = localStorage.getItem('thunderbolt_auth_token')
+      const storedToken = localStorage.getItem('thunderbolt_auth_token')
+      const token = storedToken?.startsWith('{') ? (JSON.parse(storedToken) as { token: string }).token : storedToken
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }

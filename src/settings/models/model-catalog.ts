@@ -10,15 +10,14 @@ import { http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
-import { catalogRequiresApiKey } from './model-policy'
+import { catalogRequiresApiKey, providerRequiresUrl } from './model-policy'
 
 export type AvailableModel = {
   id: string
   name?: string
   created?: number
   owned_by?: string
-  /** Only the built-in Thunderbolt catalog sets this; other providers' tool
-   *  support is learned by the connection test. */
+  /** Known catalog support; unknown models default to tools enabled. */
   supports_tools?: boolean
   /** Whether the model accepts image input. Undefined when the provider doesn't say. */
   supports_images?: boolean
@@ -45,7 +44,11 @@ export const thunderboltModelCatalog: AvailableModel[] = defaultModels
 /** Anthropic's models endpoint is not OpenAI-compatible: auth is `x-api-key` (not a
  *  bearer), a version header is mandatory, and rows carry `display_name`. Listing
  *  requires the user's key, so the catalog is key-gated like OpenAI/OpenRouter. */
-const fetchAnthropicModels = async (apiKey: string, getProxyFetch: () => FetchFn): Promise<AvailableModel[]> => {
+const fetchAnthropicModels = async (
+  apiKey: string,
+  getProxyFetch: () => FetchFn,
+  signal?: AbortSignal,
+): Promise<AvailableModel[]> => {
   const response = await http
     .get('https://api.anthropic.com/v1/models', {
       // The default page size is 20; 1000 is the documented maximum.
@@ -57,6 +60,7 @@ const fetchAnthropicModels = async (apiKey: string, getProxyFetch: () => FetchFn
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       fetch: getProxyFetch(),
+      signal,
     })
     .json<{ data: Array<{ id: string; display_name?: string }> }>()
   return response.data.map((model) => ({ id: model.id, name: model.display_name }))
@@ -89,7 +93,7 @@ export const canFetchCatalog = ({ provider, apiKey, url }: CatalogRequest): bool
   if (catalogRequiresApiKey(provider) && !apiKey) {
     return false
   }
-  return provider !== 'custom' || isFetchableCatalogUrl(url)
+  return !providerRequiresUrl(provider) || isFetchableCatalogUrl(url)
 }
 
 /** Stable identity for the inputs that produced a catalog result. */
@@ -100,16 +104,19 @@ export const catalogRequestKey = ({ provider, apiKey, url }: CatalogRequest): st
 export const fetchModelsForProvider = async (
   { provider, apiKey, url }: CatalogRequest,
   getProxyFetch: () => FetchFn,
+  signal?: AbortSignal,
 ): Promise<AvailableModel[]> => {
+  signal?.throwIfAborted()
   if (provider === 'thunderbolt') {
     return thunderboltModelCatalog
   }
   if (provider === 'anthropic') {
-    return apiKey ? fetchAnthropicModels(apiKey, getProxyFetch) : []
+    return apiKey ? fetchAnthropicModels(apiKey, getProxyFetch, signal) : []
   }
   if (provider === 'tinfoil') {
     const client = await getTinfoilClient()
-    const response = await http.get(`${client.getBaseURL()}models`, { fetch: client.fetch }).json<{
+    signal?.throwIfAborted()
+    const response = await http.get(`${client.getBaseURL()}models`, { fetch: client.fetch, signal }).json<{
       data: Array<AvailableModel & { endpoints?: string[]; multimodal?: boolean }>
     }>()
     return response.data
@@ -118,8 +125,7 @@ export const fetchModelsForProvider = async (
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 
-  // Reuse chat's transport: web needs the proxy for hosts that don't answer preflights;
-  // native follows the Cloud Proxy setting.
+  // Reuse chat's transport, including Otari's direct OAuth connection.
   const connection = resolveOpenAiCompatConnection(
     { provider, apiKey: apiKey ?? null, url: url ?? null },
     getProxyFetch,
@@ -129,9 +135,10 @@ export const fetchModelsForProvider = async (
   }
 
   const response = await http
-    .get(`${connection.baseURL}/models`, {
+    .get(`${connection.baseURL}/${provider === 'openrouter' ? 'models/user' : 'models'}`, {
       headers: connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {},
       fetch: connection.fetch,
+      signal,
     })
     .json<{ data: ModalityCatalogRow[] }>()
   return response.data
@@ -154,8 +161,7 @@ export const describeModelFetchError = (i18n: I18n, error: unknown): string => {
       return i18n._(msg`Server responded with an unknown error.`)
     }
     const status = response.status
-    const statusText = response.statusText
-    return i18n._(msg`Server responded with status ${status} ${statusText}`)
+    return i18n._(msg`Server responded with status ${status}.`)
   }
-  return error instanceof Error && error.message ? error.message : i18n._(msg`Failed to load models`)
+  return i18n._(msg`Failed to load models`)
 }

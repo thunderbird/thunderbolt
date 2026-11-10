@@ -558,6 +558,12 @@ describe('isContentRejectionError', () => {
 })
 
 describe('getErrorRetryable', () => {
+  it('preserves an in-process deterministic failure verdict', () => {
+    expect(getErrorRetryable(Object.assign(new Error('Model is no longer enabled'), { isRetryable: false }))).toBe(
+      false,
+    )
+  })
+
   it('reads the SDK isRetryable verdict from the serialized envelope', () => {
     expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 400, isRetryable: false })))).toBe(false)
     expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 408, isRetryable: true })))).toBe(true)

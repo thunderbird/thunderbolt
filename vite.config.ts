@@ -14,6 +14,8 @@ import path from 'path'
 import { type Connect, defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import pkg from './package.json' with { type: 'json' }
+import { exaRelayPlugin, exaRelayProxies } from './scripts/exa-relay'
+import { tinfoilSearchRelayPlugin, tinfoilSearchProxy } from './scripts/tinfoil-search-relay'
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
@@ -84,6 +86,8 @@ export default defineConfig({
     },
   },
   plugins: [
+    tinfoilSearchRelayPlugin(),
+    exaRelayPlugin(),
     {
       name: 'copy-powersync-assets',
       // `vite preview` serves the built dist/, so it has no reason to touch public/.
@@ -215,7 +219,9 @@ export default defineConfig({
   // 1. prevent vite from obscuring rust errors
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
+  preview: { proxy: { ...exaRelayProxies, '^/_tinfoil/search(?:\\?|$)': tinfoilSearchProxy } },
   server: {
+    proxy: { ...exaRelayProxies, '^/_tinfoil/search(?:\\?|$)': tinfoilSearchProxy },
     port: Number(process.env.VITE_DEV_PORT ?? 1420),
     strictPort: true,
     // The public CI diagnostic uploads only fixed labels from its Playwright case.

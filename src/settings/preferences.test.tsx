@@ -6,6 +6,7 @@ import { unitDefaultsForRegion } from '@/i18n/region-units'
 import { getSettingsRecords, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { getClock } from '@/testing-library'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -31,6 +32,11 @@ const anonSession = {
 const authedSession = {
   user: { id: 'user-1', email: 'a@b.com', name: 'Alice', isAnonymous: false },
 }
+const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+
+afterEach(() => {
+  useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
+})
 
 const renderPage = (authClient: AuthClient, isStandalone = () => false) => {
   const TestProvider = createTestProvider({ authClient })
@@ -57,6 +63,51 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('keeps local backup and reset controls available without an account', () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    renderPage(createMockAuthClient({ session: null }))
+
+    expect(screen.getByRole('button', { name: 'Export Your Data' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import Your Data' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reset Database' })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('City or region')).toBeInTheDocument()
+  })
+
+  it('offers Otari as a default-off preview feature that can be toggled and reset', async () => {
+    renderPage(createMockAuthClient({ session: null }))
+    const toggle = screen.getByRole('switch', { name: 'Otari' })
+    expect(toggle).not.toBeChecked()
+    fireEvent.click(toggle)
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(toggle).toBeChecked()
+    expect(
+      (await getSettingsRecords(getDb(), ['experimental_feature_otari'])).find(
+        (setting) => setting.key === 'experimental_feature_otari',
+      )?.value,
+    ).toBe('true')
+    fireEvent.click(toggle)
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(toggle).not.toBeChecked()
+    expect(
+      (await getSettingsRecords(getDb(), ['experimental_feature_otari'])).find(
+        (setting) => setting.key === 'experimental_feature_otari',
+      )?.value,
+    ).toBe('false')
+  })
+
+  it('asks for a server when enabling cloud proxy in standalone mode', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    renderPage(createMockAuthClient({ session: null }))
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Use Cloud Proxy' }))
+
+    expect(await screen.findByRole('heading', { name: 'Connect your account' })).toBeInTheDocument()
   })
 
   it('shows Sign In button and no sync toggle for anonymous users', () => {

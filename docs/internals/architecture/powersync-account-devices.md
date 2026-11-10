@@ -20,7 +20,11 @@ Every synced table needs a **`user_id`** column: sync rules and the backend scop
 
 ### Current Tables
 
-[shared/powersync-tables.ts](../../../shared/powersync-tables.ts): `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `prompts`, `skills`, `triggers`, `model_profiles`, `devices`, `agents`, `projects`.
+[shared/powersync-tables.ts](../../../shared/powersync-tables.ts): `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `provider_connections`, `prompts`, `skills`, `triggers`, `model_profiles`, `devices`, `agents`, `projects`.
+
+`provider_connections` carries reusable provider metadata: provider, display name, optional URL, authentication method, enabled state, timestamps, and ownership. Its `(id, user_id)` primary key allows each account to use the same stable OAuth connection IDs. API keys, access/refresh tokens, and credential bindings remain in a device-local table; the backend has no credential columns or credential sync stream. Names and URLs are encrypted through `encryptedColumnsMap`, as is `models.provider_connection_id`, which selects the connection used for a model.
+
+The model reference is nullable for older clients and has no foreign key: model and connection uploads may arrive independently, and soft-deleting a connection must preserve its models. The frontend resolves only active connections belonging to the account, and accepts local credentials only when their saved provider/auth-method/URL binding still matches the connection metadata.
 
 ### Indexes and Foreign Keys
 
@@ -53,6 +57,8 @@ Two PRs, to avoid sync rule mismatches.
 **PR 1: backend schema, migration and sync rules** (steps 2 and 4-6, plus the `backend/src/db/powersync-schema.ts` half of step 1). Merge, then run the migration. `.github/workflows/images-publish.yml` rebuilds `thunderbolt-powersync` with the new rules baked in. **Roll the Render `powersync` service to the new tag** (dashboard > Manual Deploy > Deploy latest reference) before merging PR 2; preview stacks pick it up on their next Pulumi apply.
 
 **PR 2: frontend** (`src/db/tables.ts`, step 3, plus DAL, defaults, reconciliation, UI). Merge only after PR 1's image is live. Frontend-first fails silently: the table works locally but never replicates.
+
+The provider-connections preparation follows this sequence: apply the generated backend migration and deploy all three sync-rule configurations before releasing the frontend that creates connections. The older frontend's `syncedTables` can be a subset of the shared backend registry during this rollout; it does not create or use the new local table yet. Existing model rows retain a null connection reference until the frontend migrates them.
 
 ### Adding Columns to an Existing Synced Table
 

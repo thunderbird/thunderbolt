@@ -502,3 +502,23 @@ it('lets an in-flight Tinfoil code exchange finish under its deadline after canc
     timeout.mockRestore()
   }
 })
+
+it('finishes a bounded Tinfoil revocation after identity teardown', async () => {
+  const sent = Promise.withResolvers<Request>()
+  const response = Promise.withResolvers<Response>()
+  const auth = createTinfoilAuth('client', {
+    fetch: async (input) => {
+      const request = input as Request
+      sent.resolve(request)
+      request.signal.addEventListener('abort', () => response.reject(request.signal.reason), { once: true })
+      return response.promise
+    },
+  })
+  const revoking = auth.revoke('unused-refresh')
+  const request = await sent.promise
+  invalidateIdentityLifetime()
+  expect(request.signal.aborted).toBe(false)
+  response.resolve(new Response(null, { status: 204 }))
+  await revoking
+  expect(new URLSearchParams(await request.text()).get('token')).toBe('unused-refresh')
+})

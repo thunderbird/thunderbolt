@@ -7,6 +7,7 @@ import { z } from 'zod'
 import {
   createProviderAuthorization,
   createOAuthRequestSignal,
+  oauthRequestTimeoutMs,
   type OpenRouterAuthDependencies,
   type OpenRouterConnectionOptions,
 } from './openrouter-auth'
@@ -80,7 +81,10 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
     overrides,
   )
 
-  const grant = async (params: Record<string, string>): Promise<TinfoilCredentials> => {
+  const grant = async (
+    params: Record<string, string>,
+    signal = createOAuthRequestSignal(),
+  ): Promise<TinfoilCredentials> => {
     try {
       const response = await http
         .post('https://api.tinfoil.sh/oauth/token', {
@@ -89,7 +93,7 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
           credentials: 'omit',
           redirect: 'error',
           fetch: overrides.fetch ?? nativeFetch,
-          signal: createOAuthRequestSignal(),
+          signal,
         })
         .json<unknown>()
       const tokens = tokenSchema.parse(response)
@@ -115,12 +119,10 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
   ): Promise<TinfoilCredentials> => {
     signal?.throwIfAborted()
     // Once sent, finish this bounded exchange so cancellation cannot discard an issued grant.
-    const credentials = await grant({
-      grant_type: 'authorization_code',
-      code,
-      code_verifier: verifier,
-      redirect_uri: redirectUri,
-    })
+    const credentials = await grant(
+      { grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri },
+      AbortSignal.timeout(oauthRequestTimeoutMs),
+    )
     return { ...credentials, authorizationId: crypto.randomUUID() }
   }
 
@@ -153,7 +155,7 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
           credentials: 'omit',
           redirect: 'error',
           fetch: overrides.fetch ?? nativeFetch,
-          signal: createOAuthRequestSignal(),
+          signal: AbortSignal.timeout(oauthRequestTimeoutMs),
         })
       } catch {
         throw new TinfoilConnectionError()

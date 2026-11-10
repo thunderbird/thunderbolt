@@ -6,7 +6,7 @@ import { beforeAll, beforeEach, afterAll, afterEach, describe, it, expect, mock,
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createModel, getModel } from '@/dal/models'
 import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
-import { getDb } from '@/db/database'
+import { getDb, resetDatabase } from '@/db/database'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import { createTinfoilSession } from './tinfoil-session'
 import { getProviderConnectionAttempt, saveProviderAuthorization } from './provider-connection-attempt'
@@ -159,6 +159,14 @@ describe('Tinfoil session lifecycle', () => {
       }
     },
   )
+
+  it('does not blindly revoke a possibly owned grant after its database becomes unavailable', async () => {
+    await saveCanonicalSession(renewed)
+    const { auth, session } = harness()
+    await resetDatabase()
+    await expect(session.discardAuthorization(renewed)).rejects.toThrow('Database not registered')
+    expect(auth.revoke).not.toHaveBeenCalled()
+  })
 
   it('revokes only an unused grant while retaining the saved account', async () => {
     await saveCanonicalSession()

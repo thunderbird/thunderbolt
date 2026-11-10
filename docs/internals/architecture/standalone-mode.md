@@ -119,7 +119,8 @@ the new grant for retry while setup remains open. Cancelling or leaving setup
 releases unused grants under the same session lock. A local `authorizationId`
 survives refresh and toggles so delayed cleanup cannot revoke a saved grant.
 Cleanup is best-effort, with a thirty-second request limit and a fixed warning
-without credentials on failure; users can also revoke access in Tinfoil's dashboard.
+without credentials on failure. Network failures or unavailable ownership storage
+can prevent cleanup; users can also revoke access in Tinfoil's dashboard.
 Locally bound grants remain available for explicit revocation even when another
 device removes or changes their synced metadata.
 

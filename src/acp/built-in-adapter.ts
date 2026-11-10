@@ -77,13 +77,13 @@ import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prom
 import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentHarnessTool, AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
-import type { SecureClient } from 'tinfoil'
+import type { AttestedTinfoilClient } from '@/attestation/tinfoil'
 import {
   evictSystemTinfoilClient,
   evictUserTinfoilClient,
   getSystemTinfoilClient,
   getTinfoilClient,
-  isTinfoilTransportWedgedError,
+  isTinfoilAttestationFailure,
 } from '@/ai/tinfoil-client'
 import { prepareBuiltInConversation, prepareBuiltInHistory } from './built-in-conversation'
 import { isPiModelCandidate } from './built-in-model-support'
@@ -202,7 +202,7 @@ export type ResolvedPiModel = {
   readonly thinkingLevel: ThinkingLevel
   readonly providerBinding?: ModelProviderBinding
   /** Attested transport identity used only to invalidate the local harness cache. */
-  readonly tinfoilClient?: SecureClient
+  readonly tinfoilClient?: AttestedTinfoilClient
 }
 
 /** Time a Tinfoil client acquisition without changing its error behavior. */
@@ -220,15 +220,15 @@ const acquireTinfoilClient = async <Client>(
 
 /** Run one request through an attested client and evict only wedged transports. */
 const fetchTinfoil = async (
-  client: SecureClient,
+  client: AttestedTinfoilClient,
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  evictClient: (client: SecureClient) => void,
+  evictClient: (client: AttestedTinfoilClient) => void,
 ): Promise<Response> => {
   try {
     return await client.fetch(input, init)
   } catch (error) {
-    if (isTinfoilTransportWedgedError(error)) {
+    if (isTinfoilAttestationFailure(error)) {
       evictClient(client)
     }
     throw error
@@ -293,7 +293,7 @@ export const resolvePiModel = async (
           providerId: 'tinfoil',
           modelId: model.model,
           vendor: model.vendor,
-          baseURL: client.getBaseURL()!,
+          baseURL: client.baseURL,
           apiKey: 'thunderbolt-managed',
           fetch,
           reasoning: true,
@@ -337,7 +337,7 @@ export const resolvePiModel = async (
         kind: 'openai-compat',
         providerId: 'tinfoil',
         modelId: model.model,
-        baseURL: client.getBaseURL()!,
+        baseURL: client.baseURL,
         apiKey,
         fetch: wrapFetch(Object.assign(fetch, { preconnect: async () => false })),
         reasoning: hasExplicitReasoning(profile),
@@ -411,10 +411,10 @@ export const resolvePiModel = async (
   }
 }
 
-const tinfoilClientIds = new WeakMap<SecureClient, string>()
+const tinfoilClientIds = new WeakMap<AttestedTinfoilClient, string>()
 
 /** Return a short process-local identity for one attested client instance. */
-const tinfoilClientId = (client: SecureClient): string => {
+const tinfoilClientId = (client: AttestedTinfoilClient): string => {
   const existing = tinfoilClientIds.get(client)
   if (existing) {
     return existing

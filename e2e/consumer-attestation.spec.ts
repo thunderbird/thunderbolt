@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isTinfoilAttestationRequest } from './tinfoil-isolation'
 import { defaultModelDeepSeekV41Flash, defaultModelOpus55 } from '../shared/defaults/models'
 import { collectPageErrors, loginViaEmailCode } from './helpers'
 import { expect, test } from './test'
@@ -18,7 +19,7 @@ for (const viewport of [
     }) => {
       const errors = collectPageErrors(page)
       let attestationRequests = 0
-      await page.route('https://atc.tinfoil.sh/attestation', async (route) => {
+      await page.route(isTinfoilAttestationRequest, async (route) => {
         attestationRequests += 1
         await route.fulfill({ status: 503, json: { error: 'Test attestation unavailable' } })
       })

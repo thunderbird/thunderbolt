@@ -33,7 +33,7 @@ describe('createDefaultProbe', () => {
   it('tests a BYOK Tinfoil model through one attested chat completion', async () => {
     const requests: Request[] = []
     const client = {
-      getBaseURL: () => 'https://enclave.example.com/v1',
+      baseURL: 'https://enclave.example.com/v1',
       async fetch(input: RequestInfo | URL, init?: RequestInit) {
         expect(this).toBe(client)
         requests.push(input instanceof Request ? input : new Request(input, init))
@@ -162,7 +162,7 @@ describe('createDefaultProbe provider connection binding', () => {
       return completionResponse()
     })
     const probe = createDefaultProbe({
-      getTinfoilClient: async () => ({ getBaseURL: () => 'https://enclave.example.com/v1', fetch: send }) as never,
+      getTinfoilClient: async () => ({ baseURL: 'https://enclave.example.com/v1', fetch: send }) as never,
     })
     expect(await probe(config, () => proxyFetch, new AbortController().signal)).toBe('supported')
     expect(send).toHaveBeenCalledTimes(1)
@@ -188,7 +188,7 @@ describe('createDefaultProbe provider connection binding', () => {
               credentials: { apiKey: 'replacement' },
             })
           }
-          return { getBaseURL: () => 'https://enclave.example.com/v1', fetch: send } as never
+          return { baseURL: 'https://enclave.example.com/v1', fetch: send } as never
         },
       })
       await expect(probe(config, () => proxyFetch, new AbortController().signal)).rejects.toThrow()
@@ -203,7 +203,7 @@ describe('createDefaultProbe provider connection binding', () => {
       return Response.json({ error: { message: 'Tools unsupported' } }, { status: 400 })
     })
     const probe = createDefaultProbe({
-      getTinfoilClient: async () => ({ getBaseURL: () => 'https://enclave.example.com/v1', fetch: send }) as never,
+      getTinfoilClient: async () => ({ baseURL: 'https://enclave.example.com/v1', fetch: send }) as never,
     })
     await expect(probe(config, () => proxyFetch, new AbortController().signal)).rejects.toThrow(
       'Connect this provider on this device',

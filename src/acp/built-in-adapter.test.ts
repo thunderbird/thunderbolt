@@ -69,7 +69,7 @@ import {
   type AgentMessage,
   type AgentTool,
 } from '@earendil-works/pi-agent-core'
-import type { SecureClient } from 'tinfoil'
+import type { AttestedTinfoilClient } from '@/attestation/tinfoil'
 
 const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
 const compactionStub = {
@@ -394,13 +394,13 @@ const tinfoilModel = (overrides: Partial<Model> = {}): Model =>
 
 type SecureFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
-const createSecureClient = (
+const createAttestedClient = (
   fetchImpl: SecureFetch = async () => new Response(),
   baseURL = 'https://enclave.example.com/v1',
-): SecureClient =>
+): AttestedTinfoilClient =>
   ({
     fetch: Object.assign(fetchImpl, { preconnect: () => Promise.resolve(false) }),
-    getBaseURL: () => baseURL,
+    baseURL,
   }) as never
 
 const tinfoilContext = (model: Model, overrides: Partial<AgentAdapterContext> = {}): AgentAdapterContext =>
@@ -446,7 +446,7 @@ describe('resolvePiModel — Tinfoil', () => {
       )
       const model = tinfoilModel({ isSystem: 0, providerConnectionId: id, oauthProvider: 'tinfoil', apiKey: 'stale' })
       const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(model), null, {
-        getTinfoilClient: async () => createSecureClient(send),
+        getTinfoilClient: async () => createAttestedClient(send),
       })
       const descriptor = requireDescriptor(resolved, 'openai-compat')
       expect(access).toHaveBeenCalledTimes(1)
@@ -487,7 +487,7 @@ describe('resolvePiModel — Tinfoil', () => {
     const access = spyOn(tinfoilSession, 'getAccessToken')
       .mockResolvedValueOnce('initial')
       .mockResolvedValue('refreshed')
-    const client = createSecureClient(async (_input, init) => {
+    const client = createAttestedClient(async (_input, init) => {
       expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer refreshed')
       expect(JSON.parse(init?.body as string).web_search_options).toBeUndefined()
       return new Response()
@@ -517,7 +517,7 @@ describe('resolvePiModel — Tinfoil', () => {
   })
 
   it('resolves a managed model as a confidential descriptor and records Pi attestation', async () => {
-    const client = createSecureClient()
+    const client = createAttestedClient()
     const getSystemTinfoilClient = mock(async () => client)
     const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
 
@@ -548,7 +548,7 @@ describe('resolvePiModel — Tinfoil', () => {
     'sends the %s model header with SSO cookies or bearer auth',
     async (model) => {
       const calls: RequestInit[] = []
-      const client = createSecureClient(async (_input, init) => {
+      const client = createAttestedClient(async (_input, init) => {
         calls.push(init ?? {})
         return new Response()
       })
@@ -603,9 +603,9 @@ describe('resolvePiModel — Tinfoil', () => {
     },
   )
 
-  it('evicts a managed client after a wedged transport error', async () => {
-    const error = new TypeError("Cannot read properties of null (reading 'fetch')")
-    const client = createSecureClient(async () => {
+  it('evicts a managed client after an attestation failure', async () => {
+    const error = Object.assign(new Error('attestation rejected'), { category: 'attestation' })
+    const client = createAttestedClient(async () => {
       throw error
     })
     const evictSystemTinfoilClient = mock(() => {})
@@ -623,8 +623,8 @@ describe('resolvePiModel — Tinfoil', () => {
   })
 
   it.each(['high', 'max'] as const)('resolves BYOK with %s effort directly', async (effort) => {
-    const error = Object.assign(new Error('key changed'), { name: 'KeyConfigMismatchError' })
-    const client = createSecureClient(async (_input, init) => {
+    const error = Object.assign(new Error('key changed'), { category: 'attestation' })
+    const client = createAttestedClient(async (_input, init) => {
       expect(new Headers(init?.headers).has(inferenceModelHeader)).toBe(false)
       throw error
     })
@@ -669,7 +669,7 @@ describe('resolvePiModel — Tinfoil', () => {
     const original = useLocalSettingsStore.getState().cloudUrl
     useLocalSettingsStore.setState({ cloudUrl: '' })
     try {
-      const client = createSecureClient(async (_input, init) => {
+      const client = createAttestedClient(async (_input, init) => {
         const body = JSON.parse(init?.body as string)
         expect(body.web_search_options).toBeUndefined()
         return new Response()
@@ -699,7 +699,7 @@ describe('resolvePiModel — Tinfoil', () => {
     })
 
     it('strips images for a managed model declared text-only (GLM 5.3)', async () => {
-      const getSystemTinfoilClient = mock(async () => createSecureClient())
+      const getSystemTinfoilClient = mock(async () => createAttestedClient())
       const resolved = await resolvePiModel(
         tinfoilAgentCore,
         tinfoilContext(tinfoilModel({ model: 'glm-5-3' })),
@@ -712,7 +712,7 @@ describe('resolvePiModel — Tinfoil', () => {
     })
 
     it('strips images for a BYOK model detected as text-only', async () => {
-      const getTinfoilClient = mock(async () => createSecureClient())
+      const getTinfoilClient = mock(async () => createAttestedClient())
       const model = tinfoilModel({ id: 'user-model', model: 'private-model', vendor: null, isSystem: 0, apiKey: 'k' })
       setCachedImageSupport(model, 'unsupported')
 
@@ -754,9 +754,9 @@ describe('resolvePiModel — Tinfoil', () => {
   })
 
   it('keys the harness cache by attested client identity', async () => {
-    const firstClient = createSecureClient()
-    const secondClient = createSecureClient()
-    const resolveWith = (client: SecureClient) =>
+    const firstClient = createAttestedClient()
+    const secondClient = createAttestedClient()
+    const resolveWith = (client: AttestedTinfoilClient) =>
       resolvePiModel(tinfoilAgentCore, tinfoilContext(tinfoilModel()), null, {
         getSystemTinfoilClient: async () => client,
       })
@@ -834,7 +834,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     } satisfies PreparedAiRequestConfig
     const authToken = { current: 'first-token' }
     const authorizationHeaders: Array<string | null> = []
-    const client = createSecureClient(async (_input, init) => {
+    const client = createAttestedClient(async (_input, init) => {
       authorizationHeaders.push(new Headers(init?.headers).get('authorization'))
       return new Response()
     })
@@ -930,7 +930,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       aiFetch,
       loadAgentCore: async () => agentCore,
       prepareConfig: async () => config,
-      getSystemTinfoilClient: async () => createSecureClient(),
+      getSystemTinfoilClient: async () => createAttestedClient(),
     })
 
     const response = await adapter.fetch(
@@ -1897,7 +1897,7 @@ describe('Mini App reads on the persistent harness', () => {
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
       loadAgentCore: async () => agentCore,
       prepareConfig: async () => config,
-      getSystemTinfoilClient: async () => createSecureClient(),
+      getSystemTinfoilClient: async () => createAttestedClient(),
     })
     const messages = [
       { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'What is the total?' }] },
@@ -1988,7 +1988,7 @@ describe('attachments in the harness workspace', () => {
       prepareConfig: async () => config,
       prepareConversation: (messages, skillInstructions, options) =>
         prepareBuiltInConversation(messages, skillInstructions, options, conversationDeps),
-      getSystemTinfoilClient: async () => createSecureClient(),
+      getSystemTinfoilClient: async () => createAttestedClient(),
     })
     const messages = [
       {

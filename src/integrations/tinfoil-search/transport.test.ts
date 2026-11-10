@@ -3,12 +3,40 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, it, mock } from 'bun:test'
+import { AttestationError } from 'tinfoil'
 import { createTinfoilToolCaller } from './transport'
+
+it('evicts only the failed search generation when a replacement is already active', async () => {
+  const pending = Promise.withResolvers<Response>()
+  const started = Promise.withResolvers<void>()
+  const old = {
+    baseURL: 'https://websearch.tinfoil.sh/',
+    fetch: async () => {
+      started.resolve()
+      return pending.promise
+    },
+  }
+  const replacement = { ...old }
+  const active: { client: object | null } = { client: old }
+  const evict = mock((client: object) => {
+    if (active.client === client) {
+      active.client = null
+    }
+  })
+  const caller = createTinfoilToolCaller(async () => 'token', { acquire: async () => old, evict })
+  const request = caller('search', { query: 'query' }).catch((error: unknown) => error)
+  await started.promise
+  active.client = replacement
+  pending.reject(new AttestationError('old key rejected'))
+  expect(await request).toBeInstanceOf(AttestationError)
+  expect(evict).toHaveBeenCalledWith(old)
+  expect(active.client).toBe(replacement)
+})
 
 it('uses authenticated attested MCP requests, supports SSE, and closes each session', async () => {
   const requests: Array<{ url: string; init?: RequestInit; method?: string }> = []
   const secure = {
-    getBaseURL: () => 'https://websearch.tinfoil.sh/v1/',
+    baseURL: 'https://websearch.tinfoil.sh/',
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
       requests.push({ url: String(input), init, method: body?.method })

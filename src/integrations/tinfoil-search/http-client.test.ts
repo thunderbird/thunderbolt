@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, expect, it, mock, spyOn } from 'bun:test'
-import { SecureClient, Verifier } from 'tinfoil'
+import { EnclaveHTTPClient } from 'tinfoil'
+import { testTinfoilVerification, testTinfoilVerifier } from '@/test-utils/tinfoil'
 import {
   Identity,
   PROTOCOL,
@@ -36,10 +37,8 @@ const prepareClient = async (httpClient: HttpClient) => {
   const identity = await Identity.fromPublicKeyHex(
     bytesToHex(new Uint8Array(await suite.SerializePublicKey(publicKey))),
   )
-  const verify = spyOn(Verifier.prototype, 'verifyBundle').mockResolvedValue({
-    hpkePublicKey: await identity.getPublicKeyHex(),
-    measurement: { type: 'test', registers: [] },
-  })
+  const hpkePublicKey = await identity.getPublicKeyHex()
+  const verify = mock(async () => testTinfoilVerification(hpkePublicKey))
   const attestation = spyOn(globalThis, 'fetch').mockImplementation(
     Object.assign(
       async () =>
@@ -50,13 +49,12 @@ const prepareClient = async (httpClient: HttpClient) => {
       { preconnect: globalThis.fetch.preconnect },
     ),
   )
-  const secure = new SecureClient({
-    enclaveURL: 'https://websearch.tinfoil.sh',
-    configRepo: 'tinfoilsh/confidential-websearch',
+  const secure = await EnclaveHTTPClient.create('websearch.tinfoil.sh', 'tinfoilsh/confidential-websearch', {
+    transportMode: 'ehbp',
     userCacheSecret: 'test-secret',
+    verifier: testTinfoilVerifier(verify),
     fetch: createSearchNetworkFetch(httpClient),
   })
-  await secure.ready()
   return { secure, privateKey, verify, attestation }
 }
 
@@ -107,7 +105,7 @@ it('encrypts through the browser relay and decrypts streamed results', async () 
   expect(send).toHaveBeenCalledTimes(1)
   expect(attestation).toHaveBeenCalledTimes(1)
   await expect(secure.fetch('https://other.example/mcp', { method: 'POST', body: '{}' })).rejects.toThrow(
-    'bound to the verified enclave',
+    'bound to enclave',
   )
   expect(send).toHaveBeenCalledTimes(1)
 })
@@ -116,7 +114,7 @@ it('lets the SDK reject plaintext success and preserve authentication failures',
   const send = mock(async () => Response.json({ results: ['untrusted'] }))
   const { secure } = await prepareClient(createClient({ fetch: send }))
   await expect(secure.fetch('https://websearch.tinfoil.sh/mcp', { method: 'POST', body: '{}' })).rejects.toMatchObject({
-    name: 'MissingResponseNonceError',
+    name: 'NetworkError',
   })
   send.mockImplementation(async () => new Response('Unauthorized', { status: 401 }))
   expect((await secure.fetch('https://websearch.tinfoil.sh/mcp', { method: 'POST', body: '{}' })).status).toBe(401)
@@ -134,7 +132,7 @@ it('retains the injected transport when the SDK re-verifies after key rotation',
   )
   const { secure, verify } = await prepareClient(createClient({ fetch: send }))
   await expect(secure.fetch('https://websearch.tinfoil.sh/mcp', { method: 'POST', body: '{}' })).rejects.toMatchObject({
-    name: 'KeyConfigMismatchError',
+    name: 'AttestationError',
   })
   expect(verify).toHaveBeenCalledTimes(2)
   expect(send).toHaveBeenCalledTimes(2)
@@ -196,8 +194,9 @@ it('discards bodyless session termination responses', async () => {
   const error = await secure
     .fetch('https://websearch.tinfoil.sh/mcp', { method: 'DELETE' })
     .catch((error: unknown) => error)
-  expect(error).toBeInstanceOf(SearchAcknowledgment)
-  expect((error as SearchAcknowledgment).response.body).toBeNull()
+  const acknowledgement = (error as Error).cause as SearchAcknowledgment
+  expect(acknowledgement).toBeInstanceOf(SearchAcknowledgment)
+  expect(acknowledgement.response.body).toBeNull()
   expect(cancel).toHaveBeenCalledTimes(1)
 })
 

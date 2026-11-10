@@ -24,6 +24,19 @@ import type { HandleErrorCode } from '@/types/handle-errors'
 describe('classifyErrorKind', () => {
   const cases: { label: string; error: unknown; expected: ChatErrorKind }[] = [
     {
+      label: 'SDK v2 trust rejection during key rotation',
+      error: Object.assign(new Error('attestation error: rotated key rejected'), {
+        name: 'AttestationError',
+        category: 'attestation',
+      }),
+      expected: 'attestation',
+    },
+    {
+      label: 'SDK trust category without a vendor-specific error name',
+      error: { message: 'rejected trust policy', category: 'attestation' },
+      expected: 'attestation',
+    },
+    {
       label: 'wrapped Tinfoil attestation fetch failures',
       error: Object.assign(new Error('Tinfoil attestation failed: TypeError: Failed to fetch'), {
         name: 'TinfoilAttestationError',

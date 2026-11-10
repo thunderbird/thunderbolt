@@ -14,11 +14,12 @@ import {
   HPKE_REQUEST_INFO,
   Identity,
   RESPONSE_NONCE_LENGTH,
-  Transport,
 } from 'ehbp'
 import { AEAD_AES_256_GCM, CipherSuite, KDF_HKDF_SHA256, KEM_DHKEM_X25519_HKDF_SHA256, type Key } from 'hpke'
-import { SecureClient } from 'tinfoil'
-import { createTinfoilClientLifecycle as createLifecycle, isTinfoilTransportWedgedError } from './tinfoil-client'
+import { EnclaveHTTPClient, RouterHTTPClient, AttestationError } from 'tinfoil'
+import { testTinfoilVerification, testTinfoilVerifier } from '@/test-utils/tinfoil'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
+import { createTinfoilClientLifecycle as createLifecycle, isTinfoilAttestationFailure } from './tinfoil-client'
 import { AttestedTinfoilClient } from '@/attestation/tinfoil'
 import { createAttestationStore } from '@/attestation/store'
 import type { AttestationReporter, AttestationState } from '@/attestation/types'
@@ -29,14 +30,18 @@ const createTinfoilClientLifecycle = (options: Parameters<typeof createLifecycle
 
 afterEach(() => mock.restore())
 
-/** Build the `SecureClient` slice consumed by the lifecycle. */
-const createClient = (ready: () => Promise<void> = async () => {}): SecureClient =>
+/** Build the observed client surface consumed by the lifecycle. */
+const createClient = (ready: () => Promise<void> = async () => {}): AttestedTinfoilClient =>
   ({
-    ready,
+    ensureVerified: async () => {
+      await ready()
+      return testTinfoilVerification()
+    },
     fetch: async () => new Response(),
-    getBaseURL: () => 'https://enclave.example.com/v1/',
-    getVerificationDocument: () => ({}),
-  }) as unknown as SecureClient
+    baseURL: 'https://enclave.example.com/v1',
+    enclave: 'enclave.example.com',
+    close: mock(async () => {}),
+  }) as unknown as AttestedTinfoilClient
 
 const responseSuite = new CipherSuite(KEM_DHKEM_X25519_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_256_GCM)
 const responseInfo = new TextEncoder().encode(HPKE_REQUEST_INFO)
@@ -57,24 +62,20 @@ const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
   return copy.buffer
 }
 
-/** Create a real SecureClient fetch path with attestation already represented by a real EHBP transport. */
-const createReadySecureClient = async (): Promise<{ client: SecureClient; privateKey: Key }> => {
+/** Use the public SDK factory with injected attestation facts and its real EHBP implementation. */
+const createReadyAttestedTinfoilClient = async (): Promise<{ client: EnclaveHTTPClient; privateKey: Key }> => {
   const { publicKey, privateKey } = await responseSuite.GenerateKeyPair(true)
   const publicKeyBytes = new Uint8Array(await responseSuite.SerializePublicKey(publicKey))
   const identity = await Identity.fromPublicKeyHex(bytesToHex(publicKeyBytes))
-  const transport = new Transport(identity, 'proxy.example.com')
-  const client = new SecureClient({ baseURL: 'https://proxy.example.com/v1', userCacheSecret: 'test-secret' })
-  Object.defineProperties(client, {
-    initPromise: { value: Promise.resolve(), writable: true },
-    resolvedBaseURL: { value: 'https://proxy.example.com/v1', writable: true },
-    _transport: {
-      value: {
-        fetch: (input: RequestInfo | URL, init?: RequestInit) => transport.request(input, init),
-        getSessionRecoveryToken: () => Promise.resolve(transport.getSessionRecoveryToken()),
-      },
-      writable: true,
-    },
+  const hpkePublicKey = await identity.getPublicKeyHex()
+  const documentFetch = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new Uint8Array([1])))
+  const client = await EnclaveHTTPClient.create('enclave.example.com', 'tinfoilsh/test', {
+    transportMode: 'ehbp',
+    baseURL: 'https://proxy.example.com/v1',
+    userCacheSecret: 'test-secret',
+    verifier: testTinfoilVerifier(async () => testTinfoilVerification(hpkePublicKey)),
   })
+  documentFetch.mockRestore()
   return { client, privateKey }
 }
 
@@ -100,9 +101,9 @@ const buildEncryptedResponse = async (request: Request, privateKey: Key, plainte
   })
 }
 
-describe('SecureClient proxy response contract', () => {
+describe('AttestedTinfoilClient proxy response contract', () => {
   it('decrypts a proxied response through the real EHBP path', async () => {
-    const { client, privateKey } = await createReadySecureClient()
+    const { client, privateKey } = await createReadyAttestedTinfoilClient()
     const originalFetch = globalThis.fetch
     globalThis.fetch = Object.assign(
       async (input: RequestInfo | URL) => {
@@ -125,7 +126,7 @@ describe('SecureClient proxy response contract', () => {
   })
 
   it('passes a plaintext quota rejection through as a readable response', async () => {
-    const { client } = await createReadySecureClient()
+    const { client } = await createReadyAttestedTinfoilClient()
     const originalFetch = globalThis.fetch
     globalThis.fetch = Object.assign(
       async (input: RequestInfo | URL) => {
@@ -303,7 +304,7 @@ describe('Tinfoil client lifecycle', () => {
   it('catches synchronous factory errors and revokes their verifying state', async () => {
     const attestations = createAttestationStore()
     const constructionError = new Error('constructor failed')
-    const factory = mock((): Promise<SecureClient> => {
+    const factory = mock((): Promise<AttestedTinfoilClient> => {
       throw constructionError
     })
     const lifecycle = createTinfoilClientLifecycle({
@@ -311,7 +312,7 @@ describe('Tinfoil client lifecycle', () => {
       createClient: factory,
       getCloudUrl: () => 'https://cloud/v1',
     })
-    await expect(lifecycle.getTinfoilClient()).rejects.toBe(constructionError)
+    await expect(lifecycle.getTinfoilClient()).rejects.toMatchObject({ cause: constructionError })
     expect(attestations.getSnapshot('tinfoil:user')).toEqual({ status: 'failed', reason: 'verification' })
     factory.mockImplementation(async () => createClient())
     await lifecycle.getTinfoilClient()
@@ -350,14 +351,17 @@ describe('Tinfoil client lifecycle', () => {
   })
 
   it('times out hung ready, evicts the client, and reports timeout telemetry', async () => {
-    spyOn(SecureClient.prototype, 'ready').mockImplementation(() => new Promise<void>(() => {}))
+    spyOn(RouterHTTPClient, 'create').mockImplementation(() => new Promise<RouterHTTPClient>(() => {}))
     const healthyClient = createClient()
     const createClientFactory = mock(
-      async (_type: 'system' | 'user', _cloudUrl: string, _reporter: AttestationReporter): Promise<SecureClient> =>
-        healthyClient,
+      async (
+        _type: 'system' | 'user',
+        _cloudUrl: string,
+        _reporter: AttestationReporter,
+      ): Promise<AttestedTinfoilClient> => healthyClient,
     )
-    createClientFactory.mockImplementationOnce(
-      async (_type, _cloudUrl, reporter) => new AttestedTinfoilClient({ userCacheSecret: 'test' }, reporter, 1_000),
+    createClientFactory.mockImplementationOnce(async (_type, _cloudUrl, reporter) =>
+      AttestedTinfoilClient.create({ userCacheSecret: 'test' }, reporter, 1_000),
     )
     const trackAttestation = mock(() => {})
     const lifecycle = createTinfoilClientLifecycle({
@@ -401,7 +405,7 @@ describe('Tinfoil client lifecycle', () => {
       getCloudUrl: () => 'https://cloud.example.com/v1',
     })
 
-    await expect(lifecycle.getSystemTinfoilClient()).rejects.toBe(constructionError)
+    await expect(lifecycle.getSystemTinfoilClient()).rejects.toMatchObject({ cause: constructionError })
     await expect(lifecycle.getSystemTinfoilClient()).resolves.toBe(healthyClient)
     expect(createClientFactory).toHaveBeenCalledTimes(2)
   })
@@ -419,19 +423,18 @@ describe('Tinfoil client lifecycle', () => {
     expect(first).toBe(client)
     expect(second).toBe(client)
     expect(createClientFactory).toHaveBeenCalledTimes(1)
-    expect(createClientFactory).toHaveBeenCalledWith('system', 'https://cloud.example.com/v1', expect.any(Object))
+    expect(createClientFactory).toHaveBeenCalledWith(
+      'system',
+      'https://cloud.example.com/v1',
+      expect.any(Object),
+      expect.any(AbortSignal),
+    )
   })
 
   it('tracks successful system attestation', async () => {
     const client = createClient()
-    const document = new SecureClient({ userCacheSecret: 'test' }).getVerificationDocument()
-    Object.assign(document, {
-      enclaveHost: 'router.tinfoil.sh',
-      releaseDigest: 'release-digest',
-      enclaveFingerprint: 'fingerprint',
-      selectedRouterEndpoint: 'router.tinfoil.sh',
-    })
-    spyOn(client, 'getVerificationDocument').mockReturnValue(document)
+    const verification = testTinfoilVerification(undefined, { codeDigest: 'release-digest' })
+    spyOn(client, 'ensureVerified').mockResolvedValue(verification)
     const trackAttestation = mock(() => {})
     const lifecycle = createTinfoilClientLifecycle({
       createClient: async () => client,
@@ -445,10 +448,10 @@ describe('Tinfoil client lifecycle', () => {
       outcome: 'success',
       duration_ms: 0,
       client: 'system',
-      enclave_host: 'router.tinfoil.sh',
+      enclave_host: client.enclave,
       release_digest: 'release-digest',
-      enclave_fingerprint: 'fingerprint',
-      router_endpoint: 'router.tinfoil.sh',
+      enclave_fingerprint: JSON.stringify(verification.toJSON().enclaveMeasurement),
+      router_endpoint: client.enclave,
     })
   })
 
@@ -487,15 +490,17 @@ describe('Tinfoil client lifecycle', () => {
       model_id: 'model-1',
     })
 
-    expect(trackAttestation).toHaveBeenLastCalledWith({
-      outcome: 'success',
-      duration_ms: 0,
-      client: 'system',
-      trace_id: 'trace-1',
-      engine: 'pi',
-      provider: 'tinfoil',
-      model_id: 'model-1',
-    })
+    expect(trackAttestation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        outcome: 'success',
+        duration_ms: 0,
+        client: 'system',
+        trace_id: 'trace-1',
+        engine: 'pi',
+        provider: 'tinfoil',
+        model_id: 'model-1',
+      }),
+    )
   })
 
   it('evicts immediately when re-attestation fails inside fetch, before another acquisition', async () => {
@@ -546,7 +551,7 @@ describe('Tinfoil client lifecycle', () => {
     await expect(lifecycle.getTinfoilClient()).resolves.toBe(healthyClient)
 
     expect(createClientFactory).toHaveBeenCalledTimes(2)
-    expect(createClientFactory).toHaveBeenCalledWith('user', '', expect.any(Object))
+    expect(createClientFactory).toHaveBeenCalledWith('user', '', expect.any(Object), expect.any(AbortSignal))
     expect(trackAttestation).toHaveBeenCalledWith({
       outcome: 'error',
       duration_ms: 0,
@@ -556,23 +561,30 @@ describe('Tinfoil client lifecycle', () => {
   })
 })
 
-describe('isTinfoilTransportWedgedError', () => {
-  it('matches SDK key-config mismatch errors by name', () => {
-    const error = { name: 'KeyConfigMismatchError', message: 'key changed' }
-
-    expect(isTinfoilTransportWedgedError(error)).toBe(true)
+describe('isTinfoilAttestationFailure', () => {
+  it('matches classified SDK trust failures', () => {
+    expect(isTinfoilAttestationFailure(new AttestationError('rejected key'))).toBe(true)
+    expect(isTinfoilAttestationFailure({ name: 'TinfoilAttestationTimeoutError' })).toBe(true)
   })
-
-  it('matches the SDK concurrent-reset null-transport TypeError', () => {
-    const error = { name: 'TypeError', message: "Cannot read properties of null (reading 'fetch')" }
-
-    expect(isTinfoilTransportWedgedError(error)).toBe(true)
+  it('does not retain removed v1 implementation-error matching', () => {
+    expect(isTinfoilAttestationFailure({ name: 'KeyConfigMismatchError' })).toBe(false)
+    expect(isTinfoilAttestationFailure(new TypeError("Cannot read properties of null (reading 'fetch')"))).toBe(false)
+    expect(isTinfoilAttestationFailure(new Error('network unavailable'))).toBe(false)
   })
+})
 
-  it('does not classify unrelated errors for eviction', () => {
-    expect(isTinfoilTransportWedgedError(new Error('network unavailable'))).toBe(false)
-    expect(isTinfoilTransportWedgedError(new TypeError("Cannot read properties of null (reading 'baseURL')"))).toBe(
-      false,
-    )
-  })
+it('closes every lifecycle on identity teardown, including a late factory result', async () => {
+  const store = createAttestationStore()
+  const pending = Promise.withResolvers<AttestedTinfoilClient>()
+  const client = createClient()
+  const factory = mock(async () => pending.promise)
+  const lifecycle = createTinfoilClientLifecycle({ createClient: factory, attestations: store, getCloudUrl: () => '' })
+  const acquisition = lifecycle.getTinfoilClient().catch((error: unknown) => error)
+  await getClock().tickAsync(0)
+  invalidateIdentityLifetime()
+  pending.resolve(client)
+  expect(await acquisition).toHaveProperty('name', 'TinfoilAttestationError')
+  await getClock().tickAsync(0)
+  expect(client.close).toHaveBeenCalled()
+  expect(store.getSnapshot('tinfoil:user')).toEqual({ status: 'idle' })
 })

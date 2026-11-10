@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isTinfoilAttestationRequest } from '../../e2e/tinfoil-isolation'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -110,7 +111,7 @@ const report = {
 const runSession = async (browser: Browser) => {
   const context = await browser.newContext(contextOptions)
   report.browser = browser.version()
-  await context.route('https://atc.tinfoil.sh/attestation', (route) => route.fulfill({ status: 503, body: '{}' }))
+  await context.route(isTinfoilAttestationRequest, (route) => route.fulfill({ status: 503, body: '{}' }))
   await context.addInitScript(installProbe)
   const page = context.pages()[0] ?? (await context.newPage())
   page.setDefaultTimeout(60_000)

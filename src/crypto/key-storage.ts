@@ -32,6 +32,7 @@ const publicKeyId = 'thunderbolt_public_key'
 const mlkemPublicKeyId = 'thunderbolt_mlkem_public_key'
 const mlkemSecretKeyId = 'thunderbolt_mlkem_secret_key'
 const akId = 'thunderbolt_ak'
+const akKeyVersionId = 'thunderbolt_ak_key_version'
 const dekIdPrefix = 'thunderbolt_dek_'
 const primaryKeyIdId = 'thunderbolt_primary_key_id'
 const keyVersionId = 'thunderbolt_key_version'
@@ -238,11 +239,40 @@ export const getKeyPair = async (lock?: KeyStoreLock): Promise<StoredKeyPair | n
 // (base64 blobs)
 // =============================================================================
 
-/** Store the account key in IndexedDB. */
-export const storeAK = async (ak: CryptoKey): Promise<void> => putValue(akId, ak)
+/**
+ * Store the account key together with what its envelope sealed: the
+ * `key_version` (null for an unversioned 0x02 envelope) and the primary key_id.
+ * One transaction, so the stored epoch and pointer describe the stored AK
+ * (except a non-mintable pointer, below), and a crash cannot leave a new AK next
+ * to the old primary. A non-mintable
+ * pointer is not written; the one in force is kept (see `storePrimaryKeyId`).
+ */
+export const storeAK = async (
+  ak: CryptoKey,
+  sealed: { keyVersion: number | null; primaryKeyId: KeyId },
+): Promise<void> => {
+  const entries: Array<{ id: string; value: StorableValue }> = [
+    { id: akId, value: ak },
+    { id: akKeyVersionId, value: String(sealed.keyVersion ?? 0) },
+  ]
+  if (isMintableKeyId(sealed.primaryKeyId)) {
+    entries.push({ id: primaryKeyIdId, value: sealed.primaryKeyId })
+  }
+  return putEntries(entries)
+}
 
 /** Get the account key from IndexedDB. */
 export const getAK = async (): Promise<CryptoKey | null> => getValue<CryptoKey>(akId)
+
+/**
+ * The `key_version` sealed with the stored AK: the floor below which this device
+ * refuses an envelope. 0 when the AK came from an unversioned envelope, null
+ * when none was ever recorded.
+ */
+export const getAKKeyVersion = async (): Promise<number | null> => {
+  const stored = await getValue<string>(akKeyVersionId)
+  return stored === null ? null : Number(stored)
+}
 
 /**
  * The v1 content key this device kept from before the upgrade, or null when it

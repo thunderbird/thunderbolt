@@ -1309,8 +1309,8 @@ msgid "Connection not completed"
 msgstr ""
 
 #: src/components/chat/attestation/attestation-modal.tsx
-msgid "Connection privacy"
-msgstr ""
+#~ msgid "Connection privacy"
+#~ msgstr ""
 
 #: src/components/chat/attestation/attestation-control.tsx
 msgid "Connection privacy: {label}"
@@ -1327,6 +1327,10 @@ msgstr "Connexion réussie !"
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Connection verified"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection Verified"
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
@@ -3873,7 +3877,7 @@ msgstr "Le proxy est nécessaire dans l'application web pour contourner les rest
 msgid "Q3 planning"
 msgstr "Planification du T3"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Quit"
 msgstr "Quitter"
 
@@ -4487,7 +4491,7 @@ msgstr ""
 msgid "Shared instructions for project chats"
 msgstr "Instructions communes aux discussions du projet"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Show"
 msgstr "Afficher"
 

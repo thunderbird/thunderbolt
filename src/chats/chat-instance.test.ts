@@ -283,6 +283,36 @@ describe('createAgentRoutingFetch — connection status', () => {
     expect(fetchModel).not.toHaveBeenCalled()
   })
 
+  it.each(['prompt', 'compact'] as const)('rechecks model access after resolving effort for %s', async (operation) => {
+    const effort = Promise.withResolvers<'high'>()
+    const resolving = Promise.withResolvers<void>()
+    const fetchModel = mock(async () => new Response('ok'))
+    const compactModel = mock(async () => ({
+      version: 1 as const,
+      summary: 'Summary',
+      tokensBefore: 100,
+      contextTokens: 10,
+      retainedTail: [],
+    }))
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: () => {
+        resolving.resolve()
+        return effort.promise
+      },
+      getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch: fetchModel, compact: compactModel }),
+    })
+    const request =
+      operation === 'prompt'
+        ? route('https://backend.test', { body: '{}' })
+        : route.compact([], undefined, new AbortController().signal)
+    await resolving.promise
+    useChatStore.getState().setModels([])
+    effort.resolve('high')
+    await expect(request).rejects.toThrow('Configure and select an available model')
+    expect(fetchModel).not.toHaveBeenCalled()
+    expect(compactModel).not.toHaveBeenCalled()
+  })
+
   it('uses refreshed credentials if the model changes while connecting', async () => {
     const connected = Promise.withResolvers<AgentAdapter>()
     const seenKeys: Array<string | null | undefined> = []
@@ -343,10 +373,9 @@ describe('createAgentRoutingFetch — connection status', () => {
     expect(fetchModel).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['prompt', 'compact'] as const)('waits for an effort write before routing %s', async (operation) => {
-    const write = Promise.withResolvers<void>()
-    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
-    const getChatReasoningEffort = mock(async () => 'high' as const)
+  it.each(['prompt', 'compact'] as const)('resolves the saved effort before routing %s', async (operation) => {
+    const effort = Promise.withResolvers<'high'>()
+    const getChatReasoningEffort = mock(() => effort.promise)
     const seen: AgentAdapterContext[] = []
     const adapter: AgentAdapter = {
       ...makeAdapter(builtInAgent),
@@ -368,9 +397,9 @@ describe('createAgentRoutingFetch — connection status', () => {
         ? route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
         : route.compact([], undefined, new AbortController().signal)
     await Promise.resolve()
-    expect(getChatReasoningEffort).not.toHaveBeenCalled()
+    expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
     expect(seen).toHaveLength(0)
-    write.resolve()
+    effort.resolve('high')
     await request
     expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
     expect(seen).toHaveLength(1)
@@ -378,10 +407,9 @@ describe('createAgentRoutingFetch — connection status', () => {
   })
 
   it('does not send with stale effort when its pending settings write fails', async () => {
-    const write = Promise.withResolvers<void>()
-    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
+    const write = Promise.withResolvers<never>()
     const connect = mock(async () => makeAdapter(builtInAgent))
-    const resolveEffort = mock(async () => 'low' as const)
+    const resolveEffort = mock(() => write.promise)
     const save = mock(async () => {})
     const route = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
       getChatReasoningEffort: resolveEffort,
@@ -390,7 +418,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const request = route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
     write.reject(new Error('Settings write failed'))
     await expect(request).rejects.toThrow('Settings write failed')
-    expect(resolveEffort).not.toHaveBeenCalled()
+    expect(resolveEffort).toHaveBeenCalledTimes(1)
     expect(connect).not.toHaveBeenCalled()
     expect(save).not.toHaveBeenCalled()
   })
@@ -1938,6 +1966,7 @@ describe('logical-turn web retry state through the SDK', () => {
       })
       const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
         getAvailableModels,
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch }),
         trackEvent: () => {},
       })

@@ -54,6 +54,8 @@ export default defineConfig({
     // Inject the package.json version so the client can send it as X-App-Version
     // and compare against the server-enforced minAppVersion.
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
+    // `tauri build --debug` builds production frontend assets for a development app.
+    'import.meta.env.TAURI_ENV_DEBUG': JSON.stringify(process.env.TAURI_ENV_DEBUG === 'true'),
   },
   build: {
     sourcemap,

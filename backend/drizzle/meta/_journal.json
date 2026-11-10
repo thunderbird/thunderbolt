@@ -292,8 +292,15 @@
     {
       "idx": 41,
       "version": "7",
-      "when": 1794266654619,
-      "tag": "0041_provider-connections",
+      "when": 1794264531043,
+      "tag": "0041_model_reasoning_effort",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794270800766,
+      "tag": "0042_provider-connections",
       "breakpoints": true
     }
   ]

@@ -158,12 +158,16 @@ export default function ChatUI() {
                     <ChatContentReady />
                   </Suspense>
                 </div>
+                {/* Keep the floating control inside the scroller so touch and
+                    wheel gestures starting on it scroll the conversation. */}
+                <div className="sticky bottom-0 z-10">
+                  <ScrollToBottomButton
+                    isVisible={!isAtBottom}
+                    onClick={() => scrollToBottomAndActivate(true)}
+                    className="bottom-6 md:bottom-7"
+                  />
+                </div>
               </m.div>
-              <ScrollToBottomButton
-                isVisible={!isAtBottom}
-                onClick={() => scrollToBottomAndActivate(true)}
-                className="bottom-6 md:bottom-7"
-              />
             </div>
           ) : isSyncingMessages ? (
             <div

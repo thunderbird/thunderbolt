@@ -23,6 +23,7 @@ export const createMockModel = (overrides?: Partial<Model>): Model =>
     isSystem: 0,
     enabled: 1,
     isConfidential: 0,
+    reasoningEffort: null,
     ...overrides,
   }) as Model
 
@@ -154,6 +155,7 @@ const defaultTestModel: Model = {
   isSystem: 0,
   enabled: 1,
   isConfidential: 0,
+  reasoningEffort: null,
 } as Model
 
 /**

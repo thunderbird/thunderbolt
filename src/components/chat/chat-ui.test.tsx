@@ -108,7 +108,7 @@ describe('ChatUI model setup', () => {
       const textarea = screen.getByPlaceholderText('Ask me anything…')
       fireEvent.change(textarea, { target: { value: 'Please review these notes.' } })
       fireEvent.drop(textarea, {
-        dataTransfer: { files: [new File(['draft notes'], 'notes.txt', { type: 'text/plain' })] },
+        dataTransfer: { types: ['Files'], files: [new File(['draft notes'], 'notes.txt', { type: 'text/plain' })] },
       })
       await act(async () => getClock().runAllAsync())
       expect(screen.getByLabelText('Remove notes.txt')).toBeVisible()

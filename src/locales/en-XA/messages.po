@@ -1297,8 +1297,8 @@ msgid "Connection not completed"
 msgstr ""
 
 #: src/components/chat/attestation/attestation-modal.tsx
-msgid "Connection privacy"
-msgstr ""
+#~ msgid "Connection privacy"
+#~ msgstr ""
 
 #: src/components/chat/attestation/attestation-control.tsx
 msgid "Connection privacy: {label}"
@@ -1315,6 +1315,10 @@ msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Connection verified"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection Verified"
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
@@ -3861,7 +3865,7 @@ msgstr ""
 msgid "Q3 planning"
 msgstr ""
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Quit"
 msgstr ""
 
@@ -4475,7 +4479,7 @@ msgstr ""
 msgid "Shared instructions for project chats"
 msgstr ""
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Show"
 msgstr ""
 

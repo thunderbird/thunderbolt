@@ -46,7 +46,7 @@ const defaultScheduleTimeout: ScheduleTimeout = (callback, delayMs) => {
 }
 
 export const judgeModels = {
-  opus: { ...defaultModelOpus55, apiKey: null },
+  opus: { ...defaultModelOpus55, apiKey: null, reasoningEffort: null },
 } satisfies Record<JudgeModelName, Model>
 
 const judgeModelAssignments: Readonly<Partial<Record<string, JudgeModelName>>> = {

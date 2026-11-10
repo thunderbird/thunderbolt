@@ -67,7 +67,8 @@ describe('useSyncEnabledToggle', () => {
     useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
     const lookup = Promise.withResolvers<boolean>()
     mockNeedsSetup.mockImplementation(() => lookup.promise)
-    const { result } = renderHook(() => useSyncEnabledToggle())
+    const beforeSetup = mock(() => {})
+    const { result } = renderHook(() => useSyncEnabledToggle(beforeSetup))
     let enabling: Promise<void>
     act(() => {
       enabling = result.current.handleSyncToggle(true)
@@ -80,6 +81,7 @@ describe('useSyncEnabledToggle', () => {
       await enabling
     })
     expect(result.current.syncSetupOpen).toBe(false)
+    expect(beforeSetup).not.toHaveBeenCalled()
     expect(mockSetSyncEnabled).not.toHaveBeenCalledWith(true)
   })
 
@@ -108,13 +110,15 @@ describe('useSyncEnabledToggle', () => {
   })
 
   it('handleSyncToggle(true) opens sync setup modal', async () => {
-    const { result } = renderHook(() => useSyncEnabledToggle())
+    const beforeSetup = mock(() => expect(result.current.syncSetupOpen).toBe(false))
+    const { result } = renderHook(() => useSyncEnabledToggle(beforeSetup))
 
     await act(async () => {
       await result.current.handleSyncToggle(true)
     })
 
     expect(result.current.syncSetupOpen).toBe(true)
+    expect(beforeSetup).toHaveBeenCalledTimes(1)
   })
 
   it('handleSyncToggle(false) disables sync and tracks event', async () => {
@@ -155,11 +159,13 @@ describe('useSyncEnabledToggle', () => {
 
   it('enables prepared devices and finishes the setup modal', async () => {
     mockNeedsSetup.mockResolvedValue(false)
-    const { result } = renderHook(useSyncEnabledToggle)
+    const beforeSetup = mock(() => {})
+    const { result } = renderHook(() => useSyncEnabledToggle(beforeSetup))
     await act(async () => result.current.handleSyncToggle(true))
     expect(mockSetSyncEnabled).toHaveBeenCalledWith(true)
     expect(mockTrackEvent).toHaveBeenCalledWith('settings_sync_enabled')
     expect(result.current.syncSetupOpen).toBe(false)
+    expect(beforeSetup).not.toHaveBeenCalled()
     act(() => result.current.setSyncSetupOpen(true))
     await act(async () => result.current.handleSyncSetupComplete())
     expect(result.current.syncSetupOpen).toBe(false)

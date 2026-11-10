@@ -4,6 +4,7 @@
 
 import { msg } from '@lingui/core/macro'
 import { i18n } from '@lingui/core'
+import { invoke } from '@tauri-apps/api/core'
 import { isTauriDesktop } from './platform'
 
 export class TrayManager {
@@ -12,7 +13,6 @@ export class TrayManager {
     if (!isTauriDesktop()) {
       return
     }
-    const { invoke } = await import('@tauri-apps/api/core')
     await invoke('initialize_tray', {
       showLabel: i18n._(msg`Show`),
       quitLabel: i18n._(msg`Quit`),

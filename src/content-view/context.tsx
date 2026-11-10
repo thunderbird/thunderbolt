@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { msg } from '@lingui/core/macro'
+import { browserController } from '@/browser/browser-controller'
 import { i18n } from '@lingui/core'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
@@ -10,7 +11,7 @@ import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { formatToolOutput } from '@/lib/utils'
 import type { UIMessageMetadata } from '@/types'
 import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
-import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
 import type { CompactionSummary } from '@/components/context-usage'
 
@@ -149,6 +150,8 @@ export const ContentViewProvider = ({
     [trackEvent],
   )
 
+  useEffect(() => browserController.registerOpener(showPreview, () => setPreviewHidden(false)), [showPreview])
+
   const showArtifact = useCallback(
     (data: ArtifactViewData) => {
       trackEvent('content_view_open', { view_type: 'artifact' })
@@ -228,6 +231,18 @@ export const usePreview = () => {
 /** Returns showPreview when inside ContentViewProvider, undefined otherwise. */
 export const useShowPreview = (): ((url: string) => void) | undefined => {
   return useContext(ContentViewContext)?.showPreview
+}
+
+/** Browser panel controls for shared headers that also render outside this provider. */
+export const usePreviewControls = () => {
+  const context = useContext(ContentViewContext)
+  return context
+    ? {
+        isPreviewOpen: context.state.type === 'preview',
+        showPreview: context.showPreview,
+        closePreview: context.close,
+      }
+    : undefined
 }
 
 /** Returns showSideview when inside ContentViewProvider, undefined otherwise. */

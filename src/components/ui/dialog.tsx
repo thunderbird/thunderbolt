@@ -8,6 +8,7 @@ import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
 
 import { HapticMountBoundary } from '@/hooks/use-haptics'
+import { useAppContentOverlayContainer } from '@/components/app-content-overlay'
 import { withCollapsedAutoFocusSelection } from '@/lib/focus'
 import { cn } from '@/lib/utils'
 import {
@@ -27,8 +28,9 @@ const DialogTrigger = ({ ...props }: ComponentProps<typeof DialogPrimitive.Trigg
 }
 
 const DialogPortal = ({ children, ...props }: ComponentProps<typeof DialogPrimitive.Portal>) => {
+  const container = useAppContentOverlayContainer()
   return (
-    <DialogPrimitive.Portal data-slot="dialog-portal" {...props}>
+    <DialogPrimitive.Portal data-slot="dialog-portal" container={container} {...props}>
       <HapticMountBoundary />
       {children}
     </DialogPrimitive.Portal>

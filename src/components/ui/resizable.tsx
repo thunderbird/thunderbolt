@@ -32,24 +32,32 @@ const ResizablePanel = ({ className, ...props }: ComponentProps<typeof Resizable
 const ResizableHandle = ({
   withHandle,
   className,
+  handleClassName,
   children,
   ...props
 }: ComponentProps<typeof ResizablePrimitive.Separator> & {
   withHandle?: boolean
+  handleClassName?: string
 }) => {
   return (
     <ResizablePrimitive.Separator
       data-slot="resizable-handle"
       className={cn(
-        'bg-border focus-visible:ring-ring relative flex w-px items-center justify-center after:absolute after:inset-y-0 after:left-[calc(50%-2px)] after:w-1 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-offset-1 focus-visible:outline-hidden',
-        'cursor-ew-resize',
+        'focus-visible:ring-ring group relative flex w-1 shrink-0 items-center justify-center after:pointer-events-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-border focus-visible:ring-1 focus-visible:ring-offset-1 focus-visible:outline-hidden',
+        'cursor-col-resize',
         className,
       )}
       {...props}
     >
       {withHandle && (
-        <div className="bg-border z-10 flex h-4 w-3 items-center justify-center rounded-sm border">
-          <GripVerticalIcon className="size-2.5" />
+        <div
+          data-slot="resizable-handle-grip"
+          className={cn(
+            'bg-border z-10 flex h-4 w-3 items-center justify-center rounded-sm border text-muted-foreground transition-colors group-hover:bg-muted group-hover:text-foreground group-data-[separator=active]:bg-muted group-data-[separator=active]:text-foreground',
+            handleClassName,
+          )}
+        >
+          <GripVerticalIcon aria-hidden="true" className="size-2.5" />
         </div>
       )}
       {children}

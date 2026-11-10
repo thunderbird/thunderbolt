@@ -2710,6 +2710,7 @@ dependencies = [
  "block2",
  "objc2",
  "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-foundation",
  "objc2-quartz-core",
 ]
@@ -4453,8 +4454,6 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 [[package]]
 name = "tauri"
 version = "2.12.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fb0244332cfb9cee7e2a568bf5da29a36ed8fdbd717f6f47a66b6b7b358c072"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4998,9 +4997,17 @@ name = "thunderbolt"
 version = "0.1.162"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
+ "block2",
+ "cairo-rs",
+ "gtk",
  "hex",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-graphics",
  "objc2-foundation",
  "objc2-ui-kit",
+ "objc2-web-kit",
  "reqwest 0.12.28",
  "rustls",
  "serde",
@@ -5021,6 +5028,9 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-plugin-updater",
  "tokio",
+ "webkit2gtk",
+ "webview2-com",
+ "windows 0.62.2",
 ]
 
 [[package]]

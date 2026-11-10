@@ -7,6 +7,7 @@ import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
 import type { VariantProps } from 'class-variance-authority'
 
 import { HapticMountBoundary, useHaptics } from '@/hooks/use-haptics'
+import { useAppContentOverlayContainer } from '@/components/app-content-overlay'
 import { withCollapsedAutoFocusSelection } from '@/lib/focus'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
@@ -21,8 +22,9 @@ const AlertDialogTrigger = ({ ...props }: ComponentProps<typeof AlertDialogPrimi
 }
 
 const AlertDialogPortal = ({ children, ...props }: ComponentProps<typeof AlertDialogPrimitive.Portal>) => {
+  const container = useAppContentOverlayContainer()
   return (
-    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props}>
+    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" container={container} {...props}>
       <HapticMountBoundary />
       {children}
     </AlertDialogPrimitive.Portal>

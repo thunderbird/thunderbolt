@@ -71,6 +71,23 @@ const setup = (savedWidth: number | null = 50) => {
 }
 
 describe('useContentViewPanel', () => {
+  it('persists only the final native grip drag position', () => {
+    const panel = setup()
+    panel.setOpen(true)
+    panel.finish()
+    panel.result.current.beginExternalResize()
+    for (const width of [51, 54, 58, 62]) {
+      panel.settleResize(width)
+    }
+    expect(panel.saveWidth).not.toHaveBeenCalled()
+    act(() => {
+      void panel.result.current.endExternalResize()
+    })
+    expect(panel.saveWidth.mock.calls.map(([width]) => width)).toEqual([62])
+    panel.settleResize(65)
+    expect(panel.saveWidth.mock.calls.map(([width]) => width)).toEqual([62, 65])
+  })
+
   it('restores width without persisting any of the animation frames or closing frames', () => {
     const panel = setup(42)
     panel.setOpen(true)

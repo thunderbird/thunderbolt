@@ -24,7 +24,7 @@ describe('ExternalLinkDialog', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
       expect(screen.getByRole('alertdialog')).toBeInTheDocument()
-      expect(screen.getByText('Open External Link')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Open Link' })).toBeInTheDocument()
     })
 
     it('should not display dialog when open is false', () => {
@@ -80,19 +80,23 @@ describe('ExternalLinkDialog', () => {
       expect(screen.getByRole('button', { name: 'Close' })).not.toBeDisabled()
     })
 
-    it('should render "Open in Sidebar" button when onOpenInApp is provided', () => {
+    it('should render "Open in Thunderbolt" button when onOpenInApp is provided', () => {
       const mockOpenInApp = mock()
       render(<ExternalLinkDialog {...defaultProps} onOpenInApp={mockOpenInApp} />)
 
-      expect(screen.getByRole('button', { name: 'Open in Sidebar' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Open in Thunderbolt' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Open in Browser' })).toBeInTheDocument()
+      const primary = screen.getByRole('button', { name: 'Open in Thunderbolt' })
+      expect(primary).toHaveClass('bg-brand')
+      expect(primary.previousElementSibling).toBe(screen.getByRole('button', { name: 'Open in Browser' }))
+      expect(primary.querySelector('svg rect[rx="5"]')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Open Link' })).not.toBeInTheDocument()
     })
 
-    it('should not render "Open in Sidebar" button when onOpenInApp is not provided', () => {
+    it('should not render "Open in Thunderbolt" button when onOpenInApp is not provided', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
-      expect(screen.queryByRole('button', { name: 'Open in Sidebar' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Open in Thunderbolt' })).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Open Link' })).toBeInTheDocument()
     })
   })
@@ -114,6 +118,33 @@ describe('ExternalLinkDialog', () => {
   })
 
   describe('interaction', () => {
+    it('labels the checkbox and reports checkbox changes without choosing a destination', () => {
+      const remember = mock()
+      const confirm = mock()
+      const inApp = mock()
+      render(
+        <ExternalLinkDialog
+          {...defaultProps}
+          onRememberChoiceChange={remember}
+          onConfirm={confirm}
+          onOpenInApp={inApp}
+        />,
+      )
+      const checkbox = screen.getByRole('checkbox', { name: 'Remember my choice' })
+      expect(checkbox).not.toBeChecked()
+      fireEvent.click(checkbox)
+      expect(remember).toHaveBeenCalledWith(true)
+      expect(confirm).not.toHaveBeenCalled()
+      expect(inApp).not.toHaveBeenCalled()
+    })
+
+    it('disables the remember checkbox while opening', () => {
+      render(<ExternalLinkDialog {...defaultProps} isOpening rememberChoice onRememberChoiceChange={() => {}} />)
+      const checkbox = screen.getByRole('checkbox', { name: 'Remember my choice' })
+      expect(checkbox).toBeChecked()
+      expect(checkbox).toBeDisabled()
+    })
+
     it('should call onConfirm when Open link button is clicked', () => {
       const mockConfirm = mock()
       render(<ExternalLinkDialog {...defaultProps} onConfirm={mockConfirm} />)
@@ -124,11 +155,11 @@ describe('ExternalLinkDialog', () => {
       expect(mockConfirm).toHaveBeenCalledTimes(1)
     })
 
-    it('should call onOpenInApp when "Open in Sidebar" button is clicked', () => {
+    it('should call onOpenInApp when "Open in Thunderbolt" button is clicked', () => {
       const mockOpenInApp = mock()
       render(<ExternalLinkDialog {...defaultProps} onOpenInApp={mockOpenInApp} />)
 
-      fireEvent.click(screen.getByRole('button', { name: 'Open in Sidebar' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Open in Thunderbolt' }))
 
       expect(mockOpenInApp).toHaveBeenCalledTimes(1)
     })
@@ -189,7 +220,7 @@ describe('ExternalLinkDialog', () => {
     it('should have proper title', () => {
       render(<ExternalLinkDialog {...defaultProps} />)
 
-      expect(screen.getByText('Open External Link')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Open Link' })).toBeInTheDocument()
     })
   })
 })

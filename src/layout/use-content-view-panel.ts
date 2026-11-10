@@ -9,6 +9,10 @@ import type { Layout, PanelImperativeHandle } from 'react-resizable-panels'
 
 export const contentViewPanelId = 'content-view'
 
+/** Restores a usable panel width when the saved value is absent or collapsed. */
+export const getContentViewOpenWidth = (savedWidth: number | null): number =>
+  savedWidth !== null && savedWidth >= minimumWidthThreshold ? savedWidth : defaultOpenWidth
+
 type ContentViewPanelOptions = {
   isOpen: boolean
   panelRef: RefObject<Pick<PanelImperativeHandle, 'getSize' | 'resize'> | null>
@@ -20,6 +24,7 @@ type ContentViewPanelOptions = {
 export const useContentViewPanel = ({ isOpen, panelRef, savedWidth, saveWidth }: ContentViewPanelOptions) => {
   const previousOpen = useRef(isOpen)
   const isAnimating = useRef(false)
+  const isExternallyResizing = useRef(false)
   const lastSettledWidth = useRef(savedWidth)
   const pendingWidth = useRef<{ width: number } | null>(null)
 
@@ -35,8 +40,7 @@ export const useContentViewPanel = ({ isOpen, panelRef, savedWidth, saveWidth }:
 
     // A quick close/reopen can beat the settings query's refresh after a resize.
     const preferredWidth = pendingWidth.current?.width ?? savedWidth
-    const openWidth =
-      preferredWidth !== null && preferredWidth >= minimumWidthThreshold ? preferredWidth : defaultOpenWidth
+    const openWidth = getContentViewOpenWidth(preferredWidth)
     const targetWidth = isOpen ? openWidth : 0
     isAnimating.current = true
     const animation = { current: null as ReturnType<typeof animate> | null }
@@ -80,7 +84,7 @@ export const useContentViewPanel = ({ isOpen, panelRef, savedWidth, saveWidth }:
   // Its imperative resize callbacks also arrive here during our animation.
   const handleLayoutChanged = (layout: Layout) => {
     const width = layout[contentViewPanelId]
-    if (!isOpen || previousOpen.current !== isOpen || isAnimating.current || !width) {
+    if (!isOpen || previousOpen.current !== isOpen || isAnimating.current || isExternallyResizing.current || !width) {
       return
     }
     if (lastSettledWidth.current === width) {
@@ -90,5 +94,14 @@ export const useContentViewPanel = ({ isOpen, panelRef, savedWidth, saveWidth }:
     return persistWidth(width)
   }
 
-  return { handleLayoutChanged }
+  const beginExternalResize = () => {
+    isExternallyResizing.current = true
+  }
+  const endExternalResize = () => {
+    isExternallyResizing.current = false
+    const width = panelRef.current?.getSize().asPercentage
+    return width ? handleLayoutChanged({ [contentViewPanelId]: width }) : undefined
+  }
+
+  return { handleLayoutChanged, beginExternalResize, endExternalResize }
 }

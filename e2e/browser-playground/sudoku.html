@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sudoku · Browser Playground</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/sudoku.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav" aria-label="Main navigation">
+        <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">↗</span>Browser Playground</a>
+        <div class="nav-links">
+          <a href="/minesweeper.html">Minesweeper</a><a href="/sudoku.html" aria-current="page">Sudoku</a
+          ><a href="/interactions.html">Interaction lab</a>
+        </div>
+      </nav>
+    </header>
+    <main>
+      <div class="eyebrow">02 / Think &amp; type</div>
+      <h1>Nine numbers. One solution.</h1>
+      <p class="intro">A classic Sudoku with a single solution. Fill each row, column, and box with 1 through 9.</p>
+      <div class="workspace">
+        <section class="panel" aria-label="Sudoku game">
+          <div class="toolbar">
+            <button id="check-puzzle" class="button primary">Check progress</button
+            ><button id="reset-puzzle" class="button">Reset puzzle</button
+            ><button id="erase-cell" class="button">Erase cell</button>
+          </div>
+          <div class="stats">
+            <div><strong id="filled-count">0 / 51</strong>Your squares filled</div>
+            <div><strong>Classic</strong>Puzzle</div>
+          </div>
+          <div id="sudoku-board" class="sudoku-board" role="group" aria-label="Sudoku puzzle"></div>
+          <div id="number-pad" class="number-pad" role="group" aria-label="Number pad"></div>
+          <p id="puzzle-status" class="status" role="status">Select an empty square and enter a number.</p>
+        </section>
+        <aside class="panel side-panel">
+          <h2>A few useful controls</h2>
+          <ol>
+            <li>Click a white square and type a number from 1 to 9. Shaded clues stay fixed.</li>
+            <li>Use arrow keys to move between squares. Backspace or Delete clears your entry.</li>
+            <li>The number pad also fills the last square you selected.</li>
+            <li>Check progress highlights incorrect entries without filling in the answers.</li>
+          </ol>
+          <p class="hint">
+            <strong>Try asking</strong><br />“Solve the first row of this Sudoku. Use the keyboard to enter your
+            answers.”
+          </p>
+          <p>Cell labels include their row and column. Reset puzzle clears your entries and keeps the same clues.</p>
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>

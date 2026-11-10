@@ -3,11 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { ProjectBadge } from '@/projects/project-badge'
 import { useCreateItem } from '@/components/create-item/context'
+import { usePreviewControls } from '@/content-view/context'
+import { useAppContentOverlayContainer } from '@/components/app-content-overlay'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
@@ -16,10 +19,11 @@ import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isEmbedded } from '@/lib/embed'
-import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
+import { isFramelessControlsPlatform, isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { useResolvedTheme } from '@/lib/theme-provider'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
+import { PanelRightRounded } from '@/components/icons/panel-right-rounded'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
@@ -201,6 +205,19 @@ const HistoryNavButtons = () => {
  * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
+  const preview = usePreviewControls()
+  const overlayContainer = useAppContentOverlayContainer()
+  const browserToggleRef = useRef<HTMLButtonElement>(null)
+  const restoreBrowserToggleFocus = useRef(false)
+  const browserToggleContainer = preview?.isPreviewOpen ? overlayContainer : undefined
+  // Changing portal containers remounts the button. Preserve focus only when
+  // the user activated that button; agent-driven opens never request focus.
+  useLayoutEffect(() => {
+    if (restoreBrowserToggleFocus.current && (browserToggleContainer || !preview?.isPreviewOpen)) {
+      restoreBrowserToggleFocus.current = false
+      browserToggleRef.current?.focus({ preventScroll: true })
+    }
+  }, [browserToggleContainer, preview?.isPreviewOpen])
   const { t } = useLingui()
   const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
@@ -385,18 +402,45 @@ export const Header = () => {
   // Desktop: a single left-aligned group — optional expand toggle, history
   // arrows (Tauri app only), then the agent selector (fully left on web,
   // right of the arrows in the app). Theme and sync/account controls live in
-  // the sidebar footer, so the right side stays empty (it remains a drag
-  // surface on the Tauri desktop app).
+  // the sidebar footer; the browser opener sits at the right edge.
   // On macOS the expand toggle lives here while the sidebar is collapsed to a
   // rail — just right of the traffic lights, the same spot the collapse toggle
   // occupies in the expanded sidebar's strip. On web and the Windows/Linux apps
   // the toggle stays inside the sidebar itself. Hidden while the collapse is
   // forced by a narrow window — expanding is a no-op there.
   const showSidebarToggle = isMacDesktop() && sidebarState === 'collapsed' && !forceCollapsed
+  const browserButton = isTauriDesktop() && preview && (
+    <Button
+      ref={browserToggleRef}
+      data-browser-toggle
+      variant="ghost"
+      size="icon"
+      className={cn(mutedIconButtonClass, browserToggleContainer && 'absolute right-2 top-2')}
+      aria-label={preview.isPreviewOpen ? t`Close browser` : t`Open browser`}
+      title={preview.isPreviewOpen ? t`Close browser` : t`Open browser`}
+      aria-pressed={preview.isPreviewOpen}
+      onClick={(event) => {
+        restoreBrowserToggleFocus.current = event.currentTarget === document.activeElement
+        if (preview.isPreviewOpen) {
+          preview.closePreview()
+        } else {
+          preview.showPreview('about:blank')
+        }
+      }}
+    >
+      <PanelRightRounded />
+    </Button>
+  )
 
   return (
     <header
       {...dragProps}
+      data-main-header
+      style={
+        isFramelessControlsPlatform() && !overlayContainer
+          ? { paddingRight: 'calc(var(--window-controls-width) + 0.5rem)' }
+          : undefined
+      }
       className="relative flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
     >
       <div {...dragProps} className={cn('flex items-center gap-2', needsTrafficLightClearance && 'ml-8')}>
@@ -416,6 +460,9 @@ export const Header = () => {
       </div>
       {brandLogoImage}
       {privateSwitchDialog}
+      {/* The bounded host includes the app's resize strip and escapes route
+          overflow clipping. Only this control moves to the actual divider. */}
+      {browserToggleContainer ? createPortal(browserButton, browserToggleContainer) : browserButton}
     </header>
   )
 }

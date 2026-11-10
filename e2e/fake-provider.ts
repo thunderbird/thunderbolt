@@ -10,6 +10,9 @@ import { z } from 'zod'
 import { performanceStreamOptions, performanceStreamPrompt } from './streaming-fixture'
 
 export const fakeProviderReply = 'Hello from the fake provider, one word at a time.'
+export const browserBannerPrompt = 'Exercise the native browser banner at '
+export const browserBannerThinking = 'Browser tools finished; checking the page.'
+export const browserBannerReply = `${browserBannerThinking} Browser banner test complete.`
 
 type FakeProviderOptions = { delayMs?: number }
 
@@ -17,10 +20,62 @@ const requestSchema = z.object({
   messages: z.array(
     z.object({
       role: z.string(),
-      content: z.union([z.string(), z.array(z.object({ type: z.string(), text: z.string().optional() }))]),
+      content: z.union([
+        z.string(),
+        z.array(
+          z.object({
+            type: z.string(),
+            text: z.string().optional(),
+            tool_use_id: z.string().optional(),
+            content: z.unknown().optional(),
+          }),
+        ),
+      ]),
     }),
   ),
 })
+
+/** Decode text without mistaking a tool result for a new user prompt. */
+const messageText = (content: z.infer<typeof requestSchema>['messages'][number]['content']) =>
+  typeof content === 'string'
+    ? content
+    : content
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text ?? '')
+        .join('\n')
+
+/** Opt in only the latest human prompt and only allow local fixture URLs. */
+const browserBannerStep = (request: z.infer<typeof requestSchema>) => {
+  const promptIndex = request.messages.findLastIndex(
+    (message) => message.role === 'user' && messageText(message.content),
+  )
+  const prompt = request.messages[promptIndex]
+  const text = prompt ? messageText(prompt.content) : ''
+  if (!text.startsWith(browserBannerPrompt)) {
+    return null
+  }
+  const url = URL.parse(text.slice(browserBannerPrompt.length).trim())
+  if (!url || url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname)) {
+    return null
+  }
+  const results = request.messages
+    .slice(promptIndex + 1)
+    .flatMap((message) =>
+      Array.isArray(message.content) ? message.content.filter((part) => part.type === 'tool_result') : [],
+    )
+  const opened = results.find((part) => part.tool_use_id === 'browser-banner-open')
+  if (!opened) {
+    return { id: 'browser-banner-open', name: 'browser_tabs', input: { action: 'open', url: url.href } }
+  }
+  if (results.some((part) => part.tool_use_id === 'browser-banner-snapshot')) {
+    return { done: true } as const
+  }
+  const content = z
+    .union([z.string(), z.array(z.object({ type: z.string(), text: z.string().optional() }))])
+    .parse(opened.content)
+  const { tab } = z.object({ tab: z.object({ id: z.string() }) }).parse(JSON.parse(messageText(content)))
+  return { id: 'browser-banner-snapshot', name: 'browser_snapshot', input: { tabId: tab.id } }
+}
 
 /** Only the last user turn can opt into the expensive fixture; ordinary replies retain their original timing. */
 const requestsPerformanceStream = (request: z.infer<typeof requestSchema>) => {
@@ -53,6 +108,7 @@ export const createFakeProvider = async (port: number, options: FakeProviderOpti
       res.end('Invalid Messages request')
       return
     }
+    const banner = browserBannerStep(request)
     const selected = requestsPerformanceStream(request)
       ? performanceStreamOptions
       : { reply: fakeProviderReply, chunkSize: undefined, delayMs: 150 }
@@ -93,8 +149,34 @@ export const createFakeProvider = async (port: number, options: FakeProviderOpti
         usage,
       },
     })
+    if (banner && !('done' in banner)) {
+      writeEvent({
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'tool_use', id: banner.id, name: banner.name, input: {}, caller: { type: 'direct' } },
+      })
+      writeEvent({
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: JSON.stringify(banner.input) },
+      })
+      writeEvent({ type: 'content_block_stop', index: 0 })
+      writeEvent({
+        type: 'message_delta',
+        delta: { stop_reason: 'tool_use', stop_sequence: null, stop_details: null, container: null },
+        usage: { ...usage, output_tokens: 20 },
+      })
+      writeEvent({ type: 'message_stop' })
+      res.end()
+      return
+    }
     writeEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: [] } })
-    for (const text of chunks) {
+    if (banner) {
+      writeEvent({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: browserBannerThinking } })
+      // This gap is deliberately after both native tools return, when a per-call banner disappears.
+      await setTimeout(options.delayMs ?? 3000)
+    }
+    for (const text of banner ? [' Browser banner test complete.'] : chunks) {
       await setTimeout(options.delayMs ?? selected.delayMs)
       if (res.destroyed) {
         return

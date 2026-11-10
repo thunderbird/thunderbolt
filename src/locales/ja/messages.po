@@ -359,9 +359,21 @@ msgstr "最初のタスクを追加"
 msgid "Adding…"
 msgstr "追加中…"
 
+#: src/content-view/browser-address-bar.tsx
+msgid "Address"
+msgstr ""
+
+#: src/content-view/browser-address-bar.tsx
+#~ msgid "Address or search"
+#~ msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Advanced (JSON)"
 msgstr "詳細設定（JSON）"
+
+#: src/browser/browser-agent-status.tsx
+msgid "Agent is using this tab"
+msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Agent privacy"
@@ -616,6 +628,19 @@ msgstr "ベース URL"
 msgid "Bearer token or API key"
 msgstr "Bearer トークンまたは API キー"
 
+#: src/content-view/browser-bookmarks-panel.tsx
+#~ msgid "Bookmark a page with the star in the address bar."
+#~ msgstr ""
+
+#: src/content-view/browser-address-bar.tsx
+#: src/content-view/use-browser-shortcuts.ts
+#~ msgid "Bookmark this page"
+#~ msgstr ""
+
+#: src/content-view/browser-bookmarks-panel.tsx
+#~ msgid "Bookmarks"
+#~ msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Bridge"
 msgstr "ブリッジ"
@@ -625,8 +650,23 @@ msgid "Bridge target"
 msgstr "ブリッジのターゲット"
 
 #: src/components/external-link-toggle-group.tsx
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/sidebar-webview.tsx
+#: src/content-view/use-browser-shortcuts.ts
 msgid "Browser"
 msgstr "ブラウザー"
+
+#: src/browser/browser-agent-status.tsx
+msgid "Browser control paused"
+msgstr ""
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Browser navigation"
+msgstr ""
+
+#: src/content-view/browser-tab-strip.tsx
+msgid "Browser tabs"
+msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Build it from source instead (requires Bun):"
@@ -675,6 +715,10 @@ msgstr "カレンダー"
 #: src/skills/dependents-dialog.tsx
 msgid "Cancel"
 msgstr "キャンセル"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Cancel selection"
+msgstr ""
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Cannot change agent during reply"
@@ -874,6 +918,10 @@ msgstr "晴れ"
 msgid "CLI"
 msgstr ""
 
+#: src/content-view/browser-tab-content.tsx
+msgid "Click an element to reference it in chat. Press Escape to cancel."
+msgstr ""
+
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
 msgstr "クリップボードを利用できません。上のフレーズを選択して手動でコピーしてください。"
@@ -890,6 +938,11 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 msgid "Close"
 msgstr "閉じる"
 
+#: src/components/ui/header.tsx
+#: src/content-view/browser-tab-content.tsx
+msgid "Close browser"
+msgstr ""
+
 #: src/mini-apps/mini-app-page.tsx
 #~ msgid "Close chat"
 #~ msgstr ""
@@ -905,6 +958,14 @@ msgstr "ナビゲーションを閉じる"
 #: src/skills/reorder-panel.tsx
 msgid "Close reorder"
 msgstr "並べ替えを閉じる"
+
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Close tab"
+msgstr ""
+
+#: src/content-view/browser-tab-strip.tsx
+msgid "Close tab {title}"
+msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Cloud Sync"
@@ -1171,6 +1232,7 @@ msgstr "続行"
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
+#: src/content-view/browser-tab-content.tsx
 msgid "Copied"
 msgstr "コピーしました"
 
@@ -1210,7 +1272,7 @@ msgstr "PATH コマンドをコピー"
 msgid "Copy to clipboard"
 msgstr "クリップボードにコピー"
 
-#: src/content-view/sidebar-webview.tsx
+#: src/content-view/browser-tab-content.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Copy URL"
 msgstr "URL をコピー"
@@ -1235,6 +1297,10 @@ msgstr ""
 #~ msgid "Could not compact context. Your chat history is safe. Please try again."
 #~ msgstr ""
 
+#: src/content-view/browser-tab-content.tsx
+msgid "Could not complete this action. Please try again."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr "エージェントに接続できませんでした。"
@@ -1257,6 +1323,10 @@ msgstr ""
 
 #: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the projects. Please try again."
+msgstr ""
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Could not load this page. Try another address or reload."
 msgstr ""
 
 #: src/hooks/use-external-link-dialog.ts
@@ -2005,9 +2075,21 @@ msgstr "エンドポイント"
 msgid "Enter a different code"
 msgstr "別のコードを入力"
 
+#: src/content-view/browser-address-bar.tsx
+msgid "Enter a URL"
+msgstr ""
+
+#: src/content-view/browser-new-tab.tsx
+msgid "Enter a URL above<0/> or ask your agent to open a page."
+msgstr ""
+
 #: src/lib/mcp-url-validation.ts
 msgid "Enter a valid URL"
 msgstr "有効な URL を入力してください"
+
+#: src/content-view/browser-address-bar.tsx
+#~ msgid "Enter a website address or search. Only HTTP and HTTPS addresses are supported."
+#~ msgstr ""
 
 #: src/components/settings/agents/validate-agent-url.ts
 msgid "Enter a wss:// or ws:// URL, or an iroh ticket"
@@ -2192,6 +2274,10 @@ msgstr "最初のデバイスのセットアップ"
 msgid "Flags"
 msgstr "旗"
 
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Focus address bar"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Foggy"
 msgstr "霧"
@@ -2253,14 +2339,22 @@ msgstr "天気を取得中…"
 msgid "Gmail & Calendar"
 msgstr "Gmail とカレンダー"
 
+#: src/content-view/browser-address-bar.tsx
+msgid "Go"
+msgstr ""
+
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/use-browser-shortcuts.ts
 msgid "Go back"
 msgstr "戻る"
 
 #: src/components/ui/header.tsx
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/use-browser-shortcuts.ts
 msgid "Go forward"
 msgstr "進む"
 
@@ -2600,8 +2694,8 @@ msgstr "絵文字を読み込んでいます…"
 #~ msgstr ""
 
 #: src/content-view/sidebar-webview.tsx
-msgid "Loading preview…"
-msgstr "プレビューを読み込んでいます…"
+#~ msgid "Loading preview…"
+#~ msgstr "プレビューを読み込んでいます…"
 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
@@ -2880,12 +2974,19 @@ msgid "New Skill"
 msgstr "新しいスキル"
 
 #: src/components/external-link-toggle-group.tsx
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/browser-tab-strip.tsx
+#: src/content-view/use-browser-shortcuts.ts
 msgid "New tab"
 msgstr "新しいタブ"
 
 #: src/tasks/index.tsx
 msgid "New Task"
 msgstr "新しいタスク"
+
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Next tab"
+msgstr ""
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "No agents found"
@@ -3152,16 +3253,20 @@ msgstr "{title} を開く"
 msgid "Open app"
 msgstr ""
 
+#: src/components/ui/header.tsx
+msgid "Open browser"
+msgstr ""
+
 #: src/mini-apps/mini-app-page.tsx
 #~ msgid "Open chat"
 #~ msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
-msgid "Open External Link"
-msgstr "外部リンクを開く"
+#~ msgid "Open External Link"
+#~ msgstr "外部リンクを開く"
 
 #: src/components/external-link-toggle-group.tsx
-#: src/content-view/sidebar-webview.tsx
+#: src/content-view/browser-tab-content.tsx
 msgid "Open in browser"
 msgstr "ブラウザーで開く"
 
@@ -3182,8 +3287,12 @@ msgid "Open in sidebar"
 msgstr "サイドバーで開く"
 
 #: src/components/chat/external-link-dialog.tsx
-msgid "Open in Sidebar"
-msgstr "サイドバーで開く"
+#~ msgid "Open in Sidebar"
+#~ msgstr "サイドバーで開く"
+
+#: src/components/chat/external-link-dialog.tsx
+msgid "Open in Thunderbolt"
+msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
 msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
@@ -3200,6 +3309,10 @@ msgstr "ストアを開いて更新を確認してください。"
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Open Thunderbolt CLI"
 msgstr "Thunderbolt CLI を開く"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Opening browser…"
+msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Opening…"
@@ -3356,8 +3469,8 @@ msgid "Preferred Name"
 msgstr "希望する呼び名"
 
 #: src/content-view/sidebar-webview.tsx
-msgid "Preview"
-msgstr "プレビュー"
+#~ msgid "Preview"
+#~ msgstr "プレビュー"
 
 #: src/settings/preferences.tsx
 msgid "Preview Features"
@@ -3372,8 +3485,12 @@ msgid "Preview not available for this file type. Use the download button to view
 msgstr "このファイル形式はプレビューできません。ダウンロードボタンから表示してください。"
 
 #: src/content-view/sidebar-webview.tsx
-msgid "Preview webview is only available in the desktop app"
-msgstr "Webview のプレビューはデスクトップアプリでのみ利用できます"
+#~ msgid "Preview webview is only available in the desktop app"
+#~ msgstr "Webview のプレビューはデスクトップアプリでのみ利用できます"
+
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Previous tab"
+msgstr ""
 
 #: src/settings/models/model-detail.tsx
 msgid "Privacy"
@@ -3522,6 +3639,15 @@ msgstr ""
 msgid "Reload"
 msgstr "再読み込み"
 
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Reload page"
+msgstr ""
+
+#: src/components/chat/external-link-dialog.tsx
+msgid "Remember my choice"
+msgstr ""
+
 #: src/components/remove-bridge-dialog.tsx
 #: src/settings/devices.tsx
 #: src/settings/encryption/passkey-section.tsx
@@ -3535,6 +3661,15 @@ msgstr "削除"
 #: src/components/logout-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "このデバイスからすべてのチャット、設定、キャッシュデータを削除します。"
+
+#: src/content-view/browser-address-bar.tsx
+#~ msgid "Remove bookmark"
+#~ msgstr ""
+
+#. placeholder {0}: bookmark.title
+#: src/content-view/browser-bookmarks-panel.tsx
+#~ msgid "Remove bookmark {0}"
+#~ msgstr ""
 
 #: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
@@ -3637,6 +3772,10 @@ msgstr "既定値に戻す"
 msgid "Resetting…"
 msgstr "リセットしています…"
 
+#: src/layout/use-browser-resize-grip.ts
+msgid "Resize browser"
+msgstr ""
+
 #: src/components/update-notification.tsx
 msgid "Restart Now"
 msgstr "今すぐ再起動"
@@ -3644,6 +3783,10 @@ msgstr "今すぐ再起動"
 #: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
 msgstr "再起動して更新"
+
+#: src/browser/browser-agent-status.tsx
+msgid "Resume"
+msgstr ""
 
 #: src/components/context-usage/compaction-summary-content.tsx
 msgid "Retained messages and tool results"
@@ -3657,6 +3800,7 @@ msgstr "データを取得中…"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
+#: src/content-view/browser-tab-content.tsx
 #: src/hooks/use-desktop-update.ts
 msgid "Retry"
 msgstr "再試行"
@@ -3742,6 +3886,10 @@ msgstr ""
 msgid "Save your recovery phrase"
 msgstr "リカバリーフレーズを保存してください"
 
+#: src/content-view/browser-bookmarks-panel.tsx
+#~ msgid "Saved on this device"
+#~ msgstr ""
+
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -3820,6 +3968,14 @@ msgstr "モデルを検索"
 msgid "Search models…"
 msgstr "モデルを検索…"
 
+#: src/content-view/browser-address-bar.tsx
+#~ msgid "Search or enter a URL"
+#~ msgstr ""
+
+#: src/content-view/browser-tab-content.tsx
+#~ msgid "Search or enter an address above."
+#~ msgstr ""
+
 #: src/projects/move-chat-to-project-dialog.tsx
 #: src/projects/project-badge.tsx
 msgid "Search projects"
@@ -3867,6 +4023,10 @@ msgstr ""
 #: src/widgets/ask/display.tsx
 msgid "Select all that apply"
 msgstr "該当するものをすべて選択"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Select element"
+msgstr ""
 
 #: src/components/location-search-combobox.tsx
 msgid "Select location…"
@@ -4283,9 +4443,17 @@ msgstr "開始しています…"
 msgid "Status"
 msgstr "ステータス"
 
+#: src/browser/browser-agent-status.tsx
+msgid "Stop control"
+msgstr ""
+
 #: src/components/ui/prompt-input.tsx
 msgid "Stop generating"
 msgstr "生成を停止"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Stop loading"
+msgstr ""
 
 #: src/components/ui/prompt-input.tsx
 msgid "Stopping"
@@ -4463,6 +4631,10 @@ msgstr "AI プロバイダーで現在問題が発生しています。少し待
 #: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
 msgstr "AI プロバイダーの応答に時間がかかりすぎました。もう一度お試しください。"
+
+#: src/content-view/sidebar-webview.tsx
+msgid "The browser is only available in the desktop app."
+msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The chat will be retained by the {recipient} team."
@@ -5248,6 +5420,10 @@ msgstr "次の手順を記載したメールを <0>{email}</0> に送信しま�
 #: src/widgets/weather-forecast/display.tsx
 msgid "Weather data provided by Open-Meteo.com"
 msgstr "気象データの提供元: Open-Meteo.com"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Web page"
+msgstr ""
 
 #: src/components/welcome-dialog.tsx
 msgid "Welcome"

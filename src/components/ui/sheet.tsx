@@ -8,6 +8,7 @@ import { XIcon } from 'lucide-react'
 import { type ComponentProps } from 'react'
 
 import { HapticMountBoundary } from '@/hooks/use-haptics'
+import { useAppContentOverlayContainer } from '@/components/app-content-overlay'
 import { withCollapsedAutoFocusSelection } from '@/lib/focus'
 import { cn } from '@/lib/utils'
 import { modalCloseClass, modalOverlayClass } from './modal-styles'
@@ -25,8 +26,9 @@ const SheetClose = ({ ...props }: ComponentProps<typeof SheetPrimitive.Close>) =
 }
 
 const SheetPortal = ({ children, ...props }: ComponentProps<typeof SheetPrimitive.Portal>) => {
+  const container = useAppContentOverlayContainer()
   return (
-    <SheetPrimitive.Portal data-slot="sheet-portal" {...props}>
+    <SheetPrimitive.Portal data-slot="sheet-portal" container={container} {...props}>
       <HapticMountBoundary />
       {children}
     </SheetPrimitive.Portal>

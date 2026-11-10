@@ -19,6 +19,7 @@
     "test:backend:watch": "cd backend && bun test --watch",
     "start": "vite",
     "dev": "vite",
+    "dev:browser-playground": "bun e2e/browser-playground/server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "perf": "bun scripts/performance/run.ts",

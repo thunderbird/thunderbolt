@@ -4,7 +4,6 @@
 
 import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { FloatingHeader } from '@/components/floating-header'
-import { SidebarInset } from '@/components/ui/sidebar'
 import { PageFallback } from '@/loading'
 import { Suspense, type CSSProperties } from 'react'
 import { Navigate, Outlet } from 'react-router'
@@ -27,7 +26,7 @@ const SettingsLayout = () => {
   // so their scrolling content can pass beneath the scrim instead of clipping.
   return (
     <>
-      <SidebarInset className="h-full overflow-hidden flex flex-col">
+      <div className="h-full overflow-hidden flex flex-col">
         <div
           className="relative flex flex-col h-full"
           style={
@@ -44,7 +43,7 @@ const SettingsLayout = () => {
             </Suspense>
           </div>
         </div>
-      </SidebarInset>
+      </div>
     </>
   )
 }

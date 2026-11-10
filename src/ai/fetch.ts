@@ -7,6 +7,10 @@ import { reasoningProviderOptions } from './reasoning-provider-options'
 import type { ReasoningEffort } from '@shared/reasoning-effort'
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
+import { createBrowserTools } from '@/browser/browser-tools'
+import { browserController } from '@/browser/browser-controller'
+import { browserToolPrompt } from '@/browser/browser-tool-prompt'
+import { isTauriDesktop } from '@/lib/platform'
 import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
 import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
 import { requestMiniAppApproval } from '@/mini-apps/mini-app-approval'
@@ -562,6 +566,15 @@ export const prepareAiRequestConfig = async ({
     loadsSkillsByTool,
     webToolBudget,
   )
+  // Local browser tools belong to the built-in agent. Hosted and external ACP
+  // agents have no authenticated callback channel into this device's tabs.
+  const hasBrowserTools = supportsTools && isTauriDesktop()
+  if (hasBrowserTools) {
+    Object.assign(
+      appToolset,
+      createBrowserTools(telemetry ? browserController.forAgentTurn(telemetry.traceId) : undefined),
+    )
+  }
   // Cross-chat recall is a tool, not an injection: it costs nothing when unused
   // and leaves the cacheable stable prompt untouched. Only registered when there
   // is actually something to search.
@@ -680,6 +693,7 @@ export const prepareAiRequestConfig = async ({
     },
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
     hasWebTools,
+    browserSection: hasBrowserTools ? browserToolPrompt : null,
     mcpServersSummary: merged.summary,
     skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
     supportsTools: loadsSkillsByTool,

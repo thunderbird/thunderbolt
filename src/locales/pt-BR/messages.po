@@ -383,9 +383,21 @@ msgstr "Adicione sua primeira tarefa"
 msgid "Adding…"
 msgstr "Adicionando…"
 
+#: src/content-view/browser-address-bar.tsx
+msgid "Address"
+msgstr ""
+
+#: src/content-view/browser-address-bar.tsx
+#~ msgid "Address or search"
+#~ msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Advanced (JSON)"
 msgstr "Avançado (JSON)"
+
+#: src/browser/browser-agent-status.tsx
+msgid "Agent is using this tab"
+msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Agent privacy"
@@ -640,6 +652,19 @@ msgstr "URL base"
 msgid "Bearer token or API key"
 msgstr "Token Bearer ou chave de API"
 
+#: src/content-view/browser-bookmarks-panel.tsx
+#~ msgid "Bookmark a page with the star in the address bar."
+#~ msgstr ""
+
+#: src/content-view/browser-address-bar.tsx
+#: src/content-view/use-browser-shortcuts.ts
+#~ msgid "Bookmark this page"
+#~ msgstr ""
+
+#: src/content-view/browser-bookmarks-panel.tsx
+#~ msgid "Bookmarks"
+#~ msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Bridge"
 msgstr "Bridge"
@@ -649,8 +674,23 @@ msgid "Bridge target"
 msgstr "Destino do bridge"
 
 #: src/components/external-link-toggle-group.tsx
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/sidebar-webview.tsx
+#: src/content-view/use-browser-shortcuts.ts
 msgid "Browser"
 msgstr "Navegador"
+
+#: src/browser/browser-agent-status.tsx
+msgid "Browser control paused"
+msgstr ""
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Browser navigation"
+msgstr ""
+
+#: src/content-view/browser-tab-strip.tsx
+msgid "Browser tabs"
+msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Build it from source instead (requires Bun):"
@@ -699,6 +739,10 @@ msgstr "Agenda"
 #: src/skills/dependents-dialog.tsx
 msgid "Cancel"
 msgstr "Cancelar"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Cancel selection"
+msgstr ""
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Cannot change agent during reply"
@@ -898,6 +942,10 @@ msgstr "Céu limpo"
 msgid "CLI"
 msgstr ""
 
+#: src/content-view/browser-tab-content.tsx
+msgid "Click an element to reference it in chat. Press Escape to cancel."
+msgstr ""
+
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
 msgstr "Área de transferência indisponível. Selecione a frase acima e copie manualmente."
@@ -914,6 +962,11 @@ msgstr "Área de transferência indisponível. Selecione a frase acima e copie m
 msgid "Close"
 msgstr "Fechar"
 
+#: src/components/ui/header.tsx
+#: src/content-view/browser-tab-content.tsx
+msgid "Close browser"
+msgstr ""
+
 #: src/mini-apps/mini-app-page.tsx
 #~ msgid "Close chat"
 #~ msgstr ""
@@ -929,6 +982,14 @@ msgstr "Fechar a navegação"
 #: src/skills/reorder-panel.tsx
 msgid "Close reorder"
 msgstr "Fechar a reordenação"
+
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Close tab"
+msgstr ""
+
+#: src/content-view/browser-tab-strip.tsx
+msgid "Close tab {title}"
+msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Cloud Sync"
@@ -1195,6 +1256,7 @@ msgstr "Continuar"
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
+#: src/content-view/browser-tab-content.tsx
 msgid "Copied"
 msgstr "Copiado"
 
@@ -1234,7 +1296,7 @@ msgstr "Copiar o comando de PATH"
 msgid "Copy to clipboard"
 msgstr "Copiar para a área de transferência"
 
-#: src/content-view/sidebar-webview.tsx
+#: src/content-view/browser-tab-content.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Copy URL"
 msgstr "Copiar URL"
@@ -1259,6 +1321,10 @@ msgstr ""
 #~ msgid "Could not compact context. Your chat history is safe. Please try again."
 #~ msgstr ""
 
+#: src/content-view/browser-tab-content.tsx
+msgid "Could not complete this action. Please try again."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr "Não foi possível conectar ao agente."
@@ -1281,6 +1347,10 @@ msgstr ""
 
 #: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the projects. Please try again."
+msgstr ""
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Could not load this page. Try another address or reload."
 msgstr ""
 
 #: src/hooks/use-external-link-dialog.ts
@@ -2029,9 +2099,21 @@ msgstr "Endpoint"
 msgid "Enter a different code"
 msgstr "Inserir outro código"
 
+#: src/content-view/browser-address-bar.tsx
+msgid "Enter a URL"
+msgstr ""
+
+#: src/content-view/browser-new-tab.tsx
+msgid "Enter a URL above<0/> or ask your agent to open a page."
+msgstr ""
+
 #: src/lib/mcp-url-validation.ts
 msgid "Enter a valid URL"
 msgstr "Insira uma URL válida"
+
+#: src/content-view/browser-address-bar.tsx
+#~ msgid "Enter a website address or search. Only HTTP and HTTPS addresses are supported."
+#~ msgstr ""
 
 #: src/components/settings/agents/validate-agent-url.ts
 msgid "Enter a wss:// or ws:// URL, or an iroh ticket"
@@ -2216,6 +2298,10 @@ msgstr "Configuração do primeiro dispositivo"
 msgid "Flags"
 msgstr "Bandeiras"
 
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Focus address bar"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Foggy"
 msgstr "Nevoeiro"
@@ -2277,14 +2363,22 @@ msgstr "Obtendo o tempo…"
 msgid "Gmail & Calendar"
 msgstr "Gmail e Agenda"
 
+#: src/content-view/browser-address-bar.tsx
+msgid "Go"
+msgstr ""
+
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/use-browser-shortcuts.ts
 msgid "Go back"
 msgstr "Voltar"
 
 #: src/components/ui/header.tsx
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/use-browser-shortcuts.ts
 msgid "Go forward"
 msgstr "Avançar"
 
@@ -2624,8 +2718,8 @@ msgstr "Carregando emojis…"
 #~ msgstr ""
 
 #: src/content-view/sidebar-webview.tsx
-msgid "Loading preview…"
-msgstr "Carregando a prévia…"
+#~ msgid "Loading preview…"
+#~ msgstr "Carregando a prévia…"
 
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Loading this app's pairing identity…"
@@ -2904,12 +2998,19 @@ msgid "New Skill"
 msgstr "Nova habilidade"
 
 #: src/components/external-link-toggle-group.tsx
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/browser-tab-strip.tsx
+#: src/content-view/use-browser-shortcuts.ts
 msgid "New tab"
 msgstr "Nova aba"
 
 #: src/tasks/index.tsx
 msgid "New Task"
 msgstr "Nova tarefa"
+
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Next tab"
+msgstr ""
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "No agents found"
@@ -3176,16 +3277,20 @@ msgstr "Abrir {title}"
 msgid "Open app"
 msgstr ""
 
+#: src/components/ui/header.tsx
+msgid "Open browser"
+msgstr ""
+
 #: src/mini-apps/mini-app-page.tsx
 #~ msgid "Open chat"
 #~ msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
-msgid "Open External Link"
-msgstr "Abrir link externo"
+#~ msgid "Open External Link"
+#~ msgstr "Abrir link externo"
 
 #: src/components/external-link-toggle-group.tsx
-#: src/content-view/sidebar-webview.tsx
+#: src/content-view/browser-tab-content.tsx
 msgid "Open in browser"
 msgstr "Abrir no navegador"
 
@@ -3206,8 +3311,12 @@ msgid "Open in sidebar"
 msgstr "Abrir na barra lateral"
 
 #: src/components/chat/external-link-dialog.tsx
-msgid "Open in Sidebar"
-msgstr "Abrir na barra lateral"
+#~ msgid "Open in Sidebar"
+#~ msgstr "Abrir na barra lateral"
+
+#: src/components/chat/external-link-dialog.tsx
+msgid "Open in Thunderbolt"
+msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
 msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
@@ -3224,6 +3333,10 @@ msgstr "Abra a loja para verificar atualizações."
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Open Thunderbolt CLI"
 msgstr "Abrir a CLI do Thunderbolt"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Opening browser…"
+msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Opening…"
@@ -3380,8 +3493,8 @@ msgid "Preferred Name"
 msgstr "Nome preferido"
 
 #: src/content-view/sidebar-webview.tsx
-msgid "Preview"
-msgstr "Prévia"
+#~ msgid "Preview"
+#~ msgstr "Prévia"
 
 #: src/settings/preferences.tsx
 msgid "Preview Features"
@@ -3396,8 +3509,12 @@ msgid "Preview not available for this file type. Use the download button to view
 msgstr "Não há prévia para este tipo de arquivo. Use o botão de download para visualizar."
 
 #: src/content-view/sidebar-webview.tsx
-msgid "Preview webview is only available in the desktop app"
-msgstr "A prévia em webview só está disponível no app para desktop"
+#~ msgid "Preview webview is only available in the desktop app"
+#~ msgstr "A prévia em webview só está disponível no app para desktop"
+
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Previous tab"
+msgstr ""
 
 #: src/settings/models/model-detail.tsx
 msgid "Privacy"
@@ -3546,6 +3663,15 @@ msgstr ""
 msgid "Reload"
 msgstr "Recarregar"
 
+#: src/content-view/browser-tab-content.tsx
+#: src/content-view/use-browser-shortcuts.ts
+msgid "Reload page"
+msgstr ""
+
+#: src/components/chat/external-link-dialog.tsx
+msgid "Remember my choice"
+msgstr ""
+
 #: src/components/remove-bridge-dialog.tsx
 #: src/settings/devices.tsx
 #: src/settings/encryption/passkey-section.tsx
@@ -3559,6 +3685,15 @@ msgstr "Remover"
 #: src/components/logout-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "Remover todas as conversas, configurações e dados em cache deste dispositivo."
+
+#: src/content-view/browser-address-bar.tsx
+#~ msgid "Remove bookmark"
+#~ msgstr ""
+
+#. placeholder {0}: bookmark.title
+#: src/content-view/browser-bookmarks-panel.tsx
+#~ msgid "Remove bookmark {0}"
+#~ msgstr ""
 
 #: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
@@ -3661,6 +3796,10 @@ msgstr "Restaurar o padrão"
 msgid "Resetting…"
 msgstr "Redefinindo…"
 
+#: src/layout/use-browser-resize-grip.ts
+msgid "Resize browser"
+msgstr ""
+
 #: src/components/update-notification.tsx
 msgid "Restart Now"
 msgstr "Reiniciar agora"
@@ -3668,6 +3807,10 @@ msgstr "Reiniciar agora"
 #: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
 msgstr "Reiniciar para atualizar"
+
+#: src/browser/browser-agent-status.tsx
+msgid "Resume"
+msgstr ""
 
 #: src/components/context-usage/compaction-summary-content.tsx
 msgid "Retained messages and tool results"
@@ -3681,6 +3824,7 @@ msgstr "Obtendo dados…"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
+#: src/content-view/browser-tab-content.tsx
 #: src/hooks/use-desktop-update.ts
 msgid "Retry"
 msgstr "Tentar novamente"
@@ -3766,6 +3910,10 @@ msgstr ""
 msgid "Save your recovery phrase"
 msgstr "Salve sua frase de recuperação"
 
+#: src/content-view/browser-bookmarks-panel.tsx
+#~ msgid "Saved on this device"
+#~ msgstr ""
+
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -3844,6 +3992,14 @@ msgstr "Buscar modelos"
 msgid "Search models…"
 msgstr "Buscar modelos…"
 
+#: src/content-view/browser-address-bar.tsx
+#~ msgid "Search or enter a URL"
+#~ msgstr ""
+
+#: src/content-view/browser-tab-content.tsx
+#~ msgid "Search or enter an address above."
+#~ msgstr ""
+
 #: src/projects/move-chat-to-project-dialog.tsx
 #: src/projects/project-badge.tsx
 msgid "Search projects"
@@ -3891,6 +4047,10 @@ msgstr ""
 #: src/widgets/ask/display.tsx
 msgid "Select all that apply"
 msgstr "Selecione tudo o que se aplica"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Select element"
+msgstr ""
 
 #: src/components/location-search-combobox.tsx
 msgid "Select location…"
@@ -4307,9 +4467,17 @@ msgstr "Iniciando…"
 msgid "Status"
 msgstr "Status"
 
+#: src/browser/browser-agent-status.tsx
+msgid "Stop control"
+msgstr ""
+
 #: src/components/ui/prompt-input.tsx
 msgid "Stop generating"
 msgstr "Parar a geração"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Stop loading"
+msgstr ""
 
 #: src/components/ui/prompt-input.tsx
 msgid "Stopping"
@@ -4487,6 +4655,10 @@ msgstr "O provedor de IA está com problemas neste momento. Tente novamente em i
 #: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
 msgstr "O provedor de IA demorou demais para responder. Tente novamente."
+
+#: src/content-view/sidebar-webview.tsx
+msgid "The browser is only available in the desktop app."
+msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The chat will be retained by the {recipient} team."
@@ -5272,6 +5444,10 @@ msgstr "Enviamos um e-mail para <0>{email}</0> com os próximos passos."
 #: src/widgets/weather-forecast/display.tsx
 msgid "Weather data provided by Open-Meteo.com"
 msgstr "Dados meteorológicos fornecidos por Open-Meteo.com"
+
+#: src/content-view/browser-tab-content.tsx
+msgid "Web page"
+msgstr ""
 
 #: src/components/welcome-dialog.tsx
 msgid "Welcome"

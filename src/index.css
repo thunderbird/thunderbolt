@@ -866,3 +866,16 @@ body {
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Keep the column resize cursor while dragging across controls in either panel. */
+html[data-browser-resizing],
+html[data-browser-resizing] *,
+[data-slot='resizable-panel-group']:has(
+  > [data-slot='resizable-handle'][data-separator='active'][aria-orientation='vertical']
+),
+[data-slot='resizable-panel-group']:has(
+    > [data-slot='resizable-handle'][data-separator='active'][aria-orientation='vertical']
+  )
+  * {
+  cursor: col-resize !important;
+}

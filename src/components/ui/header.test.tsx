@@ -25,7 +25,10 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { SignInModalProvider } from '@/contexts'
+import { ContentViewProvider, usePreview } from '@/content-view/context'
+import { AppContentOverlayHost, AppContentOverlayProvider } from '@/components/app-content-overlay'
 import * as embed from '@/lib/embed'
+import * as platform from '@/lib/platform'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { Header } from './header'
@@ -292,6 +295,72 @@ describe('Header', () => {
     fireEvent.click(await screen.findByText('Add Agent'))
 
     expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
+  })
+
+  it('opens and closes the desktop browser from the shared header', () => {
+    const desktop = spyOn(platform, 'isTauriDesktop').mockReturnValue(true)
+    restoreViewport()
+    setupWithAgent(builtInAgent)
+    const PreviewProbe = () => {
+      const { previewConfig } = usePreview()
+      return (
+        <>
+          <output data-testid="preview-url">{previewConfig?.url}</output>
+          {previewConfig && <AppContentOverlayHost />}
+        </>
+      )
+    }
+
+    try {
+      render(
+        <ContentViewProvider>
+          <AppContentOverlayProvider>
+            <Header />
+            <PreviewProbe />
+          </AppContentOverlayProvider>
+        </ContentViewProvider>,
+        { wrapper: TestWrapper },
+      )
+      const opener = screen.getByRole('button', { name: 'Open browser' })
+      expect(opener.closest('header')).toBeInTheDocument()
+      expect(opener).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByTestId('preview-url')).toBeEmptyDOMElement()
+
+      opener.focus()
+      fireEvent.click(opener)
+
+      expect(screen.getByTestId('preview-url')).toHaveTextContent('about:blank')
+      const closer = screen.getByRole('button', { name: 'Close browser' })
+      expect(closer.closest('[data-slot="app-content-overlay-host"]')).toBeInTheDocument()
+      expect(closer).toHaveAttribute('aria-pressed', 'true')
+      expect(closer).toHaveFocus()
+
+      fireEvent.click(closer)
+
+      expect(screen.getByTestId('preview-url')).toBeEmptyDOMElement()
+      expect(screen.getByRole('button', { name: 'Open browser' })).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByRole('button', { name: 'Open browser' })).toHaveFocus()
+    } finally {
+      desktop.mockRestore()
+    }
+  })
+
+  it('hides the browser opener outside the desktop app', () => {
+    const desktop = spyOn(platform, 'isTauriDesktop').mockReturnValue(false)
+    restoreViewport()
+    setupWithAgent(builtInAgent)
+    try {
+      render(
+        <ContentViewProvider>
+          <Header />
+        </ContentViewProvider>,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByRole('button', { name: 'Open browser' })).toBeNull()
+    } finally {
+      desktop.mockRestore()
+    }
   })
 
   describe('operator logo', () => {

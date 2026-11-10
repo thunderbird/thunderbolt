@@ -5,7 +5,7 @@
 import { expect, test } from 'bun:test'
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
-import { createFakeProvider, fakeProviderReply } from './fake-provider'
+import { browserBannerPrompt, browserBannerReply, createFakeProvider, fakeProviderReply } from './fake-provider'
 import { performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
 
 test('streams a complete reply over IPv4 loopback', async () => {
@@ -83,6 +83,58 @@ test('rejects malformed requests without breaking subsequent streams', async () 
       .stream({ model: 'test-model', max_tokens: 100, messages: [{ role: 'user', content: 'Hello again' }] })
       .finalMessage()
     expect(message.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('the browser banner fixture runs two tools then answers, without leaking into subsequent turns', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const messages: Anthropic.MessageParam[] = [
+      { role: 'user', content: `${browserBannerPrompt}http://127.0.0.1:8123/two` },
+    ]
+    const send = () => client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const opened = await send()
+    expect(opened.stop_reason).toBe('tool_use')
+    expect(opened.content).toMatchObject([
+      {
+        type: 'tool_use',
+        id: 'browser-banner-open',
+        name: 'browser_tabs',
+        input: { action: 'open', url: 'http://127.0.0.1:8123/two' },
+      },
+    ])
+    messages.push(
+      { role: 'assistant', content: opened.content },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'browser-banner-open',
+            content: [{ type: 'text', text: JSON.stringify({ tab: { id: 'tab-one' } }) }],
+          },
+        ],
+      },
+    )
+    const observed = await send()
+    expect(observed.stop_reason).toBe('tool_use')
+    expect(observed.content).toMatchObject([
+      { type: 'tool_use', id: 'browser-banner-snapshot', name: 'browser_snapshot', input: { tabId: 'tab-one' } },
+    ])
+    messages.push(
+      { role: 'assistant', content: observed.content },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'browser-banner-snapshot', content: '{}' }] },
+    )
+    const completed = await send()
+    expect(completed.stop_reason).toBe('end_turn')
+    expect(completed.content).toMatchObject([{ type: 'text', text: browserBannerReply }])
+    messages.push({ role: 'assistant', content: completed.content }, { role: 'user', content: 'Hello again.' })
+    expect((await send()).content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
   } finally {
     server.close()
     server.closeAllConnections()

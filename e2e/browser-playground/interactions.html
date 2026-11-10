@@ -1,0 +1,132 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Interaction lab · Browser Playground</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/interactions.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav" aria-label="Main navigation">
+        <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">↗</span>Browser Playground</a>
+        <div class="nav-links">
+          <a href="/minesweeper.html">Minesweeper</a><a href="/sudoku.html">Sudoku</a
+          ><a href="/interactions.html" aria-current="page">Interaction lab</a>
+        </div>
+      </nav>
+    </header>
+    <main>
+      <div class="eyebrow">03 / Everyday actions</div>
+      <h1>Make yourself at home.</h1>
+      <p class="intro">
+        Plan a fictional weekend workshop. Practice the small interactions that make a browser useful.
+      </p>
+      <div class="workspace">
+        <div>
+          <section class="panel">
+            <form id="workshop-form">
+              <div class="form-section">
+                <h2>Your workshop</h2>
+                <div class="form-grid">
+                  <label class="field"
+                    >Your name <input id="name" name="name" autocomplete="off" placeholder="Alex Rivera" required
+                  /></label>
+                  <label class="field"
+                    >Email address
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autocomplete="off"
+                      placeholder="alex@example.com"
+                      required
+                  /></label>
+                  <div class="field">
+                    <label for="workshop">Workshop</label>
+                    <select id="workshop" name="workshop">
+                      <option value="Pottery">Pottery</option>
+                      <option value="Photography">Photography</option>
+                      <option value="Bread baking">Bread baking</option>
+                      <option value="Watercolor">Watercolor</option>
+                    </select>
+                  </div>
+                  <label class="field"
+                    >Guests <input id="guests" name="guests" type="number" min="1" max="8" value="2" required
+                  /></label>
+                  <label class="field full-width"
+                    >A note for your host
+                    <textarea
+                      id="notes"
+                      name="notes"
+                      rows="3"
+                      placeholder="Try typing: café, 日本語, or hello 👋"
+                    ></textarea
+                    ><small>Unicode and multiple lines are welcome.</small></label
+                  >
+                </div>
+              </div>
+              <div class="form-section">
+                <h2>The finishing touches</h2>
+                <div class="form-grid">
+                  <label class="field full-width"
+                    >Enthusiasm: <output id="enthusiasm-value" for="enthusiasm">7</output
+                    ><input id="enthusiasm" name="enthusiasm" type="range" min="1" max="10" value="7"
+                  /></label>
+                  <label class="check-row full-width"
+                    ><input id="reminder" name="reminder" type="checkbox" checked />Send me a fictional reminder</label
+                  >
+                  <label class="check-row full-width"
+                    ><input id="agreement" name="agreement" type="checkbox" required />I understand this is only a
+                    practice form</label
+                  >
+                </div>
+              </div>
+              <div class="form-section toolbar">
+                <button class="button primary" type="submit">Reserve my spot</button
+                ><button class="button" type="reset">Reset form</button
+                ><button id="open-details" class="button" type="button">View workshop details</button>
+              </div>
+              <div id="form-status" class="status" role="status">
+                Ready when you are. Nothing will be sent anywhere.
+              </div>
+              <pre id="receipt" class="receipt" aria-label="Reservation summary" hidden></pre>
+            </form>
+          </section>
+          <section class="scroll-station" aria-labelledby="scroll-heading">
+            <h2 id="scroll-heading">One more thing, down below.</h2>
+            <p>Scroll to the end of this green area to collect the final checkpoint.</p>
+            <div class="scroll-space" aria-hidden="true">↓ Keep going</div>
+            <button id="checkpoint" class="button primary">Collect checkpoint</button>
+            <p id="checkpoint-status" class="status" role="status">Checkpoint not collected yet.</p>
+          </section>
+        </div>
+        <aside class="panel side-panel">
+          <h2>Live input journal</h2>
+          <p>
+            Recent clicks, keystrokes, changes, and scrolls appear here. “Native” marks a trusted browser event;
+            “script” marks a dispatched event. Field contents are never logged.
+          </p>
+          <button id="clear-journal" class="button">Clear journal</button>
+          <ol id="event-log" class="event-log" aria-label="Recent input events"></ol>
+          <p class="hint">
+            <strong>Try asking</strong><br />“Book a photography workshop for Jamie and three guests. Put ‘café ✓’ in
+            the note, submit the form, then collect the checkpoint.”
+          </p>
+        </aside>
+      </div>
+      <dialog id="details-dialog" aria-labelledby="dialog-title">
+        <h2 id="dialog-title">A good weekend starts here.</h2>
+        <p>
+          Workshops run on Saturday at 10:00 AM. All materials are included. This is a practice page, so no reservation
+          is actually made.
+        </p>
+        <form method="dialog"><button class="button primary">Got it</button></form>
+      </dialog>
+    </main>
+  </body>
+</html>

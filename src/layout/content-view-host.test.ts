@@ -11,7 +11,7 @@ describe('routeHostsContentView', () => {
     expect(routeHostsContentView('/apps/finance-model?chat=abc')).toBeTrue()
   })
 
-  it('leaves every other route to main-layout', () => {
+  it('leaves chat and settings routes to the persistent content-view layout', () => {
     expect(routeHostsContentView('/chats/abc')).toBeFalse()
     expect(routeHostsContentView('/settings/preferences')).toBeFalse()
     expect(routeHostsContentView('/')).toBeFalse()

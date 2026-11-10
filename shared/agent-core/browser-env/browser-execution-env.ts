@@ -11,10 +11,14 @@
  *
  * Both halves target the SAME ZenFS singleton:
  *   - filesystem methods call `@zenfs/core/promises` directly;
- *   - `exec()` runs commands through a fresh just-bash `Bash` bound to a
- *     {@link ZenBashFileSystem} adapter over that same singleton.
+ *   - `exec()` runs just-bash in a disposable worker, with filesystem requests
+ *     routed to a {@link ZenBashFileSystem} adapter over that same singleton.
  * That shared mount is what makes a Pi `writeFile` instantly visible to `cat`,
  * and a shell redirect instantly readable via `readTextFile`.
+ *
+ * CPU-bound commands cannot monopolize the UI event loop: the host enforces
+ * cancellation and a bounded timeout by terminating the worker. Pending host
+ * filesystem operations drain before the next command can start.
  *
  * Every operation method honours Pi's invariant of never throwing: ZenFS' and
  * just-bash's thrown errors are caught at this adapter boundary and encoded into
@@ -38,7 +42,8 @@ import {
 } from '@earendil-works/pi-agent-core'
 import * as fsp from '@zenfs/core/promises'
 import { dirname, join, resolve } from '@zenfs/core/path'
-import { Bash } from 'just-bash'
+import type { Bash } from 'just-bash'
+import { runBrowserShell } from './browser-shell-worker.ts'
 import { abortedResult, fileInfoFrom, splitLines, toFileError } from './fs-helpers.ts'
 import { isWithinWorkspace, resolveInWorkspace } from './workspace-jail.ts'
 import { ZenBashFileSystem } from './zen-bash-fs.ts'
@@ -49,12 +54,14 @@ import { ZenBashFileSystem } from './zen-bash-fs.ts'
  *  the jailed coding tools, e.g. bash's "Full output" file) and are torn down
  *  with the workspace instead of leaking into a shared `/tmp`. */
 const tempSubdir = '.tmp'
+export const browserShellDefaultTimeout = 30
+export const browserShellMaximumTimeout = 120
 
 export class BrowserExecutionEnv implements ExecutionEnv {
   cwd: string
   private readonly env: Record<string, string>
   private readonly bashFs: ZenBashFileSystem
-  private readonly createBash: (options: ConstructorParameters<typeof Bash>[0]) => Pick<Bash, 'exec'>
+  private readonly createBash?: (options: ConstructorParameters<typeof Bash>[0]) => Pick<Bash, 'exec'>
   /** Absolute temp root for this env, inside its (jailed) workspace root. */
   private readonly tempRoot: string
 
@@ -67,7 +74,7 @@ export class BrowserExecutionEnv implements ExecutionEnv {
     this.cwd = options.cwd
     this.env = options.env ?? {}
     this.tempRoot = join(options.cwd, tempSubdir)
-    this.createBash = options.createBash ?? ((bashOptions) => new Bash(bashOptions))
+    this.createBash = options.createBash
     // The shell is jailed to the env's root (the thread's workspace) so bash
     // commands can't read or write a sibling thread's files on the shared mount.
     this.bashFs = new ZenBashFileSystem(options.cwd)
@@ -121,29 +128,29 @@ export class BrowserExecutionEnv implements ExecutionEnv {
       return err(new ExecutionError('unknown', `cwd escapes workspace: ${options?.cwd}`))
     }
     const env = { ...this.env, ...options?.env }
+    const timeout = Math.min(options?.timeout ?? browserShellDefaultTimeout, browserShellMaximumTimeout)
+    if (!Number.isFinite(timeout) || timeout <= 0) {
+      return err(new ExecutionError('unknown', 'Command timeout must be a positive number of seconds'))
+    }
     const controller = new AbortController()
     const state = { timedOut: false }
     const onExternalAbort = () => controller.abort()
     if (options?.abortSignal) {
       options.abortSignal.addEventListener('abort', onExternalAbort, { once: true })
     }
-    const timeoutId =
-      typeof options?.timeout === 'number'
-        ? setTimeout(() => {
-            state.timedOut = true
-            controller.abort()
-          }, options.timeout * 1000)
-        : undefined
+    // This timer remains on the UI thread, independent of CPU-bound shell evaluation in the worker.
+    const timeoutId = setTimeout(() => {
+      state.timedOut = true
+      controller.abort()
+    }, timeout * 1000)
 
     try {
-      // `defenseInDepth` (default ON) monkey-patches/blocks JS globals (Proxy,
-      // eval, Function, …) to contain escapes from just-bash's *sandboxed JS*
-      // surfaces — `js-exec` (QuickJS) and python. We enable neither, so it
-      // guards nothing here while actively breaking the bash interpreter (it
-      // trips on just-bash's own internal `Proxy` use). The real sandbox is the
-      // virtual ZenFS mount with no host-process access, so we disable it.
-      const bash = this.createBash({ fs: this.bashFs, cwd, env, defenseInDepth: false })
-      const result = await bash.exec(command, { signal: controller.signal })
+      // The injected implementation is a test seam; production always isolates computation in a worker.
+      const result = this.createBash
+        ? await this.createBash({ fs: this.bashFs, cwd, env, defenseInDepth: false }).exec(command, {
+            signal: controller.signal,
+          })
+        : await runBrowserShell({ command, cwd, env, fs: this.bashFs, signal: controller.signal })
       if (result.stdout) {
         options?.onStdout?.(result.stdout)
       }
@@ -151,7 +158,7 @@ export class BrowserExecutionEnv implements ExecutionEnv {
         options?.onStderr?.(result.stderr)
       }
       if (state.timedOut) {
-        return err(new ExecutionError('timeout', `timeout:${options?.timeout}`))
+        return err(new ExecutionError('timeout', `timeout:${timeout}`))
       }
       if (options?.abortSignal?.aborted) {
         return err(new ExecutionError('aborted', 'aborted'))
@@ -159,7 +166,7 @@ export class BrowserExecutionEnv implements ExecutionEnv {
       return ok({ stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode })
     } catch (error) {
       if (state.timedOut) {
-        return err(new ExecutionError('timeout', `timeout:${options?.timeout}`))
+        return err(new ExecutionError('timeout', `timeout:${timeout}`))
       }
       if (controller.signal.aborted) {
         return err(new ExecutionError('aborted', 'aborted'))

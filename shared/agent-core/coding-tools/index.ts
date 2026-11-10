@@ -34,7 +34,11 @@ import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { TextContent } from '@earendil-works/pi-ai'
 import { dirname } from '@zenfs/core/path'
 import { Type, type Static } from 'typebox'
-import type { BrowserExecutionEnv } from '../browser-env/browser-execution-env.ts'
+import {
+  browserShellDefaultTimeout,
+  browserShellMaximumTimeout,
+  type BrowserExecutionEnv,
+} from '../browser-env/browser-execution-env.ts'
 import { resolveInWorkspace } from '../browser-env/workspace-jail.ts'
 import {
   createBashOperations,
@@ -72,7 +76,13 @@ const throwIfAborted = (signal?: AbortSignal): void => {
 
 const bashSchema = Type.Object({
   command: Type.String({ description: 'Bash command to execute' }),
-  timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds (optional, no default timeout)' })),
+  timeout: Type.Optional(
+    Type.Number({
+      minimum: 0.001,
+      maximum: browserShellMaximumTimeout,
+      description: `Timeout in seconds (default ${browserShellDefaultTimeout}, maximum ${browserShellMaximumTimeout}).`,
+    }),
+  ),
 })
 
 /** Persist full (untruncated) bash output to a ZenFS temp file so the model can
@@ -114,7 +124,7 @@ const buildBashTool = (env: BrowserExecutionEnv, cwd: string): AgentTool<typeof 
   return {
     name: 'bash',
     label: 'bash',
-    description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${defaultMaxLines} lines or ${defaultMaxBytes / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
+    description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${defaultMaxLines} lines or ${defaultMaxBytes / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Commands time out after ${browserShellDefaultTimeout} seconds by default; optionally provide a timeout up to ${browserShellMaximumTimeout} seconds.`,
     parameters: bashSchema,
     // Mutates the shared ZenFS mount (redirects, file writes); serialize the batch.
     executionMode: 'sequential',

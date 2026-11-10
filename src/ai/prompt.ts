@@ -51,6 +51,8 @@ export type PromptParams = {
    * across a session and doesn't invalidate the prompt cache.
    */
   miniAppSection?: string | null
+  /** Stable instructions for the desktop browser tools, only when they are registered. */
+  browserSection?: string | null
 }
 
 export type PromptParts = {
@@ -89,6 +91,7 @@ export const createPromptParts = (
     supportsTools = true,
     projectSection = null,
     miniAppSection = null,
+    browserSection = null,
     appLanguage = sourceLocale,
   }: PromptParams,
   currentDate: Date = new Date(),
@@ -154,6 +157,7 @@ Think about what widget components to show the user, then work backwards to the 
 Widget components are \`<widget:…>\` tags you write inline in your reply; load the matching skill to get a widget's exact syntax before using it. When a widget covers what was asked, emit its tag — never rebuild it as an HTML artifact.
 Don't mention tool names unless asked.
 ${hasWebTools ? `\n${webToolsPrompt}` : ''}
+${browserSection ? `\n${browserSection}` : ''}
 ${toolsOverride ? `\n${toolsOverride}` : ''}
 ${mcpServersSummary ? `\n## Connected MCP Servers\nYou have tools from these external services (tool names prefixed by server name):\n${mcpServersSummary}\nUse these when the user asks about these services.` : ''}
 ${skillDisclosure ? `\n${skillDisclosure}` : ''}

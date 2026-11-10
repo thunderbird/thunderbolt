@@ -67,7 +67,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * artifact, a tool call or reasoning block, a preview — layered over it when
    * one is open. One pane, two layers: the chat stays mounted underneath and
    * is revealed again when the aside slides away, the way the full-window
-   * content view on mobile reveals what was beneath it. `main-layout` leaves
+   * content view on mobile reveals what was beneath it. `content-view-layout` leaves
    * its own aside collapsed on this route (`routeHostsContentView`).
    */
   const { isOpen: isAsideOpen, close: closeAside } = useContentView()
@@ -283,7 +283,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                       transition={asideSlide}
                       className="absolute inset-0 z-10 flex flex-col border-l bg-background will-change-transform"
                     >
-                      <ActiveContentView />
+                      <ActiveContentView chatThreadId={openChatId} />
                     </m.div>
                   )}
                 </AnimatePresence>

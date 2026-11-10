@@ -171,4 +171,20 @@ describe('BrowserExecutionEnv filesystem jail', () => {
     expect(stdout.join('')).toBe('partial\n')
     expect(stderr.join('')).toBe('warning\n')
   })
+
+  it('times out CPU-bound shell work in a real worker and can execute another command', async () => {
+    const start = performance.now()
+    const result = await env.exec("awk 'function f(n) { if (n > 0) { f(n-1); f(n-1) } } BEGIN { f(24) }'", {
+      timeout: 0.1,
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.code).toBe('timeout')
+      expect(result.error.message).toBe('timeout:0.1')
+    }
+    expect(performance.now() - start).toBeLessThan(1500)
+    const next = await env.exec('printf recovered')
+    expect(next.ok && next.value.stdout).toBe('recovered')
+  })
 })

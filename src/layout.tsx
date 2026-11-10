@@ -8,7 +8,9 @@ import { LazyCreateItemHost } from '@/components/create-item/lazy-create-item-ho
 import { CreateItemProvider } from '@/components/create-item/context'
 import { useSettings } from '@/hooks/use-settings'
 import { SearchPaletteProvider } from '@/search/search-palette-context'
+import { AppContentOverlayProvider } from '@/components/app-content-overlay'
 import SidebarComponent from '@/layout/sidebar'
+import { ContentViewLayout } from '@/layout/content-view-layout'
 import { Outlet } from 'react-router'
 import './index.css'
 
@@ -27,7 +29,9 @@ const LayoutContent = () => {
       >
         <div data-slot="create-item-layout" className="relative flex min-w-0 flex-1 overflow-hidden">
           <div className="h-full min-w-0 flex-1 overflow-hidden">
-            <Outlet />
+            <ContentViewLayout>
+              <Outlet />
+            </ContentViewLayout>
           </div>
           <LazyCreateItemHost />
         </div>
@@ -51,9 +55,11 @@ const Layout = ({ initialSidebarOpen }: { initialSidebarOpen: boolean }) => {
       {/* Inside the SidebarProvider so the palette's "Toggle sidebar" command can
           call the real `useSidebar().toggleSidebar()` (mobile drawer + desktop
           collapse). The palette's only opener lives in this sidebar too. */}
-      <SearchPaletteProvider>
-        <LayoutContent />
-      </SearchPaletteProvider>
+      <AppContentOverlayProvider>
+        <SearchPaletteProvider>
+          <LayoutContent />
+        </SearchPaletteProvider>
+      </AppContentOverlayProvider>
     </SidebarProvider>
   )
 }

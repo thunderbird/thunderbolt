@@ -2,261 +2,378 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isTauriDesktop } from '@/lib/platform'
+import { browserController } from '@/browser/browser-controller'
+import { invoke } from '@tauri-apps/api/core'
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
-import { Webview, type WebviewOptions } from '@tauri-apps/api/webview'
+import { listen } from '@tauri-apps/api/event'
+import { getCurrentWebview, Webview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { type RefObject, useEffect, useRef, useState } from 'react'
-import { borderOffset, coordinateOffset, previewHeaderHeight } from './constants'
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
 export type SidebarWebviewConfig = {
   url: string
   onClose?: () => void
 }
 
-/**
- * Hook to manage a single webview positioned in a sidebar container
- *
- * This tracks the sidebar's DOM element and creates a webview that fills it.
- * The webview automatically resizes when the sidebar dimensions change and
- * repositions when the window moves.
- */
+export type SidebarBrowserState = {
+  url: string
+  title: string
+  faviconUrls?: string[]
+  isLoading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+}
+
+type SidebarWebviewOptions = {
+  tabId?: string
+  onStateChange?: (state: SidebarBrowserState) => void
+  onNewTab?: (url: string) => void
+}
+
+type BrowserAction = 'back' | 'forward' | 'reload' | 'stop'
+type BrowserSession = {
+  webview: Webview | null
+  navigate: (url: string) => Promise<boolean>
+  action: (action: BrowserAction) => Promise<boolean>
+  close: () => Promise<void>
+  updateVisibility: () => Promise<void>
+}
+
+/** Measures the page viewport, independent of the browser toolbar's height. */
+const getViewportBounds = async (container: HTMLElement) => {
+  const [origin, scaleFactor] = await Promise.all([getCurrentWebview().position(), getCurrentWindow().scaleFactor()])
+  const rect = container.getBoundingClientRect()
+  return {
+    x: Math.floor(rect.left + origin.x / scaleFactor),
+    y: Math.floor(rect.top + origin.y / scaleFactor),
+    width: Math.max(1, Math.floor(rect.width)),
+    height: Math.max(1, Math.floor(rect.height)),
+  }
+}
+
+/** Keeps a native browser alive while navigating and synchronizes its viewport and engine state. */
 export const useSidebarWebview = (
   config: SidebarWebviewConfig | null,
   containerRef: RefObject<HTMLElement | null>,
   hidden = false,
+  options: SidebarWebviewOptions = {},
 ) => {
-  const [isInitialized, setIsInitialized] = useState(false)
-  const webviewRef = useRef<Webview | null>(null)
-  const closingWebviewRef = useRef<Webview | null>(null)
+  const [state, setState] = useState<SidebarBrowserState & { isInitialized: boolean; error: string | null }>({
+    url: config?.url ?? '',
+    title: '',
+    isLoading: false,
+    canGoBack: false,
+    canGoForward: false,
+    isInitialized: false,
+    error: null,
+  })
+  const [retry, setRetry] = useState(0)
+  const sessionRef = useRef<BrowserSession | null>(null)
+  const configRef = useRef(config)
   const hiddenRef = useRef(hidden)
+  const optionsRef = useRef(options)
+  configRef.current = config
   hiddenRef.current = hidden
-  const resizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
-  const animationFrameRef = useRef<number | undefined>(undefined)
-  const windowRef = useRef<ReturnType<typeof getCurrentWindow> | null>(null)
-  const unloadListenerRegisteredRef = useRef<boolean>(false)
+  optionsRef.current = options
+  const enabled = Boolean(config?.url) && isTauriDesktop()
 
-  const url = config?.url
   useEffect(() => {
-    if (!url || !containerRef.current) {
+    if (!enabled || !containerRef.current) {
       return
     }
 
-    let webview: Webview | null = null
-    let isActive = true
-    let unlistenResize: (() => void) | null = null
-    let unlistenMove: (() => void) | null = null
-
-    const updateWebviewPosition = async () => {
-      // Use ref instead of local variable to get current state
-      const currentWebview = webviewRef.current
-      if (!currentWebview || !containerRef.current || !isActive) {
+    const label = `sidebar-webview-${crypto.randomUUID()}`
+    let active = true
+    let created = false
+    let closing: Promise<void> | null = null
+    let frame: number | undefined
+    let poll: ReturnType<typeof setTimeout> | undefined
+    let revision = 0
+    let queue = Promise.resolve()
+    let presentationQueue = Promise.resolve()
+    let blankPage = configRef.current?.url === 'about:blank'
+    const unlisteners: (() => void)[] = []
+    const reportError = (error: unknown) => {
+      if (active) {
+        setState((previous) => ({ ...previous, error: String(error), isLoading: false }))
+      }
+    }
+    const refresh = async () => {
+      const requestedRevision = ++revision
+      const next = await invoke<SidebarBrowserState>('browser_get_state', { label })
+      if (!active || requestedRevision !== revision) {
         return
       }
-
-      const rect = containerRef.current.getBoundingClientRect()
-
-      const webviewTop = Math.floor(rect.top) + previewHeaderHeight + coordinateOffset
-      const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
-
+      const wasBlank = blankPage
+      blankPage = next.url === 'about:blank'
+      setState((previous) => ({ ...previous, ...next }))
+      optionsRef.current.onStateChange?.(next)
+      if (wasBlank !== blankPage) {
+        await updatePresentation(true)
+      }
+    }
+    const pollState = async () => {
       try {
-        await currentWebview.setPosition(new LogicalPosition(Math.floor(rect.left) + borderOffset, webviewTop))
-        if (!isActive || webviewRef.current !== currentWebview) {
-          return
-        }
-        await currentWebview.setSize(new LogicalSize(Math.floor(rect.width) - borderOffset, webviewHeight))
+        await refresh()
       } catch (error) {
-        // Silently ignore errors if webview was closed
-        if (isActive && webviewRef.current) {
-          console.error('Failed to update webview position/size:', error)
+        reportError(error)
+      } finally {
+        if (active) {
+          poll = setTimeout(pollState, 500)
         }
       }
     }
-
+    const execute = async (command: string, args: Record<string, string>) => {
+      if (!active || !session.webview) {
+        return false
+      }
+      let succeeded = false
+      const previous = queue
+      const pending = (async () => {
+        await previous
+        if (!active) {
+          return
+        }
+        revision += 1
+        try {
+          await invoke(command, { label, ...args })
+          if (!active) {
+            return
+          }
+          setState((previous) => ({ ...previous, error: null }))
+          await refresh()
+          succeeded = active
+        } catch (error) {
+          reportError(error)
+        }
+      })()
+      queue = pending
+      await pending
+      return succeeded
+    }
+    const updatePresentation = (updateVisibility = false) => {
+      const previous = presentationQueue
+      const pending = (async () => {
+        await previous
+        if (!active || !session.webview || !containerRef.current) {
+          return
+        }
+        try {
+          if (hiddenRef.current || blankPage) {
+            if (updateVisibility) {
+              await session.webview.hide()
+            }
+            return
+          }
+          const bounds = await getViewportBounds(containerRef.current)
+          if (!active) {
+            return
+          }
+          await session.webview.setPosition(new LogicalPosition(bounds.x, bounds.y))
+          if (!active) {
+            return
+          }
+          await session.webview.setSize(new LogicalSize(bounds.width, bounds.height))
+          if (active && updateVisibility) {
+            // A switch while measuring must not reveal a tab that is now inactive.
+            if (hiddenRef.current || blankPage) {
+              await session.webview.hide()
+            } else {
+              await session.webview.show()
+              try {
+                await invoke('browser_resize_raise')
+              } catch (error) {
+                console.error('Could not raise browser resize grip', error)
+              }
+            }
+          }
+        } catch (error) {
+          reportError(error)
+        }
+      })()
+      presentationQueue = pending
+      return pending
+    }
     const requestPositionUpdate = () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
+      if (frame !== undefined) {
+        cancelAnimationFrame(frame)
       }
-      animationFrameRef.current = requestAnimationFrame(() => {
-        updateWebviewPosition()
-      })
+      frame = requestAnimationFrame(() => void updatePresentation())
     }
-
-    // Handle page unload (refresh/navigation) - close webview immediately
-    // Note: Tauri requires 'unload' instead of 'beforeunload' for reliable cleanup
-    const handleUnload = () => {
-      // Use ref to ensure we have the latest webview instance
-      if (webviewRef.current) {
-        // Close synchronously to ensure it happens before page unloads
-        webviewRef.current.close().catch(console.error)
+    const observer = new ResizeObserver(requestPositionUpdate)
+    const closeNative = async () => {
+      if (!created) {
+        return
       }
+      closing ??= invoke<void>('browser_close', { label })
+      await closing
     }
-
-    const initWebview = async () => {
+    const session: BrowserSession = {
+      webview: null,
+      navigate: (nextUrl) => execute('browser_navigate', { url: nextUrl }),
+      action: (action) => execute('browser_action', { action }),
+      updateVisibility: () => updatePresentation(true),
+      close: async () => {
+        active = false
+        if (frame !== undefined) {
+          cancelAnimationFrame(frame)
+        }
+        if (poll !== undefined) {
+          clearTimeout(poll)
+        }
+        observer.disconnect()
+        unlisteners.splice(0).forEach((unlisten) => unlisten())
+        window.removeEventListener('unload', handleUnload)
+        await closeNative()
+      },
+    }
+    sessionRef.current = session
+    const handleUnload = () => void session.close().catch(console.error)
+    const initialize = async () => {
       try {
-        windowRef.current = getCurrentWindow()
-        const container = containerRef.current
-        if (!container || !isActive) {
-          return
-        }
-
-        // Wait for layout to fully settle before measuring
-        await new Promise((resolve) => requestAnimationFrame(resolve))
-
-        if (!isActive || !containerRef.current) {
-          return
-        }
-
-        // Get container position relative to viewport
-        const rect = containerRef.current.getBoundingClientRect()
-
-        const webviewTop = Math.floor(rect.top) + previewHeaderHeight + coordinateOffset
-        const webviewHeight = Math.floor(rect.height) - previewHeaderHeight
-
-        const webviewOptions: WebviewOptions = {
-          url,
-          x: Math.floor(rect.left) + borderOffset,
-          y: webviewTop,
-          width: Math.floor(rect.width) - borderOffset,
-          height: webviewHeight,
-          incognito: true, // Use incognito mode for privacy and to prevent keychain access for WebCrypto API
-        }
-
-        const webviewLabel = `sidebar-webview-${crypto.randomUUID()}`
-        webview = new Webview(windowRef.current, webviewLabel, webviewOptions)
-
-        webview.once('tauri://error', (error) => {
-          console.error('Webview creation error:', error)
+        // Measure after layout, including the toolbar and any browser status banner.
+        await new Promise<void>((resolve) => {
+          frame = requestAnimationFrame(() => resolve())
         })
-
-        if (!isActive) {
-          // Component unmounted while we were creating the webview
-          webview.close().catch(console.error)
+        if (!active || !containerRef.current || !configRef.current) {
           return
         }
-
-        webviewRef.current = webview
-        setIsInitialized(true)
-
-        // If hidden was set before the webview finished initializing, hide it now
-        if (hiddenRef.current) {
-          webview.hide().catch(console.error)
+        const initialUrl = configRef.current.url
+        setState((previous) => ({ ...previous, isInitialized: false, isLoading: true, error: null }))
+        const bounds = await getViewportBounds(containerRef.current)
+        if (!active) {
+          return
         }
-
-        // Add unload listener AFTER webview is successfully created
+        // Subscribe before the page starts loading: its startup script may open
+        // a tab before creation and the first native-state read have completed.
+        const unlisten = await listen<{ label: string; url: string }>('browser-new-tab', ({ payload }) => {
+          if (active && payload.label === label) {
+            optionsRef.current.onNewTab?.(payload.url)
+          }
+        })
+        if (!active) {
+          unlisten()
+          return
+        }
+        unlisteners.push(unlisten)
+        blankPage = initialUrl === 'about:blank'
+        await invoke('browser_create', {
+          label,
+          url: initialUrl,
+          bounds,
+          // Creation can finish after another tab is selected. Reveal only once
+          // the latest visibility and viewport have been applied below.
+          hidden: true,
+        })
+        created = true
+        if (!active) {
+          await closeNative()
+          return
+        }
+        session.webview = await Webview.getByLabel(label)
+        if (!active) {
+          await closeNative()
+          return
+        }
+        if (!session.webview) {
+          throw new Error('Browser webview was not created')
+        }
+        if (optionsRef.current.tabId) {
+          unlisteners.push(
+            browserController.registerSession(optionsRef.current.tabId, {
+              label,
+              present: () => session.updateVisibility(),
+            }),
+          )
+        }
+        await session.updateVisibility()
+        if (!active) {
+          return
+        }
+        setState((previous) => ({ ...previous, isInitialized: true }))
+        if (configRef.current?.url && configRef.current.url !== initialUrl) {
+          await session.navigate(configRef.current.url)
+        }
+        if (!active) {
+          return
+        }
+        observer.observe(containerRef.current)
         window.addEventListener('unload', handleUnload)
-        unloadListenerRegisteredRef.current = true
-
-        // Set up ResizeObserver to track container size changes
-        resizeObserverRef.current = new ResizeObserver(() => {
-          requestPositionUpdate()
-        })
-
-        if (container) {
-          resizeObserverRef.current.observe(container)
+        const appWindow = getCurrentWindow()
+        for (const subscribe of [appWindow.onResized.bind(appWindow), appWindow.onMoved.bind(appWindow)]) {
+          const unlisten = await subscribe(requestPositionUpdate)
+          if (!active) {
+            unlisten()
+            return
+          }
+          unlisteners.push(unlisten)
         }
-
-        // Listen for window resize events
-        unlistenResize = await windowRef.current.onResized(() => {
-          requestPositionUpdate()
-        })
-
-        if (!isActive) {
-          unlistenResize()
-          return
-        }
-
-        // Listen for window move events
-        unlistenMove = await windowRef.current.onMoved(() => {
-          requestPositionUpdate()
-        })
-        if (!isActive) {
-          unlistenMove()
+        await updatePresentation()
+        if (active) {
+          void pollState()
         }
       } catch (error) {
-        console.error('Failed to initialize sidebar webview:', error)
+        reportError(error)
+        if (active) {
+          setState((previous) => ({ ...previous, isInitialized: false }))
+        }
+        await session.close().catch(console.error)
       }
     }
-
-    initWebview()
-
-    // Cleanup when component unmounts OR page navigates/refreshes
-    const cleanupWebview = () => {
-      isActive = false
-
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-        animationFrameRef.current = undefined
-      }
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect()
-      }
-      if (unlistenResize) {
-        unlistenResize()
-      }
-      if (unlistenMove) {
-        unlistenMove()
-      }
-      // Only close if not already closed by closeWebview()
-      if (webview && webviewRef.current === webview && closingWebviewRef.current !== webview) {
-        webview.close().catch(console.error)
-      }
-      webviewRef.current = null
-      setIsInitialized(false)
-    }
-
+    void initialize()
     return () => {
-      if (unloadListenerRegisteredRef.current) {
-        window.removeEventListener('unload', handleUnload)
-        unloadListenerRegisteredRef.current = false
+      void session.close().catch(console.error)
+      if (sessionRef.current === session) {
+        sessionRef.current = null
       }
-      cleanupWebview()
     }
-  }, [url, containerRef])
+  }, [enabled, containerRef, retry])
 
-  // Hide/show the native webview when overlaid by DOM elements (e.g. dialogs)
+  // A new chat link navigates the existing browser, preserving its native history.
   useEffect(() => {
-    const webview = webviewRef.current
-    if (!webview) {
-      return
+    if (config?.url) {
+      void sessionRef.current?.navigate(config.url)
     }
+  }, [config])
 
-    if (hidden) {
-      webview.hide().catch(console.error)
-    } else {
-      webview.show().catch(console.error)
-    }
+  useEffect(() => {
+    void sessionRef.current?.updateVisibility()
   }, [hidden])
 
-  const closeWebview = async () => {
-    const closing = webviewRef.current
-    if (!closing || closingWebviewRef.current === closing) {
+  const navigate = useCallback(async (nextUrl: string) => (await sessionRef.current?.navigate(nextUrl)) ?? false, [])
+  const goBack = useCallback(async () => (await sessionRef.current?.action('back')) ?? false, [])
+  const goForward = useCallback(async () => (await sessionRef.current?.action('forward')) ?? false, [])
+  const stop = useCallback(async () => (await sessionRef.current?.action('stop')) ?? false, [])
+  const reload = useCallback(async () => {
+    if (!state.isInitialized) {
+      setRetry((previous) => previous + 1)
+      return true
+    }
+    return (await sessionRef.current?.action('reload')) ?? false
+  }, [state.isInitialized])
+  const closeWebview = useCallback(async () => {
+    const session = sessionRef.current
+    if (!session) {
       return
     }
-    closingWebviewRef.current = closing
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-      animationFrameRef.current = undefined
+    await session.close()
+    if (sessionRef.current !== session) {
+      return
     }
-    try {
-      await closing.close()
-      // Closing an older URL must not clear or dismiss its replacement.
-      if (webviewRef.current === closing) {
-        webviewRef.current = null
-        setIsInitialized(false)
-        config?.onClose?.()
-      }
-    } catch (error) {
-      console.error('Error closing webview:', error)
-    } finally {
-      if (closingWebviewRef.current === closing) {
-        closingWebviewRef.current = null
-      }
-    }
-  }
+    sessionRef.current = null
+    setState((previous) => ({ ...previous, isInitialized: false, isLoading: false }))
+    configRef.current?.onClose?.()
+  }, [])
 
   return {
-    webview: webviewRef.current,
-    isInitialized,
+    ...state,
+    webview: sessionRef.current?.webview ?? null,
+    navigate,
+    goBack,
+    goForward,
+    reload,
+    stop,
     closeWebview,
   }
 }

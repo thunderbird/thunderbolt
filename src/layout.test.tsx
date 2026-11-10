@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AuthProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
+import { ContentViewProvider } from '@/content-view/context'
 import { getSettings, getSettingsRecords, updateSettings } from '@/dal/settings'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -51,23 +52,25 @@ describe('Layout sidebar preference', () => {
         <HttpClientProvider httpClient={httpClient}>
           <AuthProvider authClient={authClient}>
             <SignInModalProvider>
-              <MemoryRouter>{children}</MemoryRouter>
+              <ContentViewProvider>
+                <MemoryRouter>{children}</MemoryRouter>
+              </ContentViewProvider>
             </SignInModalProvider>
           </AuthProvider>
         </HttpClientProvider>
       </QueryClientProvider>
     )
-    const { container, triggerChange } = renderWithReactivity(
-      <Routes>
-        <Route path="/" element={<Layout initialSidebarOpen={false} />}>
-          <Route index element={<p>Chat content</p>} />
-        </Route>
-      </Routes>,
-      { wrapper: Wrapper, tables: ['settings'] },
-    )
-    const sidebar = () => container.querySelector('[data-state][data-collapsible]')
-
     try {
+      const { container, triggerChange } = renderWithReactivity(
+        <Routes>
+          <Route path="/" element={<Layout initialSidebarOpen={false} />}>
+            <Route index element={<p>Chat content</p>} />
+          </Route>
+        </Routes>,
+        { wrapper: Wrapper, tables: ['settings'] },
+      )
+      const sidebar = () => container.querySelector('[data-state][data-collapsible]')
+
       expect(client.getQueryState(['settings', 'sidebar_state'])?.status).toBe('pending')
       expect(screen.getByText('Chat content')).toBeInTheDocument()
       expect(sidebar()).toHaveAttribute('data-state', 'collapsed')

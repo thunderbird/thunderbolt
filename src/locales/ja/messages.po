@@ -4638,6 +4638,10 @@ msgstr "思考中"
 msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
 msgstr "この操作は取り消せません。このチャットとすべてのメッセージが完全に削除されます。"
 
+#: src/components/chat/error-message.tsx
+msgid "This agent was disabled or deleted. Choose another agent to continue."
+msgstr ""
+
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr "プライベートウィンドウや、サイトデータがブロックされている場合に発生することがあります。このサイトのストレージを有効にして再読み込みしてください。"

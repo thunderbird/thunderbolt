@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   type ChatErrorKind,
   classifyErrorKind,
+  createAgentUnavailableError,
   createHandleError,
   getChatErrorKind,
   getErrorName,
@@ -115,6 +116,13 @@ describe('getChatErrorKind', () => {
     const error = new Error(JSON.stringify({ error: 'Bad Gateway', status: 502, kind: 'timeout' }))
 
     expect(getChatErrorKind(error)).toBe('timeout')
+  })
+
+  it('marks a send to a disabled or deleted agent as its own kind that is not retried', () => {
+    const error = createAgentUnavailableError('agent-1')
+
+    expect(getChatErrorKind(error)).toBe('agent-unavailable')
+    expect(getErrorRetryable(error)).toBe(false)
   })
 
   it('preserves a serialized ACP connection-lost kind', () => {

@@ -86,9 +86,44 @@ disconnects and throws.
 - registers a background rebuild with the reconnect scheduler, unless the termination carries
   `retryable: false` (redialing the same endpoint cannot succeed).
 
-`disposeAdapter` / `disposeAllAdapters` are the real teardown path (agent deleted, config edited,
-sign-out). `clearLocalData` calls the latter first so no transport survives an identity change
-([delete-account-and-revoke-device.md](delete-account-and-revoke-device.md)).
+`disposeAdapter` / `disposeAllAdapters` are the real teardown path (agent disabled or deleted,
+config edited, sign-out). `clearLocalData` calls the latter first so no transport survives an
+identity change ([delete-account-and-revoke-device.md](delete-account-and-revoke-device.md)).
+
+### A disabled or deleted agent gets no new prompt
+
+An open chat holds the `Agent` object it picked. Disabling or deleting the agent, in Settings or
+through a sync from another device, never updates that object, so the client rereads the row with
+`isAgentActive` ([src/dal/agents.ts](../../../src/dal/agents.ts)). A custom agent must be enabled and
+not soft-deleted. A system agent must still be listed by discovery. These places check it:
+
+- `connectToAgent`, before it opens any new connection. A send, the commands warm-up and a
+  background rebuild all go through it, so none of them dials a disabled or deleted agent.
+- The ACP adapter, before `initialize`, before each `session/new`, `session/resume` or
+  `session/load`, and right before each `session/prompt`. A sync can land while the transport opens
+  or a session is set up, and a cached connection never goes back through `connectToAgent`.
+- The send path (`createAgentRoutingFetch`), before it saves the user turn and again just before
+  `adapter.fetch` or `adapter.compact`. The second read is the last one for the hosted agent, which
+  posts as soon as `adapter.fetch` runs.
+- `useWarmAcpCommands`, before it opens a session on a cached connection.
+
+A refused send fails with the `agent-unavailable` chat error and is not retried. If its prompt was
+already saved, it is flagged like a stopped prompt, so the auto-run never sends it after a reload to
+whatever agent the thread falls back to.
+
+The race point is the last read before the prompt goes out: right before `session/prompt` for an
+ACP agent, right before `adapter.fetch` for the hosted agent. Nothing awaits between that read and
+the dispatch.
+
+A prompt dispatched before the change lands is already in flight. Disabling or deleting the agent on
+this device disposes the adapter, which ends the prompt. A change synced from another device lets it
+finish, and does not dispose the cached connection either: it sits idle until it closes, and is
+never rebuilt. A connection that was already opening when the agent was disabled or deleted may
+finish opening its transport, but it is closed before the ACP handshake.
+
+The chat keeps the disabled or deleted agent selected. Falling back on its own could hand the
+history to an agent the user never chose for that chat, so the user picks another one in the header
+instead.
 
 A stopped prompt closes its local stream and removes its notification and permission handlers immediately.
 The adapter keeps the session occupied until the remote prompt resolves or rejects: a second prompt or

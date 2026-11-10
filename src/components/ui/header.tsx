@@ -216,7 +216,8 @@ export const Header = () => {
   const needsTrafficLightClearance = isMacDesktop() && !isMobile && sidebarState === 'collapsed'
   const { openCreateItem } = useCreateItem()
   const location = useLocation()
-  const allAgents = useAllAgents()
+  // Settings still lists a disabled agent so it can be turned back on; the chat picker leaves it out.
+  const allAgents = useAllAgents().filter((agent) => agent.enabled === 1)
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
   const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
   const configSettled = useConfigStore(selectConfigSettled)

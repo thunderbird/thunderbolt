@@ -23,6 +23,7 @@ import { createWebToolBudget, type WebToolBudget } from '@/ai/web-tool-budget'
 import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
+import { isAgentActive as defaultIsAgentActive } from '@/dal/agents'
 import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
@@ -43,6 +44,7 @@ import type {
   DebugTranscriptTurnOutcome,
 } from '@/debug-transcript/types'
 import {
+  createAgentUnavailableError,
   getChatErrorKind,
   getErrorName,
   getErrorRetryable,
@@ -221,6 +223,7 @@ export type CreateChatInstanceDeps = {
   connectToAgent?: typeof defaultConnectToAgent
   updateChatThread?: typeof defaultUpdateChatThread
   getDb?: typeof defaultGetDb
+  isAgentActive?: (agent: Agent) => Promise<boolean>
   getAllSkills?: typeof defaultGetAllSkills
   loadProjectContext?: typeof defaultLoadProjectContext
   createChat?: (init: ChatInit<ThunderboltUIMessage>) => Chat<ThunderboltUIMessage>
@@ -271,6 +274,7 @@ export const createAgentRoutingFetch = (
   const getOrConnectAdapter = deps.getOrConnectAdapter ?? defaultGetOrConnectAdapter
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const getDb = deps.getDb ?? defaultGetDb
+  const isAgentActive = deps.isAgentActive ?? ((agent: Agent) => defaultIsAgentActive(getDb(), agent))
   const getAllSkills = deps.getAllSkills ?? defaultGetAllSkills
   const loadProjectContext = deps.loadProjectContext ?? defaultLoadProjectContext
   const getTurnBudget =
@@ -281,6 +285,14 @@ export const createAgentRoutingFetch = (
     })()
 
   let routedAgentId: string | null = null
+
+  /** The session holds the agent object it picked, which disabling or deleting
+   *  the agent never updates, so every send rereads the agent's row. */
+  const assertAgentActive = async (agent: Agent): Promise<void> => {
+    if (!isBuiltInAgent(agent) && !(await isAgentActive(agent))) {
+      throw createAgentUnavailableError(agent.id)
+    }
+  }
 
   const getWebToolBudget = (messages: ThunderboltUIMessage[]): WebToolBudget | undefined => {
     const lastUserMessage = messages.findLast((message) => message.role === 'user')
@@ -354,6 +366,9 @@ export const createAgentRoutingFetch = (
     }
 
     const { chatThread, selectedAgent, selectedModel } = session
+    // Before anything is saved or connected, so a refused send leaves no new
+    // thread or saved prompt behind.
+    await assertAgentActive(selectedAgent)
     const reasoningEffort = isBuiltInAgent(selectedAgent)
       ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
       : undefined
@@ -451,6 +466,11 @@ export const createAgentRoutingFetch = (
     const requestPermission = isBuiltInAgent(selectedAgent)
       ? undefined
       : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
+
+    // Again after the awaits above, since the agent may have been disabled or deleted while it
+    // connected. The hosted agent posts as soon as `adapter.fetch` runs; the ACP
+    // adapter checks once more right before `session/prompt`.
+    await assertAgentActive(selectedAgent)
 
     const turnBudget = getTurnBudget().consumer
     if (operation === 'prompt' && !turnBudget.tryConsumeRequest()) {
@@ -1099,6 +1119,17 @@ export const createChatInstance = (
           emitTurnCompleted(finishedTurn, 'success', message)
           resetRetryStateIfUnswapped()
         }
+        return
+      }
+
+      // The agent was disabled or deleted, possibly after the prompt was saved. Flag
+      // it like a stopped prompt so a reload never auto-runs it on a fallback agent.
+      if (getChatErrorKind(lastError) === 'agent-unavailable') {
+        const refusedPrompt = setPromptStopped(true)
+        if (refusedPrompt && useChatStore.getState().sessions.get(id)?.chatThread) {
+          await saveMessages({ id, messages: [refusedPrompt] })
+        }
+        markRetriesExhausted(finishedTurn)
         return
       }
 

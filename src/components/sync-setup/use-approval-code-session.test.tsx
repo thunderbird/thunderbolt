@@ -21,7 +21,8 @@ const createRelay = () => {
     starts: [] as Array<{ sessionId: string; commitment: string }>,
     reveals: [] as Array<{ sessionId: string; reveal: string }>,
     failStart: false,
-    failPoll: false,
+    /** GETs answer with this status instead of the row. */
+    pollStatus: 200,
     /** When set, GETs wait for it: a poll still in flight. */
     gate: null as Promise<void> | null,
   }
@@ -40,8 +41,8 @@ const createRelay = () => {
     }
     if (request.method === 'GET' && path.endsWith('/devices/me/approval-session')) {
       await relay.gate
-      if (relay.failPoll) {
-        return jsonResponse({ error: 'Server error' }, 500)
+      if (relay.pollStatus !== 200) {
+        return jsonResponse({ error: 'Refused' }, relay.pollStatus)
       }
       return relay.row ? jsonResponse(relay.row) : jsonResponse({ error: 'Not found' }, 404)
     }
@@ -219,22 +220,38 @@ describe('useApprovalCodeSession', () => {
     try {
       const { relay, hook } = renderSession()
       await settleUntil(() => hook.result.current.status === 'waiting')
-      relay.failPoll = true
+      relay.pollStatus = 500
       await tick()
       await tick()
       await tick()
       expect(errorLog.mock.calls).toEqual([['Failed to poll for the approval code.']])
 
       relay.row = { ...relay.row!, expired: true }
-      relay.failPoll = false
+      relay.pollStatus = 200
       await tick()
       await settleUntil(() => hook.result.current.status === 'expired')
       act(() => hook.result.current.newCode())
       await settleUntil(() => hook.result.current.status === 'waiting')
-      relay.failPoll = true
+      relay.pollStatus = 500
       await tick()
       await tick()
       expect(errorLog).toHaveBeenCalledTimes(2)
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
+  it('does not log the protocol answers for an approved device (409) or a missing session (404)', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { relay, hook } = renderSession()
+      await settleUntil(() => hook.result.current.status === 'waiting')
+      relay.pollStatus = 409
+      await tick()
+      await tick()
+      relay.pollStatus = 404
+      await tick()
+      expect(errorLog).not.toHaveBeenCalled()
     } finally {
       errorLog.mockRestore()
     }

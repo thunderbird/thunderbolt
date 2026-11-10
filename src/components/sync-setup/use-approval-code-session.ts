@@ -215,10 +215,13 @@ export const useApprovalCodeSession = ({
       isTicking.current = true
       try {
         await tick()
-      } catch {
-        // The next tick retries, and the local expiry still ends a poll that keeps failing. The log
-        // is a fixed line, never the error itself.
-        if (loggedPollFailureFor.current !== liveSessionId.current) {
+      } catch (error) {
+        // The next tick retries, and the local expiry still ends a poll that keeps failing. 409 (this
+        // device is no longer pending, e.g. just approved) and 404 (no session) are protocol answers,
+        // not failures. The log is a fixed line, never the error itself.
+        const protocolAnswer =
+          error instanceof HttpError && (error.response.status === 404 || error.response.status === 409)
+        if (!protocolAnswer && loggedPollFailureFor.current !== liveSessionId.current) {
           loggedPollFailureFor.current = liveSessionId.current
           console.error('Failed to poll for the approval code.')
         }

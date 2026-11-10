@@ -10,7 +10,13 @@ import type { SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
-import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
+import {
+  defaultModelImageSupport,
+  defaultModels,
+  defaultModelsVersion,
+  hashModel,
+  type SharedModel,
+} from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting, shipsWithoutValue } from '../defaults/settings'
 import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
@@ -19,7 +25,11 @@ import { restampWidgetSkillDefaultHashes } from './data-migrations/restamp-widge
 import { normalizeModelDefault, upgradeModelDefaults } from './data-migrations/upgrade-model-defaults'
 import { nowIso } from './utils'
 
-const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
+const bundledModelsDefaults: ModelsDefaults = {
+  version: defaultModelsVersion,
+  data: defaultModels,
+  imageSupport: defaultModelImageSupport,
+}
 
 /**
  * Settings keys holding the highest defaults version ever applied to this
@@ -418,6 +428,10 @@ export const cleanupRemovedDefaults = async (
   models: readonly SharedModel[] = defaultModels,
   initialSyncCompleted: boolean = true,
 ) => {
+  if (!canOverwriteModels && !initialSyncCompleted) {
+    return
+  }
+
   const now = nowIso()
   const currentModelIds = new Set(models.map((m) => m.id))
 
@@ -650,6 +664,12 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       reconcileOptions: Pick<ReconcileDefaultsForTableOptions<T>, 'keyField' | 'frozenFields' | 'skipMissingWhen'> = {},
     ): Promise<void> => {
       const gate = computeCanOverwrite(appliedVersions, versionKey, currentVersion, hasAnyRow, initialSyncCompleted)
+      // Neither content updates nor resurrection can run before sync under
+      // a closed gate, so no rows need to cross the SQLite worker boundary.
+      if (!gate.canOverwrite && !initialSyncCompleted) {
+        return
+      }
+
       const pass = await reconcileDefaultsForTable(tx, table, defaults, hashFn, {
         canOverwrite: gate.canOverwrite,
         canResurrect: initialSyncCompleted,

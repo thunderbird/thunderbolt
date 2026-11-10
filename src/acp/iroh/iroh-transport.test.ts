@@ -86,6 +86,67 @@ afterEach(() => {
 })
 
 describe('openIrohTransport', () => {
+  it('does not bind or enroll an already aborted attempt', async () => {
+    const loadClient = mock(async () => makeFakeClient(makeFakeConnection().connection, []))
+    const ensureEnrollment = mock(async () => {})
+    await expect(
+      openIrohTransport({
+        target: 't',
+        signal: AbortSignal.abort(),
+        loadClient,
+        httpClient: {} as Parameters<typeof ensureSelfEnrollment>[0],
+        ensureEnrollment,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+    expect(loadClient).not.toHaveBeenCalled()
+    expect(ensureEnrollment).not.toHaveBeenCalled()
+  })
+
+  it('aborts a pending enrollment immediately and never dials when it later finishes', async () => {
+    const controller = new AbortController()
+    const enrolled = Promise.withResolvers<void>()
+    const captured: CapturedConnect[] = []
+    const opening = openIrohTransport({
+      target: 't',
+      signal: controller.signal,
+      loadClient: async () => makeFakeClient(makeFakeConnection().connection, captured),
+      httpClient: {} as Parameters<typeof ensureSelfEnrollment>[0],
+      ensureEnrollment: () => enrolled.promise,
+    })
+    controller.abort()
+    await expect(opening).rejects.toMatchObject({ name: 'AbortError' })
+    enrolled.resolve()
+    await flush()
+    expect(captured).toEqual([])
+  })
+
+  it('evicts a bind canceled during enrollment so the next attempt can connect', async () => {
+    const controller = new AbortController()
+    const binding = Promise.withResolvers<IrohClientLike>()
+    const opening = openIrohTransport({
+      target: 't',
+      signal: controller.signal,
+      loadClient: () => binding.promise,
+      httpClient: {} as Parameters<typeof ensureSelfEnrollment>[0],
+      ensureEnrollment: async (_client, loadNodeId) => {
+        await loadNodeId()
+      },
+    })
+    controller.abort()
+    await expect(opening).rejects.toMatchObject({ name: 'AbortError' })
+    const fake = makeFakeConnection()
+    const captured: CapturedConnect[] = []
+    const replacement = await openIrohTransport({
+      target: 't',
+      signal: new AbortController().signal,
+      loadClient: async () => makeFakeClient(fake.connection, captured),
+    })
+    expect(captured).toEqual([{ target: 't', alpn: acpIrohAlpn }])
+    replacement.close()
+    binding.reject(new Error('late old bind failure'))
+    await flush()
+  })
+
   it('enrolls a synced device once before repeated dials', async () => {
     const order: string[] = []
     const client: IrohClientLike = {
@@ -258,9 +319,9 @@ describe('openIrohTransport', () => {
       loadClient: async () => makeFakeClient(fake.connection, []),
     })
     const reader = transport.stream.readable.getReader()
-    transport.close()
-    // A late frame from the wire must not throw (the pump is guarded).
+    // Queue a receive continuation, then close before the pump can consume it.
     fake.pushBytes(enc('{"late":true}\n'))
+    transport.close()
     const { done } = await reader.read()
     expect(done).toBe(true)
   })
@@ -659,5 +720,39 @@ describe('bindIrohClient', () => {
       }
     })
     expect(relays).toEqual([undefined])
+  })
+})
+
+describe('iroh terminal transitions', () => {
+  it('consumer cancellation closes the connection exactly once and rejects later writes', async () => {
+    const fake = makeFakeConnection()
+    const controller = new AbortController()
+    const transport = await openIrohTransport({
+      target: 't',
+      signal: controller.signal,
+      loadClient: async () => makeFakeClient(fake.connection, []),
+    })
+    await transport.stream.readable.cancel()
+    await expect(transport.closed).resolves.toBeUndefined()
+    transport.close()
+    controller.abort()
+    expect(fake.closeCount()).toBe(1)
+    await expect(
+      transport.stream.writable.getWriter().write({ jsonrpc: '2.0', id: 1, method: 'ping' }),
+    ).rejects.toThrow('closed')
+    expect(fake.sent()).toEqual([])
+  })
+
+  it('EOF releases the connection and makes later close idempotent', async () => {
+    const fake = makeFakeConnection()
+    const transport = await openIrohTransport({
+      target: 't',
+      signal: new AbortController().signal,
+      loadClient: async () => makeFakeClient(fake.connection, []),
+    })
+    fake.endReceive()
+    await transport.closed
+    transport.close()
+    expect(fake.closeCount()).toBe(1)
   })
 })

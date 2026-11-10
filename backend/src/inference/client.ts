@@ -53,7 +53,7 @@ export type InferenceUsageLog =
       provider: InferenceProvider
       model: string
       eventId: string
-      transport: 'direct'
+      transport: 'direct' | 'tinfoil'
     }
   | {
       event: 'inference_usage_inserted'
@@ -62,11 +62,6 @@ export type InferenceUsageLog =
       eventId: string
       outcome: 'inserted' | 'duplicate'
     }
-  | (ManagedInferenceIdentity & {
-      event: 'inference_usage_receipt_issued'
-      eventId: string
-      route: string
-    })
 
 export type InferenceRouteLog =
   | ({ provider: InferenceProvider; model: string; route: string } & (

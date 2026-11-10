@@ -10,7 +10,7 @@ import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ImageContent } from '@earendil-works/pi-ai'
-import type { SeedTurn, WorkspaceFile } from '@shared/agent-core'
+import type { CompactionCheckpoint, SeedTurn, WorkspaceFile } from '@shared/agent-core'
 
 export type BuiltInConversationDeps = {
   readonly getAttachment: typeof getAttachment
@@ -32,11 +32,51 @@ export type BuiltInPrompt = {
   readonly images: ImageContent[]
 }
 
-export type PreparedBuiltInConversation = {
+type PreparedBuiltInHistory = {
   readonly history: SeedTurn[]
-  readonly prompt: BuiltInPrompt
-  /** Attachment files to write into the thread workspace before the run. */
+  readonly compaction?: CompactionCheckpoint
+  /** Attachment files to restore, including those referenced by compacted turns. */
   readonly files: WorkspaceFile[]
+}
+
+export type PreparedBuiltInConversation = PreparedBuiltInHistory & {
+  readonly prompt: BuiltInPrompt
+}
+
+/** The latest surviving checkpoint bounds the history replayed after reload or regeneration. */
+export const splitCompactedHistory = (messages: ThunderboltUIMessage[]) => {
+  const index = messages.findLastIndex((message) => message.metadata?.contextCompaction?.version === 1)
+  return {
+    compaction: index >= 0 ? messages[index].metadata?.contextCompaction : undefined,
+    messages: messages.slice(index + 1),
+  }
+}
+
+/** Replay only turns after the checkpoint while restoring attachments from the full transcript. */
+export const prepareBuiltInHistory = async (
+  messages: ThunderboltUIMessage[],
+  options: BuiltInConversationOptions,
+  deps: BuiltInConversationDeps = defaultDeps,
+): Promise<PreparedBuiltInHistory> => {
+  const previous = splitCompactedHistory(messages)
+  const messagesToPrepare = options.workspace ? messages : previous.messages
+  const preparedMessages = await Promise.all(
+    messagesToPrepare.map(async (message) => {
+      if (message.role !== 'user' && message.role !== 'assistant') {
+        return null
+      }
+      return { role: message.role, prepared: await prepareMessage(message, false, options, deps) }
+    }),
+  )
+  const turns = preparedMessages
+    .slice(messagesToPrepare.length - previous.messages.length)
+    .flatMap((entry): SeedTurn[] => (entry?.prepared.text ? [{ role: entry.role, text: entry.prepared.text }] : []))
+  const files = preparedMessages.flatMap((entry) => entry?.prepared.files ?? [])
+  return {
+    compaction: previous.compaction,
+    history: coalesceTurns(turns),
+    files: [...new Map(files.map((file) => [file.path, file])).values()],
+  }
 }
 
 type PreparedPart = {
@@ -281,29 +321,17 @@ export const prepareBuiltInConversation = async (
     throw new Error('Built-in adapter: no user message in request body')
   }
 
-  const priorMessages = await Promise.all(
-    messages.slice(0, lastUserIndex).map(async (message) => {
-      if (message.role !== 'user' && message.role !== 'assistant') {
-        return null
-      }
-      return { role: message.role, prepared: await prepareMessage(message, false, options, deps) }
-    }),
-  )
-  const prior = priorMessages.filter((entry) => entry !== null)
+  const previous = await prepareBuiltInHistory(messages.slice(0, lastUserIndex), options, deps)
   const current = await prepareMessage(messages[lastUserIndex], true, options, deps)
-  const turns = coalesceTurns([
-    ...prior
-      .filter(({ prepared }) => prepared.text.length > 0)
-      .map(({ role, prepared }): SeedTurn => ({ role, text: prepared.text })),
-    { role: 'user', text: current.text },
-  ])
+  const turns = coalesceTurns([...previous.history, { role: 'user', text: current.text }])
   const promptTurn = turns.at(-1)
   if (!promptTurn) {
     throw new Error('Built-in adapter: current user message has no supported content')
   }
   const skillPrefix = skillInstructions?.length ? `${skillInstructions.join('\n\n')}\n\n` : ''
-  const files = [...prior.map(({ prepared }) => prepared), current].flatMap((prepared) => prepared.files)
+  const files = [...previous.files, ...current.files]
   return {
+    compaction: previous.compaction,
     history: turns.slice(0, -1),
     prompt: { text: `${skillPrefix}${promptTurn.text}`, images: current.images },
     files: [...new Map(files.map((file) => [file.path, file])).values()],

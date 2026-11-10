@@ -6,14 +6,11 @@ import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
 import { FileText, X } from 'lucide-react'
-import { lazy, Suspense } from 'react'
+import { DeferredPdfThumbnail } from './deferred-pdf-thumbnail'
 import { DocxThumbnail } from './docx-thumbnail'
 import { ImageThumbnail } from './image-thumbnail'
 import { MarkdownThumbnail } from './markdown-thumbnail'
 import { docxMimeType, isTextualAttachment, TextSnippet } from './text-snippet'
-
-// react-pdf is heavy — load it only when an attachment card actually renders.
-const PdfThumbnail = lazy(() => import('./pdf-thumbnail'))
 
 type FileCardProps = {
   localFileId: string
@@ -58,7 +55,7 @@ const typeBadge = (filename: string, mimeType: string): string => {
  * Claude-Desktop-style attachment card: a first-page preview thumbnail with a
  * type badge + filename overlaid along the bottom. Used for pending composer
  * attachments (`onRemove`) and for sent attachments in chat (`onOpen`). The
- * thumbnail renderer is lazy-loaded (see {@link PdfThumbnail}).
+ * PDF thumbnails load when the card approaches the viewport.
  */
 export const FileCard = ({
   localFileId,
@@ -83,11 +80,7 @@ export const FileCard = ({
     <div className="relative flex h-36 w-28 items-center justify-center overflow-hidden rounded-xl border bg-muted [--thumb-scale:0.2333] sm:h-44 sm:w-36 sm:[--thumb-scale:0.3]">
       {/* Placeholder shown until (and unless) a real preview renders on top. */}
       <FileText className="size-7 text-muted-foreground sm:size-8" aria-hidden="true" />
-      {isPdf && (
-        <Suspense fallback={null}>
-          <PdfThumbnail localFileId={localFileId} />
-        </Suspense>
-      )}
+      {isPdf && <DeferredPdfThumbnail localFileId={localFileId} />}
       {isImage && <ImageThumbnail localFileId={localFileId} alt={filename} />}
       {isMarkdown && <MarkdownThumbnail localFileId={localFileId} />}
       {isDocx && <DocxThumbnail localFileId={localFileId} title={filename} />}

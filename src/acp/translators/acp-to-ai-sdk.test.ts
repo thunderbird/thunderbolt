@@ -4,9 +4,8 @@
 
 /**
  * Translator unit tests. The translator state is exercised through `emit`
- * collection (an array) rather than the SSE byte stream — wire encoding is
- * trivial and orthogonal to the mapping logic. The stream-end + finish path
- * is covered indirectly by `createTranslatorStream` (one test below).
+ * collection (an array) and the real AI SDK consuming the SSE byte stream.
+ * Stream tests also cover deferred response IDs and command completion.
  */
 
 import '@/testing-library'
@@ -17,6 +16,9 @@ import { describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { createTranslator, createTranslatorStream } from './acp-to-ai-sdk'
 import type { AiSdkChunk } from '../types'
+import { acpCompactionKey, type AcpCompaction } from '../compaction'
+import { Chat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
 
 const notification = (update: SessionNotification['update']): SessionNotification => ({
   sessionId: 'sess-1',
@@ -140,6 +142,121 @@ describe('createTranslator — mapping', () => {
     const last = chunks[chunks.length - 1]
     expect(last).toMatchObject({ type: 'tool-output-error', toolCallId: 'tc1', errorText: 'boom' })
   })
+
+  it.each(['completed', 'failed'] as const)('renders an initially %s tool call', (status) => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle(
+      notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search', status, rawOutput: 'result' }),
+    )
+    expect(chunks.filter((chunk) => chunk.type.startsWith('tool-'))).toEqual([
+      { type: 'tool-input-start', toolCallId: 'tc1', toolName: 'search', title: 'search' },
+      { type: 'tool-input-available', toolCallId: 'tc1', toolName: 'search', title: 'search', input: {} },
+      status === 'completed'
+        ? { type: 'tool-output-available', toolCallId: 'tc1', output: 'result' }
+        : { type: 'tool-output-error', toolCallId: 'tc1', errorText: 'result' },
+    ])
+  })
+
+  it.each(['completed', 'failed'] as const)(
+    'retains output supplied before the %s status across compaction',
+    (status) => {
+      const { emit, chunks } = collect()
+      const t = createTranslator(emit)
+      t.start()
+      t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search' }))
+      t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawOutput: 'result' }))
+      t.compaction({ agentId: 'agent', sessionId: 'sess-1', compactionId: 'compact', status: 'completed' })
+      t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status, rawOutput: null }))
+      expect(chunks.find((chunk) => chunk.type.startsWith('tool-output-'))).toEqual(
+        status === 'completed'
+          ? { type: 'tool-output-available', toolCallId: 'tc1', output: 'result' }
+          : { type: 'tool-output-error', toolCallId: 'tc1', errorText: 'result' },
+      )
+    },
+  )
+
+  it('retains, replaces and clears structured content without resetting a terminal status', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    const content = [{ type: 'content' as const, content: { type: 'text' as const, text: 'result' } }]
+    t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search', content }))
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status: 'completed' }))
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', content: [] }))
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status: null, content: null }))
+    t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawOutput: false }))
+    expect(chunks.filter((chunk) => chunk.type === 'tool-output-available').map((chunk) => chunk.output)).toEqual([
+      content,
+      [],
+      [],
+      false,
+    ])
+  })
+
+  it.each([false, 0, '', [], { query: 'updated' }].map((input) => ({ input })))(
+    'applies a late input value $input and retains it through null patches',
+    ({ input }) => {
+      const { emit, chunks } = collect()
+      const t = createTranslator(emit)
+      t.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search' }))
+      t.handle(notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawInput: input }))
+      t.handle(
+        notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawInput: null, title: 'Searching' }),
+      )
+      expect(chunks.filter((chunk) => chunk.type === 'tool-input-available').at(-1)).toEqual({
+        type: 'tool-input-available',
+        toolCallId: 'tc1',
+        toolName: 'search',
+        title: 'Searching',
+        input,
+      })
+    },
+  )
+
+  it.each(['completed', 'failed'] as const)(
+    'updates tool details without losing the SDK %s state or duration',
+    async (status) => {
+      const { body, translator, close } = createTranslatorStream({ now: () => 10 })
+      translator.start()
+      translator.handle(notification({ sessionUpdate: 'tool_call', toolCallId: 'tc1', title: 'search' }))
+      translator.handle(
+        notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', rawInput: { query: 'first' } }),
+      )
+      translator.handle(
+        notification({ sessionUpdate: 'tool_call_update', toolCallId: 'tc1', status, rawOutput: 'result' }),
+      )
+      translator.compaction({ agentId: 'agent', sessionId: 'sess-1', compactionId: 'compact', status: 'completed' })
+      translator.handle(
+        notification({
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'tc1',
+          rawInput: { query: 'final' },
+          title: 'Search complete',
+        }),
+      )
+      translator.finish()
+      close()
+      const sdk = new Chat({
+        transport: new DefaultChatTransport({
+          fetch: Object.assign(async () => new Response(body, { headers: { 'Content-Type': 'text/event-stream' } }), {
+            preconnect: () => undefined,
+          }),
+        }),
+      })
+      await sdk.sendMessage({ text: 'Search' })
+      expect(sdk.error).toBeUndefined()
+      expect(sdk.messages.at(-1)?.parts.find((part) => part.type === 'tool-search')).toMatchObject({
+        type: 'tool-search',
+        title: 'Search complete',
+        input: { query: 'final' },
+        ...(status === 'completed'
+          ? { state: 'output-available', output: 'result' }
+          : { state: 'output-error', errorText: 'result' }),
+      })
+      expect(sdk.messages.at(-1)?.metadata).toMatchObject({ reasoningTime: { tc1: 0 } })
+    },
+  )
 
   it('plan / available_commands_update / current_mode_update are ignored', () => {
     const { emit, chunks } = collect()
@@ -301,11 +418,23 @@ describe('createTranslatorStream — wire format', () => {
       }
       text += decoder.decode(value, { stream: true })
     }
-    expect(text).toContain('data: {"type":"start"}\n\n')
+    expect(JSON.parse(text.split('\n\n')[0].slice('data: '.length))).toEqual({
+      type: 'start',
+      messageId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+    })
     expect(text).toContain('data: {"type":"text-start"')
     expect(text).toContain('"type":"text-delta"')
     expect(text).toContain('data: {"type":"finish"}\n\n')
     expect(text.endsWith('data: [DONE]\n\n')).toBe(true)
+  })
+
+  it('flushes a closed startup without allocating an empty assistant message', async () => {
+    const { body, translator, close } = createTranslatorStream()
+    translator.start()
+    close()
+    expect(await new Response(body).text()).toBe(
+      'data: {"type":"start"}\n\ndata: {"type":"start-step"}\n\ndata: [DONE]\n\n',
+    )
   })
 })
 
@@ -505,5 +634,65 @@ describe('createTranslator — haystack metadata', () => {
         haystackDocuments: [{ id: 'doc-1', content: 'snip', score: 0.9, file: { id: 'f1', name: 'a.pdf' } }],
       },
     })
+  })
+})
+
+describe('createTranslator — compaction timeline entities', () => {
+  const snapshot: AcpCompaction = { agentId: 'agent', sessionId: 's', compactionId: 'c', status: 'in_progress' }
+
+  it('flushes and closes preceding text, then patches one stable entity without splitting following text', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle(notification({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Before' } }))
+    t.compaction(snapshot)
+    t.handle(notification({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'After ' } }))
+    t.compaction({ ...snapshot, status: 'completed' })
+    t.handle(notification({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'update' } }))
+    t.finish()
+    expect(chunks.filter((chunk) => !['start', 'start-step', 'finish-step', 'finish'].includes(chunk.type))).toEqual([
+      { type: 'text-start', id: 'acp-text-0' },
+      { type: 'text-delta', id: 'acp-text-0', delta: 'Before' },
+      { type: 'text-end', id: 'acp-text-0' },
+      { type: 'data-acp-compaction', id: acpCompactionKey(snapshot), data: snapshot },
+      { type: 'text-start', id: 'acp-text-0-1' },
+      { type: 'data-acp-compaction', id: acpCompactionKey(snapshot), data: { ...snapshot, status: 'completed' } },
+      { type: 'text-delta', id: 'acp-text-0-1', delta: 'After update' },
+      { type: 'text-end', id: 'acp-text-0-1' },
+    ])
+  })
+
+  it('closes reasoning at first placement and measures subsequent reasoning separately', () => {
+    const { emit, chunks } = collect()
+    let now = 0
+    const t = createTranslator(emit, { now: () => now })
+    t.handle(notification({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Before' } }))
+    now = 10
+    t.compaction(snapshot)
+    t.handle(notification({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'After' } }))
+    now = 30
+    t.compaction({ ...snapshot, compactionId: 'next' })
+    t.finish()
+    expect(chunks.filter((chunk) => chunk.type === 'message-metadata')).toEqual([
+      { type: 'message-metadata', messageMetadata: { reasoningTime: { 'reasoning-0': 10 } } },
+      { type: 'message-metadata', messageMetadata: { reasoningTime: { 'reasoning-1': 20 } } },
+    ])
+    expect(chunks.filter((chunk) => chunk.type === 'reasoning-end')).toEqual([
+      { type: 'reasoning-end', id: 'acp-reasoning-0' },
+      { type: 'reasoning-end', id: 'acp-reasoning-0-1' },
+    ])
+  })
+
+  it('emits usage metadata without splitting text or manufacturing token billing', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.handle(notification({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Text' } }))
+    const usage = { agentId: 'agent', sessionId: 's', used: 20, size: 100 }
+    t.usage(usage)
+    expect(chunks).toEqual([
+      { type: 'text-start', id: 'acp-text-0' },
+      { type: 'message-metadata', messageMetadata: { acpContextUsage: usage } },
+    ])
+    t.finish()
   })
 })

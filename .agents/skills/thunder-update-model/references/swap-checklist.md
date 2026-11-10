@@ -55,7 +55,8 @@ writing a new mock.
    item 13). Done when the comment matches `legacyConfidentialModels`.
 6. universal. `defaultModelImageSupport`, keyed by the incoming model's id: `'supported'` iff
    `image` is in its `modalities.input` and the provider catalog agrees; `models.test.ts` fails
-   without an entry. fresh-id: drop the leaving model's entry. Done when each default has one entry.
+   without an entry, and the map ships in `/v1/config` under the version item 7 bumps. fresh-id:
+   drop the leaving model's entry. Done when each default has one entry.
 7. universal. Bump `defaultModelsVersion` by one. Done when the constant is higher than on `main`.
 8. universal. Snapshot test: run `bun test shared/defaults --timeout 5000`, paste the new
    `version`, `hash` and `metadataHash` into `expected` in `shared/defaults/models.test.ts`, then
@@ -88,8 +89,8 @@ Items 12 and 13 each have a leaving half and an incoming half. When both models 
 other item is not applicable.
 
 12. confidential, in `backend/src/inference/managed-models.ts`. Leaving half, when the leaving
-    model is confidential: append its slug to `legacyConfidentialModels` (receipts issued before
-    the deploy, edited rows, old builds). If the no-header fallback in
+    model is confidential: append its slug to `legacyConfidentialModels` (requests in flight
+    during the deploy, edited rows, old builds). If the no-header fallback in
     `backend/src/tinfoil/routes.ts` pointed at the leaving model, choose the new fallback export.
     Done when the leaving model still resolves as legacy in `managed-models.test.ts`. Incoming
     half, when the incoming model is confidential: nothing to add, the allowlist derives from
@@ -111,24 +112,25 @@ other item is not applicable.
     the generated SQL:
 
    ```sql
-   -- QUOTA price inherited from <leaving-slug> (<in>/<out>), deliberately not the provider list price.
-   INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token")
-   VALUES ('<provider>', '<model>', <in>, <out>)
+   -- <Provider> list price, verified <date>: <in> in / <cached> cached in / <out> out (nano-USD per token).
+   INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token", "cache_read_nano_usd_per_token")
+   VALUES ('<provider>', '<model>', <in>, <out>, <cached, or NULL when the provider publishes none>)
    ON CONFLICT ("provider", "model") DO NOTHING;
    ```
 
    The `provider` and `model` columns name the upstream identity, never the catalog's `provider`
    field (a `thunderbolt` row is never looked up): confidential rows are `('tinfoil', <public
    slug>)`; direct rows are `(<runtime provider>, <internalName>)` from the incoming model's
-   `managedDirectRuntimes` entry. Copy the leaving model's numbers from its own seed migration;
-   `0029` is the precedent and its comment states the policy (`0033` seeded Fireworks list prices
-   for rows that never shipped and is no precedent for a swap). Keep the SQL,
+   `managedDirectRuntimes` entry. Take the numbers from the provider's published prices (for
+   Tinfoil, the `pricing` object in `https://inference.tinfoil.sh/v1/models`), converting USD per
+   1M tokens to nano-USD per token by multiplying by 1000. `0040` is the precedent and its comment
+   cites the source; `0029` and `0034` seeded quota weights instead and are no longer the policy. Keep the SQL,
    `meta/00NN_snapshot.json` and the new `_journal.json` entry together in the change; a migration
    numbered by hand with an older `when` is silently skipped. If the number collides with `main`,
    remove only this change's SQL, snapshot and journal entry, then regenerate. Done when
    `grep -n '<model>' backend/drizzle/*.sql` shows the row and `_journal.json` ends with its tag.
 15. universal. Backend fixtures that pin slugs: `managed-usage.integration.test.ts` (price oracle)
-    and `tinfoil/routes.test.ts` (receipt price table and header-acceptance list: add the incoming
+    and `tinfoil/routes.test.ts` (admission price table and header-acceptance list: add the incoming
     model, keep the leaving model), both under `backend/src/`, plus
     `backend/src/api/health.test.ts`. Done when `bun run test:backend` passes (item 24).
 

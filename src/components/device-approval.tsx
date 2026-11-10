@@ -5,7 +5,7 @@
 import { useAppName } from '@/lib/branding-selectors'
 import { Trans } from '@lingui/react/macro'
 import { AlertCircle, Loader2, ShieldQuestion, Terminal } from 'lucide-react'
-import { type FormEvent, type ReactNode, useEffect, useReducer, useRef } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useReducer } from 'react'
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { GradientCheck } from '@/components/ui/gradient-check'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth, useSignInModal, type AuthClient } from '@/contexts'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { saveDeviceApprovalReturn } from '@/lib/device-approval-return'
 import {
   approveDeviceCode,
@@ -72,28 +73,35 @@ const reducer = (state: State, action: Action): State => {
  */
 const useDeviceApproval = (authClient: AuthClient, initialCode: string) => {
   const [state, dispatch] = useReducer(reducer, initialCode, init)
+  const operation = useAsyncAttempt()
 
   const verify = async (code: string) => {
-    dispatch({ type: 'VERIFY_STARTED', userCode: code })
-    const result = await verifyDeviceCode(authClient, code)
-    if (!result.ok) {
-      dispatch({ type: 'FAILED', error: result })
+    const attempt = operation.begin()
+    if (!attempt) {
       return
     }
-    dispatch({ type: 'SETTLED', status: result.status === 'pending' ? 'confirming' : result.status })
+    dispatch({ type: 'VERIFY_STARTED', userCode: code })
+    try {
+      const result = await verifyDeviceCode(authClient, code)
+      if (!attempt.isCurrent()) {
+        return
+      }
+      if (!result.ok) {
+        dispatch({ type: 'FAILED', error: result })
+        return
+      }
+      dispatch({ type: 'SETTLED', status: result.status === 'pending' ? 'confirming' : result.status })
+    } finally {
+      attempt.finish()
+    }
   }
 
-  // Verify-on-mount when the code arrived via the QR/link. Ref-guarded so Strict Mode's
-  // double invocation issues a single claim. The typed-code path verifies from its submit
-  // handler instead, so no effect covers it.
-  const verifiedRef = useRef(false)
+  // The lane preserves the initial claim across Strict Mode's effect replay.
   useEffect(() => {
-    if (!initialCode || verifiedRef.current) {
-      return
+    if (initialCode) {
+      void verify(initialCode)
     }
-    verifiedRef.current = true
-    void verify(initialCode)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot claim keyed by the URL code
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the content is keyed by the URL code
   }, [initialCode])
 
   const submitCode = (event: FormEvent) => {
@@ -105,14 +113,25 @@ const useDeviceApproval = (authClient: AuthClient, initialCode: string) => {
   }
 
   const runAction = async (action: 'approve' | 'deny') => {
-    dispatch({ type: 'SUBMIT_STARTED', action })
-    const call = action === 'approve' ? approveDeviceCode : denyDeviceCode
-    const result = await call(authClient, state.userCode)
-    if (!result.ok) {
-      dispatch({ type: 'FAILED', error: result })
+    const attempt = operation.begin()
+    if (!attempt) {
       return
     }
-    dispatch({ type: 'SETTLED', status: action === 'approve' ? 'approved' : 'denied' })
+    dispatch({ type: 'SUBMIT_STARTED', action })
+    try {
+      const call = action === 'approve' ? approveDeviceCode : denyDeviceCode
+      const result = await call(authClient, state.userCode)
+      if (!attempt.isCurrent()) {
+        return
+      }
+      if (!result.ok) {
+        dispatch({ type: 'FAILED', error: result })
+        return
+      }
+      dispatch({ type: 'SETTLED', status: action === 'approve' ? 'approved' : 'denied' })
+    } finally {
+      attempt.finish()
+    }
   }
 
   return {
@@ -121,7 +140,10 @@ const useDeviceApproval = (authClient: AuthClient, initialCode: string) => {
     submitCode,
     approve: () => runAction('approve'),
     deny: () => runAction('deny'),
-    reset: () => dispatch({ type: 'RESET' }),
+    reset: () => {
+      operation.cancel()
+      dispatch({ type: 'RESET' })
+    },
   }
 }
 

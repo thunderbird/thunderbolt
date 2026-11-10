@@ -36,7 +36,7 @@ type MobileSidebarProps = {
 
 // Keep in sync with the .mobile-sidebar-popup opacity transition in
 // index.css — the foreground slide and the popup fade are one animation.
-const drawerTransition = { duration: 0.3, ease: [0.22, 1, 0.36, 1] } as const
+const drawerTransition = { duration: 0.2, ease: [0.22, 1, 0.36, 1] } as const
 const instantTransition = { duration: 0 } as const
 /** Foreground travel in px before a touch drag counts as opening the sidebar. */
 const swipeActivationDistance = 8

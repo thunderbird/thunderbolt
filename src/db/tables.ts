@@ -332,7 +332,7 @@ export const agentsTable = sqliteTable(
     icon: text('icon'),
     enabled: integer('enabled').default(1).notNull(),
     deletedAt: text('deleted_at'),
-    userId: text('user_id').notNull(),
+    userId: text('user_id'),
   },
   (table) => [
     index('idx_agents_active')

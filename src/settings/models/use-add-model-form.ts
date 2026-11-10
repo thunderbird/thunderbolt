@@ -20,6 +20,7 @@ import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
 import { getAllModels, getAvailableModels, updateSettings } from '@/dal'
 import { useLocalProviders } from '@/hooks/use-local-providers'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
@@ -120,6 +121,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
   const [state, dispatch] = useReducer(addModelReducer, initialState)
   const { selectedModelId, submitError } = state
   const catalog = useModelCatalog()
+  const submission = useAsyncAttempt()
   const form = useForm<AddModelFormValues>({
     resolver: zodResolver(createAddModelFormSchema(i18n)),
     mode: 'onChange',
@@ -143,6 +145,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
   useAutoCatalogFetch({ armed: isOpen, request: catalogRequest, catalog })
 
   const reset = () => {
+    submission.cancel()
     form.reset()
     form.clearErrors()
     connection.reset()
@@ -226,10 +229,6 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       }
       return getAvailableModels(db)
     },
-    onMutate: () => {
-      onMutationStart?.()
-      dispatch({ type: 'MUTATION_STARTED' })
-    },
     onSuccess: async (models, values) => {
       if (values.signal?.aborted) {
         return
@@ -239,27 +238,43 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       if (isStandalone) {
         await queryClient.invalidateQueries({ queryKey: ['settings'] })
       }
-      if (values.signal?.aborted) {
-        return
-      }
-      close()
-      onSaved?.()
-    },
-    onError: (_error, values) => {
-      if (values.signal?.aborted) {
-        return
-      }
-      // Database errors can include bound API keys and OAuth tokens.
-      console.error('Failed to add the model.')
-      dispatch({ type: 'MUTATION_FAILED' })
     },
   })
 
   const resolveModelId = (values: AddModelFormValues) =>
     selectedModelId === 'custom' && values.customModel ? values.customModel : values.model
 
-  const submit = (values: AddModelFormValues) => {
-    addMutation.mutate({ ...values, model: resolveModelId(values) })
+  const saveModel = async (values: Parameters<typeof addMutation.mutateAsync>[0]) => {
+    const attempt = submission.begin()
+    if (!attempt) {
+      return
+    }
+    try {
+      onMutationStart?.()
+      dispatch({ type: 'MUTATION_STARTED' })
+      await addMutation.mutateAsync(values)
+      if (attempt.isCurrent() && !values.signal?.aborted) {
+        close()
+        onSaved?.()
+      }
+    } catch (error) {
+      if (attempt.isCurrent() && !values.signal?.aborted) {
+        // Database errors can include bound API keys and OAuth tokens.
+        console.error('Failed to add the model.')
+        dispatch({ type: 'MUTATION_FAILED' })
+      }
+      throw error
+    } finally {
+      attempt.finish()
+    }
+  }
+
+  const submit = async (values: AddModelFormValues) => {
+    try {
+      await saveModel({ ...values, model: resolveModelId(values) })
+    } catch {
+      // saveModel surfaces the failure in the form; consume it at the UI event boundary.
+    }
   }
 
   const testConnection = async () => {
@@ -335,7 +350,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
     toolSupport: connection.toolSupport,
     submitError,
     onSubmit: submit,
-    saveModel: addMutation.mutateAsync,
+    saveModel,
     onCancel: close,
     onProviderChange: changeProvider,
     onCatalogInvalidated: catalog.invalidateCatalog,
@@ -345,6 +360,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
     resetForm: reset,
     /** Clears leftover probe/error state when the add panel opens. */
     prepareForOpen: () => {
+      submission.cancel()
       connection.reset()
       dispatch({ type: 'PANEL_OPENED' })
     },

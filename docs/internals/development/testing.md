@@ -67,7 +67,7 @@ checkouts use this configuration; an old checkout can otherwise reinstall its ol
 The app's in-browser adapter around the npm `@earendil-works/pi-agent-core` package, not that package itself. Its nested unit tests sit outside frontend discovery, so they are intentionally **not** in `bun run test`.
 
 - `bun run test:agent-core` (or `test:agent-core:5x` for the stability gate) runs the unit tests. CI's `agent-core` job in [`ci.yml`](../../../.github/workflows/ci.yml) runs the 5x gate and browser check when the module, dependencies, build configuration, browser check, or workflow changes.
-- The CLI imports the npm Pi package directly, plus the OpenAI-compatible and confidential-model builders and receipt lifecycle from `shared/agent-core`. Its integration coverage stays in the CLI suite.
+- The CLI imports the npm Pi package directly, plus the OpenAI-compatible and confidential-model builders from `shared/agent-core`. Its integration coverage stays in the CLI suite.
 
 `test:agent-core:browser` builds into a temp directory, imports the emitted chunk in both engines (with and without native iterator helpers), runs two turns through the OpenRouter, Thunderbolt and confidential-model harness paths on injected SSE responses, then checks OPFS data survives reload. It is a dependency/runtime regression check, not authenticated-provider or native-device coverage.
 
@@ -203,6 +203,7 @@ Check [`src/test-utils/`](../../../src/test-utils) first; most cases that tempt 
 | `@/test-utils/test-provider`              | `createTestProvider`, `createTestProviderWithCache`                                               | The whole provider stack (database, PowerSync mock, React Query, HTTP client) as a `render` wrapper      |
 | `@/test-utils/powersync-mock`             | `PowerSyncMockProvider`, `createPowerSyncMockWithReactivity`                                      | PowerSync context without a database, plus a reactivity mock that replays table updates                  |
 | `@/test-utils/powersync-reactivity-test`  | `renderWithReactivity`, `waitForElement`                                                          | Rendering against that reactivity mock; `waitForElement` polls the fake clock instead of `waitFor`       |
+| `@/test-utils/powersync-query-plan`       | `getPowerSyncQueryPlan`, `getTableReads`                                                          | Asserting a DAL query reads synced tables through an index, not a full JSON-view scan                    |
 | `@/test-utils/react-query`                | `createQueryTestWrapper`, `createQueryTestWrapperWithCache`                                       | Hooks that only need a `QueryClient` (plus PowerSync/database when available)                            |
 | `@/test-utils/http-client`                | `createMockHttpClient`, `mockLocationData`                                                        | An `HttpClient` that answers with canned data; inject it instead of mocking `@/lib/http`                 |
 | `@/test-utils/http-client-spy`            | `createSpyHttpClient`, `jsonResponse`                                                             | Asserting on the requests a caller makes                                                                 |
@@ -343,6 +344,8 @@ On Linux, start and migrate PostgreSQL first, then start PowerSync using [`night
 ### Native app smoke
 
 The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
+
+Pull requests never run these jobs. To run them on a branch, dispatch the workflow with `gh workflow run nightly.yml --ref <branch>`: off `main` only `native-ios` and `native-linux` run, and no failure notification goes out. Maestro matches what the iOS accessibility tree exposes, and there an `aria-label` replaces the element's text, so a control whose label differs from the text it shows can be found only by the label.
 
 The fake provider binds to IPv4 loopback (`127.0.0.1`). Binding to `localhost`
 can select `::1` on Linux while the Bun backend connects over IPv4. The scoped

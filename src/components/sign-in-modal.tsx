@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useAppName } from '@/lib/branding-selectors'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
   const appName = useAppName()
   const [step, setStep] = useState<'email' | 'otp'>('email')
   const goBackRef = useRef<(() => void) | null>(null)
+  const { isMobile } = useIsMobile()
 
   const handleClose = () => {
     onOpenChange(false)
@@ -86,6 +88,7 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
     <ResponsiveModal
       open={open}
       className={connectionModalSurfaceClass}
+      showCloseButton={!(isMobile && step === 'otp')}
       onOpenChange={(open) => {
         if (!open) {
           setStep('email')

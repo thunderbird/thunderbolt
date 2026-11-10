@@ -11,14 +11,12 @@
 
 import { describe, expect, it } from 'bun:test'
 import * as fsp from '@zenfs/core/promises'
-import { inferenceUsageReceiptHeader } from '../inference-usage.ts'
 import {
   buildAppHarness,
   removeAgentWorkspace,
   workspaceDirFor,
   writeAgentWorkspaceFiles,
 } from './build-app-harness.ts'
-import { createReceiptLifecycle } from './confidential-model.ts'
 
 describe('workspaceDirFor', () => {
   it('roots a UUID-shaped thread under /workspace', () => {
@@ -88,14 +86,7 @@ describe('writeAgentWorkspaceFiles', () => {
 })
 
 describe('buildAppHarness confidential model', () => {
-  it('attaches the receipt lifecycle to the harness terminal message', async () => {
-    const submitted: unknown[] = []
-    const receipts = createReceiptLifecycle({
-      submit: async (usage) => {
-        submitted.push(usage)
-      },
-      reportError: () => {},
-    })
+  it('runs a confidential model turn to its terminal message', async () => {
     const fetch = async (): Promise<Response> =>
       new Response(
         [
@@ -104,12 +95,7 @@ describe('buildAppHarness confidential model', () => {
           'data: [DONE]',
           '',
         ].join('\n\n'),
-        {
-          headers: {
-            'content-type': 'text/event-stream',
-            [inferenceUsageReceiptHeader]: 'signed-receipt',
-          },
-        },
+        { headers: { 'content-type': 'text/event-stream' } },
       )
     const harness = await buildAppHarness({
       model: {
@@ -120,7 +106,6 @@ describe('buildAppHarness confidential model', () => {
         baseURL: 'https://cloud.example/v1/tinfoil',
         apiKey: 'placeholder',
         fetch,
-        receipts,
         reasoning: true,
         contextWindow: 131_072,
         supportsImages: false,
@@ -131,6 +116,5 @@ describe('buildAppHarness confidential model', () => {
     })
 
     expect((await harness.prompt('hello')).stopReason).toBe('stop')
-    expect(submitted).toEqual([{ receipt: 'signed-receipt', promptTokens: 4, completionTokens: 1, totalTokens: 5 }])
   })
 })

@@ -17,7 +17,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatThreadsTable, projectsTable } from '../db/tables'
 import { nowIso } from '../lib/utils'
 import type { Project } from '../types'
-import { getChatActivityQuery } from './chat-activity-query'
+import { getChatActivityQuery, getChatLastActivityId } from './chat-activity-query'
 
 export const maxProjectNameLength = 100
 export const maxProjectInstructionsLength = 20_000
@@ -60,15 +60,17 @@ const assertValidName = (name: string): string => {
 }
 
 /** Pinned projects first, then latest live chat activity, with project creation as the floor. */
-const getAllProjectsQuery = (db: AnyDrizzleDatabase) => {
-  const chatActivity = getChatActivityQuery(db).as('project_chat_activity')
-  const lastActivityId = sql<string>`max(${projectsTable.id}, coalesce(max(${chatActivity.lastActivityId}), ${projectsTable.id}))`
+export const getAllProjectsQuery = (db: AnyDrizzleDatabase) => {
+  // Correlated per project so the chat lookup uses PowerSync's project index instead of scanning every chat.
+  const latestChatActivity = db
+    .select({ id: sql<string>`max(${getChatLastActivityId(db)})` })
+    .from(chatThreadsTable)
+    .where(and(eq(chatThreadsTable.projectId, projectsTable.id), isNull(chatThreadsTable.deletedAt)))
+  const lastActivityId = sql<string>`max(${projectsTable.id}, coalesce((${latestChatActivity}), ${projectsTable.id}))`
   return db
     .select(getTableColumns(projectsTable))
     .from(projectsTable)
-    .leftJoin(chatActivity, eq(chatActivity.projectId, projectsTable.id))
     .where(isNull(projectsTable.deletedAt))
-    .groupBy(projectsTable.id)
     .orderBy(
       // NULL pin orders sort first in SQLite unless explicitly placed last.
       sql`CASE WHEN ${projectsTable.pinnedOrder} IS NULL THEN 1 ELSE 0 END`,

@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestSettings } from '@/test-utils/settings'
-import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModelId, defaultModelImageSupport, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { noBrandingAssets, type BrandingAssets } from '@/branding/assets'
 import type { BrandingFile } from '@/branding/download'
 import { createConfigRoutes } from './config'
@@ -246,6 +246,11 @@ describe('Config Routes', () => {
       const { body } = await fetchConfig(createTestSettings())
       expect(body.defaults.models.version).toBe(defaultModelsVersion)
       expect(body.defaults.models.data).toEqual(defaultModels)
+    })
+
+    it('ships the image-support declarations beside the models', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body.defaults.models.imageSupport).toEqual(defaultModelImageSupport)
     })
 
     it('publishes the default model id without private runtime fields', async () => {

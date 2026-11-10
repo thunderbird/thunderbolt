@@ -35,6 +35,7 @@ describe('createManagedDirectBinding — generic managed model', () => {
       baseUrl: 'https://catalog-controlled.example/v1',
     } satisfies SharedModel & { readonly baseUrl: string }
     const binding = await createManagedDirectBinding({
+      supportsImages: true,
       credential: sessionCredential(),
       model: catalogWithForbiddenOrigin,
       observeResponse: async () => {},
@@ -70,16 +71,13 @@ describe('createManagedDirectBinding — generic managed model', () => {
     })
   })
 
-  test.each([['anthropic', ['text', 'image']], [null, ['text']]] as const)('maps image support from catalog vendor %s', async (vendor, input) => {
-    const imageModel: SharedModel = {
-      ...futureDirectModel,
-      vendor,
-    }
+  test.each([[true, ['text', 'image']], [false, ['text']]] as const)('maps supportsImages %s to the Pi input', async (supportsImages, input) => {
     const binding = await createManagedDirectBinding({
       credential: patCredential(),
-      model: imageModel,
+      model: futureDirectModel,
+      supportsImages,
       observeResponse: async () => {},
-      fetchFn: async () => successfulCompletion(imageModel.model),
+      fetchFn: async () => successfulCompletion(futureDirectModel.model),
     })
 
     expect(binding.piModel.input).toEqual([...input])
@@ -90,6 +88,7 @@ describe('createManagedDirectBinding — generic managed model', () => {
 
     await expect(
       createManagedDirectBinding({
+        supportsImages: true,
         credential: patCredential(),
         model: confidential,
         observeResponse: async () => {},
@@ -104,6 +103,7 @@ describe('createManagedDirectBinding — credential isolation', () => {
     let requests = 0
     try {
       const binding = await createManagedDirectBinding({
+        supportsImages: true,
         credential: patCredential(),
         model: futureDirectModel,
         observeResponse: async () => {
@@ -150,6 +150,7 @@ describe('createManagedDirectBinding — credential isolation', () => {
 
       try {
         const binding = await createManagedDirectBinding({
+          supportsImages: true,
           credential: { ...credential, backendUrl: `http://127.0.0.1:${source.port}` },
           model: futureDirectModel,
           observeResponse: async () => {},
@@ -171,6 +172,7 @@ describe('createManagedDirectBinding — credential isolation', () => {
   test('session requests emit only the stored Bearer credential', async () => {
     const requestHeaders: Headers[] = []
     const binding = await createManagedDirectBinding({
+      supportsImages: true,
       credential: sessionCredential(),
       model: futureDirectModel,
       observeResponse: async () => {},
@@ -191,6 +193,7 @@ describe('createManagedDirectBinding — credential isolation', () => {
   test('PAT requests remove the SDK Bearer header and emit only x-api-key', async () => {
     const requestHeaders: Headers[] = []
     const binding = await createManagedDirectBinding({
+      supportsImages: true,
       credential: patCredential(),
       model: futureDirectModel,
       observeResponse: async () => {},
@@ -211,6 +214,7 @@ describe('createManagedDirectBinding — credential isolation', () => {
   test('reports authenticated response evidence for session and PAT without owning persistence policy', async () => {
     const observedResponses: string[] = []
     const session = await createManagedDirectBinding({
+      supportsImages: true,
       credential: sessionCredential(),
       model: futureDirectModel,
       observeResponse: async (response) => {
@@ -219,6 +223,7 @@ describe('createManagedDirectBinding — credential isolation', () => {
       fetchFn: async () => failedCompletion(401),
     })
     const pat = await createManagedDirectBinding({
+      supportsImages: true,
       credential: patCredential(),
       model: futureDirectModel,
       observeResponse: async (response) => {
@@ -244,6 +249,7 @@ describe('createManagedDirectBinding — secure backend origin', () => {
 
     await expect(
       createManagedDirectBinding({
+        supportsImages: true,
         credential: sessionCredential(backendUrl),
         model: futureDirectModel,
         observeResponse: async () => {},
@@ -261,6 +267,7 @@ describe('createManagedDirectBinding — secure backend origin', () => {
   test('allows loopback HTTP and normalizes it to the backend inference endpoint', async () => {
     const urls: string[] = []
     const binding = await createManagedDirectBinding({
+      supportsImages: true,
       credential: patCredential('http://127.0.0.1:8000'),
       model: futureDirectModel,
       observeResponse: async () => {},
@@ -284,6 +291,7 @@ describe('createManagedDirectBinding — no fallback or replay', () => {
   ] as const)('%s failure makes exactly one inference request', async (_kind, status) => {
     const urls: string[] = []
     const binding = await createManagedDirectBinding({
+      supportsImages: true,
       credential: patCredential(),
       model: futureDirectModel,
       observeResponse: async () => {},
@@ -302,6 +310,7 @@ describe('createManagedDirectBinding — no fallback or replay', () => {
   test('network failure makes exactly one inference request', async () => {
     let requests = 0
     const binding = await createManagedDirectBinding({
+      supportsImages: true,
       credential: patCredential(),
       model: futureDirectModel,
       observeResponse: async () => {},
@@ -319,6 +328,7 @@ describe('createManagedDirectBinding — no fallback or replay', () => {
 
   test('exposes no-op attach and dispose lifecycle hooks because usage is backend-accounted', async () => {
     const binding = await createManagedDirectBinding({
+      supportsImages: true,
       credential: patCredential(),
       model: futureDirectModel,
       observeResponse: async () => {},

@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.154"
+version = "0.1.161"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -24,10 +24,10 @@ name = "thunderbolt"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2.6.0", features = [] }
+tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
-tauri = { version = "2.11.2", features = [
+tauri = { version = "2.12.5", features = [
     "tray-icon",
     "devtools",
     "unstable",            # Required for webview
@@ -54,7 +54,7 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
 tauri-plugin-deep-link = "2.4"
 tauri-plugin-haptics = "2.3"
-tauri-plugin-updater = "2.3"
+tauri-plugin-updater = "2.14.1"
 tauri-plugin-store = "2.4.3"
 # Native WebAuthn passkey ceremonies (iOS, macOS, Android, Windows); no-op stub on Linux.
 tauri-plugin-passkey = { path = "plugins/tauri-plugin-passkey" }

@@ -181,17 +181,29 @@ test.describe('PowerSync E2EE multi-device enrollment', () => {
     const device = await createIsolatedDevice(browser, 'windows')
     try {
       await loginViaConsumerOtp(device.page, email)
+      const envelopeRequests: string[] = []
+      device.page.on('request', (request) => {
+        if (request.method() === 'GET' && new URL(request.url()).pathname === '/v1/devices/me/envelope') {
+          envelopeRequests.push(request.url())
+        }
+      })
       const dialog = await startAdditionalDeviceSetup(device.page)
       const deviceId = await getDeviceId(device.page)
       await waitForDeviceState(userId, deviceId, (state) => state.approvalPending)
+      const requestsAtWaiting = envelopeRequests.length
+      await expect.poll(() => envelopeRequests.length).toBeGreaterThan(requestsAtWaiting)
 
       await dialog.getByRole('button', { name: 'Close' }).click()
       await expect(dialog).toBeHidden()
+      const requestsAtDismissal = envelopeRequests.length
       await waitForDeviceState(
         userId,
         deviceId,
         (state) => !state.trusted && !state.approvalPending && !state.hasEnvelope,
       )
+      // Observe two full three-second polling intervals after the modal has unmounted.
+      await device.page.waitForTimeout(6_500)
+      expect(envelopeRequests).toHaveLength(requestsAtDismissal)
     } finally {
       await device.context.close()
     }

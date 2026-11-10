@@ -32,8 +32,12 @@ Both jobs use the `qa-agent` environment and reuse the QA agent's secrets (see `
 token is limited to this repository with `contents: write` and `pull-requests: write`. A PR opened by the app runs
 CI; one opened with `GITHUB_TOKEN` would not.
 
-Each live run pushes a new branch, `docs-audit/YYYY-MM-DD-<run id>-<attempt>`, so it never overwrites commits a reviewer added to an
-earlier audit PR. Close a stale audit PR when a newer one supersedes it.
+Each live run pushes a new branch, `docs-audit/YYYY-MM-DD-<run id>-<attempt>`, so it never overwrites commits a
+reviewer added to an earlier audit PR.
+
+A run opens its PR even when an earlier audit PR is still open. Each run starts from `main`, so it does not see the
+open PR's fixes and can report the same issues again; the two PRs then conflict. Merge or close the older PR first,
+then rebase the newer one, or close it if the older one covered its fixes.
 
 ## Run it by hand
 

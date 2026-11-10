@@ -1112,8 +1112,8 @@ msgid "Connection failed"
 msgstr "Verbindung fehlgeschlagen"
 
 #: src/components/chat/attestation/attestation-modal.tsx
-msgid "Connection privacy"
-msgstr ""
+#~ msgid "Connection privacy"
+#~ msgstr ""
 
 #: src/components/chat/attestation/attestation-control.tsx
 msgid "Connection privacy: {label}"
@@ -1132,6 +1132,10 @@ msgstr "Verbindung erfolgreich!"
 msgid "Connection verified"
 msgstr ""
 
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection Verified"
+msgstr ""
+
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -1143,6 +1147,10 @@ msgstr "Verbindungen"
 #: src/components/app-error-screen.tsx
 msgid "Contact Support"
 msgstr "Support kontaktieren"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Content to send"
+msgstr "Zu sendende Inhalte"
 
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Context"
@@ -1242,6 +1250,10 @@ msgstr ""
 #: src/components/context-usage/context-usage-indicator.tsx
 #~ msgid "Could not compact context. Your chat history is safe. Please try again."
 #~ msgstr ""
+
+#: src/components/logout-modal.tsx
+msgid "Could not confirm sign-out. Please try again."
+msgstr "Die Abmeldung konnte nicht bestätigt werden. Versuchen Sie es erneut."
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -3435,7 +3447,7 @@ msgstr "In der Web-App ist ein Proxy erforderlich, um CORS-Einschränkungen des 
 msgid "Q3 planning"
 msgstr "Planung Q3"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Quit"
 msgstr "Beenden"
 
@@ -3676,6 +3688,10 @@ msgstr "Verbindung erneut versuchen"
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retrying…"
 msgstr "Neuer Versuch…"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
+msgstr "Prüfen Sie unten das Chatprotokoll und Ihre Notiz. Die automatische Schwärzung erkennt möglicherweise nicht alle vertraulichen Informationen."
 
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx
@@ -4018,7 +4034,7 @@ msgstr ""
 msgid "Shared instructions for project chats"
 msgstr "Gemeinsame Anweisungen für Chats in diesem Projekt"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Show"
 msgstr "Anzeigen"
 

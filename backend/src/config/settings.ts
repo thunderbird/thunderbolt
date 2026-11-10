@@ -6,7 +6,6 @@ import { maxAgentSteps } from '@/hosted-agent/limits'
 import type { PublicMiniApp } from '@shared/mini-app-registry'
 import { parseBranding, resolveAppName, type Branding } from '@shared/branding'
 import { z } from 'zod'
-import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import { httpUrlMessage, isHttpUrl, loopbackOrigin } from '@shared/url'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
@@ -25,7 +24,7 @@ const rpIdFromAppUrl = (appUrl: string): string => (URL.canParse(appUrl) ? new U
 /** WebAuthn forbids IP addresses as a Relying Party ID; it must be a domain name. */
 const isIpLiteral = (host: string): boolean => /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith('[')
 
-const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,X-Passkey-Challenge,${inferenceUsageReceiptHeader}`
+const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,X-Passkey-Challenge`
 
 /**
  * Settings schema for environment variables validation
@@ -386,6 +385,13 @@ const settingsSchema = z
     allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
+    if (data.monitoringToken && data.monitoringToken.length < 32) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'MONITORING_TOKEN must be at least 32 characters when set',
+        path: ['monitoringToken'],
+      })
+    }
     if (data.passkeyEnabled && (!data.passkeyRpId || isIpLiteral(data.passkeyRpId))) {
       ctx.addIssue({
         code: 'custom',

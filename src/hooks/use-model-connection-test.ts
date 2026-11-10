@@ -116,6 +116,7 @@ const connectionTestModel = (config: NormalizedConfig): Model => ({
   toolUsage: 1,
   isConfidential: 0,
   startWithReasoning: 0,
+  reasoningEffort: null,
   supportsParallelToolCalls: 1,
   contextWindow: null,
   deletedAt: null,

@@ -181,10 +181,10 @@ describe('SAML Integration', () => {
     })
 
     /**
-     * Complete a SAML sign-in in which the IdP signs a response for `email`. With `unsolicited`, the response
-     * carries no `InResponseTo`, no RelayState and no cookie, as when the login starts from the IdP dashboard.
+     * Start a SAML login in a fresh browser and sign the response for `email`. An unsolicited response
+     * has no `InResponseTo`, as when the login starts from the IdP dashboard.
      */
-    const signInThroughIdp = async (email: string, { unsolicited = false } = {}) => {
+    const startLogin = async (email: string, { unsolicited = false, assertionOnly = false } = {}) => {
       const { createAuth } = await import('./auth')
       const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
       const start = await app.handle(
@@ -195,18 +195,18 @@ describe('SAML Integration', () => {
         }),
       )
       const idpRedirect = new URL(((await start.json()) as { url: string }).url)
-      const cookie = start.headers
-        .getSetCookie()
-        .map((entry) => entry.split(';')[0])
-        .join('; ')
+      const setCookies = start.headers.getSetCookie()
+      const cookie = setCookies.map((entry) => entry.split(';')[0]).join('; ')
       const authnRequest = inflateRawSync(
         Buffer.from(idpRedirect.searchParams.get('SAMLRequest') ?? '', 'base64'),
       ).toString()
       const requestId = authnRequest.match(/ ID="([^"]+)"/)?.[1] ?? ''
       const acsUrl = authnRequest.match(/AssertionConsumerServiceURL="([^"]+)"/)?.[1] ?? ''
 
+      // samlify signs only the assertion for an SP that wants assertions signed, else the whole Response.
       const sp = samlify.ServiceProvider({
         entityID: baseSettings.samlEntityId,
+        wantAssertionsSigned: assertionOnly,
         assertionConsumerService: [{ Binding: samlify.Constants.namespace.binding.post, Location: acsUrl }],
       })
       const { context: samlResponse } = await idp.createLoginResponse(
@@ -215,17 +215,52 @@ describe('SAML Integration', () => {
         'post',
         { email },
       )
-
-      const headers = new Headers({ 'Content-Type': 'application/x-www-form-urlencoded' })
-      const form = new URLSearchParams({ SAMLResponse: samlResponse })
-      if (!unsolicited) {
-        headers.set('Cookie', cookie)
-        form.set('RelayState', idpRedirect.searchParams.get('RelayState') ?? '')
+      return {
+        app,
+        acsUrl,
+        setCookies,
+        cookie,
+        relayState: idpRedirect.searchParams.get('RelayState') ?? '',
+        samlResponse,
       }
+    }
 
-      const acs = await app.handle(new Request(acsUrl, { method: 'POST', headers, body: form }))
+    type Login = Awaited<ReturnType<typeof startLogin>>
+
+    /** Submit a signed response to the ACS, optionally with a Cookie header. */
+    const postToAcs = (login: Login, { cookie, relayState }: { cookie?: string; relayState?: string }) => {
+      const headers = new Headers({ 'Content-Type': 'application/x-www-form-urlencoded' })
+      const form = new URLSearchParams({ SAMLResponse: login.samlResponse })
+      if (cookie) {
+        headers.set('Cookie', cookie)
+      }
+      if (relayState) {
+        form.set('RelayState', relayState)
+      }
+      return login.app.handle(new Request(login.acsUrl, { method: 'POST', headers, body: form }))
+    }
+
+    /** Complete a SAML login in one browser. Unsolicited responses have no RelayState or cookie. */
+    const signInThroughIdp = async (email: string, { unsolicited = false } = {}) => {
+      const login = await startLogin(email, { unsolicited })
+      const acs = await postToAcs(login, unsolicited ? {} : login)
       return acs.headers.get('location')
     }
+
+    /** Build one browser's Cookie header after sequential logins, replacing earlier cookies with the same name. */
+    const cookieJar = (...logins: Login[]) =>
+      [
+        ...new Map(
+          logins.flatMap((login) =>
+            login.setCookies.map((entry) => entry.split(';')[0].split('=') as [string, string]),
+          ),
+        ),
+      ]
+        .map(([name, value]) => `${name}=${value}`)
+        .join('; ')
+
+    const setsSession = (response: Response) =>
+      response.headers.getSetCookie().some((entry) => entry.includes('session_token=') && !entry.includes('Max-Age=0'))
 
     const ssoAccountCount = (userId: string) =>
       db.$count(account, and(eq(account.userId, userId), eq(account.providerId, 'sso')))
@@ -253,6 +288,165 @@ describe('SAML Integration', () => {
 
       expect(await signInThroughIdp(email)).toContain('error=account_not_linked')
       expect(await ssoAccountCount(local.id)).toBe(0)
+    })
+
+    const attackerLogin = () => startLogin(`attacker-${crypto.randomUUID()}@example.com`)
+
+    describe('response from a login another browser started', () => {
+      it('is refused in a victim browser holding no cookie', async () => {
+        const attacker = await attackerLogin()
+
+        const acs = await postToAcs(attacker, { relayState: attacker.relayState })
+
+        expect(acs.headers.get('location')).toBe(`${baseSettings.appUrl}/?error=unsolicited_response`)
+        expect(setsSession(acs)).toBe(false)
+      })
+
+      it('is refused in a victim browser that has its own login under way, which still completes', async () => {
+        const victimEmail = `victim-${crypto.randomUUID()}@example.com`
+        const victim = await startLogin(victimEmail)
+        const attacker = await attackerLogin()
+
+        const forged = await postToAcs(attacker, { cookie: victim.cookie, relayState: attacker.relayState })
+        expect(forged.headers.get('location')).toContain('error=unsolicited_response')
+        expect(setsSession(forged)).toBe(false)
+
+        const own = await postToAcs(victim, victim)
+        expect(own.headers.get('location')).toBe(callbackURL)
+        expect(setsSession(own)).toBe(true)
+      })
+
+      it('is refused with its RelayState stripped, though its InResponseTo is still valid', async () => {
+        const attacker = await attackerLogin()
+
+        const acs = await postToAcs(attacker, {})
+
+        expect(acs.headers.get('location')).toContain('error=unsolicited_response')
+        expect(setsSession(acs)).toBe(false)
+      })
+    })
+
+    describe('when IdP-initiated login is enabled', () => {
+      beforeEach(() => {
+        getSettingsSpy.mockReturnValue({ ...baseSettings, samlCert: idpCert, samlAllowIdpInitiated: true })
+      })
+
+      it('still refuses a response whose RelayState this browser holds no cookie for', async () => {
+        const attacker = await attackerLogin()
+
+        const acs = await postToAcs(attacker, { relayState: attacker.relayState })
+
+        expect(acs.headers.get('location')).toContain('error=unsolicited_response')
+        expect(setsSession(acs)).toBe(false)
+      })
+
+      it('signs in a response that started in this browser and was signed on the assertion only', async () => {
+        const login = await startLogin(`assertion-${crypto.randomUUID()}@example.com`, { assertionOnly: true })
+
+        expect(setsSession(await postToAcs(login, login))).toBe(true)
+      })
+
+      // The opt-in accepts responses without RelayState, including stripped SP responses. These tests
+      // record that residual login-CSRF risk.
+      it("accepts another browser's response with RelayState stripped, the opt-in's risk", async () => {
+        const attacker = await attackerLogin()
+
+        expect(setsSession(await postToAcs(attacker, {}))).toBe(true)
+      })
+
+      it('accepts an assertion-only response with RelayState and the Response InResponseTo stripped', async () => {
+        const attacker = await startLogin(`attacker-${crypto.randomUUID()}@example.com`, { assertionOnly: true })
+        const xml = Buffer.from(attacker.samlResponse, 'base64').toString()
+        const edited = xml.replace(/(<samlp:Response[^>]*?) InResponseTo="[^"]*"/, '$1')
+        expect(edited).not.toBe(xml)
+
+        const acs = await postToAcs({ ...attacker, samlResponse: Buffer.from(edited).toString('base64') }, {})
+
+        expect(setsSession(acs)).toBe(true)
+      })
+    })
+
+    it('completes both logins a browser started in two tabs', async () => {
+      const first = await startLogin(`tab-one-${crypto.randomUUID()}@example.com`)
+      const second = await startLogin(`tab-two-${crypto.randomUUID()}@example.com`)
+      const browser = cookieJar(first, second)
+
+      const firstAcs = await postToAcs(first, { cookie: browser, relayState: first.relayState })
+      const secondAcs = await postToAcs(second, { cookie: browser, relayState: second.relayState })
+
+      expect(firstAcs.headers.get('location')).toBe(callbackURL)
+      expect(setsSession(firstAcs)).toBe(true)
+      expect(secondAcs.headers.get('location')).toBe(callbackURL)
+      expect(setsSession(secondAcs)).toBe(true)
+    })
+
+    it('refuses a response replayed in the browser that already used it', async () => {
+      const login = await startLogin(`replay-${crypto.randomUUID()}@example.com`)
+      expect(setsSession(await postToAcs(login, login))).toBe(true)
+
+      const replay = await postToAcs(login, login)
+
+      expect(replay.headers.get('location')).toContain('error=')
+      expect(setsSession(replay)).toBe(false)
+    })
+
+    describe('login cookie', () => {
+      const useHttps = () =>
+        getSettingsSpy.mockReturnValue({ ...baseSettings, samlCert: idpCert, betterAuthUrl: 'https://api.example.com' })
+      const loginCookie = (login: Login) =>
+        login.setCookies.find((entry) => entry.includes(`thunderbolt_saml_login_${login.relayState}=`))
+
+      it('is a host-only __Host- cookie that reaches the cross-site ACS POST over HTTPS', async () => {
+        useHttps()
+        const login = await startLogin('cookie@example.com')
+        const cookie = loginCookie(login)
+
+        expect(cookie).toStartWith(`__Host-thunderbolt_saml_login_${login.relayState}=`)
+        expect(cookie).toContain('Path=/')
+        expect(cookie).toContain('Secure')
+        expect(cookie).toContain('SameSite=None')
+        expect(cookie).toContain('HttpOnly')
+        expect(cookie).toContain('Max-Age=300')
+        expect(cookie).not.toContain('Domain')
+      })
+
+      it('completes an HTTPS login whose browser returns the __Host- cookie', async () => {
+        useHttps()
+        const login = await startLogin(`https-${crypto.randomUUID()}@example.com`)
+
+        expect(setsSession(await postToAcs(login, login))).toBe(true)
+      })
+
+      it('refuses over HTTPS the unprefixed names a sibling subdomain could plant', async () => {
+        useHttps()
+        const attacker = await attackerLogin()
+        const planted = [
+          `thunderbolt_saml_login_${attacker.relayState}=1`,
+          `__Secure-thunderbolt_saml_login_${attacker.relayState}=1`,
+          `__Secure-better-auth.thunderbolt_saml_login_${attacker.relayState}=1`,
+        ].join('; ')
+
+        const acs = await postToAcs(attacker, { cookie: planted, relayState: attacker.relayState })
+
+        expect(acs.headers.get('location')).toContain('error=unsolicited_response')
+        expect(setsSession(acs)).toBe(false)
+      })
+
+      it('is a host-only Lax cookie over plain HTTP, where browsers drop SameSite=None', async () => {
+        const login = await startLogin('cookie@example.com')
+        const cookie = loginCookie(login)
+
+        expect(cookie).toStartWith(`thunderbolt_saml_login_${login.relayState}=`)
+        expect(cookie).toContain('SameSite=Lax')
+        expect(cookie).toContain('Max-Age=300')
+        expect(cookie).not.toContain('Domain')
+      })
+
+      it("leaves Better Auth's own relay_state cookie at its defaults", async () => {
+        const login = await startLogin('cookie@example.com')
+
+        expect(login.setCookies.find((entry) => entry.startsWith('better-auth.relay_state='))).toContain('Max-Age=300')
+      })
     })
 
     describe('response with no matching login request', () => {

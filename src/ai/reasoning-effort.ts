@@ -7,12 +7,17 @@ import { managedAnthropicCatalogId } from './managed-model-id'
 import { http } from '@/lib/http'
 import type { Model } from '@/types'
 import { getSettings } from '@/dal/settings'
+import { getModel } from '@/dal/models'
+import { getModelProviderOptionsQuery } from '@/dal/model-profiles'
+import { resolveProfileReasoningEffort } from './profile-thinking-level'
 import { getDb } from '@/db/database'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import {
   noReasoningEffort,
   isReasoningEffort,
   openRouterReasoningCapabilities,
   reasoningEffortSettingKey,
+  preferredReasoningEffort,
   resolveReasoningEffort,
   type ReasoningCapabilities,
 } from '@shared/reasoning-effort'
@@ -71,26 +76,71 @@ export const createReasoningCapabilitiesLoader = () => {
 
 export const loadReasoningCapabilities = createReasoningCapabilitiesLoader()
 
+type PreferenceWriteQueue = { byModel: Map<string, Promise<void>>; tail?: Promise<void> }
+const pendingWrites = new WeakMap<AnyDrizzleDatabase, PreferenceWriteQueue>()
+
+/** Serialize preference transactions across chats; sends await only their model's latest write. */
+export const queueReasoningEffortWrite = (
+  db: AnyDrizzleDatabase,
+  modelId: string,
+  save: () => Promise<void>,
+): Promise<void> => {
+  const queue: PreferenceWriteQueue = pendingWrites.get(db) ?? { byModel: new Map() }
+  pendingWrites.set(db, queue)
+  const previous = queue.tail
+  const write = (async () => {
+    await Promise.allSettled([previous])
+    await save()
+  })()
+  queue.tail = write
+  queue.byModel.set(modelId, write)
+  const clear = () => {
+    if (queue.byModel.get(modelId) === write) {
+      queue.byModel.delete(modelId)
+    }
+    if (queue.tail === write) {
+      pendingWrites.delete(db)
+    }
+  }
+  void write.then(clear, clear)
+  return write
+}
+
 /** Read at the send boundary, so reloads and other devices use the same saved preference. */
 export const getChatReasoningEffort = async (
   threadId: string,
   model: Model,
   loadCapabilities = loadReasoningCapabilities,
 ) => {
-  const key = reasoningEffortSettingKey(threadId, model.id)
-  const settings = await getSettings(getDb(), { [key]: String }, { camelCase: false })
-  if (!isReasoningEffort(settings[key])) {
-    return undefined
-  }
+  const db = getDb()
+  await pendingWrites.get(db)?.byModel.get(model.id)
+  const legacyKey = reasoningEffortSettingKey(threadId, model.id)
+  const [savedModel, settings, profile] = await Promise.all([
+    getModel(db, model.id),
+    getSettings(db, { [legacyKey]: String }, { camelCase: false }),
+    getModelProviderOptionsQuery(db, model.id).get(),
+  ])
+  const saved = savedModel?.reasoningEffort ?? settings[legacyKey]
   try {
-    return resolveReasoningEffort(settings[key], await loadCapabilities(model))
+    const capabilities = await loadCapabilities(model)
+    const preference = resolveReasoningEffort(saved, capabilities)
+    const profileEffort = resolveProfileReasoningEffort(profile?.providerOptions, capabilities)
+    // Leave configured profile options untouched unless the user chose an override.
+    // This preserves native options such as an exact Anthropic thinking budget.
+    if (preference !== undefined || profileEffort !== undefined) {
+      return preference
+    }
+    return preferredReasoningEffort(undefined, capabilities)
   } catch (error) {
     if (model.provider !== 'openrouter' && model.provider !== 'tinfoil') {
       throw error
     }
     // Discovery is advisory: preserve the user's explicit choice during a cold
     // catalog outage and let the inference endpoint validate it.
-    console.warn(`Could not discover ${model.provider} reasoning capabilities; keeping the saved effort`, error)
-    return settings[key]
+    console.warn(
+      `Could not discover ${model.provider} reasoning capabilities; using the saved effort if available`,
+      error,
+    )
+    return isReasoningEffort(saved) ? saved : undefined
   }
 }

@@ -18,6 +18,34 @@ import {
 } from './settings'
 
 describe('Config Settings', () => {
+  describe('monitoring token', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.MONITORING_TOKEN
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.MONITORING_TOKEN
+      } else {
+        process.env.MONITORING_TOKEN = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it.each(['', 'x'.repeat(32)])('accepts disabled monitoring or a 32-character token (%j)', (token) => {
+      process.env.MONITORING_TOKEN = token
+      expect(getSettings().monitoringToken).toBe(token)
+    })
+
+    it('rejects a nonempty 31-character monitoring token', () => {
+      process.env.MONITORING_TOKEN = 'x'.repeat(31)
+      expect(() => getSettings()).toThrow('MONITORING_TOKEN must be at least 32 characters when set')
+    })
+  })
+
   describe('Anthropic base URL', () => {
     let savedEnv: string | undefined
 
@@ -209,13 +237,12 @@ describe('Config Settings', () => {
       expect(isOriginAllowed('http://localhost:1420', settings)).toBe(true)
     })
 
-    it('should expose proxy timing, server timing, and inference receipts to cross-origin clients by default', () => {
+    it('should expose proxy timing and server timing to cross-origin clients by default', () => {
       delete process.env.CORS_EXPOSE_HEADERS
       const settings = getSettings()
 
       expect(settings.corsExposeHeaders.split(',')).toContain('X-Proxy-Timing')
       expect(settings.corsExposeHeaders.split(',')).toContain('Server-Timing')
-      expect(settings.corsExposeHeaders.split(',')).toContain('X-Inference-Usage-Receipt')
       expect(settings.corsExposeHeaders.split(',')).not.toContain('Timing-Allow-Origin')
     })
 

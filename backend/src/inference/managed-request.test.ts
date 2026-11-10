@@ -137,15 +137,27 @@ describe('createUsageCallbacks', () => {
     expect(telemetry.onUsageMissing).toHaveBeenCalledTimes(1)
   })
 
-  it('reports a failed ledger write instead of throwing', async () => {
+  it('retries a failed ledger write with the same event ID', async () => {
+    const telemetry = createTelemetry()
+    const recordUsage = mock<typeof recordInferenceUsage>(async () => 'inserted')
+    recordUsage.mockRejectedValueOnce(new Error('connection reset'))
+    await recordLanguageModelUsage(createCallbacks(telemetry, recordUsage), usage(10))
+    expect(recordUsage).toHaveBeenCalledTimes(2)
+    expect(recordUsage.mock.calls.map(([, input]) => input.id)).toEqual(['event-1', 'event-1'])
+    expect(telemetry.onUsageRecording).toHaveBeenCalledTimes(1)
+    expect(telemetry.onUsageRecorded).toHaveBeenCalledWith('inserted')
+    expect(telemetry.onUsageError).not.toHaveBeenCalled()
+  })
+
+  it('reports a ledger write that fails three times instead of throwing', async () => {
     const telemetry = createTelemetry()
     const failure = new Error('insert failed')
-    await recordLanguageModelUsage(
-      createCallbacks(telemetry, async () => {
-        throw failure
-      }),
-      usage(10),
-    )
+    const recordUsage = mock<typeof recordInferenceUsage>(async () => {
+      throw failure
+    })
+    await recordLanguageModelUsage(createCallbacks(telemetry, recordUsage), usage(10))
+    expect(recordUsage).toHaveBeenCalledTimes(3)
+    expect(telemetry.onUsageError).toHaveBeenCalledTimes(1)
     expect(telemetry.onUsageError).toHaveBeenCalledWith(failure)
     expect(telemetry.onUsageRecorded).not.toHaveBeenCalled()
   })

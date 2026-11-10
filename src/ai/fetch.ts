@@ -903,10 +903,14 @@ export const aiFetchStreamingResponse = async ({
       reasoningEffort !== undefined &&
       effortProvider === 'anthropic' &&
       (await loadReasoningCapabilities(model)).kind === 'toggle'
-    const providerOptions =
-      reasoningEffort === undefined
-        ? { [providerOptionsKey]: rawOptions }
-        : { [effortProvider]: reasoningProviderOptions(rawOptions, effortProvider, reasoningEffort, toggleThinking) }
+    const providerOptions = {
+      [reasoningEffort === undefined ? providerOptionsKey : effortProvider]: reasoningProviderOptions(
+        rawOptions,
+        effortProvider,
+        reasoningEffort,
+        toggleThinking,
+      ),
+    }
 
     /**
      * Run a single streamText attempt and return the result along with metadata

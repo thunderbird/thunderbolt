@@ -23,7 +23,10 @@ type MockAuthClientOptions = {
     data: { user: { id: string } } | null
   }>
   sendVerificationOtp?: (options: { email: string; type: string }) => Promise<{ error: { message: string } | null }>
-  signOut?: () => Promise<void>
+  signOut?: () => Promise<
+    | { data: { success: boolean }; error: null }
+    | { data: null; error: { message: string; status: number; statusText: string } }
+  >
   getSession?: () => Promise<{ data: unknown; error: { message: string } | null }>
   /**
    * Stand-in for the Better Auth client's `$fetch`. Lets tests drive raw endpoint
@@ -43,7 +46,7 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
     signInEmailOtp = async () => ({ error: null }),
     signInAnonymous = async () => ({ error: null, data: { user: { id: 'anon-mock' } } }),
     sendVerificationOtp = async () => ({ error: null }),
-    signOut = async () => {},
+    signOut = async () => ({ data: { success: true }, error: null }),
     getSession = async () => ({ data: session, error: null }),
     fetch = async () => ({ data: null, error: null }),
   } = options

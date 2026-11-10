@@ -285,6 +285,36 @@ describe('powersync upload gate (applyOperation)', () => {
   })
 
   describe('PATCH', () => {
+    it('persists model effort and scopes it to the owning account', async () => {
+      const id = 'model-effort'
+      const first = 'high'
+      const second = 'medium'
+      expect(
+        await applyOperation(db, { op: 'PUT', type: 'models', id, data: { reasoning_effort: first } }, userId),
+      ).toBe(true)
+      const readModel = async () =>
+        (
+          await db
+            .select()
+            .from(modelsTable)
+            .where(and(eq(modelsTable.id, id), eq(modelsTable.userId, userId)))
+        )[0]
+      expect((await readModel()).reasoningEffort).toBe(first)
+
+      await applyOperation(db, { op: 'PATCH', type: 'models', id, data: { reasoning_effort: second } }, otherUserId)
+      expect((await readModel()).reasoningEffort).toBe(first)
+
+      expect(
+        await applyOperation(db, { op: 'PATCH', type: 'models', id, data: { reasoning_effort: second } }, userId),
+      ).toBe(true)
+      expect((await readModel()).reasoningEffort).toBe(second)
+
+      expect(
+        await applyOperation(db, { op: 'PATCH', type: 'models', id, data: { reasoning_effort: null } }, userId),
+      ).toBe(true)
+      expect((await readModel()).reasoningEffort).toBeNull()
+    })
+
     it('returns true (drainable no-op) for empty data and leaves the target untouched', async () => {
       await applyOperation(db, { op: 'PUT', type: 'models', id: 'm-empty', data: { name: 'Keep' } }, userId)
       const ok = await applyOperation(db, { op: 'PATCH', type: 'models', id: 'm-empty', data: {} }, userId)

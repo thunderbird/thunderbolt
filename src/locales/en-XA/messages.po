@@ -1112,8 +1112,8 @@ msgid "Connection failed"
 msgstr ""
 
 #: src/components/chat/attestation/attestation-modal.tsx
-msgid "Connection privacy"
-msgstr ""
+#~ msgid "Connection privacy"
+#~ msgstr ""
 
 #: src/components/chat/attestation/attestation-control.tsx
 msgid "Connection privacy: {label}"
@@ -1132,6 +1132,10 @@ msgstr ""
 msgid "Connection verified"
 msgstr ""
 
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection Verified"
+msgstr ""
+
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -1142,6 +1146,10 @@ msgstr ""
 
 #: src/components/app-error-screen.tsx
 msgid "Contact Support"
+msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Content to send"
 msgstr ""
 
 #: src/components/context-usage/retained-context-message.tsx
@@ -1242,6 +1250,10 @@ msgstr ""
 #: src/components/context-usage/context-usage-indicator.tsx
 #~ msgid "Could not compact context. Your chat history is safe. Please try again."
 #~ msgstr ""
+
+#: src/components/logout-modal.tsx
+msgid "Could not confirm sign-out. Please try again."
+msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -3435,7 +3447,7 @@ msgstr ""
 msgid "Q3 planning"
 msgstr ""
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Quit"
 msgstr ""
 
@@ -3675,6 +3687,10 @@ msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retrying…"
+msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
@@ -4018,7 +4034,7 @@ msgstr ""
 msgid "Shared instructions for project chats"
 msgstr ""
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Show"
 msgstr ""
 

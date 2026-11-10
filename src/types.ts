@@ -3,9 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { LanguageModelV2Usage } from '@ai-sdk/provider'
-import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { SourceMetadata } from './types/source'
-import type { Window } from '@tauri-apps/api/window'
 import type { UIMessage, UITools } from 'ai'
 import type { DrizzleQuery } from '@powersync/drizzle-driver'
 import type { InferSelectModel } from 'drizzle-orm'
@@ -35,8 +33,6 @@ import type {
 export type InitData = {
   db: AnyDrizzleDatabase
   cloudUrl: string
-  tray: TrayIcon | undefined
-  window: Window | undefined
   posthogClient: PostHog | null
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
@@ -147,12 +143,12 @@ export type Model = WithRequired<
 /**
  * Compile-time invariant: every shipped `SharedModel` default (see
  * `shared/defaults/models.ts`) must be structurally assignable to `Model` with
- * the DAL-joined `apiKey` stripped. If `Model` gains a required field that
+ * the DAL-joined `apiKey` and user-owned `reasoningEffort` stripped. If `Model` gains a required field that
  * `SharedModel` doesn't cover, the assignment below errors, forcing us to
  * update the shared type in the same change. Never called at runtime; exported
  * so `noUnusedLocals` doesn't strip the guard.
  */
-export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey'> => model
+export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey' | 'reasoningEffort'> => model
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
 export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>

@@ -800,7 +800,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     const voice = useVoiceSession()
 
     const footerStartElements = (
-      <div className="flex items-center gap-2">
+      <>
         <ChatAddMenu
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
           onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
@@ -809,17 +809,17 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
           <div
             role="status"
             aria-live="polite"
-            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
+            className="flex min-w-0 items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
           >
             <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin" />
-            <span>
+            <span className="truncate">
               <Trans>Connecting to {agentName}…</Trans>
             </span>
           </div>
         ) : isConnectionError ? (
           <div
             role="alert"
-            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
+            className="flex min-w-0 items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
           >
             <AlertCircle className="size-[var(--icon-size-default)] shrink-0" />
             <span className="truncate" title={i18n._(extractErrorDisplay(connectionError))}>
@@ -840,7 +840,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
             onViewSummary={summaryView.onViewSummary}
           />
         )}
-      </div>
+      </>
     )
 
     // The model picker sits in the footer's right cluster, next to the send
@@ -939,11 +939,17 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
           // so a dropped file is ignored rather than opened by the browser in
           // place of the app.
           onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) {
+              return
+            }
             e.preventDefault()
             setIsDragging(acceptsAttachments)
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) {
+              return
+            }
             e.preventDefault()
             setIsDragging(false)
             if (acceptsAttachments) {

@@ -1124,8 +1124,8 @@ msgid "Connection failed"
 msgstr "Échec de la connexion"
 
 #: src/components/chat/attestation/attestation-modal.tsx
-msgid "Connection privacy"
-msgstr ""
+#~ msgid "Connection privacy"
+#~ msgstr ""
 
 #: src/components/chat/attestation/attestation-control.tsx
 msgid "Connection privacy: {label}"
@@ -1144,6 +1144,10 @@ msgstr "Connexion réussie !"
 msgid "Connection verified"
 msgstr ""
 
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection Verified"
+msgstr ""
+
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -1155,6 +1159,10 @@ msgstr "Connexions"
 #: src/components/app-error-screen.tsx
 msgid "Contact Support"
 msgstr "Contacter le support"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Content to send"
+msgstr "Contenu à envoyer"
 
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Context"
@@ -1254,6 +1262,10 @@ msgstr ""
 #: src/components/context-usage/context-usage-indicator.tsx
 #~ msgid "Could not compact context. Your chat history is safe. Please try again."
 #~ msgstr ""
+
+#: src/components/logout-modal.tsx
+msgid "Could not confirm sign-out. Please try again."
+msgstr "Impossible de confirmer la déconnexion. Réessayez."
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -3447,7 +3459,7 @@ msgstr "Le proxy est nécessaire dans l'application web pour contourner les rest
 msgid "Q3 planning"
 msgstr "Planification du T3"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Quit"
 msgstr "Quitter"
 
@@ -3688,6 +3700,10 @@ msgstr "Réessayer la connexion"
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retrying…"
 msgstr "Nouvelle tentative…"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
+msgstr "Vérifiez ci-dessous l'historique de la conversation et votre note. Le masquage automatique peut laisser passer des informations sensibles."
 
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx
@@ -4030,7 +4046,7 @@ msgstr ""
 msgid "Shared instructions for project chats"
 msgstr "Instructions communes aux discussions du projet"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Show"
 msgstr "Afficher"
 

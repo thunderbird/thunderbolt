@@ -25,6 +25,7 @@ type SyncSetupModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onComplete: () => void
+  onCloseAutoFocus?: (event: Event) => void
 }
 
 /**
@@ -33,7 +34,7 @@ type SyncSetupModalProps = {
  * Flow: intro → detecting (auto) → (first-device-setup → recovery-key-display | approval-waiting)
  * → passkey-enroll (optional, only while the account has no passkey slot)
  */
-export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
+export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocus }: SyncSetupModalProps) => {
   const setup = useSyncSetup()
   const httpClient = useHttpClient()
   const passkeyAvailable = usePasskeyAvailable()
@@ -168,6 +169,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   return (
     <ResponsiveModal
       open={open}
+      onCloseAutoFocus={onCloseAutoFocus}
       onOpenChange={(isOpen) => {
         if (!isOpen && canDismiss) {
           // The device already holds the keys on both steps, so dismissing finishes setup.

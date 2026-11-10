@@ -1100,8 +1100,8 @@ msgid "Connection failed"
 msgstr "接続に失敗しました"
 
 #: src/components/chat/attestation/attestation-modal.tsx
-msgid "Connection privacy"
-msgstr ""
+#~ msgid "Connection privacy"
+#~ msgstr ""
 
 #: src/components/chat/attestation/attestation-control.tsx
 msgid "Connection privacy: {label}"
@@ -1120,6 +1120,10 @@ msgstr "接続に成功しました"
 msgid "Connection verified"
 msgstr ""
 
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection Verified"
+msgstr ""
+
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -1131,6 +1135,10 @@ msgstr "接続"
 #: src/components/app-error-screen.tsx
 msgid "Contact Support"
 msgstr "サポートに問い合わせる"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Content to send"
+msgstr "送信する内容"
 
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Context"
@@ -1230,6 +1238,10 @@ msgstr ""
 #: src/components/context-usage/context-usage-indicator.tsx
 #~ msgid "Could not compact context. Your chat history is safe. Please try again."
 #~ msgstr ""
+
+#: src/components/logout-modal.tsx
+msgid "Could not confirm sign-out. Please try again."
+msgstr "ログアウトを確認できませんでした。もう一度お試しください。"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -3423,7 +3435,7 @@ msgstr "Web アプリでは、ブラウザーの CORS 制限を回避するた�
 msgid "Q3 planning"
 msgstr "第 3 四半期の計画"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Quit"
 msgstr "終了"
 
@@ -3664,6 +3676,10 @@ msgstr "接続を再試行"
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retrying…"
 msgstr "再試行しています…"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
+msgstr "以下のチャット記録とメモを確認してください。自動マスキングでは機密情報を見落とす可能性があります。"
 
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx
@@ -4006,7 +4022,7 @@ msgstr ""
 msgid "Shared instructions for project chats"
 msgstr "プロジェクト内のチャットに共通の指示"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Show"
 msgstr "表示"
 

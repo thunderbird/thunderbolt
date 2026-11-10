@@ -5,7 +5,7 @@
 import { invokeObserverSafely } from '@/utils/streaming'
 import type { LanguageModelUsage } from 'ai'
 import type { Context } from 'elysia'
-import type { InferenceLogger } from './client'
+import { logInferenceSafely, type InferenceLogger, type InferenceProvider } from './client'
 import {
   checkManagedInferenceAdmission,
   getInferenceQuotaLimits,
@@ -74,6 +74,50 @@ export type UsageTelemetry = {
   onUsageError: (error: unknown) => void
 }
 
+type UsageTelemetryOptions = {
+  eventId: string
+  logger?: InferenceLogger
+  model: string
+  provider: InferenceProvider
+  route: string
+  /** How the request reached the provider: `direct` for the `/v1/chat` routes, `tinfoil` for the enclave proxy. */
+  transport: 'direct' | 'tinfoil'
+}
+
+/** The usage log events around the shared ledger write. */
+export const createUsageTelemetry = ({
+  eventId,
+  logger,
+  model,
+  provider,
+  route,
+  transport,
+}: UsageTelemetryOptions): UsageTelemetry => ({
+  onUsageRecording: () => {
+    logInferenceSafely(
+      logger,
+      { event: 'inference_usage_completed', provider, model, eventId, transport },
+      'Inference usage completed',
+    )
+  },
+  onUsageRecorded: (outcome) => {
+    logInferenceSafely(
+      logger,
+      { event: 'inference_usage_inserted', provider, model, eventId, outcome },
+      'Inference usage inserted',
+    )
+  },
+  onUsageMissing: () => {
+    logger?.info({ event: 'inference_usage_missing', provider, model, route }, 'Inference usage missing')
+  },
+  onUsageError: () => {
+    logger?.info(
+      { event: 'inference_usage_callback_failed', provider, model, route },
+      'Inference usage callback failed',
+    )
+  },
+})
+
 type UsageCallbacksOptions = {
   database: InferenceDatabase
   eventId: string
@@ -82,6 +126,23 @@ type UsageCallbacksOptions = {
   price: InferencePrice
   telemetry: UsageTelemetry
   recordUsage?: typeof recordInferenceUsage
+}
+
+/** Waits before the second and third ledger write, so a brief database failure does not drop a finished run. */
+const usageWriteRetryDelaysMs = [100, 500]
+
+/** Run a ledger write, retrying it after each delay. A retry is safe: the insert ignores an event ID it already has. */
+const writeWithRetry = async <T>(write: () => Promise<T>, attempt = 0): Promise<T> => {
+  try {
+    return await write()
+  } catch (error) {
+    const delayMs = usageWriteRetryDelaysMs[attempt]
+    if (delayMs === undefined) {
+      throw error
+    }
+    await Bun.sleep(delayMs)
+    return writeWithRetry(write, attempt + 1)
+  }
 }
 
 /**
@@ -98,7 +159,7 @@ export const createUsageCallbacks = ({
 }: UsageCallbacksOptions) => ({
   onUsage: async (counts: InferenceTokenCounts) => {
     invokeObserverSafely(telemetry.onUsageRecording)
-    const outcome = await recordUsage(database, { id: eventId, userId, counts, price })
+    const outcome = await writeWithRetry(() => recordUsage(database, { id: eventId, userId, counts, price }))
     invokeObserverSafely(() => telemetry.onUsageRecorded?.(outcome))
   },
   onUsageMissing: () => invokeObserverSafely(telemetry.onUsageMissing),

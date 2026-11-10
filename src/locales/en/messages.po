@@ -1251,6 +1251,10 @@ msgstr "Could not compact context. Please try again."
 #~ msgid "Could not compact context. Your chat history is safe. Please try again."
 #~ msgstr "Could not compact context. Your chat history is safe. Please try again."
 
+#: src/components/logout-modal.tsx
+msgid "Could not confirm sign-out. Please try again."
+msgstr "Could not confirm sign-out. Please try again."
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr "Could not connect to the agent."

@@ -1,0 +1,153 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.download-picker {
+  margin: 36px auto 0;
+  max-width: 800px;
+}
+.download-primary-action .spark-button {
+  min-width: 244px;
+  justify-content: center;
+}
+.download-primary-action button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.download-options {
+  margin-top: 14px;
+}
+.download-options > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 8px;
+  list-style: none;
+  font-size: 13px;
+  color: var(--spark-secondary);
+  cursor: pointer;
+}
+.download-options > summary::-webkit-details-marker {
+  display: none;
+}
+.download-options > summary:hover {
+  color: var(--spark-ink);
+}
+.download-options[open] > summary > svg {
+  transform: rotate(180deg);
+}
+.download-variant {
+  display: inline-flex;
+  gap: 8px;
+}
+.download-options-panel {
+  margin-top: 16px;
+  padding: 28px;
+  text-align: left;
+  border: 1px solid var(--spark-border);
+  border-radius: 16px;
+  background: var(--spark-surface);
+}
+.download-options-grid {
+  display: grid;
+  gap: 18px;
+}
+.download-options-grid section {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 20px;
+}
+.spark-page .download-options h2 {
+  font-family: var(--tb-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.download-option-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.download-option-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--spark-border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.download-option-links a:hover {
+  background: var(--spark-hover);
+  border-color: var(--spark-border-strong);
+}
+.download-option-links small {
+  color: var(--spark-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.download-option-links a > span:last-child {
+  color: var(--spark-secondary);
+}
+.download-options-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--spark-border);
+  font-size: 12px;
+  color: var(--spark-secondary);
+}
+.download-options-footer > a {
+  flex-shrink: 0;
+  padding-block: 6px;
+}
+.download-options-footer a:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.download-chip-help summary {
+  cursor: pointer;
+  padding-block: 6px;
+}
+.spark-page .download-chip-help p {
+  max-width: 340px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.spark-page .download-mobile-note,
+.spark-page .download-feedback {
+  margin: 16px auto 0;
+  max-width: 420px;
+  color: var(--spark-secondary);
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .download-options-panel {
+    padding: 24px;
+  }
+  .download-options-grid section {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .download-options-grid {
+    gap: 24px;
+  }
+  .download-option-links {
+    flex-direction: column;
+  }
+  .download-option-links a > span:first-child {
+    margin-right: auto;
+  }
+  .download-options-footer {
+    flex-direction: column;
+    gap: 12px;
+  }
+}

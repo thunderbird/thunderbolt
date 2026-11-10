@@ -9,6 +9,8 @@ import { SparkBurst } from './spark-burst'
 import { SparkInstall } from './spark-install'
 import { SparkHeader } from './spark-header'
 import { SparkFooter } from './spark-footer'
+import { DownloadPicker } from '../download/download-picker'
+import { useDownloadState } from '../download/use-download-state'
 import '@fontsource-variable/lora'
 import './spark.css'
 
@@ -43,140 +45,136 @@ const questions = [
   },
 ] as const
 
-export const SparkPage = () => (
-  <div className="spark-page">
-    <a className="spark-skip" href="#spark-main">
-      Skip to content
-    </a>
-    <SparkHeader />
-    <main id="spark-main">
-      <section className="spark-hero" aria-labelledby="spark-title">
-        <div className="spark-hero-heading spark-shell">
-          <h1 id="spark-title">
-            AI that feels like yours.
-            <br />
-            <span className="spark-heading-accent">Because it is.</span>
-          </h1>
-          <p>
-            <span>An open-source AI workspace for chat, research, code, and getting things done.</span>{' '}
-            <span>Your models. Your tools. Your way.</span>
-          </p>
-          <div className="spark-hero-actions">
-            <a className="spark-button" href={productLinks.download}>
-              Download Thunderbolt <span aria-hidden="true">↓</span>
-            </a>
-            <a className="spark-text-link" href={productLinks.web}>
-              <span className="spark-text-link-label">Try it on the web</span> <span aria-hidden="true">↗</span>
-            </a>
+export const SparkPage = () => {
+  const downloads = useDownloadState()
+  return (
+    <div className="spark-page">
+      <a className="spark-skip" href="#spark-main">
+        Skip to content
+      </a>
+      <SparkHeader />
+      <main id="spark-main">
+        <section className="spark-hero" aria-labelledby="spark-title">
+          <div className="spark-hero-heading spark-shell">
+            <h1 id="spark-title">
+              AI that feels like yours.
+              <br />
+              <span className="spark-heading-accent">Because it is.</span>
+            </h1>
+            <p>
+              <span>An open-source AI workspace for chat, research, code, and getting things done.</span>{' '}
+              <span>Your models. Your tools. Your way.</span>
+            </p>
+            <DownloadPicker {...downloads} continueToDownloadPage />
           </div>
-        </div>
-        <ProductPreview />
-      </section>
+          <ProductPreview />
+        </section>
 
-      <section className="spark-freedom spark-shell" id="spark-workspace">
-        <div className="spark-section-intro">
-          <h2>A little more freedom.</h2>
-          <p>Think, make, and work your own way.</p>
-        </div>
-        <div className="spark-feature-lines">
-          <a href="/docs/customize">
-            <h3>Choose your AI.</h3>
-            <p>Use your favorite models, run one locally, or try something new.</p>
-          </a>
-          <a href={productLinks.connections}>
-            <h3>Bring your tools.</h3>
-            <p>Connect the services, skills, and agents that make you more capable.</p>
-          </a>
-          <a href={productLinks.privacy}>
-            <h3>Keep your independence.</h3>
-            <p>Local-first storage. Encrypted sync. Open source you can inspect and change.</p>
-          </a>
-        </div>
-      </section>
-
-      <section className="spark-making" id="spark-making">
-        <div className="spark-shell">
+        <section className="spark-freedom spark-shell" id="spark-workspace">
           <div className="spark-section-intro">
-            <h2>Follow that thought.</h2>
-            <p>Find an answer. Build a thing. Give an agent a job.</p>
+            <h2>A little more freedom.</h2>
+            <p>Think, make, and work your own way.</p>
           </div>
-          <IdeaStarter />
-        </div>
-      </section>
+          <div className="spark-feature-lines">
+            <a href="/docs/customize">
+              <h3>Choose your AI.</h3>
+              <p>Use your favorite models, run one locally, or try something new.</p>
+            </a>
+            <a href={productLinks.connections}>
+              <h3>Bring your tools.</h3>
+              <p>Connect the services, skills, and agents that make you more capable.</p>
+            </a>
+            <a href={productLinks.privacy}>
+              <h3>Keep your independence.</h3>
+              <p>Local-first storage. Encrypted sync. Open source you can inspect and change.</p>
+            </a>
+          </div>
+        </section>
 
-      <section className="spark-manifesto" id="spark-values">
-        <div className="spark-shell spark-manifesto-layout">
+        <section className="spark-making" id="spark-making">
+          <div className="spark-shell">
+            <div className="spark-section-intro">
+              <h2>Follow that thought.</h2>
+              <p>Find an answer. Build a thing. Give an agent a job.</p>
+            </div>
+            <IdeaStarter />
+          </div>
+        </section>
+
+        <section className="spark-manifesto" id="spark-values">
+          <div className="spark-shell spark-manifesto-layout">
+            <div>
+              <h2>
+                Good technology
+                <br />
+                should leave you
+                <br />
+                <span>more free.</span>
+              </h2>
+              <SparkBurst className="spark-manifesto-burst" />
+            </div>
+            <div className="spark-manifesto-copy">
+              <p>
+                Free to follow a strange idea. To choose a different model. To see how it works, change what you need,
+                and build something we haven’t imagined.
+              </p>
+              <p>
+                From the Thunderbird team, part of the Mozilla family. Built in the open, for a future we all get to
+                shape.
+              </p>
+              <a className="spark-text-link" href={productLinks.fork}>
+                <span className="spark-text-link-label">Make it your own on GitHub</span>{' '}
+                <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section className="spark-questions spark-shell">
           <div>
             <h2>
-              Good technology
+              A few things
               <br />
-              should leave you
-              <br />
-              <span>more free.</span>
+              worth knowing.
             </h2>
-            <SparkBurst className="spark-manifesto-burst" />
-          </div>
-          <div className="spark-manifesto-copy">
-            <p>
-              Free to follow a strange idea. To choose a different model. To see how it works, change what you need, and
-              build something we haven’t imagined.
-            </p>
-            <p>
-              From the Thunderbird team, part of the Mozilla family. Built in the open, for a future we all get to
-              shape.
-            </p>
-            <a className="spark-text-link" href={productLinks.fork}>
-              <span className="spark-text-link-label">Make it your own on GitHub</span>{' '}
-              <span aria-hidden="true">↗</span>
+            <a className="spark-text-link" href="/docs">
+              <span className="spark-text-link-label">Explore the docs</span> <span aria-hidden="true">↗</span>
             </a>
           </div>
-        </div>
-      </section>
+          <div className="spark-accordion">
+            {questions.map((item) => (
+              <details key={item.question}>
+                <summary>
+                  {item.question}
+                  <span aria-hidden="true">+</span>
+                </summary>
+                <div>
+                  <p>{item.answer}</p>
+                  <a href={item.link}>
+                    {item.label} <span aria-hidden="true">↗</span>
+                  </a>
+                  {item.link === productLinks.selfHost && (
+                    <a href={productLinks.render}>Deploy a public agent on Render ↗</a>
+                  )}
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
 
-      <section className="spark-questions spark-shell">
-        <div>
-          <h2>
-            A few things
-            <br />
-            worth knowing.
-          </h2>
-          <a className="spark-text-link" href="/docs">
-            <span className="spark-text-link-label">Explore the docs</span> <span aria-hidden="true">↗</span>
-          </a>
-        </div>
-        <div className="spark-accordion">
-          {questions.map((item) => (
-            <details key={item.question}>
-              <summary>
-                {item.question}
-                <span aria-hidden="true">+</span>
-              </summary>
-              <div>
-                <p>{item.answer}</p>
-                <a href={item.link}>
-                  {item.label} <span aria-hidden="true">↗</span>
-                </a>
-                {item.link === productLinks.selfHost && (
-                  <a href={productLinks.render}>Deploy a public agent on Render ↗</a>
-                )}
-              </div>
-            </details>
-          ))}
-        </div>
-      </section>
-
-      <section className="spark-closing" id="spark-download">
-        <div className="spark-closing-sun" aria-hidden="true" />
-        <div className="spark-shell">
-          <h2>
-            Go on.
-            <br />
-            Surprise yourself.
-          </h2>
-          <SparkInstall />
-        </div>
-      </section>
-    </main>
-    <SparkFooter />
-  </div>
-)
+        <section className="spark-closing" id="spark-download">
+          <div className="spark-closing-sun" aria-hidden="true" />
+          <div className="spark-shell">
+            <h2>
+              Go on.
+              <br />
+              Surprise yourself.
+            </h2>
+            <SparkInstall />
+          </div>
+        </section>
+      </main>
+      <SparkFooter />
+    </div>
+  )
+}

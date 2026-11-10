@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export const productLinks = {
-  download: 'https://github.com/thunderbird/thunderbolt/releases/latest',
+  download: '/download/',
   web: 'https://app.thunderbolt.io/',
   github: 'https://github.com/thunderbird/thunderbolt',
   fork: 'https://github.com/thunderbird/thunderbolt/fork',

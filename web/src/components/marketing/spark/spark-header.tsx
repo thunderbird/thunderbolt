@@ -85,10 +85,18 @@ export const SparkHeader = ({ currentPage, as: Element = 'header' }: SparkHeader
             </div>
             <div className="spark-nav-community">
               <a href={productLinks.github}>
-                GitHub <span aria-hidden="true">↗</span>
+                <span className="spark-community-label">
+                  <span className="spark-community-logo spark-community-github" aria-hidden="true" />
+                  GitHub
+                </span>
+                <span aria-hidden="true">↗</span>
               </a>
               <a href={productLinks.discord}>
-                Discord <span aria-hidden="true">↗</span>
+                <span className="spark-community-label">
+                  <span className="spark-community-logo spark-community-discord" aria-hidden="true" />
+                  Discord
+                </span>
+                <span aria-hidden="true">↗</span>
               </a>
             </div>
           </div>

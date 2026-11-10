@@ -11,7 +11,6 @@ export const SparkEnterprisePartnership = () => (
     aria-labelledby="enterprise-partnership-title"
   >
     <div className="spark-partnership-copy">
-      <p className="spark-partnership-intro">Thunderbolt + deepset</p>
       <h2 id="enterprise-partnership-title">
         Your knowledge.
         <br />

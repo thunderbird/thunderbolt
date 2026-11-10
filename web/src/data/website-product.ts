@@ -21,8 +21,30 @@ export const productLinks = {
 export const cliInstallCommand =
   'curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/install.sh | sh'
 
+export const cliPlatforms = [
+  { id: 'macos', label: 'macOS' },
+  { id: 'linux', label: 'Linux' },
+  { id: 'windows', label: 'Windows' },
+] as const
+
+export type CliPlatform = (typeof cliPlatforms)[number]['id']
+
 // Public store destinations can be filled in when the listings are available.
 export const mobileStores = [
-  { platform: 'iOS', store: 'App Store', status: 'Coming soon' },
-  { platform: 'Android', store: 'Google Play', status: 'Coming soon' },
+  {
+    platform: 'iOS',
+    store: 'App Store',
+    status: 'Coming soon',
+    // Official artwork: https://developer.apple.com/app-store/marketing/guidelines/
+    badge: '/images/stores/app-store.svg',
+    badgeWidth: 132,
+  },
+  {
+    platform: 'Android',
+    store: 'Google Play',
+    status: 'Coming soon',
+    // Official artwork: https://partnermarketinghub.withgoogle.com/brands/google-play/google-play/lockups-icons-badges/
+    badge: '/images/stores/google-play.svg',
+    badgeWidth: 149,
+  },
 ] as const

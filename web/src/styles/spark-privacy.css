@@ -64,21 +64,6 @@
     var(--spark-surface) 70%
   );
 }
-.privacy-path-heading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--spark-muted);
-  margin-bottom: 18px;
-}
-.privacy-path-heading p {
-  font-size: 13px;
-}
-.privacy-path-symbol {
-  font-size: 22px;
-  line-height: 1;
-  color: var(--spark-secondary);
-}
 .privacy-path h3 {
   font-size: clamp(29px, 3vw, 38px);
   line-height: 1.15;

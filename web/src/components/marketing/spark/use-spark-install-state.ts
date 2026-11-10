@@ -2,22 +2,36 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useState } from 'react'
-import { cliInstallCommand } from '../../../data/website-product'
+import { useRef, useState } from 'react'
+import { cliInstallCommand, type CliPlatform } from '../../../data/website-product'
 
-/** Tracks clipboard feedback for the CLI installer. */
+/** Tracks the selected platform and clipboard feedback for the CLI installer. */
 export const useSparkInstallState = () => {
+  const [platform, setPlatform] = useState<CliPlatform>('macos')
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const copyRequest = useRef(0)
+
+  /** Clear feedback and invalidate pending copies when the selected platform changes. */
+  const selectPlatform = (next: CliPlatform) => {
+    copyRequest.current += 1
+    setPlatform(next)
+    setCopyState('idle')
+  }
 
   /** Copy the supported installer, with a manual fallback when clipboard access is unavailable. */
   const copyCommand = async () => {
+    const request = ++copyRequest.current
     try {
       await navigator.clipboard.writeText(cliInstallCommand)
-      setCopyState('copied')
+      if (request === copyRequest.current) {
+        setCopyState('copied')
+      }
     } catch {
-      setCopyState('failed')
+      if (request === copyRequest.current) {
+        setCopyState('failed')
+      }
     }
   }
 
-  return { copyState, copyCommand }
+  return { platform, selectPlatform, copyState, copyCommand }
 }

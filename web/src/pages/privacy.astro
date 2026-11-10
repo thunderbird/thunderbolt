@@ -31,20 +31,17 @@ const safetyArticle = 'https://tinfoil.sh/blog/2026-09-14-safety-without-comprom
       <section class="privacy-paths spark-shell" id="privacy-paths" aria-labelledby="privacy-paths-title">
         <div class="privacy-section-heading">
           <h2 id="privacy-paths-title">Two paths. Your choice.</h2>
-          <p>Keep the computing under your roof, or choose cloud AI with protection you can verify.</p>
         </div>
         <div class="privacy-path-grid">
           <article class="privacy-path privacy-path-local">
-            <div class="privacy-path-heading"><span class="privacy-path-symbol" aria-hidden="true">⌂</span><p>Self-hosting + local models</p></div>
-            <h3>Keep it close.</h3>
+            <h3>Keep it local.</h3>
             <PrivacyPathIllustration kind="local" />
             <p>Run Thunderbolt on infrastructure you control and connect a model running on your device or your own servers. Your prompts can stay inside your environment.</p>
             <p class="privacy-path-detail">You decide what runs, where it runs, and who has access. Keep model inference within your environment, and choose which external services to connect.</p>
             <a class="spark-text-link" href="/docs/self-hosting/"><span class="spark-text-link-label">Build your own setup</span><span aria-hidden="true">↗</span></a>
           </article>
           <article class="privacy-path privacy-path-cloud">
-            <div class="privacy-path-heading"><span class="privacy-path-symbol" aria-hidden="true">◇</span><p>Verifiable confidential computing</p></div>
-            <h3>Keep the cloud private.</h3>
+            <h3>Keep it verifiable.</h3>
             <PrivacyPathIllustration kind="confidential" />
             <p>Choose Thunderbolt’s private models powered by Tinfoil. They run inside hardware-protected enclaves, designed to keep your prompts and responses unreadable to Thunderbird and Tinfoil.</p>
             <p class="privacy-path-detail">Thunderbolt verifies the enclave before sending an encrypted request. The model reads it inside that protected space; our relay carries encrypted data.</p>

@@ -168,6 +168,25 @@
   font-size: 12px;
   color: var(--spark-muted);
 }
+.spark-community-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.spark-community-logo {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  mask: center / contain no-repeat;
+}
+.spark-community-github {
+  mask-image: url('/enterprise/github.svg');
+}
+.spark-community-discord {
+  /* Official Clyde artwork from https://discord.com/branding */
+  mask-image: url('/images/community/discord.svg');
+}
 .spark-header nav a:hover,
 .spark-footer a:hover {
   text-decoration: underline;

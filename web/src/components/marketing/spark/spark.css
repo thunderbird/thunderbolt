@@ -667,68 +667,171 @@
   align-items: center;
   gap: 24px;
   margin: 28px auto 0;
-  max-width: 640px;
+  max-width: 760px;
 }
 .spark-cli-install {
-  max-width: 100%;
+  width: 100%;
+  min-width: 0;
 }
 .spark-cli-install summary {
   display: inline-flex;
-  gap: 24px;
+  align-items: center;
+  gap: 16px;
   list-style: none;
   cursor: pointer;
   font-size: 14px;
   padding: 10px;
 }
+.spark-cli-install summary::-webkit-details-marker {
+  display: none;
+}
 .spark-cli-install[open] summary span {
   transform: rotate(45deg);
 }
-.spark-cli-install > div {
-  display: grid;
-  justify-items: center;
-  gap: 14px;
-  padding: 24px;
-  margin-top: 10px;
-  background: var(--spark-surface);
-  border: 1px solid #d5bb7a;
-  border-radius: 14px;
-}
-.spark-cli-install code {
-  font-size: 12px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
+.spark-cli-panel {
+  margin-top: 12px;
+  overflow: hidden;
   text-align: left;
-}
-.spark-cli-install button {
+  background: var(--spark-surface);
   border: 1px solid var(--spark-border);
-  border-radius: 100px;
-  padding: 10px 18px;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 4%);
+}
+.spark-cli-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--spark-border);
+}
+.spark-cli-platforms {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.spark-cli-platforms label {
+  position: relative;
+  cursor: pointer;
+}
+.spark-cli-platforms input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.spark-cli-platforms label > span {
+  display: grid;
+  place-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 9px;
+  color: var(--spark-secondary);
+  font-size: 13px;
+}
+.spark-cli-platforms input:checked + span {
+  color: var(--spark-ink);
   background: var(--spark-hover);
-  font-size: 12px;
 }
-.spark-cli-install > div > :is(span, a) {
-  font-size: 12px;
+.spark-cli-platforms input:focus-visible + span {
+  outline: 2px solid var(--spark-ink);
+  outline-offset: -2px;
 }
-.spark-cli-install [role='status']:empty {
-  display: none;
+.spark-cli-copy {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--spark-secondary);
+  cursor: pointer;
+}
+.spark-cli-copy:hover {
+  background: var(--spark-hover);
+  color: var(--spark-ink);
+}
+.spark-cli-command {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 24px 20px;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.spark-cli-command > span {
+  color: var(--spark-secondary);
+  user-select: none;
+}
+.spark-cli-command pre {
+  min-width: 0;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+.spark-cli-command code {
+  font: inherit;
+}
+.spark-cli-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 20px 20px;
+  color: var(--spark-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.spark-cli-footer a,
+.spark-cli-source a {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.spark-cli-source {
+  display: grid;
+  gap: 12px;
+  padding: 24px 20px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.spark-cli-source p {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.spark-cli-source > span {
+  color: var(--spark-secondary);
+}
+.spark-cli-feedback {
+  min-height: 18px;
+  margin: 10px 0 0;
+  color: var(--spark-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .spark-mobile-stores {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24px;
 }
 .spark-mobile-stores > div {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  min-width: 146px;
-  padding: 13px 21px;
-  border: 1px solid #b1986459;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--spark-surface) 28%, transparent);
+  align-items: center;
+  gap: 12px;
 }
-.spark-mobile-stores strong {
-  font-size: 14px;
-  font-weight: 500;
+.spark-mobile-stores img {
+  display: block;
+  height: 44px;
+  width: auto;
 }
 .spark-mobile-stores span {
   font-size: 11px;
@@ -958,13 +1061,6 @@
   }
   .spark-closing-sun {
     top: 40px;
-  }
-  .spark-mobile-stores {
-    gap: 12px;
-  }
-  .spark-mobile-stores > div {
-    min-width: 130px;
-    padding: 12px 17px;
   }
 }
 @media (max-width: 480px) {

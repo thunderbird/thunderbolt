@@ -8,7 +8,7 @@ import { getClock } from '@/testing-library'
 import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client-spy'
 import { approvalSessionTtlMs } from '@shared/e2ee-types'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import type { ReactNode } from 'react'
 import { useApprovalCodeSession } from './use-approval-code-session'
 
@@ -21,6 +21,7 @@ const createRelay = () => {
     starts: [] as Array<{ sessionId: string; commitment: string }>,
     reveals: [] as Array<{ sessionId: string; reveal: string }>,
     failStart: false,
+    failPoll: false,
     /** When set, GETs wait for it: a poll still in flight. */
     gate: null as Promise<void> | null,
   }
@@ -39,6 +40,9 @@ const createRelay = () => {
     }
     if (request.method === 'GET' && path.endsWith('/devices/me/approval-session')) {
       await relay.gate
+      if (relay.failPoll) {
+        return jsonResponse({ error: 'Server error' }, 500)
+      }
       return relay.row ? jsonResponse(relay.row) : jsonResponse({ error: 'Not found' }, 404)
     }
     if (request.method === 'POST' && path.endsWith('/devices/me/approval-session/reveal')) {
@@ -208,6 +212,32 @@ describe('useApprovalCodeSession', () => {
     expect(hook.result.current.status).toBe('expired')
     expect(hook.result.current.code).toBeNull()
     expect(relay.reveals).toEqual([])
+  })
+
+  it('logs one fixed line per attempt while polls keep failing', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { relay, hook } = renderSession()
+      await settleUntil(() => hook.result.current.status === 'waiting')
+      relay.failPoll = true
+      await tick()
+      await tick()
+      await tick()
+      expect(errorLog.mock.calls).toEqual([['Failed to poll for the approval code.']])
+
+      relay.row = { ...relay.row!, expired: true }
+      relay.failPoll = false
+      await tick()
+      await settleUntil(() => hook.result.current.status === 'expired')
+      act(() => hook.result.current.newCode())
+      await settleUntil(() => hook.result.current.status === 'waiting')
+      relay.failPoll = true
+      await tick()
+      await tick()
+      expect(errorLog).toHaveBeenCalledTimes(2)
+    } finally {
+      errorLog.mockRestore()
+    }
   })
 
   it('falls back to unavailable when the session cannot start', async () => {

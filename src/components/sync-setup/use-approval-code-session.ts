@@ -97,6 +97,8 @@ export const useApprovalCodeSession = ({
   const liveSessionId = useRef(state.sessionId)
   liveSessionId.current = state.sessionId
   const isMounted = useRef(false)
+  /** The attempt that already logged a failed poll: one line per attempt, not one per tick. */
+  const loggedPollFailureFor = useRef<string | null>(null)
 
   /**
    * Without its keys this device can still be approved with the fingerprint, so log and fall back.
@@ -214,7 +216,12 @@ export const useApprovalCodeSession = ({
       try {
         await tick()
       } catch {
-        // A failed poll is transient; the next tick retries.
+        // The next tick retries, and the local expiry still ends a poll that keeps failing. The log
+        // is a fixed line, never the error itself.
+        if (loggedPollFailureFor.current !== liveSessionId.current) {
+          loggedPollFailureFor.current = liveSessionId.current
+          console.error('Failed to poll for the approval code.')
+        }
       } finally {
         isTicking.current = false
       }

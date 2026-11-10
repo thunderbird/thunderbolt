@@ -68,8 +68,27 @@ export const useApproveDeviceDialogState = ({
   /** Bumped by every new attempt and on unmount, so a superseded attempt stops at its next await. */
   const attemptToken = useRef(0)
   const attemptStartedAt = useRef<number | null>(null)
+  /** The attempt that already logged a relay failure: one line per attempt, not one per poll. */
+  const loggedRelayFailureFor = useRef<number | null>(null)
 
   const go = (to: ApproveDeviceDialogStep) => dispatch({ type: 'go', to })
+
+  /**
+   * A relay call whose failure the attempt treats as no answer (null). 404 (no session) and 409 (the
+   * challenge was refused) are protocol answers; anything else logs a fixed line, never the error.
+   */
+  const callRelay = async <Value>(call: () => Promise<Value>): Promise<Value | null> => {
+    try {
+      return await call()
+    } catch (error) {
+      const refused = error instanceof HttpError && (error.response.status === 404 || error.response.status === 409)
+      if (!refused && loggedRelayFailureFor.current !== attemptToken.current) {
+        loggedRelayFailureFor.current = attemptToken.current
+        console.error('Failed to reach the approval code relay.')
+      }
+      return null
+    }
+  }
 
   /**
    * Wait for the reveal on the frozen session; null on timeout or when superseded. The deadline is
@@ -82,7 +101,7 @@ export const useApproveDeviceDialogState = ({
       if (!isCurrent()) {
         return null
       }
-      const row = await fetchPendingApprovalSession(httpClient, target.id).catch(() => null)
+      const row = await callRelay(() => fetchPendingApprovalSession(httpClient, target.id))
       if (Date.now() >= deadline) {
         return null
       }
@@ -97,7 +116,7 @@ export const useApproveDeviceDialogState = ({
     const token = ++attemptToken.current
     const isCurrent = () => attemptToken.current === token
     go({ step: 'connecting' })
-    const session = await fetchPendingApprovalSession(httpClient, target.id).catch(() => null)
+    const session = await callRelay(() => fetchPendingApprovalSession(httpClient, target.id))
     if (!isCurrent()) {
       return
     }
@@ -118,10 +137,10 @@ export const useApproveDeviceDialogState = ({
     }
     attemptStartedAt.current = startedAt
     const challenge = createApprovalNonce()
-    const sent = await challengeApprovalSession(httpClient, target.id, { sessionId, challenge }).then(
-      () => true,
-      () => false,
-    )
+    const sent = await callRelay(async () => {
+      await challengeApprovalSession(httpClient, target.id, { sessionId, challenge })
+      return true
+    })
     if (!isCurrent()) {
       return
     }

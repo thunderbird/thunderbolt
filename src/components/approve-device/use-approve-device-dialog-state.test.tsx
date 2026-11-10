@@ -25,6 +25,8 @@ type Relay = {
   challengeStatus: number
   /** A server holding its answer: GETs wait this long (fake clock) before responding. */
   getDelayMs: number
+  /** A failing server: GETs answer with this status instead of the row. */
+  getStatus: number
 }
 
 /** The relay as the trusted device sees it: serves the pending device's row, records challenges. */
@@ -34,6 +36,7 @@ const createRelay = (overrides: Partial<Relay>) => {
     challenges: [],
     challengeStatus: 204,
     getDelayMs: 0,
+    getStatus: 200,
     ...overrides,
   }
   const { httpClient } = createSpyHttpClient(async (request) => {
@@ -41,6 +44,9 @@ const createRelay = (overrides: Partial<Relay>) => {
     if (request.method === 'GET' && path.endsWith(`/devices/${device.id}/approval-session`)) {
       if (relay.getDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, relay.getDelayMs))
+      }
+      if (relay.getStatus !== 200) {
+        return jsonResponse({ error: 'Server error' }, relay.getStatus)
       }
       return relay.row ? jsonResponse(relay.row) : jsonResponse({ error: 'Not found' }, 404)
     }
@@ -101,10 +107,11 @@ const reachPick = async (rendered: ReturnType<typeof renderDialogState>) => {
 const countedAttempts = () => JSON.parse(localStorage.getItem(approvalCodeAttemptsKey) ?? '[]').length
 
 describe('useApproveDeviceDialogState', () => {
+  let errorLog: ReturnType<typeof spyOn>
   beforeEach(() => {
     // Tests run in random order, and other files open the dialog too: start every count from zero.
     localStorage.removeItem(approvalCodeAttemptsKey)
-    spyOn(console, 'error').mockImplementation(() => {})
+    errorLog = spyOn(console, 'error').mockImplementation(() => {})
   })
   afterEach(() => {
     cleanup()
@@ -214,6 +221,7 @@ describe('useApproveDeviceDialogState', () => {
     await settle()
     expect(rendered.hook.result.current.state.step).toBe('unavailable')
     expect(countedAttempts()).toBe(0)
+    expect(errorLog).not.toHaveBeenCalled()
   })
 
   it('counts an attempt before its challenge leaves, even when the server refuses it', async () => {
@@ -222,6 +230,28 @@ describe('useApproveDeviceDialogState', () => {
     expect(rendered.relay.challenges).toHaveLength(1)
     expect(rendered.hook.result.current.state.step).toBe('unavailable')
     expect(countedAttempts()).toBe(1)
+    expect(errorLog).not.toHaveBeenCalled()
+  })
+
+  it('logs a fixed line when the relay fails unexpectedly', async () => {
+    const rendered = renderDialogState({ relay: { challengeStatus: 500 } })
+    await settle()
+    expect(rendered.hook.result.current.state.step).toBe('unavailable')
+    expect(errorLog.mock.calls).toEqual([['Failed to reach the approval code relay.']])
+  })
+
+  it('keeps polling through relay failures with one log line, then offers the codes', async () => {
+    const rendered = renderDialogState()
+    await settle()
+    rendered.relay.getStatus = 500
+    await tick()
+    await tick()
+    await tick()
+    expect(errorLog.mock.calls).toEqual([['Failed to reach the approval code relay.']])
+    rendered.relay.getStatus = 200
+    rendered.relay.row = { ...rendered.relay.row!, reveal }
+    await tick()
+    expect(rendered.hook.result.current.state.step).toBe('pick')
   })
 
   it('gives up on a first request the server never answers, without counting', async () => {

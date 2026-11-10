@@ -59,6 +59,23 @@ export const partsToSpeech = (parts: ContentPart[]): string =>
     .filter(Boolean)
     .join(' ')
 
+/** A bracketed group with something pronounceable inside, opening at a word start. */
+const parentheticalAside = /(?<=^|\s)\(([^()]*[\p{L}\p{N}][^()]*)\)/gu
+const endsWithPunctuation = /[.!?;:,]$/
+const startsWithPunctuation = /^[.!?;:,]/
+
+/**
+ * Rewrite one matched `(aside)` as `, aside,` — a comma only where the
+ * surrounding text does not already put punctuation (or the chunk edge) there.
+ */
+const toSpokenAside = (match: string, aside: string, offset: number, whole: string): string => {
+  const before = whole.slice(0, offset).trimEnd()
+  const after = whole.slice(offset + match.length).trimStart()
+  const lead = before === '' || endsWithPunctuation.test(before) ? ' ' : ', '
+  const trail = after === '' || startsWithPunctuation.test(after) || endsWithPunctuation.test(aside) ? '' : ','
+  return `${lead}${aside}${trail}`
+}
+
 export const toSpeakable = (input: string): string => {
   let text = input
 
@@ -96,6 +113,10 @@ export const toSpeakable = (input: string): string => {
   text = text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
   // Bare URLs → a short spoken token rather than reading the whole path.
   text = text.replace(/https?:\/\/[^\s)]+/g, 'link')
+  // Parenthetical asides → set off by commas, which is how an aside is spoken;
+  // TTS models trained on speech (Voxtral) skip bracketed text. Only a bracket
+  // that starts a word counts, so `file(s)` and code like `save(x)` stay as is.
+  text = text.replace(parentheticalAside, toSpokenAside)
   // Emphasis / headings / blockquote / list markers / rules / table pipes.
   text = text.replace(/(\*\*|__|\*|_|~~)/g, '')
   text = text.replace(/^\s{0,3}#{1,6}\s+/gm, '')

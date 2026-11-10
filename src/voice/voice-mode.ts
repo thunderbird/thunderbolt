@@ -33,12 +33,16 @@ export const isVoiceModeActive = (): boolean => voiceModeActive
  * System message injected on voice turns only. Kept tight (it's added every voice
  * turn) and focused on what the model gets wrong without it — notably answering
  * questions about itself: a model with no voice context web-searches its own
- * identity instead of just answering.
+ * identity instead of just answering. The punctuation rule is for the TTS:
+ * expressive models (Voxtral) read emotion from the text, so an exclamation mark
+ * comes out louder and faster than the sentences around it.
  */
 export const voiceModeSystemNote =
   'You are in voice mode: the user is speaking to you and your replies are read aloud by text-to-speech. ' +
   "Keep replies short and conversational — usually a sentence or two — since they're heard, not read; " +
   'avoid markdown, bullet lists, code, and URLs, and phrase things in plain spoken language. ' +
+  "The voice takes its tone from your punctuation, so write calmly: use the reply language's ordinary " +
+  'sentence punctuation, with no exclamation marks or ALL CAPS. ' +
   'If asked about your voice or what you can do in voice mode, answer plainly from this context — do NOT ' +
   'search the web for your own identity or capabilities. Your speaking voice is fixed and cannot be changed ' +
   'during a conversation. The user can interrupt you at any time simply by speaking.'

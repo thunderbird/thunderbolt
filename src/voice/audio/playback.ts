@@ -10,6 +10,10 @@
  * playout as its echo reference (so the mic doesn't hear the assistant and
  * self-trigger barge-in), even when the PCM was produced natively. `flush()`
  * stops everything immediately (<100 ms) for barge-in.
+ *
+ * A compressor sits in front of the output because the TTS picks a different
+ * loudness for every request, and Voxtral raises its voice on text it reads as
+ * excited. It works on the signal as it plays, so streamed audio is levelled too.
  */
 import type { AudioChunk } from '@/voice/engine/types'
 
@@ -32,12 +36,27 @@ export const createPlaybackQueue = (audioContext?: AudioContext): PlaybackQueue 
   const ownsCtx = !audioContext // only close a context we created
   const active = new Set<AudioBufferSourceNode>()
   // Tap the output so the waveform can react to the assistant's actual voice.
-  // Sources route through the analyser to `destination`, which passes audio
-  // through unchanged — so the browser/OS AEC still sees our playout as its echo
-  // reference (see the module note), it just also feeds level readings.
+  // Sources route through the compressor and trim gain, then the analyser, to `destination`;
+  // the analyser passes the levelled signal through unchanged, so the browser/OS
+  // AEC still sees our real playout as its echo reference (see the module note).
   const analyser = ctx.createAnalyser()
   analyser.fftSize = 256
   analyser.connect(ctx.destination)
+  // Loud passages are pulled down 6:1 above -28 dB with a soft knee, so a jump
+  // only moves the output a little; a fast attack catches word onsets and a slow
+  // release avoids pumping between words. The node adds automatic makeup gain,
+  // which lifts everything, so `outputGain` trims the level back to normal speech
+  // (values set by ear on Voxtral `casual_male`).
+  const compressor = ctx.createDynamicsCompressor()
+  compressor.threshold.value = -28
+  compressor.knee.value = 10
+  compressor.ratio.value = 6
+  compressor.attack.value = 0.003
+  compressor.release.value = 0.3
+  const outputGain = ctx.createGain()
+  outputGain.gain.value = 0.6
+  compressor.connect(outputGain)
+  outputGain.connect(analyser)
   const levelBuf = new Float32Array(analyser.fftSize)
   let nextStartTime = 0
   let closed = false
@@ -48,7 +67,7 @@ export const createPlaybackQueue = (audioContext?: AudioContext): PlaybackQueue 
     buffer.copyToChannel(new Float32Array(chunk.pcm), 0)
     const source = ctx.createBufferSource()
     source.buffer = buffer
-    source.connect(analyser)
+    source.connect(compressor)
     const startAt = Math.max(ctx.currentTime, nextStartTime)
     source.start(startAt)
     nextStartTime = startAt + buffer.duration

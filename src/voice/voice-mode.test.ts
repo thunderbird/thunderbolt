@@ -21,5 +21,6 @@ describe('voice-mode signal', () => {
     expect(voiceModeSystemNote.toLowerCase()).toContain('short') // brevity
     expect(voiceModeSystemNote.toLowerCase()).toContain('do not search the web') // anti-hallucination
     expect(voiceModeSystemNote.toLowerCase()).toContain('fixed') // voice can't change
+    expect(voiceModeSystemNote.toLowerCase()).toContain('no exclamation marks') // calm delivery for the TTS
   })
 })

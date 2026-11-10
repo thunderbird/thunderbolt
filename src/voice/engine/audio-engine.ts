@@ -39,6 +39,12 @@ export type AudioEngineOptions = {
   /** wav/mp3/… — `decodeAudioData` handles whatever comes back. Defaults to wav. */
   ttsFormat?: string
   ttsSpeed?: number
+  /**
+   * Stream raw 16-bit mono PCM and play it as it arrives, instead of waiting for
+   * the whole file. Overrides `ttsFormat`. A vLLM-Omni extension: raw PCM has no
+   * header, so `sampleRate` must be the rate the server actually emits.
+   */
+  ttsStream?: { sampleRate: number }
   /** Optional warmup on `load()` (e.g. prime enclave attestation). */
   warm?: () => Promise<void>
 }
@@ -82,6 +88,71 @@ export const concatFrames = (frames: PcmFrame[]): Float32Array => {
 
 const errorText = async (res: Response): Promise<string> => `${res.status} ${await res.text().catch(() => '')}`.trim()
 
+/** Join two byte arrays into a new array, preserving their order. */
+const concatBytes = (a: Uint8Array, b: Uint8Array): Uint8Array => {
+  const out = new Uint8Array(a.length + b.length)
+  out.set(a)
+  out.set(b, a.length)
+  return out
+}
+
+/** Smallest streamed piece handed to playback, so a burst of tiny network reads
+ *  does not become a burst of tiny audio buffers. */
+const minStreamChunkSeconds = 0.1
+
+/**
+ * Decode a streamed body of 16-bit little-endian mono PCM into float chunks as
+ * the bytes arrive. A read can end mid-sample, so an odd trailing byte is
+ * carried into the next read.
+ */
+export const readPcm16Stream = async function* (
+  body: ReadableStream<Uint8Array>,
+  sampleRate: number,
+): AsyncIterable<AudioChunk> {
+  const minSamples = Math.round(sampleRate * minStreamChunkSeconds)
+  const reader = body.getReader()
+  let carry: Uint8Array = new Uint8Array(0)
+  let pending: Float32Array[] = []
+  let pendingSamples = 0
+  const takePending = (): AudioChunk => {
+    const pcm = concatFrames(pending)
+    pending = []
+    pendingSamples = 0
+    return { pcm, sampleRate }
+  }
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      const bytes = carry.length > 0 ? concatBytes(carry, value) : value
+      const usable = bytes.length - (bytes.length % 2)
+      carry = bytes.slice(usable)
+      if (usable === 0) {
+        continue
+      }
+      const view = new DataView(bytes.buffer, bytes.byteOffset, usable)
+      const samples = new Float32Array(usable / 2)
+      for (let i = 0; i < samples.length; i++) {
+        samples[i] = view.getInt16(i * 2, true) / 0x8000
+      }
+      pending.push(samples)
+      pendingSamples += samples.length
+      if (pendingSamples >= minSamples) {
+        yield takePending()
+      }
+    }
+    if (pendingSamples > 0) {
+      yield takePending()
+    }
+  } finally {
+    // Stops the download when the consumer stops early (barge-in). On a stream
+    // that already failed, cancel rejects with the error that is propagating.
+    void reader.cancel().catch(() => {})
+  }
+}
+
 export const createAudioEngine = (opts: AudioEngineOptions): VoiceEngine => {
   const ttsFormat = opts.ttsFormat ?? 'wav'
   let decodeCtx: AudioContext | null = null
@@ -107,6 +178,8 @@ export const createAudioEngine = (opts: AudioEngineOptions): VoiceEngine => {
     const form = new FormData()
     form.append('file', encodeWav(merged, sttSampleRate), 'utterance.wav')
     form.append('model', opts.sttModel)
+    // Greedy decoding: transcription wants the most likely words, not variety.
+    form.append('temperature', '0')
     const res = await opts.transport('/audio/transcriptions', form, undefined, signal)
     if (!res.ok) {
       throw new Error(`STT failed: ${await errorText(res)}`)
@@ -119,7 +192,10 @@ export const createAudioEngine = (opts: AudioEngineOptions): VoiceEngine => {
   }
 
   const synthesize = async function* (text: AsyncIterable<string>, signal?: AbortSignal): AsyncIterable<AudioChunk> {
-    decodeCtx ??= new AudioContext()
+    const stream = opts.ttsStream
+    if (!stream) {
+      decodeCtx ??= new AudioContext()
+    }
     for await (const chunk of text) {
       if (signal?.aborted) {
         return
@@ -128,7 +204,13 @@ export const createAudioEngine = (opts: AudioEngineOptions): VoiceEngine => {
         model: opts.ttsModel,
         input: chunk,
         voice: opts.ttsVoice,
-        response_format: ttsFormat,
+        response_format: stream ? 'pcm' : ttsFormat,
+      }
+      if (stream) {
+        // vLLM-Omni ≥ 0.24 answers a bare `stream: true` with SSE events of
+        // base64 audio; `stream_format: 'audio'` asks for the raw bytes.
+        payload.stream = true
+        payload.stream_format = 'audio'
       }
       if (opts.ttsSpeed !== undefined) {
         payload.speed = opts.ttsSpeed
@@ -144,6 +226,25 @@ export const createAudioEngine = (opts: AudioEngineOptions): VoiceEngine => {
       )
       if (!res.ok) {
         throw new Error(`TTS failed: ${await errorText(res)}`)
+      }
+      if (stream) {
+        if (!res.body) {
+          throw new Error('TTS failed: streamed response has no body')
+        }
+        // A server that ignores `stream_format` answers with SSE or JSON text,
+        // which decoded as PCM plays as loud static.
+        const contentType = res.headers.get('content-type') ?? ''
+        if (/^(text\/|application\/json)/.test(contentType)) {
+          await res.body.cancel()
+          throw new Error(`TTS failed: expected raw audio, got ${contentType}`)
+        }
+        for await (const piece of readPcm16Stream(res.body, stream.sampleRate)) {
+          if (signal?.aborted) {
+            return
+          }
+          yield piece
+        }
+        continue
       }
       // Re-check before decoding: a response that resolved right as the turn was
       // aborted must not be decoded, and dispose() nulls decodeCtx concurrently.

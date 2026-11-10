@@ -19,6 +19,31 @@ describe('toSpeakable', () => {
     expect(toSpeakable('Call `saveThing()` to save.')).toBe('Call saveThing() to save.')
   })
 
+  test('reads a parenthetical aside between commas instead of dropping it', () => {
+    expect(toSpeakable('It works (mostly) fine.')).toBe('It works, mostly, fine.')
+    expect(toSpeakable('Use the API (see the docs).')).toBe('Use the API, see the docs.')
+    expect(toSpeakable('(Quick note) this is done.')).toBe('Quick note, this is done.')
+    expect(toSpeakable('Prices rose (about 5%), then fell.')).toBe('Prices rose, about 5%, then fell.')
+    expect(toSpeakable('Done. (Note) this works.')).toBe('Done. Note, this works.')
+    expect(toSpeakable('It ends with (an aside)')).toBe('It ends with, an aside')
+    expect(toSpeakable('Done. (Really?) Next.')).toBe('Done. Really? Next.')
+    expect(toSpeakable('It works (see above.) fine')).toBe('It works, see above. fine')
+    expect(toSpeakable('a, (b) c')).toBe('a, b, c')
+    expect(toSpeakable('Hello\n(aside) there')).toBe('Hello, aside, there')
+  })
+
+  test('keeps the clause comma that ends a first chunk', () => {
+    expect(toSpeakable('Well, that is a genuinely interesting question,')).toBe(
+      'Well, that is a genuinely interesting question,',
+    )
+  })
+
+  test('leaves brackets glued to a word alone', () => {
+    expect(toSpeakable('Check the file(s) now.')).toBe('Check the file(s) now.')
+    expect(toSpeakable('Call `save(file)` now.')).toBe('Call save(file) now.')
+    expect(toSpeakable('So f(x) = 2 here.')).toBe('So f(x) = 2 here.')
+  })
+
   test('turns links into their text and bare URLs into "link"', () => {
     expect(toSpeakable('See [the docs](https://x.com/a/b) here.')).toBe('See the docs here.')
     expect(toSpeakable('Go to https://example.com/page now.')).toBe('Go to link now.')

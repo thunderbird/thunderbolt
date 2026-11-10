@@ -53,6 +53,17 @@ backend route; the pass-through, its SSRF guard and the attestation lifecycle ar
 - **Audio is never persisted.** Frames are in-memory `Float32Array`s and synthesized audio goes
   straight onto a Web Audio graph; only the transcript and reply are stored, via `chat.sendMessage`
   ([`chat-reply.ts`](../../../src/voice/chat-reply.ts)).
+- **The models follow the app language**, read at session start (`pickVoiceProfile` in
+  [`thunderbolt-engine.ts`](../../../src/voice/engine/thunderbolt-engine.ts)). Locales both Voxtral
+  models support use `voxtral-small-24b` and `voxtral-tts`; the rest (Japanese) use
+  `whisper-large-v3-turbo` and `qwen3-tts`. Only Qwen3 takes the `instructions` style prompt. The
+  app language stands in for the spoken one, which is unknown until the user speaks, so someone who
+  speaks a language Voxtral lacks under an English UI still gets Voxtral. Accepted: their fix is to
+  switch the app language.
+- **Speech streams back as raw 16-bit PCM at 24 kHz** (`stream_format: 'audio'`) and plays as it
+  arrives (`readPcm16Stream` in [`audio-engine.ts`](../../../src/voice/engine/audio-engine.ts)). A
+  bare `stream: true` gets SSE text from vLLM-Omni, so a text or JSON response is rejected rather
+  than played as static.
 - **Audio is not metered.** Admission and usage metering apply only to `POST /v1/chat/completions`
   (`isManagedChat`, [`tinfoil/routes.ts:355`](../../../backend/src/tinfoil/routes.ts)); `/audio/transcriptions` and
   `/audio/speech` are authenticated and rate-limited but consume no inference quota. They are the only other paths a
@@ -126,10 +137,17 @@ desktop and mobile.
 - **Aggregation optimizes time-to-first-audio.** The first chunk flushes at the earliest clause
   break past 20 characters, or the last word boundary by 48
   ([`aggregator.ts`](../../../src/voice/aggregator.ts)); later chunks flush on sentence boundaries,
-  guarding split decimals, known abbreviations and inline code.
+  guarding split decimals, known abbreviations and inline code. No chunk is cut inside a
+  parenthetical, since `toSpeakable` can only rewrite an aside whose brackets share a chunk.
 - **`speaking` holds until playback drains**, since synthesis enqueues faster than playback plays
   and flipping to `listening` early makes the VAD hear the assistant's own tail as a user turn
   ([`session.ts:205`](../../../src/voice/session.ts)).
+- **A failed turn drops its queued audio.** A streamed sentence can fail halfway; the session
+  flushes playback before returning to `listening`, so the VAD never hears the remainder.
+- **Playback is levelled.** Every TTS request comes back at its own loudness, so a
+  `DynamicsCompressorNode` and a trim gain sit in front of the output
+  ([`playback.ts`](../../../src/voice/audio/playback.ts)). They are before `destination`, so the
+  echo canceller still hears the real playout.
 - **Two earcons carry the state the user is not looking at**: a rising pair at mic open, the same
   interval falling and quieter at handoff ([`earcon.ts`](../../../src/voice/audio/earcon.ts)). Both are
   shorter than `minSpeechFrames × 32 ms` (pinned by `earcon.test.ts`) and play through
@@ -141,7 +159,9 @@ desktop and mobile.
 `load`, `transcribe`, `synthesize`, `dispose`. The rest of the loop talks solely to it, which is
 what makes barge-in identical across engines. Both shipped engines come from `createAudioEngine`
 ([`audio-engine.ts`](../../../src/voice/engine/audio-engine.ts)), which owns request/response
-orchestration and the WAV codec; they differ only in the injected `AudioTransport`, which must:
+orchestration, the WAV codec and the streamed-PCM decoder. Beyond the injected `AudioTransport`,
+the hosted engine sets more options: per-locale models, `ttsStream`, and `warm` to prime
+attestation. The transport must:
 
 - **forward the per-turn `AbortSignal`** to its fetch, or an aborted turn keeps running against the
   provider;
@@ -164,10 +184,14 @@ Raw markdown reads as "asterisk asterisk", code is read aloud and emoji become t
   screen.").
 - Inline-reference widgets, citation markers and display math are dropped or pointed at, never read.
 - Widget internals never reach it: `partsToSpeech` replaced the whole widget part upstream.
+- A parenthetical aside is read between commas, since speech-trained TTS skips bracketed text. Only
+  a bracket that starts a word counts, so `file(s)` and `save(x)` are left alone.
 
 ### Input: the Whisper filler filter
 
-On near-silent or noise-only audio Whisper returns its most common training captions ("Thanks for
+The filter targets Whisper, which the hosted engine still uses for Japanese and custom servers
+often run; how Voxtral behaves on silence has not been characterised. On near-silent or noise-only
+audio Whisper returns its most common training captions ("Thanks for
 watching", "Please subscribe", a bare "you") rather than empty text.
 [`transcript-filter.ts`](../../../src/voice/transcript-filter.ts) drops a transcript that is nothing
 but such filler. The list is deliberately narrow: courtesies a user genuinely says ("thank you",
@@ -179,8 +203,9 @@ noise-triggered one.
 [`voice-mode.ts`](../../../src/voice/voice-mode.ts) carries a process-wide "voice active" flag;
 `aiFetchStreamingResponse` reads it and injects `voiceModeSystemNote` as a volatile system note for
 voice turns only ([`src/ai/fetch.ts:906`](../../../src/ai/fetch.ts)). The note says replies are read
-aloud (short, no markdown or URLs), the voice is fixed, and questions about itself are answered from
-that context instead of a web search.
+aloud (short, no markdown or URLs), asks for calm punctuation (no exclamation marks or capitals,
+which an expressive TTS voices louder), says the voice is fixed, and has questions about itself
+answered from that context instead of a web search.
 
 **The flag is tab-global** and `aiFetchStreamingResponse` is the shared send path for every AI call,
 so a non-voice call during a live session (title generation) also gets the note. Accepted; the
@@ -192,10 +217,10 @@ are `msg` descriptors resolved at call time, not module scope.
 
 ## Invariants that will bite
 
-- **Release every `AudioContext` on stop.** A session owns three (VAD capture, playback, engine
-  decode) and `stop()` closes all three ([`session.ts:264`](../../../src/voice/session.ts)). Missing
-  one leaks a context per cycle, and the browser cap of around six kills voice after a few
-  toggles.
+- **Release every `AudioContext` on stop.** A session owns up to three (VAD capture, playback, and
+  an engine decode context that only the non-streaming path opens) and `stop()` closes them all
+  ([`session.ts:280`](../../../src/voice/session.ts)). Missing one leaks a context per cycle, and
+  the browser cap of around six kills voice after a few toggles.
 - **Both halves of startup must settle.** `start()` runs `engine.load()` and `gate.start()` under
   `Promise.allSettled`, not `all`: tearing down mid-flight destroys a gate that has not yet acquired
   the mic, and the pending `getUserMedia` resolves into a live mic no one holds. The gate is born

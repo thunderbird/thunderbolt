@@ -203,6 +203,25 @@ it.each([
   await migrateProviderConnections(getDb())
   expect(await getDb().get(sql`SELECT total_changes() AS changes`)).toEqual(beforeRetry)
 })
+it('logs the skipped model identity without exposing its URL or credentials', async () => {
+  await legacyModel('unsupported')
+  await getDb()
+    .update(modelsTable)
+    .set({ url: 'https://private-user:private-password@legacy.example/api/v1?token=private-token' })
+    .where(eq(modelsTable.id, 'unsupported'))
+  const warn = spyOn(console, 'warn').mockImplementation(() => {})
+  try {
+    await migrateProviderConnections(getDb())
+    expect(warn.mock.calls).toEqual([
+      [
+        '[provider-connections] Skipped legacy model: URL is unsupported by the current connection policy',
+        { modelId: 'unsupported', provider: 'otari' },
+      ],
+    ])
+  } finally {
+    warn.mockRestore()
+  }
+})
 it('still rejects and rolls back an unrelated connection write failure', async () => {
   await legacyModel('valid')
   const failure = new Error('Connection storage failed')

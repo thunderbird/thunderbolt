@@ -34,6 +34,7 @@ import { resolveOAuthAccessToken, withProviderOAuthLock } from '@/providers/oaut
 import { getIdentitySignal } from '@/lib/identity-lifetime'
 import { tinfoilSession, withTinfoilSessionLock } from '@/lib/tinfoil-session'
 import { getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
+import { isCurrentOtariAuthorization, revokeStoredOtariAuthorization } from '@/providers/otari-session'
 import { getProviderConnectionRevision } from '@/providers/revision'
 export { getProviderConnectionRevision } from '@/providers/revision'
 
@@ -118,6 +119,22 @@ export const saveProviderConnectionWithRevision = (
   }
   if (input.provider === 'tinfoil') {
     return withTinfoilSessionLock(save)
+  }
+  if (input.provider === 'otari') {
+    return withProviderOAuthLock('oauth:otari', async () => {
+      const guarded = {
+        ...input,
+        expectedRevision:
+          input.expectedRevision === undefined
+            ? await getProviderConnectionRevision(db, 'oauth:otari')
+            : input.expectedRevision,
+      }
+      const { url } = await prepareProviderConnectionSave(db, guarded)
+      if (!(await isCurrentOtariAuthorization(db, url, input.credentials.access_token ?? input.credentials.apiKey!))) {
+        await revokeStoredOtariAuthorization(db)
+      }
+      return save(guarded)
+    })
   }
   if (input.provider !== 'openai') {
     return save()
@@ -312,6 +329,10 @@ export const updateProviderConnection = async (
 /** Disconnect only this device, retaining models and synced connection identity. */
 export const disconnectProviderConnection = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   const row = await getProviderConnection(db, id)
+  if (row?.provider === 'otari' && row.authMethod === 'oauth') {
+    await withProviderOAuthLock(id, () => revokeStoredOtariAuthorization(db, { disconnect: true }))
+    return
+  }
   if (row?.provider === 'tinfoil' && row.authMethod === 'oauth') {
     await tinfoilSession.disconnect()
     return
@@ -348,6 +369,16 @@ export const disconnectProviderConnection = async (db: AnyDrizzleDatabase, id: s
 
 /** Remove connection metadata through a tombstone; model/history references remain intact. */
 export const deleteProviderConnection = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+  if (id === 'oauth:otari') {
+    await withProviderOAuthLock(id, async () => {
+      await revokeStoredOtariAuthorization(db, { disconnect: true })
+      await db
+        .update(connections)
+        .set({ deletedAt: new Date().toISOString(), enabled: 0 })
+        .where(eq(connections.id, id))
+    })
+    return
+  }
   await disconnectProviderConnection(db, id)
   await db.update(connections).set({ deletedAt: new Date().toISOString(), enabled: 0 }).where(eq(connections.id, id))
 }

@@ -12,7 +12,9 @@ import {
   exchangeOtariCode,
   getOtariAuthorizationUrl,
   getOtariEndpoints,
+  getOtariAuthorizationOrigin,
   normalizeOtariOrigin,
+  revokeOtariToken,
 } from './otari-auth'
 
 const grant = { code: 'one-use-code', verifier: 'secret-verifier', redirectUri: 'https://app.test/oauth/otari' }
@@ -44,6 +46,24 @@ const nativeAuthorization = (response = 'code=one-use-code&state=nonce') => {
 }
 
 describe('Otari authorization boundary', () => {
+  test.each([
+    [undefined, defaultOtariOrigin],
+    ['https://api.otari.ai/api/v1', defaultOtariOrigin],
+    [' https://api.otari.ai/api/v1/ ', defaultOtariOrigin],
+    ['https://api.otari.ai/', defaultOtariOrigin],
+    ['https://OTARI.AI:443/', defaultOtariOrigin],
+    ['http://localhost:8099/api/v1', 'http://localhost:8099'],
+    ['http://localhost:8099/api/v1///', 'http://localhost:8099'],
+    ['https://otari.example', 'https://otari.example'],
+  ])('uses the authorization origin for %s', (value, expected) => {
+    expect(getOtariAuthorizationOrigin(value)).toBe(expected!)
+  })
+  test.each(['https://example.com/other', 'https://user@example.com/api/v1', 'http://remote.example/api/v1'])(
+    'rejects an unsafe stored endpoint: %s',
+    (value) => {
+      expect(() => getOtariAuthorizationOrigin(value)).toThrow()
+    },
+  )
   test('uses the hosted dashboard and separate inference service by default', () => {
     expect(getOtariEndpoints(defaultOtariOrigin)).toEqual({
       dashboard: 'https://otari.ai/dashboard/',
@@ -94,6 +114,49 @@ describe('Otari authorization boundary', () => {
 })
 
 describe('Otari native authorization', () => {
+  test.each(['', 'https://attacker.example', 'https://api.otari.ai', 'https://otari.ai&iss=https://otari.ai'])(
+    'rejects a different or repeated issuer without sending the code: %s',
+    async (issuer) => {
+      const harness = nativeAuthorization(`code=one-use-code&state=nonce&iss=${issuer}`)
+      const transport = spyOn(globalThis, 'fetch')
+      await expect(
+        connectOtari(defaultOtariOrigin, new AbortController().signal, harness.dependencies),
+      ).rejects.toThrow('Could not connect to Otari')
+      expect(transport).not.toHaveBeenCalled()
+    },
+  )
+  test('accepts the exact authorization issuer', async () => {
+    const harness = nativeAuthorization('code=one-use-code&state=nonce&iss=https://otari.ai')
+    spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ access_token: 'delegated-key' }))
+    expect(await connectOtari(defaultOtariOrigin, new AbortController().signal, harness.dependencies)).toBe(
+      'delegated-key',
+    )
+  })
+  test('revokes a native token issued just before cancellation reaches its caller', async () => {
+    const controller = new AbortController()
+    const response = Response.json({ access_token: 'unused-token' })
+    const read = response.json.bind(response)
+    spyOn(response, 'json').mockImplementation(async () => {
+      const body: unknown = await read()
+      controller.abort()
+      return body
+    })
+    const transport = spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(
+        async (request: RequestInfo | URL) =>
+          (request as Request).url.endsWith('/token') ? response : new Response(null, { status: 200 }),
+        { preconnect: globalThis.fetch.preconnect },
+      ),
+    )
+    await expect(
+      connectOtari(defaultOtariOrigin, controller.signal, nativeAuthorization().dependencies),
+    ).rejects.toHaveProperty('name', 'AbortError')
+    expect(transport).toHaveBeenCalledTimes(2)
+    const revoke = transport.mock.calls[1][0] as Request
+    expect(revoke.url).toBe('https://otari.ai/api/v1/oauth/apps/revoke')
+    expect(new URLSearchParams(await revoke.text()).get('token')).toBe('unused-token')
+    expect(revoke.signal.aborted).toBe(false)
+  })
   test('exchanges the grant with the exact loopback redirect and releases its listener', async () => {
     const harness = nativeAuthorization()
     const transport = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ access_token: 'delegated-key' }))
@@ -154,6 +217,28 @@ describe('Otari native authorization', () => {
       'name',
       'AbortError',
     )
+  })
+})
+
+describe('Otari token revocation', () => {
+  test('posts only the token with an independent deadline, no cookies, and no redirect replay', async () => {
+    const transport = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
+    await revokeOtariToken('http://localhost:8099', 'delegated-key')
+    const request = transport.mock.calls[0][0] as Request
+    expect(request.url).toBe('http://localhost:8099/api/v1/oauth/apps/revoke')
+    expect(request.method).toBe('POST')
+    expect(request.credentials).toBe('omit')
+    expect(request.redirect).toBe('error')
+    expect(request.headers.get('Authorization')).toBeNull()
+    expect(Object.fromEntries(new URLSearchParams(await request.text()))).toEqual({
+      token: 'delegated-key',
+      token_type_hint: 'access_token',
+    })
+    expect(request.signal).toBeInstanceOf(AbortSignal)
+  })
+  test('does not treat an unavailable endpoint as successful revocation', async () => {
+    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }))
+    await expect(revokeOtariToken(defaultOtariOrigin, 'delegated-key')).rejects.toThrow()
   })
 })
 

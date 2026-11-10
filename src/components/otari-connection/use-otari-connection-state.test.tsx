@@ -12,6 +12,7 @@ import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import * as modelProbe from '@/hooks/use-model-connection-test'
 import * as otariBrowser from '@/lib/otari-browser-auth'
+import * as otariAuth from '@/lib/otari-auth'
 import * as providerModels from '@/providers/models'
 import { getProviderConnectionAttempt, type ProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import {
@@ -38,6 +39,7 @@ import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 describe('Otari connection', () => {
   beforeEach(async () => {
     await resetTestDatabase()
+    spyOn(otariAuth, 'revokeOtariToken').mockResolvedValue()
     await updateSettings(getDb(), { experimental_feature_otari: true })
     rejectNestedTransactions(getDb())
     useLocalSettingsStore.setState({ cloudUrl: '', localMode: true, serverHasAuthenticated: false, syncEnabled: false })
@@ -123,6 +125,7 @@ describe('Otari connection', () => {
     expect(complete).toHaveBeenCalledTimes(1)
     expect(deps.loadModels).toHaveBeenCalledTimes(1)
     expect(deps.connect).not.toHaveBeenCalled()
+    expect(otariAuth.revokeOtariToken).not.toHaveBeenCalled()
     readReturn.mockRestore()
   })
 
@@ -256,6 +259,7 @@ describe('Otari connection', () => {
     expect(disconnect).toHaveTextContent('Disconnect')
     await act(async () => fireEvent.click(disconnect))
     expect(await getProviderCredentials(getDb(), 'oauth:otari')).toBeNull()
+    expect(otariAuth.revokeOtariToken).toHaveBeenCalledWith('http://localhost:8099', 'otari-key')
     expect(screen.getByRole('button', { name: 'Connect Otari' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
@@ -320,17 +324,21 @@ describe('Otari connection', () => {
   })
 
   it('ignores an Otari authorization completed after cancellation', async () => {
+    const revoke = spyOn(otariAuth, 'revokeOtariToken').mockResolvedValue()
     const deferred = Promise.withResolvers<string>()
     const deps = { connect: mock(() => deferred.promise), loadModels: mock(async () => [{ id: 'model' }]) }
     const { result } = renderHook(() => useOtariConnectionState(undefined, deps), { wrapper: createTestProvider() })
     act(() => {
       void result.current.connect()
     })
+    await waitForElement(() => (deps.connect.mock.calls.length ? document.body : null))
     act(() => result.current.cancel())
     await act(async () => deferred.resolve('late-key'))
+    await waitForElement(() => (revoke.mock.calls.length ? document.body : null))
     expect(result.current.key).toBe('')
     expect(deps.loadModels).not.toHaveBeenCalled()
     expect(result.current.busy).toBe(false)
+    expect(otariAuth.revokeOtariToken).toHaveBeenCalledWith('https://otari.ai', 'late-key')
   })
 
   it.each(['authorization', 'catalog'] as const)(

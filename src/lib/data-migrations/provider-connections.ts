@@ -157,6 +157,13 @@ export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promis
         const definition = getProviderDefinition(model.provider)
         const url = normalizeLegacyConnectionUrl(model.provider, model.url)
         if (url === undefined) {
+          console.warn(
+            '[provider-connections] Skipped legacy model: URL is unsupported by the current connection policy',
+            {
+              modelId: model.id,
+              provider: model.provider,
+            },
+          )
           continue
         }
         const moved = await migrateLegacyProviderCredential(tx, {

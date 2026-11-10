@@ -40,6 +40,22 @@ export const normalizeOtariOrigin = (value: string): string => {
   return url.origin
 }
 
+/** Recover the sign-in origin from a saved inference URL, including the hosted split-domain deployment. */
+export const getOtariAuthorizationOrigin = (value?: string | null): string => {
+  if (!value) {
+    return defaultOtariOrigin
+  }
+  const url = new URL(value.trim().replace(/\/+$/, ''))
+  if (url.pathname !== '/' && url.pathname !== '/api/v1') {
+    throw new Error('Enter an Otari server origin or API endpoint')
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error('Invalid Otari URL')
+  }
+  const origin = normalizeOtariOrigin(url.origin)
+  return origin === new URL(getOtariEndpoints(defaultOtariOrigin).inference).origin ? defaultOtariOrigin : origin
+}
+
 /** Build the same PKCE authorization request for browser redirects and native loopback flows. */
 export const getOtariAuthorizationUrl = (
   origin: string,
@@ -65,6 +81,7 @@ export const connectOtari = async (
   const flow = createProviderAuthorization(
     {
       authorizationEndpoint: `${endpoints.api}/oauth/apps/authorize`,
+      authorizationResponseIssuer: normalizeOtariOrigin(origin),
       buildUrl: (challenge, redirectUri, state) => getOtariAuthorizationUrl(origin, { challenge, redirectUri, state }),
     },
     dependencies,
@@ -111,5 +128,22 @@ export const exchangeOtariCode = async (
   ) {
     throw new Error('Invalid Otari token response')
   }
+  if (signal.aborted) {
+    await revokeOtariToken(origin, response.access_token)
+    signal.throwIfAborted()
+  }
   return response.access_token
+}
+
+/** Revoke only the delegated key itself; never send cookies or follow a credential-bearing redirect. */
+export const revokeOtariToken = async (origin: string, token: string): Promise<void> => {
+  await http.post(`${getOtariEndpoints(origin).api}/oauth/apps/revoke`, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token, token_type_hint: 'access_token' }),
+    credentials: 'omit',
+    redirect: 'error',
+    fetch: nativeFetch,
+    // Cleanup must still complete after a cancelled connection or account switch.
+    signal: AbortSignal.timeout(30_000),
+  })
 }

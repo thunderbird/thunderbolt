@@ -8,6 +8,7 @@ import { getDb } from '@/db/database'
 import { eq } from 'drizzle-orm'
 import { providerConnectionsTable } from '@/db/tables'
 import * as providerConnections from '@/dal/provider-connections'
+import * as otariAuth from '@/lib/otari-auth'
 import { getAllModels } from '@/dal'
 import {
   getProviderConnection,
@@ -50,6 +51,7 @@ describe('provider connection form', () => {
   afterAll(teardownTestDatabase)
   beforeEach(async () => {
     await resetTestDatabase()
+    spyOn(otariAuth, 'revokeOtariToken').mockResolvedValue()
     authorization.authorize.mockClear()
     authorization.cancel.mockClear()
     onSaved.mockClear()

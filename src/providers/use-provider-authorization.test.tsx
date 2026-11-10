@@ -61,6 +61,7 @@ describe('provider authorization without a model', () => {
     spyOn(platform, 'isTauri').mockReturnValue(true)
     spyOn(platform, 'isMobile').mockReturnValue(false)
     spyOn(otariBrowser, 'getOtariBrowserReturn').mockReturnValue(null)
+    spyOn(otari, 'revokeOtariToken').mockResolvedValue()
     spyOn(tinfoilMobile, 'getTinfoilMobileReturn').mockReturnValue(null)
     spyOn(capabilities, 'loadOtariSearchStatus').mockResolvedValue('available')
     spyOn(tinfoilSession, 'withTinfoilSessionLock').mockImplementation(async (operation) => operation())
@@ -248,6 +249,9 @@ describe('provider authorization without a model', () => {
       expect(await getProviderConnections(getDb())).toEqual([])
       expect(onConnected).not.toHaveBeenCalled()
       expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+      if (provider === 'otari') {
+        expect(otari.revokeOtariToken).toHaveBeenCalledWith('https://otari.ai', 'retired-token')
+      }
     },
   )
 
@@ -628,6 +632,46 @@ describe('provider authorization without a model', () => {
     expect(await getAllModels(getDb())).toEqual([])
   })
 
+  it('revokes a cancelled redirect token when a new native authorization takes over', async () => {
+    const oldGrant = Promise.withResolvers<string>()
+    const exchangeStarted = Promise.withResolvers<void>()
+    spyOn(otariBrowser, 'getOtariBrowserReturn').mockReturnValue({
+      id: 'old-return',
+      origin: 'https://old.example',
+      context: 'connections',
+      returnTo: '/chats/new',
+      attempt: await getProviderConnectionAttempt(getDb(), 'otari'),
+      error: null,
+      cancel: () => {},
+      complete: () => {
+        exchangeStarted.resolve()
+        return oldGrant.promise
+      },
+    })
+    const { result } = setup()
+    await exchangeStarted.promise
+    act(() => result.current.cancel())
+    const nextGrant = Promise.withResolvers<string>()
+    const nextStarted = Promise.withResolvers<void>()
+    spyOn(otari, 'connectOtari').mockImplementation(() => {
+      nextStarted.resolve()
+      return nextGrant.promise
+    })
+    const next = result.current.authorize({ provider: 'otari', name: 'New account' })
+    await nextStarted.promise
+    await act(async () => {
+      oldGrant.resolve('old-unused-token')
+      await getClock().tickAsync(0)
+    })
+    expect(otari.revokeOtariToken).toHaveBeenCalledWith('https://old.example', 'old-unused-token')
+    await act(async () => {
+      nextGrant.resolve('new-token')
+      await next
+    })
+    expect((await getProviderCredentials(getDb(), 'oauth:otari'))?.access_token).toBe('new-token')
+    expect(otari.revokeOtariToken).not.toHaveBeenCalledWith('https://otari.ai', 'new-token')
+  })
+
   it('rejects a superseded browser return before minting another credential', async () => {
     const attempt = await getProviderConnectionAttempt(getDb(), 'otari')
     await saveProviderConnection(getDb(), {
@@ -680,6 +724,7 @@ describe('provider authorization without a model', () => {
     expect(result.current.error).toBe('Could not connect this provider. Please try again.')
     expect(onConnected).not.toHaveBeenCalled()
     expect((await getProviderCredentials(getDb(), 'oauth:otari'))?.access_token).toBe('otari-token')
+    expect(otari.revokeOtariToken).not.toHaveBeenCalled()
   })
 
   it('preserves an explicitly disabled Otari connection when reconnecting and skips discovery', async () => {

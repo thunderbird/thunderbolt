@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { beforeEach, afterEach, afterAll, describe, expect, it, spyOn } from 'bun:test'
+import { beforeEach, afterEach, afterAll, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as otariAuth from '@/lib/otari-auth'
 import { eq } from 'drizzle-orm'
 import * as oauthSession from '@/providers/oauth-session'
 import * as chatGPTSession from '@/providers/chatgpt-session'
@@ -30,7 +31,11 @@ import { updateSettings } from './settings'
 import { isModelReady } from '@/settings/models/model-policy'
 import { migrateProviderConnections } from '@/lib/data-migrations/provider-connections'
 
-beforeEach(resetTestDatabase)
+beforeEach(async () => {
+  await resetTestDatabase()
+  spyOn(otariAuth, 'revokeOtariToken').mockResolvedValue()
+})
+afterEach(() => mock.restore())
 afterAll(teardownTestDatabase)
 
 it('saves Tinfoil OAuth credentials when Web Locks supplies its callback argument', async () => {

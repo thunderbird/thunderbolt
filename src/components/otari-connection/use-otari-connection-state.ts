@@ -32,6 +32,7 @@ import {
   resolveProviderConnection,
 } from '@/dal/provider-connections'
 import { addProviderModels } from '@/providers/models'
+import { discardOtariAuthorization } from '@/providers/otari-session'
 import { getAvailableModels, updateSettings } from '@/dal'
 import { useChatStore } from '@/chats/chat-store'
 import { useQueryClient } from '@tanstack/react-query'
@@ -40,7 +41,7 @@ import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { loadOtariSearchStatus, type OtariSearchStatus } from '@/integrations/otari-search/capabilities'
 import { createIdentityController } from '@/lib/identity-lifetime'
 
-type ConnectionController = ReturnType<typeof createIdentityController>
+type ConnectionController = ReturnType<typeof createIdentityController> & { returnId?: string }
 
 type State = {
   origin: string
@@ -115,7 +116,7 @@ export const useOtariConnectionState = (
   })
   const pending = useRef<ConnectionController | null>(null)
 
-  const loadModels = async (
+  const loadAuthorizedModels = async (
     origin: string,
     key: string,
     attempt: ProviderConnectionAttempt,
@@ -169,6 +170,28 @@ export const useOtariConnectionState = (
     }
   }
 
+  const loadModels = async (
+    origin: string,
+    key: string,
+    attempt: ProviderConnectionAttempt,
+    controller: ConnectionController,
+  ) => {
+    try {
+      await loadAuthorizedModels(origin, key, attempt, controller)
+    } catch (error) {
+      // A shared redirect result can transfer to StrictMode's replacement effect.
+      const transferred =
+        returned &&
+        pending.current !== controller &&
+        pending.current?.returnId === returned.id &&
+        !pending.current.signal.aborted
+      if (!transferred) {
+        await discardOtariAuthorization(db, origin, key)
+      }
+      throw error
+    }
+  }
+
   // The callback owns a single exchange; StrictMode can subscribe again without replaying the code.
   const resume = useEffectEvent(async (controller: ConnectionController) => {
     if (!returned) {
@@ -197,7 +220,7 @@ export const useOtariConnectionState = (
     }
     if (returned) {
       clearOtariBrowserReturn(returned.id)
-      const controller = createIdentityController()
+      const controller = { ...createIdentityController(), returnId: returned.id }
       pending.current = controller
       void resume(controller)
     }

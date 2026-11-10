@@ -73,8 +73,6 @@ jobs:
       # summary. /proc is denied because the session's own environment holds the key.
       - name: Audit
         timeout-minutes: 50
-        env:
-          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
         with:
           anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}

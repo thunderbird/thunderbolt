@@ -40,6 +40,7 @@ for (const viewport of [
 
       await page.getByRole('button', { name: 'Open Local test agent', exact: true }).click()
       await page.getByLabel('Name', { exact: true }).fill('Renamed local agent')
+      await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Renamed local agent')
       await page.getByRole('button', { name: 'Save', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'Renamed local agent', exact: true })).toBeVisible()
 

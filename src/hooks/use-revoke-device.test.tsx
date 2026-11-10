@@ -40,7 +40,7 @@ describe('useRevokeDevice', () => {
   afterEach(cleanup)
 
   it('revokes-and-rotates silently when E2EE is ready', async () => {
-    await storeAK(await generateAK())
+    await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
     await storeDEK('0', 'd3JhcHBlZA==')
 
     let rotatedFor = ''

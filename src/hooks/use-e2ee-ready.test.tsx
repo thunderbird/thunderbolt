@@ -35,7 +35,7 @@ const settle = async (reads: () => boolean): Promise<void> => {
 
 /** What the seamless migration writes: an AK plus the initial wrapped DEK. */
 const provision = async () => {
-  await storeAK(await generateAK())
+  await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
   await storeDEK('0', 'd3JhcHBlZA==')
 }
 

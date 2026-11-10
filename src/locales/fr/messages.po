@@ -5159,6 +5159,10 @@ msgstr "Réflexion"
 msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
 msgstr "Cette action est irréversible. Elle supprimera définitivement cette conversation et tous ses messages."
 
+#: src/components/chat/error-message.tsx
+msgid "This agent was disabled or deleted. Choose another agent to continue."
+msgstr ""
+
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr "Cela peut se produire dans les fenêtres privées ou lorsque les données de site sont bloquées. Activez le stockage pour ce site puis rechargez."

@@ -25,7 +25,9 @@ import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter } from '@/types/acp'
 import { getAllSkills } from '@/dal'
+import { isAgentActive } from '@/dal/agents'
 import { getDb } from '@/db/database'
+import { createAgentUnavailableError } from '@/lib/error-utils'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import type { AcpAdapterDeps } from './acp-adapter'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
@@ -54,12 +56,21 @@ const getEnabledSkills = async () => selectEnabledSkillDefinitions(await getAllS
  * `managed-http` posts the chat's history to the backend, so it is only taken
  * for a system agent; the synced `agents` table's plaintext `type` must never
  * be able to select it.
+ *
+ * Every new generation passes through here (a send, the commands warm-up, a
+ * background rebuild), so an agent disabled or deleted since its caller read it
+ * is refused before anything is dialed. The ACP adapter repeats the same check for
+ * its handshake, its session requests and each prompt.
  */
 export const connectToAgent = async (
   agent: Agent,
   ctx: ConnectToAgentContext,
   deps: ConnectToAgentDeps = {},
 ): Promise<AgentAdapter> => {
+  const isActive = deps.isAgentActive ?? (() => isAgentActive(getDb(), agent))
+  if (agent.type !== 'built-in' && !(await isActive())) {
+    throw createAgentUnavailableError(agent.id)
+  }
   switch (agent.type) {
     case 'built-in': {
       const { createBuiltInAdapter } = await import('./built-in-adapter')
@@ -85,6 +96,7 @@ export const connectToAgent = async (
           textDeltaThrottleMs: deps.textDeltaThrottleMs,
           handshakeTimeoutMs: deps.handshakeTimeoutMs,
           getEnabledSkills: deps.getEnabledSkills ?? getEnabledSkills,
+          isAgentActive: isActive,
         },
       )
     }

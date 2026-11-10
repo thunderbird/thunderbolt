@@ -10,6 +10,7 @@ import { resetCodecState } from '@/db/encryption'
 import type { CommonPowerSyncDatabase } from '@powersync/web'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { legacyKeyId } from '@shared/e2ee-types'
 import * as syncTracker from './sync-tracker'
 import {
   handleCredentialsInvalidIfNeeded,
@@ -17,6 +18,9 @@ import {
   powersyncCredentialsInvalid,
   ThunderboltConnector,
 } from './connector'
+
+/** An AK with no primary pointer: `storeAK` keeps no pointer when the sealed one is not mintable. */
+const storeAKWithoutPointer = async () => storeAK(await generateAK(), { keyVersion: null, primaryKeyId: legacyKeyId })
 
 const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test/v1'
@@ -164,7 +168,7 @@ describe('ThunderboltConnector', () => {
     // the download encryption gate short-circuits instead of probing the canary
     // (the gate itself is covered by the dedicated suites below).
     await clearAllKeys()
-    await storeAK(await generateAK())
+    await storeAKWithoutPointer()
   })
 
   afterEach(async () => {
@@ -662,7 +666,7 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
     // rotation moved the primary to '1'). The pointer's only trusted source is
     // now the AK envelope: the connector defers the batch and posts a
     // key-request so the main-thread responder re-adopts.
-    await storeAK(await generateAK())
+    await storeAKWithoutPointer()
     fetchMock.mockImplementation((url: string) =>
       Promise.resolve(url.includes('/encryption/canary') ? okResponse({ primary_key_id: '0' }) : okResponse({})),
     )
@@ -689,7 +693,7 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
   })
 
   it('does not fetch metadata when a primary key_id is already loaded', async () => {
-    await storeAK(await generateAK())
+    await storeAKWithoutPointer()
     await storePrimaryKeyId('3')
     const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
 
@@ -774,7 +778,7 @@ describe('ThunderboltConnector upload encryption gate', () => {
     // state. Post-THU-890 the connector never reads the metadata pointer at
     // all: honest, steered ('v1') or rolled back ('0'), the answer is the same
     // defer until an adopted envelope supplies the pointer.
-    await storeAK(await generateAK())
+    await storeAKWithoutPointer()
     fetchMock = routeCanary(() => jsonResponse({ primary_key_id: 'v1' }))
     const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
     const { database, wasCompleted } = makeDatabase()
@@ -908,7 +912,7 @@ describe('ThunderboltConnector download encryption gate', () => {
   })
 
   it('issues credentials once an AK is present, without probing', async () => {
-    await storeAK(await generateAK())
+    await storeAKWithoutPointer()
     fetchMock = routeCanary(() => jsonResponse({ primary_key_id: '0' }))
     const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
 
@@ -987,7 +991,7 @@ describe('ThunderboltConnector download encryption gate', () => {
   })
 
   it('does not probe at all when an AK is present, so a canary 401 cannot fire', async () => {
-    await storeAK(await generateAK())
+    await storeAKWithoutPointer()
     fetchMock = routeCanary(() => jsonResponse({ error: 'Unauthorized' }, 401))
     const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
 

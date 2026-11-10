@@ -53,7 +53,7 @@ describe('receiver verification failure', () => {
     await storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
     localStorage.setItem('thunderbolt_device_id', 'receiver')
     setCachedSession({ user: { id: 'account-1' } })
-    const wrappedCK = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0')
+    const wrappedCK = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0', 1)
     const { httpClient } = createSpyHttpClient(async (request) => {
       const path = new URL(request.url).pathname
       if (path.endsWith('/devices')) {

@@ -13,6 +13,7 @@ import { webToolCaps } from '@/ai/web-tool-budget'
 import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
 import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
+import { createAgentUnavailableError } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import {
@@ -60,6 +61,7 @@ const testModels = [
   createMockModel({ id: 'm2', model: 'gpt-5', provider: 'openai' }),
 ]
 const httpClient: HttpClient = {} as HttpClient
+const isAgentActive = async () => true
 const getProxyFetch = (): FetchFn => Object.assign(async () => new Response('ok'), { preconnect: async () => false })
 
 const makeAdapter = (agent: Agent): AgentAdapter => ({
@@ -368,6 +370,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
       getOrConnectAdapter: async () => ({ ...makeAdapter(remote), fetch: fetchModel }),
+      isAgentActive,
     })
     await fetch('https://backend.test', { body: '{}' })
     expect(fetchModel).toHaveBeenCalledTimes(1)
@@ -389,6 +392,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       },
     }
     const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      isAgentActive,
       getChatReasoningEffort,
       getOrConnectAdapter: async () => adapter,
     })
@@ -412,6 +416,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const resolveEffort = mock(() => write.promise)
     const save = mock(async () => {})
     const route = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
+      isAgentActive,
       getChatReasoningEffort: resolveEffort,
       getOrConnectAdapter: connect,
     })
@@ -441,6 +446,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       },
     }
     const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      isAgentActive,
       getChatReasoningEffort: resolveEffort,
       getOrConnectAdapter: async () => adapter,
     })
@@ -472,6 +478,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     }
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => adapter,
     })
@@ -510,6 +517,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       }
       const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
         getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
         getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => adapter,
         getAllSkills: (async () => [{ name: 'weather', instruction: 'WEATHER_BODY', enabled: 1 }]) as never,
@@ -533,6 +541,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
@@ -553,6 +562,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
@@ -571,6 +581,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
@@ -590,6 +601,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
@@ -618,6 +630,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
         getChatReasoningEffort: async () => undefined,
         connectToAgent: connectToAgent as never,
         updateChatThread: (async () => {}) as never,
@@ -659,6 +672,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
         getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
@@ -728,6 +742,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        isAgentActive,
         getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
@@ -1151,6 +1166,37 @@ describe('createChatInstance — retry policy', () => {
       errorLog.mockRestore()
     }
   })
+
+  it.each([
+    ['saves the flag when the chat has a thread', createMockChatThread({ id: sessionId }), true],
+    ['saves nothing when the chat has no thread yet', null, false],
+  ] as const)(
+    'flags a prompt refused because its agent was disabled or deleted, and %s',
+    async (_label, chatThread, persisted) => {
+      const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+      const saved: ThunderboltUIMessage[] = []
+      const { instance, finishWithError, regenerate } = createRetryHarness(async ({ messages }) => {
+        saved.push(...messages)
+      })
+      useChatStore.getState().updateSession(sessionId, { chatThread })
+      instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] }]
+
+      try {
+        await finishWithError(createAgentUnavailableError('agent-1'))
+        await getClock().runAllAsync()
+
+        // A reload's auto-run skips a stopped prompt, so it never reaches a fallback agent.
+        expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(true)
+        expect(saved.map((message) => [message.id, message.metadata?.stoppedByUser])).toEqual(
+          persisted ? [['u1', true]] : [],
+        )
+        expect(useChatStore.getState().sessions.get(sessionId)!.retriesExhausted).toBe(true)
+        expect(regenerate).not.toHaveBeenCalled()
+      } finally {
+        errorLog.mockRestore()
+      }
+    },
+  )
 
   it.each([
     ['an Ollama 400', '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'],

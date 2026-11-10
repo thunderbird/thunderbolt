@@ -50,7 +50,7 @@ describe('derivePasskeyKeyPair', () => {
     const prf = randomPrfOutput()
     const kp = await derivePasskeyKeyPair(prf)
     const ak = await generateAK(true)
-    const wrapped = await wrapAK(ak, kp.ecdhPublicKey, kp.mlkemPublicKey, '0')
+    const wrapped = await wrapAK(ak, kp.ecdhPublicKey, kp.mlkemPublicKey, '0', 1)
 
     const reDerived = await derivePasskeyKeyPair(prf)
     const { ak: opened } = await unwrapAK(wrapped, reDerived.ecdhPrivateKey, reDerived.mlkemSecretKey)

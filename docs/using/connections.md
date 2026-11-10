@@ -122,6 +122,8 @@ Custom agents sync to your other devices, name, URL and description together.
 
 Deleting a custom agent removes it from Thunderbolt and changes nothing on the remote server.
 
+Disabling or deleting an agent, on this device or another one, stops every chat from sending to it, including chats that are open. Disabling or deleting it on this device also ends a reply it is still writing. A chat that was using it keeps it selected and shows an error when you send. Choose another agent at the top of the chat to continue.
+
 > An address that only works on one machine, such as a local bridge, appears on your other devices without working there.
 
 ### Connecting a local coding agent

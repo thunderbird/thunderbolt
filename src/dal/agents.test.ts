@@ -11,12 +11,14 @@ import { clearAdapterCache, getOrConnectAdapter } from '@/acp/adapter-cache'
 import type { AgentAdapter } from '@/types/acp'
 import type { AgentDiscoveryResponse, CustomAgentType } from '@shared/acp-types'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { nowIso } from '@/lib/utils'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import {
   composeAllAgents,
   createAgent,
   deleteAgent,
   getAgentSecrets,
+  isAgentActive,
   loadAllAgents,
   setAgentSecrets,
   updateAgent,
@@ -249,6 +251,110 @@ describe('agents DAL', () => {
 
       expect(cached.disconnectCount()).toBe(0)
       expect((await getChatThread(getDb(), 'thread-same-wire'))?.acpSessionId).toBe('session-same-wire')
+    })
+
+    it('disposes the warm ACP connection when the agent is disabled', async () => {
+      await createAgent(getDb(), {
+        id: 'a-off',
+        name: 'Switched off',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://x',
+        userId: 'u1',
+      })
+      const cached = await seedCachedAdapter('a-off')
+
+      await updateAgent(getDb(), 'a-off', { enabled: 0 })
+
+      expect(cached.disconnectCount()).toBe(1)
+    })
+
+    it('keeps the warm ACP connection when the agent is re-enabled', async () => {
+      await createAgent(getDb(), {
+        id: 'a-on',
+        name: 'Switched on',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://x',
+        enabled: 0,
+        userId: 'u1',
+      })
+      const cached = await seedCachedAdapter('a-on')
+
+      await updateAgent(getDb(), 'a-on', { enabled: 1 })
+
+      expect(cached.disconnectCount()).toBe(0)
+    })
+  })
+
+  describe('isAgentActive', () => {
+    const custom = {
+      name: 'Custom',
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://x',
+      userId: 'u1',
+    } as const
+
+    it('accepts an enabled custom agent and refuses a disabled, deleted, or unknown one', async () => {
+      await createAgent(getDb(), { ...custom, id: 'on' })
+      await createAgent(getDb(), { ...custom, id: 'off', enabled: 0 })
+      await createAgent(getDb(), { ...custom, id: 'gone' })
+      await deleteAgent(getDb(), 'gone')
+      const asAgent = (id: string) => ({ ...custom, id, isSystem: 0 }) as Agent
+
+      expect(await isAgentActive(getDb(), asAgent('on'))).toBe(true)
+      expect(await isAgentActive(getDb(), asAgent('off'))).toBe(false)
+      expect(await isAgentActive(getDb(), asAgent('gone'))).toBe(false)
+      expect(await isAgentActive(getDb(), asAgent('never-existed'))).toBe(false)
+    })
+
+    it('trusts the row, not the enabled flag on the object the chat kept', async () => {
+      await createAgent(getDb(), { ...custom, id: 'stale', enabled: 0 })
+
+      expect(await isAgentActive(getDb(), { ...custom, id: 'stale', isSystem: 0, enabled: 1 } as Agent)).toBe(false)
+    })
+
+    it('accepts a system agent only while discovery still lists it', async () => {
+      const systemAgent = { id: 'sys', type: 'managed-acp', isSystem: 1 } as Agent
+      await getDb().insert(agentsSystemTable).values({
+        id: 'sys',
+        name: 'Sys',
+        type: 'managed-acp',
+        transport: 'websocket',
+        url: 'wss://sys',
+        fetchedAt: nowIso(),
+      })
+      expect(await isAgentActive(getDb(), systemAgent)).toBe(true)
+
+      await getDb().delete(agentsSystemTable).where(eq(agentsSystemTable.id, 'sys'))
+      expect(await isAgentActive(getDb(), systemAgent)).toBe(false)
+    })
+
+    it('always accepts the built-in agent, which has no row', async () => {
+      expect(await isAgentActive(getDb(), builtInAgent)).toBe(true)
+    })
+
+    it.each([
+      ['disabled', (id: string) => updateAgent(getDb(), id, { enabled: 0 })],
+      ['deleted', (id: string) => deleteAgent(getDb(), id)],
+    ])('stops the adapter cache from dialing an agent once it is %s', async (_, deactivate) => {
+      await createAgent(getDb(), { ...custom, id: 'inactive' })
+      const agent = { ...custom, id: 'inactive', isSystem: 0, enabled: 1, deletedAt: null } as Agent
+      await seedCachedAdapter('inactive')
+      await deactivate('inactive')
+
+      const openTransport = mock(async () => {
+        throw new Error('dialed an inactive agent')
+      })
+      await expect(
+        getOrConnectAdapter(
+          agent,
+          { httpClient: {} as HttpClient, getProxyFetch: () => null as never },
+          { openTransport },
+        ),
+      ).rejects.toThrow('"kind":"agent-unavailable"')
+      expect(openTransport).not.toHaveBeenCalled()
     })
   })
 

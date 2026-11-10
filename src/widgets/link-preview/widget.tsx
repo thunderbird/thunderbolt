@@ -12,8 +12,6 @@ import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useSettings } from '@/hooks/use-settings'
 import { useQuery } from '@tanstack/react-query'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
-import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
-import { useSearchProviderAvailability } from '@/integrations/standalone-search/use-search-provider-availability'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import type { LinkPreviewData } from '@/integrations/thunderbolt-pro/schemas'
 import type { SourceMetadata } from '@/types/source'
@@ -96,13 +94,11 @@ const ProviderLinkPreview = ({ url, messageId }: Pick<LinkPreviewWidgetProps, 'u
   const { integrationsProIsEnabled } = useSettings({ integrations_pro_is_enabled: false })
   const { data: proAccess } = useQuery({ queryKey: ['pro-access'], queryFn: hasProAccess })
   const selection = useSearchProviderStore((state) => state.selection)
-  const { connectionAvailable, ready } = useSearchProviderAvailability()
   const useCloudPreview =
-    ready &&
-    resolveSearchSelection(selection, {
-      connection: connectionAvailable,
-      cloud: authenticated && Boolean(proAccess) && integrationsProIsEnabled.value,
-    }) === 'cloud'
+    (selection === 'auto' || selection === 'cloud') &&
+    authenticated &&
+    Boolean(proAccess) &&
+    integrationsProIsEnabled.value
   if (!useCloudPreview) {
     return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }

@@ -6,7 +6,7 @@ import { getProviderConnection, getProviderCredentials, resolveProviderConnectio
 import { getSettings } from '@/dal/settings'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { createOtariWebApi } from '@/integrations/otari-search/api'
-import { loadOtariWebCapabilities } from '@/integrations/otari-search/capabilities'
+import { loadCachedOtariWebCapabilities } from '@/integrations/otari-search/capability-query'
 import { createTinfoilWebApi } from '@/integrations/tinfoil-search/api'
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
@@ -57,10 +57,10 @@ export const getSearchConnectionAuthorization = async (db: AnyDrizzleDatabase, c
     }
     return live.apiKey
   }
-  return { connection, getApiKey, signal }
+  return { connection, getApiKey, signal, revision: credentials.sessionRevision }
 }
 
-/** Builds only the selected connection's API; Otari capabilities are discovered again for every turn. */
+/** Builds only the selected connection's API, reusing recent Otari capability discovery. */
 export const getSearchConnectionApi = async (
   db: AnyDrizzleDatabase,
   connectionId: string,
@@ -85,7 +85,11 @@ export const getSearchConnectionApi = async (
     return createTinfoilWebApi(getApiKey)
   }
   if (connection.provider === 'otari' && connection.url) {
-    const capabilities = await loadOtariWebCapabilities(connection.url, await getApiKey(), authorization.signal)
+    const capabilities = await loadCachedOtariWebCapabilities(
+      { id: connection.id, url: connection.url, revision: authorization.revision },
+      await getApiKey(),
+      authorization.signal,
+    )
     if (capabilities.search !== 'available') {
       return undefined
     }

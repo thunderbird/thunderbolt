@@ -24,7 +24,6 @@ import {
 } from '@/dal/provider-connections'
 import { updateSettings } from '@/dal/settings'
 import { clearCachedSession } from '@/lib/session-cache'
-import * as searchAvailability from '@/integrations/standalone-search/use-search-provider-availability'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { LinkPreviewWidget } from './widget'
 import { LinkPreview } from './display'
@@ -308,6 +307,35 @@ describe('standalone preview privacy', () => {
 })
 
 describe('cloud-account private-search preview routing', () => {
+  it.each(['auto', 'cloud', 'none', 'connection'] as const)(
+    'does not discover unrelated provider capabilities for passive previews (%s)',
+    async (selection) => {
+      await updateSettings(getDb(), { experimental_feature_otari: true })
+      const id = await saveProviderConnection(getDb(), {
+        provider: 'otari',
+        name: 'Private Otari',
+        url: 'https://otari.example/api/v1',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'key' },
+      })
+      if (selection === 'connection') {
+        useSearchProviderStore.getState().selectSearchConnection(id)
+      } else {
+        useSearchProviderStore.getState().selectSearchProvider(selection)
+      }
+      const discover = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ data: [] }))
+      try {
+        const { client, requests } = createRecordingClient(() => previewResponse)
+        renderWithProviders(<LinkPreviewWidget url="https://example.com/article" messageId="msg-1" />, client)
+        await settleQueries()
+        expect(discover).not.toHaveBeenCalled()
+        expect(requests).toEqual(selection === 'auto' || selection === 'cloud' ? ['preview'] : [])
+      } finally {
+        discover.mockRestore()
+      }
+    },
+  )
+
   it.each(['auto', 'cloud'] as const)(
     'does not fetch previews with the Cloud connection disabled (%s)',
     async (selection) => {
@@ -403,30 +431,6 @@ describe('cloud-account private-search preview routing', () => {
     renderWithProviders(<LinkPreviewWidget url="https://example.com/article" messageId="msg-1" />, client)
     await settleQueries()
     expect(requests).toEqual(['preview'])
-  })
-
-  it('does not infer cloud permission from an unresolved or failed provider lookup', async () => {
-    const useConnection = searchAvailability.useSearchProviderAvailability
-    const status = { loading: true, ready: false }
-    const session = spyOn(searchAvailability, 'useSearchProviderAvailability').mockImplementation(() => ({
-      ...useConnection(),
-      ...status,
-    }))
-    try {
-      const { client, requests } = createRecordingClient(() => previewResponse)
-      const view = renderWithProviders(
-        <LinkPreviewWidget url="https://example.com/article" messageId="msg-1" />,
-        client,
-      )
-      await settleQueries()
-      expect(requests).toEqual([])
-      Object.assign(status, { loading: false, ready: false })
-      view.rerender(<LinkPreviewWidget url="https://example.com/article" messageId="msg-1" />)
-      await settleQueries()
-      expect(requests).toEqual([])
-    } finally {
-      session.mockRestore()
-    }
   })
 })
 

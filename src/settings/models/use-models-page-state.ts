@@ -17,10 +17,9 @@ import { useChatStore } from '@/chats/chat-store'
 import { defaultModels } from '@shared/defaults/models'
 import type { EditModelSubmission } from './edit-model-form'
 import { initialModelsPageState, modelsPageReducer, type ModelPanel, type ModelsPageAction } from './page-state'
-import { useAddProviderModels } from './use-add-provider-models'
 import { modelRequiresServer } from './model-policy'
 
-/** Owns Models page reducer, forms, catalog requests, tests, and DAL mutations. */
+/** Owns saved-model selection and mutations; each aside owns its form state. */
 export const useModelsPageState = () => {
   const { t } = useLingui()
   const db = useDatabase()
@@ -41,11 +40,6 @@ export const useModelsPageState = () => {
   const activeModel = models.find((model) => model.id === activeModelId)
   const editingModel = panel?.kind === 'edit' ? activeModel : undefined
   const clearMutationError = useCallback(() => dispatch({ type: 'MUTATION_STARTED' }), [])
-  const closeAddPanel = useCallback(() => dispatch({ type: 'PANEL_CHANGED', panel: null }), [])
-  const addForm = useAddProviderModels({
-    isOpen: isAddPanelOpen,
-    onClose: closeAddPanel,
-  })
 
   const reportFailure = (action: Extract<ModelsPageAction, { type: 'MUTATION_FAILED' }>) => {
     // Database errors can include the API key bound to an update statement.
@@ -95,23 +89,13 @@ export const useModelsPageState = () => {
   const openAddPanel = () => {
     editing.cancel()
     dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'add' } })
-    addForm.prepareForOpen()
   }
   const changePanel = (nextPanel: ModelPanel) => {
     editing.cancel()
-    if (isAddPanelOpen) {
-      // Reset every add-form resource (draft fields, selected model,
-      // connection probe, and catalog) before another panel replaces it.
-      addForm.resetForm()
-    }
     dispatch({ type: 'PANEL_CHANGED', panel: nextPanel })
   }
   const closePanel = () => {
     editing.cancel()
-    if (isAddPanelOpen) {
-      addForm.onCancel()
-      return
-    }
     dispatch({
       type: 'PANEL_CHANGED',
       panel: panel?.kind === 'edit' ? { kind: 'detail', modelId: panel.modelId } : null,
@@ -147,7 +131,6 @@ export const useModelsPageState = () => {
     editingModel,
     isAddPanelOpen,
     mutationError,
-    addForm,
     openAddPanel,
     closePanel,
     selectActiveModel: (modelId: string) => changePanel(activeModelId === modelId ? null : { kind: 'detail', modelId }),

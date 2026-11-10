@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 import { afterAll, beforeEach, expect, it, spyOn } from 'bun:test'
+import { Database as SQLiteDatabase } from 'bun:sqlite'
 import { eq, sql } from 'drizzle-orm'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -294,6 +295,58 @@ it.each([false, true])(
     expect((await getProviderConnections(getDb()))[0].connected).toBe(true)
   },
 )
+
+it('does not perform per-model credential reads on subsequent launches', async () => {
+  const customUrl = 'http://localhost:1234/v1'
+  for (const id of ['a', 'b', 'c', 'd']) {
+    await getDb().insert(modelsTable).values({ id, provider: 'custom', name: id, model: id, url: customUrl })
+  }
+  await migrateProviderConnections(getDb())
+  await disconnectProviderConnection(getDb(), 'legacy-model:b')
+  await getDb()
+    .update(providerConnectionsTable)
+    .set({ url: 'https://changed.example/v1' })
+    .where(eq(providerConnectionsTable.id, 'legacy-model:c'))
+  await getDb()
+    .update(providerConnectionsTable)
+    .set({ deletedAt: new Date().toISOString() })
+    .where(eq(providerConnectionsTable.id, 'legacy-model:d'))
+  const before = await getDb().get(sql`SELECT total_changes() AS changes`)
+  const prepare = spyOn(SQLiteDatabase.prototype, 'prepare')
+  try {
+    await migrateProviderConnections(getDb())
+    // One legacy Tinfoil read and one pending-model query, regardless of how
+    // many already migrated models are linked to local connection credentials.
+    expect(prepare).toHaveBeenCalledTimes(2)
+  } finally {
+    prepare.mockRestore()
+  }
+  expect(await getDb().get(sql`SELECT total_changes() AS changes`)).toEqual(before)
+  expect((await getProviderConnections(getDb())).map(({ id, connected }) => ({ id, connected }))).toEqual([
+    { id: 'legacy-model:a', connected: true },
+    { id: 'legacy-model:b', connected: false },
+    { id: 'legacy-model:c', connected: false },
+  ])
+})
+
+it('clears a remaining custom provider-default marker without replacing local credentials', async () => {
+  await getDb().insert(modelsTable).values({
+    id: 'local',
+    provider: 'custom',
+    name: 'Local',
+    model: 'test',
+    url: 'http://localhost:1234/v1',
+  })
+  await migrateProviderConnections(getDb())
+  await disconnectProviderConnection(getDb(), 'legacy-model:local')
+  await getDb().insert(modelsSecretsTable).values({ modelId: 'local', apiKey: '', providerDefault: 0 })
+  await migrateProviderConnections(getDb())
+  expect((await getProviderConnections(getDb()))[0].connected).toBe(false)
+  expect(await getDb().select().from(modelsSecretsTable).get()).toMatchObject({
+    apiKey: null,
+    providerDefault: null,
+  })
+})
 
 it('does not authorize a keyless custom server whose synced URL changed', async () => {
   await getDb().insert(modelsTable).values({

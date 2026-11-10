@@ -12,10 +12,12 @@ import { clearMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { clearProviderAuthorizationDraft } from '@/providers/authorization-draft'
 import { clearTinfoilClients } from '@/ai/tinfoil-client'
 import { attestationStore } from '@/attestation/store'
+import { clearOtariCapabilityCache } from '@/integrations/otari-search/capability-query'
 
 /** Clear session memory that must never survive an identity transition. */
 export const clearIdentityScopedMemory = (): void => {
   invalidateIdentityLifetime()
+  clearOtariCapabilityCache()
   cancelOtariBrowserConnection()
   cancelProviderBrowserConnection()
   cancelTinfoilMobileConnection()

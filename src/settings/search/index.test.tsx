@@ -30,7 +30,10 @@ beforeEach(async () => {
   await updateSettings(getDb(), { experimental_feature_otari: true })
   useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
   useSearchProviderStore.getState().clearSearchProvider()
-  spyOn(otariCapabilities, 'loadOtariSearchStatus').mockResolvedValue('available')
+  spyOn(otariCapabilities, 'loadOtariWebCapabilities').mockResolvedValue({
+    search: 'available',
+    fetch: 'available',
+  })
 })
 afterEach(() => {
   cleanup()
@@ -70,7 +73,7 @@ it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
   async (status) => {
     const id = await save('otari', 'Otari without search')
     useSearchProviderStore.getState().configureProviderSearch(id, 'available')
-    spyOn(otariCapabilities, 'loadOtariSearchStatus').mockResolvedValue(status)
+    spyOn(otariCapabilities, 'loadOtariWebCapabilities').mockResolvedValue({ search: status, fetch: 'available' })
     await save('exa', 'Working search')
     renderPage()
     await waitForElement(() => screen.queryByRole('switch', { name: 'Use Working search' }))
@@ -85,16 +88,17 @@ it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
 it('checks each Otari instance separately and discovers search enabled later without reconnecting', async () => {
   await save('otari', 'No search')
   const available = await save('otari', 'Search enabled')
-  const discover = spyOn(otariCapabilities, 'loadOtariSearchStatus').mockImplementation(async (_url, key) =>
-    key === 'secret-Search enabled' ? 'available' : 'not_configured',
-  )
+  const discover = spyOn(otariCapabilities, 'loadOtariWebCapabilities').mockImplementation(async (_url, key) => ({
+    search: key === 'secret-Search enabled' ? 'available' : 'not_configured',
+    fetch: 'available',
+  }))
   const view = renderPage()
   await waitForElement(() => screen.queryByRole('switch', { name: 'Use Search enabled' }))
   expect(screen.queryByRole('button', { name: 'Open No search' })).toBeNull()
   fireEvent.click(screen.getByRole('switch', { name: 'Use Search enabled' }))
   expect(useSearchProviderStore.getState().connectionId).toBe(available)
   view.unmount()
-  discover.mockResolvedValue('available')
+  discover.mockResolvedValue({ search: 'available', fetch: 'available' })
   renderPage()
   expect(await waitForElement(() => screen.queryByRole('switch', { name: 'Use No search' }))).toBeVisible()
 })
@@ -195,7 +199,10 @@ it('continues an existing Otari connection to its search availability details', 
     url: 'https://otari.example/api/v1',
     credentials: { access_token: 'test-token' },
   })
-  spyOn(otariCapabilities, 'loadOtariSearchStatus').mockResolvedValue('not_configured')
+  spyOn(otariCapabilities, 'loadOtariWebCapabilities').mockResolvedValue({
+    search: 'not_configured',
+    fetch: 'available',
+  })
   renderPage()
   await waitForElement(() => screen.queryByText('No search connections available'))
   fireEvent.click(screen.getByRole('button', { name: 'New Search Connection' }))

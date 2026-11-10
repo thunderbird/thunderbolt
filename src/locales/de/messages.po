@@ -377,7 +377,7 @@ msgstr "MCP-Server hinzufügen"
 #: src/components/create-item/context.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
-#: src/settings/models/index.tsx
+#: src/settings/models/add-provider-models-panel.tsx
 #: src/settings/models/models-list.tsx
 msgid "Add Model"
 msgstr "Modell hinzufügen"

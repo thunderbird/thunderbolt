@@ -20,6 +20,9 @@ import { systemModelMenuMessage } from './model-detail'
 import { http } from '@/lib/http'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
+import { saveProviderConnection } from '@/dal/provider-connections'
+import * as providerModels from '@/providers/models'
+import * as modelsList from './models-list'
 
 // The page consumes router state (the composer's "Add models" deep link), so
 // it must render inside a router.
@@ -225,6 +228,54 @@ describe('add model form', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('keeps catalog search and selection updates inside the aside', async () => {
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'openai',
+      name: 'Catalog account',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'test-key' },
+    })
+    await providerModels.addProviderModels(getDb(), id, [{ id: 'saved', name: 'Saved model' }])
+    const fetch = spyOn(providerModels, 'fetchProviderModels').mockResolvedValue([
+      { id: 'one', name: 'First model' },
+      { id: 'two', name: 'Second model' },
+    ])
+    const list = spyOn(modelsList, 'ModelsList')
+    try {
+      renderModelsPage()
+      await waitForElement(() => screen.queryByRole('button', { name: 'Open Saved model' }))
+      fireEvent.click(screen.getByRole('button', { name: 'New Model' }))
+      fireEvent.click(await waitForElement(() => screen.queryByRole('combobox', { name: 'Connection' })))
+      fireEvent.click(await waitForElement(() => screen.queryByRole('option', { name: /Catalog account/ })))
+      await waitForElement(() => screen.queryByRole('checkbox', { name: 'First model' }))
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      list.mockClear()
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search models' }), { target: { value: 'two' } })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(screen.queryByRole('checkbox', { name: 'First model' })).toBeNull()
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Second model' }))
+      expect(screen.getByRole('checkbox', { name: 'Second model' })).toBeChecked()
+      expect(list).not.toHaveBeenCalled()
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(screen.getByRole('button', { name: 'Open Saved model' })).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'Open Saved model' }))
+      expect(screen.queryByRole('textbox', { name: 'Search models' })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'New Model' }))
+      fireEvent.click(await waitForElement(() => screen.queryByRole('combobox', { name: 'Connection' })))
+      fireEvent.click(await waitForElement(() => screen.queryByRole('option', { name: /Catalog account/ })))
+      expect(await waitForElement(() => screen.queryByRole('checkbox', { name: 'Second model' }))).not.toBeChecked()
+      expect(screen.getByRole('textbox', { name: 'Search models' })).toHaveValue('')
+      expect(fetch).toHaveBeenCalledTimes(2)
+    } finally {
+      list.mockRestore()
+      fetch.mockRestore()
+    }
   })
 
   it('disables Add Model while required fields are empty', async () => {

@@ -26,7 +26,7 @@ import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { StatusCard } from '@/components/ui/status-card'
 import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
-import { AddProviderModels } from './add-provider-models'
+import { AddProviderModelsPanel } from './add-provider-models-panel'
 import { EditModelForm } from './edit-model-form'
 import { ModelDetail } from './model-detail'
 import { ModelsList } from './models-list'
@@ -60,11 +60,7 @@ const ModelsPage = () => {
 
   const renderPanel = () => {
     if (page.isAddPanelOpen) {
-      return (
-        <DetailPanel title={t`Add Model`} onClose={page.addForm.onCancel} bodyLayout="fill">
-          <AddProviderModels {...page.addForm} />
-        </DetailPanel>
-      )
+      return <AddProviderModelsPanel onClose={page.closePanel} />
     }
     if (activeModel && editingModel) {
       return (

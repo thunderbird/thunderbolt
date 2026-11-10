@@ -4,18 +4,20 @@
 
 import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useDatabase } from '@/contexts'
 import { getProviderConnections, resolveProviderConnection } from '@/dal/provider-connections'
-import { loadOtariSearchStatus } from '@/integrations/otari-search/capabilities'
+import { loadCachedOtariWebCapabilities } from '@/integrations/otari-search/capability-query'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 import { getProviderDefinition } from '@/providers/registry'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { canSupplySearch } from './eligibility'
 
-/** Shares credential-free connection metadata between onboarding, settings and passive previews. */
+/** Shares credential-free connection metadata between onboarding and settings. */
 export const useSearchProviderAvailability = () => {
   const db = useDatabase()
+  const queryClient = useQueryClient()
   const { isProviderVisible, otariEnabled } = useProviderVisibility()
   const { selection, connectionId } = useSearchProviderStore()
   const query = useQuery({
@@ -32,8 +34,15 @@ export const useSearchProviderAvailability = () => {
     queries: otari.map((connection) => ({
       queryKey: ['otari-search-capability', connection.id, connection.updatedAt],
       queryFn: async ({ signal }: { signal: AbortSignal }) => {
+        const identity = AbortSignal.any([signal, getIdentitySignal()])
         const resolved = await resolveProviderConnection(db, connection.id)
-        return loadOtariSearchStatus(resolved.connection.url!, resolved.apiKey, signal)
+        const capabilities = await loadCachedOtariWebCapabilities(
+          { id: connection.id, url: resolved.connection.url!, revision: resolved.revision },
+          resolved.apiKey,
+          identity,
+          queryClient,
+        )
+        return capabilities.search
       },
       staleTime: 30_000,
       retry: false,

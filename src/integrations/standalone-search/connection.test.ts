@@ -20,6 +20,8 @@ import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { http } from '@/lib/http'
 import { getSearchConnectionApi, getSearchConnectionAuthorization } from './connection'
 import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
+import { clearOtariCapabilityCache } from '@/integrations/otari-search/capability-query'
+import { getClock } from '@/testing-library'
 
 const url = 'https://gateway.example/api/v1'
 const toolsResponse = (search = true, fetch = true) =>
@@ -50,6 +52,7 @@ beforeEach(() => {
 })
 afterAll(teardownTestDatabase)
 afterEach(async () => {
+  clearOtariCapabilityCache()
   mock.restore()
   useSearchProviderStore.getState().clearSearchProvider()
   await resetTestDatabase()
@@ -170,8 +173,30 @@ it('aborts an in-flight Otari search request on identity teardown', async () => 
   expect(signal.aborted).toBe(true)
   await expect(request).rejects.toHaveProperty('name', 'AbortError')
 })
+it('shares discovery across repeated Otari turns', async () => {
+  const id = await connect()
+  const fetch = spyOn(globalThis, 'fetch')
+  expect((await getSearchConnectionApi(getDb(), id))?.search).toBeDefined()
+  expect((await getSearchConnectionApi(getDb(), id))?.search).toBeDefined()
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+it('rediscovers a replaced authorization even when its URL and metadata timestamp are unchanged', async () => {
+  const id = await connect()
+  const original = (await providerConnections.getProviderConnection(getDb(), id))!
+  expect((await getSearchConnectionApi(getDb(), id))?.search).toBeDefined()
+  await connect()
+  await getDb()
+    .update(providerConnectionsTable)
+    .set({ updatedAt: original.updatedAt })
+    .where(eq(providerConnectionsTable.id, id))
+  const fetch = spyOn(globalThis, 'fetch').mockClear().mockResolvedValue(toolsResponse(false))
+  expect(await getSearchConnectionApi(getDb(), id)).toBeUndefined()
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
 it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
-  'rediscovers Otari after cached %s',
+  'rediscovers Otari after a previous %s snapshot expires',
   async (status) => {
     const id = await connect()
     useSearchProviderStore.getState().configureProviderSearch(id, status)
@@ -179,6 +204,7 @@ it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
       .mockResolvedValueOnce(toolsResponse(false))
       .mockResolvedValue(toolsResponse())
     expect(await getSearchConnectionApi(getDb(), id)).toBeUndefined()
+    getClock().tick(30_000)
     expect((await getSearchConnectionApi(getDb(), id))?.search).toBeDefined()
     expect(fetch).toHaveBeenCalledTimes(2)
   },

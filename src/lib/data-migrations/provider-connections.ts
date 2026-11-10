@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { eq, isNull } from 'drizzle-orm'
+import { and, eq, getTableColumns, isNotNull, isNull, ne, or } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import {
   integrationsSecretsTable,
@@ -110,7 +110,32 @@ export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promis
         .set({ credentials: null, enabled: 0 })
         .where(eq(integrationsSecretsTable.provider, 'tinfoil'))
     }
-    const rows = await tx.select().from(modelsTable).where(isNull(modelsTable.deletedAt)).orderBy(modelsTable.id)
+    // Keyless custom models retain their legacy URL for other devices. Retry only
+    // while local credentials are missing or a legacy marker still needs cleanup.
+    const rows = await tx
+      .select(getTableColumns(modelsTable))
+      .from(modelsTable)
+      .leftJoin(modelsSecretsTable, eq(modelsSecretsTable.modelId, modelsTable.id))
+      .leftJoin(providerConnectionsTable, eq(providerConnectionsTable.id, modelsTable.providerConnectionId))
+      .leftJoin(providerConnectionSecretsTable, eq(providerConnectionSecretsTable.id, providerConnectionsTable.id))
+      .where(
+        and(
+          isNull(modelsTable.deletedAt),
+          or(
+            ne(modelsSecretsTable.apiKey, ''),
+            eq(modelsSecretsTable.oauthProvider, 'tinfoil'),
+            and(
+              eq(modelsTable.provider, 'custom'),
+              ne(modelsTable.url, ''),
+              or(isNull(providerConnectionSecretsTable.id), isNotNull(modelsSecretsTable.providerDefault)),
+            ),
+          ),
+        ),
+      )
+      .orderBy(modelsTable.id)
+    if (rows.length === 0) {
+      return
+    }
     const legacySecrets = new Map((await tx.select().from(modelsSecretsTable)).map((row) => [row.modelId, row]))
     for (const model of rows) {
       const secret = legacySecrets.get(model.id)
@@ -123,10 +148,6 @@ export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promis
       }
       const oauth = secret?.oauthProvider === 'tinfoil'
       const hasLegacyKey = Boolean(secret?.apiKey || oauth)
-      const unauthenticatedCustom = model.provider === 'custom' && model.url
-      if (!hasLegacyKey && !unauthenticatedCustom) {
-        continue
-      }
       const connectionId = model.providerConnectionId ?? (oauth ? 'oauth:tinfoil' : `legacy-model:${model.id}`)
       if (oauth && connectionId !== 'oauth:tinfoil') {
         // A synced API-key reference must not consume this device's OAuth marker.

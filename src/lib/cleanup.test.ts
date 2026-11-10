@@ -21,6 +21,7 @@ import * as fileBlobStorage from './file-blob-storage'
 import * as fs from './fs'
 import { clearIdentityScopedMemory } from './identity-memory'
 import { getIdentitySignal } from './identity-lifetime'
+import { queryClient } from './query-client'
 import {
   captureOtariBrowserReturn,
   clearOtariBrowserReturn,
@@ -181,6 +182,13 @@ describe('clearIdentityScopedMemory', () => {
   afterEach(() => {
     clearIdentityScopedMemory()
     sessionStorage.removeItem('thunderbolt.otari.authorization')
+  })
+
+  it('removes capability discovery results before the next identity can reuse a stable OAuth id', () => {
+    const key = ['otari-web-capabilities', 'oauth:otari', 'https://otari.example/api/v1', 'session']
+    queryClient.setQueryData(key, { search: 'available', fetch: 'available' })
+    clearIdentityScopedMemory()
+    expect(queryClient.getQueryData(key)).toBeUndefined()
   })
 
   it('aborts a claimed provider exchange before asynchronous teardown and permits new identity work', async () => {

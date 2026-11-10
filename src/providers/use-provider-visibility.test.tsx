@@ -34,7 +34,10 @@ it('hides saved Otari data by default and reactively reveals it across all provi
     credentials: { apiKey: 'test' },
   })
   await addProviderModels(getDb(), id, [{ id: 'test-model' }])
-  const discovery = spyOn(capabilities, 'loadOtariSearchStatus').mockResolvedValue('available')
+  const discovery = spyOn(capabilities, 'loadOtariWebCapabilities').mockResolvedValue({
+    search: 'available',
+    fetch: 'available',
+  })
   const { result } = renderHook(
     () => ({
       flag: useSettings({ experimental_feature_otari: false }).experimentalFeatureOtari,

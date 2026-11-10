@@ -190,7 +190,5 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
       resetForm()
       onClose()
     },
-    resetForm,
-    prepareForOpen: resetForm,
   }
 }

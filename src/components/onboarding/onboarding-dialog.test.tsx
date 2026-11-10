@@ -345,7 +345,10 @@ describe('OnboardingDialog', () => {
     it.each(['available', 'not_configured', 'workspace_disabled', 'unknown'] as const)(
       'only skips search when the Otari connection advertises it (%s)',
       async (status) => {
-        const discovery = spyOn(otariCapabilities, 'loadOtariSearchStatus').mockResolvedValue(status)
+        const discovery = spyOn(otariCapabilities, 'loadOtariWebCapabilities').mockResolvedValue({
+          search: status,
+          fetch: 'available',
+        })
         try {
           useLocalSettingsStore.setState({ cloudUrl: '' })
           await reconcileDefaults(getDb())

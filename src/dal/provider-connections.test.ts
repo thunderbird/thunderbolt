@@ -15,6 +15,7 @@ import {
   saveProviderConnection,
   saveProviderConnectionInTransaction,
   getProviderConnectionRevision,
+  getProviderConnection,
   getProviderConnections,
   getProviderCredentials,
   updateProviderConnection,
@@ -70,6 +71,19 @@ const connect = (name = 'Work', authMethod: 'oauth' | 'api_key' = 'api_key') =>
   })
 
 describe('provider connections', () => {
+  it('looks up only the requested active connection without exposing its credentials', async () => {
+    const target = await connect('Work')
+    const other = await connect('Personal')
+    const expected = (await getProviderConnections(getDb())).find(({ id }) => id === target)
+    expect(await getProviderConnection(getDb(), target)).toEqual(expected!)
+    expect(await getProviderConnection(getDb(), target)).not.toHaveProperty('credentials')
+    expect(await getProviderConnection(getDb(), 'missing')).toBeNull()
+    await disconnectProviderConnection(getDb(), target)
+    expect(await getProviderConnection(getDb(), target)).toMatchObject({ id: target, connected: false })
+    expect(await getProviderConnection(getDb(), other)).toMatchObject({ id: other, connected: true })
+    await deleteProviderConnection(getDb(), target)
+    expect(await getProviderConnection(getDb(), target)).toBeNull()
+  })
   it('persists a connection without models and supports multiple API-key accounts', async () => {
     const a = await connect('Personal')
     const b = await connect('Work')
@@ -257,6 +271,7 @@ it.each([
       }),
     )
     expect((await getProviderConnections(getDb()))[0].connected).toBe(connected)
+    expect((await getProviderConnection(getDb(), 'oauth:tinfoil'))?.connected).toBe(connected)
   },
 )
 
@@ -455,6 +470,7 @@ describe('ChatGPT account switching', () => {
     expect(mocks.revoke).toHaveBeenCalledTimes(1)
     expect((await stored()).oauth?.clientId).toBe('second')
     expect((await getProviderConnections(getDb()))[0]).toMatchObject({ connected: false, needsConsent: true })
+    expect(await getProviderConnection(getDb(), 'oauth:openai')).toMatchObject({ connected: false, needsConsent: true })
   })
 
   it('does not leave a revoked session usable after a toggle during disconnect', async () => {

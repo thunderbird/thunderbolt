@@ -7,7 +7,7 @@ import { importBackup } from './import-backup'
 import { loginViaEmailCode } from './helpers'
 
 /** Import an isolated connection whose catalog is fulfilled locally, without provider credentials. */
-const prepareCatalog = async (page: Page, count: number) => {
+const prepareCatalog = async (page: Page, count: number, savedCount = 0) => {
   const email = await loginViaEmailCode(page)
   const connectionId = crypto.randomUUID()
   const url = 'http://localhost:18991/v1'
@@ -37,6 +37,16 @@ const prepareCatalog = async (page: Page, count: number) => {
           credentials: JSON.stringify({ apiKey: 'catalog-layout-key' }),
         },
       ],
+      models: Array.from({ length: savedCount }, (_, index) => ({
+        id: crypto.randomUUID(),
+        providerConnectionId: connectionId,
+        provider: 'custom',
+        name: `Saved model ${index + 1}`,
+        model: `saved-${index + 1}`,
+        enabled: 1,
+        isSystem: 0,
+        toolUsage: 1,
+      })),
     },
   })
 }
@@ -131,8 +141,9 @@ for (const viewport of [
     test('keeps catalog selections through search and keyboard input, and discards them on cancel', async ({
       page,
     }) => {
-      await prepareCatalog(page, 500)
+      await prepareCatalog(page, 500, 50)
       await page.goto('/settings/models')
+      await expect(page.getByRole('button', { name: 'Open Saved model 1', exact: true })).toBeVisible()
       const openCatalog = async () => {
         await page.getByRole('button', { name: 'New Model', exact: true }).click()
         await page.getByRole('combobox', { name: 'Connection', exact: true }).click()
@@ -166,8 +177,11 @@ for (const viewport of [
       await expect(first).not.toBeChecked()
       await expect(last).not.toBeChecked()
       await expect(page.getByRole('button', { name: 'Add models', exact: true })).toBeDisabled()
-      await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await first.check()
+      await page.getByRole('button', { name: 'Add models', exact: true }).click()
       await expect(catalog).toBeHidden()
+      await expect(page.getByRole('button', { name: 'Open Catalog model 1', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Open Saved model 1', exact: true })).toBeVisible()
     })
   })
 }

@@ -37,9 +37,9 @@ import { getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
 import { getProviderConnectionRevision } from '@/providers/revision'
 export { getProviderConnectionRevision } from '@/providers/revision'
 
-/** Reactive metadata query; credentials never enter connection list components. */
-export const getProviderConnections = (db: AnyDrizzleDatabase) => {
-  const query = db
+/** Share the metadata projection without exposing credentials to callers. */
+const selectProviderConnections = (db: AnyDrizzleDatabase) =>
+  db
     .select({
       ...getTableColumns(connections),
       connected: providerCredentialConnected,
@@ -47,8 +47,10 @@ export const getProviderConnections = (db: AnyDrizzleDatabase) => {
     })
     .from(connections)
     .leftJoin(secrets, eq(secrets.id, connections.id))
-    .where(isNull(connections.deletedAt))
-    .orderBy(connections.name)
+
+/** Reactive metadata query; credentials never enter connection list components. */
+export const getProviderConnections = (db: AnyDrizzleDatabase) => {
+  const query = selectProviderConnections(db).where(isNull(connections.deletedAt)).orderBy(connections.name)
   return query as DrizzleQueryWithPromise<ProviderConnection>
 }
 
@@ -62,8 +64,10 @@ export const getModelProviderConnectionIds = (db: AnyDrizzleDatabase) =>
 
 /** Return active connection metadata, including whether this device is authenticated. */
 export const getProviderConnection = async (db: AnyDrizzleDatabase, id: string): Promise<ProviderConnection | null> => {
-  const rows = await getProviderConnections(db)
-  return rows.find((row) => row.id === id) ?? null
+  const row = await selectProviderConnections(db)
+    .where(and(eq(connections.id, id), isNull(connections.deletedAt)))
+    .get()
+  return (row as ProviderConnection | undefined) ?? null
 }
 
 /** Resolve only locally approved credentials for a currently enabled connection. */

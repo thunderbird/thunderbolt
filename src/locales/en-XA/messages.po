@@ -1148,6 +1148,10 @@ msgstr ""
 msgid "Contact Support"
 msgstr ""
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Content to send"
+msgstr ""
+
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Context"
 msgstr ""
@@ -3679,6 +3683,10 @@ msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retrying…"
+msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx

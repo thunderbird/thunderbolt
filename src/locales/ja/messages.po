@@ -1136,6 +1136,10 @@ msgstr "接続"
 msgid "Contact Support"
 msgstr "サポートに問い合わせる"
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Content to send"
+msgstr "送信する内容"
+
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Context"
 msgstr ""
@@ -3668,6 +3672,10 @@ msgstr "接続を再試行"
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retrying…"
 msgstr "再試行しています…"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
+msgstr "以下のチャット記録とメモを確認してください。自動マスキングでは機密情報を見落とす可能性があります。"
 
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx

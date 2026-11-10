@@ -1160,6 +1160,10 @@ msgstr "Connexions"
 msgid "Contact Support"
 msgstr "Contacter le support"
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Content to send"
+msgstr "Contenu à envoyer"
+
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Context"
 msgstr ""
@@ -3692,6 +3696,10 @@ msgstr "Réessayer la connexion"
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retrying…"
 msgstr "Nouvelle tentative…"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
+msgstr "Vérifiez ci-dessous l'historique de la conversation et votre note. Le masquage automatique peut laisser passer des informations sensibles."
 
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx

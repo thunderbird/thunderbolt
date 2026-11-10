@@ -12,7 +12,7 @@ const CreateItemHost = lazy(() => import('./create-item-host').then((module) => 
 /**
  * Defers the create-item host (and the detail-panel chrome it imports) out of
  * the entry bundle: a quick-create request or OAuth return loads the chunk. Once
- * loaded it stays mounted so the closing panel can animate out.
+ * loaded it stays mounted on the current page so the closing panel can animate out.
  */
 export const LazyCreateItemHost = () => {
   const { request } = useCreateItem()
@@ -29,7 +29,7 @@ export const LazyCreateItemHost = () => {
 
   return (
     <Suspense fallback={null}>
-      <CreateItemHost />
+      <CreateItemHost key={location.pathname} />
     </Suspense>
   )
 }

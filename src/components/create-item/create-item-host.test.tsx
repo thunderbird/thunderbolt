@@ -20,7 +20,7 @@ const HostControls = () => {
       <button type="button" onClick={() => openCreateItem({ kind: 'skill' })}>
         open skill
       </button>
-      <button type="button" onClick={closeCreateItem}>
+      <button type="button" onClick={() => closeCreateItem()}>
         close
       </button>
     </>

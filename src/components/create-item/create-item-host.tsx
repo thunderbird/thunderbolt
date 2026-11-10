@@ -73,10 +73,11 @@ export const CreateItemHost = () => {
       setRenderedRequest(null)
     }
   }
+  const closeRequest = () => closeCreateItem(renderedRequest.id)
 
   // The provider clears `isSurfaceOpen` in the same update as any request
   // change, so it alone means "the rendered request is open".
-  const sharedProps = { open: isSurfaceOpen, onClose: closeCreateItem, onCloseComplete: handleCloseComplete }
+  const sharedProps = { open: isSurfaceOpen, onClose: closeRequest, onCloseComplete: handleCloseComplete }
 
   const panel = (() => {
     switch (renderedRequest.kind) {
@@ -113,7 +114,7 @@ export const CreateItemHost = () => {
           kind={renderedRequest.kind}
           title={createItemTitle(renderedRequest)}
           open={isSurfaceOpen}
-          onClose={closeCreateItem}
+          onClose={closeRequest}
           onCloseComplete={handleCloseComplete}
         />
       }

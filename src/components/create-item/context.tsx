@@ -41,47 +41,60 @@ type CreateItemContextValue = {
   request: CreateItemRequest | null
   isSurfaceOpen: boolean
   openCreateItem: (request: CreateItemRequestInput) => void
-  closeCreateItem: () => void
+  closeCreateItem: (requestId?: number) => void
 }
 
 const CreateItemContext = createContext<CreateItemContextValue | null>(null)
 
+type CreateItemState = {
+  pathname: string | undefined
+  request: CreateItemRequest | null
+  isSurfaceOpen: boolean
+}
+
 /**
- * Owns route-independent create requests for app-wide entry points such as
- * the chat's skill, agent, and model selectors.
+ * Opens create panels in place, with drafts owned by the page that opened them.
+ * Changing pages clears the panel without remounting the surrounding layout.
  */
-export const CreateItemProvider = ({ children }: { children: ReactNode }) => {
-  const [request, setRequest] = useState<CreateItemRequest | null>(null)
-  const [isSurfaceOpen, setIsSurfaceOpen] = useState(false)
+export const CreateItemProvider = ({ children, pathname }: { children: ReactNode; pathname?: string }) => {
+  const [state, setState] = useState<CreateItemState>({ pathname, request: null, isSurfaceOpen: false })
   const requestIdCounter = useRef(0)
   const openFrameId = useRef<number | null>(null)
 
-  const openCreateItem = useCallback((nextRequest: CreateItemRequestInput) => {
-    if (openFrameId.current !== null) {
-      cancelAnimationFrame(openFrameId.current)
-    }
-    requestIdCounter.current += 1
-    setIsSurfaceOpen(false)
-    setRequest({ ...nextRequest, id: requestIdCounter.current })
-    // Commit the panel once in its closed geometry before changing the open
-    // state — a transition cannot run when the panel first mounts already
-    // open. Double rAF: the first callback can still coalesce into the same
-    // paint as the closed-geometry commit, which would skip the transition.
-    openFrameId.current = requestAnimationFrame(() => {
-      openFrameId.current = requestAnimationFrame(() => {
-        openFrameId.current = null
-        setIsSurfaceOpen(true)
-      })
-    })
-  }, [])
+  if (state.pathname !== pathname) {
+    setState({ pathname, request: null, isSurfaceOpen: false })
+  }
 
-  const closeCreateItem = useCallback(() => {
-    if (openFrameId.current !== null) {
-      cancelAnimationFrame(openFrameId.current)
-      openFrameId.current = null
-    }
-    setIsSurfaceOpen(false)
-    setRequest(null)
+  const openCreateItem = useCallback(
+    (nextRequest: CreateItemRequestInput) => {
+      if (openFrameId.current !== null) {
+        cancelAnimationFrame(openFrameId.current)
+      }
+      const id = ++requestIdCounter.current
+      setState({ pathname, request: { ...nextRequest, id }, isSurfaceOpen: false })
+      // Commit the panel once in its closed geometry before changing the open
+      // state — a transition cannot run when the panel first mounts already
+      // open. Double rAF: the first callback can still coalesce into the same
+      // paint as the closed-geometry commit, which would skip the transition.
+      openFrameId.current = requestAnimationFrame(() => {
+        openFrameId.current = requestAnimationFrame(() => {
+          openFrameId.current = null
+          // Navigation can retire the request while its opening frames are queued.
+          setState((current) => (current.request?.id === id ? { ...current, isSurfaceOpen: true } : current))
+        })
+      })
+    },
+    [pathname],
+  )
+
+  const closeCreateItem = useCallback((requestId?: number) => {
+    setState((current) => {
+      // A save from a retired panel must not dismiss the panel opened after it.
+      if (requestId !== undefined && current.request?.id !== requestId) {
+        return current
+      }
+      return { ...current, request: null, isSurfaceOpen: false }
+    })
   }, [])
 
   useEffect(
@@ -95,6 +108,7 @@ export const CreateItemProvider = ({ children }: { children: ReactNode }) => {
 
   // Memoized so sidebar/layout re-renders don't invalidate every consumer
   // (the chat composer and header both read this context).
+  const { request, isSurfaceOpen } = state
   const value = useMemo(
     () => ({ request, isSurfaceOpen, openCreateItem, closeCreateItem }),
     [request, isSurfaceOpen, openCreateItem, closeCreateItem],

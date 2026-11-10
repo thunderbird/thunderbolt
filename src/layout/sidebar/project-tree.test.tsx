@@ -233,9 +233,7 @@ it('groups collapsed projects in a menu with incremental lists and working chat 
     tree(false, false, {
       isCollapsed: true,
       onChatClick,
-      chatThreads: [
-        { id: 'research-chat', title: 'Interview notes', projectId: project.id, miniAppId: null, isEncrypted: 0 },
-      ],
+      chatThreads: [{ id: 'research-chat', title: 'Interview notes', projectId: project.id, isEncrypted: 0 }],
     }),
     { wrapper: createWrapper() },
   )
@@ -255,7 +253,7 @@ it('groups collapsed projects in a menu with incremental lists and working chat 
   const chat = await waitForElement(() => screen.queryByRole('menuitem', { name: 'Interview notes' }))
   expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeVisible()
   fireEvent.click(chat)
-  expect(onChatClick).toHaveBeenCalledWith('research-chat', null)
+  expect(onChatClick).toHaveBeenCalledWith('research-chat')
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryByText('Interview notes')).not.toBeInTheDocument()
 })

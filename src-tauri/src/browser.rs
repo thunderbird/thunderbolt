@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::webview::{
     NewWindowResponse, PageLoadEvent, PermissionResponse, PlatformWebview, WebviewBuilder,
@@ -16,14 +17,28 @@ use tauri::{
 pub struct BrowserRegistry {
     entries: Mutex<HashMap<String, Arc<Mutex<BrowserMetadata>>>>,
     creation: tokio::sync::Mutex<()>,
+    document_generation: AtomicU64,
 }
 
 #[derive(Default)]
 struct BrowserMetadata {
+    document_generation: u64,
     url: String,
     title: String,
     is_loading: bool,
     control_lock: Arc<tokio::sync::Mutex<()>>,
+    operations: Arc<crate::browser_operation::BrowserOperations>,
+}
+
+impl BrowserMetadata {
+    fn page_loaded(&mut self, url: &Url, event: PageLoadEvent) {
+        self.url = url.to_string();
+        self.is_loading = matches!(event, PageLoadEvent::Started);
+        if self.is_loading {
+            // Prepared coordinates and element references belong to the previous document.
+            self.operations.cancel_all();
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -104,7 +119,7 @@ fn authorized_labels(caller: &str, window: &str, label: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
 }
 
-fn authorize(caller: &Webview, label: &str) -> Result<(), String> {
+pub(crate) fn authorize(caller: &Webview, label: &str) -> Result<(), String> {
     if !authorized_labels(caller.label(), caller.window().label(), label) {
         return Err("Browser commands are restricted to the main app webview".into());
     }
@@ -131,6 +146,17 @@ pub(crate) fn control_lock(
         .clone())
 }
 
+pub(crate) fn operations(
+    registry: &BrowserRegistry,
+    label: &str,
+) -> Result<Arc<crate::browser_operation::BrowserOperations>, String> {
+    Ok(metadata(registry, label)?
+        .lock()
+        .map_err(|error| error.to_string())?
+        .operations
+        .clone())
+}
+
 fn metadata(
     registry: &BrowserRegistry,
     label: &str,
@@ -142,6 +168,57 @@ fn metadata(
         .get(label)
         .cloned()
         .ok_or_else(|| "Browser webview is closed".into())
+}
+
+/// Native children outlive a renderer reload; destroy the old document's tabs and input tickets.
+pub(crate) fn main_page_started(webview: &Webview) {
+    let registry = webview.state::<BrowserRegistry>();
+    let generation = registry.document_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    if let Ok(entries) = registry.entries.lock() {
+        for entry in entries.values() {
+            if let Ok(entry) = entry.lock() {
+                entry.operations.cancel_all();
+            }
+        }
+    }
+    let caller = webview.clone();
+    tauri::async_runtime::spawn(async move {
+        let registry = caller.state::<BrowserRegistry>();
+        let _creation = registry.creation.lock().await;
+        let result = async {
+            let labels = stale_labels(&registry, generation)?;
+            for label in labels {
+                if let Some(tab) = caller.get_webview(&label) {
+                    #[cfg(target_os = "macos")]
+                    crate::browser_presentation::before_close(&tab).await?;
+                    tab.close().map_err(|error| error.to_string())?;
+                }
+                registry
+                    .entries
+                    .lock()
+                    .map_err(|error| error.to_string())?
+                    .remove(&label);
+            }
+            Ok::<(), String>(())
+        }
+        .await;
+        if let Err(error) = result {
+            eprintln!("Could not close browser tabs after renderer navigation: {error}");
+        }
+    });
+}
+
+fn stale_labels(registry: &BrowserRegistry, generation: u64) -> Result<Vec<String>, String> {
+    registry
+        .entries
+        .lock()
+        .map_err(|error| error.to_string())?
+        .iter()
+        .filter_map(|(label, entry)| match entry.lock() {
+            Ok(entry) => (entry.document_generation < generation).then(|| Ok(label.clone())),
+            Err(error) => Some(Err(error.to_string())),
+        })
+        .collect()
 }
 
 /// Creates the browser in native code so remote pages cannot opt out of navigation policy.
@@ -160,8 +237,13 @@ pub async fn browser_create(
         return Err("Browser bounds must be finite with a positive size".into());
     }
     // Concurrent first tabs must share the first completed tab's private session.
+    let generation = registry.document_generation.load(Ordering::SeqCst);
     let _creation = registry.creation.lock().await;
+    if registry.document_generation.load(Ordering::SeqCst) != generation {
+        return Err("The main page navigated before the tab could open".into());
+    }
     let metadata = Arc::new(Mutex::new(BrowserMetadata {
+        document_generation: generation,
         url: url.to_string(),
         title: String::new(),
         is_loading: true,
@@ -185,8 +267,7 @@ pub async fn browser_create(
         .on_permission_request(|_, _| PermissionResponse::Default)
         .on_page_load(move |_, payload| {
             if let Ok(mut state) = load_metadata.lock() {
-                state.url = payload.url().to_string();
-                state.is_loading = matches!(payload.event(), PageLoadEvent::Started);
+                state.page_loaded(payload.url(), payload.event());
             }
         })
         .on_document_title_changed(move |_, title| {
@@ -332,7 +413,7 @@ pub async fn browser_navigate(webview: Webview, label: String, url: String) -> R
     let browser = browser(&webview, &label)?;
     #[cfg(target_os = "macos")]
     crate::browser_focus_macos::protect_tab(&browser).await?;
-    browser.navigate(url).map_err(|error| error.to_string())
+    with_native(&browser, move |native| native_navigate(native, url)).await
 }
 
 /// Execute platform operations on the native UI thread without blocking the async command.
@@ -359,9 +440,6 @@ pub async fn browser_action(
     let browser = browser(&webview, &label)?;
     #[cfg(target_os = "macos")]
     crate::browser_focus_macos::protect_tab(&browser).await?;
-    if matches!(action, BrowserAction::Reload) {
-        return browser.reload().map_err(|error| error.to_string());
-    }
     with_native(&browser, move |native| native_action(native, action)).await?;
     if matches!(action, BrowserAction::Stop) {
         metadata(&registry, &label)?
@@ -483,6 +561,9 @@ pub async fn browser_close(
     label: String,
 ) -> Result<(), String> {
     authorize(&webview, &label)?;
+    if let Ok(operations) = operations(&registry, &label) {
+        operations.cancel_all();
+    }
     // Do not close a session's last owner while another tab is adopting its native context.
     let _creation = registry.creation.lock().await;
     if let Some(browser) = webview.get_webview(&label) {
@@ -496,6 +577,36 @@ pub async fn browser_close(
         .map_err(|error| error.to_string())?
         .remove(&label);
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn native_navigate(native: PlatformWebview, url: Url) -> Result<(), String> {
+    use objc2_foundation::{NSString, NSURLRequest, NSURL};
+    // SAFETY: Tauri supplies the live WKWebView on its UI thread.
+    let view = unsafe { &*(native.inner() as *const objc2_web_kit::WKWebView) };
+    let url =
+        NSURL::URLWithString(&NSString::from_str(url.as_str())).ok_or("Invalid browser address")?;
+    unsafe { view.loadRequest(&NSURLRequest::requestWithURL(&url)) };
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn native_navigate(native: PlatformWebview, url: Url) -> Result<(), String> {
+    use webkit2gtk::WebViewExt;
+    native.inner().load_uri(url.as_str());
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn native_navigate(native: PlatformWebview, url: Url) -> Result<(), String> {
+    // SAFETY: the COM controller belongs to the UI thread supplied by with_webview.
+    unsafe {
+        native
+            .controller()
+            .CoreWebView2()
+            .and_then(|view| view.Navigate(&windows::core::HSTRING::from(url.as_str())))
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -524,7 +635,9 @@ fn native_action(native: PlatformWebview, action: BrowserAction) -> Result<(), S
                 view.goForward();
             }
             BrowserAction::Stop => view.stopLoading(),
-            BrowserAction::Reload => unreachable!("reload uses Tauri's portable API"),
+            BrowserAction::Reload => {
+                view.reload();
+            }
         }
     }
     Ok(())
@@ -549,7 +662,7 @@ fn native_action(native: PlatformWebview, action: BrowserAction) -> Result<(), S
         BrowserAction::Back => view.go_back(),
         BrowserAction::Forward => view.go_forward(),
         BrowserAction::Stop => view.stop_loading(),
-        BrowserAction::Reload => unreachable!("reload uses Tauri's portable API"),
+        BrowserAction::Reload => view.reload(),
     }
     Ok(())
 }
@@ -584,7 +697,7 @@ fn native_action(native: PlatformWebview, action: BrowserAction) -> Result<(), S
             BrowserAction::Back => view.GoBack(),
             BrowserAction::Forward => view.GoForward(),
             BrowserAction::Stop => view.Stop(),
-            BrowserAction::Reload => unreachable!("reload uses Tauri's portable API"),
+            BrowserAction::Reload => view.Reload(),
         }
         .map_err(|error| error.to_string())
     }
@@ -593,6 +706,43 @@ fn native_action(native: PlatformWebview, action: BrowserAction) -> Result<(), S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_navigation_revokes_prepared_input_but_load_completion_does_not() {
+        let mut metadata = BrowserMetadata::default();
+        let prior = metadata
+            .operations
+            .enter(metadata.operations.begin())
+            .unwrap();
+        let url = Url::parse("https://example.com/next").unwrap();
+        metadata.page_loaded(&url, PageLoadEvent::Started);
+        assert!(prior.permit().check().is_err());
+        assert!(metadata.is_loading);
+        assert_eq!(metadata.url, url.as_str());
+        let current = metadata
+            .operations
+            .enter(metadata.operations.begin())
+            .unwrap();
+        metadata.page_loaded(&url, PageLoadEvent::Finished);
+        assert!(current.permit().check().is_ok());
+        assert!(!metadata.is_loading);
+    }
+
+    #[test]
+    fn delayed_reload_cleanup_preserves_tabs_from_the_new_document() {
+        let registry = BrowserRegistry::default();
+        for (label, document_generation) in [("old", 1), ("new", 2), ("newer", 3)] {
+            registry.entries.lock().unwrap().insert(
+                label.into(),
+                Arc::new(Mutex::new(BrowserMetadata {
+                    document_generation,
+                    ..Default::default()
+                })),
+            );
+        }
+        assert_eq!(stale_labels(&registry, 2).unwrap(), vec!["old"]);
+        assert!(stale_labels(&registry, 1).unwrap().is_empty());
+    }
 
     #[test]
     fn validates_favicons_and_rejects_previous_document_metadata() {

@@ -428,3 +428,42 @@ test('project creation fixes its environment while standalone chats keep the env
   await expect(page.getByText('Set when this project was created', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Cloud', { exact: true })).toBeVisible()
 })
+
+test('historical mini-app chats remain ordinary chats without the retired app registry', async ({ page }) => {
+  const email = await loginViaEmailCode(page)
+  const chatId = crypto.randomUUID()
+  await importBackup(page, {
+    format: 'thunderbolt-export',
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    user: { id: 'historical-app-fixture', email },
+    tables: {
+      chat_threads: [{ id: chatId, title: 'Historical app conversation', miniAppId: 'retired-app' }],
+      chat_messages: [
+        {
+          id: crypto.randomUUID(),
+          chatThreadId: chatId,
+          parentId: null,
+          role: 'user',
+          content: 'Keep the saved conversation.',
+          parts: [{ type: 'text', text: 'Keep the saved conversation.' }],
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    },
+  })
+  const registryRequests: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/mini-apps')) {
+      registryRequests.push(request.url())
+    }
+  })
+  await page.goto(`/chats/${chatId}`)
+  await expect(page.getByText('Keep the saved conversation.', { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/chats/${chatId}$`))
+  await expect(page.getByText('Open app', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'New Chat', exact: true }).first().click()
+  await page.getByText('Historical app conversation', { exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`/chats/${chatId}$`))
+  expect(registryRequests).toEqual([])
+})

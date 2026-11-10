@@ -261,11 +261,67 @@ describe('useSidebarWebview', () => {
     })
     expect(result.current.error).toContain('Unsupported URL scheme')
     expect(result.current.url).toBe(defaultUrl)
+    await act(async () => {
+      await getClock().tickAsync(500)
+    })
+    expect(result.current.error).toContain('Unsupported URL scheme')
     actionResponse = async () => {}
     await act(async () => {
       expect(await result.current.reload()).toBe(true)
     })
     expect(result.current.error).toBeNull()
+  })
+
+  it('clears a transient engine-poll failure after a successful read', async () => {
+    const viewport = createViewport()
+    const { result } = renderHook(() => useSidebarWebview(defaultConfig, viewport))
+    await initialize()
+    stateResponse = async () => {
+      throw new Error('Document is replacing itself')
+    }
+    await act(async () => {
+      await getClock().tickAsync(500)
+    })
+    expect(result.current.error).toContain('Document is replacing itself')
+    stateResponse = async () => ({ ...nativeState, title: 'Loaded normally' })
+    await act(async () => {
+      await getClock().tickAsync(500)
+    })
+    expect(result.current.error).toBeNull()
+    expect(result.current.title).toBe('Loaded normally')
+  })
+
+  it('synchronizes a freshly loaded page and blank-page visibility before an agent observes it', async () => {
+    const viewport = createViewport()
+    const config = { url: 'about:blank' }
+    const onStateChange = mock((_state: SidebarBrowserState) => {})
+    const { result } = renderHook(() => useSidebarWebview(config, viewport, false, { onStateChange }))
+    await initialize()
+    expect(visibilityCalls(false)).toHaveLength(0)
+    nativeState = { ...nativeState, url: defaultUrl, title: 'New destination' }
+    await act(async () => {
+      expect(await result.current.readState()).toEqual(nativeState)
+    })
+    expect(result.current.url).toBe(defaultUrl)
+    expect(onStateChange).toHaveBeenLastCalledWith(nativeState)
+    expect(visibilityCalls(false)).toHaveLength(1)
+  })
+
+  it('does not return stale engine state when a newer navigation supersedes an agent read', async () => {
+    const viewport = createViewport()
+    const { result } = renderHook(() => useSidebarWebview(defaultConfig, viewport))
+    await initialize()
+    const response = Promise.withResolvers<SidebarBrowserState>()
+    const oldState = nativeState
+    stateResponse = () => response.promise
+    const read = result.current.readState()
+    stateResponse = async () => nativeState
+    await act(async () => {
+      await result.current.navigate('https://destination.example')
+      response.resolve(oldState)
+    })
+    expect(await read).toBeUndefined()
+    expect(result.current.url).toBe('https://destination.example')
   })
 
   it('retries a failed creation using reload', async () => {

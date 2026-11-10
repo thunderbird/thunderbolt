@@ -38,7 +38,6 @@ const fixture = (
     toolSteps?: number
     toolTokens?: number
     toolOutput?: string
-    embeddedSurface?: PreparedAiRequestConfig['embeddedSurface']
     beforeResponse?: (request: RequestBody, init?: RequestInit) => Promise<void>
   } = {},
 ) => {
@@ -64,7 +63,6 @@ const fixture = (
     skills: [],
     stableSystemPrompt: 'Help finish the task.',
     volatileSystemPrompt: 'Today.',
-    embeddedSurface: options.embeddedSurface ?? null,
     toolset: {
       lookup: tool({
         description: 'Look up detail',
@@ -191,8 +189,8 @@ describe('built-in compaction integration', () => {
     }
   })
 
-  it('keeps approval ownership identical for sends and explicit Mini App compaction', async () => {
-    const f = fixture({ embeddedSurface: 'mini-app' })
+  it('keeps approval ownership identical for sends and explicit compaction', async () => {
+    const f = fixture()
     const adapter = f.adapter()
     const first = user('Remember the app task')
     try {
@@ -555,9 +553,9 @@ describe('built-in compaction integration', () => {
   })
 
   it.each(['manual', 'automatic'] as const)(
-    'excludes superseded Mini App reads from %s summary requests',
+    'preserves historical Mini App evidence in %s summary requests',
     async (mode) => {
-      const f = fixture({ embeddedSurface: 'mini-app' })
+      const f = fixture()
       const call = {
         ...fauxAssistantMessage(''),
         content: [{ type: 'toolCall' as const, id: 'old-view', name: 'get_app_context', arguments: {} }],
@@ -574,7 +572,7 @@ describe('built-in compaction integration', () => {
             role: 'toolResult',
             toolCallId: 'old-view',
             toolName: 'get_app_context',
-            content: [{ type: 'text', text: 'STALE_PRIVATE_SCREEN' }],
+            content: [{ type: 'text', text: 'HISTORICAL_PAGE_EVIDENCE' }],
             isError: false,
             timestamp: 2,
           },
@@ -592,7 +590,7 @@ describe('built-in compaction integration', () => {
               toolCallId: 'old-view',
               state: 'output-available',
               input: {},
-              output: 'STALE_PRIVATE_SCREEN',
+              output: 'HISTORICAL_PAGE_EVIDENCE',
             },
           ],
           metadata: { contextCompaction: checkpoint, embeddedSurface: 'mini-app' },
@@ -607,9 +605,9 @@ describe('built-in compaction integration', () => {
                 .contextCompaction
         const summaries = f.requests.filter(isSummary)
         expect(summaries.length).toBeGreaterThan(0)
-        expect(JSON.stringify(summaries)).not.toContain('STALE_PRIVATE_SCREEN')
-        expect(JSON.stringify(summaries)).toContain('Superseded')
-        expect(JSON.stringify(saved)).not.toContain('STALE_PRIVATE_SCREEN')
+        expect(JSON.stringify(summaries)).toContain('HISTORICAL_PAGE_EVIDENCE')
+        expect(JSON.stringify(summaries)).not.toContain('Superseded')
+        expect(JSON.stringify(saved)).not.toContain('HISTORICAL_PAGE_EVIDENCE')
       } finally {
         adapter.disconnect()
       }

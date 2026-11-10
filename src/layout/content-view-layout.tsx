@@ -29,7 +29,7 @@ export const ContentViewLayout = ({ children }: { children: ReactNode }) => {
     content_view_width: Number,
   })
   const isOpen = state.type !== null
-  // A route that hosts the view itself (`/apps/`) leaves this aside collapsed.
+  // A route that hosts the view itself (`/pages/`) leaves this aside collapsed.
   const drawsDesktopPanel = !isMobile && !routeHostsContentView(pathname)
   const isDesktopPanelOpen = isOpen && drawsDesktopPanel
   const { handleLayoutChanged, beginExternalResize, endExternalResize } = useContentViewPanel({

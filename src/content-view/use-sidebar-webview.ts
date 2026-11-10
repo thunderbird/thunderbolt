@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { isTauriDesktop } from '@/lib/platform'
-import { browserController } from '@/browser/browser-controller'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview, Webview } from '@tauri-apps/api/webview'
@@ -37,6 +36,7 @@ type BrowserSession = {
   action: (action: BrowserAction) => Promise<boolean>
   close: () => Promise<void>
   updateVisibility: (strict?: boolean) => Promise<void>
+  readState: () => Promise<SidebarBrowserState | undefined>
 }
 
 /** Measures the page viewport, independent of the browser toolbar's height. */
@@ -110,8 +110,10 @@ export const useSidebarWebview = (
     let presentationQueue = Promise.resolve()
     let blankPage = configRef.current?.url === 'about:blank'
     const unlisteners: (() => void)[] = []
-    const reportError = (error: unknown) => {
-      if (active) {
+    let errorSource: 'poll' | 'operation' | null = null
+    const reportError = (error: unknown, source: 'poll' | 'operation' = 'operation') => {
+      if (active && !(source === 'poll' && errorSource === 'operation')) {
+        errorSource = source
         setState((previous) => ({ ...previous, error: String(error), isLoading: false }))
       }
     }
@@ -123,17 +125,22 @@ export const useSidebarWebview = (
       }
       const wasBlank = blankPage
       blankPage = next.url === 'about:blank'
-      setState((previous) => ({ ...previous, ...next }))
+      const recovered = errorSource === 'poll'
+      if (recovered) {
+        errorSource = null
+      }
+      setState((previous) => ({ ...previous, ...next, ...(recovered ? { error: null } : {}) }))
       optionsRef.current.onStateChange?.(next)
       if (wasBlank !== blankPage) {
         await updatePresentation(true)
       }
+      return next
     }
     const pollState = async () => {
       try {
         await refresh()
       } catch (error) {
-        reportError(error)
+        reportError(error, 'poll')
       } finally {
         if (active) {
           poll = setTimeout(pollState, 500)
@@ -157,6 +164,7 @@ export const useSidebarWebview = (
           if (!active) {
             return
           }
+          errorSource = null
           setState((previous) => ({ ...previous, error: null }))
           await refresh()
           succeeded = active
@@ -230,6 +238,7 @@ export const useSidebarWebview = (
       navigate: (nextUrl) => execute('browser_navigate', { url: nextUrl }),
       action: (action) => execute('browser_action', { action }),
       updateVisibility: (strict = false) => updatePresentation(true, strict),
+      readState: refresh,
       close: async () => {
         active = false
         if (frame !== undefined) {
@@ -297,14 +306,6 @@ export const useSidebarWebview = (
         if (!session.webview) {
           throw new Error('Browser webview was not created')
         }
-        if (optionsRef.current.tabId) {
-          unlisteners.push(
-            browserController.registerSession(optionsRef.current.tabId, {
-              label,
-              present: () => session.updateVisibility(),
-            }),
-          )
-        }
         await session.updateVisibility()
         if (!active) {
           return
@@ -371,6 +372,13 @@ export const useSidebarWebview = (
     }
     await session.updateVisibility(true)
   }, [])
+  const readState = useCallback(async () => {
+    const session = sessionRef.current
+    if (!session?.webview) {
+      throw new Error('Browser page is not ready')
+    }
+    return session.readState()
+  }, [])
   const navigate = useCallback(async (nextUrl: string) => (await sessionRef.current?.navigate(nextUrl)) ?? false, [])
   const goBack = useCallback(async () => (await sessionRef.current?.action('back')) ?? false, [])
   const goForward = useCallback(async () => (await sessionRef.current?.action('forward')) ?? false, [])
@@ -406,5 +414,6 @@ export const useSidebarWebview = (
     stop,
     closeWebview,
     present,
+    readState,
   }
 }

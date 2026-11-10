@@ -5,20 +5,19 @@
 import { DownloadAppBannerDesktop } from '@/components/download-app-banner-desktop'
 import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile'
 import { FloatingHeader } from '@/components/floating-header'
-import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
+import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { edgeSpacing } from '@/lib/constants'
-import { isTauri, isTauriDesktop } from '@/lib/platform'
+import { isTauri } from '@/lib/platform'
 import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router'
 import { PageFallback } from '@/loading'
 import { sharedHeaderHasControls } from './shared-header'
 
-/** Chat and Mini App route chrome inside the persistent app/browser split. */
+/** Route chrome inside the persistent app/browser split. */
 export default function Page() {
   const { pathname } = useLocation()
-  const { isMobile } = useIsMobile()
   const isNativeMobile = useIsNativeMobile()
-  const showsSharedHeader = sharedHeaderHasControls({ pathname, isMobile, isDesktopApp: isTauriDesktop() })
+  const showsSharedHeader = sharedHeaderHasControls(pathname)
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">

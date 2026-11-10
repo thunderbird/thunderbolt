@@ -13,11 +13,16 @@ export type PageAdapter = {
     screenshot: boolean,
     signal?: AbortSignal,
   ) => Promise<Omit<PageSnapshot, 'pageId' | 'sessionId' | 'capabilities'>>
-  navigate?: (navigation: PageNavigation) => Promise<void>
+  navigate?: (navigation: PageNavigation, signal?: AbortSignal) => Promise<void>
   act?: (action: PageAction, signal?: AbortSignal) => Promise<void>
   picker?: (enabled: boolean, requestId: string) => Promise<void>
   pollPicker?: (requestId: string) => Promise<unknown>
 }
+export type PageOperationOptions = {
+  signal?: AbortSignal
+  onStart?: () => void
+}
+
 const adapters = new Map<string, PageAdapter>()
 let reveal: (() => void) | undefined
 let sequence: Promise<unknown> = Promise.resolve()
@@ -28,6 +33,49 @@ const requireSession = (id: string) => {
   }
   return session
 }
+/** Queue the complete operation, including presentation, so another tool cannot move a native surface mid-click. */
+const enqueue = <T>(
+  operation: (signal?: AbortSignal) => Promise<T>,
+  { signal, onStart }: PageOperationOptions = {},
+): Promise<T> => {
+  const pending = sequence
+    .catch(() => {})
+    .then(() => {
+      signal?.throwIfAborted()
+      onStart?.()
+      return operation(signal)
+    })
+  sequence = pending
+  return pending
+}
+
+/** A response from a disposed/replaced renderer must never become a live document result. */
+const assertCurrent = (id: string, adapter: PageAdapter, signal?: AbortSignal) => {
+  signal?.throwIfAborted()
+  requireSession(id)
+  if (adapters.get(id) !== adapter) {
+    throw new Error('The document changed while using it. Observe again.')
+  }
+}
+
+/** Called inside the operation queue; public snapshots join the queue instead. */
+const readSnapshot = async (id: string, screenshot: boolean, signal?: AbortSignal): Promise<PageSnapshot> => {
+  const session = requireSession(id)
+  const adapter = await pageController.adapter(id, signal)
+  if (!adapter.capabilities.observe) {
+    throw new Error('This page does not support observations.')
+  }
+  if (screenshot && !adapter.capabilities.screenshot) {
+    throw new Error('Screenshots are unavailable for this page.')
+  }
+  pageController.activate(id)
+  await adapter.present?.(signal)
+  assertCurrent(id, adapter, signal)
+  const result = await adapter.snapshot(screenshot, signal)
+  assertCurrent(id, adapter, signal)
+  return { ...result, pageId: session.page.id, sessionId: id, capabilities: adapter.capabilities }
+}
+
 /** A transport-neutral controller routes operations to the exact live document adapter. */
 export const pageController = {
   register: (id: string, adapter: PageAdapter) => {
@@ -72,6 +120,16 @@ export const pageController = {
     adapters.delete(id)
     usePageStore.getState().close(id)
   },
+  /** Agent lifecycle operations share the input queue; user gestures keep the synchronous methods above. */
+  openForAgent: (page: PageDefinition, options?: PageOperationOptions & { onOpen?: (id: string) => void }) =>
+    enqueue(async () => {
+      const id = pageController.open(page)
+      options?.onOpen?.(id)
+      return id
+    }, options),
+  selectForAgent: (id: string, options?: PageOperationOptions) =>
+    enqueue(async () => pageController.select(id), options),
+  closeForAgent: (id: string, options?: PageOperationOptions) => enqueue(async () => pageController.close(id), options),
   activate: (id: string) => {
     const session = requireSession(id)
     const slot = pageSlots.get(id, session.presentation)?.element
@@ -99,63 +157,36 @@ export const pageController = {
     }
     throw new Error('Page is not ready or cannot be embedded on this platform.')
   },
-  snapshot: async (id: string, screenshot = false, signal?: AbortSignal): Promise<PageSnapshot> => {
-    const session = requireSession(id)
-    const adapter = await pageController.adapter(id, signal)
-    if (!adapter.capabilities.observe) {
-      throw new Error('This page does not support observations.')
-    }
-    if (screenshot && !adapter.capabilities.screenshot) {
-      throw new Error('Screenshots are unavailable for this page.')
-    }
-    pageController.activate(id)
-    await adapter.present?.(signal)
-    signal?.throwIfAborted()
-    requireSession(id)
-    if (adapters.get(id) !== adapter) {
-      throw new Error('The document changed while presenting it. Observe again.')
-    }
-    const result = await adapter.snapshot(screenshot, signal)
-    signal?.throwIfAborted()
-    requireSession(id)
-    if (adapters.get(id) !== adapter) {
-      throw new Error('The document changed while reading it. Observe again.')
-    }
-    return { ...result, pageId: session.page.id, sessionId: id, capabilities: adapter.capabilities }
-  },
-  navigate: async (id: string, navigation: PageNavigation, signal?: AbortSignal) => {
-    const adapter = await pageController.adapter(id, signal)
-    if (!adapter.capabilities.navigate || !adapter.navigate) {
-      throw new Error('This page does not support navigation.')
-    }
-    signal?.throwIfAborted()
-    await adapter.navigate(navigation)
-    return pageController.snapshot(id, false, signal)
-  },
-  act: async (id: string, action: PageAction, signal?: AbortSignal) => {
-    const pending = sequence
-      .catch(() => {})
-      .then(async () => {
-        signal?.throwIfAborted()
-        const adapter = await pageController.adapter(id, signal)
-        const input =
-          action.type === 'type' || action.type === 'key'
-            ? adapter.capabilities.keyboardInput
-            : adapter.capabilities.pointerInput
-        if (input === 'none' || !adapter.act) {
-          throw new Error('This page does not support that interaction.')
-        }
-        pageController.activate(id)
-        await adapter.present?.(signal)
-        signal?.throwIfAborted()
-        requireSession(id)
-        if (adapters.get(id) !== adapter) {
-          throw new Error('The document changed while presenting it. Observe again.')
-        }
-        await adapter.act(action, signal)
-        return pageController.snapshot(id, false, signal)
-      })
-    sequence = pending
-    return pending
-  },
+  snapshot: (id: string, screenshot = false, options?: PageOperationOptions): Promise<PageSnapshot> =>
+    enqueue((signal) => readSnapshot(id, screenshot, signal), options),
+  navigate: (id: string, navigation: PageNavigation, options?: PageOperationOptions): Promise<PageSnapshot> =>
+    enqueue(async (signal) => {
+      const adapter = await pageController.adapter(id, signal)
+      if (!adapter.capabilities.navigate || !adapter.navigate) {
+        throw new Error('This page does not support navigation.')
+      }
+      pageController.activate(id)
+      await adapter.present?.(signal)
+      assertCurrent(id, adapter, signal)
+      await adapter.navigate(navigation, signal)
+      assertCurrent(id, adapter, signal)
+      return readSnapshot(id, false, signal)
+    }, options),
+  act: (id: string, action: PageAction, options?: PageOperationOptions): Promise<PageSnapshot> =>
+    enqueue(async (signal) => {
+      const adapter = await pageController.adapter(id, signal)
+      const input =
+        action.type === 'type' || action.type === 'key'
+          ? adapter.capabilities.keyboardInput
+          : adapter.capabilities.pointerInput
+      if (input === 'none' || !adapter.act) {
+        throw new Error('This page does not support that interaction.')
+      }
+      pageController.activate(id)
+      await adapter.present?.(signal)
+      assertCurrent(id, adapter, signal)
+      await adapter.act(action, signal)
+      assertCurrent(id, adapter, signal)
+      return readSnapshot(id, false, signal)
+    }, options),
 }

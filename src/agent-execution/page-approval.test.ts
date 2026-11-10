@@ -61,9 +61,6 @@ beforeEach(async () => {
         usePageStore
           .getState()
           .sessions.map((session) => ({ id: session.id, title: 'Page', url: '', active: true, isLoading: false })),
-      openTab: () => undefined,
-      selectTab: () => {},
-      closeTab: () => {},
     }),
   ]
 })

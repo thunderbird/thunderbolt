@@ -51,11 +51,6 @@ import {
 import { getKnownImageSupport } from '@/ai/image-support'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
-import {
-  appContextToolName,
-  supersededAppContextCallIds,
-  supersededAppContextOutput,
-} from '@/mini-apps/mini-app-context-note'
 import { webToolNames } from '@/lib/tools'
 import { tinfoilSession } from '@/lib/tinfoil-session'
 import { createLiveProxyFetch } from '@/lib/proxy-fetch'
@@ -85,7 +80,7 @@ import type {
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { inferenceModelHeader } from '@shared/inference-usage'
-import type { AgentHarness, AgentHarnessTool, AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
+import type { AgentHarness, AgentHarnessTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
 import type { AttestedTinfoilClient } from '@/attestation/tinfoil'
 import {
@@ -615,21 +610,6 @@ const estimateHarnessOverhead = (record: HarnessRecord): number => {
   return Math.ceil((record.systemPrompt.current.length + JSON.stringify(tools).length) / 3)
 }
 
-/**
- * Supersede earlier Mini App `get_app_context` results in what the model sees
- * this send: the harness half of `supersedeAppContextResults`.
- *
- * The persistent harness keeps every earlier result in its own session, so
- * refreshing the volatile prompt alone leaves a stale description of the screen
- * beside the current one. The `context` hook rewrites each request without
- * touching the stored session, and only for the ids the request history marks
- * as earlier Mini App reads, so a read made during this send still arrives.
- */
-export const supersedeHarnessAppContext = (message: AgentMessage, callIds: ReadonlySet<string>): AgentMessage =>
-  message.role === 'toolResult' && callIds.has(message.toolCallId)
-    ? { ...message, content: [{ type: 'text', text: supersededAppContextOutput }] }
-    : message
-
 /** Reconcile the turn's live web capacity without overriding independently disabled tools. */
 const installWebToolBudgetFloor = (harness: AgentHarness, webToolBudget?: WebToolBudget): (() => void) => {
   if (!webToolBudget) {
@@ -844,9 +824,6 @@ const fetchViaHarness = async (
   }
 
   const messages = parseMessages(init)
-  const supersededCallIds =
-    config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
-  const transformMessage = (message: AgentMessage) => supersedeHarnessAppContext(message, supersededCallIds)
   const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
   const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
   const { history, prompt, files, compaction } = await prepareConversation(messages, skillInstructions, {
@@ -897,6 +874,7 @@ const fetchViaHarness = async (
     context.workspaceId ?? context.threadId,
     files,
     record.execution,
+    { preserveExisting: Boolean(context.projectId) },
   )
   init.signal?.throwIfAborted()
   for (const { path, error } of failures) {
@@ -936,10 +914,9 @@ const fetchViaHarness = async (
               }
               context.onCompactionStatus?.(status)
             },
-            transformMessage,
           })
           return {
-            messages: prepared.map(transformMessage),
+            messages: prepared,
           }
         })
         const removeCheckpoint = harness.subscribe(async (event) => {
@@ -969,9 +946,6 @@ const fetchViaHarness = async (
       {
         initial: { modelId: context.selectedModel.id },
         toolCall: (toolName) => {
-          if (toolName === appContextToolName && config.embeddedSurface) {
-            return { modelId: context.selectedModel.id, embeddedSurface: config.embeddedSurface }
-          }
           const owner = config.mcpToolsMetadata?.[toolName]
           return owner
             ? { modelId: context.selectedModel.id, mcpTools: { [toolName]: owner } }
@@ -1125,8 +1099,6 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       throw new Error('This model does not support context compaction')
     }
     const messages = parseMessages(init)
-    const supersededCallIds =
-      config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
     const { history, files, compaction } = await prepareBuiltInHistory(messages, { workspace: config.supportsTools })
     init.signal?.throwIfAborted()
     const signature = harnessSignature(
@@ -1168,6 +1140,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       context.workspaceId ?? context.threadId,
       files,
       record.execution,
+      { preserveExisting: Boolean(context.projectId) },
     )
     init.signal?.throwIfAborted()
     for (const { path, error } of failures) {
@@ -1182,7 +1155,6 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       signal: init.signal ?? undefined,
       onStatus: context.onCompactionStatus,
       overheadTokens: estimateHarnessOverhead(record),
-      transformMessage: (message) => supersedeHarnessAppContext(message, supersededCallIds),
     })
   }
 

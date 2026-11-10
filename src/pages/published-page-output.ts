@@ -6,62 +6,16 @@ import { getToolName, isToolOrDynamicToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
 import type { PageDefinition } from '@shared/page-protocol'
 
-const maxHtmlBytes = 2 * 1024 * 1024
+import { pageDefinitionSchema, pageReferenceSchema } from './page-schema'
+
 // JSON can escape every source character as six bytes. Bound parsing before allocating it.
 const maxResultCharacters = 16 * 1024 * 1024
-const identifier = z
-  .string()
-  .min(1)
-  .max(200)
-  .regex(/^[a-zA-Z0-9][a-zA-Z0-9:._-]*$/)
-const reference = z.string().min(1).max(500)
-const url = z
-  .string()
-  .min(1)
-  .max(8192)
-  .refine((value) => {
-    if (value === 'about:blank') {
-      return true
-    }
-    if (Array.from(value).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
-      return false
-    }
-    try {
-      const parsed = new URL(value)
-      return ['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password
-    } catch {
-      return false
-    }
-  })
-const pageSchema = z.object({
-  id: identifier,
-  title: z.string().max(200),
-  source: z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('url'), url }),
-    z.object({
-      kind: z.literal('html'),
-      html: z
-        .string()
-        .min(1)
-        .max(maxHtmlBytes)
-        .refine((value) => new TextEncoder().encode(value).byteLength <= maxHtmlBytes),
-      artifact: z
-        .object({
-          toolCallId: reference,
-          messageId: reference.optional(),
-          chatThreadId: reference.nullable().optional(),
-        })
-        .optional(),
-    }),
-    z.object({ kind: z.literal('local-app'), appId: reference, projectId: reference.optional() }),
-  ]),
-}) satisfies z.ZodType<PageDefinition>
 
 export type PublishedPageOutput = { page: PageDefinition; sessionId?: string }
 const outputSchema = z.object({
   ok: z.boolean().optional(),
-  page: pageSchema,
-  sessionId: reference.optional(),
+  page: pageDefinitionSchema,
+  sessionId: pageReferenceSchema.optional(),
   status: z.string().optional(),
 })
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -85,7 +39,7 @@ export const publishedPageOutput = (part: UIMessage['parts'][number]): Published
 
   const parse = (value: unknown): PublishedPageOutput | null => {
     const result = outputSchema.safeParse(value)
-    if (!result.success || result.data.ok === false) {
+    if (!result.success || result.data.ok === false || (record(value) && value.isError === true)) {
       return null
     }
     const { page, sessionId } = result.data
@@ -98,19 +52,19 @@ export const publishedPageOutput = (part: UIMessage['parts'][number]): Published
     }
     return { page, ...(sessionId ? { sessionId } : {}) }
   }
-  const direct = parse(part.output)
-  if (direct) {
-    return direct
-  }
   if (!record(part.output)) {
     return null
   }
-  // An explicit failure must never be rescued by a contradictory nested success.
+  // An explicit failure must never be rescued by a contradictory direct or nested success.
   if (part.output.ok === false || part.output.isError === true) {
     return null
   }
   if (record(part.output.details) && (part.output.details.ok === false || part.output.details.isError === true)) {
     return null
+  }
+  const direct = parse(part.output)
+  if (direct) {
+    return direct
   }
   const details = parse(part.output.details)
   if (details) {

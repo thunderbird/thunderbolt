@@ -11,8 +11,6 @@ import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } 
 import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { createPageTools, pageToolPrompt } from '@/pages/page-tools'
 import { browserController } from '@/browser/browser-controller'
-import type { EmbeddedSurfaceChoice } from '@/ai/embedded-surface'
-import { supersedeAppContextResults } from '@/mini-apps/mini-app-context-note'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
@@ -496,11 +494,8 @@ export type PreparedAiRequestConfig = {
   readonly skills: readonly SkillDefinition[]
   readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
   readonly stableSystemPrompt: string
-  /** Per-send tail of the system prompt: the date/time, plus the open Mini App's
-   *  current view when that is the surface the model is answering about. */
+  /** Per-send tail of the system prompt, including the current date and time. */
   readonly volatileSystemPrompt: string
-  /** Which embedded surface `get_app_context` describes this send, if any. */
-  readonly embeddedSurface: EmbeddedSurfaceChoice
 }
 
 export type PrepareAiRequestConfigOptions = {
@@ -631,7 +626,6 @@ export const prepareAiRequestConfig = async ({
       // Only advertise the tool when it was actually registered above.
       hasSearchableChats: supportsTools && (projectContext?.siblingThreadIds.length ?? 0) > 0,
     }),
-    miniAppSection: null,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,
@@ -666,7 +660,6 @@ export const prepareAiRequestConfig = async ({
     mcpToolsMetadata: merged.mcpTools,
     stableSystemPrompt: prompt.stablePrompt,
     volatileSystemPrompt: prompt.volatilePrompt,
-    embeddedSurface: null,
   }
 }
 
@@ -751,7 +744,6 @@ export const aiFetchStreamingResponse = async ({
     mcpToolsMetadata,
     stableSystemPrompt,
     volatileSystemPrompt,
-    embeddedSurface,
   } = await prepareAiRequestConfig({
     modelId,
     mcpClients,
@@ -981,13 +973,9 @@ export const aiFetchStreamingResponse = async ({
         // read from IndexedDB) so the model receives them. Only the reference is
         // persisted/synced; the bytes are inlined here, in-flight to the model.
         // Quote parts are likewise flattened to Markdown blockquote text parts.
-        // With a Mini App on screen, prior-turn `get_app_context` results are
-        // superseded by the view in the system prompt — two descriptions of the
-        // screen in one request is an invitation to pick the stale one.
         telemetry?.startPhase('attachment_hydration')
-        const historyMessages = embeddedSurface === 'mini-app' ? supersedeAppContextResults(messages) : messages
         const baseMessages = await convertToModelMessages(
-          hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(historyMessages)),
+          hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(messages)),
         )
         telemetry?.endPhase('attachment_hydration')
         let currentInput = assembleBuiltInModelInput(stableSystemPrompt, baseMessages, volatileSystemNotes)
@@ -1009,12 +997,7 @@ export const aiFetchStreamingResponse = async ({
           }
 
           const result = runStreamText(currentInput)
-          const messageMetadata = createMessageMetadata(
-            modelId,
-            sourceCollector,
-            mcpToolsMetadata,
-            embeddedSurface ?? undefined,
-          )
+          const messageMetadata = createMessageMetadata(modelId, sourceCollector, mcpToolsMetadata)
 
           // If this is not the last possible attempt, we need to check for empty response
           if (attemptNumber < maxAttempts) {

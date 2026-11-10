@@ -44,14 +44,7 @@ export type PromptParams = {
    * builder only decides *where* it sits.
    */
   projectSection?: string | null
-  /**
-   * Pre-rendered `# Mini App` section when an embedded app is open (see
-   * `src/mini-apps/mini-app-prompt.ts`). Carries the app's identity only — its
-   * live state is read through the `get_app_context` tool, so this stays stable
-   * across a session and doesn't invalidate the prompt cache.
-   */
-  miniAppSection?: string | null
-  /** Stable instructions for the desktop browser tools, only when they are registered. */
+  /** Stable instructions for the unified page tools, only when they are registered. */
   browserSection?: string | null
 }
 
@@ -90,7 +83,6 @@ export const createPromptParts = (
     skills = [],
     supportsTools = true,
     projectSection = null,
-    miniAppSection = null,
     browserSection = null,
     appLanguage = sourceLocale,
   }: PromptParams,
@@ -137,7 +129,7 @@ Reasoning: low
 
 # Context
 ${contextSection}
-${projectSection ? `\n${projectSection}\n` : ''}${miniAppSection ? `\n${miniAppSection}\n` : ''}
+${projectSection ? `\n${projectSection}\n` : ''}
 # Tools
 ${buildWebToolsPrompt(availableToolNames)}
 

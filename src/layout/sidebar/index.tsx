@@ -15,7 +15,6 @@ import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
-import { useChatDestination } from '@/mini-apps/use-chat-destination'
 import { pagePath } from '@/pages/page-path'
 import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
@@ -127,20 +126,12 @@ export default function Sidebar() {
     startNewChat()
   }
 
-  const chatDestination = useChatDestination()
-
   const handleChatClick = useCallback(
-    // `miniAppId` comes from the row rather than being looked up here: the row
-    // already has it, and depending on `chatThreads` churned this callback's
-    // identity on every live-query result — which re-rendered every memoized
-    // row in the list.
-    (threadId: string, miniAppId: string | null) => {
+    (threadId: string) => {
       trackEvent('chat_select', { chat_id: threadId })
-      // A chat that came from an app opens inside it, not at `/chats/:id` —
-      // see `useChatDestination` for when that isn't possible.
-      void navigateAndCloseSidebar(chatDestination(threadId, miniAppId))
+      void navigateAndCloseSidebar(`/chats/${threadId}`)
     },
-    [chatDestination, navigateAndCloseSidebar],
+    [navigateAndCloseSidebar],
   )
 
   const handleNavigate = (path: string) => {

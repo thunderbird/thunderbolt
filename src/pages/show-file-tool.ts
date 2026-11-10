@@ -5,6 +5,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import type { PageDefinition } from '@shared/page-protocol'
+import { maxPageHtmlBytes, maxPageTitleLength } from './page-schema'
 import { verifyArtifactHtml, type ArtifactVerifyResult } from '@/artifacts/verify-html'
 
 export const showFileToolName = 'page_show_file'
@@ -20,7 +21,7 @@ const showFileSchema = z.object({
     .min(1)
     .max(8192)
     .regex(/\.html$/i, 'Use a .html file from the current environment'),
-  title: z.string().trim().min(1).max(200).optional(),
+  title: z.string().trim().min(1).max(maxPageTitleLength).optional(),
 })
 
 /** Publish a verified snapshot, so the page still works after a local workspace disappears. */
@@ -37,7 +38,7 @@ export const createShowFileTool = (
       abortSignal?.throwIfAborted()
       const html = await options.readFile(input.path, abortSignal)
       abortSignal?.throwIfAborted()
-      if (new TextEncoder().encode(html).byteLength > 2 * 1024 * 1024) {
+      if (new TextEncoder().encode(html).byteLength > maxPageHtmlBytes) {
         return { ok: false, errors: ['HTML pages must be no larger than 2 MiB'] }
       }
       const result = await verify(html)
@@ -47,7 +48,7 @@ export const createShowFileTool = (
       }
       const page: PageDefinition = {
         id: crypto.randomUUID(),
-        title: input.title ?? input.path.split(/[\\/]/).at(-1) ?? input.path,
+        title: input.title ?? (input.path.split(/[\\/]/).at(-1) ?? input.path).slice(0, maxPageTitleLength),
         source: { kind: 'html', html },
       }
       await options.onOpen(page)

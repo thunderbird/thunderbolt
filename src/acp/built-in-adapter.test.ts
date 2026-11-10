@@ -47,7 +47,6 @@ import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
-import { supersededAppContextOutput } from '@/mini-apps/mini-app-context-note'
 import { pageController } from '@/pages/page-controller'
 import { browserController } from '@/browser/browser-controller'
 import * as tauriCore from '@tauri-apps/api/core'
@@ -57,7 +56,6 @@ import {
   createBuiltInAdapter,
   composeAppHarnessSystemPrompt,
   harnessSignature,
-  supersedeHarnessAppContext,
   resolvePiModel,
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
@@ -749,7 +747,6 @@ describe('resolvePiModel — Tinfoil', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const aiFetch = mock(async () => new Response('legacy'))
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -802,7 +799,6 @@ describe('createBuiltInAdapter engine telemetry', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const aiFetch = mock(async () => new Response('legacy'))
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -842,7 +838,6 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const authToken = { current: 'first-token' }
     const authorizationHeaders: Array<string | null> = []
@@ -910,7 +905,6 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const activeToolNames: Array<string[] | undefined> = []
     const harness = {
@@ -987,7 +981,6 @@ describe('createBuiltInAdapter persistent harness', () => {
         mcpToolsMetadata: undefined,
         stableSystemPrompt: 'stable prompt',
         volatileSystemPrompt: `timestamp ${index + 1}`,
-        embeddedSurface: null,
       }),
     )
     const prepareConfig = mock(async () => configs.shift()!)
@@ -1233,7 +1226,6 @@ const createBudgetAdapter = (
     mcpToolsMetadata: undefined,
     stableSystemPrompt: 'Complete the report.',
     volatileSystemPrompt: 'Now.',
-    embeddedSurface: null,
     ...extraConfig,
   })
   const registrations = new Set<unknown>()
@@ -1988,7 +1980,6 @@ describe('createBuiltInAdapter stop', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable prompt',
       volatileSystemPrompt: 'volatile prompt',
-      embeddedSurface: null,
     }
     const harness = {
       ...compactionStub,
@@ -2197,120 +2188,6 @@ describe('research promotion through the real Pi adapter', () => {
   })
 })
 
-describe('Mini App reads on the persistent harness', () => {
-  type ContextHandler = (event: { messages: unknown[] }) => { messages: unknown[] } | Promise<{ messages: unknown[] }>
-
-  const appContextRead = (toolCallId: string, text: string) => ({
-    role: 'toolResult' as const,
-    toolCallId,
-    toolName: 'get_app_context',
-    content: [{ type: 'text' as const, text }],
-    isError: false,
-    timestamp: 0,
-  })
-
-  /** Minimal context-hook registry for the adapter's request transformation. */
-  const hookRegistry = () => {
-    const hooks: { context?: ContextHandler } = {}
-    const harness = {
-      on: (type: string, handler: ContextHandler) => {
-        if (type === 'context') {
-          hooks.context = handler
-        }
-        return () => {
-          delete hooks.context
-        }
-      },
-    } as never
-    return { harness, hooks }
-  }
-
-  it('supersedes the listed reads in the request without touching the stored ones', async () => {
-    const earlier = appContextRead('earlier', 'Currently viewing: Q2')
-    const current = appContextRead('current', 'Currently viewing: Q3')
-    const messages = [earlier, current].map((message) => supersedeHarnessAppContext(message, new Set(['earlier'])))
-
-    expect(messages[0]).toEqual({ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] })
-    expect(messages[1]).toBe(current)
-    expect(earlier.content[0].text).toBe('Currently viewing: Q2')
-  })
-
-  /** The rewrite the legacy path applies to the request history, carried to the harness's own session. */
-  it("rewrites earlier Mini App reads during a send and tags this send's reads", async () => {
-    const model = tinfoilModel()
-    const config = {
-      model,
-      profile: null,
-      supportsTools: true,
-      sourceCollector: [],
-      toolset: {},
-      skills: [],
-      mcpToolsMetadata: undefined,
-      stableSystemPrompt: 'stable',
-      volatileSystemPrompt: 'volatile',
-      embeddedSurface: 'mini-app',
-    } satisfies PreparedAiRequestConfig
-    const { harness: registry, hooks } = hookRegistry()
-    const earlier = appContextRead('earlier', 'Currently viewing: Q2')
-    let requested: unknown[] = []
-    let toolCallMetadata: Record<string, unknown> | undefined
-    const harness = {
-      ...compactionStub,
-      ...(registry as object),
-      getTools: () => [],
-      setTools: async () => {},
-      prompt: async () => {
-        requested = (await hooks.context?.({ messages: [earlier] }))?.messages ?? []
-      },
-      waitForIdle: async () => {},
-      abort: async () => ({ aborted: true }),
-      env: { remove: async () => {} },
-    }
-    const agentCore = {
-      ...tinfoilAgentCore,
-      buildAppHarness: async () => harness as never,
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
-      writeAgentWorkspaceFiles: async () => [],
-      toPiAgentTools: async () => [],
-      piHarnessToUiMessageStream: (
-        _harness: AgentHarness,
-        runPrompt: () => Promise<void>,
-        metadata: { toolCall?: (toolName: string) => Record<string, unknown> | undefined },
-      ) =>
-        new ReadableStream<Uint8Array>({
-          start: async (controller) => {
-            toolCallMetadata = metadata.toolCall?.('get_app_context')
-            await runPrompt()
-            controller.close()
-          },
-        }),
-    } as never
-    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
-      loadAgentCore: async () => agentCore,
-      prepareConfig: async () => config,
-      getSystemTinfoilClient: async () => createAttestedClient(),
-    })
-    const messages = [
-      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'What is the total?' }] },
-      {
-        id: 'a1',
-        role: 'assistant',
-        metadata: { embeddedSurface: 'mini-app' },
-        parts: [
-          { type: 'tool-get_app_context', toolCallId: 'earlier', state: 'output-available', input: {}, output: 'Q2' },
-        ],
-      },
-      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'And now?' }] },
-    ]
-
-    await (await adapter.fetch({ body: JSON.stringify({ messages }) }, tinfoilContext(model))).text()
-
-    expect(requested).toEqual([{ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] }])
-    expect(hooks.context).toBeUndefined()
-    expect(toolCallMetadata).toEqual({ modelId: model.id, embeddedSurface: 'mini-app' })
-  })
-})
-
 describe('attachments in the harness workspace', () => {
   const csv = '"date","payee","amount"\n"2026-01-02","Hertz, LLC","-99.5"'
 
@@ -2340,7 +2217,6 @@ describe('attachments in the harness workspace', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const events: string[] = []
     const written: realAgentCore.WorkspaceFile[][] = []
@@ -2466,7 +2342,6 @@ describe('built-in adapter lifetime ownership', () => {
       skills: [],
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
       mcpToolsMetadata: undefined,
     }
     const listeners = new Set<(event: AgentHarnessEvent) => void>()
@@ -2504,15 +2379,16 @@ describe('built-in adapter lifetime ownership', () => {
     const remove = mock(async () => {
       removed.resolve()
     })
+    const writeWorkspaceFiles = mock(async (..._args: Parameters<typeof realAgentCore.writeAgentWorkspaceFiles>) => {
+      await pause('write')
+      return []
+    })
     const agentCore = {
       isKnownAnthropicModel: () => true,
       buildAppHarness: build,
       removeAgentWorkspace: remove,
       toPiAgentTools: async () => [],
-      writeAgentWorkspaceFiles: async () => {
-        await pause('write')
-        return []
-      },
+      writeAgentWorkspaceFiles: writeWorkspaceFiles,
       piHarnessToUiMessageStream: realAgentCore.piHarnessToUiMessageStream,
     } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -2537,6 +2413,8 @@ describe('built-in adapter lifetime ownership', () => {
       send,
       sendProject: (projectId: string) =>
         adapter.fetch(init, { ...tinfoilContext(model), projectId, workspaceId: `project-${projectId}` }),
+      compactProject: (projectId: string) =>
+        adapter.compact!(init, { ...tinfoilContext(model), projectId, workspaceId: `project-${projectId}` }),
       compact,
       compactRequest,
       reached,
@@ -2546,6 +2424,7 @@ describe('built-in adapter lifetime ownership', () => {
       removed: removed.promise,
       prompt,
       abort,
+      writeWorkspaceFiles,
     }
   }
 
@@ -2575,15 +2454,30 @@ describe('built-in adapter lifetime ownership', () => {
     const fixture = setup()
     const response = await fixture.sendProject('shared-project')
     expect(fixture.build.mock.calls[0]?.[0].threadId).toBe('project-shared-project')
+    expect(fixture.writeWorkspaceFiles).toHaveBeenCalledWith('project-shared-project', [], undefined, {
+      preserveExisting: true,
+    })
     fixture.adapter.disconnect()
     await response.text()
     expect(fixture.abort).toHaveBeenCalled()
     expect(fixture.remove).not.toHaveBeenCalled()
   })
 
+  it('preserves shared project inputs when compacting its conversation', async () => {
+    const fixture = setup()
+    await expect(fixture.compactProject('shared-project')).rejects.toThrow('Cancelled preparation')
+    expect(fixture.writeWorkspaceFiles).toHaveBeenCalledWith('project-shared-project', [], undefined, {
+      preserveExisting: true,
+    })
+    fixture.adapter.disconnect()
+  })
+
   it('aborts an active stream when the adapter disconnects and disposes its workspace once', async () => {
     const fixture = setup()
     const response = await fixture.send()
+    expect(fixture.writeWorkspaceFiles).toHaveBeenCalledWith('lifetime-thread', [], undefined, {
+      preserveExisting: false,
+    })
     fixture.adapter.disconnect()
     fixture.adapter.disconnect()
     await response.text()

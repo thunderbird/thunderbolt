@@ -251,43 +251,42 @@ async fn run_preview(
         .env("HOST", "127.0.0.1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(unix)]
-    command.process_group(0);
+        .stderr(std::process::Stdio::piped());
     drop(reservation);
-    let mut child = command
-        .spawn()
+    let mut process = crate::agent_execution::process_tree::ScopedChild::spawn(command)
         .map_err(|error| format!("Could not start local app: {error}"))?;
-    let pid = child.id().ok_or("Missing local app process id")?;
     let stdout = tokio::spawn(capture(
-        child.stdout.take().ok_or("Missing stdout")?,
+        process.child().stdout.take().ok_or("Missing stdout")?,
         preview.logs.clone(),
     ));
     let stderr = tokio::spawn(capture(
-        child.stderr.take().ok_or("Missing stderr")?,
+        process.child().stderr.take().ok_or("Missing stderr")?,
         preview.logs.clone(),
     ));
     let url = format!("http://127.0.0.1:{port}/");
-    let (alive, outcome) = tokio::select! {
-        _ = cancel.changed() => (true, Ok(())),
-        status = child.wait() => (false, Err(format!("Local app exited before becoming ready: {}", status.map_err(|error| error.to_string())?))),
+    let outcome = tokio::select! {
+        _ = cancel.changed() => Ok(()),
+        status = process.child().wait() => Err(match status {
+            Ok(status) => format!("Local app exited before becoming ready: {status}"),
+            Err(error) => error.to_string(),
+        }),
         ready = wait_ready(&url) => {
             match ready {
-                Err(error) => (true, Err(error)),
+                Err(error) => Err(error),
                 Ok(()) => {
                     preview.state.send_modify(|state| { state.status = "ready"; state.url = Some(url); });
                     tokio::select! {
-                        _ = cancel.changed() => (true, Ok(())),
-                        status = child.wait() => (false, Err(format!("Local app exited: {}", status.map_err(|error| error.to_string())?))),
+                        _ = cancel.changed() => Ok(()),
+                        status = process.child().wait() => Err(match status {
+                            Ok(status) => format!("Local app exited: {status}"),
+                            Err(error) => error.to_string(),
+                        }),
                     }
                 }
             }
         }
     };
-    let cleanup = crate::agent_execution::process_tree::stop(pid, alive).await;
-    let _ = child.kill().await;
-    let _ = child.wait().await;
+    let cleanup = process.stop().await;
     // Detached grandchildren cannot hold stdout open and delay stop indefinitely.
     for mut reader in [stdout, stderr] {
         if tokio::time::timeout(Duration::from_millis(250), &mut reader)
@@ -349,7 +348,7 @@ pub fn shutdown(app: &tauri::AppHandle) {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{Read, Write};
@@ -450,6 +449,21 @@ mod tests {
         let failed = settled(&sessions.get("missing").unwrap().unwrap()).await;
         assert_eq!(failed.status, "failed");
         assert!(failed.error.unwrap().contains("Could not start local app"));
+    }
+
+    #[tokio::test]
+    async fn an_exited_command_reports_failure_without_waiting_for_readiness_timeout() {
+        let sessions = PreviewSessions::default();
+        let mut completed = request("completed");
+        completed.args = vec!["--help".into()];
+        sessions.start(completed).unwrap();
+        let failed = settled(&sessions.get("completed").unwrap().unwrap()).await;
+        assert_eq!(failed.status, "failed");
+        assert!(failed
+            .error
+            .unwrap()
+            .contains("Local app exited before becoming ready"));
+        assert!(failed.url.is_none());
     }
 
     #[tokio::test]

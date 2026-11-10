@@ -1164,12 +1164,6 @@ describe('useHydrateChatStore', () => {
       expect((await getThread(getDb(), threadId))?.contextSize).toBe(600)
     })
   })
-  /*
-   * The first save of a new chat promotes the URL from /chats/new to
-   * /chats/<id>. That is right for the chat route and wrong for a chat embedded
-   * in another surface — the Mini App panel navigated away mid-send, unmounting
-   * the app and clearing the context the model was being asked about.
-   */
   describe('navigation on create', () => {
     /** Renders nothing; mirrors the router's current path into `seen`. */
     const makeRouterWrapper = (initialPath: string, seen: { path: string }) => {
@@ -1188,18 +1182,8 @@ describe('useHydrateChatStore', () => {
       }
     }
 
-    /**
-     * Hydrate a brand-new thread and save one message through it.
-     *
-     * `onCreated` is the whole switch: supplying it means the host records the
-     * id itself and nothing navigates.
-     */
-    const hydrateAndSave = async (
-      threadId: string,
-      onCreated: ((chatThreadId: string) => void) | undefined,
-      wrapper: ReturnType<typeof makeRouterWrapper>,
-    ) => {
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true, onCreated }), {
+    const hydrateAndSave = async (threadId: string, wrapper: ReturnType<typeof makeRouterWrapper>) => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true }), {
         wrapper,
       })
       await act(async () => {
@@ -1215,23 +1199,9 @@ describe('useHydrateChatStore', () => {
       const threadId = uuidv7()
       const seen = { path: '' }
 
-      await hydrateAndSave(threadId, undefined, makeRouterWrapper('/chats/new', seen))
+      await hydrateAndSave(threadId, makeRouterWrapper('/chats/new', seen))
 
       expect(seen.path).toBe(`/chats/${threadId}`)
-    })
-
-    it('stays put, and hands the id over, when the host takes it', async () => {
-      await createSystemModel()
-      const threadId = uuidv7()
-      const seen = { path: '' }
-      const recorded: string[] = []
-
-      await hydrateAndSave(threadId, (id) => recorded.push(id), makeRouterWrapper('/apps/finance-model', seen))
-
-      expect(seen.path).toBe('/apps/finance-model')
-      // The pair that used to be separable: suppressing the navigation without
-      // recording the id created a real row nothing knew about.
-      expect(recorded).toEqual([threadId])
     })
   })
 })

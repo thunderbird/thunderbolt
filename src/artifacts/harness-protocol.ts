@@ -11,8 +11,6 @@ import { z } from 'zod'
 
 import { clampedString } from '@shared/lib/clamped-string'
 
-import type { SurfaceTextSelection } from '@/components/embedded'
-
 export type HarnessMessage =
   | { artifactNonce: string; type: 'artifact-ready' }
   | { artifactNonce: string; type: 'artifact-height'; height: number }
@@ -24,40 +22,6 @@ export type HarnessMessage =
     }
   /** Reply to a {@link HarnessRequest}, correlated by `id`. */
   | { artifactNonce: string; type: 'artifact-reply'; id: number; result: unknown }
-  /**
-   * What the artifact currently shows, in prose the model can read.
-   *
-   * Derived by the harness rather than authored, because the page is written by
-   * the model and has no idea our APIs exist — asking it to opt in would make
-   * this work for new artifacts and never for the ones already in a transcript.
-   * A page that wants to do better can set `window.__artifactContext`.
-   */
-  | { artifactNonce: string; type: 'artifact-context'; context: ArtifactContext }
-  /**
-   * The user highlighted (or cleared) text inside the artifact.
-   *
-   * Reported by the guest because a host cannot read the selection inside a
-   * frame it doesn't share an origin with — that isolation is the point, so the
-   * page volunteers it. `null` means the selection was cleared.
-   */
-  | { artifactNonce: string; type: 'artifact-selection'; selection: ArtifactTextSelection | null }
-
-/** A short description of what the artifact is showing right now. */
-export type ArtifactContext = { title: string; summary: string }
-
-/** Highlighted text plus where it sits in the artifact's own viewport. */
-/*
- * Aliases, not copies. Both shapes existed here verbatim as well as in
- * `components/embedded/types.ts` and (as zod schemas) in the Mini App protocol,
- * type-checking across the boundary only because all three happened to be
- * structurally identical — so a field added to one silently never reached the
- * others. The shared module is the declaration; these names stay because the
- * artifact code reads better with them.
- */
-export type ArtifactTextSelection = SurfaceTextSelection
-
-/** Method name the host uses to resolve a point to the element under it. */
-export const artifactElementAtMethod = 'element/at'
 
 export type HarnessRequest = {
   artifactNonce: string
@@ -106,44 +70,7 @@ const harnessErrorLabels: Record<Extract<HarnessMessage, { type: 'artifact-error
   handler: 'Error answering a host request',
 }
 
-/**
- * Validate and decode a `postMessage` from an artifact iframe: it must originate
- * from that iframe's own window and carry the matching per-render nonce. Returns
- * the typed message, or `null` to ignore. Centralized so the source/nonce checks
- * can't drift between the verifier and the visible renderer.
- */
-const rectSchema = z.object({
-  x: z.number().finite(),
-  y: z.number().finite(),
-  width: z.number().finite(),
-  height: z.number().finite(),
-})
-
-/**
- * Bounds on everything an artifact can say.
- *
- * The caps in the injected script are advisory only: the page owns its own
- * document and knows its own nonce, so it can overwrite the harness handlers or
- * simply post whatever it likes. Anything trusted has to be enforced up here.
- *
- * This surface had no schema at all, which is backwards — an artifact is the
- * *less* trusted of the two embedded surfaces (its HTML is model-written, and
- * often shaped by whatever the model just read), while the Mini App path bounds
- * every field.
- *
- * The *shape* mirrors the Mini App path; the numbers are this surface's own and
- * deliberately tighter in places. They match the caps in the injected script
- * below (`MAX_DETAIL`, `MAX_ITEM_TEXT`), so the two halves of this file agree
- * with each other — an artifact has no backend to fetch more from, and its text
- * is derived from a document the model just wrote, so it needs less room than an
- * app reporting real records. Don't "align" them with the protocol's without
- * changing the script too.
- *
- * The bounds are prompt-and-memory budgets, not correctness constraints, and
- * every field they guard is free text the artifact derives from its own DOM.
- * {@link clampedString} explains why they clamp instead of rejecting; the Mini
- * App protocol uses the same helper, so the two surfaces cannot drift on it.
- */
+/** Page scripts can overwrite their harness, so the host bounds all reported diagnostic text. */
 const harnessMessageSchema = z.discriminatedUnion('type', [
   z.object({ artifactNonce: z.string(), type: z.literal('artifact-ready') }),
   z.object({ artifactNonce: z.string(), type: z.literal('artifact-height'), height: z.number().finite() }),
@@ -159,31 +86,9 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
     id: z.number().int(),
     result: z.unknown(),
   }),
-  z.object({
-    artifactNonce: z.string(),
-    type: z.literal('artifact-context'),
-    context: z.object({ title: clampedString(200), summary: clampedString(20_000) }),
-  }),
-  z.object({
-    artifactNonce: z.string(),
-    type: z.literal('artifact-selection'),
-    selection: z.object({ text: clampedString(20_000), rect: rectSchema.optional() }).nullable(),
-  }),
 ])
 
-/** The element under a point. Validated separately: it rides `artifact-reply`'s
- *  `unknown` result, which the caller narrows once it knows what it asked. */
-export const artifactElementAtSchema = z.object({
-  element: z
-    .object({
-      id: clampedString(200),
-      label: clampedString(500),
-      text: clampedString(5_000),
-      rect: rectSchema,
-    })
-    .nullable(),
-})
-
+/** Accept messages only from this exact frame and document; validate replies again at their method's caller. */
 export const parseHarnessMessage = (
   event: MessageEvent,
   contentWindow: Window | null,
@@ -211,24 +116,12 @@ export const parseHarnessMessage = (
  * static check, and external scripts (which the offline CSP blocks) are rejected
  * there too — so ignoring subresource errors here loses no real coverage.
  *
- * **The comments inside the template literal ship to users verbatim.** A
- * minifier cannot see into a string, so the ~4 KB of rationale below travels in
- * the bundle (about 1.2 KB gzipped, against a ~670 KB gzipped entry chunk).
- * That is a deliberate trade, measured rather than assumed: the alternative is
- * moving the reasoning away from the ES5 it explains, in the one file here that
- * no unit test can reach and that a future reader has to modify blind. If this
- * script grows several times over, revisit it by stripping comments in a build
- * transform rather than by deleting them.
  */
 const harnessScript = (nonce: string): string => `<script>
 (function () {
   var NONCE = ${JSON.stringify(nonce)};
-  // Trimmed here as well as host-side. The host clamps so an overrun is never
-  // silently fatal; this keeps a select-all on a long page, or a deep stack
-  // trace, from crossing postMessage at full size in the first place.
+  // Bound diagnostics both here and in the host-side schema.
   var MAX_DETAIL = 2000;
-  var MAX_SELECTION = 20000;
-  var MAX_ITEM_TEXT = 5000;
   function send(msg) {
     msg.artifactNonce = NONCE;
     try { parent.postMessage(msg, '*'); } catch (e) {}
@@ -263,6 +156,7 @@ const harnessScript = (nonce: string): string => `<script>
     rafPending = true;
     requestAnimationFrame(function () { rafPending = false; measureAndSend(); });
   }
+  window.__artifactHandlers = window.__artifactHandlers || {};
   // Host-to-guest requests. Handlers are registered by the artifact channel
   // module on window.__artifactHandlers; an unknown method replies null rather
   // than going silent, so the host resolves instead of waiting out its timeout.
@@ -286,179 +180,10 @@ const harnessScript = (nonce: string): string => `<script>
     } catch (err) { replyFailed(err); }
   });
 
-  // ---- selection --------------------------------------------------------
-  // Ported from the mini-app SDK's hit-test so both surfaces answer a point the
-  // same way. Defined AFTER the error listeners above, deliberately: the
-  // listeners must win the race against agent code, this need not.
-  // Elements worth naming in preference to whatever the pointer literally hit:
-  // pointing at a cell means the row, pointing inside a heading means the
-  // heading. NOT an allowlist of what can be picked — it used to be, and a page
-  // built from divs and spans (a to-do list, a dashboard of cards) had almost
-  // nothing selectable in it. Anything at all can be picked now; this only
-  // decides where the walk *stops preferring* an ancestor.
-  var PREFERRED = '[data-tb-select], tr, li, blockquote, figure, p, h1, h2, h3, h4, h5, h6';
-
-  // A pick that outlines the whole page tells the model nothing, and there is
-  // no smaller thing to fall back to.
-  var UNPICKABLE = { HTML: 1, BODY: 1 };
-
-  function labelFor(el) {
-    var explicit = el.getAttribute('data-tb-label');
-    if (explicit) { return explicit; }
-    var cell = el.querySelector('td, th');
-    var cellText = cell && cell.textContent ? cell.textContent.trim() : '';
-    if (cellText) { return cellText; }
-    var t = (el.textContent || '').trim();
-    // A chip label, not a description: the full string travels in the text
-    // field, and the host truncates the chip visually anyway.
-    if (t) { return t.slice(0, MAX_LABEL) + (t.length > MAX_LABEL ? '…' : ''); }
-    // Textless but real: an image, a chart canvas, an icon button. Named from
-    // whatever the author gave it, and by tag as a last resort, so it can still
-    // be picked instead of being skipped for having nothing to read.
-    var described = el.getAttribute('aria-label') || el.getAttribute('alt') || el.getAttribute('title') ||
-      el.getAttribute('placeholder') || el.getAttribute('name');
-    if (described) { return described; }
-    // elementFromPoint only ever hands back an Element, so this is the tag.
-    return el.tagName.toLowerCase();
-  }
-
-  // Read a table row as "Header: value" pairs so a bare number reaches the model
-  // attached to the column it came from.
-  function describeRow(el) {
-    var cells = Array.prototype.slice.call(el.querySelectorAll('td'));
-    if (!cells.length) { return null; }
-    var table = el.closest ? el.closest('table') : null;
-    var heads = table ? Array.prototype.slice.call(table.querySelectorAll('thead th')) : [];
-    if (heads.length !== cells.length) {
-      return cells.map(function (c) { return (c.textContent || '').trim(); }).join(' | ');
-    }
-    return cells.map(function (c, i) { return (heads[i].textContent || '').trim() + ': ' + (c.textContent || '').trim(); }).join(', ');
-  }
-
-  window.__artifactHandlers = window.__artifactHandlers || {};
-  window.__artifactHandlers['element/at'] = function (params) {
-    var x = params && params.x;
-    var y = params && params.y;
-    if (typeof x !== 'number' || typeof y !== 'number') { return { element: null }; }
-    var hit = document.elementFromPoint(x, y);
-    if (!hit || UNPICKABLE[hit.tagName]) { return { element: null }; }
-    // Prefer the nearest thing worth naming, and fall back to what the pointer
-    // actually hit. closest() does the walk and gives up at the document if
-    // nothing matches — which used to mean "nothing here", so a div-and-span
-    // page was unselectable. Devtools-like: whatever is under the cursor can be
-    // picked; the semantic ancestor is a preference, not a requirement.
-    var preferred = hit.closest ? hit.closest(PREFERRED) : null;
-    var el = preferred && !UNPICKABLE[preferred.tagName] ? preferred : hit;
-    var text = describeRow(el) || (el.textContent || '').trim();
-    var r = el.getBoundingClientRect();
-    // Zero-area elements can't be outlined and aren't what the user meant.
-    if (!r.width || !r.height) { return { element: null }; }
-    // Once per hit-test, not three times: each call walks the DOM
-    // (getAttribute, querySelector, textContent) and this runs on every
-    // throttled pointer move.
-    var label = labelFor(el);
-    return {
-      element: {
-        // Stable for as long as the element is: the host uses it to tell "the
-        // pointer moved within one element" from "it moved to another".
-        //
-        // Coordinates FIRST, because the host clamps this field to 200
-        // characters. With the label in front, two different elements sharing a
-        // long label prefix truncated to the same id — and the host would read
-        // that as the pointer never having left the first one.
-        id: Math.round(r.x) + ',' + Math.round(r.y) + '@' + label,
-        label: label,
-        // Falls back to the label so a textless element (an image, a canvas)
-        // still arrives as something the model can talk about.
-        text: (text || label).slice(0, MAX_ITEM_TEXT),
-        rect: { x: r.x, y: r.y, width: r.width, height: r.height },
-      },
-    };
-  };
-
-  // Report highlights so the host can float its "Ask about this" control. Debounced
-  // because selectionchange fires per character while dragging, and re-sent on
-  // scroll so a placed control doesn't strand itself.
-  var selTimer;
-  var lastSel = null;
-  function readSelection() {
-    var sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.rangeCount) { return null; }
-    var text = sel.toString().trim();
-    if (!text) { return null; }
-    var b = sel.getRangeAt(0).getBoundingClientRect();
-    var rect = b.width > 0 || b.height > 0 ? { x: b.x, y: b.y, width: b.width, height: b.height } : undefined;
-    return { text: text.slice(0, MAX_SELECTION), rect: rect };
-  }
-  function reportSelection() {
-    var cur = readSelection();
-    var key = cur ? cur.text + '@' + (cur.rect ? cur.rect.x + ',' + cur.rect.y : 'n') : null;
-    if (key === lastSel) { return; }
-    lastSel = key;
-    send({ type: 'artifact-selection', selection: cur });
-  }
-  function onSelectionChange() {
-    clearTimeout(selTimer);
-    // 180ms: selectionchange fires per character while dragging, and this is
-    // about the pause between deliberate drags rather than within one.
-    selTimer = setTimeout(reportSelection, 180);
-  }
-  document.addEventListener('selectionchange', onSelectionChange);
-  window.addEventListener('scroll', onSelectionChange, { passive: true, capture: true });
-
-  // ---- context ----------------------------------------------------------
-  // A digest of what the page currently shows, so asking "what does this chart
-  // say?" doesn't require the model to re-read HTML it may no longer hold.
-  // Derived, not authored: the page's author is the model, which has never
-  // heard of this API. A page may override by setting window.__artifactContext.
-  // Tighter than the host's bound on the same field: a summary is derived from
-  // the artifact's own DOM every time it changes, so it is the most repeated
-  // thing this surface says to the model and the cheapest to keep short.
-  var MAX_LABEL = 40;
-  var MAX_SUMMARY = 1500;
-
-  function deriveContext() {
-    var override = window.__artifactContext;
-    if (override && override.summary) {
-      return { title: String(override.title || document.title || 'Artifact'), summary: String(override.summary).slice(0, MAX_SUMMARY) };
-    }
-    var h1 = document.querySelector('h1');
-    var title = (document.title || (h1 && h1.textContent) || 'Artifact').trim();
-    // Headings first: they're the page's own outline, and they survive
-    // truncation better than a wall of body text would.
-    var heads = Array.prototype.slice.call(document.querySelectorAll('h1, h2, h3'))
-      .map(function (h) { return (h.textContent || '').trim(); })
-      .filter(Boolean);
-    var body = document.body ? (document.body.innerText || document.body.textContent || '') : '';
-    var summary = (heads.length ? heads.join(' · ') + '\\n' : '') + body.replace(/\\s+/g, ' ').trim();
-    return { title: title, summary: summary.slice(0, MAX_SUMMARY) };
-  }
-
-  var lastContext = '';
-  function reportContext() {
-    var ctx = deriveContext();
-    var key = ctx.title + '\\u0000' + ctx.summary;
-    if (key === lastContext) { return; }
-    lastContext = key;
-    send({ type: 'artifact-context', context: ctx });
-  }
-
-  var ctxTimer;
-  function scheduleContext() {
-    clearTimeout(ctxTimer);
-    // Debounced: an interactive artifact can mutate on every animation frame,
-    // and the host only needs to know where it settled.
-    ctxTimer = setTimeout(reportContext, 250);
-  }
-
   window.addEventListener('load', function () {
     setTimeout(function () {
       send({ type: 'artifact-ready' });
       measureAndSend();
-      reportContext();
-      if (typeof MutationObserver !== 'undefined' && document.body) {
-        new MutationObserver(scheduleContext).observe(document.body, { subtree: true, childList: true, characterData: true });
-      }
       if (typeof ResizeObserver !== 'undefined' && document.documentElement) {
         new ResizeObserver(reportHeight).observe(document.documentElement);
       }

@@ -55,27 +55,6 @@ type UseHydrateChatStoreParams = {
    *  Passed in rather than read from `window.location` so the value is part of
    *  this hook's inputs and can be tested. */
   projectId?: string | null
-  /** Mini App a brand-new chat starts from. Same lazy-write reasoning as
-   *  `projectId`: the app is known when the panel opens, but nothing is
-   *  persisted until the first message. */
-  miniAppId?: string | null
-  /**
-   * Whether the first save should navigate to `/chats/<id>`.
-   *
-   * True for the chat route, where the URL must move off `/chats/new` so the
-   * thread is linkable and survives reload.
-   *
-   * A host that supplies this takes over: nothing navigates, and recording the
-   * new id is entirely its business. That is what the Mini App side panel needs
-   * — navigating there would unmount the host page mid-send, taking the app, its
-   * bridge, and the context the model was about to be asked about with it.
-   *
-   * One prop rather than a `navigateOnCreate` flag beside it: the two always
-   * moved together, and the combination that made no sense (suppress the
-   * navigation, supply no callback) silently created a real row that nothing
-   * recorded.
-   */
-  onCreated?: (chatThreadId: string) => void
   /** Injected for tests; see {@link defaultWaitForSyncCatchUp}. */
   waitForSyncCatchUp?: () => Promise<void> | null
 }
@@ -133,8 +112,6 @@ export const useHydrateChatStore = ({
   id,
   isNew,
   projectId: newChatProjectId = null,
-  miniAppId: newChatMiniAppId = null,
-  onCreated,
   waitForSyncCatchUp = defaultWaitForSyncCatchUp,
 }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
@@ -204,12 +181,7 @@ export const useHydrateChatStore = ({
 
     if (!session.chatThread) {
       updateSession(id, { chatThread: thread })
-      if (onCreated) {
-        // The host records the id its own way, and stays where it is.
-        onCreated(id)
-      } else {
-        navigate(`/chats/${id}`, { relative: 'path' })
-      }
+      navigate(`/chats/${id}`, { relative: 'path' })
     }
   }
 
@@ -346,7 +318,7 @@ export const useHydrateChatStore = ({
     // project carries it in the URL (`/chats/new?projectId=…`), which is the only
     // moment that intent exists — nothing has been written yet.
     const projectId = chatThread?.projectId ?? (isNew ? newChatProjectId : null)
-    const miniAppId = chatThread?.miniAppId ?? (isNew ? newChatMiniAppId : null)
+    const miniAppId = chatThread?.miniAppId ?? null
 
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {

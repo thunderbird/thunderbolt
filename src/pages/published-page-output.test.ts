@@ -47,6 +47,11 @@ describe('publishedPageOutput', () => {
       part('page_show_file', { ok: true, page }),
       part('page_open', { ok: false, page, details: { ok: true, page } }),
       part('page_open', { isError: true, details: { ok: true, page } }),
+      part('page_open', { ok: true, page, isError: true }),
+      part('page_open', { ok: true, page, details: { isError: true } }),
+      part('page_open', {
+        content: [{ type: 'text', text: JSON.stringify({ ok: true, page, isError: true }) }],
+      }),
       part('page_open', {
         details: { ok: false },
         content: [{ type: 'text', text: JSON.stringify({ ok: true, page }) }],

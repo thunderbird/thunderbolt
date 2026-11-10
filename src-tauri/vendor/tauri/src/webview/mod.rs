@@ -1019,6 +1019,7 @@ fn main() {
   /// and Tauri IPC command handling is disabled. Explicit builder initialization
   /// scripts and host-driven evaluation remain available. The native API is
   /// enabled by default. Wry may retain an inert IPC shim without a handler.
+  #[cfg(any(test, feature = "unstable"))]
   #[must_use]
   pub fn disable_native_api(mut self) -> Self {
     self.native_api_enabled = false;

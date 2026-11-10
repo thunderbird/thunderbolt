@@ -15,6 +15,8 @@ mod browser_focus_macos;
 #[cfg(desktop)]
 mod browser_menu;
 #[cfg(desktop)]
+mod browser_operation;
+#[cfg(desktop)]
 mod browser_presentation;
 #[cfg(desktop)]
 mod browser_resize;
@@ -46,6 +48,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
                 if webview.label() == "main"
                     && payload.event() == tauri::webview::PageLoadEvent::Started
                 {
+                    browser::main_page_started(webview);
                     browser_resize::main_page_started(webview);
                 }
             });
@@ -84,7 +87,9 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 #[cfg(desktop)]
                 browser::browser_create,
+                #[cfg(desktop)]
                 browser_presentation::browser_present,
+                #[cfg(desktop)]
                 browser_presentation::browser_set_visibility,
                 #[cfg(desktop)]
                 browser::browser_navigate,
@@ -98,6 +103,10 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
                 browser_control::browser_agent_snapshot,
                 #[cfg(desktop)]
                 browser_control::browser_agent_action,
+                #[cfg(desktop)]
+                browser_control::browser_begin_agent_action,
+                #[cfg(desktop)]
+                browser_control::browser_cancel_agent_action,
                 #[cfg(desktop)]
                 browser_control::browser_set_picker,
                 #[cfg(desktop)]

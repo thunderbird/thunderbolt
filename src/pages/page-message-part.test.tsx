@@ -11,6 +11,8 @@ import { resetAppSettledForTests } from '@/hooks/use-app-settled'
 import { getClock } from '@/testing-library'
 import { mockIntersectionObserver } from '@/test-utils/mock-intersection-observer'
 import * as verification from '@/artifacts/verify-html'
+import * as platform from '@/lib/platform'
+import { useLocalAppStore } from '@/local-apps/local-app-store'
 import { PageMessagePart } from './page-message-part'
 import { usePageStore } from './page-store'
 
@@ -81,6 +83,43 @@ describe('PageMessagePart', () => {
     expect(usePageStore.getState().sessions).toHaveLength(1)
     expect(usePageStore.getState().sessions[0]?.id).toBe(id)
     expect(usePageStore.getState().sessions[0]?.presentation).toBe('sidebar')
+  })
+
+  it('never auto-launches a restored local recipe on its owning desktop, even when scrolled into view', async () => {
+    const native = spyOn(platform, 'isTauriDesktop').mockReturnValue(true)
+    const previous = useLocalAppStore.getState().apps
+    useLocalAppStore.getState().save({
+      id: 'one',
+      owner: { kind: 'chat', id: 'original-chat' },
+      title: 'Local app',
+      cwd: '/project',
+      launch: { executable: 'bun', args: ['start'] },
+      createdAt: new Date().toISOString(),
+    })
+    try {
+      const { getByRole, queryByText, container } = render(
+        <PageMessagePart
+          part={published({
+            id: 'local-app:one',
+            title: 'Local app',
+            source: { kind: 'local-app', appId: 'one' },
+          })}
+          messageId="imported-message"
+        />,
+      )
+      await act(async () => {
+        await getClock().tickAsync(1001)
+      })
+      expect(usePageStore.getState().sessions).toHaveLength(0)
+      expect(container.querySelector('[data-page-slot]')).toBeNull()
+      fireEvent.click(getByRole('button', { name: 'Open local app' }))
+      expect(usePageStore.getState().sessions).toHaveLength(1)
+      expect(usePageStore.getState().sessions[0].presentation).toBe('sidebar')
+      expect(queryByText('Shown in browser')).toBeTruthy()
+    } finally {
+      native.mockRestore()
+      useLocalAppStore.setState({ apps: previous })
+    }
   })
 
   it('verifies a restored HTML snapshot before creating its live session', async () => {

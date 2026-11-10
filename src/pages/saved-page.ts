@@ -4,10 +4,11 @@
 
 import { z } from 'zod'
 import type { PageChrome, PageDefinition } from '@shared/page-protocol'
+import { maxPageHtmlBytes, maxPageTitleLength, pageDefinitionSchema, pageIdentifierSchema } from './page-schema'
 
 export const savedPageKeyPrefix = 'saved-page:'
 export const localSavedPageKeyPrefix = 'thunderbolt-local-page:'
-export const maxSavedPageHtmlBytes = 2 * 1024 * 1024
+export const maxSavedPageHtmlBytes = maxPageHtmlBytes
 
 export type SavedPage = PageDefinition & {
   version: 1
@@ -17,64 +18,22 @@ export type SavedPage = PageDefinition & {
   deletedAt: string | null
 }
 
-const identifier = z
-  .string()
-  .min(1)
-  .max(200)
-  .regex(/^[a-zA-Z0-9][a-zA-Z0-9:._-]*$/)
-const referenceIdentifier = z.string().min(1).max(500)
-const webUrl = z
-  .string()
-  .min(1)
-  .max(16_384)
-  .refine((value) => {
-    if (Array.from(value).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
-      return false
-    }
-    try {
-      const url = new URL(value)
-      return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password
-    } catch {
-      return false
-    }
-  }, 'A page must use an HTTP or HTTPS address without embedded credentials')
-
-const pageSourceSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('url'), url: webUrl }),
-  z.object({
-    kind: z.literal('html'),
-    html: z
-      .string()
-      .min(1)
-      .max(maxSavedPageHtmlBytes)
-      .refine(
-        (value) => new TextEncoder().encode(value).byteLength <= maxSavedPageHtmlBytes,
-        'Saved HTML must be no larger than 2 MiB',
-      ),
-    artifact: z
-      .object({
-        messageId: referenceIdentifier.optional(),
-        toolCallId: referenceIdentifier,
-        chatThreadId: referenceIdentifier.nullable().optional(),
-      })
-      .optional(),
-  }),
-  z.object({ kind: z.literal('local-app'), appId: referenceIdentifier, projectId: referenceIdentifier.optional() }),
-])
-
-const savedPageSchema = z.object({
-  version: z.literal(1),
-  id: identifier,
-  title: z.string().trim().min(1).max(200),
-  source: pageSourceSchema,
-  chrome: z.enum(['browser', 'app']),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
-  deletedAt: z.iso.datetime().nullable(),
-}) satisfies z.ZodType<SavedPage>
+const savedPageSchema = pageDefinitionSchema
+  .extend({
+    version: z.literal(1),
+    title: z.string().trim().min(1).max(maxPageTitleLength),
+    chrome: z.enum(['browser', 'app']),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+    deletedAt: z.iso.datetime().nullable(),
+  })
+  .refine(
+    (page) => page.source.kind !== 'url' || page.source.url !== 'about:blank',
+    'Blank pages cannot be pinned',
+  ) satisfies z.ZodType<SavedPage>
 
 /** Keep source URLs and HTML in the encrypted value, never in a synced setting key. */
-export const savedPageKey = (id: string): string => `${savedPageKeyPrefix}${identifier.parse(id)}`
+export const savedPageKey = (id: string): string => `${savedPageKeyPrefix}${pageIdentifierSchema.parse(id)}`
 
 /** Parse each stored page independently so one invalid entry cannot hide unrelated pins. */
 export const parseSavedPage = (value: unknown): SavedPage | null => {
@@ -95,7 +54,7 @@ export const createSavedPage = (
 ): SavedPage =>
   savedPageSchema.parse({
     ...page,
-    title: page.title.trim().slice(0, 200),
+    title: page.title.trim().slice(0, maxPageTitleLength),
     version: 1,
     chrome,
     createdAt: previous?.createdAt ?? now,

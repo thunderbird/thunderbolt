@@ -168,7 +168,7 @@ export const updateProject = async (db: AnyDrizzleDatabase, id: string, patch: U
  */
 const softDeleteProjects = async (db: AnyDrizzleDatabase, target: SQL): Promise<void> => {
   const deletedAt = nowIso()
-  await db.transaction(async (tx) => {
+  const removed = await db.transaction(async (tx) => {
     await tx
       .update(chatThreadsTable)
       .set({ projectId: null })
@@ -178,8 +178,23 @@ const softDeleteProjects = async (db: AnyDrizzleDatabase, target: SQL): Promise<
           inArray(chatThreadsTable.projectId, tx.select({ id: projectsTable.id }).from(projectsTable).where(target)),
         ),
       )
-    await tx.update(projectsTable).set({ deletedAt }).where(target)
+    const projects = await tx.update(projectsTable).set({ deletedAt }).where(target).returning({ id: projectsTable.id })
+    if (projects.length > 0) {
+      await tx
+        .update(settingsTable)
+        .set({ value: JSON.stringify({ version: 1, deletedAt }), updatedAt: deletedAt })
+        .where(
+          inArray(
+            settingsTable.key,
+            projects.map(({ id }) => projectExecutionKey(id)),
+          ),
+        )
+    }
+    return new Set(projects.map(({ id }) => id))
   })
+  useAgentExecutionStore.setState((state) => ({
+    byProject: Object.fromEntries(Object.entries(state.byProject).filter(([id]) => !removed.has(id))),
+  }))
 }
 
 /** Remove one project while keeping its chats as ordinary chats. */

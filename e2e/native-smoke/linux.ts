@@ -7,7 +7,7 @@ import { createServer, type ServerResponse } from 'node:http'
 import { resolve } from 'node:path'
 import { Key, remote } from 'webdriverio'
 import { browserBannerPrompt, browserBannerReply, browserBannerThinking, fakeProviderReply } from '../fake-provider'
-import type { BrowserSnapshot } from '../../src/browser/types'
+import type { PageAction, PageSnapshot } from '../../shared/page-protocol'
 
 const capabilities = {
   browserName: 'wry',
@@ -41,6 +41,10 @@ type NativeBrowserState = {
   isLoading: boolean
   canGoBack: boolean
   canGoForward: boolean
+}
+
+type NativeBrowserSnapshot = Omit<PageSnapshot, 'pageId' | 'sessionId' | 'capabilities'> & {
+  capabilities: { nativeInput: boolean; screenshot: boolean }
 }
 
 /** Menus in the composer must hand off to their siblings without stacking. */
@@ -371,6 +375,7 @@ const exerciseBrowser = async () => {
         <h1>Second page</h1>
         <p id="runtime-isolation"></p>
         <a id="pick-target" href="/one">First page</a>
+        <a href="/three">Navigate third page</a>
         <input aria-label="Native entry" value="Replace this"/>
         <button id="agent-target">Native click target</button>
         <p id="input-event"></p><p id="key-event"></p><p id="click-event"></p>
@@ -409,6 +414,14 @@ const exerciseBrowser = async () => {
     const webviews = (await invokeNative('plugin:webview|get_all_webviews')) as { label: string }[]
     return webviews.filter((webview) => webview.label.startsWith('sidebar-webview-')).map((webview) => webview.label)
   }
+  const inputAction = async (label: string, action: PageAction) => {
+    const operationId = await invokeNative('browser_begin_agent_action', { label })
+    try {
+      return await invokeNative('browser_agent_action', { label, operationId, action })
+    } finally {
+      await invokeNative('browser_cancel_agent_action', { label, operationId })
+    }
+  }
   const waitForPage = async (label: string, url: string, title: string, tabTitle = title) => {
     await browser.waitUntil(
       async () => {
@@ -441,7 +454,7 @@ const exerciseBrowser = async () => {
     await waitForClosed()
   }
   const observe = async (label: string, screenshot = false) =>
-    (await invokeNative('browser_agent_snapshot', { label, screenshot })) as Omit<BrowserSnapshot, 'tabId'>
+    (await invokeNative('browser_agent_snapshot', { label, screenshot })) as NativeBrowserSnapshot
   /** Check the real native adapter, including trusted events rather than DOM-dispatched substitutes. */
   const exerciseAgentInput = async (label: string) => {
     const initial = await observe(label, true)
@@ -472,7 +485,19 @@ const exerciseBrowser = async () => {
       )
       assert.equal(await composer.getValue(), draft, 'Agent input must not change the user draft')
     }
-    const action = (action: Record<string, unknown>) => invokeNative('browser_agent_action', { label, action })
+    const action = (action: PageAction) => inputAction(label, action)
+    const stoppedOperation = await invokeNative('browser_begin_agent_action', { label })
+    await invokeNative('browser_cancel_agent_action', { label, operationId: stoppedOperation })
+    await assert.rejects(
+      () =>
+        invokeNative('browser_agent_action', {
+          label,
+          operationId: stoppedOperation,
+          action: { type: 'click', ref: input.ref },
+        }),
+      /cancelled/,
+      'Stopping before an input command arrives must prevent its native dispatch',
+    )
     await action({ type: 'click', ref: input.ref })
     await assertComposerFocus()
     await action({ type: 'type', ref: input.ref, text: 'Native café ✓', clear: true })
@@ -673,6 +698,7 @@ const exerciseBrowser = async () => {
     await waitForPage(secondLabel, secondUrl, 'Browser smoke two')
     assert.deepEqual((await getLabels()).sort(), [label, secondLabel].sort(), 'Switching tabs must retain native views')
     const previousDocument = await exerciseAgentInput(secondLabel)
+    const previousOperation = await invokeNative('browser_begin_agent_action', { label: secondLabel })
     const beforeReload = visits.get('/two') ?? 0
     await (await control('button[aria-label="Reload page"]')).click()
     await browser.waitUntil(() => (visits.get('/two') ?? 0) > beforeReload, { timeout: 5000 })
@@ -682,11 +708,30 @@ const exerciseBrowser = async () => {
       () =>
         invokeNative('browser_agent_action', {
           label: secondLabel,
-          action: { type: 'click', ref: previousDocument.ref },
+          operationId: previousOperation,
+          action: { type: 'click', x: 10, y: 10 },
         }),
+      /cancelled/,
+      'Navigating must revoke input prepared for the previous document',
+    )
+    await assert.rejects(
+      () => inputAction(secondLabel, { type: 'click', ref: previousDocument.ref }),
       /Stale element reference/,
       'Reloading a page must invalidate element refs from its previous document',
     )
+    const navigationLink = (await observe(secondLabel)).elements.find(
+      (element) => element.name === 'Navigate third page',
+    )
+    assert(navigationLink, 'The current document should expose its navigation link')
+    assert.deepEqual(
+      await inputAction(secondLabel, { type: 'click', ref: navigationLink.ref }),
+      { ok: true },
+      'A click that initiates navigation must succeed even though that navigation revokes its input ticket',
+    )
+    await waitForPage(secondLabel, thirdUrl, 'Browser smoke three')
+    assert((await observe(secondLabel)).text.includes('Third page'), 'The next observation must read the new document')
+    await (await control('button[aria-label="Go back"]')).click()
+    await waitForPage(secondLabel, secondUrl, 'Browser smoke two')
 
     await (await tab('Browser smoke two')).click()
     await (await control('input[aria-label="Address"]')).click()
@@ -858,15 +903,16 @@ const exerciseBrowser = async () => {
       'Remembered links should bypass the dialog',
     )
     await waitForPage((await getLabels())[0], secondUrl, 'Browser smoke two')
-    // A renderer reload does not unmount React reliably; native chrome must not survive it.
+    // A renderer reload does not unmount React reliably; native children must not survive it.
+    const staleLabels = new Set(await getLabels())
     await browser.refresh()
     await (await browser.$('textarea')).waitForDisplayed({ timeout: 60_000 })
     await browser.waitUntil(
       async () => {
         const views = (await invokeNative('plugin:webview|get_all_webviews')) as { label: string }[]
-        return !views.some((view) => view.label === 'browser-resize-handle')
+        return !views.some((view) => view.label === 'browser-resize-handle' || staleLabels.has(view.label))
       },
-      { timeout: 5000, timeoutMsg: 'Reloading the app must remove its old native browser grip' },
+      { timeout: 5000, timeoutMsg: 'Reloading the app must remove its old native browser tabs and grip' },
     )
   } finally {
     fixture.closeAllConnections()

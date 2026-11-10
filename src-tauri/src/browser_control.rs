@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use crate::browser::{browser, control_lock, BrowserRegistry};
+use crate::browser::{authorize, browser, control_lock, operations, BrowserRegistry};
+use crate::browser_operation::InputPermit;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -239,21 +240,52 @@ fn screenshot_dimensions(mut screenshot: Value) -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn browser_begin_agent_action(
+    webview: Webview,
+    registry: State<'_, BrowserRegistry>,
+    label: String,
+) -> Result<u64, String> {
+    browser(&webview, &label)?;
+    Ok(operations(&registry, &label)?.begin())
+}
+
+#[tauri::command]
+pub fn browser_cancel_agent_action(
+    webview: Webview,
+    registry: State<'_, BrowserRegistry>,
+    label: String,
+    operation_id: u64,
+) -> Result<(), String> {
+    authorize(&webview, &label)?;
+    // Closing the tab has already revoked its tickets and removed its registry entry.
+    if let Ok(operations) = operations(&registry, &label) {
+        operations.cancel(operation_id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn browser_agent_action(
     webview: Webview,
     registry: State<'_, BrowserRegistry>,
     label: String,
+    operation_id: u64,
     action: AgentAction,
 ) -> Result<Value, String> {
     let tab = browser(&webview, &label)?;
+    let operation = operations(&registry, &label)?.enter(operation_id)?;
+    let permit = operation.permit();
     let lock = control_lock(&registry, &label)?;
     validate_action(&action)?;
     let _operation = lock.lock().await;
+    permit.check()?;
     // DOM focus can ask AppKit to change responders asynchronously, before native input runs.
     #[cfg(target_os = "macos")]
     crate::browser_focus_macos::protect_tab(&tab).await?;
+    permit.check()?;
     let action_json = serde_json::to_string(&action).map_err(|error| error.to_string())?;
     let prepared = evaluate(&tab, &format!("({{point:window.__thunderboltBrowserDriver.prepare({action_json}),viewport:{{width:innerWidth,height:innerHeight}}}})")).await?;
+    permit.check()?;
     let prepared: PreparedAction = serde_json::from_value(prepared)
         .map_err(|error| format!("Invalid browser action target: {error}"))?;
     validate_prepared(&prepared)?;
@@ -269,7 +301,8 @@ pub async fn browser_agent_action(
         )
         .await?;
     }
-    native_input(&tab, action, prepared).await?;
+    permit.check()?;
+    native_input(&tab, action, prepared, permit).await?;
     Ok(json!({"ok":true}))
 }
 
@@ -328,8 +361,9 @@ async fn native_input(
     tab: &Webview,
     action: AgentAction,
     prepared: PreparedAction,
+    permit: InputPermit,
 ) -> Result<(), String> {
-    windows_driver::input(tab, action, prepared).await
+    windows_driver::input(tab, action, prepared, permit).await
 }
 
 #[cfg(target_os = "windows")]
@@ -342,10 +376,14 @@ async fn native_input(
     tab: &Webview,
     action: AgentAction,
     prepared: PreparedAction,
+    permit: InputPermit,
 ) -> Result<(), String> {
     tokio::time::timeout(
         OPERATION_TIMEOUT,
-        crate::browser::with_native(tab, move |native| linux::input(native, action, prepared)),
+        crate::browser::with_native(tab, move |native| {
+            permit.check()?;
+            linux::input(native, action, prepared)
+        }),
     )
     .await
     .map_err(|_| "Native browser input timed out".to_string())?
@@ -361,10 +399,14 @@ async fn native_input(
     tab: &Webview,
     action: AgentAction,
     prepared: PreparedAction,
+    permit: InputPermit,
 ) -> Result<(), String> {
     tokio::time::timeout(
         OPERATION_TIMEOUT,
-        crate::browser::with_native(tab, move |native| macos::input(native, action, prepared)),
+        crate::browser::with_native(tab, move |native| {
+            permit.check()?;
+            macos::input(native, action, prepared)
+        }),
     )
     .await
     .map_err(|_| "Native browser input timed out".to_string())?
@@ -673,13 +715,21 @@ mod windows_driver {
     use windows::core::{BOOL, HSTRING};
 
     /// WebView2 exposes CDP on the owned COM object; no remote-debugging port is opened.
-    async fn cdp(tab: &Webview, method: &'static str, parameters: Value) -> Result<Value, String> {
+    async fn cdp(
+        tab: &Webview,
+        method: &'static str,
+        parameters: Value,
+        permit: Option<InputPermit>,
+    ) -> Result<Value, String> {
         let (send, receive) = tokio::sync::oneshot::channel();
         let send = Arc::new(Mutex::new(Some(send)));
         let parameters = parameters.to_string();
         tab.with_webview(move |native| {
             let completion = send.clone();
             let result = (|| {
+                if let Some(permit) = permit {
+                    permit.check()?;
+                }
                 // SAFETY: the controller and callback are used on their COM UI thread.
                 unsafe {
                     let controller = native.controller();
@@ -792,7 +842,7 @@ mod windows_driver {
         )
     }
 
-    async fn key(tab: &Webview, name: &str) -> Result<(), String> {
+    async fn key(tab: &Webview, name: &str, permit: &InputPermit) -> Result<(), String> {
         let mut parameters = key_parameters(name)?;
         parameters["type"] = json!("keyDown");
         let key = parameters["key"].as_str().unwrap_or_default();
@@ -803,12 +853,19 @@ mod windows_driver {
                 parameters["text"] = json!(key);
             }
         }
-        cdp(tab, "Input.dispatchKeyEvent", parameters.clone()).await?;
+        cdp(
+            tab,
+            "Input.dispatchKeyEvent",
+            parameters.clone(),
+            Some(permit.clone()),
+        )
+        .await?;
         parameters["type"] = json!("keyUp");
         if let Some(object) = parameters.as_object_mut() {
             object.remove("text");
         }
-        cdp(tab, "Input.dispatchKeyEvent", parameters).await?;
+        // Release an already-pressed key even when cancellation arrives between CDP callbacks.
+        cdp(tab, "Input.dispatchKeyEvent", parameters, None).await?;
         Ok(())
     }
 
@@ -816,6 +873,7 @@ mod windows_driver {
         tab: &Webview,
         action: AgentAction,
         prepared: PreparedAction,
+        permit: InputPermit,
     ) -> Result<(), String> {
         match action {
             AgentAction::Click { button, .. } => {
@@ -829,6 +887,7 @@ mod windows_driver {
                         tab,
                         "Input.dispatchMouseEvent",
                         json!({"type":kind,"x":point.x,"y":point.y,"button":button,"clickCount":1}),
+                        (kind == "mousePressed").then(|| permit.clone()),
                     )
                     .await?;
                 }
@@ -839,16 +898,23 @@ mod windows_driver {
                     tab,
                     "Input.dispatchMouseEvent",
                     json!({"type":"mouseMoved","x":point.x,"y":point.y}),
+                    Some(permit.clone()),
                 )
                 .await?;
             }
             AgentAction::Type { text, clear, .. } => {
                 if clear.unwrap_or(false) {
-                    key(tab, "Control+a").await?;
+                    key(tab, "Control+a", &permit).await?;
                 }
-                cdp(tab, "Input.insertText", json!({"text":text})).await?;
+                cdp(
+                    tab,
+                    "Input.insertText",
+                    json!({"text":text}),
+                    Some(permit.clone()),
+                )
+                .await?;
             }
-            AgentAction::Key { key: name } => key(tab, &name).await?,
+            AgentAction::Key { key: name } => key(tab, &name, &permit).await?,
             AgentAction::Scroll {
                 delta_x, delta_y, ..
             } => {
@@ -856,7 +922,7 @@ mod windows_driver {
                     x: prepared.viewport.width / 2.0,
                     y: prepared.viewport.height / 2.0,
                 });
-                cdp(tab, "Input.dispatchMouseEvent", json!({"type":"mouseWheel","x":point.x,"y":point.y,"deltaX":delta_x.unwrap_or(0.0),"deltaY":delta_y})).await?;
+                cdp(tab, "Input.dispatchMouseEvent", json!({"type":"mouseWheel","x":point.x,"y":point.y,"deltaX":delta_x.unwrap_or(0.0),"deltaY":delta_y}), Some(permit.clone())).await?;
             }
         }
         Ok(())
@@ -867,6 +933,7 @@ mod windows_driver {
             tab,
             "Page.captureScreenshot",
             json!({"format":"png","fromSurface":true,"captureBeyondViewport":false}),
+            None,
         )
         .await?;
         Ok(

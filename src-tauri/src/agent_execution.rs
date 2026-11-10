@@ -7,6 +7,7 @@
 //! before crossing IPC. User files are never removed when a chat is disposed.
 
 pub(crate) mod process_tree;
+mod shell;
 
 use crate::agent_output_files::OutputFiles;
 use serde::Serialize;
@@ -332,38 +333,31 @@ async fn run_shell(
         });
     }
     let cwd = working_directory(cwd)?;
-    let mut builder = Command::new(if cfg!(windows) { "bash" } else { "/bin/bash" });
+    let mut builder = Command::new(shell::executable()?);
     builder
         .args(["-lc", command])
         .current_dir(cwd)
         .envs(env)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(unix)]
-    builder.process_group(0);
-    let mut child = builder.spawn().map_err(|e| e.to_string())?;
-    let pid = child.id().ok_or("Missing process id")?;
+        .stderr(std::process::Stdio::piped());
+    let mut process = process_tree::ScopedChild::spawn(builder)?;
     let stdout_output = Arc::new(Mutex::new(CapturedOutput::default()));
     let stderr_output = Arc::new(Mutex::new(CapturedOutput::default()));
     let stdout = tokio::spawn(capture(
-        child.stdout.take().ok_or("Missing stdout")?,
+        process.child().stdout.take().ok_or("Missing stdout")?,
         stdout_output.clone(),
     ));
     let stderr = tokio::spawn(capture(
-        child.stderr.take().ok_or("Missing stderr")?,
+        process.child().stderr.take().ok_or("Missing stderr")?,
         stderr_output.clone(),
     ));
     let outcome = tokio::select! {
-        status = child.wait() => status.map(|s| (s.code().unwrap_or(-1), None)).map_err(|e| e.to_string()),
+        status = process.child().wait() => status.map(|s| (s.code().unwrap_or(-1), None)).map_err(|e| e.to_string()),
         _ = cancel.changed() => Ok((-1, Some("aborted"))),
         _ = tokio::time::sleep(Duration::from_secs_f64(timeout)) => Ok((-1, Some("timeout"))),
     };
-    let shell_running = !matches!(&outcome, Ok((_, None)));
-    let cleanup = process_tree::stop(pid, shell_running).await;
-    let _ = child.kill().await;
-    let _ = child.wait().await;
+    let cleanup = process.stop().await;
     let (stdout, stderr) = tokio::join!(
         finish_capture(stdout, stdout_output),
         finish_capture(stderr, stderr_output)
@@ -401,7 +395,7 @@ pub async fn agent_exec(
     result
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use tokio::io::AsyncWriteExt;
@@ -486,10 +480,12 @@ mod tests {
             b"real data"
         );
         assert_eq!(
-            resolve_path(dir.path().to_str().unwrap(), "/etc/hosts").unwrap(),
-            PathBuf::from("/etc/hosts")
+            resolve_path(dir.path().to_str().unwrap(), file.to_str().unwrap()).unwrap(),
+            file
         );
         assert!(working_directory("relative/path").is_err());
+        assert!(read_file(dir.path().to_path_buf()).is_err());
+        #[cfg(unix)]
         assert!(read_file(PathBuf::from("/dev/zero")).is_err());
     }
 
@@ -524,6 +520,7 @@ mod tests {
     }
 
     // Run in a separate test process so setsid never changes the test runner's session.
+    #[cfg(unix)]
     #[test]
     #[ignore = "subprocess helper for detached command cancellation tests"]
     fn detached_session_helper() {
@@ -541,6 +538,7 @@ mod tests {
         assert!(status.success());
     }
 
+    #[cfg(unix)]
     async fn run_detached_command(cancel_on_start: bool) {
         let dir = tempfile::tempdir().unwrap();
         let (sender, cancel) = watch::channel(false);
@@ -600,11 +598,13 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn stop_cancels_detached_session_descendants() {
         run_detached_command(true).await;
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn timeout_cancels_detached_session_descendants() {
         run_detached_command(false).await;
     }

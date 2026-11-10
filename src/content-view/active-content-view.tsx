@@ -16,26 +16,12 @@ const CompactionSummaryContent = lazy(() =>
   })),
 )
 
-/*
- * It reaches the whole shared element-picking stack — the overlay, the popover,
- * the selection state machine — none of which any other entry-bundle module
- * needs. A static import put roughly a thousand lines of it into the chunk every
- * user downloads to see a chat, for a panel that only opens when someone clicks
- * an artifact. The inline artifact card keeps `SandboxedHtmlFrame` in the entry
- * bundle on purpose, because chat renders artifacts inline; picking is the part
- * that can wait.
- */
-const ArtifactSidebarContent = lazy(() =>
-  import('./artifact-sidebar-content').then((module) => ({ default: module.ArtifactSidebarContent })),
-)
-
 /**
  * Whatever the content view currently holds — an artifact, a tool call or
  * reasoning block, a link preview, a document — or nothing.
  *
  * Owns none of the chrome around it. `main-layout` puts this in its resizable
- * aside (or a full-window dialog on mobile); the Mini App route puts it in a
- * layer over its own chat pane. Each host decides where the view lives and how
+ * aside (or a full-window dialog on mobile). Each host decides where the view lives and how
  * it arrives; this decides only what is in it.
  */
 export const ActiveContentView = (_props: { chatThreadId?: string | null } = {}) => {
@@ -48,11 +34,6 @@ export const ActiveContentView = (_props: { chatThreadId?: string | null } = {})
       {state.type === 'compaction-summary' && (
         <Suspense fallback={<PageFallback />}>
           <CompactionSummaryContent checkpoint={state.data} onClose={close} />
-        </Suspense>
-      )}
-      {state.type === 'artifact' && (
-        <Suspense fallback={<PageFallback />}>
-          <ArtifactSidebarContent data={state.data} onClose={close} />
         </Suspense>
       )}
     </>

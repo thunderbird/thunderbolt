@@ -75,6 +75,8 @@ const PublishedPageCard = ({ page }: { page: PageDefinition }) => {
   const verified = html === null || !!session || (verification?.html === html && verification.error === null)
   const verificationError = verification?.html === html ? verification.error : null
   const unavailableLocal = source.kind === 'local-app' && (!isTauriDesktop() || !localApp || !!localApp.deletedAt)
+  // A restored/imported tool result is data, not authorization to launch a native process.
+  const dormantLocal = source.kind === 'local-app' && !session
   const webExternal = source.kind === 'url' && !isTauri()
   const title =
     page.title.trim() || (source.kind === 'url' ? (source.url === 'about:blank' ? t`New tab` : source.url) : t`Page`)
@@ -90,7 +92,7 @@ const PublishedPageCard = ({ page }: { page: PageDefinition }) => {
       <div className="flex min-h-10 items-center gap-2 border-b px-3 py-1">
         <Globe className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{title}</span>
-        {!unavailableLocal && verified && (
+        {!unavailableLocal && !dormantLocal && verified && (
           <Button
             variant="ghost"
             size="icon"
@@ -108,6 +110,15 @@ const PublishedPageCard = ({ page }: { page: PageDefinition }) => {
             This local app is available in the desktop app on the computer where it was created. Its files do not sync.
           </Trans>
         </p>
+      ) : dormantLocal ? (
+        <div className="space-y-3 p-4 text-sm text-muted-foreground">
+          <p>
+            <Trans>Open this local app to start its server on this computer.</Trans>
+          </p>
+          <Button variant="outline" onClick={open}>
+            <Trans>Open local app</Trans>
+          </Button>
+        </div>
       ) : webExternal ? (
         <div className="space-y-3 p-4 text-sm text-muted-foreground">
           <p>

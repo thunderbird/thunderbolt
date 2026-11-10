@@ -214,7 +214,11 @@
     }
     return hit
   }
-  const prepare = (action) => {
+  const prepare = (
+    action,
+    focus = (element) => element.focus({ preventScroll: true }),
+    activeElement = () => document.activeElement,
+  ) => {
     if (picker) throw new Error('Finish or cancel element selection before controlling the browser.')
     let element
     if (action.ref) {
@@ -222,21 +226,29 @@
       if (!element?.isConnected) throw new Error('Stale element reference. Take a new browser snapshot.')
       element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })
       if (!visible(element)) throw new Error('Element is not visible.')
-      if (element.disabled || element.getAttribute('aria-disabled') === 'true') throw new Error('Element is disabled.')
+      if (element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true')
+        throw new Error('Element is disabled.')
     }
     if (action.type === 'type') {
-      element ||= document.activeElement
+      element ||= activeElement()
+      while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement
       const focusedFrame = !action.ref && (element?.localName === 'iframe' || element?.localName === 'frame')
       // A coordinate click can focus an editable field inside a cross-origin frame. Preserve that
       // native focus: focusing the outer frame again can blur the field we cannot inspect from here.
       if (!focusedFrame) {
         if (
-          !(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element?.isContentEditable)
+          !(
+            (element instanceof HTMLInputElement &&
+              ['text', 'search', 'tel', 'url', 'email', 'password', 'number'].includes(element.type)) ||
+            element instanceof HTMLTextAreaElement ||
+            element?.isContentEditable
+          )
         ) {
           throw new Error('Focus an editable element before typing.')
         }
-        if (element.readOnly || element.disabled) throw new Error('Element is not editable.')
-        element.focus({ preventScroll: true })
+        if (element.readOnly || element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true')
+          throw new Error('Element is not editable.')
+        focus(element)
       }
     }
     if (element) {
@@ -246,10 +258,7 @@
       const hit = elementAt(x, y)
       if (
         action.type === 'click' &&
-        hit &&
-        hit !== element &&
-        !element.contains(hit) &&
-        hit.getRootNode()?.host !== element
+        (!hit || (hit !== element && !element.contains(hit) && hit.getRootNode()?.host !== element))
       ) {
         throw new Error('Element is covered by another element. Take a new snapshot or click a visible coordinate.')
       }
@@ -268,9 +277,11 @@
       'a[href],button,input:not([type=hidden]),textarea,select,[role],[tabindex],[contenteditable=true],h1,h2,h3,img[alt],iframe'
     const visit = (root) => {
       for (const element of root.querySelectorAll(query)) {
-        if (element !== overlay && visible(element) && elements.length < 250) elements.push(describe(element))
+        if (elements.length >= 250) return
+        if (element !== overlay && visible(element)) elements.push(describe(element))
       }
       for (const element of root.querySelectorAll('*')) {
+        if (elements.length >= 250) return
         if (element.shadowRoot) visit(element.shadowRoot)
       }
     }

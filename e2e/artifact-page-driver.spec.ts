@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from './test'
 import { wrapArtifactHtml } from '../src/artifacts/harness-protocol'
 import type { PageSnapshot } from '../shared/page-protocol'
@@ -13,6 +14,41 @@ const driverSource = [
 ]
   .map((url) => readFileSync(url, 'utf8'))
   .join('\n')
+
+test('native input preparation honors disabled fieldsets and shadow-root focus', async ({ page }) => {
+  await page.setContent(`<fieldset disabled>
+    <legend><input aria-label="Legend field"></legend><input aria-label="Disabled field">
+  </fieldset><div id="host"></div>`)
+  await page.addScriptTag({ path: fileURLToPath(new URL('../src/browser/page-driver.js', import.meta.url)) })
+  const result = await page.evaluate(() => {
+    const driver = Reflect.get(window, '__thunderboltBrowserDriver') as {
+      snapshot: () => PageSnapshot
+      prepare: (action: { type: string; ref?: string; text: string }) => unknown
+    }
+    const elements = driver.snapshot().elements
+    const disabled = elements.find((element) => element.name === 'Disabled field')!
+    const legend = elements.find((element) => element.name === 'Legend field')!
+    const disabledError = (() => {
+      try {
+        driver.prepare({ type: 'type', ref: disabled.ref, text: 'No' })
+        return null
+      } catch (error) {
+        return String(error)
+      }
+    })()
+    driver.prepare({ type: 'type', ref: legend.ref, text: 'Allowed' })
+    const legendFocused = document.activeElement?.getAttribute('aria-label')
+    const shadow = document.getElementById('host')!.attachShadow({ mode: 'open' })
+    const input = document.createElement('input')
+    shadow.append(input)
+    input.focus()
+    driver.prepare({ type: 'type', text: 'Shadow input' })
+    return { disabledError, legendFocused, shadowFocused: shadow.activeElement === input }
+  })
+  expect(result.disabledError).toContain('Element is disabled')
+  expect(result.legendFocused).toBe('Legend field')
+  expect(result.shadowFocused).toBe(true)
+})
 
 test('the HTML page driver can click, type, dispatch keys and read the updated shared snapshot', async ({ page }) => {
   const nonce = 'page-driver-fixture'
@@ -63,6 +99,16 @@ document.getElementById('save').onclick = () => document.getElementById('saved')
             reject(new Error('Driver request timed out'))
           }, 3000)
           const listener = (event: MessageEvent) => {
+            if (
+              event.source === frame.contentWindow &&
+              event.data?.artifactNonce === nonce &&
+              event.data.type === 'artifact-error'
+            ) {
+              clearTimeout(timer)
+              window.removeEventListener('message', listener)
+              reject(new Error(event.data.detail))
+              return
+            }
             if (
               event.source !== frame.contentWindow ||
               event.data?.artifactNonce !== nonce ||

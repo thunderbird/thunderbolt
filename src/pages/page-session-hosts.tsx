@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useSidebarWebview } from '@/content-view/use-sidebar-webview'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
 import { browserController } from '@/browser/browser-controller'
+import { invokeBrowserAction } from '@/browser/native-action'
 import { isMobile, isTauri, isTauriDesktop } from '@/lib/platform'
 import { pageController } from './page-controller'
 import { usePageStore, openUrlPage, type PageSession } from './page-store'
@@ -16,6 +17,8 @@ import { pageObservationSchema } from './page-observation'
 import { useLocalAppUrl } from '@/local-apps/use-local-app-url'
 import { MobilePageHost } from './mobile-page-host'
 import { waitForPagePresentation } from './page-presentation'
+import { waitForPageLoad } from './page-load'
+import { preservePageFocus } from './preserve-page-focus'
 
 const htmlCapabilities = {
   observe: true,
@@ -63,23 +66,12 @@ const HtmlPageHost = ({ session }: { session: PageSession }) => {
             : htmlCapabilities,
           present: (signal) => waitForPagePresentation(session.id, signal),
           snapshot: async () => pageObservationSchema.parse(await request('page/snapshot', {})),
-          act: async (action) => {
-            const focused = document.activeElement
-            const input = focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement ? focused : null
-            const selection = input ? ([input.selectionStart, input.selectionEnd] as const) : null
-            try {
+          act: (action) =>
+            preservePageFocus(session.id, async () => {
               if ((await request('page/action', action)) !== true) {
                 throw new Error('Page interaction failed. Observe the page again.')
               }
-            } finally {
-              if (focused instanceof HTMLElement && focused.isConnected) {
-                focused.focus({ preventScroll: true })
-                if (input && selection && selection[0] !== null && selection[1] !== null) {
-                  input.setSelectionRange(selection[0], selection[1])
-                }
-              }
-            }
-          },
+            }),
           picker: async (enabled, requestId) => {
             await request('page/picker', { enabled, requestId })
           },
@@ -108,7 +100,7 @@ const DesktopPageHost = ({ session, visible }: { session: PageSession; visible: 
     onNewTab: (url) => openUrlPage(url),
   })
   const label = browser.webview?.label
-  const { isInitialized, navigate, goBack, goForward, reload, stop, present } = browser
+  const { isInitialized, navigate, goBack, goForward, reload, stop, present, readState } = browser
   useEffect(() => {
     usePageStore.getState().update(session.id, { nativeLabel: label })
   }, [session.id, label])
@@ -124,12 +116,16 @@ const DesktopPageHost = ({ session, visible }: { session: PageSession; visible: 
         await present()
       },
       snapshot: async (screenshot, signal) => {
+        await waitForPageLoad(readState, signal)
+        await waitForPagePresentation(session.id, signal)
+        await present()
         signal?.throwIfAborted()
         const result = await invoke('browser_agent_snapshot', { label, screenshot })
         signal?.throwIfAborted()
         return pageObservationSchema.parse(result)
       },
-      navigate: async (navigation) => {
+      navigate: async (navigation, signal) => {
+        signal?.throwIfAborted()
         const succeeded = await (navigation.type === 'navigate'
           ? navigate(navigation.url)
           : navigation.type === 'back'
@@ -145,7 +141,7 @@ const DesktopPageHost = ({ session, visible }: { session: PageSession; visible: 
       },
       act: async (action, signal) => {
         signal?.throwIfAborted()
-        await invoke('browser_agent_action', { label, action })
+        await invokeBrowserAction(label, action, signal)
         signal?.throwIfAborted()
       },
       picker: async (enabled, requestId) => {
@@ -153,7 +149,7 @@ const DesktopPageHost = ({ session, visible }: { session: PageSession; visible: 
       },
       pollPicker: (requestId) => invoke('browser_poll_picker', { label, requestId }),
     })
-  }, [label, isInitialized, navigate, goBack, goForward, reload, stop, present, session.id])
+  }, [label, isInitialized, navigate, goBack, goForward, reload, stop, present, readState, session.id])
   useEffect(() => {
     usePageStore.getState().update(session.id, { error: browser.error })
   }, [session.id, browser.error])
@@ -174,11 +170,8 @@ const PageSessionHost = ({ session, active }: { session: PageSession; active: bo
     zIndex: session.presentation === 'inline' ? 10 : 30,
   }
   const nativePage = session.page.source.kind !== 'html'
-  if (nativePage && (!isTauri() || session.browser.url === 'about:blank')) {
-    // Blank tabs use the React new-tab view. Native localhost bindings do not resolve on web.
-    if (!isTauri()) {
-      return null
-    }
+  if (nativePage && !isTauri()) {
+    return null
   }
   return (
     <div data-page-host={session.id} aria-hidden={!placement.visible} inert={!placement.visible} style={style}>
@@ -208,9 +201,6 @@ export const PageSessionHosts = () => {
             isLoading: session.browser.isLoading,
             active: usePageStore.getState().activeId === session.id,
           })),
-        openTab: (url) => openUrlPage(url),
-        selectTab: (id) => usePageStore.getState().present(id, 'sidebar'),
-        closeTab: (id) => usePageStore.getState().close(id),
       }),
     [],
   )

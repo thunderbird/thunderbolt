@@ -47,6 +47,7 @@ beforeEach(() => {
     stop: async () => true,
     closeWebview: async () => {},
     present: async () => {},
+    readState: async () => undefined,
   }
   addressRef = { current: document.createElement('input') }
   addressRef.current.value = browser.url

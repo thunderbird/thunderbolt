@@ -45,11 +45,11 @@ describe('SandboxedHtmlFrame', () => {
     const iframe = container.querySelector('iframe')!
     const nonce = /var NONCE = "([^"]+)"/.exec(iframe.getAttribute('srcdoc') ?? '')?.[1]
     expect(nonce).toBeTruthy()
-    const ready = () =>
+    const ready = (artifactNonce = nonce) =>
       window.dispatchEvent(
         new MessageEvent('message', {
           source: iframe.contentWindow,
-          data: { artifactNonce: nonce, type: 'artifact-ready' },
+          data: { artifactNonce, type: 'artifact-ready' },
         }),
       )
     act(() => {
@@ -64,7 +64,30 @@ describe('SandboxedHtmlFrame', () => {
     expect(await pending).toBeNull()
     await expect(request('page/snapshot', {})).rejects.toThrow('document changed')
     act(() => ready())
+    expect(requests.at(-1)).toBeNull()
+    const nextNonce = /var NONCE = "([^"]+)"/.exec(iframe.getAttribute('srcdoc') ?? '')?.[1]
+    expect(nextNonce).not.toBe(nonce)
+    act(() => ready(nextNonce))
     expect(requests.at(-1)).toBeFunction()
     expect(requests.at(-1)).not.toBe(request)
+  })
+
+  it('rejects foreign-frame and stale-document ready messages', () => {
+    const onReady = mock(() => {})
+    const { container } = render(<SandboxedHtmlFrame html="<p>First</p>" title="Page" onReady={onReady} />)
+    const iframe = container.querySelector('iframe')!
+    const nonce = /var NONCE = "([^"]+)"/.exec(iframe.getAttribute('srcdoc') ?? '')?.[1]
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', { source: window, data: { artifactNonce: nonce, type: 'artifact-ready' } }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          source: iframe.contentWindow,
+          data: { artifactNonce: 'wrong-document', type: 'artifact-ready' },
+        }),
+      )
+    })
+    expect(onReady).not.toHaveBeenCalled()
   })
 })

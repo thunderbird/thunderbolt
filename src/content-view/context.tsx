@@ -4,7 +4,6 @@
 
 import { artifactPageId } from '@/pages/artifact-page-id'
 import { msg } from '@lingui/core/macro'
-import { browserController } from '@/browser/browser-controller'
 import { pageController } from '@/pages/page-controller'
 import { usePageStore, openUrlPage } from '@/pages/page-store'
 import { PageSessionHosts } from '@/pages/page-session-hosts'
@@ -38,16 +37,7 @@ export type ArtifactViewData = {
   title: string
   /** The render_html tool-call id; also the key for the render-target toggle. */
   artifactId: string
-  /**
-   * The conversation that produced it, so a highlighted passage has somewhere
-   * to go.
-   *
-   * Carried with the view rather than read from the route. `/apps/:appId` has
-   * no `chatThreadId` param — its conversation is held by the Mini App panel —
-   * so deriving it from `useParams` dropped every passage picked out of an
-   * artifact opened beside an app, and warned about a missing composer while a
-   * real one was open.
-   */
+  /** The conversation that owns selected passages. */
   chatThreadId: string | null
 }
 
@@ -56,7 +46,6 @@ type ContentViewState =
   | { type: 'object-view'; data: ObjectViewData }
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: SideviewData }
-  | { type: 'artifact'; data: ArtifactViewData }
   | { type: 'compaction-summary'; data: CompactionSummary }
 
 type ContentViewContextType = {
@@ -166,10 +155,8 @@ export const ContentViewProvider = ({
       setPreviewHidden(false)
       setState({ type: 'preview', data: { url: 'about:blank' } })
     }
-    const unregisterBrowser = browserController.registerOpener(showPreview, reveal)
     const unregisterPage = pageController.registerReveal(reveal)
     return () => {
-      unregisterBrowser()
       unregisterPage()
     }
   }, [showPreview])

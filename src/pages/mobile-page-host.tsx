@@ -7,6 +7,7 @@ import { listen } from '@tauri-apps/api/event'
 import { mobilePage, measureMobilePage } from './adapters/mobile-page'
 import { pageController } from './page-controller'
 import { waitForPagePresentation } from './page-presentation'
+import { waitForPageLoad } from './page-load'
 import { openUrlPage, usePageStore, type PageSession } from './page-store'
 
 const capabilities = {
@@ -85,8 +86,9 @@ export const MobilePageHost = ({ session, visible }: { session: PageSession; vis
       blank = browser.url === 'about:blank'
       usePageStore.getState().update(session.id, { browser, error: error ?? null })
       if (wasBlank !== blank) {
-        present()
+        await present()
       }
+      return { ...browser, error }
     }
     const poll = async () => {
       try {
@@ -147,11 +149,16 @@ export const MobilePageHost = ({ session, visible }: { session: PageSession; vis
             if (screenshot) {
               throw new Error('Screenshots are unavailable for mobile pages.')
             }
+            await waitForPageLoad(refresh, signal)
+            await waitForPagePresentation(session.id, signal)
+            await present(true)
+            signal?.throwIfAborted()
             const result = await mobilePage.snapshot(label)
             signal?.throwIfAborted()
             return result
           },
-          navigate: async (navigation) => {
+          navigate: async (navigation, signal) => {
+            signal?.throwIfAborted()
             revision += 1
             if (navigation.type === 'navigate') {
               await mobilePage.navigate(label, navigation.url)

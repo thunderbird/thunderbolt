@@ -18,6 +18,7 @@ test('published file pages retain live state while website and device-local outp
   const htmlId = crypto.randomUUID()
   const websiteId = crypto.randomUUID()
   const localId = crypto.randomUUID()
+  const failedPageId = crypto.randomUUID()
   const html =
     '<!doctype html><html><body><label>Unsaved draft <input aria-label="Unsaved draft"></label></body></html>'
   await importBackup(page, {
@@ -36,6 +37,18 @@ test('published file pages retain live state while website and device-local outp
           content: '',
           modelId: defaultModelOpus55.id,
           parts: [
+            {
+              type: 'dynamic-tool',
+              toolName: 'page_show_file',
+              toolCallId: crypto.randomUUID(),
+              state: 'output-available',
+              input: { path: 'failed.html' },
+              output: {
+                isError: true,
+                ok: true,
+                page: { id: failedPageId, title: 'Failed page must stay inert', source: { kind: 'html', html } },
+              },
+            },
             {
               type: 'dynamic-tool',
               toolName: 'page_show_file',
@@ -103,5 +116,7 @@ test('published file pages retain live state while website and device-local outp
   await expect(external.locator('[data-page-slot], iframe')).toHaveCount(0)
   await expect(page.getByText(/Its files do not sync/)).toBeVisible()
   await expect(page.locator('[data-page-host] iframe')).toHaveCount(1)
+  await expect(page.locator(`[data-published-page="${failedPageId}"]`)).toHaveCount(0)
+  await expect(page.locator('iframe[title="Failed page must stay inert"]')).toHaveCount(0)
   expect(errors).toEqual([])
 })

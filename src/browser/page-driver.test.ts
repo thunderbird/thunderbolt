@@ -5,13 +5,13 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { Window, type Element as PageElement } from 'happy-dom'
-import type { BrowserAction, BrowserSnapshot } from './types'
+import type { PageAction, PageSnapshot } from '@shared/page-protocol'
 import type { BrowserElementSelection } from '@/content-view/browser-element-reference'
 
 const source = readFileSync(new URL('./page-driver.js', import.meta.url), 'utf8')
 type Driver = {
-  snapshot: () => Omit<BrowserSnapshot, 'tabId'>
-  prepare: (action: BrowserAction) => { x: number; y: number }
+  snapshot: () => Omit<PageSnapshot, 'pageId' | 'sessionId' | 'capabilities'>
+  prepare: (action: PageAction) => { x: number; y: number }
   cursor: (x: number, y: number, click?: boolean) => void
   setPicker: (enabled: boolean, requestId: string) => boolean
   takePick: (requestId: string) => (BrowserElementSelection & { requestId: string }) | { cancelled: true } | null
@@ -217,6 +217,42 @@ describe('native browser page driver', () => {
       'Focus an editable element before typing',
     )
     expect(focus).not.toHaveBeenCalled()
+  })
+
+  it('types into the focused field inside nested open shadow roots', () => {
+    const { driver, window, show } = page('<div id="host"></div>')
+    const host = window.document.getElementById('host')!
+    const shadow = host.attachShadow({ mode: 'open' })
+    const innerHost = window.document.createElement('div')
+    shadow.append(innerHost)
+    const inner = innerHost.attachShadow({ mode: 'open' })
+    const input = window.document.createElement('input')
+    inner.append(input)
+    show(input)
+    input.focus()
+    expect(driver.prepare({ type: 'type', text: 'Inside shadow' })).toEqual({ x: 80, y: 50 })
+    expect(inner.activeElement).toBe(input)
+  })
+
+  it.each(['checkbox', 'radio', 'file', 'range', 'color', 'button', 'submit'])(
+    'refuses typing into a %s input',
+    (type) => {
+      const { driver } = page(`<input type="${type}">`)
+      const ref = driver.snapshot().elements[0].ref
+      expect(() => driver.prepare({ type: 'type', ref, text: 'Unexpected text' })).toThrow('Focus an editable')
+    },
+  )
+
+  it('rejects referenced targets excluded from hit testing', () => {
+    const { driver, window } = page('<button>Click</button>')
+    const ref = driver.snapshot().elements[0].ref
+    window.document.elementFromPoint = () => null
+    expect(() => driver.prepare({ type: 'click', ref })).toThrow('covered')
+  })
+
+  it('caps element output on large documents', () => {
+    const { driver } = page('<button>Item</button>'.repeat(300))
+    expect(driver.snapshot().elements).toHaveLength(250)
   })
 
   it('installs no remote IPC, generic evaluator, or native credentials in the page', () => {

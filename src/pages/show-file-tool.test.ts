@@ -4,6 +4,7 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 import { createShowFileTool } from './show-file-tool'
+import { pageDefinitionSchema } from './page-schema'
 
 const html = '<!doctype html><html><body><button>Click</button></body></html>'
 const run = (
@@ -35,6 +36,18 @@ describe('page_show_file', () => {
     }))
     expect(await run(tool, { path: 'broken.html' })).toEqual({ ok: false, errors: ['Broken script'] })
     expect(onOpen).not.toHaveBeenCalled()
+  })
+
+  it('bounds default filenames so a successfully published page can be rendered and pinned', async () => {
+    const tool = createShowFileTool({ readFile: async () => html, onOpen: () => {} }, async () => ({
+      ok: true,
+      errors: [],
+    }))
+    const output = await run(tool, { path: `${'a'.repeat(250)}.html` })
+    expect(output).toMatchObject({ ok: true, page: { title: 'a'.repeat(200) } })
+    if (output && 'ok' in output && output.ok) {
+      expect(pageDefinitionSchema.safeParse(output.page).success).toBe(true)
+    }
   })
 
   it('rejects oversized content and non-HTML files before verification', async () => {

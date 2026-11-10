@@ -70,7 +70,7 @@ type ChatSidebarContentProps = {
   onCreateNewChat: () => void
   onTasksClick: () => void
   onPageClick: (pageId: string, returnTo: string) => void
-  onChatClick: (threadId: string, miniAppId: string | null) => void
+  onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: () => void
 }

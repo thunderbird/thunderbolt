@@ -12,6 +12,8 @@ A local `rustfmt.toml` preserves upstream's two-space style for workspace format
 They add `WebviewBuilder::disable_native_api()`, which is off by default and
 explicitly selected only for Thunderbolt's untrusted browser tabs. The main app
 and trusted resize grip retain their ordinary Tauri runtime.
+The method follows `WebviewBuilder`'s `unstable` feature gate, so plugin-only
+builds without that feature do not gain an unreachable internal method.
 
 Untrusted pages receive none of Tauri's or its plugins' initialization scripts,
 including the immutable `window.isTauri` marker that otherwise causes Tauri web

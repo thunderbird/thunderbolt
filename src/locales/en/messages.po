@@ -55,8 +55,8 @@ msgstr[1] "# tools"
 
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
-msgid "{0} is only available on desktop"
-msgstr "{0} is only available on desktop"
+#~ msgid "{0} is only available on desktop"
+#~ msgstr "{0} is only available on desktop"
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
@@ -127,8 +127,8 @@ msgstr[0] "# skill"
 msgstr[1] "# skills"
 
 #: src/mini-apps/mini-app-download-prompt.tsx
-msgid "{fileName} will be saved to your Downloads folder."
-msgstr "{fileName} will be saved to your Downloads folder."
+#~ msgid "{fileName} will be saved to your Downloads folder."
+#~ msgstr "{fileName} will be saved to your Downloads folder."
 
 #: src/layout/sidebar/project-drop-list.tsx
 #~ msgid "{label} — already in this project"
@@ -672,8 +672,8 @@ msgid "Ask"
 msgstr "Ask"
 
 #: src/components/embedded/selection-popover.tsx
-msgid "Ask about this"
-msgstr "Ask about this"
+#~ msgid "Ask about this"
+#~ msgstr "Ask about this"
 
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 msgid "Ask before changes, commands, and external actions"
@@ -804,8 +804,6 @@ msgid "Browse with your agent"
 msgstr "Browse with your agent"
 
 #: src/components/external-link-toggle-group.tsx
-#: src/content-view/browser-tab-content.tsx
-#: src/content-view/sidebar-webview.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
 msgid "Browser"
@@ -816,10 +814,9 @@ msgid "Browser control paused"
 msgstr "Browser control paused"
 
 #: src/content-view/browser-tab-content.tsx
-msgid "Browser navigation"
-msgstr "Browser navigation"
+#~ msgid "Browser navigation"
+#~ msgstr "Browser navigation"
 
-#: src/content-view/browser-tab-strip.tsx
 #: src/pages/page-tab-strip.tsx
 msgid "Browser tabs"
 msgstr "Browser tabs"
@@ -889,8 +886,8 @@ msgid "Cancel element selection"
 msgstr "Cancel element selection"
 
 #: src/content-view/browser-tab-content.tsx
-msgid "Cancel selection"
-msgstr "Cancel selection"
+#~ msgid "Cancel selection"
+#~ msgstr "Cancel selection"
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Cannot change agent during reply"
@@ -927,8 +924,8 @@ msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Changes were saved, but reconnecting failed. Please retry."
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Chat"
-msgstr "Chat"
+#~ msgid "Chat"
+#~ msgstr "Chat"
 
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
@@ -952,8 +949,8 @@ msgid "Chats"
 msgstr "Chats"
 
 #: src/mini-apps/mini-app-chat-history.tsx
-msgid "Chats from this app"
-msgstr "Chats from this app"
+#~ msgid "Chats from this app"
+#~ msgstr "Chats from this app"
 
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "Chats in a project inherit its instructions."
@@ -1176,8 +1173,8 @@ msgid "CLI"
 msgstr "CLI"
 
 #: src/content-view/browser-tab-content.tsx
-msgid "Click an element to reference it in chat. Press Escape to cancel."
-msgstr "Click an element to reference it in chat. Press Escape to cancel."
+#~ msgid "Click an element to reference it in chat. Press Escape to cancel."
+#~ msgstr "Click an element to reference it in chat. Press Escape to cancel."
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
@@ -1201,7 +1198,6 @@ msgid "Close all tabs"
 msgstr "Close all tabs"
 
 #: src/components/ui/header.tsx
-#: src/content-view/browser-tab-content.tsx
 #: src/pages/page-panel.tsx
 msgid "Close browser"
 msgstr "Close browser"
@@ -1227,7 +1223,6 @@ msgstr "Close reorder"
 msgid "Close tab"
 msgstr "Close tab"
 
-#: src/content-view/browser-tab-strip.tsx
 #: src/pages/page-tab-strip.tsx
 msgid "Close tab {title}"
 msgstr "Close tab {title}"
@@ -1737,7 +1732,6 @@ msgstr "Continue with your organization's sign-in to connect to this server."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
-#: src/content-view/browser-tab-content.tsx
 msgid "Copied"
 msgstr "Copied"
 
@@ -1777,7 +1771,6 @@ msgstr "Copy PATH command"
 msgid "Copy to clipboard"
 msgstr "Copy to clipboard"
 
-#: src/content-view/browser-tab-content.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Copy URL"
 msgstr "Copy URL"
@@ -1807,8 +1800,8 @@ msgstr "Could not compact context. Please try again."
 #~ msgstr "Could not compact context. Your chat history is safe. Please try again."
 
 #: src/content-view/browser-tab-content.tsx
-msgid "Could not complete this action. Please try again."
-msgstr "Could not complete this action. Please try again."
+#~ msgid "Could not complete this action. Please try again."
+#~ msgstr "Could not complete this action. Please try again."
 
 #: src/pages/page-panel.tsx
 msgid "Could not complete this page action. Please try again."
@@ -1904,8 +1897,8 @@ msgid "Could not load this page."
 msgstr "Could not load this page."
 
 #: src/content-view/browser-tab-content.tsx
-msgid "Could not load this page. Try another address or reload."
-msgstr "Could not load this page. Try another address or reload."
+#~ msgid "Could not load this page. Try another address or reload."
+#~ msgstr "Could not load this page. Try another address or reload."
 
 #: src/projects/project-move-error-dialog.tsx
 msgid "Could not move chat"
@@ -2062,8 +2055,8 @@ msgid "Couldn't download the update."
 msgstr "Couldn't download the update."
 
 #: src/components/embedded/surface-status.tsx
-msgid "Couldn't load {name}"
-msgstr "Couldn't load {name}"
+#~ msgid "Couldn't load {name}"
+#~ msgstr "Couldn't load {name}"
 
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
@@ -2074,8 +2067,8 @@ msgid "Couldn't load this app's pairing identity: {error}"
 msgstr "Couldn't load this app's pairing identity: {error}"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Couldn't load your apps. Check your connection and reload."
-msgstr "Couldn't load your apps. Check your connection and reload."
+#~ msgid "Couldn't load your apps. Check your connection and reload."
+#~ msgstr "Couldn't load your apps. Check your connection and reload."
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
@@ -3111,8 +3104,8 @@ msgstr "Food & drink"
 
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-chat-badge.tsx
-msgid "From {0}"
-msgstr "From {0}"
+#~ msgid "From {0}"
+#~ msgstr "From {0}"
 
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 msgid "Full access"
@@ -3177,14 +3170,12 @@ msgstr "Go"
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/history-nav-buttons.tsx
-#: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
 msgid "Go back"
 msgstr "Go back"
 
 #: src/components/ui/history-nav-buttons.tsx
-#: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
 msgid "Go forward"
@@ -3538,8 +3529,8 @@ msgid "Load models"
 msgstr "Load models"
 
 #: src/components/embedded/surface-status.tsx
-msgid "Loading {name}…"
-msgstr "Loading {name}…"
+#~ msgid "Loading {name}…"
+#~ msgstr "Loading {name}…"
 
 #: src/settings/devices.tsx
 msgid "Loading code…"
@@ -3708,8 +3699,8 @@ msgstr "Metric"
 #~ msgstr "Mini Apps"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Mini Apps are only available on desktop"
-msgstr "Mini Apps are only available on desktop"
+#~ msgid "Mini Apps are only available on desktop"
+#~ msgstr "Mini Apps are only available on desktop"
 
 #: src/mini-apps/mini-app-page.tsx
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
@@ -3864,7 +3855,6 @@ msgstr "New Agent"
 
 #: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
-#: src/mini-apps/mini-app-chat-history.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/search/commands/use-commands.ts
@@ -3912,8 +3902,6 @@ msgid "New Skill"
 msgstr "New Skill"
 
 #: src/components/external-link-toggle-group.tsx
-#: src/content-view/browser-tab-content.tsx
-#: src/content-view/browser-tab-strip.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-message-part.tsx
 #: src/pages/page-tab-strip.tsx
@@ -3946,8 +3934,8 @@ msgid "No chats yet."
 msgstr "No chats yet."
 
 #: src/mini-apps/mini-app-chat-history.tsx
-msgid "No chats yet. Anything you ask beside this app shows up here."
-msgstr "No chats yet. Anything you ask beside this app shows up here."
+#~ msgid "No chats yet. Anything you ask beside this app shows up here."
+#~ msgstr "No chats yet. Anything you ask beside this app shows up here."
 
 #: src/settings/connections/new-connection-picker.tsx
 msgid "No connections found."
@@ -4111,8 +4099,8 @@ msgstr "Not tested"
 
 #. placeholder {0}: app.url
 #: src/mini-apps/mini-app-frame.tsx
-msgid "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
-msgstr "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
+#~ msgid "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
+#~ msgstr "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
 
 #. placeholder {0}: app.url
 #: src/mini-apps/mini-app-frame.tsx
@@ -4232,8 +4220,8 @@ msgid "Open {title}"
 msgstr "Open {title}"
 
 #: src/mini-apps/mini-app-chat-banner.tsx
-msgid "Open app"
-msgstr "Open app"
+#~ msgid "Open app"
+#~ msgstr "Open app"
 
 #: src/components/ui/header.tsx
 msgid "Open browser"
@@ -4248,7 +4236,6 @@ msgstr "Open browser"
 #~ msgstr "Open External Link"
 
 #: src/components/external-link-toggle-group.tsx
-#: src/content-view/browser-tab-content.tsx
 msgid "Open in browser"
 msgstr "Open in browser"
 
@@ -4283,12 +4270,16 @@ msgid "Open in your browser"
 msgstr "Open in your browser"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
-msgstr "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
+#~ msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
+#~ msgstr "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
 msgstr "Open Link"
+
+#: src/pages/page-message-part.tsx
+msgid "Open local app"
+msgstr "Open local app"
 
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Open Otari"
@@ -4301,6 +4292,10 @@ msgstr "Open Source"
 #: src/settings/app-version-section.tsx
 msgid "Open the store to check for updates."
 msgstr "Open the store to check for updates."
+
+#: src/pages/page-message-part.tsx
+msgid "Open this local app to start its server on this computer."
+msgstr "Open this local app to start its server on this computer."
 
 #: src/components/agent-execution-controls/use-project-execution-controls-state.ts
 msgid "Open this project in the desktop app to run its agent."
@@ -4331,8 +4326,8 @@ msgid "OpenAI-compatible model provider"
 msgstr "OpenAI-compatible model provider"
 
 #: src/content-view/browser-tab-content.tsx
-msgid "Opening browser…"
-msgstr "Opening browser…"
+#~ msgid "Opening browser…"
+#~ msgstr "Opening browser…"
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Opening…"
@@ -4771,7 +4766,6 @@ msgstr "Release digest"
 msgid "Reload"
 msgstr "Reload"
 
-#: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
 msgid "Reload page"
@@ -4949,7 +4943,6 @@ msgstr "Retrieving data…"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
-#: src/content-view/browser-tab-content.tsx
 #: src/hooks/use-desktop-update.ts
 msgid "Retry"
 msgstr "Retry"
@@ -5011,15 +5004,14 @@ msgstr "Run this on the machine hosting the bridge, then add it — the connecti
 #: src/components/rename-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
-#: src/mini-apps/mini-app-download-prompt.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
 msgstr "Save"
 
 #: src/mini-apps/mini-app-download-prompt.tsx
-msgid "Save a file from {appName}?"
-msgstr "Save a file from {appName}?"
+#~ msgid "Save a file from {appName}?"
+#~ msgstr "Save a file from {appName}?"
 
 #: src/projects/project-form.tsx
 msgid "Save changes"
@@ -5222,16 +5214,16 @@ msgstr "See the equation on screen."
 
 #: src/components/artifact/selectable-artifact.tsx
 #: src/mini-apps/mini-app-page.tsx
-msgid "Select"
-msgstr "Select"
+#~ msgid "Select"
+#~ msgstr "Select"
 
 #: src/widgets/ask/display.tsx
 msgid "Select all that apply"
 msgstr "Select all that apply"
 
 #: src/content-view/browser-tab-content.tsx
-msgid "Select element"
-msgstr "Select element"
+#~ msgid "Select element"
+#~ msgstr "Select element"
 
 #: src/pages/page-panel.tsx
 msgid "Select element on page"
@@ -5697,12 +5689,12 @@ msgstr "Start voice mode"
 
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-chat-banner.tsx
-msgid "Started from {0}"
-msgstr "Started from {0}"
+#~ msgid "Started from {0}"
+#~ msgstr "Started from {0}"
 
 #: src/mini-apps/mini-app-chat-banner.tsx
-msgid "Started from an app that is no longer available"
-msgstr "Started from an app that is no longer available"
+#~ msgid "Started from an app that is no longer available"
+#~ msgstr "Started from an app that is no longer available"
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Starting…"
@@ -5720,7 +5712,6 @@ msgstr "Stop control"
 msgid "Stop generating"
 msgstr "Stop generating"
 
-#: src/content-view/browser-tab-content.tsx
 #: src/pages/page-panel.tsx
 msgid "Stop loading"
 msgstr "Stop loading"
@@ -5909,8 +5900,8 @@ msgid "The AI provider took too long to respond. Try again."
 msgstr "The AI provider took too long to respond. Try again."
 
 #: src/content-view/sidebar-webview.tsx
-msgid "The browser is only available in the desktop app."
-msgstr "The browser is only available in the desktop app."
+#~ msgid "The browser is only available in the desktop app."
+#~ msgstr "The browser is only available in the desktop app."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The chat will be retained by the {recipient} team."
@@ -6150,8 +6141,8 @@ msgid "This local app is available in the desktop app on the computer where it w
 msgstr "This local app is available in the desktop app on the computer where it was created. Its files do not sync."
 
 #: src/mini-apps/mini-app-frame.tsx
-msgid "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
-msgstr "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
+#~ msgid "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
+#~ msgstr "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
 
 #: src/components/chat/error-message.tsx
 msgid "This model cannot run on this computer. Choose a tool-capable supported model."
@@ -6498,7 +6489,6 @@ msgstr "Trusted devices"
 
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
-#: src/components/embedded/surface-status.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -6593,7 +6583,6 @@ msgid "Unreachable {relative}"
 msgstr "Unreachable {relative}"
 
 #: src/lib/title-generator.ts
-#: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"
 msgstr "Untitled chat"
 
@@ -6946,8 +6935,8 @@ msgid "Weather data provided by Open-Meteo.com"
 msgstr "Weather data provided by Open-Meteo.com"
 
 #: src/content-view/browser-tab-content.tsx
-msgid "Web page"
-msgstr "Web page"
+#~ msgid "Web page"
+#~ msgstr "Web page"
 
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Web search is disabled in this Otari workspace."
@@ -7210,8 +7199,8 @@ msgid "Your assistant can help you manage your email, calendar, and documents."
 msgstr "Your assistant can help you manage your email, calendar, and documents."
 
 #: src/mini-apps/mini-app-download-prompt.tsx
-msgid "Your browser will download {fileName}."
-msgstr "Your browser will download {fileName}."
+#~ msgid "Your browser will download {fileName}."
+#~ msgstr "Your browser will download {fileName}."
 
 #: src/widgets/ask/display.tsx
 msgid "Your call"

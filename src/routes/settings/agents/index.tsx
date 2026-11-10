@@ -124,9 +124,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
             panel edge). */}
         <SettingsListPane className="gap-6">
           <PageHeader title={t`Agents`}>
-            {allowCustomAgents && (
-              <PageCreateAction label={t`New Agent`} onClick={openAddPanel} disabled={!currentUserId} />
-            )}
+            {allowCustomAgents && <PageCreateAction label={t`New Agent`} onClick={openAddPanel} />}
           </PageHeader>
 
           {/* Clicking the already-open row closes the panel — the rows carry

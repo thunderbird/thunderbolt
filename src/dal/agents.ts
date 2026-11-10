@@ -144,11 +144,11 @@ export type CreateAgentInput = {
   description?: string | null
   icon?: string | null
   enabled?: 0 | 1
-  userId: string
+  userId: string | null
 }
 
 /** Insert a new custom agent into the synced table.
- *  `userId` is required — synced tables must carry it from the caller's session. */
+ *  Local agents have no owner until sync stamps the authenticated user, like other local-first rows. */
 export const createAgent = async (db: AnyDrizzleDatabase, data: CreateAgentInput): Promise<void> => {
   await db.insert(agentsTable).values({
     id: data.id,

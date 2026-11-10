@@ -4,6 +4,6 @@
 
 import type { Agent } from '@/types/acp'
 
-/** Built-in and deployment-managed agents are read-only; custom agents belong to their creator. */
+/** Custom agents belong to this device until synced, then to the signed-in creator. */
 export const canManageAgent = (agent: Agent, userId: string | null) =>
-  agent.type !== 'built-in' && agent.isSystem !== 1 && Boolean(userId) && agent.userId === userId
+  agent.type !== 'built-in' && agent.isSystem !== 1 && (agent.userId === null || agent.userId === userId)

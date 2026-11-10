@@ -456,7 +456,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
     if (!pendingImport) {
       return
     }
-    const userId = session?.user?.id ?? ''
+    const userId = session?.user?.id ?? null
     dispatch({ type: 'SET_IS_IMPORTING', payload: true })
     dispatch({ type: 'SET_IMPORT_ERROR', payload: null })
     try {

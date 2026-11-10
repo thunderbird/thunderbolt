@@ -187,8 +187,8 @@ describe('useApproveDeviceDialogState', () => {
   })
 
   it('lets only one of several open dialogs take the last attempt', async () => {
-    startApprovalCodeAttempt()
-    startApprovalCodeAttempt()
+    await startApprovalCodeAttempt()
+    await startApprovalCodeAttempt()
     const first = renderDialogState()
     const second = renderDialogState()
     await settle()
@@ -216,16 +216,17 @@ describe('useApproveDeviceDialogState', () => {
     expect(countedAttempts()).toBe(0)
   })
 
-  it('does not count a challenge the server refused', async () => {
+  it('counts an attempt before its challenge leaves, even when the server refuses it', async () => {
     const rendered = renderDialogState({ relay: { challengeStatus: 409 } })
     await settle()
+    expect(rendered.relay.challenges).toHaveLength(1)
     expect(rendered.hook.result.current.state.step).toBe('unavailable')
-    expect(countedAttempts()).toBe(0)
+    expect(countedAttempts()).toBe(1)
   })
 
   it('switches to the fingerprint once the daily limit is reached', async () => {
-    startApprovalCodeAttempt()
-    startApprovalCodeAttempt()
+    await startApprovalCodeAttempt()
+    await startApprovalCodeAttempt()
     const rendered = renderDialogState()
     await reachPick(rendered)
     act(() => rendered.hook.result.current.noneMatch())

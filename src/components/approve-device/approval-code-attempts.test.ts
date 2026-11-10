@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import {
   approvalCodeAttemptsKey,
+  approvalCodeAttemptsLockName,
   approvalCodeFailureWindowMs,
   canUseApprovalCode,
   forgiveApprovalCodeAttempt,
@@ -18,32 +19,32 @@ describe('approval code attempts', () => {
     localStorage.removeItem(approvalCodeAttemptsKey)
   })
 
-  it('switches the code path off after three attempts in a day', () => {
-    startApprovalCodeAttempt(now)
-    startApprovalCodeAttempt(now + 1)
+  it('switches the code path off after three attempts in a day', async () => {
+    await startApprovalCodeAttempt(now)
+    await startApprovalCodeAttempt(now + 1)
     expect(canUseApprovalCode(now + 2)).toBe(true)
-    startApprovalCodeAttempt(now + 2)
+    await startApprovalCodeAttempt(now + 2)
     expect(canUseApprovalCode(now + 3)).toBe(false)
   })
 
-  it('refuses to reserve a fourth attempt', () => {
-    startApprovalCodeAttempt(now)
-    startApprovalCodeAttempt(now + 1)
-    expect(startApprovalCodeAttempt(now + 2)).toBe(now + 2)
-    expect(startApprovalCodeAttempt(now + 3)).toBeNull()
+  it('refuses to reserve a fourth attempt', async () => {
+    await startApprovalCodeAttempt(now)
+    await startApprovalCodeAttempt(now + 1)
+    expect(await startApprovalCodeAttempt(now + 2)).toBe(now + 2)
+    expect(await startApprovalCodeAttempt(now + 3)).toBeNull()
   })
 
-  it('forgives an attempt that ended in approval', () => {
-    startApprovalCodeAttempt(now)
-    startApprovalCodeAttempt(now + 1)
-    forgiveApprovalCodeAttempt(startApprovalCodeAttempt(now + 2)!)
+  it('forgives an attempt that ended in approval', async () => {
+    await startApprovalCodeAttempt(now)
+    await startApprovalCodeAttempt(now + 1)
+    await forgiveApprovalCodeAttempt((await startApprovalCodeAttempt(now + 2))!)
     expect(canUseApprovalCode(now + 3)).toBe(true)
   })
 
-  it('lets attempts age out after 24 hours', () => {
-    startApprovalCodeAttempt(now)
-    startApprovalCodeAttempt(now + 1)
-    startApprovalCodeAttempt(now + 2)
+  it('lets attempts age out after 24 hours', async () => {
+    await startApprovalCodeAttempt(now)
+    await startApprovalCodeAttempt(now + 1)
+    await startApprovalCodeAttempt(now + 2)
     expect(canUseApprovalCode(now + approvalCodeFailureWindowMs)).toBe(true)
   })
 
@@ -52,5 +53,20 @@ describe('approval code attempts', () => {
     expect(canUseApprovalCode(now)).toBe(true)
     localStorage.setItem(approvalCodeAttemptsKey, '{"a":1}')
     expect(canUseApprovalCode(now)).toBe(true)
+  })
+
+  it('reads the record only once another tab has finished writing it', async () => {
+    await startApprovalCodeAttempt(now)
+    await startApprovalCodeAttempt(now + 1)
+    const otherTab = Promise.withResolvers<void>()
+    const otherTabDone = navigator.locks.request(approvalCodeAttemptsLockName, async () => {
+      await otherTab.promise
+      localStorage.setItem(approvalCodeAttemptsKey, JSON.stringify([now, now + 1, now + 2]))
+    })
+    const reservation = startApprovalCodeAttempt(now + 3)
+    otherTab.resolve()
+    await otherTabDone
+    expect(await reservation).toBeNull()
+    expect(JSON.parse(localStorage.getItem(approvalCodeAttemptsKey)!)).toEqual([now, now + 1, now + 2])
   })
 })

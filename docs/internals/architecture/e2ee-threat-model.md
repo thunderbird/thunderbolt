@@ -447,8 +447,9 @@ Not findings. Documented trade-offs, listed so review does not relitigate them.
   both screens once in 100 attempts even for a user who compares carefully. A2 cannot grind it:
   every attempt needs a fresh challenge from the approver and a reveal from the pending device,
   the pending device never restarts an attempt on its own, and the approver stops after three
-  unsuccessful attempts per 24 hours (below). Two digits trade the 1 in 10⁶ of a six-digit code
-  for an easier comparison.
+  unsuccessful attempts per 24 hours (below). The approver counts an attempt before it sends the
+  challenge, so A2 cannot see the codes and then refuse the challenge for free. Two digits trade
+  the 1 in 10⁶ of a six-digit code for an easier comparison.
 - **A careless tap on the approval code.** The approver offers its own code among six. A user
   who taps without comparing picks it one time in six, and that approves the recipient the
   approver snapshotted. Under A2 that is a substituted key tuple. A stolen live session (A5) or a

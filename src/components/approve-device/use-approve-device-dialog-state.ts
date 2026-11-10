@@ -106,6 +106,17 @@ export const useApproveDeviceDialogState = ({
       return
     }
     const { sessionId, commitment } = session
+    // Counted before the challenge leaves this device. A server that has the challenge can work out
+    // the code this device would show, so refusing the challenge must not buy it a free attempt.
+    const startedAt = await startApprovalCodeAttempt()
+    if (!isCurrent()) {
+      return
+    }
+    if (startedAt === null) {
+      go({ step: 'fingerprint', reason: 'limit' })
+      return
+    }
+    attemptStartedAt.current = startedAt
     const challenge = createApprovalNonce()
     const sent = await challengeApprovalSession(httpClient, target.id, { sessionId, challenge }).then(
       () => true,
@@ -118,14 +129,6 @@ export const useApproveDeviceDialogState = ({
       go({ step: 'unavailable' })
       return
     }
-    // Counted once the server takes the challenge, and before any code is shown: a refused challenge
-    // (an attempt the new device already spent) shows nothing to guess at, so it costs nothing.
-    const startedAt = startApprovalCodeAttempt()
-    if (startedAt === null) {
-      go({ step: 'fingerprint', reason: 'limit' })
-      return
-    }
-    attemptStartedAt.current = startedAt
     const reveal = await waitForReveal(target, sessionId, isCurrent)
     if (!isCurrent()) {
       return
@@ -183,10 +186,6 @@ export const useApproveDeviceDialogState = ({
     }
     try {
       await onConfirm({ kind: 'code', ...confirmation })
-      if (attemptStartedAt.current !== null) {
-        forgiveApprovalCodeAttempt(attemptStartedAt.current)
-        attemptStartedAt.current = null
-      }
     } catch (error) {
       if (error instanceof DeviceApprovalError && error.reason === 'code-mismatch') {
         go({ step: 'mismatch' })
@@ -199,6 +198,12 @@ export const useApproveDeviceDialogState = ({
         type: 'submit-failed',
         error: error instanceof HttpError && error.response.status === 409 ? 'conflict' : 'generic',
       })
+      return
+    }
+    const startedAt = attemptStartedAt.current
+    attemptStartedAt.current = null
+    if (startedAt !== null) {
+      await forgiveApprovalCodeAttempt(startedAt)
     }
   }
 

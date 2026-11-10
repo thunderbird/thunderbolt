@@ -54,10 +54,10 @@ describe('ApproveDeviceDialog', () => {
     expect(screen.getByLabelText('Device fingerprint')).toBeInTheDocument()
   })
 
-  it('opens on the fingerprint once too many codes failed today', () => {
-    startApprovalCodeAttempt()
-    startApprovalCodeAttempt()
-    startApprovalCodeAttempt()
+  it('opens on the fingerprint once too many codes failed today', async () => {
+    await startApprovalCodeAttempt()
+    await startApprovalCodeAttempt()
+    await startApprovalCodeAttempt()
     renderDialog()
     expect(screen.queryByText('Which code is on the new device?')).toBeNull()
     expect(

@@ -48,7 +48,13 @@ describe('moveChatToProject', () => {
     'refuses an active %s chat move from %s to %s without cancelling or writing',
     async (status, currentProject, nextProject) => {
       const blocked = makeDeps({
-        getOpenSession: () => ({ projectId: currentProject, stopping: false, chatInstance: { status } }),
+        getOpenSession: () => ({
+          projectId: currentProject,
+          stopping: false,
+          retryCount: 0,
+          retriesExhausted: false,
+          chatInstance: { status },
+        }),
       })
       await expect(moveChatToProject({ chatThreadId: 'chat-1', projectId: nextProject }, blocked)).rejects.toThrow(
         'Stop the current reply',
@@ -63,7 +69,15 @@ describe('moveChatToProject', () => {
     const previous = Promise.withResolvers<void>()
     const writing = withChatThreadWrite('chat-1', () => previous.promise)
     let status: 'ready' | 'streaming' = 'ready'
-    const guarded = makeDeps({ getOpenSession: () => ({ projectId: null, stopping: false, chatInstance: { status } }) })
+    const guarded = makeDeps({
+      getOpenSession: () => ({
+        projectId: null,
+        stopping: false,
+        retryCount: 0,
+        retriesExhausted: false,
+        chatInstance: { status },
+      }),
+    })
     const move = moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p1' }, guarded)
     status = 'streaming'
     previous.resolve()
@@ -75,11 +89,18 @@ describe('moveChatToProject', () => {
     expect(guarded.setProject).toHaveBeenCalledTimes(1)
   })
 
-  it.each([{ stopping: true }, { compactionStatus: 'compacting' as const }])(
-    'waits for stopping and compaction to finish before a move',
+  it.each([{ retryCount: 1 }, { compactionStatus: 'compacting' as const }])(
+    'waits for retry and compaction to finish before a move',
     async (state) => {
       const guarded = makeDeps({
-        getOpenSession: () => ({ projectId: 'p1', stopping: false, chatInstance: { status: 'ready' }, ...state }),
+        getOpenSession: () => ({
+          projectId: 'p1',
+          stopping: false,
+          retryCount: 0,
+          retriesExhausted: false,
+          chatInstance: { status: 'ready' },
+          ...state,
+        }),
       })
       await expect(moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p2' }, guarded)).rejects.toThrow(
         'Stop the current reply',
@@ -87,6 +108,20 @@ describe('moveChatToProject', () => {
       expect(guarded.setProject).not.toHaveBeenCalled()
     },
   )
+
+  it('allows an idle stopped chat to move without lifting automatic-resend suppression', async () => {
+    const session = {
+      projectId: null,
+      stopping: true,
+      retryCount: 1,
+      retriesExhausted: false,
+      chatInstance: { status: 'ready' as const },
+    }
+    const stopped = makeDeps({ getOpenSession: () => session })
+    await moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p2' }, stopped)
+    expect(stopped.setProject).toHaveBeenCalledWith(db, 'chat-1', 'p2')
+    expect(session.stopping).toBe(true)
+  })
 
   it('keeps the live session unchanged when the target project disappeared', async () => {
     const rejected = makeDeps({ setProject: mock(async () => false) })

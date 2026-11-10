@@ -4,7 +4,7 @@
 
 import type { PageAction, PageCapabilities, PageDefinition, PageNavigation, PageSnapshot } from '@shared/page-protocol'
 import { pageSlots } from './page-slot'
-import { usePageStore } from './page-store'
+import { usePageStore, type PageSession } from './page-store'
 
 export type PageAdapter = {
   capabilities: PageCapabilities
@@ -25,6 +25,7 @@ export type PageOperationOptions = {
 
 const adapters = new Map<string, PageAdapter>()
 let reveal: (() => void) | undefined
+let presentExpanded: ((session: PageSession | null) => void) | undefined
 let sequence: Promise<unknown> = Promise.resolve()
 const requireSession = (id: string) => {
   const session = usePageStore.getState().sessions.find((session) => session.id === id)
@@ -32,6 +33,13 @@ const requireSession = (id: string) => {
     throw new Error('Page session is closed. List pages again.')
   }
   return session
+}
+
+/** Explicit restores bypass the expanded route's presentation handler. */
+const showSidebar = (id: string) => {
+  requireSession(id)
+  usePageStore.getState().present(id, 'sidebar')
+  reveal?.()
 }
 /** Queue the complete operation, including presentation, so another tool cannot move a native surface mid-click. */
 const enqueue = <T>(
@@ -94,6 +102,15 @@ export const pageController = {
       }
     }
   },
+  /** The mounted expanded route owns navigation when tools open or select another page. */
+  registerExpanded: (callback: (session: PageSession | null) => void) => {
+    presentExpanded = callback
+    return () => {
+      if (presentExpanded === callback) {
+        presentExpanded = undefined
+      }
+    }
+  },
   list: () =>
     usePageStore.getState().sessions.map((session) => ({
       sessionId: session.id,
@@ -106,19 +123,27 @@ export const pageController = {
     })),
   open: (page: PageDefinition) => {
     const id = usePageStore.getState().ensure(page)
-    usePageStore.getState().present(id, 'sidebar')
-    reveal?.()
+    pageController.select(id)
     return id
   },
   select: (id: string) => {
-    requireSession(id)
-    usePageStore.getState().present(id, 'sidebar')
-    reveal?.()
+    const session = requireSession(id)
+    if (presentExpanded) {
+      presentExpanded(session)
+      return
+    }
+    showSidebar(id)
   },
+  restoreToSidebar: showSidebar,
   close: (id: string) => {
     requireSession(id)
+    const active = usePageStore.getState().activeId === id
     adapters.delete(id)
     usePageStore.getState().close(id)
+    if (active && presentExpanded) {
+      const state = usePageStore.getState()
+      presentExpanded(state.sessions.find((session) => session.id === state.activeId) ?? null)
+    }
   },
   /** Agent lifecycle operations share the input queue; user gestures keep the synchronous methods above. */
   openForAgent: (page: PageDefinition, options?: PageOperationOptions & { onOpen?: (id: string) => void }) =>

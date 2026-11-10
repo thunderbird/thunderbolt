@@ -64,7 +64,10 @@ export const usePagePanelState = ({
   }
   const closeTab = (id: string) => {
     const next = tabs.find((item) => item.id !== id)
-    usePageStore.getState().close(id)
+    pageController.close(id)
+    if (mode === 'expanded') {
+      return
+    }
     if (!next) {
       onClose()
     } else if (id === session?.id) {
@@ -72,10 +75,16 @@ export const usePagePanelState = ({
     }
   }
   const closeAllTabs = () => {
-    for (const tab of tabs) {
+    // Close the selected page last so the expanded presenter navigates once.
+    for (const tab of tabs.filter((tab) => tab.id !== session?.id)) {
       pageController.close(tab.id)
     }
-    onClose()
+    if (session && session.presentation !== 'inline') {
+      pageController.close(session.id)
+    }
+    if (mode !== 'expanded') {
+      onClose()
+    }
   }
   const navigation = useMutation({
     mutationFn: async (action: PageNavigation) => {

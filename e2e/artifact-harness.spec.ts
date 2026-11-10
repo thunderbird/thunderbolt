@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, test } from './test'
+import { installArtifactChannel } from './artifact-channel-fixture'
 import { readFileSync } from 'node:fs'
 import { wrapArtifactHtml as wrapWithDrivers } from '../src/artifacts/harness-protocol'
 
@@ -45,16 +46,22 @@ const collectHarnessMessages = (
         const messages: HarnessMessage[] = []
         const iframe = document.createElement('iframe')
         iframe.setAttribute('sandbox', 'allow-scripts') // must never include allow-same-origin
-        window.addEventListener('message', (event) => {
-          const data = event.data as HarnessMessage | undefined
-          if (event.source === iframe.contentWindow && data && data.artifactNonce === nonce) {
-            messages.push(data)
-          }
+        const { bindArtifactChannel } = Reflect.get(
+          window,
+          'artifactChannel',
+        ) as typeof import('../src/artifacts/channel')
+        const channel = bindArtifactChannel({
+          getFrameWindow: () => iframe.contentWindow,
+          nonce,
+          onMessage: (data) => messages.push(data),
         })
         iframe.srcdoc = srcdoc
         document.body.appendChild(iframe)
         // Enough time to load, run the sync path, and surface any async error.
-        setTimeout(() => resolve(messages), settleMs)
+        setTimeout(() => {
+          channel.close()
+          resolve(messages)
+        }, settleMs)
       }),
     { srcdoc, nonce, settleMs },
   )
@@ -75,25 +82,25 @@ const requestHarness = (
         iframe.setAttribute('sandbox', 'allow-scripts')
         iframe.style.cssText = 'width:400px;height:400px;border:0'
         const timer = setTimeout(() => reject(new Error('The page did not answer its request')), 2000)
-        window.addEventListener('message', (event) => {
-          const data = event.data as HarnessMessage | undefined
-          if (event.source !== iframe.contentWindow || data?.artifactNonce !== nonce) {
-            return
-          }
-          messages.push(data)
-          if (data.type === 'artifact-ready') {
-            iframe.getBoundingClientRect()
-            // Opaque sandbox origins require '*'; replies are scoped to this frame and nonce.
-            // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- opaque sandbox origin
-            iframe.contentWindow?.postMessage(
-              { artifactNonce: nonce, type: 'artifact-request', id: 1, method, params },
-              '*',
-            )
-          }
-          if (data.type === 'artifact-reply' && data.id === 1) {
-            clearTimeout(timer)
-            resolve(messages)
-          }
+        const { bindArtifactChannel } = Reflect.get(
+          window,
+          'artifactChannel',
+        ) as typeof import('../src/artifacts/channel')
+        const channel = bindArtifactChannel({
+          getFrameWindow: () => iframe.contentWindow,
+          nonce,
+          onMessage: (data) => {
+            messages.push(data)
+            if (data.type === 'artifact-ready') {
+              iframe.getBoundingClientRect()
+              channel.send({ artifactNonce: nonce, type: 'artifact-request', id: 1, method, params })
+            }
+            if (data.type === 'artifact-reply' && data.id === 1) {
+              clearTimeout(timer)
+              channel.close()
+              resolve(messages)
+            }
+          },
         })
         iframe.srcdoc = srcdoc
         document.body.appendChild(iframe)
@@ -104,6 +111,7 @@ const requestHarness = (
 test.describe('artifact harness (real browser)', () => {
   test.beforeEach(async ({ page }) => {
     await page.setContent('<!doctype html><html><body></body></html>')
+    await installArtifactChannel(page)
   })
 
   test('a valid page reports ready and a content height, with no error', async ({ page }) => {
@@ -196,6 +204,175 @@ test.describe('artifact harness (real browser)', () => {
     const messages = await requestHarness(page, wrapArtifactHtml('<p>Page</p>', nonce), nonce, 'page/unknown')
     expect(messages.find((message) => message.type === 'artifact-reply')).toMatchObject({ id: 1, result: null })
     expect(messages.some((message) => message.type === 'artifact-error')).toBe(false)
+  })
+
+  test('self-navigation revokes the channel before a replacement document can receive agent input or forge replies', async ({
+    page,
+  }) => {
+    const nonce = 'navigation-document'
+    const navigationUrl = 'https://artifact-replacement.test/page'
+    const pendingImage = Promise.withResolvers<void>()
+    await page.route('https://artifact-replacement.test/slow.png', async (route) => {
+      await pendingImage.promise
+      await route.abort()
+    })
+    await page.route(navigationUrl, (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: `<script>
+        const received = [];
+        window.addEventListener('message', (event) => received.push(event.data));
+        parent.postMessage({ type: 'replacement-ready' }, '*');
+        // Even knowing the old nonce cannot replace its document-bound port.
+        const duplicate = new MessageChannel();
+        parent.postMessage({ type: 'artifact-connect', artifactNonce: '${nonce}' }, '*', [duplicate.port2]);
+        parent.postMessage({ type: 'artifact-reply', artifactNonce: '${nonce}', id: 2, result: 'forged' }, '*');
+        setTimeout(() => parent.postMessage({ type: 'replacement-result', received, loaded: document.readyState === 'complete' }, '*'), 100);
+      </script><img src="https://artifact-replacement.test/slow.png">`,
+      }),
+    )
+    const srcdoc = wrapArtifactHtml(
+      `<script>
+      window.__artifactHandlers['test/navigate'] = () => {
+        setTimeout(() => { location.href = '${navigationUrl}' }, 0);
+        return true;
+      };
+    </script>`,
+      nonce,
+    )
+    try {
+      const result = await page.evaluate(
+        ({ srcdoc, nonce }) =>
+          new Promise<{
+            received: unknown[]
+            loaded: boolean
+            closed: number
+            refused: boolean
+            forged: boolean
+          }>((resolve, reject) => {
+            const { bindArtifactChannel } = Reflect.get(
+              window,
+              'artifactChannel',
+            ) as typeof import('../src/artifacts/channel')
+            const frame = document.createElement('iframe')
+            frame.sandbox.add('allow-scripts')
+            let closed = 0
+            let refused = false
+            let forged = false
+            const timer = setTimeout(() => reject(new Error('Replacement document did not report its result')), 5000)
+            const channel = bindArtifactChannel({
+              getFrameWindow: () => frame.contentWindow,
+              nonce,
+              onClose: () => {
+                closed++
+              },
+              onMessage: (data) => {
+                if (data.type === 'artifact-ready') {
+                  channel.send({
+                    artifactNonce: nonce,
+                    type: 'artifact-request',
+                    id: 1,
+                    method: 'test/navigate',
+                    params: {},
+                  })
+                }
+                if (data.type === 'artifact-reply' && data.id === 2) {
+                  forged = true
+                }
+              },
+            })
+            const receive = (event: MessageEvent) => {
+              if (event.source !== frame.contentWindow) {
+                return
+              }
+              if (event.data?.type === 'replacement-ready') {
+                try {
+                  channel.send({
+                    artifactNonce: nonce,
+                    type: 'artifact-request',
+                    id: 2,
+                    method: 'page/action',
+                    params: { type: 'type', text: 'private-input' },
+                  })
+                } catch {
+                  // The unload signal can precede this window message. Either
+                  // ordering must keep the input away from the replacement.
+                }
+              }
+              if (event.data?.type === 'replacement-result') {
+                clearTimeout(timer)
+                window.removeEventListener('message', receive)
+                try {
+                  channel.send({
+                    artifactNonce: nonce,
+                    type: 'artifact-request',
+                    id: 3,
+                    method: 'page/snapshot',
+                    params: {},
+                  })
+                } catch {
+                  refused = true
+                }
+                const result = { ...event.data, closed, refused, forged }
+                channel.close()
+                resolve(result)
+              }
+            }
+            window.addEventListener('message', receive)
+            frame.srcdoc = srcdoc
+            document.body.append(frame)
+          }),
+        { srcdoc, nonce },
+      )
+      expect(result.received).toEqual([])
+      expect(result.loaded).toBe(false)
+      expect(result.closed).toBe(1)
+      expect(result.refused).toBe(true)
+      expect(result.forged).toBe(false)
+    } finally {
+      pendingImage.resolve()
+    }
+  })
+
+  test('queues early ready and errors until the host starts the transferred port', async ({ page }) => {
+    const nonce = 'delayed-port-start'
+    const srcdoc = wrapArtifactHtml('<script>throw new Error("early failure")</script>', nonce)
+    const types = await page.evaluate(
+      ({ srcdoc, nonce }) =>
+        new Promise<string[]>((resolve, reject) => {
+          const iframe = document.createElement('iframe')
+          iframe.sandbox.add('allow-scripts')
+          const timer = setTimeout(() => reject(new Error('The queued messages were lost')), 3000)
+          const receive = (event: MessageEvent) => {
+            if (
+              event.source !== iframe.contentWindow ||
+              event.data?.artifactNonce !== nonce ||
+              event.data?.type !== 'artifact-connect'
+            ) {
+              return
+            }
+            window.removeEventListener('message', receive)
+            const port = event.ports[0]
+            const types: string[] = []
+            setTimeout(() => {
+              port.onmessage = ({ data }: MessageEvent) => {
+                types.push(data.type)
+                if (types.includes('artifact-ready') && types.includes('artifact-error')) {
+                  clearTimeout(timer)
+                  port.close()
+                  resolve(types)
+                }
+              }
+            }, 100)
+          }
+          window.addEventListener('message', receive)
+          iframe.srcdoc = srcdoc
+          document.body.append(iframe)
+        }),
+      { srcdoc, nonce },
+    )
+    expect(types).toContain('artifact-ready')
+    expect(types).toContain('artifact-error')
   })
 
   for (const failure of ['throw new Error("handler failed")', 'return Promise.reject(new Error("handler failed"))']) {

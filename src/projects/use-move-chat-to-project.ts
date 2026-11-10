@@ -31,7 +31,10 @@ export class ActiveChatProjectMoveError extends Error {
     this.name = 'ActiveChatProjectMoveError'
   }
 }
-type MovingChat = Pick<ChatSession, 'projectId' | 'stopping' | 'compactionStatus'> & {
+type MovingChat = Pick<
+  ChatSession,
+  'projectId' | 'stopping' | 'compactionStatus' | 'retryCount' | 'retriesExhausted'
+> & {
   chatInstance: Pick<ChatSession['chatInstance'], 'status'>
 }
 
@@ -55,7 +58,7 @@ export const moveChatToProject = async ({ chatThreadId, projectId }: ChatDrop, d
       session &&
       (session.chatInstance.status === 'submitted' ||
         session.chatInstance.status === 'streaming' ||
-        session.stopping ||
+        (!session.stopping && session.retryCount > 0 && !session.retriesExhausted) ||
         session.compactionStatus === 'compacting')
     ) {
       throw new ActiveChatProjectMoveError()

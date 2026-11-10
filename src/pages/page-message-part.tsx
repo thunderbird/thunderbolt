@@ -152,10 +152,7 @@ const PublishedPageCard = ({ page }: { page: PageDefinition }) => {
           </Button>
         </div>
       ) : (
-        <>
-          {session?.error && <EmbeddedErrorStrip message={session.error} />}
-          <InlinePage page={page} enabled={active} />
-        </>
+        <InlinePage page={page} enabled={active} />
       )}
     </div>
   )

@@ -7,6 +7,8 @@ import { v7 as uuidv7 } from 'uuid'
 import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable, modelsTable, projectsTable, settingsTable } from '@/db/tables'
 import { useAgentExecutionStore } from '@/agent-execution/store'
+import { useChatStore } from '@/chats/chat-store'
+import { createMockChatInstance, createMockChatThread, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import {
   getProjectExecutionQuery,
   parseProjectExecutionLocation,
@@ -44,6 +46,7 @@ beforeEach(async () => {
   await db.delete(projectsTable)
   await db.delete(chatThreadsTable)
   useAgentExecutionStore.setState({ byProject: {}, byThread: {} })
+  resetStore()
 })
 
 /** Insert a bare chat thread; the DAL's createChatThread needs a Model. */
@@ -51,6 +54,18 @@ const seedThread = async (projectId: string | null) => {
   const id = uuidv7()
   await getDb().insert(chatThreadsTable).values({ id, title: 'T', projectId })
   return id
+}
+
+/** Model both a saved chat cached by navigation and an unsaved project draft. */
+const seedSession = (id: string, projectId: string | null, persisted = true) => {
+  hydrateStore({
+    id,
+    chatInstance: createMockChatInstance(),
+    chatThread: persisted ? createMockChatThread({ id, projectId }) : null,
+    selectedModel: null,
+    triggerData: null,
+  })
+  useChatStore.getState().updateSession(id, { projectId })
 }
 
 describe('projects CRUD', () => {
@@ -141,6 +156,13 @@ describe('chat membership', () => {
     const threadId = await seedThread(project.id)
     const other = await createProject(db, { name: 'Keep' })
     const otherThreadId = await seedThread(other.id)
+    seedSession(threadId, project.id)
+    seedSession('cached-chat', project.id)
+    seedSession('unsaved-draft', project.id, false)
+    seedSession(otherThreadId, other.id)
+    seedSession('standalone', null)
+    useChatStore.getState().setCurrentSessionId(threadId)
+    const previousSessions = useChatStore.getState().sessions
     await softDeleteProject(db, project.id)
 
     expect(await getProject(db, project.id)).toBeNull()
@@ -157,6 +179,18 @@ describe('chat membership', () => {
     expect(useAgentExecutionStore.getState().byProject[project.id]).toBeUndefined()
     expect(useAgentExecutionStore.getState().byProject[other.id]).toEqual({ location: 'sandbox', access: 'ask' })
     expect(parseProjectExecutionLocation((await getProjectExecutionQuery(db, other.id))[0].value)).toBe('sandbox')
+    for (const id of [threadId, 'cached-chat', 'unsaved-draft']) {
+      const session = useChatStore.getState().sessions.get(id)!
+      expect(session.projectId).toBeNull()
+      expect(session.chatThread?.projectId ?? null).toBeNull()
+      expect(session.chatInstance).toBe(previousSessions.get(id)!.chatInstance)
+      expect(session.chatInstance.stop).toHaveBeenCalledTimes(1)
+    }
+    for (const id of [otherThreadId, 'standalone']) {
+      expect(useChatStore.getState().sessions.get(id)).toBe(previousSessions.get(id))
+      expect(previousSessions.get(id)!.chatInstance.stop).not.toHaveBeenCalled()
+    }
+    expect(useChatStore.getState().currentSessionId).toBe(threadId)
   })
 })
 
@@ -183,6 +217,9 @@ describe('bulk project deletion', () => {
     const deletedAt = '2026-01-01T00:00:00Z'
     await db.update(projectsTable).set({ deletedAt }).where(eq(projectsTable.id, projects[2].id))
     const ids = [await seedThread(projects[0].id), await seedThread(projects[1].id), await seedThread(null)]
+    seedSession(ids[0], projects[0].id)
+    seedSession(ids[1], projects[1].id)
+    seedSession(ids[2], null)
     const deletedChat = await seedThread(projects[0].id)
     await db.update(chatThreadsTable).set({ deletedAt }).where(eq(chatThreadsTable.id, deletedChat))
     const messageId = uuidv7()
@@ -198,6 +235,7 @@ describe('bulk project deletion', () => {
     const threads = await db.select().from(chatThreadsTable)
     for (const id of ids) {
       expect(threads.find((thread) => thread.id === id)).toMatchObject({ projectId: null, deletedAt: null, title: 'T' })
+      expect(useChatStore.getState().sessions.get(id)?.projectId).toBeNull()
     }
     expect(threads.find((thread) => thread.id === deletedChat)).toMatchObject({ projectId: projects[0].id, deletedAt })
     const [message] = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId))
@@ -217,6 +255,8 @@ describe('bulk project deletion', () => {
     const db = getDb()
     const project = await createProject(db, { name: 'Keep together' })
     const chatId = await seedThread(project.id)
+    seedSession(chatId, project.id)
+    const session = useChatStore.getState().sessions.get(chatId)
     await db.run(
       sql`CREATE TEMP TRIGGER fail_project_delete BEFORE UPDATE ON projects BEGIN SELECT RAISE(ABORT, 'test failure'); END`,
     )
@@ -227,6 +267,8 @@ describe('bulk project deletion', () => {
       expect(chat.projectId).toBe(project.id)
       expect(parseProjectExecutionLocation((await getProjectExecutionQuery(db, project.id))[0].value)).toBe('sandbox')
       expect(useAgentExecutionStore.getState().byProject[project.id]).toEqual({ location: 'sandbox', access: 'ask' })
+      expect(useChatStore.getState().sessions.get(chatId)).toBe(session)
+      expect(session!.chatInstance.stop).not.toHaveBeenCalled()
     } finally {
       await db.run(sql`DROP TRIGGER fail_project_delete`)
     }
@@ -237,6 +279,8 @@ describe('bulk project deletion', () => {
     const execution = { location: 'computer', access: 'full', cwd: '/workspace/private' } as const
     const project = await createProject(db, { name: 'Local work', execution })
     const chatId = await seedThread(project.id)
+    seedSession(chatId, project.id)
+    const session = useChatStore.getState().sessions.get(chatId)
     await db.run(
       sql`CREATE TEMP TRIGGER fail_environment_delete BEFORE UPDATE ON settings BEGIN SELECT RAISE(ABORT, 'test failure'); END`,
     )
@@ -247,6 +291,8 @@ describe('bulk project deletion', () => {
         project.id,
       )
       expect(useAgentExecutionStore.getState().byProject[project.id]).toEqual(execution)
+      expect(useChatStore.getState().sessions.get(chatId)).toBe(session)
+      expect(session!.chatInstance.stop).not.toHaveBeenCalled()
       const [setting] = await db
         .select()
         .from(settingsTable)

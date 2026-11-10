@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { prewarmTinfoilModel } from '@/ai/prewarm-tinfoil-model'
-import { updateSettings } from '@/dal'
+import { updateSettings } from '@/dal/settings'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
 import { type NamedMCPClient, type ReconnectClient } from '@/lib/mcp-provider'
@@ -156,6 +156,8 @@ type ChatStoreActions = {
   allowAlwaysForAgent(agentId: string): void
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
+  /** Keep open and cached chats standalone after their project deletion commits. */
+  orphanProjectSessions(projectIds: ReadonlySet<string>): Promise<void>
   applyAgentWireIdentityChange(agent: Agent): void
   /** Record what discovery reported as the default agent (null when it names
    *  none, or answered 401/403) and re-run `resolveSessionAgent` for every chat
@@ -234,6 +236,26 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     nextSessions.set(session.id, session)
 
     set({ sessions: nextSessions })
+  },
+
+  orphanProjectSessions: async (projectIds) => {
+    const sessions = get().sessions
+    const affected = [...sessions.values()].filter((session) => session.projectId && projectIds.has(session.projectId))
+    if (affected.length === 0) {
+      return
+    }
+    const nextSessions = new Map(sessions)
+    for (const session of affected) {
+      nextSessions.set(session.id, {
+        ...session,
+        projectId: null,
+        chatThread: session.chatThread ? { ...session.chatThread, projectId: null } : null,
+      })
+    }
+    set({ sessions: nextSessions })
+    // A turn captures its workspace and approvals when it starts. Detaching the
+    // session alone would let that turn keep using a deleted project's authority.
+    await Promise.all(affected.map((session) => session.chatInstance.stop()))
   },
 
   applyAgentWireIdentityChange: (agent) => {

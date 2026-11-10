@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from './test'
+import { installArtifactChannel } from './artifact-channel-fixture'
 import { wrapArtifactHtml } from '../src/artifacts/harness-protocol'
 import type { PageSnapshot } from '../shared/page-protocol'
 
@@ -66,25 +67,51 @@ document.getElementById('save').onclick = () => document.getElementById('saved')
     driverSource,
   )
   await page.setContent('<!doctype html><html><body></body></html>')
+  await installArtifactChannel(page)
   const result = await page.evaluate(
     async ({ nonce, srcdoc }) => {
       const frame = document.createElement('iframe')
       frame.sandbox.add('allow-scripts')
       frame.style.cssText = 'width:600px;height:400px;border:0'
+      const { bindArtifactChannel } = Reflect.get(
+        window,
+        'artifactChannel',
+      ) as typeof import('../src/artifacts/channel')
+      const handlers = new Map<
+        number,
+        { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+      >()
+      let onReady: () => void
       const waitReady = new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('Driver did not become ready')), 5000)
-        const ready = (event: MessageEvent) => {
-          if (
-            event.source === frame.contentWindow &&
-            event.data?.artifactNonce === nonce &&
-            event.data.type === 'artifact-ready'
-          ) {
-            clearTimeout(timer)
-            window.removeEventListener('message', ready)
-            resolve()
-          }
+        onReady = () => {
+          clearTimeout(timer)
+          resolve()
         }
-        window.addEventListener('message', ready)
+      })
+      const channel = bindArtifactChannel({
+        getFrameWindow: () => frame.contentWindow,
+        nonce,
+        onMessage: (data) => {
+          if (data.type === 'artifact-ready') {
+            onReady()
+          }
+          if (data.type === 'artifact-error') {
+            for (const handler of handlers.values()) {
+              clearTimeout(handler.timer)
+              handler.reject(new Error(data.detail))
+            }
+            handlers.clear()
+          }
+          if (data.type === 'artifact-reply') {
+            const handler = handlers.get(data.id)
+            if (handler) {
+              clearTimeout(handler.timer)
+              handlers.delete(data.id)
+              handler.resolve(data.result)
+            }
+          }
+        },
       })
       frame.srcdoc = srcdoc
       document.body.appendChild(frame)
@@ -95,34 +122,11 @@ document.getElementById('save').onclick = () => document.getElementById('saved')
         new Promise<unknown>((resolve, reject) => {
           const id = ++sequence
           const timer = setTimeout(() => {
-            window.removeEventListener('message', listener)
+            handlers.delete(id)
             reject(new Error('Driver request timed out'))
           }, 3000)
-          const listener = (event: MessageEvent) => {
-            if (
-              event.source === frame.contentWindow &&
-              event.data?.artifactNonce === nonce &&
-              event.data.type === 'artifact-error'
-            ) {
-              clearTimeout(timer)
-              window.removeEventListener('message', listener)
-              reject(new Error(event.data.detail))
-              return
-            }
-            if (
-              event.source !== frame.contentWindow ||
-              event.data?.artifactNonce !== nonce ||
-              event.data.type !== 'artifact-reply' ||
-              event.data.id !== id
-            ) {
-              return
-            }
-            clearTimeout(timer)
-            window.removeEventListener('message', listener)
-            resolve(event.data.result)
-          }
-          window.addEventListener('message', listener)
-          frame.contentWindow?.postMessage({ artifactNonce: nonce, type: 'artifact-request', id, method, params }, '*')
+          handlers.set(id, { resolve, reject, timer })
+          channel.send({ artifactNonce: nonce, type: 'artifact-request', id, method, params })
         })
       const before = (await request('page/snapshot', {})) as PageSnapshot
       const input = before.elements.find((element) => element.name === 'Draft')
@@ -137,6 +141,7 @@ document.getElementById('save').onclick = () => document.getElementById('saved')
       const keyed = (await request('page/snapshot', {})) as PageSnapshot
       const saveClick = await request('page/action', { type: 'click', ref: save.ref })
       const after = (await request('page/snapshot', {})) as PageSnapshot
+      channel.close()
       return { click, type, key, saveClick, before, typed, keyed, after }
     },
     { nonce, srcdoc },

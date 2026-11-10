@@ -4,6 +4,7 @@
 
 import { useEffect } from 'react'
 import type { PageDefinition } from '@shared/page-protocol'
+import { EmbeddedErrorStrip } from '@/components/embedded'
 import { usePageStore } from './page-store'
 import { PageSlot } from './page-slot'
 
@@ -19,7 +20,10 @@ export const InlinePage = ({ page, enabled }: { page: PageDefinition; enabled: b
     }
   }, [enabled, page])
   return session ? (
-    <PageSlot sessionId={session.id} mode="inline" height={session.height} />
+    <>
+      {session.error && <EmbeddedErrorStrip message={session.error} />}
+      <PageSlot sessionId={session.id} mode="inline" height={session.height} />
+    </>
   ) : (
     <div style={{ height: 400 }} />
   )

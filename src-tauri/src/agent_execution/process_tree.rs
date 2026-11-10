@@ -140,6 +140,19 @@ mod tests {
             // No Rust destructors: Windows must close the owner's job handle itself.
             std::process::exit(0);
         }
+        if mode == "parent-fanout" {
+            let mut children = Vec::new();
+            for index in 0..20 {
+                let child_path = path.with_extension(index.to_string());
+                children.push(fixture("leaf", &child_path).spawn().unwrap());
+                port_ready(&child_path).await;
+            }
+            std::fs::copy(path.with_extension("0"), &path).unwrap();
+            for mut child in children {
+                child.wait().await.unwrap();
+            }
+            return;
+        }
         let mut descendant = fixture("leaf", &path).spawn().unwrap();
         port_ready(&path).await;
         if mode == "parent-exit" {
@@ -195,6 +208,26 @@ mod tests {
             .unwrap()
             .success());
         port_closed(port).await;
+    }
+
+    #[tokio::test]
+    async fn windows_job_drains_a_process_list_larger_than_the_initial_query_buffer() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("fanout.port");
+        let mut process = ScopedChild::spawn(fixture("parent-fanout", &path)).unwrap();
+        port_ready(&path).await;
+        let ports: Vec<u16> = (0..20)
+            .map(|index| {
+                std::fs::read_to_string(path.with_extension(index.to_string()))
+                    .unwrap()
+                    .parse()
+                    .unwrap()
+            })
+            .collect();
+        process.stop().await.unwrap();
+        for port in ports {
+            drop(TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).unwrap());
+        }
     }
 }
 

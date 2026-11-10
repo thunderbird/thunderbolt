@@ -19,8 +19,11 @@ test('published file pages retain live state while website and device-local outp
   const websiteId = crypto.randomUUID()
   const localId = crypto.randomUUID()
   const failedPageId = crypto.randomUUID()
-  const html =
-    '<!doctype html><html><body><label>Unsaved draft <input aria-label="Unsaved draft"></label></body></html>'
+  const html = `<!doctype html><html><body>
+<label>Unsaved draft <input aria-label="Unsaved draft"></label>
+<button id="fail">Trigger runtime failure</button>
+<script>document.getElementById('fail').onclick = () => { throw new Error('Late artifact runtime failure') }</script>
+</body></html>`
   await importBackup(page, {
     format: 'thunderbolt-export',
     schemaVersion: 1,
@@ -119,4 +122,9 @@ test('published file pages retain live state while website and device-local outp
   await expect(page.locator(`[data-published-page="${failedPageId}"]`)).toHaveCount(0)
   await expect(page.locator('iframe[title="Failed page must stay inert"]')).toHaveCount(0)
   expect(errors).toEqual([])
+  await frame.getByRole('button', { name: 'Trigger runtime failure' }).click()
+  await expect(page.getByText(/Late artifact runtime failure/)).toBeVisible()
+  await expect(frameElement).toBeVisible()
+  await expect(frame.getByRole('textbox', { name: 'Unsaved draft' })).toHaveValue('Keep this draft through expansion')
+  expect(errors).toEqual(['Late artifact runtime failure'])
 })

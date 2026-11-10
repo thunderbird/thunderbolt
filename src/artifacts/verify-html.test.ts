@@ -53,4 +53,32 @@ describe('runIframeVerification', () => {
     expect(result.errors[0]).toContain('Timed out')
     expect(document.querySelectorAll('iframe').length).toBe(before)
   })
+
+  it.each(['before ready', 'during ready grace'] as const)(
+    'rejects navigation %s instead of verifying its replacement',
+    async (timing) => {
+      const promise = runIframeVerification(validHtml)
+      const iframe = document.querySelector('iframe')!
+      Object.defineProperty(iframe, 'contentWindow', { value: {} as Window })
+      const nonce = /var NONCE = "([^"]+)"/.exec(iframe.srcdoc)?.[1]
+      const ports = new MessageChannel()
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          source: iframe.contentWindow,
+          data: { artifactNonce: nonce, type: 'artifact-connect' },
+          ports: [ports.port1],
+        }),
+      )
+      if (timing === 'during ready grace') {
+        ports.port1.onmessage?.(new MessageEvent('message', { data: { artifactNonce: nonce, type: 'artifact-ready' } }))
+      }
+      ports.port1.onmessage?.(
+        new MessageEvent('message', { data: { artifactNonce: nonce, type: 'artifact-disconnect' } }),
+      )
+      expect(await promise).toEqual({ ok: false, errors: ['The page navigated away during verification.'] })
+      expect(iframe.isConnected).toBe(false)
+      expect(ports.port1.onmessage).toBeNull()
+      ports.port2.close()
+    },
+  )
 })

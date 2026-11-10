@@ -3,23 +3,32 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use std::{
+    collections::HashMap,
     os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
     time::Duration,
 };
 use tokio::process::Child;
 use windows::Win32::{
-    Foundation::{ERROR_NO_MORE_FILES, HANDLE},
+    Foundation::{
+        ERROR_INVALID_PARAMETER, ERROR_MORE_DATA, ERROR_NO_MORE_FILES, HANDLE, WAIT_OBJECT_0,
+        WAIT_TIMEOUT,
+    },
     System::{
         Diagnostics::ToolHelp::{
             CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
         },
         JobObjects::{
-            AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
-            JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
-            TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob,
+            JobObjectBasicProcessIdList, JobObjectExtendedLimitInformation,
+            QueryInformationJobObject, SetInformationJobObject, TerminateJobObject,
+            JOBOBJECT_BASIC_PROCESS_ID_LIST, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
         },
-        Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME},
+        Threading::{
+            OpenProcess, OpenThread, ResumeThread, TerminateProcess, WaitForSingleObject,
+            PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+            THREAD_SUSPEND_RESUME,
+        },
     },
 };
 
@@ -64,32 +73,129 @@ impl Job {
     }
 
     pub(super) async fn stop(&self) -> Result<(), String> {
+        let drained = tokio::time::timeout(Duration::from_secs(2), self.stop_members())
+            .await
+            .map_err(|_| "Timed out stopping command descendants".to_string())
+            .and_then(|result| result);
         // SAFETY: This job exclusively owns the processes created for one command.
-        unsafe { TerminateJobObject(self.handle(), 1) }.map_err(|error| error.to_string())?;
-        tokio::time::timeout(Duration::from_secs(2), async {
-            loop {
-                let mut accounting = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
-                // TerminateJobObject is asynchronous. Wait for all descendants,
-                // including ones whose root exited, before releasing ports/restarting.
-                // SAFETY: The output buffer's layout and size match the query class.
+        // Always request job-wide termination, even if a member couldn't be opened
+        // or its driver didn't finish pending I/O before the deadline.
+        let terminated =
+            unsafe { TerminateJobObject(self.handle(), 1) }.map_err(|error| error.to_string());
+        drained.and(terminated)
+    }
+
+    /// Capture identity-bound handles before terminating members. Job accounting
+    /// can reach zero before process resources (including listening ports) close.
+    async fn stop_members(&self) -> Result<(), String> {
+        let mut processes = HashMap::<u32, OwnedHandle>::new();
+        loop {
+            let before = processes.len();
+            for pid in self.member_pids()? {
+                if processes.contains_key(&pid) {
+                    continue;
+                }
+                // SAFETY: OpenProcess validates the PID; membership below protects
+                // against reuse between the job query and opening its handle.
+                let handle = match unsafe {
+                    OpenProcess(
+                        PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                        false,
+                        pid,
+                    )
+                } {
+                    Ok(handle) => handle,
+                    Err(error)
+                        if error.code()
+                            == windows::core::HRESULT::from_win32(ERROR_INVALID_PARAMETER.0) =>
+                    {
+                        continue
+                    }
+                    Err(error) => return Err(error.to_string()),
+                };
+                // SAFETY: OpenProcess transferred a unique valid handle.
+                let handle = unsafe { OwnedHandle::from_raw_handle(handle.0) };
+                let mut member = windows::core::BOOL::default();
                 unsafe {
-                    QueryInformationJobObject(
+                    IsProcessInJob(
+                        HANDLE(handle.as_raw_handle()),
                         Some(self.handle()),
-                        JobObjectBasicAccountingInformation,
-                        &mut accounting as *mut _ as _,
-                        std::mem::size_of_val(&accounting) as u32,
-                        None,
+                        &mut member,
                     )
                 }
                 .map_err(|error| error.to_string())?;
-                if accounting.ActiveProcesses == 0 {
-                    return Ok(());
+                if !member.as_bool() {
+                    continue;
                 }
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                let process = HANDLE(handle.as_raw_handle());
+                // Termination stops user code immediately, but I/O teardown is
+                // asynchronous. Keep the handle until its signaled state proves exit.
+                if let Err(error) = unsafe { TerminateProcess(process, 1) } {
+                    if unsafe { WaitForSingleObject(process, 0) } != WAIT_OBJECT_0 {
+                        return Err(error.to_string());
+                    }
+                }
+                processes.insert(pid, handle);
             }
-        })
-        .await
-        .map_err(|_| "Timed out stopping command descendants".to_string())?
+            if processes.len() == before {
+                break;
+            }
+            // A member may have spawned a child before its termination request.
+            // Re-query before job-wide termination removes the remaining PID list.
+            tokio::task::yield_now().await;
+        }
+        for process in processes.values() {
+            loop {
+                // SAFETY: Each handle is retained until this wait completes.
+                match unsafe { WaitForSingleObject(HANDLE(process.as_raw_handle()), 0) } {
+                    WAIT_OBJECT_0 => break,
+                    WAIT_TIMEOUT => tokio::time::sleep(Duration::from_millis(10)).await,
+                    _ => return Err(std::io::Error::last_os_error().to_string()),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn member_pids(&self) -> Result<Vec<u32>, String> {
+        let mut capacity = 16usize;
+        loop {
+            let bytes = std::mem::size_of::<JOBOBJECT_BASIC_PROCESS_ID_LIST>()
+                + (capacity - 1) * std::mem::size_of::<usize>();
+            // usize storage gives the variable-sized Win32 structure its required alignment.
+            let mut buffer = vec![0usize; bytes.div_ceil(std::mem::size_of::<usize>())];
+            let list = buffer
+                .as_mut_ptr()
+                .cast::<JOBOBJECT_BASIC_PROCESS_ID_LIST>();
+            // SAFETY: The aligned buffer includes the header and `capacity` IDs.
+            let result = unsafe {
+                QueryInformationJobObject(
+                    Some(self.handle()),
+                    JobObjectBasicProcessIdList,
+                    list.cast(),
+                    bytes as u32,
+                    None,
+                )
+            };
+            match result {
+                Ok(()) => {
+                    // SAFETY: A successful query initialized this many IDs inside the buffer.
+                    let ids = unsafe {
+                        std::slice::from_raw_parts(
+                            std::ptr::addr_of!((*list).ProcessIdList).cast::<usize>(),
+                            (*list).NumberOfProcessIdsInList as usize,
+                        )
+                    };
+                    return Ok(ids.iter().map(|pid| *pid as u32).collect());
+                }
+                Err(error)
+                    if error.code() == windows::core::HRESULT::from_win32(ERROR_MORE_DATA.0) =>
+                {
+                    capacity *= 2
+                }
+                Err(error) => return Err(error.to_string()),
+            }
+        }
     }
 }
 

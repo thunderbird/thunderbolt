@@ -5967,6 +5967,10 @@ msgstr ""
 msgid "The model verification request failed. Please try again."
 msgstr ""
 
+#: src/artifacts/verify-html.ts
+msgid "The page navigated away during verification."
+msgstr ""
+
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The provider rejected the model request (HTTP {status}). Check model access and your subscription."
 msgstr ""

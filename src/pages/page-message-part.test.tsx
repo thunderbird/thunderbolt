@@ -85,6 +85,19 @@ describe('PageMessagePart', () => {
     expect(usePageStore.getState().sessions[0]?.presentation).toBe('sidebar')
   })
 
+  it('shows and clears late runtime errors from the shared inline HTML session', () => {
+    const id = usePageStore.getState().ensure(htmlPage, { presentation: 'inline' })
+    const { getAllByText, queryByText, container } = render(
+      <PageMessagePart part={published(htmlPage)} messageId="message-1" />,
+    )
+    act(() => usePageStore.getState().update(id, { error: 'Late runtime failure' }))
+    expect(getAllByText('Late runtime failure')).toHaveLength(1)
+    expect(container.querySelector('[data-page-slot]')?.getAttribute('data-page-slot')).toBe(id)
+    act(() => usePageStore.getState().update(id, { error: null }))
+    expect(queryByText('Late runtime failure')).toBeNull()
+    expect(container.querySelector('[data-page-slot]')?.getAttribute('data-page-slot')).toBe(id)
+  })
+
   it('never auto-launches a restored local recipe on its owning desktop, even when scrolled into view', async () => {
     const native = spyOn(platform, 'isTauriDesktop').mockReturnValue(true)
     const previous = useLocalAppStore.getState().apps

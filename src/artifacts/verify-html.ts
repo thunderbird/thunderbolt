@@ -2,8 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { formatHarnessError, parseHarnessMessage, wrapArtifactHtml } from './harness'
+import { formatHarnessError, wrapArtifactHtml } from './harness'
+import { bindArtifactChannel } from './channel'
 import { type StaticIssue, staticCheckHtml } from './static-check'
+import { i18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 
 /** Outcome of verifying an agent-authored HTML artifact. `errors` is empty when `ok`. */
 export type ArtifactVerifyResult = {
@@ -35,7 +38,7 @@ const formatStaticIssue = (issue: StaticIssue): string => {
 
 /**
  * Runtime-verify by mounting the wrapped HTML in a hidden, sandboxed iframe and
- * listening for the harness's `ready`/`error` postMessages. Resolves `ok: false`
+ * listening for the harness's `ready`/`error` channel messages. Resolves `ok: false`
  * on the first reported error, on a failed load, or on a hard timeout (a hang or
  * a page that never finishes loading). Browser-only — requires a real `document`.
  */
@@ -53,7 +56,7 @@ export const runIframeVerification: RuntimeVerifier = (html, opts) =>
     let graceTimer: ReturnType<typeof setTimeout> | undefined
 
     const cleanup = () => {
-      window.removeEventListener('message', onMessage)
+      channel.close()
       clearTimeout(hardTimer)
       clearTimeout(graceTimer)
       iframe.remove()
@@ -67,27 +70,28 @@ export const runIframeVerification: RuntimeVerifier = (html, opts) =>
       resolve(result)
     }
 
-    const onMessage = (event: MessageEvent) => {
-      const data = parseHarnessMessage(event, iframe.contentWindow, nonce)
-      if (!data) {
-        return
-      }
-      if (data.type === 'artifact-error') {
-        finish({ ok: false, errors: [formatHarnessError(data)] })
-        return
-      }
-      if (data.type === 'artifact-ready') {
-        // Handle only the FIRST ready: cancel the hard timeout and open a short grace window
-        // for a late async error. Ignoring repeat 'ready' messages avoids stacking grace timers
-        // and — since the hard timer is now gone — stops a page deferring completion forever by
-        // re-sending 'ready'.
-        if (graceTimer === undefined) {
-          clearTimeout(hardTimer)
-          graceTimer = setTimeout(() => finish({ ok: true, errors: [] }), readyGraceMs)
+    const channel = bindArtifactChannel({
+      getFrameWindow: () => iframe.contentWindow,
+      nonce,
+      onClose: () => finish({ ok: false, errors: [i18n._(msg`The page navigated away during verification.`)] }),
+      onMessage: (data) => {
+        if (data.type === 'artifact-error') {
+          finish({ ok: false, errors: [formatHarnessError(data)] })
+          return
         }
-      }
-      // artifact-height messages are ignored — verification only cares about ready/error.
-    }
+        if (data.type === 'artifact-ready') {
+          // Handle only the FIRST ready: cancel the hard timeout and open a short grace window
+          // for a late async error. Ignoring repeat 'ready' messages avoids stacking grace timers
+          // and — since the hard timer is now gone — stops a page deferring completion forever by
+          // re-sending 'ready'.
+          if (graceTimer === undefined) {
+            clearTimeout(hardTimer)
+            graceTimer = setTimeout(() => finish({ ok: true, errors: [] }), readyGraceMs)
+          }
+        }
+        // artifact-height messages are ignored — verification only cares about ready/error.
+      },
+    })
 
     // NOTE: this only guards ASYNC hangs / never-renders. A sandboxed srcdoc iframe shares the
     // parent's main thread, so a SYNCHRONOUS infinite loop (`while (true) {}`) blocks the event
@@ -102,7 +106,6 @@ export const runIframeVerification: RuntimeVerifier = (html, opts) =>
       timeoutMs,
     )
 
-    window.addEventListener('message', onMessage)
     iframe.srcdoc = wrapArtifactHtml(html, nonce)
     document.body.appendChild(iframe)
   })

@@ -2,17 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  artifactRequest,
-  formatHarnessError,
-  parseHarnessMessage,
-  wrapArtifactHtml,
-  wrapArtifactPreviewHtml,
-} from '@/artifacts/harness'
+import { artifactRequest, formatHarnessError, wrapArtifactHtml, wrapArtifactPreviewHtml } from '@/artifacts/harness'
+import { bindArtifactChannel } from '@/artifacts/channel'
 import { createPendingRequests } from '@/components/embedded'
 
 import { cn } from '@/lib/utils'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 /** Height used before the page reports its own, and the floor/ceiling for the reported height. */
 const defaultAutoHeightPx = 400
@@ -104,54 +99,45 @@ export const SandboxedHtmlFrame = ({
   pendingRef.current ??= createPendingRequests()
   const pending = pendingRef.current
 
-  useEffect(() => {
+  // The first srcdoc script bootstraps its channel before load. Subscribe during
+  // commit, before the browser can run that script, rather than in a passive effect.
+  useLayoutEffect(() => {
     let current = true
     let ready = false
-    const handleMessage = (event: MessageEvent) => {
-      const data = parseHarnessMessage(event, iframeRef.current?.contentWindow ?? null, nonce)
-      if (!data) {
-        return
-      }
-      if (data.type === 'artifact-ready' && !ready) {
-        ready = true
-        requestCallback.current?.(async (method, params) => {
-          if (!current) {
-            throw new Error('The page document changed. Observe it again.')
-          }
-          const frame = iframeRef.current?.contentWindow
-          if (!frame) {
-            throw new Error('Page closed')
-          }
-          return pending.issue(
-            // Only this opaque-origin frame receives the request. Replies require its exact WindowProxy and document nonce.
-            // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- sandbox without allow-same-origin has no targetable origin
-            (id) => frame.postMessage(artifactRequest(nonce, id, method, params), '*'),
-            5000,
-          )
-        })
-        onReadyRef.current?.()
-      }
-      if (data.type === 'artifact-error') {
-        onErrorRef.current?.(formatHarnessError(data))
-      }
-      if (data.type === 'artifact-reply') {
-        pending.settle(data.id, data.result)
-      }
-      if (data.type === 'artifact-height' && Number.isFinite(data.height)) {
-        const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))
-        heightCallback.current?.(next)
-        // Ignore sub-pixel jitter so a self-measuring page can't oscillate.
-        setContentHeight((prev) => (prev !== null && Math.abs(prev - next) <= 1 ? prev : next))
-      }
-    }
-    window.addEventListener('message', handleMessage)
-    return () => {
-      current = false
-      requestCallback.current?.(null)
-      window.removeEventListener('message', handleMessage)
-      // Revoke requests on reload/unmount before another document can answer.
-      pending.abortAll()
-    }
+    const channel = bindArtifactChannel({
+      getFrameWindow: () => iframeRef.current?.contentWindow ?? null,
+      nonce,
+      onMessage: (data) => {
+        if (data.type === 'artifact-ready' && !ready) {
+          ready = true
+          requestCallback.current?.(async (method, params) => {
+            if (!current) {
+              throw new Error('The page document changed. Observe it again.')
+            }
+            return pending.issue((id) => channel.send(artifactRequest(nonce, id, method, params)), 5000)
+          })
+          onReadyRef.current?.()
+        }
+        if (data.type === 'artifact-error') {
+          onErrorRef.current?.(formatHarnessError(data))
+        }
+        if (data.type === 'artifact-reply') {
+          pending.settle(data.id, data.result)
+        }
+        if (data.type === 'artifact-height' && Number.isFinite(data.height)) {
+          const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))
+          heightCallback.current?.(next)
+          // Ignore sub-pixel jitter so a self-measuring page can't oscillate.
+          setContentHeight((prev) => (prev !== null && Math.abs(prev - next) <= 1 ? prev : next))
+        }
+      },
+      onClose: () => {
+        current = false
+        requestCallback.current?.(null)
+        pending.abortAll()
+      },
+    })
+    return channel.close
   }, [nonce, srcDoc, pending])
 
   return (

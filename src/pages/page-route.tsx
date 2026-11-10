@@ -3,14 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffectEvent, useLayoutEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { PagePanel } from './page-panel'
 import { PageWindowNavigation } from './page-window-navigation'
 import { pageController } from './page-controller'
-import { pageReturnPath } from './page-path'
-import { usePageStore } from './page-store'
+import { pagePath, pageReturnPath } from './page-path'
+import { usePageStore, type PageSession } from './page-store'
 import { useSavedPages } from './use-saved-pages'
 import { restoreSavedPage } from './restore-saved-page'
 
@@ -45,16 +45,32 @@ const PageRoute = () => {
       void open()
     }
   })
-  useEffect(() => {
+  const showExpanded = useEffectEvent((next: PageSession | null) => {
+    if (!next) {
+      navigate(pageReturnPath(location.state), { replace: true })
+      return
+    }
+    usePageStore.getState().present(next.id, 'expanded')
+    navigate(pagePath(next.page.id), { replace: true, state: location.state })
+  })
+  useLayoutEffect(() => {
     const abort = new AbortController()
     activate(abort.signal)
-    return () => abort.abort()
+    const unregister = pageController.registerExpanded((next) => {
+      // An in-flight saved-page restore belongs to the route being left, not the selected tab.
+      abort.abort()
+      showExpanded(next)
+    })
+    return () => {
+      abort.abort()
+      unregister()
+    }
   }, [session?.id, saved?.id, saved?.updatedAt])
   const failed = failedPageId === pageId
   const pending = loading || Boolean(saved && !session && !failed)
   const restore = () => {
     if (session && usePageStore.getState().sessions.some((item) => item.id === session.id)) {
-      pageController.select(session.id)
+      pageController.restoreToSidebar(session.id)
     }
     navigate(pageReturnPath(location.state))
   }

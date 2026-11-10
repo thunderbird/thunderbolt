@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Message the in-iframe harness posts to the parent window. The `artifactNonce`
+ * Message the in-iframe harness posts through its document-bound port. The `artifactNonce`
  * correlates the message with the render that produced it, so a page cannot
  * spoof another render's result.
  */
@@ -13,6 +13,7 @@ import { clampedString } from '@shared/lib/clamped-string'
 
 export type HarnessMessage =
   | { artifactNonce: string; type: 'artifact-ready' }
+  | { artifactNonce: string; type: 'artifact-disconnect' }
   | { artifactNonce: string; type: 'artifact-height'; height: number }
   | {
       artifactNonce: string
@@ -33,12 +34,12 @@ export type HarnessRequest = {
 
 /**
  * Content-Security-Policy applied to every rendered artifact via an injected
- * `<meta http-equiv>` tag. Artifacts are fully self-contained and OFFLINE: inline
+ * `<meta http-equiv>` tag. Artifacts render from self-contained content: inline
  * JS/CSS run (and may `eval`), and images/fonts/media may use `data:`/`blob:` URIs,
- * but all network access is denied — `connect-src` falls back to `default-src
- * 'none'`, so no `fetch`/XHR/WebSocket, and no external scripts, styles, fonts, or
+ * but network subresources and scripted requests are denied — `connect-src`
+ * falls back to `default-src 'none'`, so no `fetch`/XHR/WebSocket or external scripts, styles, fonts, or
  * images can load. Combined with the iframe `sandbox` (never `allow-same-origin`),
- * an artifact can neither reach the parent origin nor exfiltrate over the network.
+ * an artifact cannot reach the parent origin or load network subresources.
  *
  * Residual limitation (no clean CSP/sandbox token closes it): a script can still
  * navigate its OWN frame (`location = ...`, `<meta http-equiv=refresh>`), which
@@ -73,6 +74,7 @@ const harnessErrorLabels: Record<Extract<HarnessMessage, { type: 'artifact-error
 /** Page scripts can overwrite their harness, so the host bounds all reported diagnostic text. */
 const harnessMessageSchema = z.discriminatedUnion('type', [
   z.object({ artifactNonce: z.string(), type: z.literal('artifact-ready') }),
+  z.object({ artifactNonce: z.string(), type: z.literal('artifact-disconnect') }),
   z.object({ artifactNonce: z.string(), type: z.literal('artifact-height'), height: z.number().finite() }),
   z.object({
     artifactNonce: z.string(),
@@ -88,16 +90,9 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
   }),
 ])
 
-/** Accept messages only from this exact frame and document; validate replies again at their method's caller. */
-export const parseHarnessMessage = (
-  event: MessageEvent,
-  contentWindow: Window | null,
-  nonce: string,
-): HarnessMessage | null => {
-  if (event.source !== contentWindow) {
-    return null
-  }
-  const parsed = harnessMessageSchema.safeParse(event.data)
+/** Validate messages received through the bound document port; callers validate each method's result. */
+export const parseHarnessMessage = (data: unknown, nonce: string): HarnessMessage | null => {
+  const parsed = harnessMessageSchema.safeParse(data)
   if (!parsed.success || parsed.data.artifactNonce !== nonce) {
     return null
   }
@@ -120,11 +115,12 @@ export const parseHarnessMessage = (
 const harnessScript = (nonce: string): string => `<script>
 (function () {
   var NONCE = ${JSON.stringify(nonce)};
+  var channel = new MessageChannel();
   // Bound diagnostics both here and in the host-side schema.
   var MAX_DETAIL = 2000;
   function send(msg) {
     msg.artifactNonce = NONCE;
-    try { parent.postMessage(msg, '*'); } catch (e) {}
+    try { channel.port1.postMessage(msg); } catch (e) {}
   }
   window.addEventListener('error', function (e) {
     var t = e.target;
@@ -160,9 +156,9 @@ const harnessScript = (nonce: string): string => `<script>
   // Host-to-guest requests. Handlers are registered by the artifact channel
   // module on window.__artifactHandlers; an unknown method replies null rather
   // than going silent, so the host resolves instead of waiting out its timeout.
-  window.addEventListener('message', function (e) {
+  channel.port1.onmessage = function (e) {
     var d = e.data;
-    if (e.source !== window.parent || !d || d.artifactNonce !== NONCE || d.type !== 'artifact-request') { return; }
+    if (!d || d.artifactNonce !== NONCE || d.type !== 'artifact-request') { return; }
     var handlers = window.__artifactHandlers || {};
     var handler = handlers[d.method];
     var reply = function (result) { send({ type: 'artifact-reply', id: d.id, result: result }); };
@@ -178,7 +174,18 @@ const harnessScript = (nonce: string): string => `<script>
     try {
       Promise.resolve(handler(d.params)).then(reply, replyFailed);
     } catch (err) { replyFailed(err); }
-  });
+  };
+
+  // A port belongs to this document, unlike WindowProxy. Close on pagehide too:
+  // a BFCache restoration must never replay input queued before navigation.
+  window.addEventListener('pagehide', function () {
+    send({ type: 'artifact-disconnect' });
+    channel.port1.close();
+  }, { once: true });
+
+  // Bootstrap before any artifact script runs. No host request is ever sent via
+  // WindowProxy, so a replacement document cannot receive input or a new port.
+  parent.postMessage({ artifactNonce: NONCE, type: 'artifact-connect' }, '*', [channel.port2]);
 
   window.addEventListener('load', function () {
     setTimeout(function () {
@@ -195,10 +202,8 @@ const harnessScript = (nonce: string): string => `<script>
 /**
  * Build the envelope for a host→guest request.
  *
- * Targeted with `'*'` by the caller because the frame is sandboxed without
- * `allow-same-origin`: its origin is opaque, so there is nothing to pin. The
- * message still reaches only that frame, and the nonce proves which render
- * answered.
+ * Sent only through the channel established by the original document. Never
+ * send requests to the frame's WindowProxy, which survives navigation.
  */
 export const artifactRequest = (nonce: string, id: number, method: string, params: unknown): HarnessRequest => ({
   artifactNonce: nonce,

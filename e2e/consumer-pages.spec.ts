@@ -140,10 +140,66 @@ test('the same artifact keeps DOM state through inline, sidebar and expanded pre
   await frame.getByRole('button', { name: 'Increment', exact: true }).click()
   await expect(frame.locator('#count')).toHaveText('3')
 
+  const expandedUrl = page.url()
+  const opened = await page.evaluate(async (observation) => {
+    const modulePath = '/src/pages/page-controller.ts'
+    const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+    await pageController.selectForAgent(observation.sessionId)
+    const retained = await pageController.snapshot(observation.sessionId)
+    const pageId = crypto.randomUUID()
+    const sessionId = await pageController.openForAgent({
+      id: pageId,
+      title: 'Agent-opened page',
+      source: { kind: 'html', html: '<h1>Opened while expanded</h1>' },
+    })
+    await pageController.snapshot(sessionId)
+    return { pageId, sessionId, documentId: retained.documentId }
+  }, observation)
+  expect(opened.documentId).toBe(observation.documentId)
+  await expect(page).toHaveURL(`/pages/${opened.pageId}`)
+  await expect(
+    page.frameLocator('[data-page-host] iframe[title="Agent-opened page"]').getByRole('heading', {
+      name: 'Opened while expanded',
+    }),
+  ).toBeVisible()
+  const selected = await page.evaluate(async (observation) => {
+    const modulePath = '/src/pages/page-controller.ts'
+    const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+    await pageController.selectForAgent(observation.sessionId)
+    const snapshot = await pageController.snapshot(observation.sessionId)
+    return snapshot.documentId
+  }, observation)
+  expect(selected).toBe(observation.documentId)
+  await expect(page).toHaveURL(expandedUrl)
+  await expect(iframe).toBeVisible()
+  await expect(iframe).toHaveAttribute('data-retained-frame', marker)
+  await expect(frame.locator('#count')).toHaveText('3')
+  await page.evaluate(async (sessionId) => {
+    const modulePath = '/src/pages/page-controller.ts'
+    const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+    await pageController.selectForAgent(sessionId)
+    await pageController.snapshot(sessionId)
+  }, opened.sessionId)
+  await expect(page).toHaveURL(`/pages/${opened.pageId}`)
+  await page.evaluate(async (sessionId) => {
+    const modulePath = '/src/pages/page-controller.ts'
+    const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+    await pageController.closeForAgent(sessionId)
+  }, opened.sessionId)
+  await expect(page).toHaveURL(expandedUrl)
+  await expect(iframe).toBeVisible()
+  await expect(frame.locator('#count')).toHaveText('3')
+
   await page.getByRole('tab', { name: 'Stateful counter', exact: true }).click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Pin as app', exact: true }).click()
   await expect(page.locator('[data-sidebar="menu-button"]').filter({ hasText: 'Stateful counter' })).toBeVisible()
   await page.getByRole('button', { name: 'Restore to sidebar', exact: true }).click()
+  await expect(page).toHaveURL(`/chats/${chatId}`)
+  await page.evaluate(async (sessionId) => {
+    const modulePath = '/src/pages/page-controller.ts'
+    const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+    await pageController.selectForAgent(sessionId)
+  }, observation.sessionId)
   await expect(page).toHaveURL(`/chats/${chatId}`)
   await expect(frame.getByRole('textbox', { name: 'Keep my text' })).toHaveValue('Preserve this unsaved text')
   await expect(frame.locator('#count')).toHaveText('3')
@@ -165,6 +221,16 @@ test('the same artifact keeps DOM state through inline, sidebar and expanded pre
   await expect(iframe).toBeVisible()
   await expect(frame.locator('#count')).toHaveText('0')
   await expect(page.getByRole('button', { name: 'Show browser controls' })).toBeVisible()
+  // Closing the only expanded tab must exit its route, not restore the saved pin into a new session.
+  await page.evaluate(async () => {
+    const modulePath = '/src/pages/page-controller.ts'
+    const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+    const current = pageController.list().find((session) => session.title === 'Stateful counter')!
+    await pageController.closeForAgent(current.sessionId)
+  })
+  await expect(page).toHaveURL(`/chats/${chatId}`)
+  await expect(page.locator('[data-page-panel]')).toHaveCount(0)
+  await expect(page.locator('[data-sidebar="menu-button"]').filter({ hasText: 'Stateful counter' })).toBeVisible()
   expect(errors).toEqual([])
 })
 
@@ -429,6 +495,62 @@ test('project creation fixes its environment while standalone chats keep the env
   await expect(page.getByText('Cloud', { exact: true })).toBeVisible()
 })
 
+test('deleting a project frees open and cached chats to use standalone environments', async ({ page }) => {
+  const email = await loginViaEmailCode(page)
+  const projectId = crypto.randomUUID()
+  const chatIds = [crypto.randomUUID(), crypto.randomUUID()]
+  const names = ['Previously opened project chat', 'Currently open project chat']
+  await importBackup(page, {
+    format: 'thunderbolt-export',
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    user: { id: 'delete-project-fixture', email },
+    tables: {
+      projects: [{ id: projectId, name: 'Delete this workspace' }],
+      chat_threads: chatIds.map((id, index) => ({ id, title: names[index], projectId })),
+      settings: [{ key: `project-execution:${projectId}`, value: JSON.stringify({ version: 1, location: 'sandbox' }) }],
+    },
+  })
+  await page.goto(`/chats/${chatIds[0]}`)
+  await page.locator('textarea').waitFor()
+  const chatRow = (name: string) => page.locator('[data-sidebar="menu-button"]').filter({ hasText: name })
+  await chatRow(names[1]).click()
+  await expect(page).toHaveURL(`/chats/${chatIds[1]}`)
+  await page.getByRole('button', { name: 'Agent location', exact: true }).click()
+  await expect(page.getByText('Set when this project was created', { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page
+    .locator('#sidebar-projects')
+    .getByRole('button', { name: 'Delete this workspace', exact: true })
+    .click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click()
+  await page
+    .getByRole('alertdialog', { name: 'Delete this project?' })
+    .getByRole('button', { name: 'Delete project', exact: true })
+    .click()
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+
+  // Navigation reuses the existing chat instances; no reload may hide a stale session.
+  for (const [index, name] of names.entries()) {
+    await chatRow(name).click()
+    await expect(page).toHaveURL(`/chats/${chatIds[index]}`)
+    await page.getByRole('button', { name: 'Agent location', exact: true }).click()
+    await expect(page.getByText('Set when this project was created', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('Cloud', { exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+  }
+  expect(
+    await page.evaluate(async (ids) => {
+      const modulePath = '/src/chats/chat-store.ts'
+      const { useChatStore } = (await import(modulePath)) as typeof import('../src/chats/chat-store')
+      return ids.map((id) => {
+        const session = useChatStore.getState().sessions.get(id)!
+        return { projectId: session.projectId, savedProjectId: session.chatThread?.projectId }
+      })
+    }, chatIds),
+  ).toEqual(chatIds.map(() => ({ projectId: null, savedProjectId: null })))
+})
+
 test('historical mini-app chats remain ordinary chats without the retired app registry', async ({ page }) => {
   const email = await loginViaEmailCode(page)
   const chatId = crypto.randomUUID()
@@ -463,6 +585,9 @@ test('historical mini-app chats remain ordinary chats without the retired app re
   await expect(page).toHaveURL(new RegExp(`/chats/${chatId}$`))
   await expect(page.getByText('Open app', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'New Chat', exact: true }).first().click()
+  await expect(page.getByText('Keep the saved conversation.', { exact: true })).toBeHidden()
+  await expect(page.locator('textarea')).toBeVisible()
+  await expect(page.locator('textarea')).toBeFocused()
   await page.getByText('Historical app conversation', { exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/chats/${chatId}$`))
   expect(registryRequests).toEqual([])

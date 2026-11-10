@@ -87,10 +87,13 @@ describe('page element selection', () => {
       const { result, session, rerender, unmount } = setup(() => reply.promise)
       await act(async () => result.current.toggle())
       act(() => {
-        if (change === 'chat') useChatStore.setState({ currentSessionId: 'chat-two' })
-        else if (change === 'navigation')
+        if (change === 'chat') {
+          useChatStore.setState({ currentSessionId: 'chat-two' })
+        } else if (change === 'navigation') {
           rerender({ session: { ...session, browser: { ...session.browser, url: 'https://next.example' } } })
-        else unmount()
+        } else {
+          unmount()
+        }
       })
       await act(async () => {
         reply.resolve(selection)

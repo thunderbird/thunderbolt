@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { createBrowserController } from '@/browser/browser-controller'
 import { pageController, type PageAdapter } from './page-controller'
-import { usePageStore } from './page-store'
+import { usePageStore, type PageSession } from './page-store'
 import { createPageTools, pageSnapshotModelOutput } from './page-tools'
 
 const observation = {
@@ -51,6 +51,73 @@ const setup = (adapter: Partial<PageAdapter> = {}) => {
   return { id, act, activity }
 }
 describe('unified page lifecycle and capabilities', () => {
+  it('keeps tool selection, opening and observations in the mounted expanded route', async () => {
+    const first = setup()
+    const showExpanded = mock((session: PageSession | null) => {
+      if (session) {
+        usePageStore.getState().present(session.id, 'expanded')
+      }
+    })
+    const reveal = mock(() => {})
+    disposals.push(pageController.registerExpanded(showExpanded), pageController.registerReveal(reveal))
+    await pageController.selectForAgent(first.id)
+    expect(usePageStore.getState().sessions[0].presentation).toBe('expanded')
+    const second = await pageController.openForAgent({
+      id: 'opened-expanded',
+      title: 'New page',
+      source: { kind: 'html', html: '<p>Next</p>' },
+    })
+    expect(usePageStore.getState().activeId).toBe(second)
+    expect(usePageStore.getState().sessions.find((session) => session.id === second)?.presentation).toBe('expanded')
+    await pageController.snapshot(first.id)
+    expect(usePageStore.getState().activeId).toBe(first.id)
+    expect(showExpanded.mock.calls.map(([session]) => session?.id)).toEqual([first.id, second, first.id])
+    expect(reveal).not.toHaveBeenCalled()
+  })
+
+  it('restores explicitly to the sidebar and releases expanded routing when its owner unmounts', () => {
+    const { id } = setup()
+    const oldPresenter = pageController.registerExpanded(mock(() => {}))
+    const current = mock(() => usePageStore.getState().present(id, 'expanded'))
+    const unregister = pageController.registerExpanded(current)
+    disposals.push(unregister)
+    const reveal = mock(() => {})
+    disposals.push(pageController.registerReveal(reveal))
+    oldPresenter()
+    pageController.select(id)
+    expect(current).toHaveBeenCalledTimes(1)
+    expect(usePageStore.getState().sessions[0].presentation).toBe('expanded')
+    pageController.restoreToSidebar(id)
+    expect(usePageStore.getState().sessions[0].presentation).toBe('sidebar')
+    expect(current).toHaveBeenCalledTimes(1)
+    expect(reveal).toHaveBeenCalledTimes(1)
+    unregister()
+    pageController.select(id)
+    expect(current).toHaveBeenCalledTimes(1)
+    expect(reveal).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves an inactive close alone, selects a remaining expanded tab, and exits when the last closes', async () => {
+    const first = setup()
+    const second = setup()
+    const inactive = setup()
+    const showExpanded = mock((session: PageSession | null) => {
+      if (session) {
+        usePageStore.getState().present(session.id, 'expanded')
+      }
+    })
+    disposals.push(pageController.registerExpanded(showExpanded))
+    await pageController.selectForAgent(first.id)
+    await pageController.closeForAgent(inactive.id)
+    expect(showExpanded.mock.calls.map(([session]) => session?.id)).toEqual([first.id])
+    await pageController.closeForAgent(first.id)
+    expect(showExpanded.mock.calls.at(-1)?.[0]?.id).toBe(second.id)
+    expect(usePageStore.getState().sessions[0].presentation).toBe('expanded')
+    await pageController.closeForAgent(second.id)
+    expect(showExpanded.mock.calls.at(-1)?.[0]).toBeNull()
+    expect(usePageStore.getState().sessions).toEqual([])
+  })
+
   it('keeps one document adapter across inline, sidebar, expanded presentations', async () => {
     const { id } = setup()
     const first = await pageController.adapter(id)

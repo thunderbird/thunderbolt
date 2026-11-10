@@ -245,6 +245,24 @@ export const useHydrateChatStore = ({
       if (signal?.aborted) {
         return
       }
+      const membershipRefresh = await withChatThreadWrite(id, async () => {
+        const chatThread = isNew ? null : await getChatThread(db, id)
+        if (signal?.aborted || !chatThread) {
+          return
+        }
+        const currentSession = useChatStore.getState().sessions.get(id)!
+        if (chatThread.projectId === currentSession.projectId) {
+          return
+        }
+        useChatStore.getState().updateSession(id, { chatThread, projectId: chatThread.projectId })
+        // Stop aborts synchronously, but saves through this same queue. Await
+        // that persistence after releasing the membership write lock.
+        return { stopped: currentSession.chatInstance.stop() }
+      })
+      await membershipRefresh?.stopped
+      if (signal?.aborted) {
+        return
+      }
 
       setCurrentSessionId(id)
       // Store the provider's getter (not a snapshot) so each send reads the

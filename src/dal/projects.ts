@@ -8,11 +8,13 @@
  *
  */
 
-import { and, asc, desc, eq, exists, getTableColumns, inArray, isNull, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, getTableColumns, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
+import { useEffect } from 'react'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
+import { useChatStore } from '@/chats/chat-store'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatThreadsTable, projectsTable, settingsTable } from '../db/tables'
 import { defaultAgentExecution, useAgentExecutionStore, type AgentExecution } from '@/agent-execution/store'
@@ -192,9 +194,19 @@ const softDeleteProjects = async (db: AnyDrizzleDatabase, target: SQL): Promise<
     }
     return new Set(projects.map(({ id }) => id))
   })
-  useAgentExecutionStore.setState((state) => ({
-    byProject: Object.fromEntries(Object.entries(state.byProject).filter(([id]) => !removed.has(id))),
-  }))
+  await detachDeletedProjects(removed)
+}
+
+/** Revoke local bindings and stop cached turns only after an authoritative deletion. */
+const detachDeletedProjects = async (removed: ReadonlySet<string>): Promise<void> => {
+  const { byProject } = useAgentExecutionStore.getState()
+  if (Object.keys(byProject).some((id) => removed.has(id))) {
+    // Persist middleware writes even when a setter returns its old state.
+    useAgentExecutionStore.setState({
+      byProject: Object.fromEntries(Object.entries(byProject).filter(([id]) => !removed.has(id))),
+    })
+  }
+  await useChatStore.getState().orphanProjectSessions(removed)
 }
 
 /** Remove one project while keeping its chats as ordinary chats. */
@@ -242,6 +254,28 @@ export const setChatThreadProject = async (
 /** Live projects and readiness, so chats stay visible while their project membership loads. */
 export const useProjectsState = () => {
   const db = useDatabase()
+  const { data: deletedProjects } = useQuery({
+    queryKey: ['deletedProjects'],
+    query: toCompilableQuery(
+      db.select({ id: projectsTable.id }).from(projectsTable).where(isNotNull(projectsTable.deletedAt)),
+    ),
+  })
+  useEffect(() => {
+    if (!deletedProjects?.length) {
+      return
+    }
+    const removed = new Set(deletedProjects.map(({ id }) => id))
+    const synchronize = () => {
+      void detachDeletedProjects(removed).catch((error) =>
+        console.error('[projects] Could not stop deleted project chats', error),
+      )
+    }
+    // Also catch a chat hydrating after its project's tombstone arrived. Missing
+    // rows during partial sync never imply deletion; only explicit tombstones do.
+    const unsubscribe = useChatStore.subscribe(synchronize)
+    synchronize()
+    return unsubscribe
+  }, [deletedProjects])
   const { data = [], isLoading } = useQuery({
     queryKey: ['projects'],
     query: toCompilableQuery(getAllProjectsQuery(db)),

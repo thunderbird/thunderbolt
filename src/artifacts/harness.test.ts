@@ -79,30 +79,25 @@ describe('formatHarnessError', () => {
 })
 
 describe('parseHarnessMessage', () => {
-  const win = {} as Window
   const nonce = 'nonce-1'
   const ready = { artifactNonce: 'nonce-1', type: 'artifact-ready' as const }
 
-  it('accepts a message from the matching window with the matching nonce', () => {
-    expect(parseHarnessMessage({ source: win, data: ready } as MessageEvent, win, nonce)).toEqual(ready)
-  })
-
-  it('rejects a message from a different window (spoofing guard)', () => {
-    expect(parseHarnessMessage({ source: {} as Window, data: ready } as MessageEvent, win, nonce)).toBeNull()
+  it('accepts a message with the matching nonce', () => {
+    expect(parseHarnessMessage(ready, nonce)).toEqual(ready)
   })
 
   it('rejects a message with a mismatched nonce', () => {
     const other = { artifactNonce: 'other', type: 'artifact-ready' as const }
-    expect(parseHarnessMessage({ source: win, data: other } as MessageEvent, win, nonce)).toBeNull()
+    expect(parseHarnessMessage(other, nonce)).toBeNull()
   })
 
   it('rejects a non-harness message', () => {
-    expect(parseHarnessMessage({ source: win, data: undefined } as MessageEvent, win, nonce)).toBeNull()
+    expect(parseHarnessMessage(undefined, nonce)).toBeNull()
   })
 
   it('clamps oversized diagnostics while preserving the error', () => {
     const data = { artifactNonce: nonce, type: 'artifact-error', reason: 'exception', detail: 'x'.repeat(2_001) }
-    const parsed = parseHarnessMessage({ source: win, data } as MessageEvent, win, nonce)
+    const parsed = parseHarnessMessage(data, nonce)
     expect(parsed?.type).toBe('artifact-error')
     expect(parsed?.type === 'artifact-error' && parsed.detail).toHaveLength(2_000)
   })
@@ -112,7 +107,7 @@ describe('parseHarnessMessage', () => {
       { artifactNonce: nonce, type: 'artifact-height', height: Infinity },
       { artifactNonce: nonce, type: 'artifact-reply', id: 1.5, result: null },
     ]) {
-      expect(parseHarnessMessage({ source: win, data } as MessageEvent, win, nonce)).toBeNull()
+      expect(parseHarnessMessage(data, nonce)).toBeNull()
     }
   })
 
@@ -123,13 +118,13 @@ describe('parseHarnessMessage', () => {
       id: 4,
       result: { documentId: 'document', elements: [] },
     }
-    expect(parseHarnessMessage({ source: win, data } as MessageEvent, win, nonce)).toEqual(data)
+    expect(parseHarnessMessage(data, nonce)).toEqual(data)
   })
 
   it('rejects an unknown message type rather than passing it through', () => {
     const unknown = { artifactNonce: nonce, type: 'artifact-something-else' }
 
-    expect(parseHarnessMessage({ source: win, data: unknown } as MessageEvent, win, nonce)).toBeNull()
+    expect(parseHarnessMessage(unknown, nonce)).toBeNull()
   })
 })
 

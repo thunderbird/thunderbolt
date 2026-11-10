@@ -99,6 +99,12 @@ export const ContentViewProvider = ({
 }) => {
   const [state, setState] = useState<ContentViewState>({ type: null, data: null })
   const [previewHidden, setPreviewHidden] = useState(false)
+  const hasActivePage = usePageStore((pages) =>
+    pages.sessions.some((page) => page.id === pages.activeId && page.presentation !== 'inline'),
+  )
+  // Pages can leave the sidebar through transcript actions or agent tools, too.
+  // A preview without a live tab must not reserve space in the app layout.
+  const visibleState: ContentViewState = state.type === 'preview' && !hasActivePage ? { type: null, data: null } : state
 
   const showObjectView = useCallback(
     (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
@@ -207,14 +213,14 @@ export const ContentViewProvider = ({
   return (
     <ContentViewContext.Provider
       value={{
-        state,
+        state: visibleState,
         showObjectView,
         showPreview,
         showSideview,
         showArtifact,
         showCompactionSummary,
         close,
-        isOpen: state.type !== null,
+        isOpen: visibleState.type !== null,
         previewHidden,
         setPreviewHidden,
       }}

@@ -70,6 +70,12 @@ export const usePagePanelState = ({
       select(next.id)
     }
   }
+  const closeAllTabs = () => {
+    for (const tab of tabs) {
+      pageController.close(tab.id)
+    }
+    onClose()
+  }
   const navigation = useMutation({
     mutationFn: async (action: PageNavigation) => {
       if (!session) {
@@ -166,6 +172,7 @@ export const usePagePanelState = ({
     select,
     newTab,
     closeTab,
+    closeAllTabs,
     pinPage,
     unpin,
     runNavigation,

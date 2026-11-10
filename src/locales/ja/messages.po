@@ -1002,6 +1002,10 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 msgid "Close"
 msgstr "閉じる"
 
+#: src/pages/page-tab-strip.tsx
+msgid "Close all tabs"
+msgstr ""
+
 #: src/components/ui/header.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/pages/page-panel.tsx
@@ -1025,6 +1029,7 @@ msgid "Close reorder"
 msgstr "並べ替えを閉じる"
 
 #: src/content-view/use-browser-shortcuts.ts
+#: src/pages/page-tab-strip.tsx
 msgid "Close tab"
 msgstr ""
 
@@ -2269,6 +2274,7 @@ msgid "Expand page"
 msgstr ""
 
 #: src/components/ui/header.tsx
+#: src/pages/page-window-navigation.tsx
 msgid "Expand Sidebar"
 msgstr "サイドバーを展開"
 
@@ -2479,14 +2485,14 @@ msgstr ""
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
-#: src/components/ui/header.tsx
+#: src/components/ui/history-nav-buttons.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
 msgid "Go back"
 msgstr "戻る"
 
-#: src/components/ui/header.tsx
+#: src/components/ui/history-nav-buttons.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
@@ -5261,6 +5267,7 @@ msgstr "サイドバーの表示を切り替え"
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
+#: src/pages/page-window-navigation.tsx
 msgid "Toggle Sidebar"
 msgstr "サイドバーの表示を切り替え"
 

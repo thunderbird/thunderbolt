@@ -35,7 +35,12 @@ describe('sharedHeaderHasControls', () => {
    *  window, the only drag surface this route has. */
   it('keeps it over an app in the desktop app', () => {
     expect(sharedHeaderHasControls({ pathname: '/apps/finance-model', ...inDesktopApp })).toBe(true)
-    expect(sharedHeaderHasControls({ pathname: '/pages/html-one', ...inDesktopApp })).toBe(true)
+  })
+
+  it('lets expanded pages own their header on every platform', () => {
+    for (const platform of [onWeb, inDesktopApp, { isMobile: true, isDesktopApp: false }]) {
+      expect(sharedHeaderHasControls({ pathname: '/pages/html-one', ...platform })).toBe(false)
+    }
   })
 
   /** The mobile header is a different layout and always has the sidebar

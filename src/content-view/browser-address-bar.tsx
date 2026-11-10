@@ -4,20 +4,21 @@
 
 import { useLingui } from '@lingui/react/macro'
 import { ArrowRight, Globe } from 'lucide-react'
-import { useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { Input } from '@/components/ui/input'
 import { BrowserToolbarButton } from './browser-toolbar-button'
 import { resolveBrowserInput } from './browser-url'
 
 type BrowserAddressBarProps = {
   url: string
+  navigation?: ReactNode
   inputRef: RefObject<HTMLInputElement | null>
   disabled: boolean
   onNavigate: (url: string) => Promise<boolean>
 }
 
 /** Keep an unfinished address edit intact while the page redirects or updates. */
-export const BrowserAddressBar = ({ url, inputRef, disabled, onNavigate }: BrowserAddressBarProps) => {
+export const BrowserAddressBar = ({ url, inputRef, disabled, onNavigate, navigation }: BrowserAddressBarProps) => {
   const { t } = useLingui()
   const [draft, setDraft] = useState<string | null>(null)
   const target = resolveBrowserInput(draft ?? url)
@@ -42,7 +43,18 @@ export const BrowserAddressBar = ({ url, inputRef, disabled, onNavigate }: Brows
     }
   }
   return (
-    <div className="min-w-0 flex-1">
+    <div
+      data-browser-address-bar
+      className="flex h-9 min-w-0 flex-1 items-center rounded-lg border border-border bg-transparent px-1 focus-within:border-border-strong dark:bg-input"
+    >
+      {navigation && (
+        <div
+          data-browser-page-navigation
+          className="mr-1 flex shrink-0 items-center gap-0.5 border-r pr-1 [&_button]:size-7 [&_button]:rounded-md"
+        >
+          {navigation}
+        </div>
+      )}
       <form
         onSubmit={submit}
         onBlur={(event) => {
@@ -52,7 +64,7 @@ export const BrowserAddressBar = ({ url, inputRef, disabled, onNavigate }: Brows
           }
           resetDraft()
         }}
-        className="relative flex min-w-0 items-center gap-1"
+        className="relative flex h-full min-w-0 flex-1 items-center gap-1"
       >
         <Globe className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" aria-hidden="true" />
         <Input
@@ -60,7 +72,7 @@ export const BrowserAddressBar = ({ url, inputRef, disabled, onNavigate }: Brows
           aria-label={t`Address`}
           placeholder={t`Enter a URL`}
           inputSize="sm"
-          className="h-9 pl-8 pr-9 text-sm"
+          className="h-full rounded-md border-0 bg-transparent pl-8 pr-9 text-sm dark:bg-transparent"
           value={draft ?? url}
           autoComplete="off"
           autoCapitalize="off"
@@ -100,9 +112,10 @@ export const BrowserAddressBar = ({ url, inputRef, disabled, onNavigate }: Brows
             }
           }}
         />
-        <div className="absolute right-1 flex items-center">
+        <div className="absolute right-0 flex items-center">
           <BrowserToolbarButton
             type="submit"
+            className="size-7 rounded-md"
             label={t`Go`}
             disabled={disabled || !target}
             onMouseDown={(event) => {

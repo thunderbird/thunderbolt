@@ -129,6 +129,18 @@ const settle = async () => {
 }
 
 describe('ContentViewLayout', () => {
+  it('releases the sidebar when its last page is closed outside the toolbar', async () => {
+    renderAt('/chats/new')
+    fireEvent.click(screen.getByRole('button', { name: 'Open browser' }))
+    await settle()
+    expect(document.querySelector('[data-slot="resizable-handle"]')).toBeInTheDocument()
+    act(() => usePageStore.getState().close(usePageStore.getState().activeId!))
+    await settle()
+    expect(document.querySelector('[data-page-panel]')).toBeNull()
+    expect(document.querySelector('[data-slot="resizable-handle"]')).toBeNull()
+    expect(document.querySelector('[data-slot="app-content-overlay-host"]')).toBeNull()
+  })
+
   it('opens the browser from settings and keeps the same native tabs across route changes', async () => {
     renderAt('/settings/preferences')
     fireEvent.click(screen.getByRole('button', { name: 'Open browser' }))

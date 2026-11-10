@@ -1026,6 +1026,10 @@ msgstr "Portapapeles no disponible. Selecciona la frase de arriba y cópiala man
 msgid "Close"
 msgstr "Cerrar"
 
+#: src/pages/page-tab-strip.tsx
+msgid "Close all tabs"
+msgstr ""
+
 #: src/components/ui/header.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/pages/page-panel.tsx
@@ -1049,6 +1053,7 @@ msgid "Close reorder"
 msgstr "Cerrar la reordenación"
 
 #: src/content-view/use-browser-shortcuts.ts
+#: src/pages/page-tab-strip.tsx
 msgid "Close tab"
 msgstr ""
 
@@ -2293,6 +2298,7 @@ msgid "Expand page"
 msgstr ""
 
 #: src/components/ui/header.tsx
+#: src/pages/page-window-navigation.tsx
 msgid "Expand Sidebar"
 msgstr "Expandir la barra lateral"
 
@@ -2503,14 +2509,14 @@ msgstr ""
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
-#: src/components/ui/header.tsx
+#: src/components/ui/history-nav-buttons.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
 msgid "Go back"
 msgstr "Volver"
 
-#: src/components/ui/header.tsx
+#: src/components/ui/history-nav-buttons.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
@@ -5285,6 +5291,7 @@ msgstr "Mostrar u ocultar la barra lateral"
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
+#: src/pages/page-window-navigation.tsx
 msgid "Toggle Sidebar"
 msgstr "Mostrar u ocultar la barra lateral"
 

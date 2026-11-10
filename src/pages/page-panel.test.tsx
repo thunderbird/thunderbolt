@@ -55,7 +55,7 @@ it('expands the exact HTML session without mounting another renderer or creating
   expect(container.querySelector('iframe')).toBeNull()
   expect(container.querySelector('[data-page-slot]')).toHaveAttribute('data-page-slot', id)
   const controls = screen.getByRole('button', { name: 'Select element on page' }).parentElement!
-  expect(controls.children[1]).toHaveAttribute('aria-label', 'Expand page')
+  expect(controls.children[2]).toHaveAttribute('aria-label', 'Expand page')
   fireEvent.click(screen.getByRole('button', { name: 'Expand page' }))
   expect(screen.getByTestId('location')).toHaveTextContent('/pages/stateful')
   expect(usePageStore.getState().sessions).toHaveLength(1)
@@ -91,6 +91,33 @@ it('shows an external browser fallback on web and never renders a remote iframe'
   expect(screen.getByRole('link', { name: 'Open in your browser' })).toHaveAttribute('href', 'https://example.com/')
   expect(screen.getByRole('button', { name: 'Select element on page' })).toBeDisabled()
   expect(container.querySelector('iframe')).toBeNull()
+})
+
+it('closes the right-clicked tab and closes all browser tabs without removing inline pages', () => {
+  const store = usePageStore.getState()
+  const inline = store.ensure(
+    { id: 'inline', title: 'Inline', source: { kind: 'html', html: '<p>Keep this</p>' } },
+    { presentation: 'inline' },
+  )
+  const first = store.ensure({ id: 'first', title: 'First', source: { kind: 'url', url: 'https://example.com/one' } })
+  const second = store.ensure({
+    id: 'second',
+    title: 'Second',
+    source: { kind: 'url', url: 'https://example.com/two' },
+  })
+  const third = store.ensure({ id: 'third', title: 'Third', source: { kind: 'url', url: 'https://example.com/three' } })
+  const { onClose } = mount()
+  fireEvent.contextMenu(screen.getByRole('tab', { name: 'First' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Close tab' }))
+  expect(usePageStore.getState().sessions.some((session) => session.id === first)).toBe(false)
+  expect(usePageStore.getState().activeId).toBe(third)
+  expect(onClose).not.toHaveBeenCalled()
+  fireEvent.contextMenu(screen.getByRole('tab', { name: 'Second' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Close all tabs' }))
+  expect(usePageStore.getState().sessions.map((session) => session.id)).toEqual([inline])
+  expect(usePageStore.getState().activeId).toBeNull()
+  expect(onClose).toHaveBeenCalledTimes(1)
+  expect(usePageStore.getState().sessions.some((session) => session.id === second)).toBe(false)
 })
 
 it('saves a redirected website address but never turns a local app into a synced localhost bookmark', () => {

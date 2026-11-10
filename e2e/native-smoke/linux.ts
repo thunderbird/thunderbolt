@@ -167,7 +167,27 @@ const exerciseBrowserChrome = async (activePanel: string) => {
     const bounds = separator.getBoundingClientRect()
     const gripBounds = grip.getBoundingClientRect()
     const dividerStyle = getComputedStyle(separator, '::after')
+    const actions = [...strip.querySelectorAll('[data-browser-tab-actions] button')].map((button) =>
+      button.getBoundingClientRect(),
+    )
+    const actionGaps = actions.slice(1).map((button, index) => button.left - actions[index].right)
+    const history = [...document.querySelectorAll<HTMLButtonElement>('[data-main-header] button')].filter((button) =>
+      ['Go back', 'Go forward'].includes(button.textContent?.trim() ?? ''),
+    )
+    const sidebarToggle = [...document.querySelectorAll<HTMLButtonElement>('button')].find((button) =>
+      ['Toggle Sidebar', 'Collapse Sidebar'].includes(button.textContent?.trim() ?? ''),
+    )!
+    const search = document.querySelector<HTMLElement>('button[aria-label="Search"]')!
     return {
+      actionGaps,
+      historyRounded:
+        history.length === 2 &&
+        history.every(
+          (button) =>
+            parseFloat(getComputedStyle(button).borderTopLeftRadius) >= button.getBoundingClientRect().width / 2,
+        ),
+      sidebarRadius: getComputedStyle(sidebarToggle).borderTopLeftRadius,
+      searchRadius: getComputedStyle(search).borderTopLeftRadius,
       padding: [stripStyle.paddingTop, stripStyle.paddingRight, stripStyle.paddingBottom, stripStyle.paddingLeft],
       gap: getComputedStyle(strip.querySelector('[role="tablist"]')!).columnGap,
       borders: [
@@ -193,6 +213,13 @@ const exerciseBrowserChrome = async (activePanel: string) => {
       hasGripIcon: Boolean(grip.querySelector('.lucide-grip-vertical')),
     }
   }, activePanel)
+  assert(metrics.historyRounded, 'App history buttons should be circular')
+  assert.equal(metrics.sidebarRadius, metrics.searchRadius, 'Sidebar toggle should match the other sidebar buttons')
+  assert.equal(metrics.actionGaps.length, 3)
+  assert(
+    Math.max(...metrics.actionGaps) - Math.min(...metrics.actionGaps) < 1,
+    'All four tab actions should be evenly spaced',
+  )
   assert(
     metrics.padding.every((padding) => padding === metrics.gap),
     'Tabs should have equal surrounding space',
@@ -532,6 +559,31 @@ const exerciseBrowser = async () => {
     await browser.waitUntil(async () => browser.execute(() => location.pathname.startsWith('/pages/')))
     assert.deepEqual((await getLabels()).sort(), beforeExpand.sort(), 'Expanding must retain the native webviews')
     await waitForPage(secondLabel, secondUrl, 'Browser smoke two')
+    assert.equal(
+      await (
+        await browser.$$('[data-main-header]')
+      ).length,
+      0,
+      'Expanded pages must not add a third header row',
+    )
+    const chrome = await browser.execute(() => {
+      const header = document.querySelector('[data-page-header]')!.getBoundingClientRect()
+      const address = document.querySelector('[data-page-address-row]')!.getBoundingClientRect()
+      return {
+        bottom: header.bottom,
+        addressTop: address.top,
+        draggable: Boolean(document.querySelector('[data-browser-tab-strip][data-tauri-drag-region]')),
+      }
+    })
+    assert(Math.abs(chrome.bottom - chrome.addressTop) < 1, 'The address row must sit directly below the tabs')
+    assert(chrome.draggable, 'The tab row must preserve native window dragging')
+    assert.equal(
+      await (
+        await browser.$$('[data-browser-address-bar] [data-browser-page-navigation] button')
+      ).length,
+      3,
+      'Website navigation belongs inside the address bar',
+    )
     await (await control('button[aria-label="Restore to sidebar"]')).click()
     await browser.waitUntil(async () => (await browser.execute(() => location.pathname)) === originalRoute)
     assert.deepEqual((await getLabels()).sort(), beforeExpand.sort(), 'Restoring must retain the native webviews')
@@ -647,7 +699,8 @@ const exerciseBrowser = async () => {
     await waitForPage(thirdLabel, firstUrl, 'Browser smoke one')
     assert.equal(await (await control('[data-browser-new-tab]')).isExisting(), false)
     assert(receivedCookies.get('/one')?.includes(sessionCookie), 'Manually opened tabs should share the login session')
-    await (await control('button[aria-label="Close tab Browser smoke three"]')).click()
+    await (await tab('Browser smoke three')).click({ button: 'right' })
+    await (await browser.$('[role="menuitem"]=Close tab')).click()
     await browser.waitUntil(async () => (await getLabels()).length === 2, { timeout: 5000 })
     assert.deepEqual((await getLabels()).sort(), [secondLabel, thirdLabel].sort())
     await waitForPage(thirdLabel, firstUrl, 'Browser smoke one')
@@ -686,6 +739,17 @@ const exerciseBrowser = async () => {
     await waitForClosed()
     assert.equal(await (await browser.$('[data-browser-toggle]')).getAttribute('aria-pressed'), 'false')
     await assertBrowserToggleGeometry()
+
+    await (await browser.$('[data-browser-toggle]')).click()
+    await (await control('[role="tab"]')).click({ button: 'right' })
+    await (await browser.$('[role="menuitem"]=Close all tabs')).click()
+    await waitForClosed()
+    await browser.waitUntil(
+      async () => browser.execute(() => document.getElementById('content-view')!.getBoundingClientRect().width < 1),
+      {
+        timeoutMsg: 'Closing all tabs must release the browser space',
+      },
+    )
 
     // The fake model opens and observes a real native tab, then waits between its
     // final text chunks. Activity must survive the gap after the tools returned.

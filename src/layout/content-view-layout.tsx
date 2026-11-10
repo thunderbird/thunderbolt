@@ -83,6 +83,7 @@ export const ContentViewLayout = ({ children }: { children: ReactNode }) => {
             collapsible
             defaultSize={isDesktopPanelOpen ? `${getContentViewOpenWidth(contentViewWidth.value)}%` : '0%'}
             minSize="0%"
+            maxSize={isDesktopPanelOpen ? '100%' : '0%'}
             collapsedSize="0%"
             onResize={(panelSize, _id, prevPanelSize) => {
               if (prevPanelSize && prevPanelSize.asPercentage > 0 && panelSize.asPercentage === 0) {

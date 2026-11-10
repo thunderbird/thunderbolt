@@ -8,18 +8,19 @@ import {
   ArrowRight,
   ExternalLink,
   Maximize2,
-  Minimize2,
   MousePointer2,
   PanelTop,
   PinOff,
   RotateCw,
   X,
 } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { PanelRightRounded } from '@/components/icons/panel-right-rounded'
 import { BrowserAddressBar } from '@/content-view/browser-address-bar'
 import { BrowserNewTab } from '@/content-view/browser-new-tab'
 import { BrowserToolbarButton } from '@/content-view/browser-toolbar-button'
 import { BrowserAgentStatus } from '@/browser/browser-agent-status'
-import { isTauri, isTauriDesktop } from '@/lib/platform'
+import { isFramelessControlsPlatform, isTauri, isTauriDesktop } from '@/lib/platform'
 import { usePageStore } from './page-store'
 import { PageSlot } from './page-slot'
 import { PageTabStrip } from './page-tab-strip'
@@ -32,12 +33,14 @@ export const PagePanel = ({
   sessionId,
   mode = 'sidebar',
   onRestore,
+  headerStart,
 }: {
   onClose: () => void
   hidden?: boolean
   sessionId?: string
   mode?: 'sidebar' | 'expanded'
   onRestore?: () => void
+  headerStart?: ReactNode
 }) => {
   const { t } = useLingui()
   const state = usePagePanelState({ sessionId, mode, onClose, onRestore, hidden })
@@ -64,7 +67,7 @@ export const PagePanel = ({
         label={mode === 'expanded' ? t`Restore to sidebar` : t`Expand page`}
         onClick={mode === 'expanded' ? onRestore : state.expand}
       >
-        {mode === 'expanded' ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+        {mode === 'expanded' ? <PanelRightRounded className="size-4" /> : <Maximize2 className="size-4" />}
       </BrowserToolbarButton>
       <BrowserToolbarButton label={t`Close browser`} onClick={onClose}>
         <X className="size-4" />
@@ -79,78 +82,95 @@ export const PagePanel = ({
       className="flex h-full min-h-0 w-full flex-col bg-background"
       aria-label={t`Browser`}
     >
-      {session.chrome === 'browser' ? (
-        <PageTabStrip
-          sessions={state.tabs}
-          activeId={session.id}
-          onSelect={state.select}
-          onClose={state.closeTab}
-          onNewTab={state.newTab}
-          onPin={(target, chrome) => {
-            void state.pinPage(target, chrome)
-          }}
-          onUnpin={(id) => {
-            void state.unpin(id)
-          }}
-          pinnedIds={state.pinnedIds}
-          actions={actions}
-        />
-      ) : (
-        <div className="flex shrink-0 items-center justify-end border-b p-2">
-          <BrowserToolbarButton
-            label={t`Show browser controls`}
-            onClick={() => usePageStore.getState().update(session.id, { chrome: 'browser' })}
+      <div
+        data-page-header
+        className="shrink-0"
+        style={isFramelessControlsPlatform() ? { paddingRight: 'var(--window-controls-width)' } : undefined}
+      >
+        {session.chrome === 'browser' ? (
+          <PageTabStrip
+            sessions={state.tabs}
+            activeId={session.id}
+            onSelect={state.select}
+            onClose={state.closeTab}
+            onCloseAll={state.closeAllTabs}
+            onNewTab={state.newTab}
+            onPin={(target, chrome) => {
+              void state.pinPage(target, chrome)
+            }}
+            onUnpin={(id) => {
+              void state.unpin(id)
+            }}
+            pinnedIds={state.pinnedIds}
+            actions={actions}
+            headerStart={headerStart}
+          />
+        ) : (
+          <div
+            data-tauri-drag-region={isTauriDesktop() || undefined}
+            className="flex shrink-0 items-center border-b p-2"
           >
-            <PanelTop className="size-4" />
-          </BrowserToolbarButton>
-          {state.pinnedIds.has(session.page.id) && (
+            {headerStart}
+            <div data-tauri-drag-region={isTauriDesktop() || undefined} className="flex-1 self-stretch" />
             <BrowserToolbarButton
-              label={t`Unpin`}
-              onClick={() => {
-                void state.unpin(session.page.id)
-              }}
+              label={t`Show browser controls`}
+              onClick={() => usePageStore.getState().update(session.id, { chrome: 'browser' })}
             >
-              <PinOff className="size-4" />
+              <PanelTop className="size-4" />
             </BrowserToolbarButton>
-          )}
-          {actions}
-        </div>
-      )}
+            {state.pinnedIds.has(session.page.id) && (
+              <BrowserToolbarButton
+                label={t`Unpin`}
+                onClick={() => {
+                  void state.unpin(session.page.id)
+                }}
+              >
+                <PinOff className="size-4" />
+              </BrowserToolbarButton>
+            )}
+            {actions}
+          </div>
+        )}
+      </div>
       {session.chrome === 'browser' && session.page.source.kind !== 'html' && (
-        <div className="flex shrink-0 items-center gap-1 border-b px-2 py-2">
-          <BrowserToolbarButton
-            label={t`Go back`}
-            disabled={!session.browser.canGoBack || state.busy}
-            onClick={() => {
-              void state.runNavigation({ type: 'back' })
-            }}
-          >
-            <ArrowLeft className="size-4" />
-          </BrowserToolbarButton>
-          <BrowserToolbarButton
-            label={t`Go forward`}
-            disabled={!session.browser.canGoForward || state.busy}
-            onClick={() => {
-              void state.runNavigation({ type: 'forward' })
-            }}
-          >
-            <ArrowRight className="size-4" />
-          </BrowserToolbarButton>
-          <BrowserToolbarButton
-            label={session.browser.isLoading ? t`Stop loading` : t`Reload page`}
-            disabled={blank || webFallback || state.busy}
-            onClick={() => {
-              void state.runNavigation({ type: session.browser.isLoading ? 'stop' : 'reload' })
-            }}
-          >
-            {session.browser.isLoading ? <X className="size-4" /> : <RotateCw className="size-4" />}
-          </BrowserToolbarButton>
+        <div data-page-address-row className="flex shrink-0 items-center gap-1 border-b px-2 py-2">
           <BrowserAddressBar
             key={session.id}
             url={blank ? '' : session.browser.url}
             inputRef={state.addressRef}
             disabled={state.busy}
             onNavigate={(url) => state.runNavigation({ type: 'navigate', url })}
+            navigation={
+              <>
+                <BrowserToolbarButton
+                  label={t`Go back`}
+                  disabled={!session.browser.canGoBack || state.busy}
+                  onClick={() => {
+                    void state.runNavigation({ type: 'back' })
+                  }}
+                >
+                  <ArrowLeft className="size-4" />
+                </BrowserToolbarButton>
+                <BrowserToolbarButton
+                  label={t`Go forward`}
+                  disabled={!session.browser.canGoForward || state.busy}
+                  onClick={() => {
+                    void state.runNavigation({ type: 'forward' })
+                  }}
+                >
+                  <ArrowRight className="size-4" />
+                </BrowserToolbarButton>
+                <BrowserToolbarButton
+                  label={session.browser.isLoading ? t`Stop loading` : t`Reload page`}
+                  disabled={blank || webFallback || state.busy}
+                  onClick={() => {
+                    void state.runNavigation({ type: session.browser.isLoading ? 'stop' : 'reload' })
+                  }}
+                >
+                  {session.browser.isLoading ? <X className="size-4" /> : <RotateCw className="size-4" />}
+                </BrowserToolbarButton>
+              </>
+            }
           />
         </div>
       )}

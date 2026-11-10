@@ -3,11 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { AppWindow, LoaderCircle, Pin, PinOff, Plus, X } from 'lucide-react'
+import { AppWindow, LoaderCircle, Pin, PinOff, Plus, X, CopyX } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { PageChrome } from '@shared/page-protocol'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { BrowserToolbarButton } from '@/content-view/browser-toolbar-button'
+import { isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import type { PageSession } from './page-store'
 import { canPinPage } from './page-display'
@@ -18,20 +25,24 @@ export const PageTabStrip = ({
   activeId,
   onSelect,
   onClose,
+  onCloseAll,
   onNewTab,
   onPin,
   onUnpin,
   pinnedIds,
   actions,
+  headerStart,
 }: {
   sessions: PageSession[]
   activeId: string
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  onCloseAll: () => void
   onNewTab: () => void
   onPin: (session: PageSession, chrome: PageChrome) => void
   onUnpin: (id: string) => void
   pinnedIds: Set<string>
+  headerStart?: ReactNode
   actions?: ReactNode
 }) => {
   const { t } = useLingui()
@@ -41,6 +52,7 @@ export const PageTabStrip = ({
   }, [activeId, sessions.length])
   return (
     <div
+      data-tauri-drag-region={isTauriDesktop() || undefined}
       data-browser-tab-strip
       className="flex shrink-0 items-center gap-2 border-b bg-muted/30 p-2"
       onDoubleClick={(event) => {
@@ -49,7 +61,9 @@ export const PageTabStrip = ({
         }
       }}
     >
+      {headerStart}
       <div
+        data-tauri-drag-region={isTauriDesktop() || undefined}
         ref={stripRef}
         role="tablist"
         aria-label={t`Browser tabs`}
@@ -154,16 +168,32 @@ export const PageTabStrip = ({
                     <Trans>Unpin</Trans>
                   </ContextMenuItem>
                 )}
+                <ContextMenuSeparator />
+                <ContextMenuItem onSelect={() => onClose(session.id)}>
+                  <X />
+                  <Trans>Close tab</Trans>
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={onCloseAll}>
+                  <CopyX />
+                  <Trans>Close all tabs</Trans>
+                </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
           )
         })}
-        <div data-browser-tab-empty aria-hidden="true" className="min-w-4 flex-1 self-stretch" />
+        <div
+          data-tauri-drag-region={isTauriDesktop() || undefined}
+          data-browser-tab-empty
+          aria-hidden="true"
+          className="min-w-4 flex-1 self-stretch"
+        />
       </div>
-      <BrowserToolbarButton label={t`New tab`} onClick={onNewTab}>
-        <Plus className="size-4" />
-      </BrowserToolbarButton>
-      {actions && <div className="flex shrink-0 items-center">{actions}</div>}
+      <div data-browser-tab-actions className="flex shrink-0 items-center">
+        <BrowserToolbarButton label={t`New tab`} onClick={onNewTab}>
+          <Plus className="size-4" />
+        </BrowserToolbarButton>
+        {actions}
+      </div>
     </div>
   )
 }

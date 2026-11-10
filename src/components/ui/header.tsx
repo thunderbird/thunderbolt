@@ -25,7 +25,6 @@ import { useResolvedTheme } from '@/lib/theme-provider'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import { PanelRightRounded } from '@/components/icons/panel-right-rounded'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { exposesPrivateThread } from '@/chats/private-thread'
@@ -37,8 +36,8 @@ import {
   useConfigStore,
 } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
-import { useNavigate, useLocation } from 'react-router'
-import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
+import { useLocation } from 'react-router'
+import { HistoryNavButtons } from './history-nav-buttons'
 import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
@@ -153,53 +152,8 @@ const HeaderAgentSelector = ({
   )
 }
 
-const headerIconButtonClass = 'size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground'
-
-/**
- * Back/forward history arrows for the Tauri desktop app, where there's no
- * browser chrome to navigate with. Web is skipped (the browser has its own
- * buttons) and so are mobile-width layouts (no room in the 3-column header).
- * Enabled state derives from react-router's history index (`history.state.idx`),
- * re-read on every location change.
- */
-const HistoryNavButtons = () => {
-  const navigate = useNavigate()
-  // Subscribe to location so the enabled states recompute after navigation.
-  useLocation()
-  const { index, ceiling } = useHistoryCeiling()
-
-  const canGoBack = index > 0
-  const canGoForward = index < ceiling
-
-  return (
-    <div className="flex items-center">
-      <Button
-        variant="ghost"
-        size="icon"
-        className={headerIconButtonClass}
-        disabled={!canGoBack}
-        onClick={() => void navigate(-1)}
-      >
-        <ArrowLeft className="size-[var(--icon-size-default)]" />
-        <span className="sr-only">
-          <Trans>Go back</Trans>
-        </span>
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className={headerIconButtonClass}
-        disabled={!canGoForward}
-        onClick={() => void navigate(1)}
-      >
-        <ArrowRight className="size-[var(--icon-size-default)]" />
-        <span className="sr-only">
-          <Trans>Go forward</Trans>
-        </span>
-      </Button>
-    </div>
-  )
-}
+const headerIconButtonClass =
+  'size-[var(--touch-height-sm)] cursor-pointer rounded-xl text-muted-foreground hover:text-foreground'
 
 /**
  * Reusable page header component with sidebar trigger and agent selector. Model

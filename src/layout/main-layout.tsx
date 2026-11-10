@@ -22,14 +22,7 @@ export default function Page() {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      {/* Wherever it has something to show — see `sharedHeaderHasControls`.
-                `/apps/` was chromeless for a while, on the reasoning that a
-                customer's app is the content and a bar above it duplicates the
-                app's own header. That cost the whole shared toolbar:
-                back/forward, the sidebar toggle, and — on frameless
-                Windows/Linux — the only drag region the window had. Putting it
-                back unconditionally then drew an empty bar over the app on web,
-                because everything else in the header is gated on `/chats`. */}
+      {/* Expanded pages carry app navigation in their own tab row. */}
       {showsSharedHeader && <FloatingHeader />}
       {!isTauri() && (
         <>

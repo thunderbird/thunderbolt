@@ -1014,6 +1014,10 @@ msgstr "Clipboard unavailable. Please select the phrase above and copy it manual
 msgid "Close"
 msgstr "Close"
 
+#: src/pages/page-tab-strip.tsx
+msgid "Close all tabs"
+msgstr "Close all tabs"
+
 #: src/components/ui/header.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/pages/page-panel.tsx
@@ -1037,6 +1041,7 @@ msgid "Close reorder"
 msgstr "Close reorder"
 
 #: src/content-view/use-browser-shortcuts.ts
+#: src/pages/page-tab-strip.tsx
 msgid "Close tab"
 msgstr "Close tab"
 
@@ -2281,6 +2286,7 @@ msgid "Expand page"
 msgstr "Expand page"
 
 #: src/components/ui/header.tsx
+#: src/pages/page-window-navigation.tsx
 msgid "Expand Sidebar"
 msgstr "Expand Sidebar"
 
@@ -2491,14 +2497,14 @@ msgstr "Go"
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
-#: src/components/ui/header.tsx
+#: src/components/ui/history-nav-buttons.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
 msgid "Go back"
 msgstr "Go back"
 
-#: src/components/ui/header.tsx
+#: src/components/ui/history-nav-buttons.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
 #: src/pages/page-panel.tsx
@@ -5273,6 +5279,7 @@ msgstr "Toggle sidebar"
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
+#: src/pages/page-window-navigation.tsx
 msgid "Toggle Sidebar"
 msgstr "Toggle Sidebar"
 

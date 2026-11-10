@@ -81,6 +81,11 @@ test('the same artifact keeps DOM state through inline, sidebar and expanded pre
   await expect(page.locator('[data-page-panel]')).toBeVisible()
   await expect(iframe).toHaveAttribute('data-retained-frame', marker)
   await expect(frame.getByRole('textbox', { name: 'Keep my text' })).toHaveValue('Preserve this unsaved text')
+  await page.getByRole('button', { name: 'Show inline', exact: true }).click()
+  await expect(page.locator('[data-page-panel]')).toHaveCount(0)
+  await expect.poll(async () => (await page.locator('#content-view').boundingBox())?.width).toBeLessThan(1)
+  await expect(iframe).toHaveAttribute('data-retained-frame', marker)
+  await page.getByRole('button', { name: 'Open in side panel', exact: true }).click()
   await page.getByRole('button', { name: 'Select element on page', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Cancel element selection' })).toBeVisible()
   await frame.getByRole('button', { name: 'Increment', exact: true }).click()
@@ -155,6 +160,98 @@ test('a synced website pin opens an external browser fallback on web', async ({ 
   await expect(page.getByRole('link', { name: 'Open in your browser' })).toHaveAttribute('target', '_blank')
   await expect(page.getByRole('button', { name: 'Select element on page' })).toBeDisabled()
   await expect(page.locator('[data-page-host] iframe')).toHaveCount(0)
+  const panel = page.locator('[data-page-panel]')
+  await expect(page.locator('[data-main-header]')).toHaveCount(0)
+  const header = await panel.locator('[data-page-header]').boundingBox()
+  const address = await panel.locator('[data-page-address-row]').boundingBox()
+  const bounds = await panel.boundingBox()
+  expect(header!.y).toBe(bounds!.y)
+  expect(address!.y).toBeCloseTo(header!.y + header!.height, 0)
+  const addressBar = panel.locator('[data-browser-address-bar]')
+  const navigation = addressBar.locator('[data-browser-page-navigation]')
+  await expect(navigation.getByRole('button', { name: 'Go back', exact: true })).toBeVisible()
+  await expect(navigation.getByRole('button', { name: 'Go forward', exact: true })).toBeVisible()
+  await expect(navigation.getByRole('button', { name: 'Reload page', exact: true })).toBeVisible()
+  const navBounds = await navigation.boundingBox()
+  const inputBounds = await addressBar.getByRole('textbox', { name: 'Address' }).boundingBox()
+  expect(navBounds!.x + navBounds!.width).toBeLessThanOrEqual(inputBounds!.x)
+  const tabs = await panel.getByRole('tab').count()
+  const actionBounds = await panel.locator('[data-browser-tab-actions] button').evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const { x, width } = button.getBoundingClientRect()
+      return { x, width }
+    }),
+  )
+  expect(actionBounds).toHaveLength(4)
+  const gaps = actionBounds
+    .slice(1)
+    .map((button, index) => button.x - actionBounds[index].x - actionBounds[index].width)
+  expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(1)
+  // The panel icon moves the current page into the sidebar instead of opening a hidden blank tab.
+  await panel.getByRole('button', { name: 'Restore to sidebar', exact: true }).click()
+  await expect(page).toHaveURL('/chats/new')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByRole('tab')).toHaveCount(tabs)
+  await expect(panel.getByRole('textbox', { name: 'Address' })).toHaveValue('https://example.com/')
+  await panel.getByRole('button', { name: 'New tab', exact: true }).click()
+  await panel.getByRole('tab').first().click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Close tab', exact: true }).click()
+  await expect(panel.getByRole('tab')).toHaveCount(1)
+  await expect(panel.getByRole('tab', { name: 'New tab', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await panel.getByRole('button', { name: 'New tab', exact: true }).click()
+  await panel.getByRole('tab').first().click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Close all tabs', exact: true }).click()
+  await expect(panel).toHaveCount(0)
+  await expect.poll(async () => (await page.locator('#content-view').boundingBox())?.width).toBeLessThan(1)
+  // Closing tabs keeps the synced pin available, and it can still reopen expanded.
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: 'Example website' }).click()
+  await expect(page).toHaveURL(`/pages/${id}`)
+  await panel.getByRole('button', { name: 'Restore to sidebar', exact: true }).click()
+  await panel.getByRole('button', { name: 'Expand page', exact: true }).click()
+  await expect(page).toHaveURL(`/pages/${id}`)
+  // Mobile retains access to the left navigation without reintroducing a third row.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await panel.getByRole('button', { name: 'Toggle Sidebar', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'New Chat', exact: true })).toBeVisible()
+})
+
+test('deleting a chat with the browser open never leaves an empty reserved panel', async ({ page }) => {
+  const email = await loginViaEmailCode(page)
+  const chatId = crypto.randomUUID()
+  await importBackup(page, {
+    format: 'thunderbolt-export',
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    user: { id: 'delete-chat-page-fixture', email },
+    tables: { chat_threads: [{ id: chatId, title: 'Delete with browser open' }] },
+  })
+  await page.goto(`/chats/${chatId}`)
+  await page.locator('textarea').waitFor()
+  await page.evaluate(async () => {
+    const modulePath = '/src/pages/page-controller.ts'
+    const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+    pageController.open({
+      id: crypto.randomUUID(),
+      title: 'Test page',
+      source: { kind: 'url', url: 'https://example.com/' },
+    })
+  })
+  const panel = page.locator('[data-page-panel]')
+  await expect(panel).toBeVisible()
+  await page
+    .locator('[data-sidebar="menu-button"]')
+    .filter({ hasText: 'Delete with browser open' })
+    .click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click()
+  await page
+    .getByRole('alertdialog', { name: 'Delete this chat?' })
+    .getByRole('button', { name: 'Delete Chat', exact: true })
+    .click()
+  await expect(page).toHaveURL('/chats/new')
+  await expect(panel).toBeVisible()
+  await panel.getByRole('button', { name: 'Close browser', exact: true }).click()
+  await expect(panel).toHaveCount(0)
+  await expect.poll(async () => (await page.locator('#content-view').boundingBox())?.width).toBeLessThan(1)
 })
 
 test('project creation fixes its environment while standalone chats keep the environment chooser', async ({ page }) => {

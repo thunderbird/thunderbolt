@@ -144,12 +144,13 @@ describe('useApprovalCodeSession', () => {
     expect(relay.reveals).toEqual([])
   })
 
-  it('ignores a row for another session', async () => {
+  it('offers a new code once another start replaced this attempt on the server', async () => {
     const { relay, hook } = renderSession()
     await settleUntil(() => hook.result.current.status === 'waiting')
     relay.row = { sessionId: 'f'.repeat(32), challenge, challengerDeviceId: 'trusted-1', expired: false }
     await tick()
-    expect(hook.result.current.status).toBe('waiting')
+    expect(hook.result.current.status).toBe('failed')
+    expect(hook.result.current.code).toBeNull()
     expect(relay.reveals).toEqual([])
   })
 
@@ -179,6 +180,34 @@ describe('useApprovalCodeSession', () => {
       await tick()
     }
     expect(hook.result.current.status).toBe('expired')
+  })
+
+  it('keeps its local expiry when a poll is never answered', async () => {
+    const { relay, hook } = renderSession()
+    await settleUntil(() => hook.result.current.status === 'waiting')
+    relay.gate = new Promise(() => {})
+    await tick()
+    // The held poll is abandoned after 10 seconds, so later ticks still reach the local deadline.
+    for (let elapsed = 0; elapsed <= approvalSessionTtlMs + 20_000; elapsed += 10_000) {
+      await tick(10_000)
+    }
+    expect(hook.result.current.status).toBe('expired')
+  })
+
+  it('does not reveal for a challenge the server held until past the deadline', async () => {
+    const { relay, hook } = renderSession()
+    await settleUntil(() => hook.result.current.status === 'waiting')
+    await tick(approvalSessionTtlMs - 3000)
+    const release = Promise.withResolvers<void>()
+    relay.gate = release.promise
+    relay.row = { sessionId: relay.starts[0].sessionId, challenge, challengerDeviceId: 'trusted-1', expired: false }
+    await tick()
+    await tick(3000)
+    release.resolve()
+    await settleUntil(() => hook.result.current.status === 'expired')
+    expect(hook.result.current.status).toBe('expired')
+    expect(hook.result.current.code).toBeNull()
+    expect(relay.reveals).toEqual([])
   })
 
   it('falls back to unavailable when the session cannot start', async () => {

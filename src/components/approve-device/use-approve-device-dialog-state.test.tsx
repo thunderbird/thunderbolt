@@ -224,6 +224,25 @@ describe('useApproveDeviceDialogState', () => {
     expect(countedAttempts()).toBe(1)
   })
 
+  it('gives up on a first request the server never answers, without counting', async () => {
+    const rendered = renderDialogState({ relay: { getDelayMs: 10 * 60_000 } })
+    await settle()
+    expect(rendered.hook.result.current.state.step).toBe('connecting')
+    await tick(10_000)
+    expect(rendered.hook.result.current.state.step).toBe('unavailable')
+    expect(countedAttempts()).toBe(0)
+  })
+
+  it('ends the wait for a reveal even when a poll is never answered', async () => {
+    const rendered = renderDialogState()
+    await settle()
+    rendered.relay.getDelayMs = 10 * 60_000
+    for (let elapsed = 0; elapsed <= 70_000; elapsed += 10_000) {
+      await tick(10_000)
+    }
+    expect(rendered.hook.result.current.state.step).toBe('unavailable')
+  })
+
   it('switches to the fingerprint once the daily limit is reached', async () => {
     await startApprovalCodeAttempt()
     await startApprovalCodeAttempt()

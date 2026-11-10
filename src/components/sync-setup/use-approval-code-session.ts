@@ -84,8 +84,8 @@ const pollMs = 1500
 /**
  * The new device's side of the short-code approval: commit, wait for the trusted device's
  * challenge, reveal once, show the code. Without local keys or with a backend that lacks the relay
- * it is `unavailable` and the screen shows the fingerprint; any other failure to start is `failed`,
- * and "New code" retries.
+ * it is `unavailable` and the screen shows the fingerprint. Any other failure to start, or an
+ * attempt replaced on the server, is `failed`, and "New code" retries.
  */
 export const useApprovalCodeSession = ({
   getContext = getThisDeviceApprovalCodeContext,
@@ -98,9 +98,19 @@ export const useApprovalCodeSession = ({
   liveSessionId.current = state.sessionId
   const isMounted = useRef(false)
 
+  /** Without its keys this device can still be approved with the fingerprint, so log and fall back. */
+  const loadContext = async (sessionId: string) => {
+    try {
+      return await getContext(sessionId)
+    } catch (error) {
+      console.error('Failed to prepare an approval code:', error)
+      return null
+    }
+  }
+
   const start = useEffectEvent(async () => {
     const { sessionId, reveal } = state
-    const context = await getContext(sessionId).catch(() => null)
+    const context = await loadContext(sessionId)
     if (context === null) {
       dispatch({ type: 'unavailable', sessionId })
       return
@@ -131,7 +141,8 @@ export const useApprovalCodeSession = ({
 
   const tick = useEffectEvent(async () => {
     const { sessionId, reveal, startedAt, challenge, revealed } = state
-    if (startedAt !== null && Date.now() - startedAt >= approvalSessionTtlMs) {
+    const isPastTtl = () => startedAt !== null && Date.now() - startedAt >= approvalSessionTtlMs
+    if (isPastTtl()) {
       dispatch({ type: 'expired', sessionId })
       return
     }
@@ -142,7 +153,10 @@ export const useApprovalCodeSession = ({
       return
     }
     const row = await fetchMyApprovalSession(httpClient)
+    // Another start replaced this attempt on the server (a start that timed out here, or another tab),
+    // so no trusted device can challenge it any more: offer a new code.
     if (row.sessionId !== sessionId) {
+      dispatch({ type: 'failed', sessionId })
       return
     }
     if (row.expired) {
@@ -159,6 +173,12 @@ export const useApprovalCodeSession = ({
       recorded.value,
       reveal,
     )
+    // Checked again after the awaits: a challenge that arrives past the TTL (a held poll, a suspended
+    // app) shows no code and gets no reveal.
+    if (isPastTtl()) {
+      dispatch({ type: 'expired', sessionId })
+      return
+    }
     dispatch({ type: 'challenged', sessionId, challenge: recorded, code })
     await sendReveal(sessionId, reveal)
   })

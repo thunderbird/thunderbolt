@@ -507,7 +507,11 @@ msgstr "Versão do app"
 #~ msgid "Applied to every chat in this project."
 #~ msgstr "Aplicado a todas as conversas deste projeto."
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Approval code"
+msgstr "Código de aprovação"
+
+#: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/mini-apps/mini-app-approval-prompt.tsx
@@ -527,11 +531,11 @@ msgstr "Aprovar o login da CLI?"
 msgid "Approve this device"
 msgstr "Aprovar este dispositivo"
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Approve this device?"
 msgstr "Aprovar este dispositivo?"
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/settings/devices.tsx
 msgid "Approving…"
 msgstr "Aprovando…"
@@ -674,7 +678,8 @@ msgid "Calendar"
 msgstr "Agenda"
 
 #: src/components/app-error-screen.tsx
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/components/chat/external-link-dialog.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
@@ -774,8 +779,8 @@ msgid "Check your email"
 msgstr "Confira seu e-mail"
 
 #: src/components/sync-setup/approval-waiting-step.tsx
-msgid "Checking automatically…"
-msgstr "Verificando automaticamente…"
+#~ msgid "Checking automatically…"
+#~ msgstr "Verificando automaticamente…"
 
 #: src/components/update-notification.tsx
 #: src/settings/app-version-section.tsx
@@ -942,6 +947,10 @@ msgstr "Código"
 msgid "Code didn't work"
 msgstr "O código não funcionou"
 
+#: src/components/approve-device/approval-code-options.tsx
+msgid "Codes to choose from"
+msgstr "Códigos para escolher"
+
 #: src/layout/sidebar/sidebar-header.tsx
 msgid "Collapse Sidebar"
 msgstr "Recolher a barra lateral"
@@ -1098,6 +1107,10 @@ msgstr "Conectado!"
 msgid "Connecting to {agentName}…"
 msgstr "Conectando a {agentName}…"
 
+#: src/components/approve-device/approval-code-options.tsx
+msgid "Connecting to the new device…"
+msgstr "Conectando ao novo dispositivo…"
+
 #: src/components/connect-provider-button.tsx
 #: src/components/sidebar-footer.tsx
 #: src/settings/connections/mcp-server-detail.tsx
@@ -1160,6 +1173,10 @@ msgstr "Conexões"
 msgid "Contact Support"
 msgstr "Falar com o suporte"
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Content to send"
+msgstr "Conteúdo a ser enviado"
+
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Context"
 msgstr ""
@@ -1216,7 +1233,7 @@ msgstr "Copiar o comando de compilação"
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Copy fingerprint"
-msgstr ""
+msgstr "Copiar impressão digital"
 
 #: src/components/artifact/artifact-actions.tsx
 msgid "Copy HTML"
@@ -1258,6 +1275,10 @@ msgstr ""
 #: src/components/context-usage/context-usage-indicator.tsx
 #~ msgid "Could not compact context. Your chat history is safe. Please try again."
 #~ msgstr ""
+
+#: src/components/logout-modal.tsx
+msgid "Could not confirm sign-out. Please try again."
+msgstr "Não foi possível confirmar a saída da conta. Tente novamente."
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -1323,9 +1344,10 @@ msgstr "Não foi possível adicionar a chave de acesso. Você pode adicionar uma
 msgid "Couldn't add the agent. Please try again."
 msgstr "Não foi possível adicionar o agente. Tente novamente."
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Couldn't approve this device. Please try again."
-msgstr ""
+msgstr "Não foi possível aprovar este dispositivo. Tente novamente."
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
@@ -1343,13 +1365,14 @@ msgstr "Não foi possível verificar atualizações: {error}"
 msgid "Couldn't check for updates."
 msgstr "Não foi possível verificar atualizações."
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Couldn't complete approval. Close this dialog and check the device list before trying again."
-msgstr ""
+msgstr "Não foi possível concluir a aprovação. Feche esta janela e confira a lista de dispositivos antes de tentar novamente."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Couldn't copy. Select the fingerprint to copy it manually."
-msgstr ""
+msgstr "Não foi possível copiar. Selecione a impressão digital para copiá-la manualmente."
 
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't download the update"
@@ -1362,6 +1385,10 @@ msgstr "Não foi possível baixar a atualização: {error}"
 #: src/settings/app-version-section.tsx
 msgid "Couldn't download the update."
 msgstr "Não foi possível baixar a atualização."
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Couldn't get a code."
+msgstr "Não foi possível gerar um código."
 
 #: src/components/embedded/surface-status.tsx
 msgid "Couldn't load {name}"
@@ -1446,7 +1473,7 @@ msgstr "Não foi possível verificar a conexão segura com a IA. Isso costuma se
 
 #: src/hooks/use-sync-setup.ts
 msgid "Couldn't verify this device's approval. Select Check now to try again, or choose another option below."
-msgstr ""
+msgstr "Não foi possível verificar a aprovação deste dispositivo. Selecione Verificar agora para tentar novamente ou escolha outra opção abaixo."
 
 #: src/projects/project-create-form.tsx
 #: src/search/palette/search-palette.tsx
@@ -1712,6 +1739,10 @@ msgstr "Recusar"
 msgid "Deny {deviceName}"
 msgstr "Recusar {deviceName}"
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "Deny device"
+msgstr "Recusar dispositivo"
+
 #: src/components/revoke-device-dialog.tsx
 msgid "Deny this device?"
 msgstr "Recusar este dispositivo?"
@@ -1745,10 +1776,10 @@ msgstr "Configurações de desenvolvimento"
 msgid "Device access revoked"
 msgstr "Acesso do dispositivo revogado"
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Device fingerprint"
-msgstr ""
+msgstr "Impressão digital do dispositivo"
 
 #: src/components/device-qr-code.tsx
 msgid "Device pairing QR code"
@@ -2057,13 +2088,13 @@ msgstr "Insira o código de 8 dígitos"
 msgid "Enter the code shown in your terminal to continue."
 msgstr "Insira o código exibido no seu terminal para continuar."
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Enter the fingerprint from the new device's screen or a separate channel you trust."
-msgstr ""
+msgstr "Digite a impressão digital mostrada na tela do novo dispositivo ou recebida por outro canal em que você confia."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Enter this fingerprint on your trusted device before approving."
-msgstr ""
+msgstr "Digite esta impressão digital no seu dispositivo confiável antes de aprovar."
 
 #: src/components/sign-in-modal.tsx
 msgid "Enter your code"
@@ -2119,8 +2150,8 @@ msgid "Failed to change the recovery phrase"
 msgstr ""
 
 #: src/hooks/use-sync-setup.ts
-msgid "Failed to check approval"
-msgstr "Não foi possível verificar a aprovação"
+#~ msgid "Failed to check approval"
+#~ msgstr "Não foi possível verificar a aprovação"
 
 #: src/hooks/use-oauth-connect.ts
 msgid "Failed to complete authentication"
@@ -2533,6 +2564,10 @@ msgstr "Manter a chave de API salva"
 msgid "Keep saved credential"
 msgstr "Manter a credencial salva"
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "Keep the new device on its approval screen, or tap New code there, then try again."
+msgstr "Deixe o novo dispositivo na tela de aprovação, ou toque em Novo código nele, e tente novamente."
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Keep your data in sync across all your devices. Everything is encrypted end-to-end. Only your devices can read your data."
 msgstr "Mantenha seus dados sincronizados em todos os seus dispositivos. Tudo é criptografado de ponta a ponta. Só os seus dispositivos podem ler seus dados."
@@ -2881,6 +2916,10 @@ msgstr "Nova conversa"
 #~ msgid "New chat in this project"
 #~ msgstr "Nova conversa neste projeto"
 
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "New code"
+msgstr "Novo código"
+
 #: src/settings/connections/connections-list.tsx
 msgid "New Connection"
 msgstr "Nova conexão"
@@ -3034,6 +3073,10 @@ msgstr "Nenhuma tarefa encontrada para “{searchQuery}”"
 msgid "No tasks yet"
 msgstr "Ainda não há tarefas"
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "None of these match"
+msgstr "Nenhum confere"
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "None of your models can be used in this chat. Choose another agent to send."
 msgstr "Nenhum dos seus modelos pode ser usado nesta conversa. Escolha outro agente para enviar."
@@ -3157,8 +3200,12 @@ msgid "Only available in private chats."
 msgstr "Disponível apenas em conversas privadas."
 
 #: src/components/sync-setup/approval-waiting-step.tsx
-msgid "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
-msgstr "Abra o {appName} em um dos seus dispositivos confiáveis e vá em Configurações → Dispositivos para aprovar este dispositivo."
+msgid "Open {appName} on a trusted device and approve this one in Settings → Devices."
+msgstr "Abra o {appName} em um dispositivo confiável e aprove este em Configurações → Dispositivos."
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+#~ msgid "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
+#~ msgstr "Abra o {appName} em um dos seus dispositivos confiáveis e vá em Configurações → Dispositivos para aprovar este dispositivo."
 
 #: src/settings/models/models-list.tsx
 msgid "Open {modelName}"
@@ -3330,6 +3377,10 @@ msgstr "Permissão necessária"
 #: src/settings/preferences.tsx
 msgid "Personalization"
 msgstr "Personalização"
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Pick this code on your other device."
+msgstr "Escolha este código no seu outro dispositivo."
 
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
@@ -3692,6 +3743,10 @@ msgstr "Tentar conectar novamente"
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retrying…"
 msgstr "Tentando novamente…"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
+msgstr "Revise abaixo o registro da conversa e sua nota. A ocultação automática pode deixar passar informações sensíveis."
 
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx
@@ -4388,6 +4443,10 @@ msgstr "Veja o mapa na tela."
 msgid "Take a look at the weather forecast on screen."
 msgstr "Veja a previsão do tempo na tela."
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "Tap the code the new device shows. If none match, don't approve it."
+msgstr "Toque no código que aparece no novo dispositivo. Se nenhum conferir, não aprove."
+
 #: src/settings/app-version-section.tsx
 msgid "Tap to check for updates."
 msgstr "Toque para verificar atualizações."
@@ -4504,6 +4563,14 @@ msgstr ""
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr ""
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "The codes didn't match"
+msgstr "Os códigos não conferem"
+
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "The codes didn't match, so the device was not approved."
+msgstr "Os códigos não conferiram, então o dispositivo não foi aprovado."
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "The connection could not be verified. A verified connection is required before sending to this provider."
 msgstr ""
@@ -4540,9 +4607,9 @@ msgstr ""
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
-msgstr ""
+msgstr "A impressão digital não confere. Confira a impressão digital mostrada no novo dispositivo e tente novamente."
 
 #: src/components/chat/error-message.tsx
 msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
@@ -4551,6 +4618,10 @@ msgstr "As instruções das suas habilidades ou do seu projeto são longas demai
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
 msgstr "Não foi possível carregar o mapa."
+
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "The new device isn't showing a code"
+msgstr "O novo dispositivo não está mostrando um código"
 
 #: src/components/device-approval.tsx
 msgid "The request was denied. You can safely close this page."
@@ -4607,6 +4678,10 @@ msgstr ""
 msgid "This chat uses {agentName}, which is not available on this platform."
 msgstr "Esta conversa usa o {agentName}, que não está disponível nesta plataforma."
 
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "This code expired."
+msgstr "Este código expirou."
+
 #: src/lib/otp-error-messages.ts
 msgid "This code has expired. Please request a new one."
 msgstr "Este código expirou. Solicite um novo."
@@ -4638,6 +4713,10 @@ msgstr "Este dispositivo ainda não foi aprovado. Aprove-o primeiro em um dispos
 #: src/settings/devices.tsx
 msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
 msgstr ""
+
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "This device was not approved. If you aren't adding a device, deny it. To try again, tap New code on the new device first."
+msgstr "Este dispositivo não foi aprovado. Se você não está adicionando um dispositivo, recuse-o. Para tentar novamente, primeiro toque em Novo código no novo dispositivo."
 
 #: src/components/device-revoked.tsx
 msgid "This device was signed out remotely and its local data has been cleared."
@@ -4811,7 +4890,7 @@ msgstr "Isso excluirá permanentemente sua conta e todos os seus dados nos nosso
 msgid "This will share the current chat with the {recipient} team so that they can debug the problem."
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."
 msgstr "Isso compartilhará sua chave de criptografia com o dispositivo, permitindo que ele descriptografe e sincronize seus dados."
 
@@ -4889,6 +4968,10 @@ msgstr "Token rejeitado"
 msgid "Too many attempts. Please request a new code."
 msgstr "Muitas tentativas. Solicite um novo código."
 
+#: src/components/approve-device/fingerprint-confirmation.tsx
+msgid "Too many codes didn't match on this device today, so approve with the fingerprint instead."
+msgstr "Muitos códigos não conferiram neste dispositivo hoje. Aprove usando a impressão digital do dispositivo."
+
 #: src/components/chat/error-message.tsx
 msgid "Too many requests. Please try again in a moment."
 msgstr "Muitas solicitações. Tente novamente em instantes."
@@ -4921,6 +5004,7 @@ msgstr "Viagens e lugares"
 msgid "Trusted devices"
 msgstr "Dispositivos confiáveis"
 
+#: src/components/approve-device/approve-device-dialog.tsx
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
@@ -5078,6 +5162,15 @@ msgstr "Use uma URL http:// ou https://"
 msgid "Use Cloud Proxy"
 msgstr "Usar o proxy na nuvem"
 
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Use code instead"
+msgstr "Usar o código"
+
+#: src/components/approve-device/approve-device-dialog.tsx
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Use fingerprint instead"
+msgstr "Usar a impressão digital do dispositivo"
+
 #: src/lib/mcp-url-validation.ts
 msgid "Use https:// (http is only allowed for localhost or a local network)"
 msgstr "Use https:// (http só é permitido para localhost ou uma rede local)"
@@ -5228,6 +5321,10 @@ msgstr "Aguardando aprovação"
 #~ msgid "Waiting for your approval in the app"
 #~ msgstr ""
 
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Waiting for your other device…"
+msgstr "Aguardando seu outro dispositivo…"
+
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
 msgstr "Quer acesso antecipado?"
@@ -5346,6 +5443,10 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Where links in chats open"
 msgstr "Onde os links das conversas abrem"
+
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "Which code is on the new device?"
+msgstr "Qual código aparece no novo dispositivo?"
 
 #: src/components/onboarding/onboarding-language-step.tsx
 msgid "Which language do you prefer?"

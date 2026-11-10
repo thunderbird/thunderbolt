@@ -8,6 +8,8 @@ import { msg } from '@lingui/core/macro'
 import { useReducer } from 'react'
 import { useAsyncAttempt } from './use-async-attempt'
 import { getEncryptionErrorMessage } from '@/lib/encryption-error-message'
+import { EncryptedSyncUnsupportedError } from '@/lib/encrypted-sync-support'
+import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 import { HttpError } from '@/lib/http'
 import { useHttpClient, type HttpClient } from '@/contexts'
 import { ValidationError } from '@/crypto'
@@ -156,6 +158,17 @@ export const classifyEncryptionMetadata = (metadata: EncryptionMetadataResponse 
   }
   return metadata.scheme_version === 1 ? 'v1' : 'v2'
 }
+
+const approvalUnverifiedMessage = msg`Couldn't verify this device's approval. Select Check now to try again, or choose another option below.`
+
+/**
+ * What the waiting screen says when an approval check fails. A timeout and an unsupported runtime
+ * keep their own localized copy; anything else gets retry guidance, never an internal message.
+ */
+const describeApprovalFailure = (error: Error): string =>
+  error instanceof EncryptionRequestTimeoutError || error instanceof EncryptedSyncUnsupportedError
+    ? getEncryptionErrorMessage(error, i18n._(approvalUnverifiedMessage))
+    : i18n._(approvalUnverifiedMessage)
 
 /** Fetch encryption metadata, mapping the 404 "not set up" case to null. */
 const fetchMetadataOrNull = async (httpClient: HttpClient): Promise<EncryptionMetadataResponse | null> => {
@@ -352,12 +365,11 @@ export const useSyncSetup = () => {
     })
 
   const approvalVerificationFailed = (update: (action: SyncSetupAction) => void = updateWhileIdle) =>
-    update({
-      type: 'SET_APPROVAL_ERROR',
-      payload: i18n._(
-        msg`Couldn't verify this device's approval. Select Check now to try again, or choose another option below.`,
-      ),
-    })
+    update({ type: 'SET_APPROVAL_ERROR', payload: i18n._(approvalUnverifiedMessage) })
+
+  /** The automatic check keeps failing: say so as the manual check would, which also offers Check now. */
+  const approvalCheckFailed = (error: Error) =>
+    updateWhileIdle({ type: 'SET_APPROVAL_ERROR', payload: describeApprovalFailure(error) })
 
   const confirmApproval = () =>
     runOperation(false, async (update) => {
@@ -383,8 +395,12 @@ export const useSyncSetup = () => {
           approvalVerificationFailed(update)
           return false
         }
-        const message = getEncryptionErrorMessage(err, t`Failed to check approval`)
-        update({ type: 'SET_APPROVAL_ERROR', payload: message })
+        // A fixed line, like the other approval failures: the error itself may carry key material.
+        console.error('Failed to check device approval.')
+        update({
+          type: 'SET_APPROVAL_ERROR',
+          payload: err instanceof Error ? describeApprovalFailure(err) : i18n._(approvalUnverifiedMessage),
+        })
         return false
       }
     })
@@ -445,6 +461,7 @@ export const useSyncSetup = () => {
     submitRecoveryKey,
     confirmApproval,
     approvalVerificationFailed,
+    approvalCheckFailed,
     unlockWithPasskey,
     goToPasskeyEnroll,
     completeSetup,

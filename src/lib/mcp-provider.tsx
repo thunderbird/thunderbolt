@@ -7,6 +7,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useDatabase, useHttpClient } from '@/contexts'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { isUnauthorizedError } from './mcp-unauthorized-error'
+import { withDeadline } from './timeout'
 import type { MCPTransportType } from './mcp-transport'
 
 type SdkMcpClient = Awaited<ReturnType<typeof createMCPClient>>
@@ -36,15 +37,22 @@ export type MCPServerConnection = MCPServer & {
 /** Reconnect a dropped MCP client at the `tools()` boundary. Looks up the
  *  server behind `client` and returns a freshly connected client, or null when
  *  the server is gone/disabled or the reconnect failed. A discovery error is
- *  surfaced while recovery runs and cleared when the connection succeeds. */
+ *  surfaced while recovery runs and cleared when the connection succeeds. A
+ *  client the provider already replaced joins the in-flight reconnect or gets
+ *  the current client, without redialing or surfacing its error. */
 type ReconnectClient = (client: MCPClient, error?: Error) => Promise<MCPClient | null>
 
-/** An enabled, connected client paired with its server identity. `name` is the
+/** An enabled server's client paired with its identity. `name` is the
  *  tool-namespacing prefix consumed by `mergeMcpTools` so different servers'
  *  tools don't collide; `name` and `url` flow through to the assistant message's
  *  `mcpTools` metadata so chat history can resolve a tool call back to its
- *  server (name, url, icon). */
-type NamedMCPClient = { id: string; name: string; url: string; client: MCPClient }
+ *  server (name, url, icon). A server still connecting (first connect or
+ *  reconnect) has no client yet and carries that connect instead, so a send can
+ *  wait for it rather than drop the server's tools for the turn. */
+type NamedMCPClient = { id: string; name: string; url: string } & (
+  | { client: MCPClient }
+  | { client: null; connecting: Promise<MCPClient | null> }
+)
 
 type MCPContextType = {
   servers: MCPServerConnection[]
@@ -79,6 +87,11 @@ const MCPContext = createContext<MCPContextType | undefined>(undefined)
  *  `createClient` prop without touching the AI SDK / proxy stack. */
 type CreateClientFn = (serverId: string, url: string, type: MCPTransportType) => Promise<MCPClient>
 
+/** Longest a connect or reconnect may run before it fails. Sends wait on an
+ *  in-flight connect, so one that never settled would cost every send its wait
+ *  and keep Retry joined to it forever. */
+const connectDeadlineMs = 30_000
+
 type MCPProviderProps = {
   children: ReactNode
   /** Test-only DI seam. Production builds the real proxy-routed client. */
@@ -88,9 +101,14 @@ type MCPProviderProps = {
 export const MCPProvider = ({ children, createClient: injectedCreateClient }: MCPProviderProps) => {
   const [servers, setServers] = useState<MCPServerConnection[]>([])
   const clientRefs = useRef<Map<string, MCPClient>>(new Map())
-  const clientToServerId = useRef<Map<MCPClient, string>>(new Map())
+  // Weak and never pruned: a send can still hold a client the provider has
+  // replaced, and must be able to find its server to join the reconnect.
+  const clientToServerId = useRef<WeakMap<MCPClient, string>>(new WeakMap())
   const reconnectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
-  const connectsInFlight = useRef<Map<string, Promise<void>>>(new Map())
+  const connectsInFlight = useRef<Map<string, Promise<MCPClient | null>>>(new Map())
+  // The latest connect or reconnect per server. Only it may commit, so an attempt
+  // overtaken by a newer one (a URL change mid-connect) can't overwrite its result.
+  const latestAttempts = useRef<Map<string, symbol>>(new Map())
   const serversRef = useRef<MCPServerConnection[]>([])
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const db = useDatabase()
@@ -122,14 +140,45 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     clientToServerId.current.set(client, serverId)
   }
 
-  const connectServer = (server: MCPServer): Promise<void> => {
+  /** Open a client for `server`, failing after {@link connectDeadlineMs}. A
+   *  client that lands after the deadline is closed rather than left open; a
+   *  late failure needs nothing, the deadline already reported it. */
+  const connectWithDeadline = async (server: MCPServer): Promise<MCPClient> => {
+    const connecting = createClient(server.id, server.url, server.type)
+    try {
+      return await withDeadline(
+        connecting,
+        connectDeadlineMs,
+        () => new Error(`MCP connect timed out after ${connectDeadlineMs}ms`),
+      )
+    } catch (err) {
+      void connecting.then(closeClient, () => {})
+      throw err
+    }
+  }
+
+  /** Claim the right to commit `serverId`'s connection, superseding any earlier attempt. */
+  const startAttempt = (serverId: string): symbol => {
+    const attempt = Symbol(serverId)
+    latestAttempts.current.set(serverId, attempt)
+    return attempt
+  }
+
+  /** Whether `attempt` may still commit: the server exists, is enabled, and no
+   *  later connect or reconnect has superseded it. */
+  const canCommit = (serverId: string, attempt: symbol): boolean => {
+    const current = serversRef.current.find((s) => s.id === serverId)
+    return Boolean(current?.enabled) && latestAttempts.current.get(serverId) === attempt
+  }
+
+  const connectServer = (server: MCPServer): Promise<MCPClient | null> => {
     if (!server.enabled) {
       commitServers((prev) =>
         prev.map((s) =>
           s.id === server.id ? { ...s, client: null, isConnected: false, error: null, enabled: false } : s,
         ),
       )
-      return Promise.resolve()
+      return Promise.resolve(null)
     }
 
     // Coalesce overlapping connects for the same server into one in-flight
@@ -142,17 +191,19 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       return inFlight
     }
 
-    const promise = (async (): Promise<void> => {
+    const attempt = startAttempt(server.id)
+    // A reconnect still running is superseded: stop handing it to sends.
+    reconnectsInFlight.current.delete(server.id)
+    const promise = (async (): Promise<MCPClient | null> => {
       try {
-        const client = await createClient(server.id, server.url, server.type)
+        const client = await connectWithDeadline(server)
 
-        // The server may have been removed/disabled while we were connecting —
-        // close the orphan rather than caching/committing (and re-enabling) a
-        // client nothing can reach.
-        const current = serversRef.current.find((s) => s.id === server.id)
-        if (!current || !current.enabled) {
+        // The server may have been removed/disabled, or reconnected by a newer
+        // attempt, while we were connecting — close the orphan rather than
+        // caching/committing (and re-enabling) a client nothing should reach.
+        if (!canCommit(server.id, attempt)) {
           closeClient(client)
-          return
+          return null
         }
 
         cacheClient(server.id, client)
@@ -160,6 +211,7 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         commitServers((prev) =>
           prev.map((s) => (s.id === server.id ? { ...s, client, isConnected: true, error: null, enabled: true } : s)),
         )
+        return client
       } catch (err) {
         // A 401 means the server requires authorization and is waiting for a
         // credential / OAuth — expected, not a failure. Keep other errors as errors.
@@ -168,11 +220,10 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         } else {
           console.error('Failed to connect to MCP server:', server.name, err)
         }
-        // Skip committing an error onto a server that was removed/disabled
-        // mid-connect — its row is gone or intentionally off.
-        const current = serversRef.current.find((s) => s.id === server.id)
-        if (!current || !current.enabled) {
-          return
+        // Skip committing an error onto a server that was removed/disabled or
+        // superseded mid-connect — its row is gone, off, or owned by a newer attempt.
+        if (!canCommit(server.id, attempt)) {
+          return null
         }
         commitServers((prev) =>
           prev.map((s) =>
@@ -181,16 +232,21 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
               : s,
           ),
         )
+        return null
       }
     })()
 
     connectsInFlight.current.set(server.id, promise)
     return promise.finally(() => {
-      connectsInFlight.current.delete(server.id)
+      // A reconnect may already have dropped this entry, and a newer connect
+      // may own the slot by now.
+      if (connectsInFlight.current.get(server.id) === promise) {
+        connectsInFlight.current.delete(server.id)
+      }
     })
   }
 
-  /** Close and forget a client, clearing both lookup directions. */
+  /** Close a client. Its reverse lookup stays so a retired client still resolves to its server. */
   const closeClient = (client: MCPClient) => {
     if (client.close) {
       try {
@@ -199,7 +255,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         console.error('Error closing MCP client:', error)
       }
     }
-    clientToServerId.current.delete(client)
   }
 
   const disconnectServer = (serverId: string) => {
@@ -298,17 +353,19 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
       return Promise.resolve(null)
     }
 
+    const attempt = startAttempt(serverId)
+    // A first connect still running is superseded: stop handing it to sends.
+    connectsInFlight.current.delete(serverId)
     const promise = (async (): Promise<MCPClient | null> => {
       // Tear down the stale connection before opening a new one.
       disconnectServer(serverId)
 
       try {
-        const client = await createClient(server.id, server.url, server.type)
+        const client = await connectWithDeadline(server)
 
-        // The server may have been removed/disabled while we were connecting —
-        // close the orphan rather than caching a client nothing can reach.
-        const current = serversRef.current.find((s) => s.id === serverId)
-        if (!current || !current.enabled) {
+        // The server may have been removed/disabled, or reconnected again, while
+        // we were connecting — close the orphan rather than caching it.
+        if (!canCommit(serverId, attempt)) {
           closeClient(client)
           return null
         }
@@ -320,10 +377,9 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         return client
       } catch (err) {
         console.error('Failed to reconnect MCP server:', server.name, err)
-        // Skip committing an error onto a server that was removed/disabled
-        // mid-reconnect — its row is gone or intentionally off.
-        const current = serversRef.current.find((s) => s.id === serverId)
-        if (!current || !current.enabled) {
+        // Skip committing an error onto a server that was removed/disabled or
+        // superseded mid-reconnect.
+        if (!canCommit(serverId, attempt)) {
           return null
         }
         commitServers((prev) =>
@@ -335,7 +391,11 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
 
     reconnectsInFlight.current.set(serverId, promise)
     return promise.finally(() => {
-      reconnectsInFlight.current.delete(serverId)
+      // A connect may already have dropped this entry, and a newer reconnect
+      // may own the slot by now.
+      if (reconnectsInFlight.current.get(serverId) === promise) {
+        reconnectsInFlight.current.delete(serverId)
+      }
     })
   }
 
@@ -343,6 +403,15 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     const serverId = clientToServerId.current.get(client)
     if (!serverId) {
       return Promise.resolve(null)
+    }
+    // Already replaced (another send's retry, or a disable and re-enable, got
+    // there first): join that connect, or take its result, instead of redialing.
+    if (clientRefs.current.get(serverId) !== client) {
+      return (
+        reconnectsInFlight.current.get(serverId) ??
+        connectsInFlight.current.get(serverId) ??
+        Promise.resolve(clientRefs.current.get(serverId) ?? null)
+      )
     }
     if (error) {
       commitServers((prev) =>
@@ -352,17 +421,26 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     return reconnectServer(serverId)
   }
 
-  const getEnabledClients = (): NamedMCPClient[] => {
-    // Use ref to always get current servers, avoiding stale closures
-    return serversRef.current
-      .filter((server) => server.enabled && server.isConnected && server.client)
-      .map((server) => ({ id: server.id, name: server.name, url: server.url, client: server.client! }))
-  }
+  // Use ref to always get current servers, avoiding stale closures
+  const getEnabledClients = (): NamedMCPClient[] =>
+    serversRef.current.flatMap((server): NamedMCPClient[] => {
+      if (!server.enabled) {
+        return []
+      }
+      const identity = { id: server.id, name: server.name, url: server.url }
+      // An in-flight reconnect wins over the row's client, which it has already
+      // closed even when the row still reads as connected. A first connect has
+      // no client yet either.
+      const connecting = reconnectsInFlight.current.get(server.id) ?? connectsInFlight.current.get(server.id)
+      if (connecting) {
+        return [{ ...identity, client: null, connecting }]
+      }
+      return server.isConnected && server.client ? [{ ...identity, client: server.client }] : []
+    })
 
   // Cleanup on unmount
   useEffect(() => {
     const clientsRef = clientRefs
-    const reverseRef = clientToServerId
     return () => {
       const clients = clientsRef.current
       clients.forEach((client, serverId) => {
@@ -375,7 +453,6 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
         }
       })
       clients.clear()
-      reverseRef.current.clear()
     }
   }, [])
 

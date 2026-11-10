@@ -19,7 +19,13 @@ import {
   postUpgrade,
   denyDevice,
   revokeDevice,
+  fetchMyApprovalSession,
+  fetchPendingApprovalSession,
+  challengeApprovalSession,
 } from './encryption'
+import { getClock } from '@/testing-library'
+import { createSpyHttpClient } from '@/test-utils/http-client-spy'
+import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
@@ -293,5 +299,45 @@ describe('encryption API client', () => {
       await revokeDevice(noProof.httpClient, 'dev-4')
       expect(noProof.getLastRequest().body).toEqual({})
     })
+  })
+})
+
+describe('approval relay deadline', () => {
+  it('aborts and rejects a request the server never answers', async () => {
+    const held = Promise.withResolvers<Request>()
+    const { httpClient } = createSpyHttpClient(async (request) => {
+      held.resolve(request)
+      return new Promise<Response>(() => {})
+    })
+    // Bun's `.rejects` waits synchronously, before the fake clock can reach the deadline.
+    const outcome = fetchMyApprovalSession(httpClient).catch((error: Error) => error)
+    const request = await held.promise
+    await getClock().tickAsync(10_000)
+    expect(await outcome).toBeInstanceOf(EncryptionRequestTimeoutError)
+    expect(request.signal.aborted).toBe(true)
+  })
+
+  it('also bounds a response body that never finishes', async () => {
+    const held = Promise.withResolvers<Request>()
+    const { httpClient } = createSpyHttpClient(async (request) => {
+      held.resolve(request)
+      return new Response(new ReadableStream(), { status: 200 })
+    })
+    const outcome = fetchPendingApprovalSession(httpClient, 'pending-1').catch((error: Error) => error)
+    const request = await held.promise
+    await getClock().tickAsync(10_000)
+    expect(await outcome).toBeInstanceOf(EncryptionRequestTimeoutError)
+    expect(request.signal.aborted).toBe(true)
+  })
+
+  it('leaves a request that answers in time alone', async () => {
+    const held = Promise.withResolvers<Request>()
+    const { httpClient } = createSpyHttpClient(async (request) => {
+      held.resolve(request)
+      return new Response(null, { status: 204 })
+    })
+    await challengeApprovalSession(httpClient, 'pending-1', { sessionId: '0'.repeat(32), challenge: 'a'.repeat(64) })
+    await getClock().tickAsync(10_000)
+    expect((await held.promise).signal.aborted).toBe(false)
   })
 })

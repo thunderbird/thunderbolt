@@ -113,15 +113,21 @@ falsify, not a fact.
   call that could itself adopt a fresh AK and un-set the AK just verified.
 
   **Approval recipient binding.** Before wrapping the AK, an approver
-  matches the pending device's locally computed 256-bit account/id/P-256/ML-KEM
-  fingerprint. The dialog snapshots that tuple, so a changed row cannot retarget
+  confirms the pending device's account/id/P-256/ML-KEM tuple, by default with a
+  2-digit (00 to 99) commit-then-reveal code and as a fallback with the full 256-bit
+  fingerprint. The pending device commits to its random reveal before it sees the
+  approver's challenge, so A2 substituting the tuple makes the two codes agree
+  once in 100 per attempt, with nothing to grind offline (see the residual below); `approveDevice`
+  re-verifies the commitment and the code from the dialog's snapshot before any
+  key work. The dialog snapshots that tuple, so a changed row cannot retarget
   the wrap. An honest backend also verifies the submitted attestation against the
   locked target row. This backend check is race defense: A2 can replace its stored
   metadata and verification key, so it cannot establish the malicious-server boundary.
   First receivers check their local recipient tuple before any key-state writes.
   The pre-wrap comparison is the disclosure control; receiver verification cannot
-  protect an AK already disclosed. The substitution case in `multi-device.spec.ts`
-  and focused fingerprint, service and upgrade tests guard these paths.
+  protect an AK already disclosed. The substitution case in `multi-device.spec.ts`,
+  `attacks/approval-code-substitution.spec.ts` (A2 with a self-consistent forged
+  session), and focused code, fingerprint, service and upgrade tests guard these paths.
 
   **Residuals.** (1) A device's FIRST account-key adoption remains trust-on-first-use:
   it has no previous witness to the account's key material. Fingerprint verification
@@ -437,6 +443,22 @@ Not findings. Documented trade-offs, listed so review does not relitigate them.
   build pinned to the wrong escrow key (THU-866 residual — see C11).
 - **Decrypt-failure handling and keys-before-data ordering** are deferred (planning gaps G2/G3);
   PowerSync retries make naive fail-closed poison the sync loop.
+- **A chance match of the 2-digit code.** Under A2 a substituted tuple shows the same code on
+  both screens once in 100 attempts even for a user who compares carefully. A2 cannot grind it:
+  every attempt needs a fresh challenge from the approver and a reveal from the pending device,
+  the pending device never restarts an attempt on its own, and the approver stops after three
+  unsuccessful attempts per 24 hours (below). The approver counts an attempt before it sends the
+  challenge, so A2 cannot see the codes and then refuse the challenge for free. Two digits trade
+  the 1 in 10⁶ of a six-digit code for an easier comparison.
+- **A careless tap on the approval code.** The approver offers its own code among six. A user
+  who taps without comparing picks it one time in six, and that approves the recipient the
+  approver snapshotted. Under A2 that is a substituted key tuple. A stolen live session (A5) or a
+  revoked device's session (A4) gets there more cheaply: it registers its own pending device and
+  runs an honest session, so the approver's real code is among the six. Typing the fingerprint
+  has no such path. Bounded, not removed, by three unsuccessful attempts per trusted device per
+  24 hours, kept in `localStorage` so neither the server nor the stolen session can reset it. Chosen for lower friction over typing the code;
+  lab studies measured more fatal errors for selection than for compare-and-confirm (Uzun,
+  Karvonen, Asokan 2007; Kainda, Flechais, Roscoe 2009).
 - **Older approvers and a malicious web host.** Updated clients require fingerprint
   verification before approving another device. During migration, the only device
   envelope is wrapped to the migrating device's local keys.

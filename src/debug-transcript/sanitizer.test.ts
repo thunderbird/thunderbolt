@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { sanitizeDebugTranscriptSecrets } from './sanitizer'
+import { sanitizeDebugTranscriptSecrets, sanitizeDebugTranscriptText } from './sanitizer'
 import type { JsonValue } from './types'
 
 describe('sanitizeDebugTranscriptSecrets', () => {
@@ -144,3 +144,111 @@ describe('sanitizeDebugTranscriptSecrets', () => {
     })
   })
 })
+
+describe('free-text credential encodings', () => {
+  it.each([
+    'PRIVATE KEY',
+    'RSA PRIVATE KEY',
+    'EC PRIVATE KEY',
+    'DSA PRIVATE KEY',
+    'OPENSSH PRIVATE KEY',
+    'ENCRYPTED PRIVATE KEY',
+  ])('redacts %s blocks with real or escaped line breaks', (label) => {
+    const secret = crypto.randomUUID()
+    for (const newline of ['\n', '\r\n', String.raw`\n`]) {
+      const input = `Before -----BEGIN ${label}-----${newline}${secret}${newline}-----END ${label}----- after`
+      expect(sanitizeDebugTranscriptText(input) === 'Before [redacted] after').toBe(true)
+    }
+  })
+
+  it('redacts an unterminated private key through the end of the text', () => {
+    const secret = crypto.randomUUID()
+    const output = sanitizeDebugTranscriptText(`Before -----BEGIN PRIVATE KEY-----\n${secret}`)
+    expect(output === 'Before [redacted]').toBe(true)
+  })
+
+  it.each([
+    'aws_secret_access_key',
+    'AWS_SECRET_ACCESS_KEY',
+    'awsSecretAccessKey',
+    'client_secret',
+    'clientSecret',
+    'client-secret',
+  ])('redacts labeled %s assignments embedded in text and JSON strings', (label) => {
+    const secret = crypto.randomUUID()
+    const inputs = [
+      `Before ${label}=${secret}; after`,
+      `Before "${label}": "${secret}", after`,
+      `Before '${label}' = '${secret}'; after`,
+      `Before ${label}: ${secret} after`,
+      String.raw`Before \"${label}\": \"${secret}\", after`,
+    ]
+    for (const input of inputs) {
+      const output = sanitizeDebugTranscriptText(input)
+      expect(output.includes(secret)).toBe(false)
+      expect(output.includes('[redacted]')).toBe(true)
+      expect(output.startsWith('Before ')).toBe(true)
+      expect(output.endsWith('after')).toBe(true)
+      expect(sanitizeDebugTranscriptText(output)).toBe(output)
+    }
+  })
+
+  it('keeps ordinary prose, long words, public PEM blocks and mentions of labels', () => {
+    const input =
+      'A client_secret is required. aws_secret_access_key documentation. ' +
+      'ordinary'.repeat(100) +
+      '\n-----BEGIN PUBLIC KEY-----\npublic material\n-----END PUBLIC KEY-----'
+    expect(sanitizeDebugTranscriptText(input)).toBe(input)
+  })
+})
+
+it('redacts escaped quote suffixes, template literals and truncated assignments', () => {
+  const secret = crypto.randomUUID()
+  const inputs = [
+    JSON.stringify(JSON.stringify({ client_secret: `prefix${String.fromCharCode(92, 34)}${secret}` })),
+    `client_secret=\`${secret}\``,
+    `client_secret="${secret}`,
+    'client_secret=' + String.fromCharCode(92, 34) + String.fromCharCode(92).repeat(36) + secret,
+    `client_secret=sk-proj-${'a'.repeat(20)}!${secret}`,
+  ]
+  for (const input of inputs) {
+    expect(sanitizeDebugTranscriptText(input).includes(secret)).toBe(false)
+  }
+})
+
+it('preserves URL fragments after labeled query credentials', () => {
+  expect(sanitizeDebugTranscriptText('https://example.test/?client_secret=value#section')).toBe(
+    'https://example.test/?client_secret=[redacted]#section',
+  )
+})
+
+it.each(['#', '&', ',', ';', '[', ']', '{', '}', '<', '>'])(
+  'redacts leading and embedded %s in bare client secrets',
+  (punctuation) => {
+    const secret = crypto.randomUUID()
+    for (const value of [`${punctuation}${secret}`, `prefix${punctuation}${secret}`]) {
+      const output = sanitizeDebugTranscriptText(`Before client_secret=${value} after`)
+      expect(output.includes(secret)).toBe(false)
+      expect(output).toBe('Before client_secret=[redacted] after')
+    }
+  },
+)
+
+it('preserves query separators for URL-style credential parameters', () => {
+  expect(sanitizeDebugTranscriptText('?client_secret=opaque&state=visible#section')).toBe(
+    '?client_secret=[redacted]&state=visible#section',
+  )
+  expect(sanitizeDebugTranscriptText('https://example.test/?aws_secret_access_key=opaque&state=visible#section')).toBe(
+    'https://example.test/?aws_secret_access_key=[redacted]&state=visible#section',
+  )
+})
+
+it.each(['Client Secret', 'AWS Secret Access Key', 'client  secret', 'AWS Secret Access  Key'])(
+  'redacts the spaced %s label without hiding prose mentions',
+  (label) => {
+    const secret = crypto.randomUUID()
+    expect(sanitizeDebugTranscriptText(`${label}: ${secret}`).includes(secret)).toBe(false)
+    const prose = `The ${label} is required before continuing.`
+    expect(sanitizeDebugTranscriptText(prose)).toBe(prose)
+  },
+)

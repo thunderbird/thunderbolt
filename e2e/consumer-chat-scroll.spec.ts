@@ -93,7 +93,10 @@ test.describe('mobile chat scrolling', () => {
 
 test('wheel scrolling over the down chevron moves the chat, and keyboard activation still jumps to the bottom', async ({
   page,
+  browserName,
+  isMobile,
 }) => {
+  test.skip(browserName === 'webkit' && isMobile, 'Playwright has no mouse wheel in mobile WebKit')
   const errors = collectPageErrors(page)
   const scroller = await openLongConversation(page)
   const button = page.getByRole('button', { name: 'Scroll to bottom' })

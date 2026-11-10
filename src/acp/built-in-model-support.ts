@@ -12,6 +12,7 @@ const piProviders = new Set<Model['provider']>([
   'openai',
   'custom',
   'openrouter',
+  'otari',
   'thunderbolt',
   'tinfoil',
 ])
@@ -33,7 +34,7 @@ export const supportsPiCompaction = (
   if (model.provider === 'thunderbolt' && model.vendor === 'anthropic') {
     return Object.hasOwn(anthropicModels, managedAnthropicCatalogId(model.model))
   }
-  if (model.provider === 'openai' || model.provider === 'openrouter') {
+  if (model.provider === 'openai' || model.provider === 'openrouter' || model.provider === 'otari') {
     return Boolean(model.apiKey)
   }
   if (model.provider === 'custom') {

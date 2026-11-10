@@ -53,6 +53,7 @@ import { classifyErrorKind, createChatErrorResponse } from '@/lib/error-utils'
 import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
+import { otariBaseUrl } from '@/lib/otari'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
 import { recordDebugTranscriptRetry, recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
@@ -313,6 +314,8 @@ export const resolveOpenAiCompatConnection = (
       return modelConfig.apiKey
         ? { baseURL: 'https://openrouter.ai/api/v1', apiKey: modelConfig.apiKey, fetch: getProxyFetch() }
         : null
+    case 'otari':
+      return modelConfig.apiKey ? { baseURL: otariBaseUrl, apiKey: modelConfig.apiKey, fetch: getProxyFetch() } : null
     default:
       return null
   }
@@ -438,20 +441,21 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       })
       return openaiCompatible(modelConfig.model)
     }
-    case 'openrouter': {
+    case 'openrouter':
+    case 'otari': {
       const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
       if (!conn) {
         throw new Error('No API key provided')
       }
       // Using OpenAI-compatible approach until @openrouter/ai-sdk-provider supports Vercel AI SDK v5
       // https://github.com/OpenRouterTeam/ai-sdk-provider/pull/77
-      const openrouter = createOpenAICompatible({
-        name: 'openrouter',
+      const provider = createOpenAICompatible({
+        name: modelConfig.provider,
         baseURL: conn.baseURL,
         apiKey: conn.apiKey,
         fetch: conn.fetch,
       })
-      return openrouter(modelConfig.model)
+      return provider(modelConfig.model)
     }
     default:
       throw new Error(`Unsupported provider: ${modelConfig.provider}`)

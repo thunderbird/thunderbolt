@@ -121,10 +121,15 @@ Users add models in **Settings → Models**.
 | Anthropic  | Required | No           | Yes, once the key is valid         |
 | OpenAI     | Required | No           | Yes, once the key is valid         |
 | OpenRouter | Required | No           | Yes, once the key is valid         |
+| Otari      | Required | No           | Yes, once the key is valid         |
 | Tinfoil    | Required | No           | Yes, no key needed to list         |
 | Custom     | Optional | Required     | Only if the endpoint publishes one |
 
 The key is stored on the device it was typed on and is never synced to other devices, so a user who adds a model on a laptop will be asked for the key again on their phone. It never reaches your database and is not part of any configuration the server publishes.
+
+The Otari option uses Mozilla.ai's hosted gateway at `https://api.otari.ai/api/v1`. Model IDs
+include their upstream provider prefix, for example `openai:gpt-4o`. To connect a self-hosted
+Otari gateway, use **Custom** with that gateway's base URL ending in `/api/v1`.
 
 Requests are relayed by your API service so the browser can reach providers that refuse cross-origin calls. The relay forwards the key untouched, stores nothing, and logs the upstream hostname rather than the URL. It never logs message content.
 

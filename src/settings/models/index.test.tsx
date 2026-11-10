@@ -187,7 +187,7 @@ describe('add model form', () => {
 
     fireEvent.click(screen.getByText('select model'))
     expect(screen.getByTestId('panel-kind')).toHaveTextContent('detail')
-    expect(screen.getByTestId('provider')).toHaveTextContent('thunderbolt')
+    expect(screen.getByTestId('provider')).toHaveTextContent('anthropic')
     expect(screen.getByTestId('api-key')).toBeEmptyDOMElement()
 
     fireEvent.click(screen.getByText('open add'))

@@ -30,16 +30,23 @@ import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle, titleSourceText } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
+import type {
+  ChatMessage,
+  Model,
+  SaveMessagesFunction,
+  SaveStreamingMessageFunction,
+  ThunderboltUIMessage,
+} from '@/types'
 import type { Agent } from '@/types/acp'
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useChatStore } from './chat-store'
+import { type ChatSession, useChatStore } from './chat-store'
 import { withChatThreadWrite } from './chat-thread-write'
 import { createChatInstance } from './chat-instance'
 import { resolveSessionAgent } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
+import { waitForSyncCatchUp as defaultWaitForSyncCatchUp } from '@/db/powersync/sync-state'
 
 type UseHydrateChatStoreParams = {
   id: string
@@ -69,6 +76,8 @@ type UseHydrateChatStoreParams = {
    * recorded.
    */
   onCreated?: (chatThreadId: string) => void
+  /** Injected for tests; see {@link defaultWaitForSyncCatchUp}. */
+  waitForSyncCatchUp?: () => Promise<void> | null
 }
 
 /**
@@ -80,6 +89,31 @@ const trackChatReadyOnce = () => {
   if (chatReadyMs !== null) {
     trackEvent('app_chat_ready', { chat_ready_ms: Math.round(chatReadyMs) })
   }
+}
+
+/**
+ * A saved empty reply is a turn that already failed. The session marks its retries
+ * exhausted so it shows as failed rather than as a recovery still in progress.
+ */
+const endsWithEmptyReply = (messages: ThunderboltUIMessage[]): boolean => {
+  const last = messages.at(-1)
+  return last?.role === 'assistant' && !last.parts?.length
+}
+
+/**
+ * The saved messages that follow the ones the session holds. Null while the chat is
+ * busy, or once it no longer matches the start of the saved list, so nothing the user
+ * did meanwhile is overwritten.
+ */
+const getSyncedTail = (session: ChatSession, saved: ChatMessage[]): ThunderboltUIMessage[] | null => {
+  if (session.stopping || session.compactionStatus === 'compacting' || session.chatInstance.status !== 'ready') {
+    return null
+  }
+  const current = session.chatInstance.messages
+  if (saved.length <= current.length || current.some((message, index) => message.id !== saved[index].id)) {
+    return null
+  }
+  return saved.slice(current.length).map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
 }
 
 /**
@@ -101,6 +135,7 @@ export const useHydrateChatStore = ({
   projectId: newChatProjectId = null,
   miniAppId: newChatMiniAppId = null,
   onCreated,
+  waitForSyncCatchUp = defaultWaitForSyncCatchUp,
 }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
   const httpClient = useHttpClient()
@@ -127,7 +162,7 @@ export const useHydrateChatStore = ({
     await updateChatThread(db, threadId, { title })
   }
 
-  const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
+  const saveMessages: SaveMessagesFunction = async ({ id, messages, updateContext = true }) => {
     const { updateSession } = useChatStore.getState()
     // Read the session inside the queue so a move that ran before creation is
     // included in the insert; a later move waits until the row exists.
@@ -158,11 +193,13 @@ export const useHydrateChatStore = ({
     })
 
     // Save messages and update context size using DAL
-    await saveMessagesWithContextUpdate(db, id, messages)
+    await saveMessagesWithContextUpdate(db, id, messages, { updateContext })
 
     // Generate title in background if needed
     if (thread?.title === defaultChatTitle) {
-      updateThreadTitle(messages, id)
+      // A prompt save contains only the tail; the title still comes from the first prompt.
+      const transcript = session.chatInstance.messages
+      updateThreadTitle(transcript.length > 0 ? transcript : messages, id)
     }
 
     if (!session.chatThread) {
@@ -184,16 +221,34 @@ export const useHydrateChatStore = ({
    * are all avoidable per token. The authoritative complete save runs in the
    * chat instance's `onFinish` via {@link saveMessages}.
    */
-  // Stable identity (deps: the stable `db` context value) so it can sit in the
-  // partial-save effect's dependency array without re-firing on every parent
-  // render — otherwise an on-screen error terminal would re-run the direct
-  // error-save (a redundant idempotent upsert + E2EE encrypt/upload) per render.
   const saveStreamingMessage: SaveStreamingMessageFunction = useCallback(
     async ({ threadId, message, parentId }) => {
       await saveStreamingAssistantMessage(db, threadId, message, parentId)
     },
     [db],
   )
+
+  /**
+   * A chat opened before its messages finished downloading read only part of them, and
+   * the session keeps that copy. Append what has landed once the sync completes, then
+   * stop showing the chat as waiting.
+   */
+  const appendMessagesSyncedAfterOpen = async (syncCatchUp: Promise<void>) => {
+    await syncCatchUp
+    const saved = await getChatMessages(db, id)
+    const session = useChatStore.getState().sessions.get(id)
+    if (!session) {
+      return
+    }
+    const synced = getSyncedTail(session, saved)
+    if (synced) {
+      session.chatInstance.messages = [...session.chatInstance.messages, ...synced]
+    }
+    useChatStore.getState().updateSession(id, {
+      awaitingSyncedMessages: false,
+      retriesExhausted: session.retriesExhausted || (synced !== null && endsWithEmptyReply(synced)),
+    })
+  }
 
   const hydrateChatStore = async () => {
     const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModels } =
@@ -226,6 +281,9 @@ export const useHydrateChatStore = ({
 
       return
     }
+
+    // Taken before the reads below, so a sync that lands while they run is still caught.
+    const syncCatchUp = isNew ? null : waitForSyncCatchUp()
 
     // New IDs are minted locally and have no history. Read the selected model
     // directly, and start independent reads together instead of gating on settings.
@@ -288,8 +346,7 @@ export const useHydrateChatStore = ({
     const initialUiMessages = initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
     const chatInstance = createChatInstance(id, initialUiMessages, saveMessages, httpClient, getProxyFetch)
 
-    const lastInitialMessage = initialUiMessages[initialUiMessages.length - 1]
-    const hydratedTrailingEmptyTurn = lastInitialMessage?.role === 'assistant' && !lastInitialMessage.parts?.length
+    const hydratedTrailingEmptyTurn = endsWithEmptyReply(initialUiMessages)
 
     createSession({
       chatInstance,
@@ -301,6 +358,8 @@ export const useHydrateChatStore = ({
       miniAppApprovalQueue: [],
       retryCount: 0,
       retriesExhausted: hydratedTrailingEmptyTurn,
+      // A saved thread always has messages, so none here means they are still downloading.
+      awaitingSyncedMessages: syncCatchUp !== null && initialMessages.length === 0,
       stopping: false,
       // Persisted via `chatThreads.agentId`; resolved above (first available
       // agent when the persisted id no longer matches).
@@ -323,6 +382,10 @@ export const useHydrateChatStore = ({
     setIsReady(true)
     trackChatReadyOnce()
     maybePrewarmBuiltInAgent(selectedAgent, selectedModel)
+
+    if (syncCatchUp) {
+      void appendMessagesSyncedAfterOpen(syncCatchUp)
+    }
   }
 
   return { hydrateChatStore, isReady, saveMessages, saveStreamingMessage }

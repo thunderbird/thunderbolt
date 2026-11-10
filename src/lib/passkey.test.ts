@@ -9,6 +9,12 @@ import * as os from '@tauri-apps/plugin-os'
 import { useConfigStore } from '@/api/config-store'
 import type { AuthClient } from '@/contexts'
 import * as platformModule from '@/lib/platform'
+import { createAuthClient } from 'better-auth/react'
+import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
+import { buildFetchOptions } from '@/contexts/auth-context'
+import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
+import * as onboarding from '@/lib/returning-user-onboarding'
+import { getClock } from '@/testing-library'
 
 // Mock the browser ceremony primitives so tests never touch a real authenticator.
 const prfBytes = new Uint8Array(32).fill(5)
@@ -46,17 +52,22 @@ type FetchCall = {
   }
 }
 
+const acceptedSession = { user: { id: 'user-1', isNew: false }, session: { id: 'session-1', token: 'accepted' } }
+
 type FetchResult = { data?: unknown; error?: unknown; headers?: Record<string, string> }
 
 /** Minimal AuthClient stand-in: records $fetch calls and returns queued results. */
-const makeAuthClient = (results: FetchResult[], session: FetchResult = { data: { user: { id: 'user-1' } } }) => {
+const makeAuthClient = (
+  results: Array<FetchResult | Promise<FetchResult>>,
+  session: FetchResult = { data: { user: { id: 'user-1' } } },
+) => {
   const calls: FetchCall[] = []
   let i = 0
   return {
     calls,
     $fetch: mock(async (path: string, options: FetchCall['options']) => {
       calls.push({ path, options })
-      const { headers, ...result } = results[i++] ?? { data: null, error: null }
+      const { headers, ...result } = await (results[i++] ?? { data: null, error: null })
       options.onResponse?.({ response: new Response(null, { headers }) })
       return result
     }),
@@ -155,10 +166,10 @@ describe('registerPasskey', () => {
 })
 
 describe('signInWithPasskey', () => {
-  it('verifies the assertion and refreshes the session, returning the user id', async () => {
+  it('publishes the verified session without another network request, returning the user id', async () => {
     const authClient = makeAuthClient([
       { data: { challenge: 'xyz' } }, // generate-authenticate-options
-      { data: { token: 't' } }, // verify-authentication
+      { data: acceptedSession }, // verify-authentication
     ])
 
     const result = await signInWithPasskey(authClient)
@@ -166,7 +177,10 @@ describe('signInWithPasskey', () => {
     expect(startAuthentication).toHaveBeenCalledTimes(1)
     expect(authClient.calls[0]?.path).toBe('/passkey/generate-authenticate-options')
     expect(authClient.calls[1]?.path).toBe('/passkey/verify-authentication')
-    expect(authClient.getSession).toHaveBeenCalledTimes(1)
+    expect(authClient.getSession).not.toHaveBeenCalled()
+    expect(authClient.$store.atoms.session.set).toHaveBeenCalledWith(
+      expect.objectContaining({ data: acceptedSession, isPending: false }),
+    )
     expect(result).toEqual({ userId: 'user-1' })
   })
 })
@@ -198,7 +212,7 @@ describe('challenge relay', () => {
   })
 
   it('sends the options call challenge back with verify-authentication, without cookies', async () => {
-    const authClient = makeAuthClient([{ data: { challenge: 'a' }, headers: challenge }, { data: { verified: true } }])
+    const authClient = makeAuthClient([{ data: { challenge: 'a' }, headers: challenge }, { data: acceptedSession }])
     await signInWithPasskey(authClient)
     expect(authClient.calls[1]?.options.headers).toMatchObject(challenge)
     expect(authClient.calls.map((call) => call.options.credentials)).toEqual([undefined, undefined])
@@ -211,14 +225,109 @@ describe('challenge relay', () => {
   })
 })
 
-describe('signInWithPasskey — session refresh', () => {
-  it('fails when the session comes back empty', async () => {
-    const authClient = makeAuthClient([{ data: { challenge: 'abc' } }, { data: { verified: true } }], {
-      data: null,
-      error: null,
-    })
+describe('signInWithPasskey — accepted session', () => {
+  it('stops before the authenticator when cancelled while loading ceremony options', async () => {
+    const options = Promise.withResolvers<FetchResult>()
+    const controller = new AbortController()
+    const authClient = makeAuthClient([options.promise])
+    const result = signInWithPasskey(authClient, { signal: controller.signal }).catch((error: unknown) => error)
+    controller.abort()
+    options.resolve({ data: { challenge: 'abc' } })
+    expect(await result).toMatchObject({ name: 'AbortError' })
+    expect(startAuthentication).not.toHaveBeenCalled()
+    expect(authClient.$store.atoms.session.set).not.toHaveBeenCalled()
+  })
 
-    await expect(signInWithPasskey(authClient)).rejects.toThrow('no session was returned')
+  it('does not verify an assertion returned after its flow was cancelled', async () => {
+    const assertion = Promise.withResolvers<{ id: string; clientExtensionResults: Record<string, never> }>()
+    startAuthentication.mockReturnValueOnce(assertion.promise)
+    const controller = new AbortController()
+    const onAuthenticated = mock(() => {})
+    const authClient = makeAuthClient([{ data: { challenge: 'abc' } }, { data: acceptedSession }])
+    const result = signInWithPasskey(authClient, { signal: controller.signal, onAuthenticated }).catch(
+      (error: unknown) => error,
+    )
+    await getClock().tickAsync(0)
+    expect(startAuthentication).toHaveBeenCalledTimes(1)
+    controller.abort()
+    assertion.resolve({ id: 'late', clientExtensionResults: {} })
+    expect(await result).toMatchObject({ name: 'AbortError' })
+    expect(authClient.calls.map(({ path }) => path)).toEqual(['/passkey/generate-authenticate-options'])
+    expect(onAuthenticated).not.toHaveBeenCalled()
+    expect(authClient.$store.atoms.session.set).not.toHaveBeenCalled()
+  })
+
+  it.each(['cancel-before-commit', 'close-after-commit', 'logout-after-commit'] as const)(
+    'owns real token and session publication: %s',
+    async (action) => {
+      const controller = new AbortController()
+      const verification = Promise.withResolvers<Response>()
+      const housekeeping = Promise.withResolvers<void>()
+      const markOnboarded = spyOn(onboarding, 'markOnboardedForReturningUser').mockReturnValue(housekeeping.promise)
+      const onAuthenticated = mock(() => {
+        expect(getAuthToken()).toBe('accepted.signature')
+        controller.abort()
+      })
+      setAuthToken('previous.signature')
+      const paths: string[] = []
+      const client = createAuthClient({
+        baseURL: 'https://auth.test',
+        plugins: [emailOTPClient(), anonymousClient()],
+        fetchOptions: {
+          ...buildFetchOptions('web'),
+          customFetchImpl: Object.assign(
+            async (input: RequestInfo | URL, init?: RequestInit) => {
+              const path = new URL(String(input)).pathname
+              if (path.endsWith('/get-session')) {
+                return Response.json(null)
+              }
+              paths.push(path)
+              expect(init?.signal).toBe(controller.signal)
+              return path.endsWith('/generate-authenticate-options')
+                ? Response.json({ challenge: 'abc' })
+                : verification.promise
+            },
+            { preconnect: () => {} },
+          ),
+        },
+      })
+      const sessionBefore = client.$store.atoms.session.get().data
+      const result = signInWithPasskey(client, { signal: controller.signal, onAuthenticated }).catch(
+        (error: unknown) => error,
+      )
+      await getClock().tickAsync(0)
+      expect(paths).toHaveLength(2)
+      if (action === 'cancel-before-commit') {
+        controller.abort()
+      }
+      verification.resolve(Response.json(acceptedSession, { headers: { 'set-auth-token': 'accepted.signature' } }))
+      await getClock().tickAsync(0)
+      if (action === 'logout-after-commit') {
+        clearAuthToken()
+      }
+      housekeeping.resolve()
+      if (action === 'close-after-commit') {
+        expect(await result).toEqual({ userId: 'user-1' })
+        expect(getAuthToken()).toBe('accepted.signature')
+        expect(client.$store.atoms.session.get().data).toEqual(acceptedSession)
+      } else {
+        expect(await result).toMatchObject({ name: 'AbortError' })
+        expect(getAuthToken()).toBe(action === 'cancel-before-commit' ? 'previous.signature' : null)
+        expect(client.$store.atoms.session.get().data).toBe(sessionBefore)
+      }
+      expect(onAuthenticated).toHaveBeenCalledTimes(action === 'cancel-before-commit' ? 0 : 1)
+      expect(markOnboarded).toHaveBeenCalledTimes(action === 'cancel-before-commit' ? 0 : 1)
+      expect(paths).toHaveLength(2)
+    },
+  )
+
+  it('does not need a second session response after verification succeeds', async () => {
+    const authClient = makeAuthClient([{ data: { challenge: 'abc' } }, { data: acceptedSession }], {
+      data: null,
+      error: { message: 'offline' },
+    })
+    await expect(signInWithPasskey(authClient)).resolves.toEqual({ userId: 'user-1' })
+    expect(authClient.getSession).not.toHaveBeenCalled()
   })
 
   it('never lets a server-chosen PRF request reach the authenticator or a PRF output reach the server', async () => {
@@ -228,7 +337,7 @@ describe('signInWithPasskey — session refresh', () => {
     }))
     const authClient = makeAuthClient([
       { data: { challenge: 'abc', extensions: { prf: { eval: { first: 'server-salt' } } } } },
-      { data: { verified: true } },
+      { data: acceptedSession },
     ])
 
     await signInWithPasskey(authClient)
@@ -240,13 +349,12 @@ describe('signInWithPasskey — session refresh', () => {
     expect(authClient.calls[1]?.options.body).toEqual({ response: { id: 'cred-auth', clientExtensionResults: {} } })
   })
 
-  it('fails instead of reporting success when the session cannot be loaded', async () => {
-    const authClient = makeAuthClient([{ data: { challenge: 'abc' } }, { data: { verified: true } }], {
-      data: null,
-      error: { message: 'network' },
-    })
-
-    await expect(signInWithPasskey(authClient)).rejects.toEqual({ message: 'network' })
+  it('does not publish a session or commit when verification is rejected', async () => {
+    const authClient = makeAuthClient([{ data: { challenge: 'abc' } }, { error: { message: 'invalid assertion' } }])
+    const onAuthenticated = mock(() => {})
+    await expect(signInWithPasskey(authClient, { onAuthenticated })).rejects.toEqual({ message: 'invalid assertion' })
+    expect(onAuthenticated).not.toHaveBeenCalled()
+    expect(authClient.$store.atoms.session.set).not.toHaveBeenCalled()
   })
 })
 
@@ -359,11 +467,26 @@ describe('native ceremonies on the Apple apps', () => {
     return invoke
   }
 
+  it('discards a native assertion completed after cancellation without sending verification', async () => {
+    const nativeResult = Promise.withResolvers<typeof assertion>()
+    const invoke = useNativeBridge().mockReturnValueOnce(nativeResult.promise)
+    const authClient = makeAuthClient([{ data: { challenge: 'abc', rpId: 'app.thunderbolt.io' } }])
+    const controller = new AbortController()
+    const result = signInWithPasskey(authClient, { signal: controller.signal }).catch((error: unknown) => error)
+    await getClock().tickAsync(0)
+    expect(invoke).toHaveBeenCalledTimes(1)
+    controller.abort()
+    nativeResult.resolve(assertion)
+    expect(await result).toMatchObject({ name: 'AbortError' })
+    expect(authClient.calls.map(({ path }) => path)).toEqual(['/passkey/generate-authenticate-options'])
+    expect(authClient.$store.atoms.session.set).not.toHaveBeenCalled()
+  })
+
   it('never asks for a PRF output on sign-in, whatever the server requests', async () => {
     const invoke = useNativeBridge()
     const authClient = makeAuthClient([
       { data: { challenge: 'abc', rpId: 'app.thunderbolt.io', extensions: { prf: { eval: { first: 'x' } } } } },
-      { data: { verified: true } },
+      { data: acceptedSession },
     ])
 
     await signInWithPasskey(authClient)

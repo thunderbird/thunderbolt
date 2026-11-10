@@ -81,12 +81,20 @@ document. The client strips the two `proxyFramingHeaders` when rebuilding.
 
 ## SSRF and the redirect loop
 
-`validateAndPin` ([backend/src/utils/url-validation.ts:77-118](../../../backend/src/utils/url-validation.ts#L77))
+`validateAndPin` ([backend/src/utils/url-validation.ts:99-144](../../../backend/src/utils/url-validation.ts#L99))
 resolves the hostname, rejects if _any_ resolved address is private, internal or reserved, then
 connects to that IP with the original `Host` header. Pinning closes the DNS-rebinding window
 between check and connect.
 
-- An IP-literal target skips the lookup but is classified the same way.
+A pinned HTTPS request needs a second half: Bun's `tls: { serverName }` fetch option, which
+`validateAndPin` returns alongside the headers. It names the original hostname for TLS SNI and
+certificate verification, which would otherwise follow the IP in the URL. Bun derived SNI from
+the `Host` header through 1.4.0; from 1.4.1 every pinned HTTPS request fails the handshake
+without it. Both the route and `createSafeFetch` pass it through, and the real-handshake test in
+`url-validation.test.ts` guards it across Bun upgrades.
+
+- An IP-literal target skips the lookup but is classified the same way, and gets no `tls`
+  override since the URL was not rewritten.
 - Userinfo is stripped by both the route and `validateAndPin`.
 - `ensureHttps` normalises first and rejects any non-`http(s)` scheme.
 
@@ -193,7 +201,7 @@ list (logged by none). Hence:
   running are queued too, under the same caps. Bun can deliver a frame together with the upgrade. A
   refused socket discards its queue, and a socket closed during the check never dials the upstream.
   The Haystack ACP route (`/v1/haystack/ws`) queues frames during its own bearer check under the
-  same caps and the same `4008`.
+  same caps and the same `4008`, and closes with the same `1013` when that check throws.
 
 `createProxyWebSocket` reads Use Cloud Proxy for each connection. Tauri defaults to direct
 `new WebSocket(url, protocols)` with no app bearer; enabling the setting uses the same carrier,
@@ -213,6 +221,7 @@ and unchanged.
 | `4003` | Reserved for a non-`wss://` target; classified but not emitted today  |
 | `4008` | Pre-connect queue exceeded its message or byte budget                 |
 | `1011` | Upstream connection failed or errored                                 |
+| `1013` | Bearer check threw (for example, database down); the app may retry    |
 
 Otherwise a close code and reason are relayed verbatim, upstream to client and client to upstream,
 except codes a close frame may not carry (`relayCloseCode` in `ws.ts`), on which Bun's

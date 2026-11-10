@@ -9,6 +9,7 @@ import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
 import { CreateItemProvider } from '@/components/create-item/context'
+import { ContentViewProvider } from '@/content-view/context'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import * as attachments from '@/lib/file-blob-storage'
 import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
@@ -53,7 +54,9 @@ const renderChat = (access: 'cloud session' | 'provider connection') => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter>
       <CreateItemProvider>
-        <QueryWrapper>{children}</QueryWrapper>
+        <QueryWrapper>
+          <ContentViewProvider>{children}</ContentViewProvider>
+        </QueryWrapper>
       </CreateItemProvider>
     </MemoryRouter>
   )

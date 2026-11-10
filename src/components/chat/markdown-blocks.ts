@@ -313,12 +313,16 @@ const buildState = (source: string, prev: IncrementalMarkdownState | null): Incr
   // block boundary and freeze further top-level nodes, but only those lying
   // entirely within the stable normalized prefix (bytes past it can still change)
   // and before any node a later append could merge into.
-  const normTailSegments = parseSegments(normalizedFull.slice(committedNormLen))
+  const normalizedTail = normalizedFull.slice(committedNormLen)
+  // Most chat has no math to normalize. Reuse the parse when both passes
+  // would receive the same input, including the first render of saved history.
+  const normTailSegments = normalizedTail === sourceTail ? sourceTailSegments : parseSegments(normalizedTail)
   const blockCommitCount = committableSegmentCount(normTailSegments)
   const newlyCommittedBlocks: Block[] = []
   let advanced = 0
-  for (let i = 0; i < blockCommitCount; i++) {
-    const segment = normTailSegments[i]
+  let committedSegmentCount = 0
+  for (; committedSegmentCount < blockCommitCount; committedSegmentCount++) {
+    const segment = normTailSegments[committedSegmentCount]
     if (committedNormLen + advanced + segment.raw.length > stableNormLen) {
       break
     }
@@ -329,7 +333,13 @@ const buildState = (source: string, prev: IncrementalMarkdownState | null): Incr
   }
   const nextCommittedNormLen = committedNormLen + advanced
   const nextCommittedBlocks = committedBlocks.concat(newlyCommittedBlocks)
-  const blocks = nextCommittedBlocks.concat(sliceTopLevelBlocks(normalizedFull.slice(nextCommittedNormLen)))
+  // These segments already came from the normalized parse. Re-parsing their
+  // suffix would rebuild the same syntax tree for every streamed update.
+  const volatileBlocks = normTailSegments
+    .slice(committedSegmentCount)
+    .filter((segment) => !segment.isGap)
+    .map((segment) => ({ content: segment.raw, isCode: segment.type === 'code' }))
+  const blocks = nextCommittedBlocks.concat(volatileBlocks)
 
   return {
     source,

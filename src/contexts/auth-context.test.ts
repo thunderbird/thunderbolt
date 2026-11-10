@@ -6,7 +6,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { setActiveLocale } from '@/i18n/active-locale'
 import { resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
-import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
+import { clearAuthToken, getAuthToken, invalidateAuthRequests, setAuthToken } from '@/lib/auth-token'
 import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/session-cache'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -22,7 +22,8 @@ import {
   createAuthClientInstance,
   standaloneAuthFetch,
 } from './auth-context'
-import type { createAuthClient } from 'better-auth/react'
+import { createAuthClient } from 'better-auth/react'
+import { getClock } from '@/testing-library'
 
 const authTokenKey = 'thunderbolt_auth_token'
 const sessionCacheKey = 'thunderbolt_session_cache'
@@ -169,7 +170,10 @@ describe('buildFetchOptions onError', () => {
 
   const trigger401 = () => {
     const options = buildFetchOptions('web')
-    options.onError({ response: new Response(null, { status: 401 }) })
+    options.onError({
+      request: { headers: new Headers(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}) },
+      response: new Response(null, { status: 401 }),
+    })
   }
 
   it('dispatches session_expired when a stored token is rejected with 401', () => {
@@ -199,7 +203,10 @@ describe('buildFetchOptions onError', () => {
     setAuthToken('valid-token')
     const options = buildFetchOptions('web')
 
-    options.onError({ response: new Response(null, { status: 401 }), request: { url } })
+    options.onError({
+      response: new Response(null, { status: 401 }),
+      request: { url, headers: new Headers({ Authorization: `Bearer ${getAuthToken()}` }) },
+    })
 
     expect(getAuthToken()).toBe('valid-token')
     expect(dispatchSpy).not.toHaveBeenCalled()
@@ -211,7 +218,10 @@ describe('buildFetchOptions onError', () => {
 
     options.onError({
       response: new Response(null, { status: 401 }),
-      request: { url: 'http://localhost:8000/v1/api/auth/get-session' },
+      request: {
+        url: 'http://localhost:8000/v1/api/auth/get-session',
+        headers: new Headers({ Authorization: `Bearer ${getAuthToken()}` }),
+      },
     })
 
     expect(getAuthToken()).toBeNull()
@@ -222,7 +232,10 @@ describe('buildFetchOptions onError', () => {
     setAuthToken('valid-token')
     const options = buildFetchOptions('web')
 
-    options.onError({ response: new Response(null, { status: 500 }) })
+    options.onError({
+      request: { headers: new Headers(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}) },
+      response: new Response(null, { status: 500 }),
+    })
 
     expect(getAuthToken()).toBe('valid-token')
     expect(dispatchSpy).not.toHaveBeenCalled()
@@ -232,7 +245,10 @@ describe('buildFetchOptions onError', () => {
     setAuthToken('valid-token')
     const options = buildFetchOptions('web')
 
-    options.onError({ response: new Response(null, { status: 426 }) })
+    options.onError({
+      request: { headers: new Headers(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}) },
+      response: new Response(null, { status: 426 }),
+    })
 
     // A version block is not a session-expiry — the token stays put.
     expect(getAuthToken()).toBe('valid-token')
@@ -295,9 +311,14 @@ describe('auth client server isolation', () => {
     expect(options.auth.token()).toBe('')
     expect(() => options.onRequest({ headers: new Headers() })).toThrow('The selected server changed')
     expect(() =>
-      options.onSuccess({ response: Response.json({}, { headers: { 'set-auth-token': 'old-token' } }) }),
-    ).toThrow('The selected server changed')
-    options.onError({ response: new Response(null, { status: 401 }) })
+      options.onSuccess({
+        response: Response.json({}, { headers: { 'set-auth-token': 'old-token' } }),
+        request: { headers: new Headers() },
+      }),
+    ).toThrow('Auth session changed')
+    expect(() =>
+      options.onError({ response: new Response(null, { status: 401 }), request: { headers: new Headers() } }),
+    ).toThrow('Auth session changed')
     expect(JSON.parse(localStorage.getItem(authTokenKey)!)).toEqual({ token: 'next-token', cloudUrl: nextServer })
   })
 
@@ -332,7 +353,9 @@ describe('auth client server isolation', () => {
     window.addEventListener('powersync_credentials_invalid', onInvalid)
     window.addEventListener('app_version_unsupported', onInvalid)
     try {
-      options.onError({ response: new Response(null, { status }) })
+      expect(() =>
+        options.onError({ response: new Response(null, { status }), request: { headers: new Headers() } }),
+      ).toThrow('Auth session changed')
       expect(getAuthToken()).toBe('next-server-token')
       expect(onInvalid).not.toHaveBeenCalled()
     } finally {
@@ -375,7 +398,7 @@ describe('hydrateSessionFromCache', () => {
 
   it('seeds the atom when token and non-expired cache are present', () => {
     setAuthToken('t')
-    const cached = { user: { id: 'u1' }, session: { id: 's1', expiresAt: future() } }
+    const cached = { user: { id: 'u1' }, session: { id: 's1', token: 't', expiresAt: future() } }
     setCachedSession(cached)
     const atom = createFakeAtom()
 
@@ -383,6 +406,49 @@ describe('hydrateSessionFromCache', () => {
 
     expect(atom.get().data).toEqual(cached)
     expect(atom.get().isPending).toBe(false)
+  })
+
+  it.each(['raw-token.signature', 'raw-token.signature%2B%2F%3D'])(
+    'hydrates a raw session token stored with signed bearer %s',
+    (bearer) => {
+      setAuthToken(bearer)
+      const cached = { user: { id: 'u1' }, session: { token: 'raw-token', expiresAt: future() } }
+      setCachedSession(cached)
+      const atom = createFakeAtom()
+      hydrateSessionFromCache(createFakeClient(atom))
+      expect(atom.get().data).toEqual(cached)
+    },
+  )
+
+  it.each([true, false])('hydrates cookie-only SSO only while the cache is valid: %s', (valid) => {
+    const env = import.meta.env as Record<string, unknown>
+    const previousMode = env.VITE_AUTH_MODE
+    env.VITE_AUTH_MODE = 'sso'
+    try {
+      const cached = {
+        user: { id: 'sso-user' },
+        session: { token: 'cookie-session', expiresAt: valid ? future() : past() },
+      }
+      setCachedSession(cached)
+      const atom = createFakeAtom()
+      hydrateSessionFromCache(createFakeClient(atom))
+      expect(atom.get().data).toEqual(valid ? cached : null)
+    } finally {
+      if (previousMode === undefined) {
+        delete env.VITE_AUTH_MODE
+      } else {
+        env.VITE_AUTH_MODE = previousMode
+      }
+    }
+  })
+
+  it('does not seed an older account’s cache under a new token', () => {
+    setAuthToken('new')
+    setCachedSession({ user: { id: 'old' }, session: { token: 'old', expiresAt: future() } })
+    const atom = createFakeAtom()
+    hydrateSessionFromCache(createFakeClient(atom))
+    expect(atom.get().data).toBeNull()
+    expect(getCachedSession()).toBeNull()
   })
 
   it('does not seed when no token is stored', () => {
@@ -407,7 +473,7 @@ describe('hydrateSessionFromCache', () => {
 
   it('drops and clears expired caches without seeding', () => {
     setAuthToken('t')
-    setCachedSession({ user: { id: 'u1' }, session: { expiresAt: past() } })
+    setCachedSession({ user: { id: 'u1' }, session: { token: 't', expiresAt: past() } })
     const atom = createFakeAtom()
 
     hydrateSessionFromCache(createFakeClient(atom))
@@ -450,11 +516,12 @@ describe('subscribeSessionCachePersist', () => {
     clearCachedSession()
   })
 
-  it('persists payloads that carry both user and session', () => {
+  it('persists payloads that carry the current user and session', () => {
+    setAuthToken('current')
     const atom = createFakeSubscribableAtom()
     subscribeSessionCachePersist(createFakeClient(atom))
 
-    const payload = { user: { id: 'u1' }, session: { id: 's1', expiresAt: new Date().toISOString() } }
+    const payload = { user: { id: 'u1' }, session: { id: 's1', token: 'current', expiresAt: new Date().toISOString() } }
     atom.emit({ data: payload })
 
     expect(getCachedSession()).toEqual(payload)
@@ -466,14 +533,56 @@ describe('subscribeSessionCachePersist', () => {
       localMode: true,
       serverHasAuthenticated: false,
     })
+    setAuthToken('current')
+    useLocalSettingsStore.setState({ serverHasAuthenticated: false })
     const atom = createFakeSubscribableAtom()
     subscribeSessionCachePersist(createFakeClient(atom))
 
-    atom.emit({ data: { user: { id: 'u1' }, session: { id: 's1' } } })
+    atom.emit({ data: { user: { id: 'u1' }, session: { id: 's1', token: 'current' } } })
     clearCachedSession()
     atom.emit({ data: null })
 
     expect(useLocalSettingsStore.getState().serverHasAuthenticated).toBe(true)
+  })
+  it('persists the raw session token correlated with a URI-encoded signed bearer', () => {
+    setAuthToken('raw-token.signature%2F%2B%3D')
+    const atom = createFakeSubscribableAtom()
+    const unsubscribe = subscribeSessionCachePersist(createFakeClient(atom))
+    const payload = { user: { id: 'u1' }, session: { token: 'raw-token', expiresAt: new Date().toISOString() } }
+    atom.emit({ data: payload })
+    expect(getCachedSession()).toEqual(payload)
+    unsubscribe()
+  })
+
+  it('persists a cookie-only SSO session without inventing a bearer token', () => {
+    const env = import.meta.env as Record<string, unknown>
+    const previousMode = env.VITE_AUTH_MODE
+    env.VITE_AUTH_MODE = 'sso'
+    clearAuthToken()
+    const atom = createFakeSubscribableAtom()
+    const unsubscribe = subscribeSessionCachePersist(createFakeClient(atom))
+    try {
+      const payload = { user: { id: 'u1' }, session: { token: 'cookie-session' } }
+      atom.emit({ data: payload })
+      expect(getCachedSession()).toEqual(payload)
+      expect(getAuthToken()).toBeNull()
+    } finally {
+      unsubscribe()
+      if (previousMode === undefined) {
+        delete env.VITE_AUTH_MODE
+      } else {
+        env.VITE_AUTH_MODE = previousMode
+      }
+    }
+  })
+
+  it('ignores a stale session payload after sign-in changes identity', () => {
+    setAuthToken('new')
+    const atom = createFakeSubscribableAtom()
+    const unsubscribe = subscribeSessionCachePersist(createFakeClient(atom))
+    atom.emit({ data: { user: { id: 'old' }, session: { token: 'old' } } })
+    expect(getCachedSession()).toBeNull()
+    unsubscribe()
   })
 
   it('does not persist when data is null (initial / signed-out state)', () => {
@@ -619,5 +728,151 @@ describe('AuthProvider — cross-tab auth-token listener', () => {
     expect(capturedEvents).toHaveLength(1)
     expect(capturedEvents[0].type).toBe(powersyncCredentialsInvalid)
     expect(capturedEvents[0].detail).toEqual({ reason: 'session_expired' })
+  })
+})
+
+describe('Better Auth response ownership', () => {
+  const request = (token: string | null) => ({
+    url: 'https://api.example.com/v1/api/auth/get-session',
+    headers: new Headers(token ? { Authorization: `Bearer ${token}` } : {}),
+  })
+
+  it('does not clear a newer token or its cache on an old request’s 401', () => {
+    const options = buildFetchOptions('web')
+    const previous = request('old')
+    setAuthToken('new')
+    setCachedSession({ user: { id: 'new-user' } })
+    expect(() => options.onError({ request: previous, response: new Response(null, { status: 401 }) })).toThrow(
+      'Auth session changed',
+    )
+    expect(getAuthToken()).toBe('new')
+    expect(getCachedSession()?.user?.id).toBe('new-user')
+    clearCachedSession()
+  })
+
+  it.each(['new', null])('does not resurrect an old session after credentials change to %s', (token) => {
+    const options = buildFetchOptions('web')
+    if (token) {
+      setAuthToken(token)
+    } else {
+      clearAuthToken()
+    }
+    expect(() =>
+      options.onSuccess({
+        request: request('old'),
+        response: new Response(null, { headers: { 'set-auth-token': 'late' } }),
+      }),
+    ).toThrow('Auth session changed')
+    expect(getAuthToken()).toBe(token)
+  })
+
+  it('accepts a token for the current sign-in and ignores an aborted completion', () => {
+    clearAuthToken()
+    const options = buildFetchOptions('web')
+    options.onSuccess({
+      request: request(null),
+      response: new Response(null, { headers: { 'set-auth-token': 'new' } }),
+    })
+    expect(getAuthToken()).toBe('new')
+    expect(() =>
+      options.onSuccess({
+        request: { ...request('new'), signal: AbortSignal.abort() },
+        response: new Response(null, { headers: { 'set-auth-token': 'aborted' } }),
+      }),
+    ).toThrow('Auth session changed')
+    expect(getAuthToken()).toBe('new')
+  })
+})
+
+describe('Better Auth session atom ownership', () => {
+  afterEach(() => {
+    clearAuthToken()
+    clearCachedSession()
+  })
+
+  it.each([
+    { status: 200, cookieOnly: false },
+    { status: 401, cookieOnly: false },
+    { status: 200, cookieOnly: true },
+    { status: 401, cookieOnly: true },
+  ])('does not publish an old response into the real session atom (%p)', async ({ status, cookieOnly }) => {
+    const env = import.meta.env as Record<string, unknown>
+    const previousMode = env.VITE_AUTH_MODE
+    if (cookieOnly) {
+      env.VITE_AUTH_MODE = 'sso'
+      clearAuthToken()
+    } else {
+      setAuthToken('old.signature')
+    }
+    const pending = Promise.withResolvers<Response>()
+    const client = createAuthClient({
+      baseURL: 'https://api.example.test',
+      fetchOptions: {
+        ...buildFetchOptions('web'),
+        customFetchImpl: Object.assign(() => pending.promise, { preconnect: () => {} }),
+      },
+    })
+    const atom = client.$store.atoms.session
+    const unsubscribe = atom.subscribe(() => {})
+    try {
+      await getClock().tickAsync(0)
+      if (cookieOnly) {
+        invalidateAuthRequests()
+      } else {
+        setAuthToken('new.signature')
+      }
+      const current = { user: { id: 'new-user' }, session: { token: 'new' } }
+      atom.set({ ...atom.get(), data: current, isPending: false })
+      pending.resolve(Response.json({ user: { id: 'old-user' }, session: { token: 'old' } }, { status }))
+      await getClock().tickAsync(0)
+      expect(atom.get().data).toEqual(current)
+      expect(getAuthToken()).toBe(cookieOnly ? null : 'new.signature')
+    } finally {
+      unsubscribe()
+      if (previousMode === undefined) {
+        delete env.VITE_AUTH_MODE
+      } else {
+        env.VITE_AUTH_MODE = previousMode
+      }
+    }
+  })
+
+  it('does not cancel a valid sign-in when a concurrent unauthenticated session probe returns 401', async () => {
+    clearAuthToken()
+    clearCachedSession()
+    const validation = Promise.withResolvers<Response>()
+    const login = Promise.withResolvers<Response>()
+    const client = createAuthClient({
+      baseURL: 'https://api.example.test',
+      fetchOptions: {
+        ...buildFetchOptions('web'),
+        customFetchImpl: Object.assign(
+          (input: string | URL | Request) =>
+            String(input).endsWith('/get-session') ? validation.promise : login.promise,
+          { preconnect: () => {} },
+        ),
+      },
+    })
+    const checking = client.$fetch('/get-session')
+    const signingIn = client.$fetch('/sign-in/email-otp', { method: 'POST' })
+    await getClock().tickAsync(0)
+    validation.resolve(Response.json({ message: 'No session' }, { status: 401 }))
+    await checking
+    login.resolve(Response.json({ user: { id: 'signed-in' } }, { headers: { 'set-auth-token': 'new.signature' } }))
+    expect((await signingIn).error).toBeNull()
+    expect(getAuthToken()).toBe('new.signature')
+  })
+
+  it('rejects a cookie-only response after cleanup starts before publishing credentials', () => {
+    clearAuthToken()
+    const options = buildFetchOptions('web')
+    const request = { headers: new Headers() }
+    options.onRequest(request)
+    options.onResponse({ request, response: new Response(null) })
+    invalidateAuthRequests()
+    expect(() =>
+      options.onSuccess({ request, response: new Response(null, { headers: { 'set-auth-token': 'old.signature' } }) }),
+    ).toThrow('Auth session changed')
+    expect(getAuthToken()).toBeNull()
   })
 })

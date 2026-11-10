@@ -60,6 +60,10 @@ msgstr ""
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} は添付ファイルを受け付けません。送信するには添付ファイルを削除してください。"
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "{agentName} receives this chat and manages its own model connection. This device has not verified the agent's execution environment."
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "{appName} (hosted, private)"
 msgstr "{appName}（ホスト型・プライベート）"
@@ -167,6 +171,10 @@ msgstr "{title} — サイドパネルに表示中"
 msgid "Imported # row. The app may take a moment to reflect new chats."
 msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] "# 行をインポートしました。新しいチャットが反映されるまで少し時間がかかる場合があります。"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
@@ -333,6 +341,10 @@ msgstr "モデルを追加"
 msgid "Add Server"
 msgstr "サーバーを追加"
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Add summary instructions (optional)"
+msgstr ""
+
 #: src/components/chat/chat-add-menu.tsx
 #: src/skills/suggestion-chip.tsx
 msgid "Add to chat"
@@ -368,6 +380,10 @@ msgstr "追加中…"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Advanced (JSON)"
 msgstr "詳細設定（JSON）"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Agent privacy"
+msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/routes/settings/agents/index.tsx
@@ -437,6 +453,10 @@ msgstr "常に確認する"
 msgid "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
 msgstr ""
 
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "An encrypted agent connection alone does not verify the agent or its model provider."
+msgstr ""
+
 #: src/lib/openrouter-auth.ts
 msgid "An OpenRouter connection is already in progress."
 msgstr ""
@@ -485,6 +505,7 @@ msgstr "API キー（任意）"
 msgid "API Key is required for this provider"
 msgstr "このプロバイダーには API キーが必要です"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx
@@ -556,6 +577,10 @@ msgstr ""
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "何でも質問してください…"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Assistant"
+msgstr ""
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
@@ -740,6 +765,7 @@ msgstr ""
 msgid "Change your recovery phrase?"
 msgstr ""
 
+#: src/hooks/use-mcp-server-oauth.ts
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "変更は保存されましたが、再接続に失敗しました。もう一度お試しください。"
@@ -769,7 +795,7 @@ msgstr ""
 msgid "Chats in a project inherit its instructions."
 msgstr "プロジェクト内のチャットは、そのプロジェクトの指示を継承します。"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
 msgstr "更新を確認"
@@ -813,8 +839,7 @@ msgid "Checking your session."
 msgstr "セッションを確認しています。"
 
 #: src/components/sync-setup/approval-waiting-step.tsx
-#: src/components/upgrade-required.tsx
-#: src/settings/app-version-section.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Checking…"
 msgstr "確認中…"
 
@@ -844,6 +869,11 @@ msgstr "オプションを選択"
 
 #: src/components/server-connection/server-connection-modal.tsx
 msgid "Choose Cloud or Enterprise to connect your account."
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Choose effort"
 msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
@@ -1004,6 +1034,46 @@ msgstr "コマンド / 引数"
 msgid "Command Palette"
 msgstr "コマンドパレット"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Command result"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compact now"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacted"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compacting context…"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacting…"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction cancelled"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction failed"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compaction instructions (optional)"
+msgstr ""
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Compaction summary"
+msgstr ""
+
 #: src/tasks/index.tsx
 msgid "Complete {taskItem}"
 msgstr "{taskItem} を完了"
@@ -1019,6 +1089,10 @@ msgstr "セットアップを完了して {appName} を使い始めましょう"
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
 msgstr "完了しています…"
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Confidential hardware"
+#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
@@ -1192,6 +1266,10 @@ msgstr "接続しています…"
 msgid "Connection"
 msgstr "接続"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Connection details"
+msgstr ""
+
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Connection error"
 msgstr "接続エラー"
@@ -1206,6 +1284,14 @@ msgstr "接続に失敗しました"
 msgid "Connection not completed"
 msgstr ""
 
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection privacy"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-control.tsx
+msgid "Connection privacy: {label}"
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "Connection problem. Check your internet and try again."
 msgstr "接続に問題があります。インターネット接続を確認して、もう一度お試しください。"
@@ -1214,6 +1300,10 @@ msgstr "接続に問題があります。インターネット接続を確認し
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Connection successful!"
 msgstr "接続に成功しました"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Connection verified"
+msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -1226,6 +1316,22 @@ msgstr "接続"
 #: src/components/app-error-screen.tsx
 msgid "Contact Support"
 msgstr "サポートに問い合わせる"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Context"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Context compaction is available with supported built-in models."
+#~ msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage is not available."
+msgstr ""
 
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
@@ -1312,9 +1418,21 @@ msgstr "URL をコピー"
 msgid "Could not bind the pairing code"
 msgstr "ペアリングコードを紐づけできませんでした"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Could not change reasoning effort"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Could not compact context. Please try again."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Could not compact context. Your chat history is safe. Please try again."
+#~ msgstr ""
 
 #: src/lib/openrouter-auth.ts
 msgid "Could not connect to OpenRouter. Please try again with a new authorization code."
@@ -1400,6 +1518,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Could not save your preference. Please try again."
+msgstr ""
+
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "Could not start authorization. Please try again."
 msgstr ""
 
 #: src/settings/connections/use-ai-provider-connections.ts
@@ -1669,6 +1791,10 @@ msgstr "データ"
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+#~ msgid "Default"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
@@ -2018,7 +2144,7 @@ msgstr "アプリをダウンロード"
 msgid "Download HTML"
 msgstr "HTML をダウンロード"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Download update"
 msgstr "更新をダウンロード"
 
@@ -2030,7 +2156,7 @@ msgstr "更新をダウンロードしています…"
 msgid "Downloading update… {downloadProgress}%"
 msgstr "更新をダウンロードしています… {downloadProgress}%"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Downloading…"
 msgstr "ダウンロード中…"
 
@@ -2154,6 +2280,22 @@ msgstr "有効"
 msgid "Enables location-based responses"
 msgstr "位置情報に基づく応答を有効にします"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave endpoint"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave fingerprint"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave-bound encryption key"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Encrypted connection"
+#~ msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Encrypted syncing and AI hosted by Thunderbolt"
 msgstr ""
@@ -2265,6 +2407,10 @@ msgstr "エクスポートしています…"
 #: src/settings/preferences.tsx
 msgid "External Links"
 msgstr "外部リンク"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Extra high"
+msgstr ""
 
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
@@ -2493,6 +2639,10 @@ msgstr "承知しました。次に取り組みます。"
 msgid "Haptic Feedback"
 msgstr "触覚フィードバック"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Hardware attestation"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Having a problem with this chat?"
 msgstr ""
@@ -2538,6 +2688,14 @@ msgstr "QR を隠す"
 msgid "Hide QR code for {deviceName}"
 msgstr "{deviceName} の QR コードを隠す"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "High"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
+#~ msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
 msgstr "{appName} からの呼びかけ方"
@@ -2569,6 +2727,10 @@ msgstr "アクセス権がある場合は、<0>{email}</0> に 8 桁のコード
 #: src/waitlist/waitlist-content.tsx
 msgid "If you received a code to log in, enter it here:"
 msgstr "ログイン用のコードを受け取っている場合は、ここに入力してください:"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Image retained"
+msgstr ""
 
 #: src/i18n/unit-labels.ts
 msgid "Imperial"
@@ -2812,6 +2974,7 @@ msgstr "プレビューを読み込んでいます…"
 msgid "Loading this app's pairing identity…"
 msgstr "このアプリのペアリング ID を読み込んでいます…"
 
+#: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 #: src/widgets/connect-integration/widget.tsx
@@ -2836,8 +2999,8 @@ msgid "Location"
 msgstr "位置情報"
 
 #: src/components/onboarding/onboarding-location-step.tsx
-msgid "Location is required."
-msgstr "位置情報は必須です。"
+#~ msgid "Location is required."
+#~ msgstr "位置情報は必須です。"
 
 #: src/components/logout-modal.tsx
 #: src/components/sidebar-footer.tsx
@@ -2847,6 +3010,10 @@ msgstr "ログアウト"
 #: src/components/logout-modal.tsx
 msgid "Logging out…"
 msgstr "ログアウトしています…"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Low"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
@@ -2872,14 +3039,26 @@ msgstr "デプロイ側で管理されています — 常に利用可能で、�
 msgid "Maps can’t be displayed here — WebGL is disabled or unavailable in this browser."
 msgstr "このブラウザでは WebGL が無効か利用できないため、地図を表示できません。"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Matching measurements"
+msgstr ""
+
 #: src/components/window-controls.tsx
 msgid "Maximize"
 msgstr "最大化"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Maximum"
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr "MCP サーバー"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Medium"
+msgstr ""
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -2906,6 +3085,10 @@ msgstr ""
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 #~ msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Minimal"
+msgstr ""
+
 #: src/components/window-controls.tsx
 msgid "Minimize"
 msgstr "最小化"
@@ -2914,11 +3097,16 @@ msgstr "最小化"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "CSRF ステートがありません。認可をやり直してください。"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
 msgid "Model"
 msgstr "モデル"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
+msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
@@ -2928,6 +3116,14 @@ msgstr "モデル"
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Model name is required."
 msgstr "モデル名は必須です。"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}. Reasoning effort: {effortName}"
+msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -3235,6 +3431,10 @@ msgstr ""
 #~ msgid "Nothing to ask about there. Try covering some content."
 #~ msgstr ""
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Nothing to compact yet."
+msgstr ""
+
 #: src/services/revoke-failure.ts
 msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr ""
@@ -3264,12 +3464,16 @@ msgid "OAuth state mismatch — possible CSRF, authorization rejected."
 msgstr "OAuth のステートが一致しません。CSRF の可能性があるため認可を拒否しました。"
 
 #: src/hooks/use-oauth-connect.ts
-msgid "OAuth validation failed"
-msgstr "OAuth の検証に失敗しました"
+#~ msgid "OAuth validation failed"
+#~ msgstr "OAuth の検証に失敗しました"
 
 #: src/projects/emoji-catalog.ts
 msgid "Objects"
 msgstr "物"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Off"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
@@ -3282,6 +3486,10 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "オフラインです。オンラインに戻ると変更が同期されます。"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "On"
+msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Onboarding Wizard"
@@ -3535,8 +3743,8 @@ msgid "Please choose one of the options on screen."
 msgstr "画面に表示されている選択肢からお選びください。"
 
 #: src/components/onboarding/onboarding-location-step.tsx
-msgid "Please select a location from the dropdown to get coordinates."
-msgstr "座標を取得するには、ドロップダウンから場所を選択してください。"
+#~ msgid "Please select a location from the dropdown to get coordinates."
+#~ msgstr "座標を取得するには、ドロップダウンから場所を選択してください。"
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Please store your recovery key somewhere safe. You'll need it to access your data if you ever lose all your devices."
@@ -3589,9 +3797,14 @@ msgid "Privacy"
 msgstr "プライバシー"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "非公開"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Private inference"
+msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
@@ -3627,6 +3840,10 @@ msgstr "プロバイダー"
 #: src/settings/preferences.tsx
 msgid "Proxying is required in the web app to bypass browser CORS restrictions."
 msgstr "Web アプリでは、ブラウザーの CORS 制限を回避するためにプロキシが必要です。"
+
+#: src/components/chat/attestation/attestation-details.tsx
+#~ msgid "Published code"
+#~ msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Q3 planning"
@@ -3664,6 +3881,15 @@ msgstr "送信できます"
 msgid "Reasoning"
 msgstr "推論"
 
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort: {effortName}"
+msgstr ""
+
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."
 msgstr "モデルのテスト中にエラーが発生しました。"
@@ -3697,6 +3923,10 @@ msgstr "復元に失敗しました"
 msgid "Recovery phrase"
 msgstr "リカバリーフレーズ"
 
+#: src/hooks/use-sync-setup.ts
+msgid "Recovery phrase must be 24 words (you entered {wordCount})."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
 msgstr ""
@@ -3708,6 +3938,10 @@ msgstr ""
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr "このデバイスを登録し、アカウントの状態を確認しています。"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Release digest"
+msgstr ""
 
 #: src/components/storage-unavailable-screen.tsx
 #: src/components/upgrade-required.tsx
@@ -3817,6 +4051,10 @@ msgstr "データベースをリセット"
 msgid "Reset Local Database?"
 msgstr "ローカルデータベースをリセットしますか？"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Reset reasoning effort"
+#~ msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr "既定値に戻す"
@@ -3829,9 +4067,13 @@ msgstr "リセットしています…"
 msgid "Restart Now"
 msgstr "今すぐ再起動"
 
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
 msgstr "再起動して更新"
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Retained messages and tool results"
+msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
@@ -3841,7 +4083,7 @@ msgstr "データを取得中…"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
-#: src/components/upgrade-required.tsx
+#: src/hooks/use-desktop-update.ts
 msgid "Retry"
 msgstr "再試行"
 
@@ -4385,9 +4627,17 @@ msgstr "サインインしました"
 msgid "Sign-in was cancelled, or your identity provider did not grant access."
 msgstr ""
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Signed build provenance"
+msgstr ""
+
 #: src/components/signed-out.tsx
 msgid "Signed Out"
 msgstr "サインアウトしました"
+
+#: src/components/sign-in/sign-in-form.tsx
+msgid "Signing in…"
+msgstr ""
 
 #: src/components/revoked-device-modal.tsx
 #~ msgid "Signing out…"
@@ -4467,6 +4717,10 @@ msgstr "問題が発生しました。もう一度お試しください。"
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 msgstr "問題が発生しました。再試行しています（{retryCount}/{maxRetries}）…"
 
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Source repository"
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"
 msgstr "話しています"
@@ -4532,6 +4786,10 @@ msgstr "モデルから応答を取得できました。"
 #: src/projects/emoji-picker.tsx
 msgid "Suggested"
 msgstr "おすすめ"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Summary"
+msgstr ""
 
 #: src/settings/models/supports-tools-switch.tsx
 msgid "Supports tools"
@@ -4695,6 +4953,10 @@ msgstr ""
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr ""
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "The connection could not be verified. A verified connection is required before sending to this provider."
+msgstr ""
+
 #: src/services/revoke-failure.ts
 msgid "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr ""
@@ -4766,6 +5028,10 @@ msgstr ""
 #: src/settings/connections/mcp-server-form.tsx
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr "サーバーが認証情報を拒否しました。Bearer トークンまたは API キーを確認してください。"
+
+#: src/lib/encryption-error-message.ts
+msgid "The server took too long to respond. Please try again."
+msgstr ""
 
 #: src/lib/device-grant.ts
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
@@ -4870,6 +5136,10 @@ msgstr "このリンクは無効です。新しいリンクをリクエストし
 msgid "This link uses an address the app cannot open."
 msgstr "このリンクのアドレスはアプリで開けません。"
 
+#: src/mini-apps/mini-app-frame.tsx
+msgid "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
 msgstr "このモデルは添付ファイルを読み取れませんでした。別のモデルをお試しください。"
@@ -4886,8 +5156,16 @@ msgstr ""
 msgid "This model doesn't support tools."
 msgstr ""
 
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "This model is marked private, but this device cannot verify its provider yet."
+msgstr ""
+
 #: src/chats/chat-instance.ts
 msgid "This model no longer matches the conversation’s privacy setting."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "This model or agent does not offer context compaction."
 msgstr ""
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
@@ -5127,6 +5405,10 @@ msgstr ""
 msgid "To continue, we’ll email you a verification code."
 msgstr "続行するには、確認コードをメールでお送りします。"
 
+#: src/lib/encrypted-sync-support.ts
+msgid "To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system."
+msgstr ""
+
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
 msgstr "サイドバーの表示を切り替え"
@@ -5153,6 +5435,10 @@ msgstr "リクエストが多すぎます。少し待ってからもう一度お
 msgid "Tool input"
 msgstr "ツールの入力"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Tool result"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-toast.tsx
 msgid "Transcript sent — thank you."
 msgstr ""
@@ -5174,6 +5460,7 @@ msgid "Trusted devices"
 msgstr "信頼済みのデバイス"
 
 #: src/components/auth-gate/browser-check.tsx
+#: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
@@ -5405,9 +5692,17 @@ msgstr ""
 msgid "User Experience"
 msgstr "ユーザー体験"
 
-#: src/components/context-usage-indicator.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
 msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "コンテキストウィンドウ {maxTokensLabel} のうち {usedTokensLabel} を使用中"
+
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "Verification covers model inference. Connected tools and external services have their own privacy boundaries."
+msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification failed"
+msgstr ""
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
@@ -5419,6 +5714,26 @@ msgstr "確認に失敗しました"
 #: src/waitlist/use-waitlist-state.ts
 msgid "Verification failed. Please try again."
 msgstr "確認に失敗しました。もう一度お試しください。"
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification timed out. A verified connection is required before sending to this provider."
+msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verification unavailable"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Verified on this device"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-panel.tsx
+msgid "Verify connection"
+msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Verifying connection…"
+msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sync-setup/recovery-key-entry-step.tsx
@@ -5454,6 +5769,11 @@ msgstr "インストールガイドを見る"
 msgid "View quote"
 msgstr "引用を見る"
 
+#: src/components/context-usage/compaction-notice.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "View summary"
+msgstr ""
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View your schedule and upcoming events."
 msgstr "予定と今後のイベントを表示します。"
@@ -5475,6 +5795,10 @@ msgstr "音声エンジン"
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Voice mode: {status}"
 msgstr "音声モード: {status}"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Wait for the current response to finish before compacting."
+msgstr ""
 
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
@@ -5648,6 +5972,10 @@ msgstr "この 24 語を順番どおりに書き留めて、安全な場所に�
 msgid "wss://example.com/ws or paste an iroh ticket"
 msgstr "wss://example.com/ws または iroh チケットを貼り付け"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "You"
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
 msgstr "<0>localhost</0> のバックエンドを使用しているようです。コードまたはマジックリンクはバックエンドサーバーのログで確認してください。"
@@ -5794,6 +6122,22 @@ msgstr ""
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"
 msgstr "デプロイのサーバー"
+
+#: src/components/chat/attestation/attestation-control.tsx
+#~ msgid "Your device checks the confidential hardware and published code before sending to {provider}."
+#~ msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device checks the enclave hardware and signed build before sending to {provider}."
+msgstr ""
+
+#: src/components/chat/attestation/use-attestation-display.ts
+msgid "Your device verified {provider}'s confidential inference endpoint. Model request bodies are encrypted for that enclave."
+msgstr ""
+
+#: src/components/chat/attestation/attestation-control.tsx
+#~ msgid "Your device verified {provider}'s confidential inference endpoint. Requests are encrypted to that endpoint."
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "Your donation helps us understand how the app is used and improve the product."

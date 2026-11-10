@@ -7,11 +7,13 @@ import { useSettings } from '@/hooks/use-settings'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { usePasskeyAvailable } from '@/lib/passkey'
 import { isLocalhostUrl } from '@/lib/utils'
-import { type ReactNode, type RefObject, useCallback, useEffect } from 'react'
+import { type ReactNode, type RefObject, useCallback } from 'react'
 import { SignInEmailStep } from './sign-in-email-step'
 import { SignInOtpStep } from './sign-in-otp-step'
 import { SignInSuccessStep } from './sign-in-success-step'
 import { useSignInFormState } from './use-sign-in-form-state'
+import { Trans } from '@lingui/react/macro'
+import { Loader2 } from 'lucide-react'
 
 type SignInFormProps = {
   /**
@@ -39,14 +41,6 @@ type SignInFormProps = {
    */
   initialEmail?: string
   /**
-   * Skip directly to the OTP step (OTP must already be sent before navigating)
-   */
-  skipToOtp?: boolean
-  /**
-   * Challenge token to use when skipToOtp is true (required for OTP verification)
-   */
-  initialChallengeToken?: string
-  /**
    * Render function for the header back button (modal variant only)
    */
   renderBackButton?: (onClick: () => void) => ReactNode
@@ -61,10 +55,7 @@ type SignInFormProps = {
  * Reusable sign-in form component.
  * Can be used inside a modal or as a standalone page.
  *
- * Handles three states:
- * - idle/sending/error: Email input
- * - sent/verifying: OTP verification
- * - success: Welcome message
+ * After authentication is accepted, session setup finishes before the welcome step.
  */
 export const SignInForm = ({
   variant,
@@ -73,8 +64,6 @@ export const SignInForm = ({
   onGoBack,
   onEmailSent,
   initialEmail,
-  skipToOtp,
-  initialChallengeToken,
   renderBackButton,
   goBackRef,
 }: SignInFormProps) => {
@@ -92,22 +81,12 @@ export const SignInForm = ({
     onCancel,
     onEmailSent,
     initialEmail,
-    skipToOtp,
-    initialChallengeToken,
   })
 
-  // When skipping to OTP, notify parent so it can update its step tracking (e.g. back button behavior).
-  // Intentionally mount-only: skipToOtp comes from location.state and is stable for the component's lifetime.
-
-  useEffect(() => {
-    if (skipToOtp) {
-      onEmailSent?.()
-    }
-  }, [])
-
   const handleGoBack = useCallback(() => {
-    actions.goBack()
-    onGoBack?.()
+    if (actions.goBack()) {
+      onGoBack?.()
+    }
   }, [actions, onGoBack])
 
   // Expose goBack to parent via ref (for page variant where back button is external).
@@ -120,8 +99,17 @@ export const SignInForm = ({
     return <SignInSuccessStep displayName={displayName} onContinue={() => onSuccess?.()} variant={variant} />
   }
 
+  if (state.status === 'completing') {
+    return (
+      <div role="status" className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <Trans>Signing in…</Trans>
+      </div>
+    )
+  }
+
   // OTP entry state
-  if (state.status === 'sent' || state.status === 'verifying') {
+  if (state.status === 'sent' || state.status === 'resending' || state.status === 'verifying') {
     return (
       <div className="relative h-full w-full">
         {/* Optional back button slot - parent can render here if needed */}
@@ -136,7 +124,7 @@ export const SignInForm = ({
           onOtpChange={actions.setOtp}
           onOtpComplete={actions.handleOtpComplete}
           onResend={actions.handleResend}
-          onCancel={() => onCancel?.()}
+          onCancel={actions.handleCancel}
           variant={variant}
         />
       </div>
@@ -151,7 +139,7 @@ export const SignInForm = ({
     <div className={variant === 'page' ? 'flex h-full w-full flex-1 flex-col' : 'w-full'}>
       <SignInEmailStep
         email={state.email}
-        status={state.status}
+        status={state.status === 'passkey' ? 'idle' : state.status}
         errorMessage={state.errorMessage}
         isValidEmail={isValidEmail}
         onSubmit={actions.handleSubmit}

@@ -2,97 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import type { LocationData } from '@/lib/locations'
-import type { OnboardingState } from '@/hooks/use-onboarding-state'
-import { zodResolver } from '@hookform/resolvers/zod'
-import type { I18n } from '@lingui/core'
-import { msg } from '@lingui/core/macro'
+import type { OnboardingState, useOnboardingState } from '@/hooks/use-onboarding-state'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { MapPin } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
 import { LocationSearchCombobox } from '../location-search-combobox'
 import { OnboardingStepHeader } from './onboarding-step-header'
 
-const locationRequired = msg`Location is required.`
-const coordinatesRequired = msg`Please select a location from the dropdown to get coordinates.`
-
-/** Built per render so the messages resolve against the active catalog — see the
- *  "Localization" section in AGENTS.md. */
-const createLocationFormSchema = (i18n: I18n) =>
-  z
-    .object({
-      locationName: z.string().min(1, { message: i18n._(locationRequired) }),
-      locationLat: z.number().optional(),
-      locationLng: z.number().optional(),
-      // Not user-editable and never rendered: the combobox writes it so the
-      // submit handler has the region without re-parsing `locationName`.
-      locationCountryCode: z.string(),
-      // Likewise. `locationName` here is the localized display string the user
-      // clicked; the id is what recovers the English name the model needs.
-      locationId: z.number().optional(),
-    })
-    .refine(
-      (data) => {
-        if (data.locationName && data.locationName.length > 0) {
-          return data.locationLat !== undefined && data.locationLng !== undefined
-        }
-        return true
-      },
-      {
-        message: i18n._(coordinatesRequired),
-        path: ['locationName'],
-      },
-    )
-
-type LocationFormData = z.infer<ReturnType<typeof createLocationFormSchema>>
-
 type OnboardingLocationStepProps = {
-  state: OnboardingState
-  actions: {
-    setLocationValue: (value: string) => void
-    setLocationValid: (valid: boolean) => void
-    setSubmittingLocation: (submitting: boolean) => void
-    submitLocation: (locationData: {
-      locationName: string
-      locationId: number
-      locationLat: number
-      locationLng: number
-      locationCountryCode: string
-    }) => Promise<void>
-    nextStep: () => Promise<void>
-    prevStep: () => Promise<void>
-    skipStep: () => Promise<void>
-  }
-  onFormDirtyChange?: (isDirty: boolean) => void
+  state: Pick<OnboardingState, 'locationValue' | 'isSubmittingLocation'>
+  actions: Pick<ReturnType<typeof useOnboardingState>['actions'], 'submitLocation'>
 }
 
-export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: OnboardingLocationStepProps) => {
-  const { i18n, t } = useLingui()
-  const [isInitialized, setIsInitialized] = useState(false)
-  const locationFormSchema = createLocationFormSchema(i18n)
-
-  const form = useForm<LocationFormData>({
-    resolver: zodResolver(locationFormSchema),
-    defaultValues: {
-      locationName: '',
-      locationLat: undefined,
-      locationLng: undefined,
-      locationCountryCode: '',
-      locationId: undefined,
-    },
-  })
-
+export const OnboardingLocationStep = ({ state, actions }: OnboardingLocationStepProps) => {
+  const { t } = useLingui()
   const handleSelectLocation = async (location: LocationData) => {
-    form.setValue('locationName', location.name, { shouldDirty: true })
-    form.setValue('locationLat', location.coordinates.lat, { shouldDirty: true })
-    form.setValue('locationLng', location.coordinates.lng, { shouldDirty: true })
-    form.setValue('locationCountryCode', location.countryCode, { shouldDirty: true })
-    form.setValue('locationId', location.id, { shouldDirty: true })
-    form.trigger()
-
     try {
       await actions.submitLocation({
         locationName: location.name,
@@ -106,57 +30,6 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     }
   }
 
-  useEffect(() => {
-    if (!isInitialized) {
-      return
-    }
-
-    const subscription = form.watch((value) => {
-      const hasValidLocation = !!(
-        value.locationName &&
-        value.locationName.trim().length > 0 &&
-        value.locationLat &&
-        value.locationLng
-      )
-      actions.setLocationValue(value.locationName || '')
-      actions.setLocationValid(hasValidLocation)
-      onFormDirtyChange?.(form.formState.isDirty)
-    })
-    return () => subscription.unsubscribe()
-  }, [form, actions, isInitialized, onFormDirtyChange])
-
-  useEffect(() => {
-    form.reset(form.getValues())
-
-    const currentValues = form.getValues()
-    const hasValidLocation = !!(
-      currentValues.locationName &&
-      currentValues.locationName.trim().length > 0 &&
-      currentValues.locationLat &&
-      currentValues.locationLng
-    )
-    actions.setLocationValue(currentValues.locationName || '')
-    actions.setLocationValid(hasValidLocation)
-
-    setIsInitialized(true)
-    onFormDirtyChange?.(false)
-  }, [])
-
-  const onSubmit = async (values: LocationFormData) => {
-    try {
-      await actions.submitLocation({
-        locationName: values.locationName,
-        locationId: values.locationId!,
-        locationLat: values.locationLat!,
-        locationLng: values.locationLng!,
-        locationCountryCode: values.locationCountryCode,
-      })
-      actions.nextStep()
-    } catch (error) {
-      console.error('Failed to submit location:', error)
-    }
-  }
-
   return (
     <div className="flex w-full flex-1 flex-col justify-center">
       <OnboardingStepHeader
@@ -164,28 +37,15 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
         title={<Trans>Where are you located?</Trans>}
         description={<Trans>This helps us personalize your experience with local settings and features.</Trans>}
       />
-
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-10 space-y-6">
-          <FormField
-            control={form.control}
-            name="locationName"
-            render={({ field }) => (
-              <FormItem className="flex flex-col">
-                <FormControl>
-                  <LocationSearchCombobox
-                    value={field.value}
-                    onSelect={handleSelectLocation}
-                    autoOpen
-                    aria-label={t`Location`}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </form>
-      </Form>
+      <div className="mt-10 space-y-6">
+        <LocationSearchCombobox
+          value={state.locationValue}
+          disabled={state.isSubmittingLocation}
+          onSelect={handleSelectLocation}
+          autoOpen={!state.locationValue}
+          aria-label={t`Location`}
+        />
+      </div>
     </div>
   )
 }

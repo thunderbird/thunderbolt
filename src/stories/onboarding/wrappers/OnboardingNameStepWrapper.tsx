@@ -9,7 +9,7 @@ export const OnboardingNameStepWrapper = () => {
   const [nameValue, setNameValue] = useState('')
   return (
     <div className="w-[400px] h-[500px] border rounded-lg p-4">
-      <OnboardingNameStep state={{ nameValue }} actions={{ setNameValue }} />
+      <OnboardingNameStep state={{ nameValue, isSubmittingName: false }} actions={{ setNameValue }} />
     </div>
   )
 }

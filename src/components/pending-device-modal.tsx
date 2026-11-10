@@ -15,8 +15,14 @@ import { IconCircle } from '@/components/onboarding/icon-circle'
 import { useApproveDevice } from '@/hooks/use-approve-device'
 import { useDenyDevice } from '@/hooks/use-deny-device'
 import { usePendingDeviceNotification } from '@/hooks/use-pending-device-notification'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 export const PendingDeviceModal = () => {
+  const syncEnabled = useLocalSettingsStore((state) => state.syncEnabled)
+  return syncEnabled ? <SyncedPendingDeviceModal /> : null
+}
+
+const SyncedPendingDeviceModal = () => {
   const { pendingDeviceToNotify } = usePendingDeviceNotification()
   const [approvalTarget, setApprovalTarget] = useState<Device | null>(null)
   const [confirmDenyOpen, setConfirmDenyOpen] = useState(false)

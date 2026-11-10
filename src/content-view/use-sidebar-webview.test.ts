@@ -34,9 +34,8 @@ const mockWindow = {
 }
 
 // Mock Tauri APIs - this is necessary because the hook is tightly coupled to them
-mock.module('@tauri-apps/api/webview', () => ({
-  Webview: mock(() => mockWebview),
-}))
+const createWebview = mock(() => mockWebview)
+mock.module('@tauri-apps/api/webview', () => ({ Webview: createWebview }))
 
 mock.module('@tauri-apps/api/window', () => ({
   getCurrentWindow: mock(() => mockWindow),
@@ -64,6 +63,60 @@ describe('useSidebarWebview', () => {
     mockWebview.once.mockClear()
     mockWindow.onResized.mockClear()
     mockWindow.onMoved.mockClear()
+  })
+
+  it.each(['resize', 'move'])('unsubscribes a %s listener that registers after unmount', async (stage) => {
+    const pending = Promise.withResolvers<() => void>()
+    const unlisten = mock(() => {})
+    const registration = stage === 'resize' ? mockWindow.onResized : mockWindow.onMoved
+    registration.mockImplementationOnce(() => pending.promise)
+    const containerRef = { current: document.createElement('div') }
+    const { unmount } = renderHook(() => useSidebarWebview({ url: 'https://example.com' }, containerRef))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(registration).toHaveBeenCalledTimes(1)
+    unmount()
+    await act(async () => {
+      pending.resolve(unlisten)
+    })
+    expect(unlisten).toHaveBeenCalledTimes(1)
+    if (stage === 'resize') {
+      expect(mockWindow.onMoved).not.toHaveBeenCalled()
+    }
+  })
+
+  it('does not clear a replacement webview when an earlier close finishes', async () => {
+    const pending = Promise.withResolvers<void>()
+    const old = { ...mockWebview, close: mock(() => pending.promise) }
+    const current = { ...mockWebview, close: mock(async () => {}) }
+    createWebview.mockImplementationOnce(() => old).mockImplementationOnce(() => current)
+    const containerRef = { current: document.createElement('div') }
+    const onClose = mock(() => {})
+    const { result, rerender } = renderHook((url) => useSidebarWebview({ url, onClose }, containerRef), {
+      initialProps: 'https://old.example',
+    })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    let closing: Promise<void>
+    act(() => {
+      closing = result.current.closeWebview()
+      void result.current.closeWebview()
+    })
+    rerender('https://new.example')
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(Object.is(result.current.webview, current)).toBe(true)
+    await act(async () => {
+      pending.resolve()
+      await closing
+    })
+    expect(old.close).toHaveBeenCalledTimes(1)
+    expect(Object.is(result.current.webview, current)).toBe(true)
+    expect(result.current.isInitialized).toBe(true)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   describe('initialization', () => {

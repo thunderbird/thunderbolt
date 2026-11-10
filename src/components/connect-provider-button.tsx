@@ -63,7 +63,6 @@ export const ConnectProviderButton = ({
   // Use injected hook for testing, or real implementation in production
   const oauthHook = useOAuthConnectHook ?? useOAuthConnect
   const { connect, isConnecting: isConnectingFromHook } = oauthHook({
-    connectingKey: provider,
     onSuccess,
     onError,
     setPreferredName,

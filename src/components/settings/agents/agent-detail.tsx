@@ -38,6 +38,7 @@ import { useLibrarySkills } from '@/skills/use-skills'
 import type { Agent } from '@/types/acp'
 import { acpEndpointLabel, agentProvenanceLine } from './agent-provenance'
 import type { TestAcpConnectionFn } from './add-custom-agent-form'
+import { canManageAgent } from './agent-permissions'
 
 /** On-demand probe result: the panel never polls on open — Status starts at
  *  `idle` and reflects the last explicit "Test connection" run. `error` holds
@@ -46,8 +47,7 @@ type TestState = 'idle' | 'testing' | { isReachable: boolean; testedAt: string; 
 
 type AgentDetailProps = {
   agent: Agent
-  /** Gates the management affordances — only customs the current user owns are
-   *  editable / removable. */
+  /** Custom agents can be managed locally or by their signed-in owner. */
   currentUserId: string | null
   onClose: () => void
   /** Called after a custom agent is removed so the parent closes the panel. */
@@ -93,7 +93,7 @@ export const AgentDetail = ({
   const agentName = agent.name
   const Icon = iconForAgent(agent)
   const flavor = agentFlavor(agent)
-  const isEditable = flavor === 'custom' && !!currentUserId && agent.userId === currentUserId
+  const isEditable = canManageAgent(agent, currentUserId)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [removeError, setRemoveError] = useState<string | null>(null)
 

@@ -16,7 +16,7 @@ import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { DeviceApproval } from './device-approval'
 
 type FetchResult = { data: unknown; error: unknown }
-type Handlers = Partial<Record<string, () => FetchResult>>
+type Handlers = Partial<Record<string, () => FetchResult | Promise<FetchResult>>>
 
 const NavigationSpy = ({ onLocationChange }: { onLocationChange: (location: string) => void }) => {
   const location = useLocation()
@@ -91,6 +91,50 @@ describe('DeviceApproval', () => {
       await getClock().runAllAsync()
     })
   }
+
+  it('admits only one approve-or-deny action before the disabled state renders', async () => {
+    const approval = Promise.withResolvers<FetchResult>()
+    const { fetch } = renderPage({
+      code: 'ABCD1234',
+      handlers: {
+        ...pendingVerify,
+        '/device/approve': () => approval.promise,
+        '/device/deny': () => ({ data: { success: true }, error: null }),
+      },
+    })
+    await flush()
+    const approve = screen.getByRole('button', { name: 'Approve' })
+    const deny = screen.getByRole('button', { name: 'Deny' })
+    act(() => {
+      fireEvent.click(approve)
+      fireEvent.click(deny)
+    })
+    expect(fetch.mock.calls.filter(([path]) => path === '/device/approve')).toHaveLength(1)
+    expect(fetch.mock.calls.filter(([path]) => path === '/device/deny')).toHaveLength(0)
+    await act(async () => {
+      approval.resolve({ data: { success: true }, error: null })
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByText('Sign-in approved')).toBeInTheDocument()
+  })
+
+  it('admits only one manual verification before the form rerenders', async () => {
+    const verification = Promise.withResolvers<FetchResult>()
+    const { fetch } = renderPage({ handlers: { '/device': () => verification.promise } })
+    await flush()
+    fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'ABCD1234' } })
+    const form = screen.getByLabelText('Code').closest('form')!
+    act(() => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
+    expect(fetch.mock.calls.filter(([path]) => path === '/device')).toHaveLength(1)
+    await act(async () => {
+      verification.resolve({ data: { status: 'pending' }, error: null })
+      await getClock().runAllAsync()
+    })
+    expect(screen.getByText('Approve CLI sign-in?')).toBeInTheDocument()
+  })
 
   describe('authentication gate', () => {
     it('redirects unauthenticated visitors into the auth flow', () => {

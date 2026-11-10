@@ -15,9 +15,9 @@ type OnboardingActionButtonsProps = {
   showSkip?: boolean
   showContinue?: boolean
   continueText?: ReactNode
+  backDisabled?: boolean
   continueDisabled?: boolean
   skipDisabled?: boolean
-  backDisabled?: boolean
 }
 
 export const OnboardingActionButtons = ({
@@ -28,9 +28,9 @@ export const OnboardingActionButtons = ({
   showSkip = true,
   showContinue = true,
   continueText = <Trans>Continue</Trans>,
+  backDisabled = false,
   continueDisabled = false,
   skipDisabled = false,
-  backDisabled = false,
 }: OnboardingActionButtonsProps) => {
   const { t } = useLingui()
   return (

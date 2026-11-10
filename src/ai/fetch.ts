@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { loadReasoningCapabilities } from './reasoning-effort'
+import { reasoningProviderOptions } from './reasoning-provider-options'
+import type { ReasoningEffort } from '@shared/reasoning-effort'
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
@@ -30,7 +33,7 @@ import {
   shouldRetry,
 } from '@/ai/step-logic'
 import { getAllSkills, getIntegrationStatus, getModel, getModelProfile, getSettings } from '@/dal'
-import { getMessage } from '@/dal/chat-messages'
+import { getMessageCache } from '@/dal/chat-messages'
 import { isWidgetSkillId } from '@/defaults/skills'
 import { getActiveLocale } from '@/i18n/active-locale'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -131,6 +134,7 @@ export const ollama = createOpenAI({
 })
 
 type AiFetchStreamingResponseOptions = {
+  reasoningEffort?: ReasoningEffort
   init: RequestInit
   modelId: string
   mcpClients?: NamedMCPClient[]
@@ -768,6 +772,7 @@ export const recordLegacyEmptyResponseRetry = (
  * because the routing fetch already consumed the initial request.
  */
 export const aiFetchStreamingResponse = async ({
+  reasoningEffort,
   init,
   modelId,
   mcpClients,
@@ -850,7 +855,15 @@ export const aiFetchStreamingResponse = async ({
       ...(model.vendor === 'openai' && { systemMessageMode: 'developer' as const }),
       ...profile?.providerOptions,
     }
-    const providerOptions = Object.keys(rawOptions).length > 0 ? { [providerOptionsKey]: rawOptions } : undefined
+    const effortProvider = model.provider === 'thunderbolt' ? (model.vendor ?? model.provider) : model.provider
+    const toggleThinking =
+      reasoningEffort !== undefined &&
+      effortProvider === 'anthropic' &&
+      (await loadReasoningCapabilities(model)).kind === 'toggle'
+    const providerOptions =
+      reasoningEffort === undefined
+        ? { [providerOptionsKey]: rawOptions }
+        : { [effortProvider]: reasoningProviderOptions(rawOptions, effortProvider, reasoningEffort, toggleThinking) }
 
     /**
      * Run a single streamText attempt and return the result along with metadata
@@ -990,7 +1003,7 @@ export const aiFetchStreamingResponse = async ({
             messages
               .filter((message) => message.role === 'assistant')
               .map(async (message) => {
-                const stored = await getMessage(db, message.id)
+                const stored = await getMessageCache(db, message.id)
                 return stored?.cache ? collectAskEntriesFromCache(stored.cache) : []
               }),
           )

@@ -55,6 +55,7 @@ Apply these in **Pass A (Scan)**. Two parts: (1) a fast diff-signal → comment 
 | `new Date(someString)` for a rendered date | "use `toDate` — a bare `YYYY-MM-DD` is UTC midnight and renders a day early west of Greenwich" | R-I18NDATE |
 | `import … from '@lingui/core/macro'` / `'@lingui/react/macro'` anywhere under `backend/src/` | "no Babel pass on the backend — the macro stub throws in production; use `i18n._({ id })`" | R-I18NEMAIL (blocker) |
 | Existing English source text inside `<Trans>` / `` t`…` `` reworded in a feature diff | "the source text IS the message id — rewording orphans its translations and breaks `e2e/` selectors" | R-I18NFRAGMENT |
+| A `.tsx` diff changes a control's text, `aria-label`, `data-testid` or open/close behaviour, and no `e2e/` file changes | "which e2e flow drives this control? `e2e/native-smoke/` runs only in the Nightly, so the PR stays green" | R-E2ESYNC |
 
 ## 2. IF–THEN heuristics by category
 

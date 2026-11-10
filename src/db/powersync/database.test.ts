@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { PowerSyncDatabaseImpl } from './database'
 import { WASQLiteVFS } from '@powersync/web'
 import type { CommonPowerSyncDatabase, QueryResult } from '@powersync/common'
 
@@ -206,5 +208,130 @@ describe('waitForOwnDeviceRow', () => {
     await waitForOwnDeviceRow(fakePowerSync([0], reads), new AbortController().signal)
 
     expect(reads.count).toBe(1)
+  })
+})
+
+describe('PowerSync connection ownership', () => {
+  const makeDatabase = () => {
+    const connecting = Promise.withResolvers<void>()
+    const disconnecting = Promise.withResolvers<void>()
+    const events: string[] = []
+    const powerSync = {
+      currentStatus: { hasSynced: true },
+      registerListener: () => () => {},
+      connect: mock(async () => {
+        events.push('connect')
+        await connecting.promise
+      }),
+      disconnect: mock(async () => {
+        events.push('disconnect')
+        await disconnecting.promise
+      }),
+      disconnectAndClear: mock(async () => {
+        events.push('clear')
+      }),
+      close: mock(async () => {
+        events.push('close')
+      }),
+    }
+    const database = new PowerSyncDatabaseImpl()
+    Object.assign(database, { powerSync, _db: {} })
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', syncEnabled: true })
+    return { database, connecting, disconnecting, powerSync, events }
+  }
+
+  let originalSettings: ReturnType<typeof useLocalSettingsStore.getState>
+  beforeEach(() => {
+    originalSettings = useLocalSettingsStore.getState()
+  })
+  afterEach(() => useLocalSettingsStore.setState(originalSettings))
+
+  it('keeps standalone storage offline even with a stale enabled preference', async () => {
+    const { database, powerSync } = makeDatabase()
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    await database.connectToSync()
+    expect(powerSync.connect).not.toHaveBeenCalled()
+    expect(database.isConnected).toBe(false)
+    await database.close()
+  })
+
+  it('coalesces overlapping connects before native connect has settled', async () => {
+    const { database, connecting, powerSync } = makeDatabase()
+    const first = database.connectToSync()
+    const second = database.connectToSync()
+    await Promise.resolve()
+    expect(powerSync.connect).toHaveBeenCalledTimes(1)
+    connecting.resolve()
+    await Promise.all([first, second])
+    expect(powerSync.connect).toHaveBeenCalledTimes(1)
+    await database.close()
+    expect(database.isConnected).toBe(false)
+  })
+
+  it('orders disable then enable while the native disconnect is pending', async () => {
+    const { database, connecting, disconnecting, events } = makeDatabase()
+    connecting.resolve()
+    await database.connectToSync()
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
+    const disabling = database.disconnectFromSync()
+    await Promise.resolve()
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
+    const enabling = database.connectToSync()
+    disconnecting.resolve()
+    await Promise.all([disabling, enabling])
+    expect(events).toEqual(['connect', 'disconnect', 'connect'])
+    expect(database.isConnected).toBe(true)
+    await database.close()
+  })
+
+  it('drains startup before closing and cannot reconnect the disposed database', async () => {
+    const { database, connecting, events } = makeDatabase()
+    const opening = database.connectToSync()
+    await Promise.resolve()
+    const closing = database.close()
+    expect(events).toEqual(['connect'])
+    connecting.resolve()
+    await Promise.all([opening, closing])
+    await database.connectToSync()
+    expect(events).toEqual(['connect', 'clear', 'close'])
+    expect(database.isConnected).toBe(false)
+  })
+
+  it('coalesces reconnect requests while a native disconnect is in flight', async () => {
+    const { database, connecting, disconnecting, events } = makeDatabase()
+    connecting.resolve()
+    await database.connectToSync()
+    const first = database.reconnect()
+    await Promise.resolve()
+    await database.reconnect()
+    expect(events).toEqual(['connect', 'disconnect'])
+    disconnecting.resolve()
+    await first
+    expect(events).toEqual(['connect', 'disconnect', 'connect'])
+    expect(database.isConnected).toBe(true)
+    await database.close()
+  })
+
+  it('disconnects when sync is disabled while native connect is pending', async () => {
+    const { database, connecting, disconnecting, events } = makeDatabase()
+    const opening = database.connectToSync()
+    await Promise.resolve()
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
+    const disabling = database.disconnectFromSync()
+    connecting.resolve()
+    disconnecting.resolve()
+    await Promise.all([opening, disabling])
+    expect(events).toEqual(['connect', 'disconnect'])
+    expect(database.isConnected).toBe(false)
+    await database.close()
+  })
+
+  it('does not poison the queue when native cleanup rejects', async () => {
+    const { database, powerSync, events } = makeDatabase()
+    powerSync.disconnectAndClear.mockRejectedValueOnce(new Error('storage busy'))
+    await expect(database.close()).rejects.toThrow('storage busy')
+    await database.close()
+    expect(events).toEqual(['clear', 'close'])
+    expect(database.powerSyncInstance).toBeNull()
   })
 })

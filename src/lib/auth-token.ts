@@ -37,6 +37,34 @@ export const subscribeAuthToken = (listener: () => void): (() => void) => {
   }
 }
 
+let authRequestGeneration = 0
+
+/** End pending auth requests before account cleanup starts, including cookie-only sessions. */
+export const invalidateAuthRequests = (): void => {
+  authRequestGeneration += 1
+}
+
+/** Capture the current account lifetime without depending on whether it has a bearer token. */
+export const captureAuthRequestLifetime = (): (() => boolean) => {
+  const generation = authRequestGeneration
+  return () => generation === authRequestGeneration
+}
+
+/** Correlate a session payload with its stored bearer; this does not verify the bearer signature. */
+export const isCurrentSessionToken = (sessionToken: string | undefined): boolean => {
+  const bearer = getAuthToken()
+  if (!bearer || !sessionToken) {
+    return false
+  }
+  try {
+    // Better Auth's header carries its signed cookie value; session.token is
+    // the raw database token before the signature. Cookies may URI-encode it.
+    return decodeURIComponent(bearer).split('.')[0] === sessionToken
+  } catch {
+    return false
+  }
+}
+
 /** Get or create device_id (from localStorage). */
 export const getDeviceId = (): string => {
   let id = localStorage.getItem(deviceIdKey)
@@ -65,10 +93,17 @@ export const getAuthToken = (): string | null => {
   }
 }
 
+/** Whether a response still belongs to the bearer session that issued its request. */
+export const isCurrentAuthRequest = (headers: Headers, token: string | null = getAuthToken()): boolean =>
+  headers.get('Authorization') === (token ? `Bearer ${token}` : null)
+
 /** Store the auth token in localStorage. Use clearAuthToken() to remove. */
 export const setAuthToken = (token: string, cloudUrl = getLocalSetting('cloudUrl')): void => {
   if (!isCurrentServer(cloudUrl)) {
     throw new DOMException('The selected server changed', 'AbortError')
+  }
+  if (token !== getAuthToken()) {
+    invalidateAuthRequests()
   }
   if (token) {
     markServerAuthenticated()
@@ -81,6 +116,7 @@ export const setAuthToken = (token: string, cloudUrl = getLocalSetting('cloudUrl
 
 /** Clear the auth token (for sign-out). */
 export const clearAuthToken = (): void => {
+  invalidateAuthRequests()
   localStorage.removeItem(authTokenKey)
   authTokenListeners.forEach((listener) => listener())
 }

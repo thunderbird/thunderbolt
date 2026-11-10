@@ -5,12 +5,17 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { errorKindFromStatus } from '@/inference/error-kind'
-import { logInferenceSafely, type InferenceLogger } from '@/inference/client'
-import { admitManagedRequest, type ManagedRequestUser } from '@/inference/managed-request'
+import type { InferenceLogger } from '@/inference/client'
+import {
+  admitManagedRequest,
+  createUsageCallbacks,
+  createUsageTelemetry,
+  recordTokenCounts,
+  type ManagedRequestUser,
+} from '@/inference/managed-request'
 import { createMeteredRouteGuard } from '@/inference/metered-route-guard'
 import type { InferenceDatabase } from '@/inference/usage-ledger'
 import { resolveConfidentialManagedModel } from '@/inference/managed-models'
-import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError } from '@/posthog/client'
 import { capStream } from '@/proxy/streaming'
@@ -18,12 +23,24 @@ import { filterHeaders } from '@/utils/request'
 import { elapsedMs } from '@/utils/timing'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
 import { defaultModelGlm53 } from '@shared/defaults/models'
-import { inferenceModelHeader, inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import { inferenceModelHeader } from '@shared/inference-usage'
 import { Elysia, type AnyElysia, type Context } from 'elysia'
+import { fetchWithTrailers, type TinfoilFetch, type TinfoilResponse } from './trailer-fetch'
 import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
+import {
+  parseTinfoilUsageMetrics,
+  tinfoilModelHeader,
+  tinfoilRequestUsageMetricsHeader,
+  tinfoilUsageMetricsHeader,
+} from './usage-metrics'
 
 const allowedMethods = new Set(['GET', 'POST', 'OPTIONS'])
 const bodylessMethods = new Set(['GET', 'OPTIONS'])
+/**
+ * The only upstream paths a client may POST to. Chat is metered and voice is not yet. Any other POST would spend
+ * the operator's key outside the quota, so it gets a 404.
+ */
+const allowedPostPaths = new Set(['/v1/chat/completions', '/v1/audio/transcriptions', '/v1/audio/speech'])
 const defaultUpstreamHeadersTimeoutMs = 30_000
 const defaultUpstreamIdleTimeoutMs = 60_000
 const abruptResponseCloseTimeoutSeconds = 1
@@ -95,6 +112,91 @@ const decodePolicyPathname = (pathname: string): string => {
   }
 }
 
+type UsageCallbacks = ReturnType<typeof createUsageCallbacks>
+
+/**
+ * Charge a managed chat from the enclave's usage report, which arrives as a response header when unstreamed and as
+ * an HTTP trailer after a streamed body. Rejected requests usually carry no report, so only a successful response
+ * without one is logged as missing.
+ */
+const recordEnclaveUsage = async (upstream: TinfoilResponse, callbacks: UsageCallbacks): Promise<void> => {
+  const report =
+    upstream.headers.get(tinfoilUsageMetricsHeader) ?? (await upstream.trailers)?.get(tinfoilUsageMetricsHeader)
+  const counts = report ? parseTinfoilUsageMetrics(report) : null
+  if (counts) {
+    await recordTokenCounts(callbacks, counts)
+    return
+  }
+  if (upstream.ok) {
+    callbacks.onUsageMissing()
+  }
+}
+
+/** How far a client may fall behind the enclave before it is disconnected instead of buffered. */
+const maxUnreadResponseBytes = 1024 * 1024
+const slowClientError = new DOMException('The client fell too far behind the Tinfoil response', 'AbortError')
+
+/**
+ * Forward the body to the client and keep reading it to the end whatever the client does, so the usage trailer
+ * still arrives after a Stop. A client more than `maxUnreadResponseBytes` behind is cut off rather than buffered:
+ * through `cutOff`, which resets its socket, or by erroring its stream when there is no server to do that. The
+ * read is released once the client is gone and the upstream request has been aborted.
+ */
+const relayToEnd = (
+  body: ReadableStream<Uint8Array>,
+  upstreamSignal: AbortSignal,
+  cutOff: (() => void) | undefined,
+): ReadableStream<Uint8Array> => {
+  const reader = body.getReader()
+  const client = { attached: true }
+  const release = () => {
+    if (!client.attached && upstreamSignal.aborted) {
+      // The upstream request is already over, so a failed cancel has nothing left to report.
+      void reader.cancel().catch(() => {})
+    }
+  }
+  upstreamSignal.addEventListener('abort', release, { once: true })
+
+  return new ReadableStream<Uint8Array>(
+    {
+      start: (controller) => {
+        const forward = (chunk: Uint8Array) => {
+          if (client.attached && (controller.desiredSize ?? 0) <= 0) {
+            client.attached = false
+            if (cutOff) {
+              cutOff()
+            } else {
+              controller.error(slowClientError)
+            }
+          }
+          if (client.attached) {
+            controller.enqueue(chunk)
+          }
+        }
+        const pump = async () => {
+          for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+            forward(chunk.value)
+          }
+          if (client.attached && !upstreamSignal.aborted) {
+            controller.close()
+          }
+        }
+        void pump().catch((error: Error) => {
+          // capStream reports the failure itself; a client that already left needs nothing more.
+          if (client.attached) {
+            controller.error(error)
+          }
+        })
+      },
+      cancel: () => {
+        client.attached = false
+        release()
+      },
+    },
+    new ByteLengthQueuingStrategy({ highWaterMark: maxUnreadResponseBytes }),
+  )
+}
+
 /** Resolve an optional ATC-assigned enclave origin, applying the configured API path prefix. */
 const resolveEnclaveUrl = (
   assignedEnclaveUrl: string | null,
@@ -133,7 +235,8 @@ type ProxyToEnclaveOptions = {
 export type CreateTinfoilRoutesOptions = {
   auth: Auth
   database: InferenceDatabase
-  fetchFn?: typeof fetch
+  /** The upstream transport. Defaults to {@link fetchWithTrailers}, which can read a stream's usage trailer. */
+  fetchFn?: TinfoilFetch
   logger?: TinfoilProxyLogger
   usageLogger?: InferenceLogger
   /** Monotonic clock used for latency instrumentation. */
@@ -153,7 +256,7 @@ export type CreateTinfoilRoutesOptions = {
 
 export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const { auth, database, rateLimit } = options
-  const fetchFn = options.fetchFn ?? globalThis.fetch
+  const fetchFn = options.fetchFn ?? fetchWithTrailers
   const logger = options.logger
   const usageLogger = options.usageLogger
   const nowFn = options.nowFn ?? (() => performance.now())
@@ -241,11 +344,15 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     const subpath = wildcard.startsWith('/') ? wildcard : `/${wildcard}`
     const search = requestUrl.search
     const upstreamUrl = `${upstreamBaseUrl}${subpath}${search}`
+    const upstreamPath = decodePolicyPathname(new URL(upstreamUrl).pathname)
+    if (method === 'POST' && !allowedPostPaths.has(upstreamPath)) {
+      recordLatency({ status: 404, completedAt: nowFn() })
+      return textResponse(404, 'Not found')
+    }
     upstreamOriginStore.record(upstreamUrl)
 
-    let receipt: { eventId: string; token: string } | null = null
-    const isManagedChat =
-      method === 'POST' && decodePolicyPathname(new URL(upstreamUrl).pathname) === '/v1/chat/completions'
+    let metered: { model: string; usage: UsageCallbacks } | null = null
+    const isManagedChat = method === 'POST' && upstreamPath === '/v1/chat/completions'
     // Preserve the default for clients predating the header.
     const identity = resolveConfidentialManagedModel(
       request.headers.get(inferenceModelHeader) ?? defaultModelGlm53.model,
@@ -260,16 +367,15 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         recordLatency({ status: admission.status, completedAt: nowFn() })
         return admission
       }
-      const { price } = admission
       const eventId = crypto.randomUUID()
-      receipt = {
-        eventId,
-        token: issueInferenceUsageReceipt({
+      metered = {
+        model: identity.model,
+        usage: createUsageCallbacks({
+          database,
           eventId,
           userId: user.id,
-          price,
-          secret: settings.betterAuthSecret,
-          nowSeconds: Math.floor(Date.now() / 1_000),
+          price: admission.price,
+          telemetry: createUsageTelemetry({ eventId, logger: usageLogger, ...identity, route, transport: 'tinfoil' }),
         }),
       }
     }
@@ -282,10 +388,15 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       headers.set(key, value)
     })
     headers.set('Authorization', `Bearer ${apiKey}`)
+    if (metered) {
+      headers.set(tinfoilRequestUsageMetricsHeader, 'true')
+      headers.set(tinfoilModelHeader, metered.model)
+    }
 
     const body = bodylessMethods.has(method) ? null : request.body
     const upstreamController = new AbortController()
-    const signal = AbortSignal.any([request.signal, upstreamController.signal])
+    // A metered chat keeps running when the client disconnects, so its usage report still arrives after Stop.
+    const signal = metered ? upstreamController.signal : AbortSignal.any([request.signal, upstreamController.signal])
     const headersTimeoutId = setTimeout(
       () => upstreamController.abort(upstreamHeadersTimeoutError),
       upstreamHeadersTimeoutMs,
@@ -293,46 +404,23 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     const upstreamFetchStartedAt = nowFn()
     let hasCapturedInferenceError = false
 
-    // Bun-specific fetch options: `duplex: 'half'` enables streaming request
-    // bodies; `decompress: false` keeps the HPKE-encrypted bytes opaque on
-    // the response path so the frontend SDK can decrypt them as-is.
     try {
-      const upstream = await fetchFn(upstreamUrl, {
-        method,
-        headers,
-        body,
-        signal,
-        redirect: 'manual',
-        decompress: false,
-        duplex: 'half',
-      } as RequestInit & { decompress: boolean; duplex: 'half' })
+      const upstream = await fetchFn(upstreamUrl, { method, headers, body, signal })
       const upstreamHeadersReceivedAt = nowFn()
 
       // Strip upstream CORS headers: the enclave emits a duplicated
       // `Access-Control-Allow-Credentials: true, true`, which browsers reject
       // outright. Our own cors() middleware sets the correct CORS headers for
-      // our origin (including Ehbp-Response-Nonce in expose-headers).
+      // our origin (including Ehbp-Response-Nonce in expose-headers). `Trailer` announces the usage trailer, which
+      // the backend reads and never relays.
       const responseHeaders = filterHeaders(upstream.headers, [
         'transfer-encoding',
         'connection',
-        inferenceUsageReceiptHeader,
+        'trailer',
         /^access-control-/i,
       ])
-      if (upstream.ok && receipt && identity) {
-        responseHeaders.set(inferenceUsageReceiptHeader, receipt.token)
-        logInferenceSafely(
-          usageLogger,
-          {
-            event: 'inference_usage_receipt_issued',
-            ...identity,
-            eventId: receipt.eventId,
-            route,
-          },
-          'Inference usage receipt issued',
-        )
-      }
 
-      const responseBody = upstream.body
+      const cappedBody = upstream.body
         ? capStream(upstream.body, {
             idleTimeoutMs: upstreamIdleTimeoutMs,
             onIdle: 'error',
@@ -355,6 +443,17 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
             onIdleError: server ? () => server.timeout(request, abruptResponseCloseTimeoutSeconds) : undefined,
           }).stream
         : null
+      const responseBody =
+        metered && cappedBody
+          ? relayToEnd(
+              cappedBody,
+              upstreamController.signal,
+              server ? () => server.timeout(request, abruptResponseCloseTimeoutSeconds) : undefined,
+            )
+          : cappedBody
+      if (metered) {
+        void recordEnclaveUsage(upstream, metered.usage)
+      }
 
       const response = new Response(responseBody, {
         status: upstream.status,

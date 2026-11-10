@@ -37,7 +37,7 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 | `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
 | `backend`       | Always                                                                         | Backend type-check, lint, tests (5x), WS suite, `./server` smoke (OTEL off and on)    |
 | `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
-| `agent-core`    | `shared/agent-core/**`, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
+| `agent-core`    | `shared/agent-core/**`, `shared/reasoning-effort*.ts`, browser-check/Chrome scripts, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
 | `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test                         |
 | `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`        | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
 | `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
@@ -176,8 +176,9 @@ gzipped bundle size, test coverage, Lighthouse scores.
   with a `pr-metrics-main-` prefix fallback, so a base commit with no entry is compared
   against an earlier `main` build.
 - Lighthouse is advisory: [`lighthouserc.js`](../../../lighthouserc.js) sets every assertion
-  to `warn` and reports the median of three runs. It scores the **Render** preview, not the
-  Pulumi stack.
+  to `warn` and reports the median of three runs. It scores the **Pulumi app preview's
+  signed-out entry**, which may follow SSO redirects to the identity provider. Use the
+  [performance harness](performance.md) for authenticated chat and interaction measurements.
 
 ### `thunder-deep-review.yml`
 
@@ -200,10 +201,10 @@ Runs the `thunder-deep-review` skill read-only and posts an inline review.
 
 A PR against `main` gets two previews, and they are not equivalent.
 
-| Preview                 | URL                                                                           | What it is                                                                                      | Use it for                                                         |
-| ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks; it is what Lighthouse scores                      |
-| Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Anything touching sync, SSO, migrations, or cross-device behaviour |
+| Preview                 | URL                                                                           | What it is                                                                                      | Use it for                                                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Render (auto)           | `https://thunderbolt-pr-<n>.onrender.com`                                     | The web app, deployed by Render                                                                 | Quick UI checks                                                                                                                                          |
+| Pulumi stack on Fargate | `app-pr-<n>.preview.thunderbolt.io` (plus `api-pr-<n>`, `thunderbolt-pr-<n>`) | The PR's own backend, frontend and marketing services, with their own logical Postgres database | Sync, SSO, migrations, cross-device behaviour and signed-out Lighthouse scores; use the [performance harness](performance.md) for signed-in measurements |
 
 Fork PRs get the Pulumi preview only after a maintainer approves the run (see
 [Preview lifecycle](#preview-lifecycle)).

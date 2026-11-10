@@ -60,13 +60,11 @@ const useBlobDocument = (cacheKey: string, fileType: FileType, loadBlob: () => P
       if (cancelled) {
         return
       }
-      objectUrl = URL.createObjectURL(blob)
       const docxHtml = await convertDocxIfNeeded(blob, fileType)
       if (cancelled) {
-        URL.revokeObjectURL(objectUrl)
-        objectUrl = null
         return
       }
+      objectUrl = URL.createObjectURL(blob)
       dispatch({ type: 'loaded', blobUrl: objectUrl, docxHtml })
     }
 

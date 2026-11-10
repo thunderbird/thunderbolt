@@ -10,7 +10,16 @@ import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-cr
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isSsoMode } from '@/lib/auth-mode'
-import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
+import {
+  captureAuthRequestLifetime,
+  clearAuthToken,
+  getAuthToken,
+  invalidateAuthRequests,
+  isCurrentAuthRequest,
+  isCurrentSessionToken,
+  onAuthTokenChangedInOtherTab,
+  setAuthToken,
+} from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSession } from '@/lib/session-cache'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
@@ -70,6 +79,9 @@ export const standaloneAuthFetch = async (input: string | URL | Request): Promis
     { status: 503 },
   )
 }
+/** Cookie-only SSO is revalidated online; bearer payloads must identify the current signed token. */
+const isCurrentSession = (token: string | undefined): boolean =>
+  isCurrentSessionToken(token) || (!getAuthToken() && isSsoMode() && Boolean(token))
 
 /**
  * Seed Better Auth's session atom from the localStorage cache so the app can
@@ -95,14 +107,14 @@ export const hydrateSessionFromCache = (
   client: ReturnType<typeof createAuthClient>,
   cloudUrl = getLocalSetting('cloudUrl'),
 ) => {
-  if (!isCurrentServer(cloudUrl) || !getAuthToken()) {
+  if (!isCurrentServer(cloudUrl) || (!getAuthToken() && !isSsoMode())) {
     return
   }
   const cached = getCachedSession()
   if (!cached) {
     return
   }
-  if (!isCachedSessionValid(cached)) {
+  if (!isCachedSessionValid(cached) || !isCurrentSession(cached.session?.token)) {
     clearCachedSession()
     return
   }
@@ -139,7 +151,7 @@ export const subscribeSessionCachePersist = (
       return
     }
     const data = state.data
-    if (data?.user && data?.session) {
+    if (data?.user && data?.session && isCurrentSession(data.session.token)) {
       markServerAuthenticated()
       setCachedSession(data)
     } else if (!state.isPending && !state.isRefetching && !state.error) {
@@ -169,61 +181,81 @@ const signInPaths = ['/sign-in/email-otp', '/passkey/verify-authentication']
 const isSignInRequest = (url: URL | string | undefined): boolean =>
   url !== undefined && signInPaths.some((path) => new URL(url, 'http://localhost').pathname.endsWith(path))
 
-/** Ignore obsolete auth clients before they can send or persist another server's credentials. */
-const assertCurrentServer = (cloudUrl: string): void => {
-  if (!isCurrentServer(cloudUrl)) {
-    throw new DOMException('The selected server changed', 'AbortError')
+type AuthRequest = { headers: Headers; url?: URL | string; signal?: AbortSignal }
+
+export const buildFetchOptions = (platform: string, ssoMode = isSsoMode(), cloudUrl = getLocalSetting('cloudUrl')) => {
+  const lifetimes = new WeakMap<Headers, () => boolean>()
+  const assertCurrentRequest = (request: AuthRequest) => {
+    if (
+      !isCurrentServer(cloudUrl) ||
+      request.signal?.aborted ||
+      lifetimes.get(request.headers)?.() === false ||
+      !isCurrentAuthRequest(request.headers)
+    ) {
+      // Returning from a hook still lets Better Auth publish the stale payload
+      // to its session atom. Reject before either success or 401 can reach it.
+      throw new DOMException('Auth session changed while the request was pending', 'AbortError')
+    }
+  }
+  return {
+    credentials: (ssoMode ? 'include' : 'omit') as RequestCredentials,
+    // Applied per request instead of through `headers` so the locale is re-read on
+    // every call, not frozen at client construction before the synced setting hydrates.
+    onRequest: (ctx: { headers: Headers }) => {
+      if (!isCurrentServer(cloudUrl)) {
+        throw new DOMException('The selected server changed', 'AbortError')
+      }
+      lifetimes.set(ctx.headers, captureAuthRequestLifetime())
+      for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
+        ctx.headers.set(key, value)
+      }
+    },
+    auth: {
+      type: 'Bearer' as const,
+      token: () => (isCurrentServer(cloudUrl) ? (getAuthToken() ?? '') : ''),
+    },
+    onResponse: (ctx: { response: Response; request: AuthRequest }) => {
+      assertCurrentRequest(ctx.request)
+    },
+    onSuccess: (ctx: { response: Response; request: AuthRequest }) => {
+      assertCurrentRequest(ctx.request)
+      const token = ctx.response.headers.get('set-auth-token')
+      if (token) {
+        setAuthToken(token, cloudUrl)
+      }
+    },
+    onError: (ctx: { response: Response; request: AuthRequest }) => {
+      assertCurrentRequest(ctx.request)
+      // A 426 from our backend means this build is below the enforced minimum —
+      // flip into the upgrade blocker (mirrors the 401 → session_expired dispatch
+      // below). Status-only: the response body belongs to Better Auth here.
+      if (ctx.response.status === 426) {
+        handleAppVersionUnsupported(ctx.response.status)
+        return
+      }
+      if (ctx.response.status !== 401 || isSignInRequest(ctx.request.url)) {
+        return
+      }
+      // Capture token presence BEFORE clearing — only a 401 against an existing token signals a real
+      // session expiry. A 401 from sign-in/OTP-verify (no stored token) must NOT trigger the modal.
+      const hadToken = Boolean(getAuthToken())
+      if (hadToken) {
+        clearAuthToken()
+      } else if (isSsoMode() && getCachedSession()?.session?.token) {
+        invalidateAuthRequests()
+      }
+      // An unauthenticated session probe may fail during a valid sign-in.
+      // It has no identity to invalidate, so it must not cancel that sign-in.
+      clearCachedSession()
+      if (hadToken) {
+        // Event name + reason kept in sync with src/db/powersync/connector.ts. Fires on Better Auth's
+        // session validation (mount + reconnect), which detects expiry well before PowerSync's
+        // credential refresh kicks in — cuts boot-time delay from seconds to milliseconds.
+        window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
+      }
+    },
   }
 }
-
-export const buildFetchOptions = (platform: string, ssoMode = isSsoMode(), cloudUrl = getLocalSetting('cloudUrl')) => ({
-  credentials: (ssoMode ? 'include' : 'omit') as RequestCredentials,
-  // Applied per request instead of through `headers` so the locale is re-read on
-  // every call, not frozen at client construction before the synced setting hydrates.
-  onRequest: (ctx: { headers: Headers }) => {
-    assertCurrentServer(cloudUrl)
-    for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
-      ctx.headers.set(key, value)
-    }
-  },
-  auth: {
-    type: 'Bearer' as const,
-    token: () => (isCurrentServer(cloudUrl) ? (getAuthToken() ?? '') : ''),
-  },
-  onSuccess: (ctx: { response: Response }) => {
-    assertCurrentServer(cloudUrl)
-    const token = ctx.response.headers.get('set-auth-token')
-    if (token) {
-      setAuthToken(token, cloudUrl)
-    }
-  },
-  onError: (ctx: { response: Response; request?: { url: URL | string } }) => {
-    if (!isCurrentServer(cloudUrl)) {
-      return
-    }
-    // A 426 from our backend means this build is below the enforced minimum —
-    // flip into the upgrade blocker (mirrors the 401 → session_expired dispatch
-    // below). Status-only: the response body belongs to Better Auth here.
-    if (ctx.response.status === 426) {
-      handleAppVersionUnsupported(ctx.response.status)
-      return
-    }
-    if (ctx.response?.status !== 401 || isSignInRequest(ctx.request?.url)) {
-      return
-    }
-    // Capture token presence BEFORE clearing — only a 401 against an existing token signals a real
-    // session expiry. A 401 from sign-in/OTP-verify (no stored token) must NOT trigger the modal.
-    const hadToken = Boolean(getAuthToken())
-    clearAuthToken()
-    clearCachedSession()
-    if (hadToken) {
-      // Event name + reason kept in sync with src/db/powersync/connector.ts. Fires on Better Auth's
-      // session validation (mount + reconnect), which detects expiry well before PowerSync's
-      // credential refresh kicks in — cuts boot-time delay from seconds to milliseconds.
-      window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
-    }
-  },
-})
 
 export type AuthClient = ReturnType<typeof createAuthClientInstance>
 export type Session = AuthClient['$Infer']['Session']

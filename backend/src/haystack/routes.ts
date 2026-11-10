@@ -165,11 +165,12 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         // (browsers can't set `Authorization` on `new WebSocket()`); it is
         // verified via the same Better Auth path REST uses (HMAC + DB lookup).
         const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
-        const user: User | null = await authorizeWsBearer(auth, subprotocolHeader)
-        if (!user) {
-          refuse(ws, state, wsCloseUnauthorized, 'unauthorized')
+        const authorization = await authorizeWsBearer(auth, subprotocolHeader)
+        if (!authorization.ok) {
+          refuse(ws, state, authorization.closeCode, authorization.closeReason)
           return
         }
+        const { user } = authorization
 
         const url = new URL(data.request?.url ?? 'http://localhost/haystack/ws')
         const pipelineSlug = url.searchParams.get('pipeline')
@@ -193,6 +194,7 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         }
 
         const server = new HaystackAcpServer({
+          userId: user.id,
           send: (payload) => {
             ws.send(payload)
           },

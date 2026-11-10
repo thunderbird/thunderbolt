@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { act, cleanup, fireEvent, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import '@testing-library/jest-dom'
 import { useState } from 'react'
@@ -134,4 +134,15 @@ describe('onboarding name draft', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Toggle step' }))
     expect(screen.getByRole('textbox')).toHaveValue('Draft name')
   })
+})
+
+it('disables name edits while persistence is in progress', () => {
+  const { rerender } = render(
+    <OnboardingNameStep state={{ nameValue: 'Saved', isSubmittingName: false }} actions={{ setNameValue: () => {} }} />,
+  )
+  rerender(
+    <OnboardingNameStep state={{ nameValue: 'Saving', isSubmittingName: true }} actions={{ setNameValue: () => {} }} />,
+  )
+  expect(screen.getByRole('textbox')).toHaveValue('Saving')
+  expect(screen.getByRole('textbox')).toBeDisabled()
 })

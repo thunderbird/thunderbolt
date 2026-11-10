@@ -4,9 +4,34 @@
 
 import type { UIMessage } from 'ai'
 import { describe, expect, test } from 'bun:test'
-import { extractTextFromParts } from './message-utils'
+import { extractTextFromParts, hasAssistantContent } from './message-utils'
 
 const textPart = (text: string): UIMessage['parts'][number] => ({ type: 'text', text }) as UIMessage['parts'][number]
+
+describe('hasAssistantContent', () => {
+  test('ignores empty assistant placeholders while retaining text, reasoning and tool results', () => {
+    for (const parts of [[], [{ type: 'step-start' }], [{ type: 'text', text: '  ' }]] satisfies UIMessage['parts'][]) {
+      expect(hasAssistantContent({ role: 'assistant', parts })).toBe(false)
+    }
+    for (const parts of [
+      [{ type: 'text', text: 'Partial answer' }],
+      [{ type: 'reasoning', text: 'A useful intermediate result' }],
+      [
+        {
+          type: 'dynamic-tool',
+          toolName: 'lookup',
+          toolCallId: 'call',
+          state: 'output-available',
+          input: {},
+          output: 'Evidence',
+        },
+      ],
+    ] satisfies UIMessage['parts'][]) {
+      expect(hasAssistantContent({ role: 'assistant', parts })).toBe(true)
+      expect(hasAssistantContent({ role: 'user', parts })).toBe(false)
+    }
+  })
+})
 
 describe('extractTextFromParts', () => {
   test('returns empty string when message has no text parts', () => {

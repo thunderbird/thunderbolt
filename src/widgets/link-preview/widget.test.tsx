@@ -7,7 +7,7 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { ContentViewProvider } from '@/content-view/context'
 import type { SourceMetadata } from '@/types/source'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, fireEvent } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
@@ -24,6 +24,7 @@ import * as integrations from '@/dal/integrations'
 import * as tinfoilConnection from '@/hooks/use-tinfoil-connection'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { LinkPreviewWidget } from './widget'
+import { LinkPreview } from './display'
 import type { ReactElement } from 'react'
 
 const originalLocalSettings = useLocalSettingsStore.getState()
@@ -423,6 +424,50 @@ describe('cloud-account private-search preview routing', () => {
       expect(requests).toEqual([])
     } finally {
       session.mockRestore()
+    }
+  })
+})
+
+describe('link preview image lifecycle', () => {
+  it('loads a replacement image after the previous image failed', () => {
+    const props = { title: 'Article', description: null, url: 'https://example.com' }
+    const { container, rerender } = renderWithProviders(<LinkPreview {...props} image="https://example.com/old.png" />)
+    fireEvent.error(container.querySelector('img')!)
+    expect(container.querySelector('img')).toBeNull()
+    rerender(<LinkPreview {...props} image="https://example.com/new.png" />)
+    const image = container.querySelector('img')!
+    expect(image.src).toBe('https://example.com/new.png')
+    expect(image.className).toContain('opacity-0')
+    fireEvent.load(image)
+    expect(image.className).toContain('opacity-100')
+  })
+
+  it('starts loading when an image arrives after a preview without one', () => {
+    const props = { title: 'Article', description: null, url: 'https://example.com' }
+    const { container, rerender } = renderWithProviders(<LinkPreview {...props} image={null} />)
+    rerender(<LinkPreview {...props} image="https://example.com/new.png" />)
+    expect(container.querySelector('img')!.className).toContain('opacity-0')
+  })
+})
+
+describe('link preview navigation', () => {
+  it.each([
+    ['https://example.com', true],
+    ['javascript:alert(1)', false],
+  ])('handles %s through the safe link boundary', (url, safe) => {
+    const previous = useLocalSettingsStore.getState().externalLinkBehavior
+    useLocalSettingsStore.setState({ externalLinkBehavior: 'ask' })
+    try {
+      const { getByRole, queryByRole } = renderWithProviders(
+        <LinkPreview title="Article" description={null} image={null} url={url} />,
+      )
+      const link = getByRole('link')
+      expect(link.getAttribute('href')).toBe(safe ? url : '#')
+      expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+      expect(fireEvent.click(link)).toBe(false)
+      expect(queryByRole('alertdialog') !== null).toBe(safe)
+    } finally {
+      useLocalSettingsStore.setState({ externalLinkBehavior: previous })
     }
   })
 })

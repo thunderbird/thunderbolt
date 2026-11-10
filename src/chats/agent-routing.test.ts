@@ -134,6 +134,7 @@ describe('createAgentRoutingFetch', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        getChatReasoningEffort: async () => undefined,
         connectToAgent: mock(async () => adapter) as never,
       },
       { getDebugTranscriptTraceId: () => 'trace-engine' },
@@ -162,7 +163,11 @@ describe('createAgentRoutingFetch', () => {
       saveMessages,
       httpClient,
       getProxyFetch,
-      { getAvailableModels: async () => useChatStore.getState().models, connectToAgent: connectToAgent as never },
+      {
+        getAvailableModels: async () => useChatStore.getState().models,
+        getChatReasoningEffort: async () => undefined,
+        connectToAgent: connectToAgent as never,
+      },
       routingState,
     )
     const request = (id: string, text: string): RequestInit => ({
@@ -202,6 +207,7 @@ describe('createAgentRoutingFetch', () => {
     hydrateSessionWith('t-stopped', builtInAgent)
     const customFetch = createAgentRoutingFetch('t-stopped', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: async () => adapter,
     })
     const messages: ThunderboltUIMessage[] = [
@@ -227,7 +233,11 @@ describe('createAgentRoutingFetch', () => {
       saveMessages,
       httpClient,
       getProxyFetch,
-      { getAvailableModels: async () => useChatStore.getState().models, connectToAgent: connectToAgent as never },
+      {
+        getAvailableModels: async () => useChatStore.getState().models,
+        getChatReasoningEffort: async () => undefined,
+        connectToAgent: connectToAgent as never,
+      },
       regeneration,
     )
     const init: RequestInit = { method: 'POST', body: JSON.stringify({ messages: [] }) }
@@ -251,6 +261,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-built-in', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -271,6 +282,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-remote', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -289,6 +301,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-cache', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -311,6 +324,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-switch', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -361,6 +375,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('thread-77', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: updateChatThread as never,
       getDb: (() => fakeDb) as never,
@@ -408,6 +423,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-save-builtin', saveMessagesSpy, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -436,6 +452,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-save-remote', saveMessagesSpy, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
     })
 
@@ -478,6 +495,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-no-thread', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: updateChatThread as never,
       getDb: (() => fakeDb) as never,
@@ -501,6 +519,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-skill', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: getAllSkills as never,
       getDb: (() => ({})) as never,
@@ -524,6 +543,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-project', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: (async () => []) as never,
       getDb: (() => ({})) as never,
@@ -553,6 +573,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-no-project', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: (async () => []) as never,
       getDb: getDb as never,
@@ -577,6 +598,7 @@ describe('createAgentRoutingFetch', () => {
 
     const customFetch = createAgentRoutingFetch('t-builtin-skill', saveMessages, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       getAllSkills: getAllSkills as never,
       getDb: (() => ({})) as never,

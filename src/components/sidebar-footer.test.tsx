@@ -29,6 +29,7 @@ import type { AuthClient } from '@/contexts'
 import { getDatabaseInstance } from '@/db/database'
 import type { DatabaseInterface } from '@/db/database-interface'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { isE2eeReady } from '@/hooks/use-e2ee-ready'
 import { SidebarFooter, SyncStateIcon, syncStatusText } from './sidebar-footer'
 
 beforeAll(async () => {
@@ -318,6 +319,26 @@ describe('sync retry flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
     await screen.findByText('Cloud Sync')
   }
+
+  it('explains the browser requirement for a returning encrypted account instead of suggesting Retry', async () => {
+    const previous = navigator.locks
+    try {
+      Object.defineProperty(navigator, 'locks', { configurable: true, value: {} })
+      renderWithProviders(loggedInAuthClient())
+      await act(async () => {
+        expect(await isE2eeReady()).toBe(true)
+      })
+      await openAccountMenu()
+      expect(
+        screen.getByText(
+          'To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system.',
+        ),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
+    } finally {
+      Object.defineProperty(navigator, 'locks', { configurable: true, value: previous })
+    }
+  })
 
   it('shows the offline warning and a Retry button when sync is enabled but not connected', async () => {
     renderWithProviders(loggedInAuthClient())

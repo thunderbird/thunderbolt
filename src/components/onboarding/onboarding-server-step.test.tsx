@@ -101,7 +101,10 @@ describe('OnboardingServerStep', () => {
     expect(post).not.toHaveBeenCalled()
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Continue' })))
 
-    expect(post).toHaveBeenCalledWith('waitlist/join', { json: { email: 'person@example.com' } })
+    expect(post).toHaveBeenCalledWith('waitlist/join', {
+      json: { email: 'person@example.com' },
+      signal: expect.any(AbortSignal),
+    })
     expect(screen.getByText('Check your email')).toBeInTheDocument()
     expect(screen.getByText('If you received a code to log in, enter it here:')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()

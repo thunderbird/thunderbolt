@@ -11,10 +11,15 @@ import {
   hydrateStore,
   resetStore,
 } from '@/test-utils/chat-store-mocks'
-import { ContentViewProvider } from '@/content-view/context'
+import { ContentViewProvider, useContentView } from '@/content-view/context'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { Chat } from '@ai-sdk/react'
+import * as quoteUtils from '@/lib/quotes'
+import * as attachmentStorage from '@/lib/file-blob-storage'
+import { buildAttachmentPart, getAttachments } from '@/lib/attachments'
+import { getClock } from '@/testing-library'
 import { useChatStore } from '@/chats/chat-store'
 import { useConfigStore } from '@/api/config-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -45,6 +50,14 @@ const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): Thunderbo
   ...overrides,
 })
 
+/** Expose the actual sidebar selection without mounting its unrelated viewers. */
+const SummarySelection = () => {
+  const { state } = useContentView()
+  return (
+    <output data-testid="summary-selection">{state.type === 'compaction-summary' ? state.data.summary : ''}</output>
+  )
+}
+
 describe('ChatMessages', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -69,6 +82,89 @@ describe('ChatMessages', () => {
   })
 
   describe('basic rendering', () => {
+    it('does not rerender the unchanged user bubble for assistant deltas', async () => {
+      const userMessage = createTestMessage({ id: 'user-1' })
+      const chatInstance = new Chat<ThunderboltUIMessage>({ messages: [userMessage] })
+      hydrateStore({
+        chatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        selectedModel: null,
+        triggerData: null,
+      })
+      // Quote extraction runs when the actual user bubble renders, including
+      // its attachment and markdown children. Keep those children real here.
+      const extractQuotes = spyOn(quoteUtils, 'getQuotes')
+      try {
+        render(<ChatMessages />, { wrapper: createTestWrapper() })
+        const initialCalls = extractQuotes.mock.calls.length
+        for (let token = 1; token <= 20; token++) {
+          await act(async () => {
+            chatInstance.messages = [
+              userMessage,
+              createTestMessage({
+                id: 'answer-1',
+                role: 'assistant',
+                parts: [{ type: 'text', text: 'x'.repeat(token) }],
+              }),
+            ]
+            await getClock().tickAsync(50)
+          })
+        }
+        expect(extractQuotes.mock.calls.length - initialCalls).toBe(0)
+        expect(screen.getByText('x'.repeat(20))).toBeInTheDocument()
+      } finally {
+        extractQuotes.mockRestore()
+      }
+    })
+
+    it('resends only the selected attachment from the latest user turn after a new turn arrives', async () => {
+      const attachment = buildAttachmentPart({
+        localFileId: 'shared-pdf',
+        filename: 'report.pdf',
+        mimeType: 'application/pdf',
+        deliverAs: 'text',
+      })
+      const first = createTestMessage({ id: 'user-1', parts: [attachment] })
+      const latest = createTestMessage({
+        id: 'user-2',
+        parts: [attachment, { ...attachment, data: { ...attachment.data, localFileId: 'other-pdf' } }],
+      })
+      const chatInstance = new Chat<ThunderboltUIMessage>({ messages: [first] })
+      const regenerate = spyOn(chatInstance, 'regenerate').mockResolvedValue(undefined)
+      const readAttachment = spyOn(attachmentStorage, 'getAttachment').mockResolvedValue(null)
+      hydrateStore({
+        chatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        selectedModel: null,
+        triggerData: null,
+      })
+      try {
+        render(<ChatMessages />, { wrapper: createTestWrapper() })
+        expect(screen.getAllByRole('button', { name: 'Resend as images' })).toHaveLength(1)
+        await act(async () => {
+          chatInstance.messages = [first, latest]
+          await getClock().tickAsync(50)
+        })
+        const controls = screen.getAllByRole('button', { name: 'Resend as images' })
+        expect(controls).toHaveLength(2)
+        fireEvent.click(controls[0])
+        expect(chatInstance.messages[0]).toBe(first)
+        expect(
+          getAttachments(chatInstance.messages[1]).map(({ localFileId, deliverAs }) => [localFileId, deliverAs]),
+        ).toEqual([
+          ['shared-pdf', 'images'],
+          ['other-pdf', 'text'],
+        ])
+        expect(regenerate).toHaveBeenCalledTimes(1)
+      } finally {
+        cleanup()
+        regenerate.mockRestore()
+        readAttachment.mockRestore()
+      }
+    })
+
     it('should render user and assistant messages', () => {
       const messages: ThunderboltUIMessage[] = [
         createTestMessage({ role: 'user', parts: [{ type: 'text', text: 'Hello' }] }),
@@ -216,6 +312,124 @@ describe('ChatMessages', () => {
     expect(view.container.textContent).toContain('Streamed image')
   })
 
+  describe('compaction history', () => {
+    it.each([false, true])('keeps the streaming viewport reservation during compaction (content: %s)', (hasContent) => {
+      const { container } = renderHistory(
+        [
+          createTestMessage({ id: 'old-user' }),
+          createTestMessage({ id: 'old-answer', role: 'assistant' }),
+          createTestMessage({ id: 'current-user' }),
+          createTestMessage({
+            id: 'streaming-answer',
+            role: 'assistant',
+            parts: hasContent ? [{ type: 'text', text: 'Response so far' }] : [{ type: 'step-start' }],
+          }),
+        ],
+        'streaming',
+      )
+      const wrapper = container.querySelector('[data-message-id="streaming-answer"]')
+      expect(wrapper).toHaveStyle({ minHeight: '72dvh' })
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacting' }))
+      expect(container.querySelector('[data-message-id="streaming-answer"]')).toBe(wrapper)
+      expect(wrapper).toHaveStyle({ minHeight: '72dvh' })
+      expect(wrapper).toHaveTextContent('Compacting…')
+      expect(screen.queryByTestId('loading-status')).toBeNull()
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'idle' }))
+      expect(wrapper).toHaveStyle({ minHeight: '72dvh' })
+      expect(screen.queryByTestId('loading-status') !== null).toBe(!hasContent)
+    })
+
+    const savedMessage = (id: string, summary: string, role: 'user' | 'assistant' = 'assistant') =>
+      createTestMessage({
+        id,
+        role,
+        parts: [{ type: 'text', text: id }],
+        metadata: {
+          contextCompaction: { version: 1, summary, tokensBefore: 8_000, contextTokens: 2_000, retainedTail: [] },
+        },
+      })
+
+    const renderHistory = (messages: ThunderboltUIMessage[], status: 'ready' | 'submitted' | 'streaming' = 'ready') => {
+      const chatInstance = createMockChatInstance(messages, status)
+      const useChat = createMockUseChat(chatInstance)
+      hydrateStore({
+        chatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        selectedModel: null,
+        triggerData: null,
+      })
+      return {
+        chatInstance,
+        ...render(
+          <>
+            <ChatMessages useChat={useChat} />
+            <SummarySelection />
+          </>,
+          { wrapper: createTestWrapper() },
+        ),
+      }
+    }
+
+    it.each(['user', 'assistant'] as const)(
+      'restores completed rows at their %s boundary and opens each saved summary',
+      (role) => {
+        const { container } = renderHistory([
+          savedMessage('earlier-boundary', 'Earlier summary', role),
+          createTestMessage({ id: 'later-turn', parts: [{ type: 'text', text: 'A later turn' }] }),
+          savedMessage('latest-boundary', 'Latest summary'),
+        ])
+        const rows = screen.getAllByRole('button', { name: 'Compacted View summary' })
+        expect(rows).toHaveLength(2)
+        expect(container.querySelector('[data-message-id="earlier-boundary"]')?.nextElementSibling).toBe(rows[0])
+        expect(rows[0].nextElementSibling).toHaveAttribute('data-message-id', 'later-turn')
+        expect(container.querySelector('[data-message-id="latest-boundary"]')?.nextElementSibling).toBe(rows[1])
+
+        fireEvent.click(rows[1])
+        expect(screen.getByTestId('summary-selection')).toHaveTextContent('Latest summary')
+        fireEvent.click(rows[0])
+        expect(screen.getByTestId('summary-selection')).toHaveTextContent('Earlier summary')
+      },
+    )
+
+    it.each(['ready', 'submitted', 'streaming'] as const)(
+      'shows one progress row during %s and removes it on cancellation',
+      (status) => {
+        renderHistory(
+          [
+            createTestMessage(),
+            ...(status === 'streaming'
+              ? [createTestMessage({ id: 'stub', role: 'assistant', parts: [{ type: 'step-start' }] })]
+              : []),
+          ],
+          status,
+        )
+        act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacting' }))
+        expect(screen.getAllByText('Compacting…')).toHaveLength(1)
+        expect(screen.queryByTestId('loading-status')).toBeNull()
+        expect(screen.queryByText('Compacted')).toBeNull()
+
+        act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'idle' }))
+        expect(screen.queryByText('Compacting…')).toBeNull()
+        expect(screen.queryByText('Compacted')).toBeNull()
+      },
+    )
+
+    it('does not create a completed history row before a checkpoint is saved', () => {
+      renderHistory([createTestMessage()])
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacted' }))
+      expect(screen.queryByText('Compacted')).toBeNull()
+    })
+
+    it('removes a completed row when regeneration removes its checkpoint', () => {
+      const { chatInstance, rerender } = renderHistory([savedMessage('boundary', 'Saved summary')])
+      expect(screen.getByRole('button', { name: 'Compacted View summary' })).toBeInTheDocument()
+      chatInstance.messages = [createTestMessage({ id: 'replacement', role: 'assistant' })]
+      rerender(<ChatMessages useChat={createMockUseChat(chatInstance)} />)
+      expect(screen.queryByText('Compacted')).toBeNull()
+    })
+  })
+
   const renderWithSharingEnabled = async (messages: ThunderboltUIMessage[]) => {
     const mockChatInstance = createMockChatInstance(messages, 'ready')
     const mockUseChat = createMockUseChat(mockChatInstance)
@@ -244,9 +458,16 @@ describe('ChatMessages', () => {
         </ContentViewProvider>
       </TestProvider>,
     )
-    await act(async () => {
-      await Bun.sleep(20)
-    })
+    // Lazy module resolution uses real I/O; advance React until the action appears.
+    for (let attempt = 0; attempt < 100; attempt++) {
+      await act(async () => {
+        await Bun.sleep(5)
+      })
+      const action = screen.queryByRole('button', { name: 'Share debug transcript' })
+      if (action) {
+        return action
+      }
+    }
     return screen.getByRole('button', { name: 'Share debug transcript' })
   }
 

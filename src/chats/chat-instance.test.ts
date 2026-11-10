@@ -30,8 +30,29 @@ import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from './chat-store'
-import { createAgentRoutingFetch, createChatInstance, type CreateChatInstanceDeps } from './chat-instance'
+import {
+  createAgentRoutingFetch as createRoutingFetch,
+  createChatInstance,
+  type CreateChatInstanceDeps,
+} from './chat-instance'
 import { getTurnActivity } from './turn-activity'
+
+/** Keep routing unit tests independent of database model and reasoning settings. */
+const createAgentRoutingFetch = (...args: Parameters<typeof createRoutingFetch>) => {
+  const [id, saveMessages, httpClient, getProxyFetch, dependencies, state] = args
+  return createRoutingFetch(
+    id,
+    saveMessages,
+    httpClient,
+    getProxyFetch,
+    {
+      getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
+      ...dependencies,
+    },
+    state,
+  )
+}
 
 const sessionId = 'sess-1'
 const testModels = [
@@ -107,12 +128,15 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     triggerData: null,
   })
 
-  const finishWithError = (error?: Error) => {
+  const finishWithError = (
+    error?: Error,
+    message: ThunderboltUIMessage = { id: 'failed-assistant', role: 'assistant', parts: [] },
+  ) => {
     if (error) {
       onError?.(error)
     }
     return onFinish!({
-      message: { id: 'failed-assistant', role: 'assistant', parts: [] },
+      message,
       messages: [],
       isAbort: false,
       isDisconnect: false,
@@ -241,13 +265,17 @@ describe('createAgentRoutingFetch — connection status', () => {
   it('rechecks model access after awaiting the adapter before sending credentials', async () => {
     const connected = Promise.withResolvers<AgentAdapter>()
     const fetchModel = mock(async () => new Response('ok'))
-    const connect = mock(() => connected.promise)
+    const connecting = Promise.withResolvers<void>()
+    const connect = mock(() => {
+      connecting.resolve()
+      return connected.promise
+    })
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
       getOrConnectAdapter: connect,
     })
     const request = fetch('https://backend.test', { body: '{}' })
-    await Promise.resolve()
+    await connecting.promise
     expect(connect).toHaveBeenCalledTimes(1)
     useChatStore.getState().setModels([])
     connected.resolve({ ...makeAdapter(builtInAgent), fetch: fetchModel })
@@ -315,6 +343,83 @@ describe('createAgentRoutingFetch — connection status', () => {
     expect(fetchModel).toHaveBeenCalledTimes(1)
   })
 
+  it.each(['prompt', 'compact'] as const)('waits for an effort write before routing %s', async (operation) => {
+    const write = Promise.withResolvers<void>()
+    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
+    const getChatReasoningEffort = mock(async () => 'high' as const)
+    const seen: AgentAdapterContext[] = []
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) => {
+        seen.push(context)
+        return new Response('ok')
+      },
+      compact: async (_init, context) => {
+        seen.push(context)
+        return { version: 1, summary: 'Summary', tokensBefore: 100, contextTokens: 10, retainedTail: [] }
+      },
+    }
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort,
+      getOrConnectAdapter: async () => adapter,
+    })
+    const request =
+      operation === 'prompt'
+        ? route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+        : route.compact([], undefined, new AbortController().signal)
+    await Promise.resolve()
+    expect(getChatReasoningEffort).not.toHaveBeenCalled()
+    expect(seen).toHaveLength(0)
+    write.resolve()
+    await request
+    expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.reasoningEffort).toBe('high')
+  })
+
+  it('does not send with stale effort when its pending settings write fails', async () => {
+    const write = Promise.withResolvers<void>()
+    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
+    const connect = mock(async () => makeAdapter(builtInAgent))
+    const resolveEffort = mock(async () => 'low' as const)
+    const save = mock(async () => {})
+    const route = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
+      getChatReasoningEffort: resolveEffort,
+      getOrConnectAdapter: connect,
+    })
+    const request = route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+    write.reject(new Error('Settings write failed'))
+    await expect(request).rejects.toThrow('Settings write failed')
+    expect(resolveEffort).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('leaves effort resolution to remote agents', async () => {
+    const agent: Agent = {
+      ...builtInAgent,
+      id: 'remote',
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://agent.test',
+    }
+    useChatStore.getState().updateSession(sessionId, { selectedAgent: agent })
+    const resolveEffort = mock(async () => 'high' as const)
+    const adapter: AgentAdapter = {
+      ...makeAdapter(agent),
+      fetch: async (_init, context) => {
+        expect(context.reasoningEffort).toBeUndefined()
+        return new Response('ok')
+      },
+    }
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: resolveEffort,
+      getOrConnectAdapter: async () => adapter,
+    })
+    await route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+    expect(resolveEffort).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['/research latest', 'research', 30],
     ['/search latest', 'search', 12],
@@ -339,6 +444,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     }
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => adapter,
     })
     const response = await fetch('https://backend.test', {
@@ -376,6 +482,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       }
       const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
         getAvailableModels: async () => useChatStore.getState().models,
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => adapter,
         getAllSkills: (async () => [{ name: 'weather', instruction: 'WEATHER_BODY', enabled: 1 }]) as never,
         getDb: (() => ({})) as never,
@@ -398,6 +505,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -417,6 +525,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -434,6 +543,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -452,6 +562,7 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -479,6 +590,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        getChatReasoningEffort: async () => undefined,
         connectToAgent: connectToAgent as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -519,6 +631,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -587,6 +700,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -1641,6 +1755,32 @@ describe('createChatInstance — retry policy', () => {
     expect(regenerate).toHaveBeenCalledTimes(1)
   })
 
+  it('does not retry a newer turn when an older failed response finishes saving', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishWithError, getTurnBudget, instance, regenerate, trackEvent } = createRetryHarness(saveMessages)
+
+    await instance.sendMessage({ text: 'first turn' })
+    const firstFinish = finishWithError(new Error('Connection failed'), {
+      id: 'partial-assistant',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Partial response' }],
+    })
+
+    await instance.sendMessage({ text: 'second turn' })
+    const secondTurnBudget = getTurnBudget()
+    resolveSave(0)
+    await firstFinish
+
+    expect(getTurnBudget()).toBe(secondTurnBudget)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(0)
+    expect(useChatStore.getState().sessions.get(sessionId)!.retriesExhausted).toBe(false)
+    await getClock().runAllAsync()
+    expect(regenerate).not.toHaveBeenCalled()
+    const summaries = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]![1]).toEqual(expect.objectContaining({ outcome: 'error' }))
+  })
+
   it('attributes a reply to the turn model when the session model changes mid-save', async () => {
     const { resolveSave, saveMessages } = createDeferredSaveMessages()
     const { finishSuccessfully, instance, trackEvent } = createRetryHarness(saveMessages)
@@ -1740,6 +1880,7 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
   }
   const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
     getAvailableModels: async () => useChatStore.getState().models,
+    getChatReasoningEffort: async () => undefined,
     getOrConnectAdapter: async () => adapter,
     trackEvent: () => {},
   })

@@ -56,6 +56,7 @@ jobs:
               - 'crates/**'
             agent-core:
               - 'shared/agent-core/**'
+              - 'shared/reasoning-effort*.ts'
               - 'scripts/agent-core-browser-check.ts'
               - 'scripts/chrome.ts'
               - 'scripts/install-chrome.ts'
@@ -69,6 +70,7 @@ jobs:
             cli:
               - 'cli/**'
               - 'shared/agent-core/**'
+              - 'shared/reasoning-effort*.ts'
               - 'shared/cli-device-id.ts'
               - 'shared/defaults/models.ts'
               - 'shared/inference-usage.ts'
@@ -179,6 +181,9 @@ jobs:
 
       - name: Run tests
         run: bun run test:5x
+
+      - name: Check performance harness
+        run: bun run test:performance
 
       # Upload source maps to PostHog only for main branch
       - name: Build application with source maps

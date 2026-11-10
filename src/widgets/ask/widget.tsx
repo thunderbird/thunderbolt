@@ -4,7 +4,7 @@
 
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useDatabase } from '@/contexts'
-import { getMessage, updateMessageCache } from '@/dal/chat-messages'
+import { getMessageCache, updateMessageCache } from '@/dal/chat-messages'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Ask, type AskSubmission } from './display'
@@ -48,7 +48,7 @@ export const AskWidget = ({ prompt, mode, options = [], explanation, messageId }
   const { data: saved, isPending } = useQuery({
     queryKey,
     queryFn: async () => {
-      const message = await getMessage(db, messageId)
+      const message = await getMessageCache(db, messageId)
       const cache = message?.cache as Record<string, unknown> | null | undefined
       return (cache?.[storageKey] as AskCacheEntry | undefined) ?? null
     },

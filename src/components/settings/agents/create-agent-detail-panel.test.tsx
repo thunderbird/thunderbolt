@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useAllAgents } from '@/dal'
+import { getAllAgents, useAllAgents } from '@/dal'
+import { getDb } from '@/db/database'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -61,5 +62,28 @@ describe('CreateAgentDetailPanel', () => {
 
     expect(screen.getByTestId('agent-options')).toHaveTextContent('New Chat Agent')
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('creates a local agent without a session or cloud enrollment', async () => {
+    const onClose = mock(() => {})
+    const enrollIroh = mock(async () => {})
+    const TestProvider = createTestProvider({ authClient: createMockAuthClient() })
+    render(
+      <CreateAgentDetailPanel onClose={onClose} loadAppNodeId={async () => 'b'.repeat(52)} enrollIroh={enrollIroh} />,
+      { wrapper: TestProvider },
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('My Agent'), { target: { value: 'Local Agent' } })
+    fireEvent.change(screen.getByPlaceholderText(/paste an iroh ticket/i), {
+      target: { value: 'a'.repeat(52) },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add Agent' }))
+      await getClock().runAllAsync()
+    })
+
+    expect(await getAllAgents(getDb())).toMatchObject([{ name: 'Local Agent', userId: null }])
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(enrollIroh).not.toHaveBeenCalled()
   })
 })

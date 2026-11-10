@@ -13,6 +13,15 @@ const minute = 60 * second
 const hour = 60 * minute
 const day = 24 * hour
 
+describe('percent', () => {
+  test('formats fractions and rounds consistently through the locale formatter', () => {
+    for (const locale of ['en', 'de', 'ja'] as const) {
+      expect(getFormatters(locale).percent(0.8)).toContain(getFormatters(locale).number(80))
+      expect(getFormatters(locale).percent(0.804)).toBe(getFormatters(locale).percent(0.8))
+    }
+  })
+})
+
 describe('toDate', () => {
   test('parses a bare YYYY-MM-DD as local midnight', () => {
     const parsed = toDate('2026-08-26')

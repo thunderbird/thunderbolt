@@ -66,6 +66,7 @@ type Upstream = (input: URL | RequestInfo, init?: RequestInit) => Promise<Respon
 const buildServer = (opts: {
   upstream: Upstream
   sessionIds?: string[]
+  userId?: string
   pipelineId?: string
   pipelineName?: string
   supportsFiles?: boolean
@@ -104,6 +105,7 @@ const buildServer = (opts: {
   const wrappedFetch = Object.assign(wrappedFetchImpl, { preconnect: () => {} }) as unknown as typeof fetch
   const idQueue = [...(opts.sessionIds ?? [])]
   const server = new HaystackAcpServer({
+    userId: opts.userId ?? 'user-1',
     send: (payload) => sent.push(payload),
     pipelineId: opts.pipelineId ?? 'pipe-uuid-1',
     pipelineName: opts.pipelineName ?? 'pipe-slug-1',
@@ -550,7 +552,7 @@ describe('HaystackAcpServer', () => {
       }),
     )
     first.server.dispose()
-    expect(persistentMap.get('ses-persist')).toBe('sess-persisted')
+    expect(persistentMap.get(JSON.stringify(['user-1', 'pipe-uuid-1', 'ses-persist']))).toBe('sess-persisted')
 
     // Second socket: a brand-new server with the same persistent map.
     // session/load restores the session and the next prompt skips the
@@ -580,6 +582,77 @@ describe('HaystackAcpServer', () => {
     expect(promptReply.result.stopReason).toBe('end_turn')
     expect(second.captures.some((c) => c.url?.endsWith('/search_sessions'))).toBe(false)
     expect(sessionUpdates(second.sent).some((u) => u.update.content.text === 'q2@sess-persisted')).toBe(true)
+  })
+
+  for (const mismatch of [{ userId: 'user-2' }, { pipelineId: 'other-pipeline' }]) {
+    it(`refuses a persisted session owned by another ${'userId' in mismatch ? 'user' : 'pipeline'}`, async () => {
+      const persistentSearchSessions = new Map([
+        [JSON.stringify(['user-1', 'pipe-uuid-1', 'private-session']), 'private-upstream-session'],
+      ])
+      const { server, sent, captures } = buildServer({
+        ...mismatch,
+        persistentSearchSessions,
+        upstream: async () => {
+          throw new Error('must not contact upstream')
+        },
+      })
+      await server.handleMessage(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: AGENT_METHODS.session_load,
+          params: { sessionId: 'private-session', cwd: '.', mcpServers: [] },
+        }),
+      )
+      expect(findResponse(sent, 1).error?.code).toBe(-32002)
+      expect(captures).toEqual([])
+    })
+  }
+
+  it('retains turn cancellation ownership when a live session is loaded again', async () => {
+    const running = Promise.withResolvers<AbortSignal>()
+    const { server, sent } = buildServer({
+      sessionIds: ['active-session'],
+      upstream: async (input, init) => {
+        if (input.toString().endsWith('/search_sessions')) {
+          return jsonResponse(200, { search_session_id: 'upstream-session' })
+        }
+        const signal = init!.signal!
+        running.resolve(signal)
+        return new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+      },
+    })
+    await server.handleMessage(JSON.stringify({ jsonrpc: '2.0', id: 1, method: AGENT_METHODS.session_new }))
+    const prompt = server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: AGENT_METHODS.session_prompt,
+        params: { sessionId: 'active-session', prompt: [{ type: 'text', text: 'hello' }] },
+      }),
+    )
+    const signal = await running.promise
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 3,
+        method: AGENT_METHODS.session_load,
+        params: { sessionId: 'active-session', cwd: '.', mcpServers: [] },
+      }),
+    )
+    await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: AGENT_METHODS.session_cancel,
+        params: { sessionId: 'active-session' },
+      }),
+    )
+    await prompt
+    expect(signal.aborted).toBe(true)
+    expect(findResponse(sent, 2).result.stopReason).toBe('cancelled')
+    server.dispose()
   })
 
   it('returns resourceNotFound when session/load is called with an unknown id', async () => {
@@ -677,7 +750,7 @@ describe('HaystackAcpServer', () => {
 
     expect(persistentMap.size).toBe(cap)
     expect(persistentMap.has('stale-0')).toBe(false)
-    expect(persistentMap.get('ses-fresh')).toBe('sess-fresh')
+    expect(persistentMap.get(JSON.stringify(['user-1', 'pipe-uuid-1', 'ses-fresh']))).toBe('sess-fresh')
   })
 
   it('advertises embeddedContext on initialize when the pipeline supports files', async () => {

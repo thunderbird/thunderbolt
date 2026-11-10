@@ -24,6 +24,7 @@ import { clearLocalData as defaultClearLocalData } from '@/lib/cleanup'
 type LogoutModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCloseAutoFocus?: (event: Event) => void
   /**
    * Injectable for tests. Defaults to the real {@link clearLocalData} — the
    * shipped UI never overrides this. Lets the test pass a stub instead of
@@ -33,7 +34,12 @@ type LogoutModalProps = {
   clearLocalData?: typeof defaultClearLocalData
 }
 
-export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearLocalData }: LogoutModalProps) => {
+export const LogoutModal = ({
+  open,
+  onOpenChange,
+  onCloseAutoFocus,
+  clearLocalData = defaultClearLocalData,
+}: LogoutModalProps) => {
   const { t } = useLingui()
   const authClient = useAuth()
   const [selectedOption, setSelectedOption] = useState<DataOption>('keep')
@@ -72,7 +78,7 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
   }
 
   return (
-    <ResponsiveModal open={open} onOpenChange={handleOpenChange}>
+    <ResponsiveModal open={open} onOpenChange={handleOpenChange} onCloseAutoFocus={onCloseAutoFocus}>
       <ResponsiveModalHeader>
         <ResponsiveModalTitle>
           <Trans>Log out</Trans>

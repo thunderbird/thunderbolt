@@ -6,32 +6,49 @@ Rust crate lives in [src-tauri/](../../../src-tauri).
 | File                                                                                  | What lives there                                                          |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | [`src-tauri/src/lib.rs`](../../../src-tauri/src/lib.rs)                               | App builder: plugin registration, invoke handlers, per-platform setup     |
-| [`src-tauri/src/commands.rs`](../../../src-tauri/src/commands.rs)                     | The five `invoke` commands the frontend calls                             |
+| [`src-tauri/src/commands.rs`](../../../src-tauri/src/commands.rs)                     | Window visibility, interface style, OAuth and CLI invoke commands         |
+| [`src-tauri/src/tray.rs`](../../../src-tauri/src/tray.rs)                             | Process-owned desktop tray, menu and close handler                        |
 | [`src-tauri/src/oauth_server.rs`](../../../src-tauri/src/oauth_server.rs)             | One-shot loopback HTTP server for desktop OAuth/SSO redirects             |
 | [`src-tauri/src/cli_installer.rs`](../../../src-tauri/src/cli_installer.rs)           | Download, checksum-verify and install of the standalone `thunderbolt` CLI |
 | [`src-tauri/src/platform_utils.rs`](../../../src-tauri/src/platform_utils.rs)         | An inlined Tauri plugin whose commands Android overrides in Kotlin        |
 | [`src-tauri/capabilities/default.json`](../../../src-tauri/capabilities/default.json) | Permission manifest. A command the frontend can call must be listed here. |
 | [`src-tauri/tauri.conf.json`](../../../src-tauri/tauri.conf.json)                     | Base window, CSP, bundle, deep-link and updater config                    |
 
-Thin by design: dock-icon flipping, the OAuth loopback port, the CLI installer, Android window
+Thin by design: native window and tray lifecycle, the OAuth loopback port, the CLI installer, Android window
 insets. No business logic, no native database plugin (shipped builds keep everything in PowerSync's
 wa-sqlite in the webview), no native HTTP client the frontend can reach. `reqwest` compiles into
 every build but only `cli_installer` uses it.
 
 ## The invoke commands
 
-`lib.rs` registers exactly five ([`src-tauri/src/lib.rs:47`](../../../src-tauri/src/lib.rs#L47)).
-Everything else goes through an official plugin.
+[`lib.rs`](../../../src-tauri/src/lib.rs) registers the application commands below. Plugin commands
+are registered separately.
 
-| Command                   | Platforms                                 | Purpose                                                                                                   | Frontend caller                                                                                                                                                                              |
+| Command                   | Platforms                                 | Purpose                                                                                                   | Caller                                                                                                                                                                                       |
 | ------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `toggle_dock_icon`        | macOS (no-op else)                        | Switches activation policy between `Regular` and `Accessory`, so hiding to the tray removes the dock icon | [`src/lib/tray.tsx`](../../../src/lib/tray.tsx)                                                                                                                                              |
+| `initialize_tray`         | desktop only                             | Creates the native tray once, or refreshes its translated Show/Quit labels                                 | [`src/lib/tray.ts`](../../../src/lib/tray.ts)                                                                                                                                                 |
+| `show_main_window`        | desktop (no-op on mobile)                 | Restores, unminimizes and focuses `main`, including its taskbar/Dock icon                                   | Native tray menu in [`tray.rs`](../../../src-tauri/src/tray.rs); second-launch and macOS Dock callbacks in [`lib.rs`](../../../src-tauri/src/lib.rs)                                         |
+| `hide_main_window`        | desktop (no-op on mobile)                 | Hides `main` and its taskbar/Dock icon                                                                     | Native close handler in [`tray.rs`](../../../src-tauri/src/tray.rs)                                                                                                                           |
 | `set_interface_style`     | iOS (no-op else)                          | Sets `overrideUserInterfaceStyle` on every window scene so keyboard and system UI follow the app theme    | [`src/lib/theme-provider.tsx`](../../../src/lib/theme-provider.tsx)                                                                                                                          |
 | `start_oauth_server`      | desktop (mobile signs in over deep links) | Binds the loopback listener and returns the port                                                          | [`oauth-loopback.ts`](../../../src/lib/oauth-loopback.ts), [`sso-loopback.ts`](../../../src/lib/sso-loopback.ts), [`mcp-oauth-loopback.ts`](../../../src/lib/mcp-auth/mcp-oauth-loopback.ts) |
 | `install_thunderbolt_cli` | macOS arm64, Linux                        | One-click install of the prebuilt CLI into `~/.local/bin`                                                 | [`src/lib/cli-install.ts`](../../../src/lib/cli-install.ts)                                                                                                                                  |
 
 `set_interface_style` is iOS-only, not "mobile": Android keyboards follow the system dark-mode
 setting and cannot be overridden per app.
+
+### Native tray and window lifecycle
+
+[`TrayManager.initIfSupported()`](../../../src/lib/tray.ts) sends translated menu labels on desktop
+and awaits native initialization. Rust owns `main-tray`, its menu and its callbacks for the app
+process lifetime. Repeated initialization refreshes labels without adding icons or handlers,
+including across frontend HMR and full webview reloads. The frontend holds no tray resources.
+
+The native close handler is installed only after tray creation succeeds; if creation fails, boot
+continues with normal window closing. Show restores the same window from the tray menu, a second
+launch or a macOS Dock reopen event; Quit exits the process. Each hide/restore operation runs as one
+main-thread task so its window, taskbar and Dock changes cannot interleave. The `show_main_window`
+and `hide_main_window` commands return after dispatch, with operation failures logged on the main
+thread; `initialize_tray` waits for completion and propagates failures to the startup boundary.
 
 ### How the OAuth loopback server works
 
@@ -184,9 +201,9 @@ deep-link and updater config.
 - **Frameless controls:** [`window-controls.tsx`](../../../src/components/window-controls.tsx), gated
   on `isFramelessControlsPlatform()`. A fixed overlay, not a layout strip, so it cannot alter the
   `h-svh` content height; surfaces whose controls reach that corner reserve
-  `--window-controls-width`. Close calls `close()`, which the tray's `onCloseRequested` intercepts
-  to hide instead of quit. macOS uses `titleBarStyle: Overlay` instead: `decorations: false` would
-  strip the native traffic lights.
+  `--window-controls-width`. Close calls `close()`, which the native tray's `CloseRequested` handler
+  intercepts to hide instead of quit. macOS uses `titleBarStyle: Overlay` instead:
+  `decorations: false` would strip the native traffic lights.
 - **iOS is forced opaque** even though `transparent` lives only in the macOS overlay, leaving it
   opaque already. A non-opaque webview lets the root view controller's `systemBackgroundColor` bleed
   through the status-bar and home-indicator safe areas, painting a white status bar over the light

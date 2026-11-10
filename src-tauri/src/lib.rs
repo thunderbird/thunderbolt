@@ -9,7 +9,10 @@ pub mod cli_installer;
 pub mod commands;
 pub mod oauth_server;
 pub mod platform_utils;
+#[cfg(desktop)]
+mod tray;
 
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "ios"))]
 use tauri::Manager;
 
 // Shared app builder function
@@ -19,10 +22,10 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     // Single-instance: focus existing window when a second instance is launched (desktop only)
     #[cfg(desktop)]
     {
+        builder = builder.manage(tray::TrayState::default());
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
+            if let Err(error) = commands::show_main_window(app.clone()) {
+                eprintln!("Could not restore the main window: {error}");
             }
         }));
     }
@@ -41,7 +44,10 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_passkey::init())
         .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
-            commands::toggle_dock_icon,
+            commands::show_main_window,
+            commands::hide_main_window,
+            #[cfg(desktop)]
+            tray::initialize_tray,
             commands::set_interface_style,
             commands::start_oauth_server,
             commands::stop_oauth_server,
@@ -130,6 +136,14 @@ pub fn run() {
     std::env::set_var("RUST_BACKTRACE", "1");
 
     create_app()
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                if let Err(error) = commands::show_main_window(_app.clone()) {
+                    eprintln!("Could not restore the main window: {error}");
+                }
+            }
+        });
 }

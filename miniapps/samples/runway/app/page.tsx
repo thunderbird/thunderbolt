@@ -56,6 +56,9 @@ const Page = () => {
     return `${what} ${describeOutcome(next)}`
   }
 
+  /** Shared by the `reset_plan` tool and the header button. */
+  const resetPlan = () => apply(defaultPlan, 'Reset the plan.')
+
   /**
    * Redefined every render on purpose: `execute` closes over `plan`, and the
    * bridge resolves the tool list per call rather than snapshotting it.
@@ -189,7 +192,7 @@ const Page = () => {
       description: 'Restore the original plan: default assumptions, hires and funding rounds. Returns the runway.',
       inputSchema: { type: 'object', properties: {} },
       annotations: { readOnlyHint: false, title: 'Reset the plan' },
-      execute: () => apply(defaultPlan, 'Reset the plan.'),
+      execute: resetPlan,
     },
   ]
 
@@ -238,10 +241,15 @@ const Page = () => {
     <main className="page" data-tier={runwayTier(summary.runwayMonths)}>
       <div className="header">
         <h1>Lumen Labs runway</h1>
-        <span className="status">
-          <span className={`dot${connected ? ' live' : ''}`} />
-          {connected ? 'Connected to Thunderbolt' : 'Standalone'}
-        </span>
+        <div className="header-actions">
+          <button className="reset" onClick={resetPlan}>
+            Reset
+          </button>
+          <span className="status">
+            <span className={`dot${connected ? ' live' : ''}`} />
+            {connected ? 'Connected to Thunderbolt' : 'Standalone'}
+          </span>
+        </div>
       </div>
 
       <section className="hero" aria-label={headline(summary)}>

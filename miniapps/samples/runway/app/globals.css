@@ -110,6 +110,29 @@ h2 {
   margin: 0 0 12px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.reset {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reset:hover {
+  border-color: var(--tone);
+  color: var(--tone);
+}
+
 .status {
   font-size: 12px;
   color: var(--muted);

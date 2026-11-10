@@ -359,6 +359,13 @@ export const useSyncSetup = () => {
       ),
     })
 
+  /** The automatic check keeps failing: show the error the manual check would, which also offers Check now. */
+  const approvalCheckFailed = (error: Error) =>
+    updateWhileIdle({
+      type: 'SET_APPROVAL_ERROR',
+      payload: getEncryptionErrorMessage(error, t`Failed to check approval`),
+    })
+
   const confirmApproval = () =>
     runOperation(false, async (update) => {
       update({ type: 'START_LOADING' })
@@ -445,6 +452,7 @@ export const useSyncSetup = () => {
     submitRecoveryKey,
     confirmApproval,
     approvalVerificationFailed,
+    approvalCheckFailed,
     unlockWithPasskey,
     goToPasskeyEnroll,
     completeSetup,

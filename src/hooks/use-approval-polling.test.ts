@@ -7,7 +7,8 @@ import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { HttpError } from '@/lib/http'
-import { DeviceApprovalError } from '@/crypto/errors'
+import { DecryptionError, DeviceApprovalError } from '@/crypto/errors'
+import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 import { useApprovalPolling } from './use-approval-polling'
 
 const createHTTPError = (status: number) => new HttpError(new Response(null, { status }))
@@ -68,24 +69,68 @@ describe('useApprovalPolling', () => {
     expect(onApproved).toHaveBeenCalledTimes(1)
   })
 
-  it('continues polling silently on errors then succeeds', async () => {
+  it('continues polling silently on transient errors then succeeds', async () => {
+    const transientErrors = [
+      new TypeError('Failed to fetch'),
+      new EncryptionRequestTimeoutError(),
+      createHTTPError(503),
+      createHTTPError(429),
+    ]
     let callCount = 0
     const checkApproval = mock(() => {
       callCount++
-      if (callCount <= 2) {
-        return Promise.reject(new Error('Network error'))
-      }
-      return Promise.resolve(true)
+      const error = transientErrors[callCount - 1]
+      return error ? Promise.reject(error) : Promise.resolve(true)
     })
     const onApproved = mock(() => {})
+    const onError = mock(() => {})
 
-    renderHook(() => useApprovalPolling({ enabled: true, checkApproval, onApproved, intervalMs: 50 }))
+    renderHook(() => useApprovalPolling({ enabled: true, checkApproval, onApproved, onError, intervalMs: 50 }))
 
     await act(async () => {
-      await getClock().tickAsync(200)
+      await getClock().tickAsync(300)
     })
     expect(onApproved).toHaveBeenCalledTimes(1)
-    expect(callCount).toBeGreaterThanOrEqual(3)
+    expect(onError).not.toHaveBeenCalled()
+    expect(callCount).toBe(5)
+  })
+
+  it('reports a TypeError that is not a network failure', async () => {
+    const failure = new TypeError("Cannot read properties of null (reading 'kdf_salt')")
+    const checkApproval = mock(() => Promise.reject(failure))
+    const onError = mock(() => {})
+
+    renderHook(() =>
+      useApprovalPolling({ enabled: true, checkApproval, onApproved: () => {}, onError, intervalMs: 50 }),
+    )
+
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+    expect(onError).toHaveBeenCalledWith(failure)
+  })
+
+  it('reports a failure that keeps happening and keeps polling', async () => {
+    const failure = new DecryptionError('Envelope could not be opened')
+    let callCount = 0
+    const checkApproval = mock(() => {
+      callCount++
+      return callCount === 1 ? Promise.reject(failure) : Promise.resolve(true)
+    })
+    const onApproved = mock(() => {})
+    const onError = mock(() => {})
+
+    renderHook(() => useApprovalPolling({ enabled: true, checkApproval, onApproved, onError, intervalMs: 50 }))
+
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+    expect(onError).toHaveBeenCalledWith(failure)
+    expect(onApproved).not.toHaveBeenCalled()
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+    expect(onApproved).toHaveBeenCalledTimes(1)
   })
 
   it('stops polling on unmount', async () => {

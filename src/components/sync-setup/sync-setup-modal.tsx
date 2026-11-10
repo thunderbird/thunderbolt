@@ -157,6 +157,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
     onRevoked: handleRevoked,
     onDenied: handleDenied,
     onVerificationFailed: setup.approvalVerificationFailed,
+    onError: setup.approvalCheckFailed,
   })
 
   const handleRecoveryKeySubmit = async () => {

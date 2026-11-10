@@ -259,6 +259,7 @@ describe('sync setup operation outcomes', () => {
     approve: spyOn(encryptionService, 'checkApprovalAndUnwrap').mockResolvedValue(true),
     prf: spyOn(passkeys, 'getPasskeyPrfOutput').mockResolvedValue(new Uint8Array([1, 2, 3])),
     unlock: spyOn(encryptionService, 'unlockWithPasskey').mockResolvedValue(undefined),
+    errorLog: spyOn(console, 'error').mockImplementation(() => {}),
   })
   let spies: ReturnType<typeof createSpies>
   beforeEach(() => {
@@ -400,6 +401,13 @@ describe('sync setup operation outcomes', () => {
     } else {
       expect(result.current.approvalError).toBeNull()
     }
+  })
+
+  it('logs a failed manual check without the error, its message or cause', async () => {
+    spies.approve.mockRejectedValueOnce(new Error('private response body', { cause: { key: 'private-key-marker' } }))
+    const { result } = mount()
+    await act(async () => expect(await result.current.confirmApproval()).toBe(false))
+    expect(spies.errorLog.mock.calls).toEqual([['Failed to check device approval.']])
   })
 
   it('does not prompt for a passkey when the account has no slot', async () => {

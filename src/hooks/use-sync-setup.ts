@@ -395,6 +395,8 @@ export const useSyncSetup = () => {
           approvalVerificationFailed(update)
           return false
         }
+        // A fixed line, like the other approval failures: the error itself may carry key material.
+        console.error('Failed to check device approval.')
         update({
           type: 'SET_APPROVAL_ERROR',
           payload: err instanceof Error ? describeApprovalFailure(err) : i18n._(approvalUnverifiedMessage),

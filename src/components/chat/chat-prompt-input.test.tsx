@@ -426,7 +426,7 @@ describe('ChatPromptInput', () => {
           { wrapper: TestWrapper },
         )
         const trigger = screen.getByRole('button', { name: 'Context usage' })
-        expect(trigger).toHaveTextContent('—')
+        expect(trigger.textContent).toBe('')
         fireEvent.click(trigger)
         expect(screen.queryByLabelText('Compaction instructions (optional)') !== null).toBe(inputHint !== undefined)
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Compact now' })))
@@ -1279,12 +1279,37 @@ describe('ChatPromptInput', () => {
 
       const textarea = screen.getByPlaceholderText('Ask me anything…')
       const file = new File(['data'], 'dropped.png', { type: 'image/png' })
-      fireEvent.dragOver(textarea)
+      const dataTransfer = { types: ['Files'], files: [file] }
+      const dragOver = createEvent.dragOver(textarea, { dataTransfer })
+      fireEvent(textarea, dragOver)
+      expect(dragOver.defaultPrevented).toBe(true)
       expect(screen.queryByText('Drop file to attach') !== null).toBe(attaches)
-      fireEvent.drop(textarea, { dataTransfer: { files: [file] } })
+      fireEvent.dragLeave(textarea)
+      expect(screen.queryByText('Drop file to attach')).toBeNull()
+      fireEvent.dragOver(textarea, { dataTransfer })
+      const drop = createEvent.drop(textarea, { dataTransfer })
+      fireEvent(textarea, drop)
+      expect(drop.defaultPrevented).toBe(true)
       await flushAttachments()
 
       expect(screen.queryByLabelText('Remove dropped.png') !== null).toBe(attaches)
+      expect(screen.queryByText('Drop file to attach')).toBeNull()
+    })
+
+    it('preserves native text dragging without showing the file-drop hint', () => {
+      const { mockUseChat } = setupStore()
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+      const textarea = screen.getByPlaceholderText('Ask me anything…')
+      const dataTransfer = { types: ['text/plain'], files: [] }
+      const dragOver = createEvent.dragOver(textarea, { dataTransfer })
+      const drop = createEvent.drop(textarea, { dataTransfer })
+      fireEvent(textarea, dragOver)
+      expect(screen.queryByText('Drop file to attach')).toBeNull()
+      fireEvent(textarea, drop)
+      expect(dragOver.defaultPrevented).toBe(false)
+      expect(drop.defaultPrevented).toBe(false)
     })
 
     describe('files queued before the chat moved to the hosted agent', () => {

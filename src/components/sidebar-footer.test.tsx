@@ -6,8 +6,8 @@ import 'fake-indexeddb/auto'
 import { i18n } from '@/i18n'
 import { getFormatters } from '@/i18n/format'
 import '@testing-library/jest-dom'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Cloud, CloudAlert, CloudOff, Loader2 } from 'lucide-react'
 import { type ReactElement, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -18,6 +18,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { getClock } from '@/testing-library'
 
 // Per docs/internals/development/testing.md: do NOT mock app-internal modules. Real implementations
 // are used via createTestProvider + SignInModalProvider + SidebarProvider. Modal components
@@ -113,6 +114,8 @@ describe('SidebarFooter', () => {
   })
 
   describe('real authenticated users', () => {
+    const session = { user: { id: 'real-1', email: 'user@example.com', name: 'Real User' } }
+
     it('shows the account pill with the display name and not the Sign In affordance', () => {
       const authClient = createMockAuthClient({
         session: { user: { id: 'real-1', email: 'user@example.com', name: 'Real User', isAnonymous: false } },
@@ -142,6 +145,71 @@ describe('SidebarFooter', () => {
       expect(button.className).toContain('h-[var(--touch-height-lg)]')
       expect(button.className).toContain('w-[var(--touch-height-lg)]')
       expect(button.querySelector('span')).toBeNull()
+    })
+
+    it.each([false, true])('dismisses the account surface without closing the sidebar (mobile: %s)', async (mobile) => {
+      if (mobile) {
+        forceMobileViewport()
+      }
+      renderWithProviders(createMockAuthClient({ session }), <MobileSidebarStateProbe />)
+      fireEvent.click(screen.getByRole('button', { name: 'Open test sidebar' }))
+      const trigger = screen.getByRole('button', { name: 'Account menu' })
+      fireEvent.click(trigger)
+      const menu = screen.getByRole('dialog', { name: 'Account menu' })
+      expect(menu).toHaveAttribute('data-slot', mobile ? 'drawer-content' : 'popover-content')
+      fireEvent.keyDown(menu, { key: 'Escape' })
+      await act(async () => getClock().runAllAsync())
+
+      expect(screen.queryByRole('dialog', { name: 'Account menu' })).toBeNull()
+      expect(trigger).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.getByTestId('mobile-sidebar-open')).toHaveTextContent('true')
+    })
+
+    it.each([false, true])('opens logout once and cancels without signing out (mobile: %s)', async (mobile) => {
+      if (mobile) {
+        forceMobileViewport()
+      }
+      const signOut = mock(async () => {})
+      const authClient = createMockAuthClient({ session, signOut })
+      renderWithProviders(authClient)
+      const trigger = screen.getByRole('button', { name: 'Account menu' })
+      fireEvent.click(trigger)
+      fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
+      await act(async () => getClock().runAllAsync())
+      expect(trigger).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByRole('dialog', { name: 'Account menu' })).toBeNull()
+      const confirmation = screen.getByRole('dialog', { name: 'Log out' })
+      fireEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
+      await act(async () => getClock().runAllAsync())
+
+      expect(screen.queryByRole('dialog', { name: 'Log out' })).toBeNull()
+      expect(signOut).not.toHaveBeenCalled()
+      expect(trigger).toHaveFocus()
+      fireEvent.click(trigger)
+      expect(screen.getByRole('dialog', { name: 'Account menu' })).toBeInTheDocument()
+    })
+
+    it.each([false, true])('cancels sync setup without enabling sync (mobile: %s)', async (mobile) => {
+      if (mobile) {
+        forceMobileViewport()
+      }
+      await clearAllKeys()
+      useLocalSettingsStore.setState({ syncEnabled: false })
+      renderWithProviders(createMockAuthClient({ session }))
+      const trigger = screen.getByRole('button', { name: 'Account menu' })
+      fireEvent.click(trigger)
+      await act(async () => {
+        fireEvent.click(screen.getByRole('switch', { name: 'Enable cloud sync' }))
+        await getClock().runAllAsync()
+      })
+      const setup = screen.getByRole('dialog', { name: 'Set up encrypted sync' })
+      expect(screen.queryByRole('dialog', { name: 'Account menu' })).toBeNull()
+      fireEvent.click(within(setup).getByRole('button', { name: 'Close' }))
+      await act(async () => getClock().runAllAsync())
+
+      expect(screen.queryByRole('dialog', { name: 'Set up encrypted sync' })).toBeNull()
+      expect(useLocalSettingsStore.getState().syncEnabled).toBe(false)
+      expect(trigger).toHaveFocus()
     })
   })
 

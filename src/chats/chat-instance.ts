@@ -353,8 +353,10 @@ export const createAgentRoutingFetch = (
       throw new Error('No session found')
     }
 
-    await session.configurationChange
     const { chatThread, selectedAgent, selectedModel } = session
+    const reasoningEffort = isBuiltInAgent(selectedAgent)
+      ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
+      : undefined
     const telemetry =
       operation === 'prompt' && isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
     telemetry?.setDimensions({
@@ -474,9 +476,7 @@ export const createAgentRoutingFetch = (
       acpSessionId: chatThread?.acpSessionId ?? null,
       saveMessages,
       selectedModel,
-      reasoningEffort: isBuiltInAgent(selectedAgent)
-        ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
-        : undefined,
+      reasoningEffort,
       mcpClients,
       reconnectClient,
       httpClient,

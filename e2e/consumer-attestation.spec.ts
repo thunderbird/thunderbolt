@@ -31,8 +31,10 @@ for (const viewport of [
       const requestsAfterPrewarm = attestationRequests
       await privacyRow.click()
 
-      const modal = page.getByRole('dialog', { name: 'Connection privacy', exact: true })
+      const modal = page.getByRole('dialog', { name: 'Verification failed', exact: true })
       await expect(modal).toBeVisible()
+      await expect(modal.getByRole('heading')).toHaveCount(1)
+      await expect(modal.getByRole('heading', { name: 'Verification failed' }).locator('svg')).toBeVisible()
       await expect(selector).toHaveAttribute('aria-expanded', 'false')
       await expect(modal.getByRole('heading', { name: 'Verification failed' })).toBeVisible()
       await expect(modal.getByText('Connection details', { exact: true })).toHaveCount(0)
@@ -95,14 +97,14 @@ test('an ACP agent explains its own boundary without inheriting the local model 
   await page.getByRole('button', { name: 'Privacy test agent', exact: true }).click()
   await page.getByRole('button', { name: 'Connection privacy: Agent privacy', exact: true }).click()
 
-  const modal = page.getByRole('dialog', { name: 'Connection privacy', exact: true })
+  const modal = page.getByRole('dialog', { name: 'Agent privacy', exact: true })
   await expect(modal).toBeVisible()
   await expect(
     modal.getByText(/Privacy test agent receives this chat and manages its own model connection/),
   ).toBeVisible()
   await expect(modal.getByText(/This device has not verified the agent/)).toBeVisible()
   await expect(modal.getByRole('button', { name: 'Verify connection' })).toHaveCount(0)
-  await expect(modal.getByText('Connection verified', { exact: true })).toHaveCount(0)
+  await expect(modal.getByRole('heading', { name: 'Connection Verified', exact: true })).toHaveCount(0)
   await expect(modal.getByText('Connection details', { exact: true })).toHaveCount(0)
   expect(errors).toEqual([])
 })

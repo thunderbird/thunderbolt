@@ -232,6 +232,43 @@ describe('provider connections', () => {
     expect(await getProviderConnections(getDb())).toHaveLength(0)
     expect((await getDb().select().from(providerConnectionsTable))[0].deletedAt).not.toBeNull()
   })
+  it.each(['new-key', ''])('preserves a newly saved API-key connection after disconnect (%s)', async (apiKey) => {
+    const db = getDb()
+    const input = {
+      provider: 'custom' as const,
+      name: 'Local models',
+      url: 'http://localhost:11434/v1',
+      authMethod: 'api_key' as const,
+    }
+    const id = await saveProviderConnection(db, { ...input, credentials: { apiKey: 'old-key' } })
+    const transaction = db.transaction.bind(db)
+    spyOn(db, 'transaction').mockImplementationOnce((async (...args: Parameters<typeof db.transaction>) => {
+      const result = await transaction(...args)
+      await saveProviderConnection(db, { ...input, id, credentials: { apiKey } })
+      return result
+    }) as typeof db.transaction)
+    await expect(deleteProviderConnection(db, id)).rejects.toThrow('changed')
+    expect(await getProviderConnection(db, id)).toMatchObject({ connected: true })
+    expect(await getProviderCredentials(db, id)).toMatchObject({ apiKey })
+  })
+  it('removes metadata-only and already-disconnected connections', async () => {
+    const db = getDb()
+    await db.insert(providerConnectionsTable).values({
+      id: 'remote',
+      provider: 'openai',
+      name: 'From another device',
+      authMethod: 'api_key',
+      enabled: 1,
+    })
+    await deleteProviderConnection(db, 'remote')
+    expect(await getProviderConnection(db, 'remote')).toBeNull()
+    const id = await connect()
+    await disconnectProviderConnection(db, id)
+    await deleteProviderConnection(db, id)
+    expect(await getProviderConnection(db, id)).toBeNull()
+    await deleteProviderConnection(db, id)
+    expect(await getProviderConnection(db, id)).toBeNull()
+  })
   it('rolls back cancelled saves and rejects invalid identity changes', async () => {
     const controller = new AbortController()
     controller.abort()
@@ -600,5 +637,20 @@ describe('ChatGPT account switching', () => {
     expect(mocks.revoke.mock.calls[1][0].refresh_token).toBe('refresh:second')
     expect(await getProviderCredentials(getDb(), 'oauth:openai')).toBeNull()
     expect((await stored()).access_token).toBeUndefined()
+  })
+
+  it('does not remove an account reconnected after disconnect finished', async () => {
+    await save()
+    mocks.lock.mockImplementationOnce(async (_id, work) => {
+      const result = await work()
+      // Another window can finish a new sign-in once disconnect releases its lock.
+      await save(credentials('second'))
+      return result
+    })
+    await expect(deleteProviderConnection(getDb(), 'oauth:openai')).rejects.toThrow('changed')
+    expect(await getProviderConnection(getDb(), 'oauth:openai')).toMatchObject({ connected: true })
+    expect(await getProviderCredentials(getDb(), 'oauth:openai')).toMatchObject({ access_token: 'access:second' })
+    expect(mocks.revoke).toHaveBeenCalledTimes(1)
+    expect(mocks.revoke.mock.calls[0][0].refresh_token).toBe('refresh:first')
   })
 })

@@ -9,14 +9,13 @@ The workflow is `.github/workflows/docs-audit.yml`. It runs on Mondays at 06:00 
 ## What it reads
 
 The audit may edit Markdown under `docs/` and every `AGENTS.md` (each `CLAUDE.md` is a symlink to or an import of
-its `AGENTS.md`). Each run covers two things, picked by
-`.github/scripts/docs-audit-select.ts`:
+its `AGENTS.md`). Each run covers two things, picked by `.github/scripts/docs-audit-select.ts`:
 
-- **Changes:** commits on `main` from the last 7 days. Lockfiles, translation catalogs and the generated wasm package
-  are filtered out. The agent finds the docs each commit made wrong, and adds coverage for new user- or
-  operator-facing behaviour.
-- **Rotation:** a quarter of the docs, chosen by ISO week number, read in full and checked claim by claim. Every
-  doc gets a full review every 4 weeks.
+- **Changes:** commits on `main` from the last 7 days, each with its diff saved to `docs-audit-out/diffs/`, since the
+  agent has no git. Lockfiles, translation catalogs, Drizzle snapshots and the generated wasm package are filtered
+  out. The agent finds the docs each commit made wrong, and adds coverage for new user- or operator-facing behaviour.
+- **Rotation:** a quarter of the docs, read in full and checked claim by claim. The slice follows a week count that
+  does not reset at new year, so every doc gets a full review every 4 weeks.
 
 `isInScope` in that script is the one definition of a doc: the patch is a diff of exactly that list, and the publish
 job checks it again with the same function. The agent's instructions are in `prompt.md`. It writes `docs-audit-out/summary.md`, which becomes the PR body: each
@@ -33,7 +32,7 @@ Both jobs use the `qa-agent` environment and reuse the QA agent's secrets (see `
 token is limited to this repository with `contents: write` and `pull-requests: write`. A PR opened by the app runs
 CI; one opened with `GITHUB_TOKEN` would not.
 
-Each live run pushes a new branch, `docs-audit/YYYY-MM-DD`, so it never overwrites commits a reviewer added to an
+Each live run pushes a new branch, `docs-audit/YYYY-MM-DD-<run id>-<attempt>`, so it never overwrites commits a reviewer added to an
 earlier audit PR. Close a stale audit PR when a newer one supersedes it.
 
 ## Run it by hand

@@ -7,12 +7,12 @@ You audit the Thunderbolt docs against the code and fix what is wrong. A person 
 `docs-audit-out/input.json` holds:
 
 - `scope`: the only files you may edit, Markdown under `docs/` and every `AGENTS.md`. Each `CLAUDE.md` points at its `AGENTS.md`; edit the `AGENTS.md`.
-- `changes`: commits on `main` since `since`, each with its changed files. Docs and generated files are already filtered out.
+- `changes`: commits on `main` since `since`, each with its changed files and `diff`, the path of that commit's diff over those files. Docs and generated files are already filtered out.
 - `rotation`: the docs due for a full review this week.
 
 ## Tasks
 
-1. **Changes.** For each commit, decide whether it changed something a doc in `scope` describes: a file path, command, script, environment variable, setting, route, config or Helm value, workflow, default, or user-facing behaviour. Grep the docs for the old names and paths, renamed paths included. Fix every doc it made wrong. When the commit adds user- or operator-facing behaviour that no doc covers, add it to the doc that owns the topic.
+1. **Changes.** For each commit, decide whether it changed something a doc in `scope` describes: a file path, command, script, environment variable, setting, route, config or Helm value, workflow, default, or user-facing behaviour. Read its `diff` for what was removed or renamed, then grep the docs for the old names and paths. Fix every doc it made wrong. When the commit adds user- or operator-facing behaviour that no doc covers, add it to the doc that owns the topic.
 2. **Rotation.** Read each doc in `rotation` in full and check its claims against the code: paths exist, commands match `package.json` scripts, environment variables match `backend/src/config/settings.ts` and the deploy configs, Helm values match `deploy/k8s/values.yaml`, links between docs resolve, and described behaviour matches the source.
 
 Check before you change. Read the code a claim is about; never edit from a commit subject alone.

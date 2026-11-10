@@ -3,26 +3,29 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Picks what the weekly docs audit reads: last week's commits and a rotating quarter of the docs.
+ * Picks what the weekly docs audit reads: last week's commits, with their diffs, and a rotating quarter of the docs.
  *
- *   bun .github/scripts/docs-audit-select.ts --out docs-audit-out/input.json [--docs a.md,b.md] [--since '7 days ago']
+ *   bun .github/scripts/docs-audit-select.ts --out docs-audit-out [--docs a.md,b.md] [--since '7 days ago']
  *
- * `--docs` replaces the rotation for a manual run. How the audit uses the output: .github/docs-audit/README.md.
+ * Writes `<out>/input.json` and one `<out>/diffs/<sha>.diff` per commit. `--docs` replaces the rotation for a manual
+ * run. How the audit uses the output: .github/docs-audit/README.md.
  */
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 
 export type FileChange = { status: string; path: string; previous?: string }
 export type Commit = { sha: string; subject: string; files: FileChange[] }
-export type AuditInput = { since: string; scope: string[]; rotation: string[]; changes: Commit[] }
+export type AuditedCommit = Commit & { diff: string }
+export type AuditInput = { since: string; scope: string[]; rotation: string[]; changes: AuditedCommit[] }
 
 /** Every doc gets a full review once per this many weeks. */
 export const rotationWeeks = 4
 
 const recordSeparator = '\x1e'
 const fieldSeparator = '\x1f'
+const dayMs = 86_400_000
 
 /** Generated or vendored files whose changes say nothing a doc could have described. */
 const noisePatterns = [
@@ -30,6 +33,7 @@ const noisePatterns = [
   /(^|\/)Cargo\.lock$/,
   /\/locales\/[^/]+\/messages\.(po|ts)$/,
   /^src\/acp\/iroh\/pkg\//,
+  /^backend\/drizzle\/meta\//,
 ]
 
 /**
@@ -39,24 +43,23 @@ const noisePatterns = [
 export const isInScope = (path: string): boolean =>
   (path.startsWith('docs/') && path.endsWith('.md')) || path === 'AGENTS.md' || path.endsWith('/AGENTS.md')
 
+/** True for a generated or vendored file, matched against `noisePatterns`. */
 const isNoise = (path: string): boolean => noisePatterns.some((pattern) => pattern.test(path))
 
 /** Docs are what the audit checks, not evidence against them, so their own commits are skipped too. */
 const isAuditable = (path: string): boolean => !isInScope(path) && !isNoise(path)
 
-/** ISO 8601 week number (1–53) of a date, read in UTC. */
-export const isoWeek = (date: Date): number => {
-  const day = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
-  const weekday = day.getUTCDay() || 7
-  day.setUTCDate(day.getUTCDate() + 4 - weekday)
-  const yearStart = Date.UTC(day.getUTCFullYear(), 0, 1)
-  return Math.ceil(((day.getTime() - yearStart) / 86_400_000 + 1) / 7)
-}
+/**
+ * Weeks since the Monday before the Unix epoch, read in UTC. Unlike an ISO week number it never resets at a year
+ * boundary, so consecutive weeks always pick consecutive rotation slices.
+ */
+export const weekIndex = (date: Date): number => Math.floor((Math.floor(date.getTime() / dayMs) + 3) / 7)
 
 /** The docs due this week. Interleaved by sorted path, so each slice mixes sections and sizes. */
 export const rotationSlice = (files: string[], week: number): string[] =>
   [...files].sort().filter((_, index) => index % rotationWeeks === week % rotationWeeks)
 
+/** Maps one `--name-status` line to a change. A rename or copy line carries the old path first, then the new one. */
 const parseFileLine = (line: string): FileChange => {
   const [status, first, second] = line.split('\t')
   return second ? { status: status[0], path: second, previous: first } : { status: status[0], path: first }
@@ -79,6 +82,10 @@ export const relevantChanges = (commits: Commit[]): Commit[] =>
     .map((commit) => ({ ...commit, files: commit.files.filter((file) => isAuditable(file.path)) }))
     .filter((commit) => commit.files.length > 0)
 
+/** Every path a commit's diff must cover: each changed file, plus the old path of a rename. */
+export const diffPaths = (commit: Commit): string[] =>
+  commit.files.flatMap((file) => (file.previous ? [file.previous, file.path] : [file.path]))
+
 /** Splits a `--docs` list and rejects anything the audit may not edit. */
 export const parseDocsOverride = (value: string, scope: string[]): string[] => {
   const docs = value
@@ -92,24 +99,33 @@ export const parseDocsOverride = (value: string, scope: string[]): string[] => {
   return docs
 }
 
-const git = (args: string[]): string => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+/** Runs git in the current checkout and returns its stdout. */
+const git = (args: string[]): string => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+
+/** Writes the commit's diff, limited to its auditable files, and returns the commit with the diff's path. */
+const withDiff = (commit: Commit, outDir: string): AuditedCommit => {
+  const diff = join(outDir, 'diffs', `${commit.sha}.diff`)
+  writeFileSync(diff, git(['show', '--format=', '--no-color', commit.sha, '--', ...diffPaths(commit)]))
+  return { ...commit, diff }
+}
 
 const main = () => {
   const { values } = parseArgs({
     options: {
-      out: { type: 'string', default: 'docs-audit-out/input.json' },
+      out: { type: 'string', default: 'docs-audit-out' },
       docs: { type: 'string', default: '' },
       since: { type: 'string', default: '7 days ago' },
     },
   })
   const scope = git(['ls-files']).split('\n').filter(isInScope).sort()
-  const rotation = values.docs ? parseDocsOverride(values.docs, scope) : rotationSlice(scope, isoWeek(new Date()))
+  const rotation = values.docs ? parseDocsOverride(values.docs, scope) : rotationSlice(scope, weekIndex(new Date()))
   const log = git(['log', `--since=${values.since}`, '--no-merges', '--format=%x1e%h%x1f%s', '--name-status'])
-  const input: AuditInput = { since: values.since, scope, rotation, changes: relevantChanges(parseLog(log)) }
 
-  mkdirSync(dirname(values.out), { recursive: true })
-  writeFileSync(values.out, `${JSON.stringify(input, null, 2)}\n`)
-  console.log(`${scope.length} docs in scope, ${rotation.length} in rotation, ${input.changes.length} commits to check`)
+  mkdirSync(join(values.out, 'diffs'), { recursive: true })
+  const changes = relevantChanges(parseLog(log)).map((commit) => withDiff(commit, values.out))
+  const input: AuditInput = { since: values.since, scope, rotation, changes }
+  writeFileSync(join(values.out, 'input.json'), `${JSON.stringify(input, null, 2)}\n`)
+  console.log(`${scope.length} docs in scope, ${rotation.length} in rotation, ${changes.length} commits to check`)
 }
 
 if (import.meta.main) {

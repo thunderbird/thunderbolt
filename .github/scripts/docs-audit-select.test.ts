@@ -4,13 +4,14 @@
 
 import { describe, expect, test } from 'bun:test'
 import {
+  diffPaths,
   isInScope,
-  isoWeek,
   parseDocsOverride,
   parseLog,
   relevantChanges,
   rotationSlice,
   rotationWeeks,
+  weekIndex,
 } from './docs-audit-select'
 
 describe('isInScope', () => {
@@ -30,12 +31,22 @@ describe('isInScope', () => {
   })
 })
 
-describe('isoWeek', () => {
-  test('matches ISO 8601 at year boundaries', () => {
-    expect(isoWeek(new Date('2026-01-01T12:00:00Z'))).toBe(1)
-    expect(isoWeek(new Date('2027-01-01T12:00:00Z'))).toBe(53)
-    expect(isoWeek(new Date('2024-12-30T12:00:00Z'))).toBe(1)
-    expect(isoWeek(new Date('2026-11-09T07:00:00Z'))).toBe(46)
+describe('weekIndex', () => {
+  const mondays = ['2026-12-21', '2026-12-28', '2027-01-04', '2027-01-11'].map((day) => new Date(`${day}T06:00:00Z`))
+
+  test('counts consecutive weeks across a year boundary', () => {
+    const [first, ...rest] = mondays.map(weekIndex)
+    expect(rest).toEqual([first + 1, first + 2, first + 3])
+  })
+
+  test('keeps Monday through Sunday in one week', () => {
+    expect(weekIndex(new Date('2026-12-28T00:00:00Z'))).toBe(weekIndex(new Date('2027-01-03T23:59:59Z')))
+    expect(weekIndex(new Date('2027-01-04T00:00:00Z'))).toBe(weekIndex(new Date('2027-01-03T23:59:59Z')) + 1)
+  })
+
+  test('reviews every doc once over the weeks around new year', () => {
+    const files = Array.from({ length: 9 }, (_, index) => `docs/${index}.md`)
+    expect(mondays.flatMap((monday) => rotationSlice(files, weekIndex(monday))).sort()).toEqual(files.sort())
   })
 })
 
@@ -91,6 +102,7 @@ describe('relevantChanges', () => {
           { status: 'M', path: 'src/locales/de/messages.po' },
           { status: 'M', path: 'backend/src/emails/locales/de/messages.ts' },
           { status: 'M', path: 'src/acp/iroh/pkg/client_bg.wasm' },
+          { status: 'A', path: 'backend/drizzle/meta/0042_snapshot.json' },
           { status: 'M', path: 'AGENTS.md' },
         ],
       },
@@ -98,6 +110,20 @@ describe('relevantChanges', () => {
     expect(relevantChanges(commits)).toEqual([
       { sha: 'a', subject: 'feat: mixed', files: [{ status: 'M', path: 'backend/src/config/settings.ts' }] },
     ])
+  })
+})
+
+describe('diffPaths', () => {
+  test('covers both sides of a rename', () => {
+    const commit = {
+      sha: 'a',
+      subject: 'refactor: move settings',
+      files: [
+        { status: 'M', path: 'src/app.tsx' },
+        { status: 'R', path: 'backend/src/config/env.ts', previous: 'backend/src/config/settings.ts' },
+      ],
+    }
+    expect(diffPaths(commit)).toEqual(['src/app.tsx', 'backend/src/config/settings.ts', 'backend/src/config/env.ts'])
   })
 })
 

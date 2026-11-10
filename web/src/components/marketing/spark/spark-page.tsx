@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { DownloadRelease } from '../download/downloads'
+
 import { productLinks } from '../../../data/website-product'
 import { IdeaStarter } from './idea-starter'
 import { ProductPreview } from './product-preview'
@@ -45,8 +47,8 @@ const questions = [
   },
 ] as const
 
-export const SparkPage = () => {
-  const downloads = useDownloadState()
+export const SparkPage = ({ release }: { release?: DownloadRelease }) => {
+  const downloads = useDownloadState(release)
   return (
     <div className="spark-page">
       <a className="spark-skip" href="#spark-main">

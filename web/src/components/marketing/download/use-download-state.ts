@@ -3,7 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { detectPlatform, loadRelease, type DownloadRelease } from './downloads'
+import { detectPlatform, loadRelease, parseRelease, type DownloadRelease } from './downloads'
+
+import releaseSnapshot from '../../../data/download-release.json'
+
+export const bundledRelease = parseRelease(releaseSnapshot)
 
 const subscribe = () => () => {}
 const getPlatform = () => detectPlatform(navigator.userAgent, navigator.maxTouchPoints)
@@ -12,9 +16,9 @@ const getServerPlatform = () => 'unknown' as const
 export type ReleaseState = { status: 'loading' } | { status: 'ready'; release: DownloadRelease } | { status: 'failed' }
 
 /** Resolve the visitor's OS after hydration and load live release assets with cancellation. */
-export const useDownloadState = () => {
+export const useDownloadState = (initialRelease: DownloadRelease = bundledRelease) => {
   const detectedPlatform = useSyncExternalStore(subscribe, getPlatform, getServerPlatform)
-  const [releaseState, setReleaseState] = useState<ReleaseState>({ status: 'loading' })
+  const [releaseState, setReleaseState] = useState<ReleaseState>({ status: 'ready', release: initialRelease })
 
   useEffect(() => {
     let disposed = false
@@ -26,8 +30,7 @@ export const useDownloadState = () => {
         if (disposed) return
         setReleaseState({ status: 'ready', release })
       } catch {
-        // Cleanup aborts do not update an unmounted component; timeouts show the fallback.
-        if (!disposed) setReleaseState({ status: 'failed' })
+        // Keep the bundled installers available when the cache cannot be refreshed.
       } finally {
         window.clearTimeout(timeout)
       }

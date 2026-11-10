@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export const releasesUrl = 'https://github.com/thunderbird/thunderbolt/releases/latest'
-export const releaseApiUrl = 'https://api.github.com/repos/thunderbird/thunderbolt/releases/latest'
+export const releaseApiUrl = '/downloads/release.json'
 
 export const desktopPlatforms = [
   { id: 'macos', name: 'macOS' },
@@ -109,7 +109,7 @@ export const parseRelease = (value: unknown): DownloadRelease => {
   return { version: value.tag_name, downloads }
 }
 
-/** Fetch the current release independently of the website's deployment schedule. */
+/** Read release metadata from the website’s shared cache, never GitHub from the browser. */
 export const loadRelease = async (signal: AbortSignal): Promise<DownloadRelease> => {
   const response = await fetch(releaseApiUrl, { signal, headers: { Accept: 'application/vnd.github+json' } })
   if (!response.ok) throw new Error(`Release lookup failed: ${response.status}`)

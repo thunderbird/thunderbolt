@@ -8,9 +8,10 @@
     "build": "ASTRO_TELEMETRY_DISABLED=1 astro build",
     "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview",
     "astro": "astro",
-    "test": "bun test --timeout 5000",
-    "test:coverage": "bun test --timeout 5000 --coverage",
-    "typecheck": "ASTRO_TELEMETRY_DISABLED=1 astro sync && tsc --noEmit"
+    "test": "bun test src --timeout 5000",
+    "test:coverage": "bun test src --timeout 5000 --coverage",
+    "typecheck": "ASTRO_TELEMETRY_DISABLED=1 astro sync && tsc --noEmit",
+    "test:release-cache": "bun test scripts/release-cache.test.ts --timeout 20000"
   },
   "dependencies": {
     "@astrojs/react": "^6.0.1",

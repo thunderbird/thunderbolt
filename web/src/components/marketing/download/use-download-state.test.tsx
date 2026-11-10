@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { useDownloadState } from './use-download-state'
+import { bundledRelease, useDownloadState } from './use-download-state'
 
 const originalFetch = globalThis.fetch
 const originalTimeout = window.setTimeout
@@ -27,18 +27,22 @@ afterEach(() => {
   window.setTimeout = originalTimeout
 })
 
-test('resolves live release data after mount', async () => {
+test('refreshes bundled release data from the website cache', async () => {
   globalThis.fetch = mock(
     async () => new Response(JSON.stringify({ tag_name: 'v0.1.162', draft: false, prerelease: false, assets: [] })),
   ) as unknown as typeof fetch
   await act(async () => root.render(<Harness />))
   expect(container.textContent).toBe('v0.1.162')
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    '/downloads/release.json',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
 })
 
-test('API rate limiting enters the manual-download fallback', async () => {
+test('an unavailable website cache retains working bundled installers', async () => {
   globalThis.fetch = mock(async () => new Response('', { status: 403 })) as unknown as typeof fetch
   await act(async () => root.render(<Harness />))
-  expect(container.textContent).toBe('failed')
+  expect(container.textContent).toBe(bundledRelease.version)
 })
 
 test('unmount aborts the in-flight request', async () => {
@@ -52,12 +56,12 @@ test('unmount aborts the in-flight request', async () => {
       }),
   ) as unknown as typeof fetch
   await act(async () => root.render(<Harness />))
-  expect(container.textContent).toBe('loading')
+  expect(container.textContent).toBe(bundledRelease.version)
   await act(async () => root.render(null))
   expect(signals[0].aborted).toBe(true)
 })
 
-test('a stalled lookup times out into a usable fallback', async () => {
+test('a stalled refresh keeps the download button immediately usable', async () => {
   const timeouts: Array<() => void> = []
   window.setTimeout = ((callback: () => void) => {
     timeouts.push(callback)
@@ -71,5 +75,5 @@ test('a stalled lookup times out into a usable fallback', async () => {
   ) as unknown as typeof fetch
   await act(async () => root.render(<Harness />))
   await act(async () => timeouts[0]())
-  expect(container.textContent).toBe('failed')
+  expect(container.textContent).toBe(bundledRelease.version)
 })

@@ -2,8 +2,11 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import { getReleaseSnapshot } from '../server/release-snapshot';
+import { parseRelease } from '../components/marketing/download/downloads';
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import { SparkPage } from '../components/marketing/spark';
+const release = parseRelease(await getReleaseSnapshot());
 ---
 
 <MarketingLayout
@@ -11,5 +14,5 @@ import { SparkPage } from '../components/marketing/spark';
   description="An open-source AI workspace for chat, research, code, and getting things done. Your models. Your tools. Your way."
   canonical="https://thunderbolt.io/"
 >
-  <SparkPage client:load />
+  <SparkPage release={release} client:load />
 </MarketingLayout>

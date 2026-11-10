@@ -85,3 +85,13 @@ Fargate routes the exact `/v1/contact` path on the marketing hostname to the bac
 During `bun run dev`, Vite proxies `/v1/contact` to `http://127.0.0.1:8000`. Set `CONTACT_API_TARGET` to use another local backend. Static preview servers do not provide the API. On other hosting platforms, configure the same reverse-proxy route or set `PUBLIC_CONTACT_ENDPOINT` at build time to your backend URL and include the site's origin in backend CORS configuration. Only that public URL belongs in the website build; never expose a Resend key through a `PUBLIC_` variable.
 
 The UI reports success only after Resend accepts the message. Delivery to the final inbox can still bounce or be filtered; monitor that through Resend. Automated tests mock the mail provider and do not send email.
+
+## Desktop download metadata
+
+The homepage and download page embed a stable release snapshot during the Astro build, so the download button does not wait for a network request. The build shares one GitHub lookup across both pages and `/downloads/release.json`; offline builds use `src/data/download-release.json` as a known-good fallback.
+
+Browsers refresh from **`/downloads/release.json` on the website origin**, never directly from GitHub. The marketing nginx container caches the fixed public GitHub latest-release response for five minutes, coalesces concurrent cache misses, and refreshes expired entries in the background. Each marketing instance has its own cache. Stale metadata remains usable during upstream errors or rate limiting; a cold cache falls back to the build's static JSON file. Request headers and cookies from visitors are not forwarded upstream. No release webhook or website redeployment is needed for routine release updates.
+
+Astro dev and static-only hosting serve the build snapshot at that URL. Other production hosts must provide the equivalent shared cache/reverse proxy to keep release metadata fresh between builds.
+
+Run `bun run test:release-cache` in `web/` to exercise the real nginx cache against a local upstream fixture in Docker (cache sharing, background refresh, and cold/warm upstream outages). Website CI runs this check as well.

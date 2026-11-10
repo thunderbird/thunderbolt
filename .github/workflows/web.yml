@@ -6,12 +6,14 @@ on:
       - 'web/**'
       - 'docs/**'
       - '.github/workflows/web.yml'
+      - 'deploy/config/marketing-nginx.conf'
   push:
     branches: [main]
     paths:
       - 'web/**'
       - 'docs/**'
       - '.github/workflows/web.yml'
+      - 'deploy/config/marketing-nginx.conf'
 
 permissions:
   contents: read
@@ -34,5 +36,6 @@ jobs:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
       - run: bun run test:coverage
+      - run: bun run test:release-cache
       - run: bun run typecheck
       - run: bun run build

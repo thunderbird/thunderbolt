@@ -16,9 +16,10 @@ import {
   RESPONSE_NONCE_LENGTH,
 } from 'ehbp'
 import { AEAD_AES_256_GCM, CipherSuite, KDF_HKDF_SHA256, KEM_DHKEM_X25519_HKDF_SHA256, type Key } from 'hpke'
-import { EnclaveHTTPClient, RouterHTTPClient, AttestationError } from 'tinfoil'
+import { EnclaveHTTPClient, RouterHTTPClient, AttestationError, ConfigurationError, NetworkError } from 'tinfoil'
 import { testTinfoilVerification, testTinfoilVerifier } from '@/test-utils/tinfoil'
 import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
+import { classifyErrorKind } from '@/lib/error-utils'
 import { createTinfoilClientLifecycle as createLifecycle, isTinfoilAttestationFailure } from './tinfoil-client'
 import { AttestedTinfoilClient } from '@/attestation/tinfoil'
 import { createAttestationStore } from '@/attestation/store'
@@ -203,18 +204,21 @@ describe('Tinfoil client lifecycle', () => {
       return replacement
     })
     factory.mockImplementationOnce(async () => oldClient)
+    const trackAttestation = mock(() => {})
     const lifecycle = createTinfoilClientLifecycle({
       attestations,
       createClient: factory,
       getCloudUrl: () => 'https://cloud/v1',
-      trackAttestation: () => {},
+      trackAttestation,
     })
     const first = lifecycle.getSystemTinfoilClient().catch((error: unknown) => error)
     await getClock().tickAsync(0)
     lifecycle.evictSystemTinfoilClient()
     await lifecycle.getSystemTinfoilClient()
-    pending.reject(new Error('old verification failed'))
-    expect(await first).toMatchObject({ name: 'TinfoilAttestationError' })
+    pending.reject(new AttestationError('old verification failed'))
+    expect(await first).toMatchObject({ name: 'AbortError' })
+    expect(trackAttestation).toHaveBeenCalledTimes(1)
+    expect(trackAttestation).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'success' }))
     expect(attestations.getSnapshot('tinfoil:system:https://cloud/v1')).toMatchObject({
       status: 'verified',
       evidence: { endpoint: 'new.tinfoil.sh' },
@@ -234,9 +238,29 @@ describe('Tinfoil client lifecycle', () => {
     await getClock().tickAsync(0)
     lifecycle.clearTinfoilClients()
     pending.resolve()
-    expect(await result).toMatchObject({ name: 'TinfoilAttestationError' })
+    expect(await result).toMatchObject({ name: 'AbortError' })
     await lifecycle.getSystemTinfoilClient()
     expect(factory).toHaveBeenCalledTimes(2)
+  })
+
+  it('preserves cancellation between completed verification and returning the acquired client', async () => {
+    const verification = testTinfoilVerification()
+    const pending = Promise.withResolvers<typeof verification>()
+    const client = createClient()
+    spyOn(client, 'ensureVerified').mockReturnValue(pending.promise)
+    const trackAttestation = mock(() => {})
+    const lifecycle = createTinfoilClientLifecycle({
+      createClient: async () => client,
+      getCloudUrl: () => '',
+      trackAttestation,
+    })
+    const acquisition = lifecycle.getTinfoilClient().catch((error: unknown) => error)
+    await getClock().tickAsync(0)
+    // Readiness finishes first; teardown runs before acquire's next continuation.
+    void pending.promise.then(() => lifecycle.clearTinfoilClients())
+    pending.resolve(verification)
+    expect(await acquisition).toHaveProperty('name', 'AbortError')
+    expect(trackAttestation).not.toHaveBeenCalled()
   })
 
   it('evicts only the failing client generation, even after a backend URL switch', async () => {
@@ -307,48 +331,63 @@ describe('Tinfoil client lifecycle', () => {
     const factory = mock((): Promise<AttestedTinfoilClient> => {
       throw constructionError
     })
+    const trackAttestation = mock(() => {})
     const lifecycle = createTinfoilClientLifecycle({
       attestations,
       createClient: factory,
       getCloudUrl: () => 'https://cloud/v1',
+      trackAttestation,
     })
-    await expect(lifecycle.getTinfoilClient()).rejects.toMatchObject({ cause: constructionError })
+    await expect(lifecycle.getTinfoilClient()).rejects.toBe(constructionError)
+    expect(trackAttestation).not.toHaveBeenCalled()
     expect(attestations.getSnapshot('tinfoil:user')).toEqual({ status: 'failed', reason: 'verification' })
     factory.mockImplementation(async () => createClient())
     await lifecycle.getTinfoilClient()
     expect(factory).toHaveBeenCalledTimes(2)
   })
 
-  it('wraps malformed attestation responses, preserves telemetry fidelity, and evicts the client', async () => {
-    const readyError = new SyntaxError('Unexpected token in attestation document')
-    const failedClient = createClient(async () => {
-      throw readyError
-    })
-    const healthyClient = createClient()
-    const createClientFactory = mock(async () => healthyClient)
-    createClientFactory.mockImplementationOnce(async () => failedClient)
-    const trackAttestation = mock(() => {})
-    const lifecycle = createTinfoilClientLifecycle({
-      createClient: createClientFactory,
-      getCloudUrl: () => 'https://cloud.example.com/v1',
-      trackAttestation,
-    })
+  it.each(['construction', 'readiness'] as const)(
+    'tracks genuine trust failures during %s and evicts the client',
+    async (stage) => {
+      const readyError = new AttestationError('Malformed attestation document', {
+        cause: new SyntaxError('Unexpected token in attestation document'),
+      })
+      const failedClient = createClient(async () => {
+        throw readyError
+      })
+      const healthyClient = createClient()
+      const createClientFactory = mock(
+        async (_type: 'system' | 'user', _cloudUrl: string, _reporter: AttestationReporter) => healthyClient,
+      )
+      createClientFactory.mockImplementationOnce(async (_type, _cloudUrl, reporter) => {
+        if (stage === 'construction') {
+          spyOn(RouterHTTPClient, 'create').mockRejectedValue(readyError)
+          return AttestedTinfoilClient.create({ userCacheSecret: 'test' }, reporter, 1_000)
+        }
+        return failedClient
+      })
+      const trackAttestation = mock(() => {})
+      const lifecycle = createTinfoilClientLifecycle({
+        createClient: createClientFactory,
+        getCloudUrl: () => 'https://cloud.example.com/v1',
+        trackAttestation,
+      })
 
-    await expect(lifecycle.getSystemTinfoilClient()).rejects.toMatchObject({
-      name: 'TinfoilAttestationError',
-      message: 'Tinfoil attestation failed: SyntaxError: Unexpected token in attestation document',
-      cause: readyError,
-    })
-    await expect(lifecycle.getSystemTinfoilClient()).resolves.toBe(healthyClient)
+      await expect(lifecycle.getSystemTinfoilClient()).rejects.toMatchObject({
+        name: 'TinfoilAttestationError',
+        cause: readyError,
+      })
+      await expect(lifecycle.getSystemTinfoilClient()).resolves.toBe(healthyClient)
 
-    expect(createClientFactory).toHaveBeenCalledTimes(2)
-    expect(trackAttestation).toHaveBeenCalledWith({
-      outcome: 'error',
-      duration_ms: 0,
-      error_name: 'SyntaxError',
-      client: 'system',
-    })
-  })
+      expect(createClientFactory).toHaveBeenCalledTimes(2)
+      expect(trackAttestation).toHaveBeenCalledWith({
+        outcome: 'error',
+        duration_ms: 0,
+        error_name: 'AttestationError',
+        client: 'system',
+      })
+    },
+  )
 
   it('times out hung ready, evicts the client, and reports timeout telemetry', async () => {
     spyOn(RouterHTTPClient, 'create').mockImplementation(() => new Promise<RouterHTTPClient>(() => {}))
@@ -393,19 +432,24 @@ describe('Tinfoil client lifecycle', () => {
     })
   })
 
-  it('evicts a rejected construction promise', async () => {
-    const constructionError = new Error('module load failed')
+  it.each([
+    ['lazy import', new TypeError('Failed to fetch dynamically imported module')],
+    ['SDK configuration', new ConfigurationError('baseURL must be absolute')],
+  ] as const)('preserves a failed %s without reporting a trust failure', async (_label, constructionError) => {
     const healthyClient = createClient()
     const createClientFactory = mock(async () => healthyClient)
     createClientFactory.mockImplementationOnce(async () => {
       throw constructionError
     })
+    const trackAttestation = mock(() => {})
     const lifecycle = createTinfoilClientLifecycle({
       createClient: createClientFactory,
       getCloudUrl: () => 'https://cloud.example.com/v1',
+      trackAttestation,
     })
 
-    await expect(lifecycle.getSystemTinfoilClient()).rejects.toMatchObject({ cause: constructionError })
+    await expect(lifecycle.getSystemTinfoilClient()).rejects.toBe(constructionError)
+    expect(trackAttestation).not.toHaveBeenCalled()
     await expect(lifecycle.getSystemTinfoilClient()).resolves.toBe(healthyClient)
     expect(createClientFactory).toHaveBeenCalledTimes(2)
   })
@@ -450,8 +494,7 @@ describe('Tinfoil client lifecycle', () => {
       client: 'system',
       enclave_host: client.enclave,
       release_digest: 'release-digest',
-      enclave_fingerprint: JSON.stringify(verification.toJSON().enclaveMeasurement),
-      router_endpoint: client.enclave,
+      enclave_measurement: JSON.stringify(verification.toJSON().enclaveMeasurement),
     })
   })
 
@@ -528,37 +571,42 @@ describe('Tinfoil client lifecycle', () => {
     expect(attestations.getSnapshot('tinfoil:system:https://cloud.example.com/v1').status).toBe('verifying')
   })
 
-  it('wraps unreachable attestation endpoints, tracks the underlying error, and evicts the client', async () => {
-    const readyError = new TypeError('Failed to fetch')
-    const failedClient = createClient(async () => {
-      throw readyError
-    })
-    const healthyClient = createClient()
-    const createClientFactory = mock(async () => healthyClient)
-    createClientFactory.mockImplementationOnce(async () => failedClient)
-    const trackAttestation = mock(() => {})
-    const lifecycle = createTinfoilClientLifecycle({
-      createClient: createClientFactory,
-      getCloudUrl: () => 'https://cloud.example.com/v1',
-      trackAttestation,
-    })
+  it.each(['construction', 'readiness'] as const)(
+    'preserves a network failure during %s without reporting a trust failure',
+    async (stage) => {
+      const readyError = new NetworkError('Could not fetch attestation document', {
+        cause: new TypeError('Failed to fetch'),
+      })
+      const failedClient = createClient(async () => {
+        throw readyError
+      })
+      const healthyClient = createClient()
+      const createClientFactory = mock(
+        async (_type: 'system' | 'user', _cloudUrl: string, _reporter: AttestationReporter) => healthyClient,
+      )
+      createClientFactory.mockImplementationOnce(async (_type, _cloudUrl, reporter) => {
+        if (stage === 'construction') {
+          spyOn(RouterHTTPClient, 'create').mockRejectedValue(readyError)
+          return AttestedTinfoilClient.create({ userCacheSecret: 'test' }, reporter, 1_000)
+        }
+        return failedClient
+      })
+      const trackAttestation = mock(() => {})
+      const lifecycle = createTinfoilClientLifecycle({
+        createClient: createClientFactory,
+        getCloudUrl: () => 'https://cloud.example.com/v1',
+        trackAttestation,
+      })
 
-    await expect(lifecycle.getTinfoilClient()).rejects.toMatchObject({
-      name: 'TinfoilAttestationError',
-      message: 'Tinfoil attestation failed: TypeError: Failed to fetch',
-      cause: readyError,
-    })
-    await expect(lifecycle.getTinfoilClient()).resolves.toBe(healthyClient)
+      await expect(lifecycle.getTinfoilClient()).rejects.toBe(readyError)
+      expect(classifyErrorKind(readyError)).toBe('network')
+      expect(trackAttestation).not.toHaveBeenCalled()
+      await expect(lifecycle.getTinfoilClient()).resolves.toBe(healthyClient)
 
-    expect(createClientFactory).toHaveBeenCalledTimes(2)
-    expect(createClientFactory).toHaveBeenCalledWith('user', '', expect.any(Object), expect.any(AbortSignal))
-    expect(trackAttestation).toHaveBeenCalledWith({
-      outcome: 'error',
-      duration_ms: 0,
-      error_name: 'TypeError',
-      client: 'user',
-    })
-  })
+      expect(createClientFactory).toHaveBeenCalledTimes(2)
+      expect(createClientFactory).toHaveBeenCalledWith('user', '', expect.any(Object), expect.any(AbortSignal))
+    },
+  )
 })
 
 describe('isTinfoilAttestationFailure', () => {
@@ -570,6 +618,9 @@ describe('isTinfoilAttestationFailure', () => {
     expect(isTinfoilAttestationFailure({ name: 'KeyConfigMismatchError' })).toBe(false)
     expect(isTinfoilAttestationFailure(new TypeError("Cannot read properties of null (reading 'fetch')"))).toBe(false)
     expect(isTinfoilAttestationFailure(new Error('network unavailable'))).toBe(false)
+    expect(isTinfoilAttestationFailure(new NetworkError('could not reach enclave'))).toBe(false)
+    expect(isTinfoilAttestationFailure(new ConfigurationError('invalid URL'))).toBe(false)
+    expect(isTinfoilAttestationFailure(new DOMException('cancelled', 'AbortError'))).toBe(false)
   })
 })
 
@@ -578,13 +629,63 @@ it('closes every lifecycle on identity teardown, including a late factory result
   const pending = Promise.withResolvers<AttestedTinfoilClient>()
   const client = createClient()
   const factory = mock(async () => pending.promise)
-  const lifecycle = createTinfoilClientLifecycle({ createClient: factory, attestations: store, getCloudUrl: () => '' })
+  const trackAttestation = mock(() => {})
+  const lifecycle = createTinfoilClientLifecycle({
+    createClient: factory,
+    attestations: store,
+    getCloudUrl: () => '',
+    trackAttestation,
+  })
   const acquisition = lifecycle.getTinfoilClient().catch((error: unknown) => error)
   await getClock().tickAsync(0)
   invalidateIdentityLifetime()
   pending.resolve(client)
-  expect(await acquisition).toHaveProperty('name', 'TinfoilAttestationError')
+  expect(await acquisition).toHaveProperty('name', 'AbortError')
+  expect(trackAttestation).not.toHaveBeenCalled()
   await getClock().tickAsync(0)
   expect(client.close).toHaveBeenCalled()
   expect(store.getSnapshot('tinfoil:user')).toEqual({ status: 'idle' })
 })
+
+it.each(['abort', 'late trust failure'] as const)(
+  'does not report identity teardown as a trust failure when construction rejects with %s',
+  async (failure) => {
+    const store = createAttestationStore()
+    const trackAttestation = mock(() => {})
+    const healthy = createClient()
+    const factory = mock(
+      async (
+        _type: 'system' | 'user',
+        _cloudUrl: string,
+        _reporter: AttestationReporter,
+        signal: AbortSignal,
+      ): Promise<AttestedTinfoilClient> => {
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener(
+            'abort',
+            () => {
+              reject(failure === 'abort' ? signal.reason : new AttestationError('late failure after sign-out'))
+            },
+            { once: true },
+          ),
+        )
+        return healthy
+      },
+    )
+    const lifecycle = createTinfoilClientLifecycle({
+      createClient: factory,
+      attestations: store,
+      getCloudUrl: () => '',
+      trackAttestation,
+    })
+    const acquisition = lifecycle.getTinfoilClient().catch((error: unknown) => error)
+    await getClock().tickAsync(0)
+    invalidateIdentityLifetime()
+    expect(await acquisition).toHaveProperty('name', 'AbortError')
+    expect(trackAttestation).not.toHaveBeenCalled()
+    expect(store.getSnapshot('tinfoil:user')).toEqual({ status: 'idle' })
+    factory.mockImplementation(async () => healthy)
+    expect(await lifecycle.getTinfoilClient()).toBe(healthy)
+    expect(factory).toHaveBeenCalledTimes(2)
+  },
+)

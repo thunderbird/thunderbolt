@@ -2594,7 +2594,11 @@ msgid "Enclave endpoint"
 msgstr ""
 
 #: src/components/chat/attestation/attestation-details.tsx
-msgid "Enclave fingerprint"
+#~ msgid "Enclave fingerprint"
+#~ msgstr ""
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave measurement"
 msgstr ""
 
 #: src/components/chat/attestation/attestation-details.tsx

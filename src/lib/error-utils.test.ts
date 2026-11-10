@@ -37,6 +37,11 @@ describe('classifyErrorKind', () => {
       expected: 'attestation',
     },
     {
+      label: 'SDK network failure while fetching verification material',
+      error: { name: 'NetworkError', message: 'network error: could not reach enclave', category: 'network' },
+      expected: 'network',
+    },
+    {
       label: 'wrapped Tinfoil attestation fetch failures',
       error: Object.assign(new Error('Tinfoil attestation failed: TypeError: Failed to fetch'), {
         name: 'TinfoilAttestationError',
@@ -120,6 +125,10 @@ describe('classifyErrorKind', () => {
   it('returns undefined for unknown errors', () => {
     expect(classifyErrorKind(new Error('Unknown failure'))).toBeUndefined()
     expect(classifyErrorKind(null)).toBeUndefined()
+    expect(
+      classifyErrorKind({ name: 'ConfigurationError', message: 'invalid baseURL', category: 'configuration' }),
+    ).toBeUndefined()
+    expect(classifyErrorKind(new DOMException('cancelled', 'AbortError'))).toBeUndefined()
   })
 })
 

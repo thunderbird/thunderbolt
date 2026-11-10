@@ -12,7 +12,7 @@ export class SearchAcknowledgment extends Error {
   }
 }
 
-/** Injects only HTTP delivery; SecureClient owns attestation, encryption, and decryption. */
+/** Injects only HTTP delivery; the attested SDK client owns attestation, encryption, and decryption. */
 export const createSearchNetworkFetch = (client: HttpClient): typeof fetch =>
   Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {

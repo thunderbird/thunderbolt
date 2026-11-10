@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isTinfoilAttestationRequest } from './tinfoil-isolation'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,7 +24,7 @@ const expectIsolatedPrewarm = async (page: Page) => {
     loginViaEmailCode(page),
   ])
   await expect(page.getByTestId('model-selector-trigger')).toContainText(defaultModelDeepSeekV41Flash.name)
-  expect(response.url()).toBe('https://atc.tinfoil.sh/attestation')
+  expect(response.url()).toBe('https://atc.tinfoil.sh/routers')
   expect(response.status()).toBe(503)
   expect(await response.json()).toEqual({ error: 'Attestation is disabled in this test project' })
   expect(errors).toEqual([])
@@ -77,8 +78,7 @@ for (const viewport of [
       await selector.click()
       await expect(page.getByRole('button', { name: 'Verification failed', exact: true })).toBeVisible()
 
-      const attestation = () =>
-        page.waitForResponse((response) => response.url() === 'https://atc.tinfoil.sh/attestation')
+      const attestation = () => page.waitForResponse((response) => response.url() === 'https://atc.tinfoil.sh/routers')
       await Promise.all([
         attestation(),
         page.getByRole('button', { name: `${model.name} Tinfoil`, exact: true }).click(),
@@ -118,7 +118,7 @@ test('app startup isolates default-model prewarm on a second device', async ({
         : await browser.newContext({ baseURL })
     try {
       const upstreamRequests: string[] = []
-      await context.route('https://atc.tinfoil.sh/**', async (route) => {
+      await context.route(isTinfoilAttestationRequest, async (route) => {
         upstreamRequests.push(route.request().url())
         await route.fulfill({ status: 502, json: { error: 'Unexpected external attestation' } })
       })

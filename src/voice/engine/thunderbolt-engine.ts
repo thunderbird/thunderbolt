@@ -7,17 +7,17 @@
  *
  * STT + TTS run in Tinfoil's confidential enclave via the OpenAI-compatible
  * `/v1/audio/*` endpoints, reached through the *existing* attested `/tinfoil`
- * HPKE proxy (`SecureClient`) — so no new backend route is needed and the audio
+ * HPKE proxy — so no new backend route is needed and the audio
  * is processed enclave-private. Only the *transport* is Tinfoil-specific; the
  * request/response orchestration is shared via `createAudioEngine`.
  */
-import { evictSystemTinfoilClient, getSystemTinfoilClient, isTinfoilTransportWedgedError } from '@/ai/tinfoil-client'
+import { evictSystemTinfoilClient, getSystemTinfoilClient, isTinfoilAttestationFailure } from '@/ai/tinfoil-client'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
-import type { SecureClient } from 'tinfoil'
+import type { AttestedTinfoilClient } from '@/attestation/tinfoil'
 import { type AudioTransport, createAudioEngine } from './audio-engine'
 import type { VoiceEngine } from './types'
 
@@ -42,20 +42,20 @@ const ttsInstructions =
   'clear, with an even, moderate pace. Sound genuinely engaged but never theatrical ' +
   '— no shouting, exaggerated emphasis, or laughter.'
 
-/** The slice of the attested `SecureClient` the transport drives — injectable for tests. */
+/** The slice of the attested `AttestedTinfoilClient` the transport drives — injectable for tests. */
 type TinfoilTransportDeps = {
-  getClient: () => Promise<Pick<SecureClient, 'getBaseURL' | 'fetch'>>
-  evictClient: (client: Pick<SecureClient, 'getBaseURL' | 'fetch'>) => void
+  getClient: () => Promise<Pick<AttestedTinfoilClient, 'baseURL' | 'fetch'>>
+  evictClient: (client: Pick<AttestedTinfoilClient, 'baseURL' | 'fetch'>) => void
   isSsoMode: () => boolean
   getAuthToken: () => string | null
 }
 
 /**
- * POST to a Tinfoil `/v1/audio/*` endpoint via the attested `SecureClient`,
+ * POST to a Tinfoil `/v1/audio/*` endpoint via the attested `AttestedTinfoilClient`,
  * attaching the app's session auth (the `/tinfoil` route's guard needs the real
- * token/SSO cookies, not the SDK placeholder). On a wedged transport failure
- * that survives the SDK's own reset/retry, evict the cached client and retry
- * once with a fresh attestation context (mirrors the chat path).
+ * token/SSO cookies, not the SDK placeholder). The SDK handles key rotation.
+ * An attestation failure evicts the cached client so the next request starts
+ * with fresh verification, without replaying this request a second time.
  *
  * The `/tinfoil` route sits behind the backend's app-version gate, so this hop
  * sends `X-App-Version` and raises the 426 (latching the upgrade blocker)
@@ -68,44 +68,29 @@ export const createTinfoilTransport =
   async (path, body, headers, signal) => {
     const sso = deps.isSsoMode()
     const token = deps.getAuthToken()
-    const attempt = async (canRetry: boolean): Promise<Response> => {
-      const client = await deps.getClient() // awaits attestation (`ready()`)
-      const baseUrl = client.getBaseURL()
-      if (!baseUrl) {
-        throw new Error('Tinfoil client has no base URL')
-      }
-      const reqHeaders = new Headers(headers)
-      for (const [key, value] of Object.entries(appVersionHeader())) {
-        reqHeaders.set(key, value)
-      }
-      const init: RequestInit = { method: 'POST', body, headers: reqHeaders, signal }
-      if (sso && !token) {
-        init.credentials = 'include'
-        reqHeaders.delete('authorization')
-      } else if (token) {
-        reqHeaders.set('Authorization', `Bearer ${token}`)
-      }
-      try {
-        const res = await client.fetch(`${baseUrl}${path}`, init)
-        if (res.status !== 422) {
-          return res
-        }
-        deps.evictClient(client)
-        if (!canRetry) {
-          return res
-        }
-      } catch (err) {
-        if (!isTinfoilTransportWedgedError(err)) {
-          throw err
-        }
-        deps.evictClient(client)
-        if (!canRetry) {
-          throw err
-        }
-      }
-      return attempt(false)
+    const client = await deps.getClient() // awaits attestation
+    const reqHeaders = new Headers(headers)
+    for (const [key, value] of Object.entries(appVersionHeader())) {
+      reqHeaders.set(key, value)
     }
-    const res = await attempt(true)
+    const init: RequestInit = { method: 'POST', body, headers: reqHeaders, signal }
+    if (sso && !token) {
+      init.credentials = 'include'
+      reqHeaders.delete('authorization')
+    } else if (token) {
+      reqHeaders.set('Authorization', `Bearer ${token}`)
+    }
+    const send = async (): Promise<Response> => {
+      try {
+        return await client.fetch(`${client.baseURL}${path}`, init)
+      } catch (error) {
+        if (isTinfoilAttestationFailure(error)) {
+          deps.evictClient(client)
+        }
+        throw error
+      }
+    }
+    const res = await send()
     handleAppVersionUnsupported(res.status)
     await handleSessionRejected(res)
     return res

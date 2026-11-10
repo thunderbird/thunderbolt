@@ -3,214 +3,235 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { SecureClient, type VerificationDocument } from 'tinfoil'
+import { AttestationError, RouterHTTPClient, EnclaveHTTPClient } from 'tinfoil'
 import { getClock } from '@/testing-library'
+import { testTinfoilVerification } from '@/test-utils/tinfoil'
 import { createAttestationStore } from './store'
-import { AttestedTinfoilClient, readTinfoilEvidence } from './tinfoil'
+import { AttestedTinfoilClient, readTinfoilEvidence, type TinfoilVerification } from './tinfoil'
 
-// SDK retries use instanceof, so inject its EHBP version when search uses a newer copy.
-const { KeyConfigMismatchError } = (await import(
-  import.meta.resolve('ehbp', import.meta.resolve('tinfoil'))
-)) as typeof import('ehbp')
-
-/** A successful SDK document, independent of UI state. */
-const verificationDocument = (enclaveHost = 'router.tinfoil.sh'): VerificationDocument => ({
-  configRepo: 'tinfoilsh/confidential-model-router',
-  enclaveHost,
-  releaseDigest: 'a'.repeat(64),
-  codeMeasurement: { type: 'sev-snp', registers: ['b'.repeat(96)] },
-  enclaveMeasurement: { measurement: { type: 'sev-snp', registers: ['b'.repeat(96)] } },
-  tlsPublicKey: 'tls-key',
-  hpkePublicKey: 'hpke-key',
-  codeFingerprint: 'b'.repeat(96),
-  enclaveFingerprint: 'b'.repeat(96),
-  selectedRouterEndpoint: enclaveHost,
-  securityVerified: true,
-  steps: {
-    fetchDigest: { status: 'success' },
-    verifyCode: { status: 'success' },
-    verifyEnclave: { status: 'success' },
-    compareMeasurements: { status: 'success' },
-    verifyCertificate: { status: 'success' },
-  },
-})
-
-/** Install SDK-derived state without network I/O; actual ready/reset/fetch dispatch stays intact. */
-const setSdkState = (client: SecureClient, document: VerificationDocument, fetch: () => Promise<Response>) => {
-  Object.defineProperties(client, {
-    verificationDocument: { value: document, writable: true },
-    _transport: { value: { fetch }, writable: true },
-  })
-}
-
-/** Construct a production adapter with an isolated observer. */
+/** Exercise the public SDK surface, without installing state into private vendor fields. */
 const setup = () => {
   const store = createAttestationStore()
-  const client = new AttestedTinfoilClient({ userCacheSecret: 'test' }, store.open('test'), 1_000)
-  return { client, snapshot: () => store.getSnapshot('test') }
+  const proof = testTinfoilVerification()
+  const sdk = {
+    baseURL: 'https://router.tinfoil.sh/',
+    enclave: 'router.tinfoil.sh',
+    ensureVerified: mock(async () => proof),
+    fetch: mock(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('result')),
+    close: mock(async () => {}),
+    get current(): never {
+      throw new Error('Unchecked current evidence must never be used')
+    },
+  }
+  const reporter = store.open('test')
+  const client = new AttestedTinfoilClient(sdk, reporter, 1_000)
+  return { client, sdk, proof, reporter, snapshot: () => store.getSnapshot('test') }
 }
-
 afterEach(() => mock.restore())
 
-describe('Tinfoil evidence', () => {
-  it('copies only public, provider-neutral evidence', () => {
-    const result = readTinfoilEvidence(verificationDocument())
+describe('Tinfoil v3 evidence', () => {
+  it('copies only public verification facts and preserves the verifier timestamp', () => {
+    const proof = testTinfoilVerification('secret-hpke-key', {
+      metadata: {
+        verifiedAt: new Date('2026-11-10T12:00:00Z'),
+        verifier: { name: 'Verifier', version: '2' },
+      },
+    })
+    const result = readTinfoilEvidence(proof, 'router.tinfoil.sh')
     expect(result.checks).toEqual(['hardware', 'code', 'measurement', 'channel'])
     expect(result.endpoint).toBe('router.tinfoil.sh')
-    expect(JSON.stringify(result)).not.toContain('hpke-key')
-    expect(JSON.stringify(result)).not.toContain('tls-key')
+    expect(result.verifiedAt).toBe(Date.parse('2026-11-10T12:00:00Z'))
+    expect(JSON.stringify(result)).not.toContain('secret-hpke-key')
+    expect(result.details).toContainEqual({ label: 'release', value: proof.codeDigest })
   })
 
-  it.each(['fetchDigest', 'verifyCode', 'verifyEnclave', 'compareMeasurements', 'verifyCertificate'] as const)(
-    'rejects an incomplete or failed %s even if securityVerified is true',
-    (step) => {
-      const document = verificationDocument()
-      document.steps[step] = { status: 'pending' }
-      expect(() => readTinfoilEvidence(document)).toThrow('incomplete')
-      document.steps[step] = { status: 'failed', error: 'failed' }
-      expect(() => readTinfoilEvidence(document)).toThrow('incomplete')
-    },
-  )
-
-  it('requires the channel binding and a successful overall verification', () => {
-    const document = verificationDocument()
-    delete document.steps.verifyCertificate
-    expect(() => readTinfoilEvidence(document)).toThrow('incomplete')
-    expect(() => readTinfoilEvidence({ ...verificationDocument(), securityVerified: false })).toThrow('incomplete')
-  })
-
-  it.each(['enclaveHost', 'releaseDigest', 'enclaveFingerprint'] as const)(
-    'rejects successful checks without their %s identity',
-    (field) => {
-      expect(() => readTinfoilEvidence({ ...verificationDocument(), [field]: '' })).toThrow('incomplete')
-    },
-  )
-
-  it('rejects a document with an additional SDK failure', () => {
-    const document = verificationDocument()
-    document.steps.otherError = { status: 'failed', error: 'transport failed' }
-    expect(() => readTinfoilEvidence(document)).toThrow('incomplete')
+  it('keeps the same evidence on cache reuse, then expires it before another request', async () => {
+    const { client, sdk, proof, snapshot } = setup()
+    await client.ensureVerified()
+    const first = snapshot()
+    await getClock().tickAsync(500)
+    await client.ensureVerified()
+    expect(snapshot()).toBe(first)
+    await getClock().tickAsync(59_500)
+    expect(snapshot()).toEqual({ status: 'idle' })
+    const next = testTinfoilVerification()
+    sdk.ensureVerified.mockResolvedValue(next)
+    await client.ensureVerified()
+    expect(snapshot()).toMatchObject({
+      status: 'verified',
+      evidence: { verifiedAt: next.metadata.verifiedAt.getTime() },
+    })
+    expect(next.metadata.verifiedAt.getTime()).toBeGreaterThan(proof.metadata.verifiedAt.getTime())
+    await client.close()
   })
 })
 
 describe('observed SDK lifecycle', () => {
-  it('keeps the original verification time on reuse and clears evidence on reset', async () => {
-    const { client, snapshot } = setup()
-    const document = verificationDocument()
-    const ready = spyOn(SecureClient.prototype, 'ready').mockImplementation(async () => {
-      setSdkState(
-        client,
-        document,
-        mock(async () => new Response()),
-      )
+  it('blocks requests after rejected verification and preserves the original error', async () => {
+    const { client, sdk, snapshot } = setup()
+    const error = new AttestationError('hardware report rejected')
+    sdk.ensureVerified.mockRejectedValue(error)
+    await expect(client.fetch('https://router.tinfoil.sh/v1/chat/completions')).rejects.toBe(error)
+    await expect(client.ensureVerified()).rejects.toBe(error)
+    expect(sdk.fetch).not.toHaveBeenCalled()
+    expect(sdk.close).toHaveBeenCalled()
+    expect(snapshot()).toEqual({ status: 'failed', reason: 'verification' })
+  })
+
+  it('shares a verification deadline and ignores a late success after timeout', async () => {
+    const { client, sdk, snapshot } = setup()
+    const pending = Promise.withResolvers<TinfoilVerification>()
+    sdk.ensureVerified.mockImplementation(() => pending.promise)
+    const first = client.ensureVerified()
+    const result = first.catch((error: unknown) => error)
+    expect(client.ensureVerified()).toBe(first)
+    await getClock().tickAsync(1_000)
+    expect(await result).toMatchObject({ name: 'TinfoilAttestationTimeoutError' })
+    pending.resolve(testTinfoilVerification())
+    await getClock().tickAsync(0)
+    expect(snapshot()).toEqual({ status: 'failed', reason: 'timeout' })
+    expect(sdk.close).toHaveBeenCalled()
+    await expect(client.ensureVerified()).rejects.toMatchObject({ name: 'TinfoilAttestationTimeoutError' })
+  })
+
+  it('publishes replacement evidence only after the SDK fetch has bound rotated keys', async () => {
+    const { client, sdk, snapshot } = setup()
+    await client.ensureVerified()
+    const next = testTinfoilVerification(undefined, { codeDigest: 'new-release' })
+    sdk.fetch.mockImplementation(async () => {
+      sdk.ensureVerified.mockResolvedValue(next)
+      return new Response('rotated response')
     })
-    await client.ready()
-    const initial = snapshot()
-    expect(initial.status).toBe('verified')
+    expect(await (await client.fetch('https://router.tinfoil.sh/v1/chat/completions')).text()).toBe('rotated response')
+    expect(snapshot()).toMatchObject({
+      status: 'verified',
+      evidence: { details: expect.arrayContaining([{ label: 'release', value: 'new-release' }]) },
+    })
+    await client.close()
+  })
+
+  it('retires a security failure during SDK-internal re-verification', async () => {
+    const { client, sdk, snapshot } = setup()
+    sdk.fetch.mockRejectedValue(new AttestationError('rejected rotated key'))
+    await expect(client.fetch('https://router.tinfoil.sh/v1/chat/completions')).rejects.toThrow('rejected rotated key')
+    expect(snapshot()).toEqual({ status: 'failed', reason: 'verification' })
+    expect(sdk.close).toHaveBeenCalled()
+  })
+
+  it('discards the response body if verification fails after its headers arrive', async () => {
+    const { client, sdk, proof } = setup()
+    const cancel = mock(() => {})
+    sdk.fetch.mockResolvedValue(new Response(new ReadableStream({ cancel })))
+    sdk.ensureVerified.mockResolvedValueOnce(proof).mockRejectedValue(new AttestationError('expired during request'))
+    await expect(client.fetch('https://router.tinfoil.sh/v1/chat/completions')).rejects.toThrow(
+      'expired during request',
+    )
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['init', 'request'] as const)(
+    'binds in-flight encrypted requests to close and caller cancellation: %s',
+    async (source) => {
+      const { client, sdk } = setup()
+      const caller = new AbortController()
+      const started = Promise.withResolvers<AbortSignal>()
+      sdk.fetch.mockImplementation(async (_input, init) => {
+        const signal = init!.signal!
+        started.resolve(signal)
+        return new Promise<Response>((_resolve, reject) =>
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
+        )
+      })
+      const input =
+        source === 'request'
+          ? new Request('https://router.tinfoil.sh/v1/chat/completions', { signal: caller.signal })
+          : 'https://router.tinfoil.sh/v1/chat/completions'
+      const request = client
+        .fetch(input, source === 'init' ? { signal: caller.signal } : undefined)
+        .catch((error: unknown) => error)
+      const signal = await started.promise
+      expect(signal.aborted).toBe(false)
+      await client.close()
+      expect(signal.aborted).toBe(true)
+      expect(await request).toHaveProperty('name', 'AbortError')
+    },
+  )
+
+  it('aborts a streamed response that is still being consumed when the client closes', async () => {
+    const { client, sdk } = setup()
+    sdk.fetch.mockImplementation(
+      async (_input, init) =>
+        new Response(
+          new ReadableStream({
+            start(stream) {
+              init!.signal!.addEventListener('abort', () => stream.error(init!.signal!.reason), { once: true })
+            },
+          }),
+        ),
+    )
+    const response = await client.fetch('https://router.tinfoil.sh/v1/chat/completions')
+    const reading = response.text().catch((error: unknown) => error)
+    await client.close()
+    expect(await reading).toHaveProperty('name', 'AbortError')
+  })
+
+  it('closes and revokes evidence immediately, including verification that finishes later', async () => {
+    const { client, sdk, snapshot } = setup()
+    await client.ensureVerified()
+    const pending = Promise.withResolvers<TinfoilVerification>()
+    sdk.ensureVerified.mockImplementation(() => pending.promise)
+    const result = client.ensureVerified().catch((error: unknown) => error)
+    await client.close()
+    pending.resolve(testTinfoilVerification())
+    expect(await result).toHaveProperty('name', 'AbortError')
+    expect(snapshot()).toEqual({ status: 'idle' })
     await getClock().tickAsync(60_000)
-    await client.ready()
-    expect(snapshot()).toBe(initial)
-    expect(ready).toHaveBeenCalledTimes(1)
-    client.reset()
     expect(snapshot()).toEqual({ status: 'idle' })
   })
 
-  it('follows SDK key rotation through the real fetch retry and reports the replacement enclave', async () => {
-    const { client, snapshot } = setup()
-    const firstFetch = mock(async () => {
-      throw new KeyConfigMismatchError('rotated')
-    })
-    const nextFetch = mock(async () => new Response('encrypted response'))
-    const ready = spyOn(SecureClient.prototype, 'ready')
-    ready.mockImplementationOnce(async () => {
-      setSdkState(client, verificationDocument('one.tinfoil.sh'), firstFetch)
-    })
-    ready.mockImplementationOnce(async () => {
+  it.each(['router', 'enclave'] as const)(
+    'uses the public %s factory with EHBP and waits for key binding',
+    async (kind) => {
+      const { sdk, reporter, snapshot } = setup()
+      const created = Promise.withResolvers<RouterHTTPClient>()
+      const factory =
+        kind === 'router'
+          ? spyOn(RouterHTTPClient, 'create').mockImplementation(() => created.promise)
+          : spyOn(EnclaveHTTPClient, 'create').mockImplementation(
+              () => created.promise as unknown as Promise<EnclaveHTTPClient>,
+            )
+      const result = AttestedTinfoilClient.create(
+        {
+          userCacheSecret: 'test',
+          ...(kind === 'enclave' ? { enclave: { host: sdk.enclave, repo: 'tinfoilsh/repo' } } : {}),
+        },
+        reporter,
+        1_000,
+      )
+      const settings = (kind === 'router' ? factory.mock.calls[0][0] : factory.mock.calls[0][2]) as Parameters<
+        typeof RouterHTTPClient.create
+      >[0]
+      expect(settings).toMatchObject({ transportMode: 'ehbp' })
+      await settings!.verificationCheck!(testTinfoilVerification())
       expect(snapshot().status).toBe('verifying')
-      setSdkState(client, verificationDocument('two.tinfoil.sh'), nextFetch)
-    })
-    const response = await client.fetch('https://cloud/v1/chat/completions', { method: 'POST', body: 'prompt' })
-    expect(await response.text()).toBe('encrypted response')
-    expect(snapshot()).toMatchObject({ status: 'verified', evidence: { endpoint: 'two.tinfoil.sh' } })
-    expect(firstFetch).toHaveBeenCalledTimes(1)
-    expect(nextFetch).toHaveBeenCalledTimes(1)
-  })
+      created.resolve(sdk as unknown as RouterHTTPClient)
+      const client = await result
+      expect(client.baseURL).toBe(kind === 'router' ? 'https://router.tinfoil.sh/v1' : 'https://router.tinfoil.sh')
+      expect(snapshot().status).toBe('verified')
+      await client.close()
+    },
+  )
 
-  it('blocks fetch when ready returns incomplete evidence', async () => {
-    const { client, snapshot } = setup()
-    const fetch = mock(async () => new Response())
-    spyOn(SecureClient.prototype, 'ready').mockImplementation(async () => {
-      setSdkState(client, { ...verificationDocument(), securityVerified: false }, fetch)
-    })
-    await expect(client.fetch('https://cloud/v1/chat/completions')).rejects.toThrow('incomplete')
-    expect(fetch).not.toHaveBeenCalled()
-    expect(snapshot()).toEqual({ status: 'failed', reason: 'verification' })
-  })
-
-  it('reports failure even when the SDK resets itself before rejecting', async () => {
-    const { client, snapshot } = setup()
-    spyOn(SecureClient.prototype, 'ready').mockImplementation(async () => {
-      client.reset()
-      throw new Error('hardware verification failed')
-    })
-    await expect(client.ready()).rejects.toThrow('hardware verification failed')
-    expect(snapshot()).toEqual({ status: 'failed', reason: 'verification' })
-  })
-
-  it('bounds re-attestation and ignores a late SDK completion after timeout', async () => {
-    const { client, snapshot } = setup()
-    const pending = Promise.withResolvers<void>()
-    const ready = spyOn(SecureClient.prototype, 'ready').mockImplementation(() => pending.promise)
-    const first = client.ready()
-    const result = first.catch((error: unknown) => error)
-    expect(snapshot().status).toBe('verifying')
-    await getClock().tickAsync(500)
-    const second = client.ready()
-    expect(second).toBe(first)
-    await getClock().tickAsync(500)
-    expect(await result).toMatchObject({ name: 'TinfoilAttestationTimeoutError' })
-    setSdkState(
-      client,
-      verificationDocument(),
-      mock(async () => new Response()),
-    )
-    pending.resolve()
+  it('releases a factory result that arrives after the initialization deadline', async () => {
+    const { sdk, reporter, snapshot } = setup()
+    const created = Promise.withResolvers<RouterHTTPClient>()
+    spyOn(RouterHTTPClient, 'create').mockImplementation(() => created.promise)
+    const result = AttestedTinfoilClient.create({}, reporter, 1_000).catch((error: unknown) => error)
+    await getClock().tickAsync(1_000)
+    expect(await result).toHaveProperty('name', 'TinfoilAttestationTimeoutError')
+    created.resolve(sdk as unknown as RouterHTTPClient)
     await getClock().tickAsync(0)
+    expect(sdk.close).toHaveBeenCalled()
     expect(snapshot()).toEqual({ status: 'failed', reason: 'timeout' })
-    client.reset()
-    await expect(client.ready()).rejects.toMatchObject({ name: 'TinfoilAttestationTimeoutError' })
-    expect(ready).toHaveBeenCalledTimes(1)
-  })
-
-  it('retires an SDK reset during initialization before its old transport can send a request', async () => {
-    const { client, snapshot } = setup()
-    const pending = Promise.withResolvers<void>()
-    const fetch = mock(async () => new Response('must not be sent'))
-    const ready = spyOn(SecureClient.prototype, 'ready').mockImplementation(async () => {
-      await pending.promise
-      setSdkState(client, verificationDocument('stale.tinfoil.sh'), fetch)
-    })
-    const result = client.fetch('https://cloud/v1/chat/completions').catch((error: unknown) => error)
-    client.reset()
-    expect(snapshot()).toEqual({ status: 'failed', reason: 'verification' })
-    await expect(client.ready()).rejects.toThrow('reset before it completed')
-    pending.resolve()
-    expect(await result).toMatchObject({ name: 'TinfoilAttestationError' })
-    expect(snapshot()).toEqual({ status: 'failed', reason: 'verification' })
-    expect(fetch).not.toHaveBeenCalled()
-    expect(ready).toHaveBeenCalledTimes(1)
-  })
-
-  it('keeps the original SDK failure when the SDK resets before rejecting', async () => {
-    const { client, snapshot } = setup()
-    const error = new Error('invalid hardware report')
-    spyOn(SecureClient.prototype, 'ready').mockImplementation(async () => {
-      await Promise.resolve()
-      client.reset()
-      throw error
-    })
-    await expect(client.ready()).rejects.toBe(error)
-    await expect(client.ready()).rejects.toBe(error)
-    expect(snapshot()).toEqual({ status: 'failed', reason: 'verification' })
   })
 })

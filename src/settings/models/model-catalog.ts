@@ -116,7 +116,7 @@ export const fetchModelsForProvider = async (
   if (provider === 'tinfoil') {
     const client = await getTinfoilClient()
     signal?.throwIfAborted()
-    const response = await http.get(`${client.getBaseURL()}models`, { fetch: client.fetch, signal }).json<{
+    const response = await http.get(`${client.baseURL}/models`, { fetch: client.fetch, signal }).json<{
       data: Array<AvailableModel & { endpoints?: string[]; multimodal?: boolean }>
     }>()
     return response.data

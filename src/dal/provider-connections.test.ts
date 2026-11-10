@@ -97,6 +97,60 @@ describe('provider connections', () => {
     expect(await getDb().select().from(modelsTable)).toHaveLength(0)
     expect(await getProviderCredentials(getDb(), a)).toMatchObject({ apiKey: 'test-key' })
   })
+  it.each([
+    { endpoint: 'same', url: 'https://otari.example/api/v1', editedUrl: 'https://other.example/api/v1' },
+    { endpoint: 'different', url: 'https://other.example/api/v1', editedUrl: 'https://otari.example/api/v1' },
+  ])(
+    'keeps Otari OAuth intact when adding and editing an API key on the $endpoint endpoint',
+    async ({ url, editedUrl }) => {
+      const db = getDb()
+      const oauthId = await saveProviderConnection(db, {
+        provider: 'otari',
+        name: 'Signed in',
+        url: 'https://otari.example/api/v1',
+        authMethod: 'oauth',
+        credentials: { access_token: 'oauth-grant' },
+      })
+      const oauthConnection = await getProviderConnection(db, oauthId)
+      const oauthCredentials = await getProviderCredentials(db, oauthId)
+      const oauthAttempt = await getProviderConnectionAttempt(db, 'otari')
+
+      const manualId = await saveProviderConnection(db, {
+        provider: 'otari',
+        name: 'API key',
+        url,
+        authMethod: 'api_key',
+        credentials: { apiKey: 'manual-key' },
+      })
+      expect(manualId).not.toBe(oauthId)
+      expect(await getProviderCredentials(db, manualId)).toMatchObject({ apiKey: 'manual-key' })
+      expect(otariAuth.revokeOtariToken).not.toHaveBeenCalled()
+      expect(await getProviderConnection(db, oauthId)).toEqual(oauthConnection)
+      expect(await getProviderCredentials(db, oauthId)).toEqual(oauthCredentials)
+      expect(await getProviderConnectionAttempt(db, 'otari')).toEqual(oauthAttempt)
+
+      const manualRevision = await getProviderConnectionRevision(db, manualId)
+      expect(
+        await saveProviderConnection(db, {
+          id: manualId,
+          provider: 'otari',
+          name: 'Updated API key',
+          url: editedUrl,
+          authMethod: 'api_key',
+          credentials: { apiKey: 'replacement-manual-key' },
+          expectedRevision: manualRevision,
+        }),
+      ).toBe(manualId)
+      expect(await getProviderConnectionRevision(db, manualId)).not.toBe(manualRevision)
+      expect(await getProviderConnection(db, manualId)).toMatchObject({ url: editedUrl, connected: true })
+      expect(await getProviderCredentials(db, manualId)).toMatchObject({ apiKey: 'replacement-manual-key' })
+      expect(otariAuth.revokeOtariToken).not.toHaveBeenCalled()
+      expect(await getProviderConnection(db, oauthId)).toEqual(oauthConnection)
+      expect(await getProviderCredentials(db, oauthId)).toEqual(oauthCredentials)
+      expect(await getProviderConnectionAttempt(db, 'otari')).toEqual(oauthAttempt)
+      expect(await getProviderConnections(db)).toHaveLength(2)
+    },
+  )
   it('keeps exactly one OAuth identity across server changes and rejects stale authorization', async () => {
     const attempt = await getProviderConnectionAttempt(getDb(), 'otari')
     const id = await connect('Otari', 'oauth')

@@ -147,7 +147,7 @@ const createTinfoilProbeModel = async (config: NormalizedConfig, acquireClient: 
   const client = await acquireClient()
   const provider = createOpenAICompatible({
     name: 'tinfoil',
-    baseURL: client.getBaseURL()!,
+    baseURL: client.baseURL,
     apiKey: model.apiKey,
     fetch: wrapFetch(
       Object.assign((input: RequestInfo | URL, init?: RequestInit) => client.fetch(input, init), {

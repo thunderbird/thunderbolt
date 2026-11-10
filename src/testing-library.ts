@@ -12,6 +12,7 @@ import type { Clock } from '@sinonjs/fake-timers'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect, mock } from 'bun:test'
+import { usePageStore } from '@/pages/page-store'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 // Lingui macros are compiled away by Babel in the Vite build, but bun test
@@ -159,6 +160,8 @@ afterEach(() => {
     globalClock = null
   }
   cleanup()
+  // Page hosts outlive routes; retained sessions must not mount in the next test's providers.
+  usePageStore.setState({ sessions: [], activeId: null })
   // Backstop against cross-file auth-token leakage: any test that leaves a token
   // in localStorage would otherwise make AuthProvider's mount effect fire an extra
   // get-session call against the next file's HTTP client.

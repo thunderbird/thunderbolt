@@ -21,6 +21,19 @@ const noPorts = {
   QA_GOOGLE_PORT: '',
 }
 
+test.each(['', '8105'])('native Cloud sign-in uses the QA backend port %s', (port) => {
+  // Execute the native script's real shared environment setup without starting a build or simulator.
+  const setup = readFileSync(native, 'utf8').split('\nfixtures=')[0]
+  const proc = Bun.spawnSync(['bash', '-e', '-c', `${setup}\nprintf '%s\\n' "\${frontend_env[@]}"`, native], {
+    env: { ...process.env, ...noPorts, QA_BACKEND_PORT: port },
+  })
+  expect(proc.exitCode).toBe(0)
+  const values = proc.stdout.toString().trim().split('\n')
+  const backend = `http://localhost:${port || '8005'}/v1`
+  expect(values).toContain(`VITE_THUNDERBOLT_CLOUD_URL=${backend}`)
+  expect(values).toContain(`VITE_THUNDERBOLT_CLOUD_SERVICE_URL=${backend}`)
+})
+
 /** `/sdcard` resolves only from the second check on, and Android 16 refuses the push of sample.png. */
 const fakeAdb = ({ ignoresSettings = false, refusesBroadcast = false } = {}) => {
   const bin = mkdtempSync(join(work, 'bin-'))

@@ -284,9 +284,9 @@ describe('PendingDeviceModal', () => {
       await getClock().runAllAsync()
     })
     fireEvent.change(screen.getByLabelText('Device fingerprint'), { target: { value: fingerprint } })
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
-      // WebCrypto uses the real event loop, so await the boundary instead of advancing fake time.
+      // WebCrypto and IndexedDB progress in real time, independently of the fake clock.
       await envelopeRequested.promise
       await getClock().runAllAsync()
     })

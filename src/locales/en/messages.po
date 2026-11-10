@@ -1477,8 +1477,8 @@ msgid "Connection not completed"
 msgstr "Connection not completed"
 
 #: src/components/chat/attestation/attestation-modal.tsx
-msgid "Connection privacy"
-msgstr "Connection privacy"
+#~ msgid "Connection privacy"
+#~ msgstr "Connection privacy"
 
 #: src/components/chat/attestation/attestation-control.tsx
 msgid "Connection privacy: {label}"
@@ -1508,6 +1508,10 @@ msgstr "Connection unavailable on this device."
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Connection verified"
 msgstr "Connection verified"
+
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection Verified"
+msgstr "Connection Verified"
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/components/settings/agents/agent-detail.tsx
@@ -4341,7 +4345,7 @@ msgstr "Proxying is required in the web app to bypass browser CORS restrictions.
 msgid "Q3 planning"
 msgstr "Q3 planning"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Quit"
 msgstr "Quit"
 
@@ -5029,7 +5033,7 @@ msgstr "Share debug transcript"
 msgid "Shared instructions for project chats"
 msgstr "Shared instructions for project chats"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Show"
 msgstr "Show"
 

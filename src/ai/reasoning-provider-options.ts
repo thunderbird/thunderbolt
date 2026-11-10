@@ -11,9 +11,12 @@ type Options = Record<string, JSONValue>
 export const reasoningProviderOptions = (
   profile: Options,
   provider: string,
-  effort: ReasoningEffort,
+  effort: ReasoningEffort | undefined,
   budgetThinking: boolean,
 ): Options => {
+  if (effort === undefined) {
+    return profile
+  }
   const options = Object.fromEntries(
     Object.entries(profile).filter(
       ([key]) => !['reasoningEffort', 'reasoning_effort', 'reasoning', 'thinking', 'effort'].includes(key),

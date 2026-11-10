@@ -172,14 +172,25 @@ for (const [target, model, name, legacyVendor] of [
       await seedRow({ ...target, ...legacyMetadata, model, name })
       await upgradeModelDefaults(getDb())
       const row = await getDb().select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()
-      expect(row).toEqual({ ...target, providerConnectionId: null, defaultHash: hashModel(target) })
+      expect(row).toEqual({
+        ...target,
+        providerConnectionId: null,
+        defaultHash: hashModel(target),
+        reasoningEffort: null,
+      })
     })
 
     it('preserves a user name and stale hash while upgrading the slug and vendor', async () => {
       await seedRow({ ...target, ...legacyMetadata, model, name: 'My model', defaultHash: 'user-edited-since' })
       await upgradeModelDefaults(getDb())
       const row = await getDb().select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()
-      expect(row).toEqual({ ...target, providerConnectionId: null, name: 'My model', defaultHash: 'user-edited-since' })
+      expect(row).toEqual({
+        ...target,
+        providerConnectionId: null,
+        name: 'My model',
+        defaultHash: 'user-edited-since',
+        reasoningEffort: null,
+      })
     })
 
     it('leaves a current row and a legacy slug under another id untouched', async () => {
@@ -190,11 +201,13 @@ for (const [target, model, name, legacyVendor] of [
         ...current,
         providerConnectionId: null,
         defaultHash: hashModel(current),
+        reasoningEffort: null,
       })
       expect(await getDb().select().from(modelsTable).where(eq(modelsTable.id, other.id)).get()).toEqual({
         ...other,
         providerConnectionId: null,
         defaultHash: hashModel(other),
+        reasoningEffort: null,
       })
     })
 

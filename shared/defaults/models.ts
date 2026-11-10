@@ -6,7 +6,8 @@ import { hashValues } from '../lib/hash'
 
 /**
  * Shape of a shipped model default. Structurally a subset of the frontend
- * `Model` type (`src/types.ts`) — `SharedModel` intentionally omits `apiKey`,
+ * `Model` type (`src/types.ts`) — `SharedModel` intentionally omits the user's
+ * `reasoningEffort`, so catalog updates preserve it, and `apiKey`,
  * which is a runtime concern (populated by the DAL from a LEFT JOIN with the
  * local-only `models_secrets` table) and must never traverse the wire. That
  * omission also makes the public `/config` endpoint structurally incapable of

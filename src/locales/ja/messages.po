@@ -1465,8 +1465,8 @@ msgid "Connection not completed"
 msgstr ""
 
 #: src/components/chat/attestation/attestation-modal.tsx
-msgid "Connection privacy"
-msgstr ""
+#~ msgid "Connection privacy"
+#~ msgstr ""
 
 #: src/components/chat/attestation/attestation-control.tsx
 msgid "Connection privacy: {label}"
@@ -1495,6 +1495,10 @@ msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Connection verified"
+msgstr ""
+
+#: src/components/chat/attestation/attestation-modal.tsx
+msgid "Connection Verified"
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
@@ -4329,7 +4333,7 @@ msgstr "Web アプリでは、ブラウザーの CORS 制限を回避するた�
 msgid "Q3 planning"
 msgstr "第 3 四半期の計画"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Quit"
 msgstr "終了"
 
@@ -5017,7 +5021,7 @@ msgstr ""
 msgid "Shared instructions for project chats"
 msgstr "プロジェクト内のチャットに共通の指示"
 
-#: src/lib/tray.tsx
+#: src/lib/tray.ts
 msgid "Show"
 msgstr "表示"
 

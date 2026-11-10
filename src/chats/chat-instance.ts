@@ -375,13 +375,15 @@ export const createAgentRoutingFetch = (
       throw new Error('No session found')
     }
 
-    await session.configurationChange
     const { chatThread, selectedAgent } = session
     const selectedModel =
       operation === 'prompt' && isBuiltInAgent(selectedAgent)
         ? (routingState.getTurnModel?.() ?? session.selectedModel)
         : session.selectedModel
     requireRunnableModel(selectedAgent, selectedModel)
+    const reasoningEffort = isBuiltInAgent(selectedAgent)
+      ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
+      : undefined
     const telemetry =
       operation === 'prompt' && isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
     telemetry?.setDimensions({
@@ -495,9 +497,6 @@ export const createAgentRoutingFetch = (
       throw createTurnBudgetExhaustedError()
     }
 
-    const reasoningEffort = isBuiltInAgent(selectedAgent)
-      ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
-      : undefined
     // Sync and other tabs can change access without updating this tab's model snapshot.
     if (isBuiltInAgent(selectedAgent)) {
       useChatStore.getState().setModels(await getAvailableModels())

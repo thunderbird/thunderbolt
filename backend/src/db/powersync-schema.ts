@@ -172,6 +172,7 @@ export const modelsTable = powersyncSchema.table(
     toolUsage: integer('tool_usage').default(1),
     isConfidential: integer('is_confidential').default(0),
     startWithReasoning: integer('start_with_reasoning').default(0),
+    reasoningEffort: text('reasoning_effort'),
     supportsParallelToolCalls: integer('supports_parallel_tool_calls').default(1),
     contextWindow: integer('context_window'),
     deletedAt: timestamp('deleted_at'),

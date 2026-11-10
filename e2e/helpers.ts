@@ -104,7 +104,7 @@ export const openSidebarOnMobile = async (page: Page) => {
 }
 
 /**
- * Open the account popover, click "Log out", confirm in the modal, and wait
+ * Open the account menu, click "Log out", confirm in the modal, and wait
  * for the signed-out landing page to appear.
  *
  * Expects the caller to have already authenticated (e.g. via loginViaOidc / loginViaSaml).

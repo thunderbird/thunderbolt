@@ -22,8 +22,8 @@ import { Maximize2, Minus, X } from 'lucide-react'
  *
  * Renders `null` on macOS, mobile, and non-Tauri (web) surfaces.
  *
- * Close mirrors the tray-driven hide-instead-of-quit behavior in `tray.tsx` —
- * `close()` triggers the tray's `onCloseRequested` handler, which hides the
+ * Close mirrors the native tray's hide-instead-of-quit behavior —
+ * `close()` triggers the native window handler, which hides the
  * window rather than quitting.
  */
 export const WindowControls = () => {

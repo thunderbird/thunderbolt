@@ -61,7 +61,6 @@ import Layout from './layout'
 import { loadSearchPalette } from '@/search/palette/search-palette-loader'
 import { MCPProvider } from './lib/mcp-provider'
 import { ProxyFetchProvider } from './lib/proxy-fetch-context'
-import { TrayProvider } from './lib/tray'
 import Loading from './loading'
 import type { InitData } from './types'
 import { useSettings } from './hooks/use-settings'
@@ -392,14 +391,13 @@ export const App = () => {
               <AuthProvider cloudUrl={cloudUrl}>
                 <SignInModalProvider>
                   <PostHogProvider client={initData.posthogClient}>
-                    <TrayProvider tray={initData.tray} window={initData.window}>
-                      <ProxyFetchProvider>
-                        <MCPProvider>
-                          <HapticsProvider>
-                            <ContentViewProvider>
-                              <ExternalLinkDialogProvider>
-                                <AppContent initData={initData} />
-                                {/* Catches every phrase that was minted but never
+                    <ProxyFetchProvider>
+                      <MCPProvider>
+                        <HapticsProvider>
+                          <ContentViewProvider>
+                            <ExternalLinkDialogProvider>
+                              <AppContent initData={initData} />
+                              {/* Catches every phrase that was minted but never
                                     confirmed — reload, crash, or a dialog that
                                     never got the chance to render. Must live
                                     INSIDE HttpClientProvider: it rotates the key
@@ -418,13 +416,12 @@ export const App = () => {
                                     dialog displaying it. The prompt's own
                                     mount-time snapshot cannot see this — only
                                     the parent holding both can. */}
-                                {migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
-                              </ExternalLinkDialogProvider>
-                            </ContentViewProvider>
-                          </HapticsProvider>
-                        </MCPProvider>
-                      </ProxyFetchProvider>
-                    </TrayProvider>
+                              {migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
+                            </ExternalLinkDialogProvider>
+                          </ContentViewProvider>
+                        </HapticsProvider>
+                      </MCPProvider>
+                    </ProxyFetchProvider>
                   </PostHogProvider>
                 </SignInModalProvider>
               </AuthProvider>

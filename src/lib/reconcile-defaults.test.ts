@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { deleteModel, getAllModels, updateSettings } from '@/dal'
+import { deleteModel, getAllModels, resetModelToDefault, updateModel, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from 'bun:test'
@@ -57,6 +57,7 @@ const buildRetiredModel = (overrides: Partial<Model> = {}): Model => {
     contextWindow: 131072,
     toolUsage: 1,
     startWithReasoning: 0,
+    reasoningEffort: null,
     supportsParallelToolCalls: 0,
     deletedAt: null,
     apiKey: null,
@@ -160,6 +161,29 @@ describe('returning boot before initial sync', () => {
 })
 
 describe('seedModels', () => {
+  test('catalog updates and resets preserve effort without treating the model as customized', async () => {
+    const db = getDb()
+    const original = defaultModels[0]
+    await reconcileDefaultsForTable(db, modelsTable, [original], hashModel)
+    await updateModel(db, original.id, { reasoningEffort: 'high' })
+
+    const updated = { ...original, name: 'Updated catalog name' }
+    await reconcileDefaultsForTable(db, modelsTable, [updated], hashModel)
+    const readModel = () => db.select().from(modelsTable).where(eq(modelsTable.id, original.id)).get()
+    expect(await readModel()).toMatchObject({
+      name: updated.name,
+      reasoningEffort: 'high',
+      defaultHash: hashModel(updated),
+    })
+
+    await resetModelToDefault(db, original.id, original)
+    expect(await readModel()).toMatchObject({
+      name: original.name,
+      reasoningEffort: 'high',
+      defaultHash: hashModel(original),
+    })
+  })
+
   test('inserts new defaults on first run', async () => {
     const db = getDb()
     await reconcileDefaultsForTable(db, modelsTable, defaultModels, hashModel)
@@ -873,6 +897,7 @@ for (const [target, model, name] of [
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()).toEqual({
       ...edited,
       providerConnectionId: null,
+      reasoningEffort: null,
       model: target.model,
     })
   })
@@ -903,6 +928,7 @@ describe('Opus data migration', () => {
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
       providerConnectionId: null,
+      reasoningEffort: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
   })
@@ -929,6 +955,7 @@ describe('Opus data migration', () => {
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...customizedLegacy,
       providerConnectionId: null,
+      reasoningEffort: null,
       model: defaultModelOpus55.model,
     })
   })
@@ -952,6 +979,7 @@ describe('Opus data migration', () => {
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
       providerConnectionId: null,
+      reasoningEffort: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
     expect(
@@ -977,6 +1005,7 @@ describe('Opus data migration', () => {
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
       providerConnectionId: null,
+      reasoningEffort: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
     expect(

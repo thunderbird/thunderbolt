@@ -50,6 +50,8 @@ test('pins generic connections before alphabetical provider choices', () => {
     .filter((button) => button.getAttribute('aria-label') !== 'Filter by type')
   expect(mcp).toHaveTextContent('MCP server')
   expect(custom).toHaveTextContent('OpenAI-compatible model provider')
+  expect(custom.nextElementSibling).toBe(screen.getByRole('separator'))
+  expect(screen.getByRole('separator').nextElementSibling).toBe(buttons[0])
   expect(buttons.map((button) => button.textContent)).toEqual(
     [...buttons]
       .map((button) => button.textContent)
@@ -86,9 +88,11 @@ test('filters all connection groups and restores them when the search is cleared
   expect(search).toHaveFocus()
   fireEvent.change(search, { target: { value: '  OTARI  ' } })
   expect(screen.getAllByRole('button')).toHaveLength(2)
+  expect(screen.queryByRole('separator')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Otari Models and search' }))
   expect(onProvider).toHaveBeenCalledWith('otari')
   fireEvent.change(search, { target: { value: 'compatible' } })
+  expect(screen.queryByRole('separator')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'OpenAI-compatible model provider' }))
   expect(onProvider).toHaveBeenCalledWith('custom')
   fireEvent.change(search, { target: { value: 'mcp' } })

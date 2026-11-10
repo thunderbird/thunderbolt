@@ -25,9 +25,9 @@ export const AddProviderModels = (state: ReturnType<typeof useAddProviderModels>
         event.preventDefault()
         state.submit()
       }}
-      className="flex flex-col gap-4"
+      className="flex min-h-0 flex-1 flex-col gap-4"
     >
-      <div className="flex flex-col gap-2">
+      <div className="flex shrink-0 flex-col gap-2">
         <Label htmlFor="model-provider-connection">
           <Trans>Connection</Trans>
         </Label>
@@ -68,7 +68,7 @@ export const AddProviderModels = (state: ReturnType<typeof useAddProviderModels>
         <>
           {!state.manual && (
             <>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <Input
                   value={state.search}
                   onChange={(event) => state.setSearch(event.target.value)}
@@ -98,7 +98,11 @@ export const AddProviderModels = (state: ReturnType<typeof useAddProviderModels>
                   {state.catalogError}
                 </p>
               ) : (
-                <div role="group" aria-label={t`Models`} className="max-h-80 overflow-y-auto rounded-xl border p-2">
+                <div
+                  role="group"
+                  aria-label={t`Models`}
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl border p-2"
+                >
                   {state.visibleModels.length === 0 && (
                     <p className="p-3 text-sm text-muted-foreground">
                       <Trans>No models found.</Trans>
@@ -138,14 +142,14 @@ export const AddProviderModels = (state: ReturnType<typeof useAddProviderModels>
               <Button
                 type="button"
                 variant="link"
-                className="self-start px-0 text-muted-foreground"
+                className="shrink-0 self-start px-0 text-muted-foreground"
                 disabled={state.isPending}
                 onClick={() => state.setManual(!state.manual)}
               >
                 {state.manual ? <Trans>Choose from available models</Trans> : <Trans>Enter a model ID</Trans>}
               </Button>
               {state.manual && (
-                <div className="flex flex-col gap-2">
+                <div className="flex shrink-0 flex-col gap-2">
                   <Label htmlFor="manual-provider-model">
                     <Trans>Model ID</Trans>
                   </Label>

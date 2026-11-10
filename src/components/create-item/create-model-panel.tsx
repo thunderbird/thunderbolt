@@ -17,7 +17,13 @@ export const CreateModelPanel = ({ open, onClose, onCloseComplete }: CreateModel
   const addForm = useAddProviderModels({ isOpen: open, onClose })
 
   return (
-    <CreateItemPanelShell kind="model" open={open} onClose={addForm.onCancel} onCloseComplete={onCloseComplete}>
+    <CreateItemPanelShell
+      kind="model"
+      open={open}
+      onClose={addForm.onCancel}
+      onCloseComplete={onCloseComplete}
+      bodyLayout="fill"
+    >
       <AddProviderModels {...addForm} />
     </CreateItemPanelShell>
   )

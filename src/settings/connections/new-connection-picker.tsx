@@ -4,7 +4,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Filter, Plug } from 'lucide-react'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -14,12 +14,12 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { providerDefinitions } from '@/providers/registry'
 import type { Integration } from './types'
 import type { ProviderCapability, ProviderType } from '@/providers/types'
 import { ProviderConnectionIcon } from './provider-connection-icon'
-import { cn } from '@/lib/utils'
 
 /** One entry point for AI providers, search providers, and existing MCP setup. */
 export const NewConnectionPicker = ({
@@ -158,22 +158,23 @@ export const NewConnectionPicker = ({
         )}
       </div>
       {[...genericOptions, ...options].map((option, index) => (
-        <Button
-          key={option.id}
-          type="button"
-          variant="outline"
-          className={cn(
-            'justify-start whitespace-normal text-left',
-            index > 0 && index === genericOptions.length && 'mt-4',
+        <Fragment key={option.id}>
+          {index > 0 && index === genericOptions.length && (
+            <Separator decorative={false} className="my-1 bg-border/60" />
           )}
-          onClick={option.onSelect}
-        >
-          <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">
-            {option.icon}
-          </span>
-          <span className="flex-1 text-left">{option.label}</span>
-          {option.description && <span className="text-xs text-muted-foreground">{option.description}</span>}
-        </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="justify-start whitespace-normal text-left"
+            onClick={option.onSelect}
+          >
+            <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">
+              {option.icon}
+            </span>
+            <span className="flex-1 text-left">{option.label}</span>
+            {option.description && <span className="text-xs text-muted-foreground">{option.description}</span>}
+          </Button>
+        </Fragment>
       ))}
       {genericOptions.length + options.length === 0 && (
         <SettingsNoResults role="status">

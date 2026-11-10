@@ -61,7 +61,7 @@ const ModelsPage = () => {
   const renderPanel = () => {
     if (page.isAddPanelOpen) {
       return (
-        <DetailPanel title={t`Add Model`} onClose={page.addForm.onCancel}>
+        <DetailPanel title={t`Add Model`} onClose={page.addForm.onCancel} bodyLayout="fill">
           <AddProviderModels {...page.addForm} />
         </DetailPanel>
       )

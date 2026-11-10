@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useBrowserShortcuts } from '@/content-view/use-browser-shortcuts'
 import { useMutation } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router'
@@ -12,6 +12,7 @@ import { openUrlPage, usePageStore, type PageSession } from './page-store'
 import { useSavePage, useSavedPages } from './use-saved-pages'
 import { pageDefinitionForPin } from './page-display'
 import { pagePath } from './page-path'
+import type { SavedPage } from './saved-page'
 import { usePagePicker } from './use-page-picker'
 
 export const usePagePanelState = ({
@@ -34,6 +35,7 @@ export const usePagePanelState = ({
   const addressRef = useRef<HTMLInputElement>(null)
   const { pages } = useSavedPages()
   const pin = useSavePage()
+  const [renamingPage, setRenamingPage] = useState<SavedPage | null>(null)
   const picker = usePagePicker(session)
   const location = useLocation()
   const navigate = useNavigate()
@@ -97,7 +99,9 @@ export const usePagePanelState = ({
   }
   const pinPage = async (target: PageSession, chrome: PageChrome) => {
     try {
-      await pin.save({ page: pageDefinitionForPin(target), chrome })
+      const page = pageDefinitionForPin(target)
+      const saved = pages.find((item) => item.id === page.id)
+      await pin.save({ page: saved ? { ...page, title: saved.title } : page, chrome })
     } catch {
       /* Mutation exposes the save error below. */
     }
@@ -161,6 +165,9 @@ export const usePagePanelState = ({
     addressRef,
     picker,
     pinnedIds: new Set(pages.map((page) => page.id)),
+    pinnedPages: pages,
+    renamingPage,
+    setRenamingPage,
     select,
     newTab,
     closeTab,

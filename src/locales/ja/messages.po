@@ -676,8 +676,8 @@ msgid "Ask me anything…"
 msgstr "何でも質問してください…"
 
 #: src/pages/page-panel.tsx
-msgid "Ask your agent to create a page.<0/> Websites open in your browser."
-msgstr ""
+#~ msgid "Ask your agent to create a page.<0/> Websites open in your browser."
+#~ msgstr ""
 
 #: src/components/context-usage/retained-context-message.tsx
 msgid "Assistant"
@@ -779,6 +779,18 @@ msgstr "ブリッジ"
 msgid "Bridge target"
 msgstr "ブリッジのターゲット"
 
+#: src/pages/desktop-browser-address-bar.tsx
+msgid "Browse a website"
+msgstr ""
+
+#: src/pages/desktop-browser-address-bar.tsx
+msgid "Browse in the desktop app"
+msgstr ""
+
+#: src/pages/desktop-browser-prompt.tsx
+msgid "Browse with your agent"
+msgstr ""
+
 #: src/components/external-link-toggle-group.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/sidebar-webview.tsx
@@ -830,6 +842,7 @@ msgstr "カレンダー"
 #: src/components/chat/external-link-dialog.tsx
 #: src/components/provider-connection-button.tsx
 #: src/components/remove-bridge-dialog.tsx
+#: src/components/rename-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/agent-detail.tsx
@@ -841,7 +854,6 @@ msgstr "カレンダー"
 #: src/components/ui/chat-nav-button.tsx
 #: src/components/ui/confirm-action-dialog.tsx
 #: src/components/ui/responsive-modal.tsx
-#: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/projects/project-create-form.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -1907,6 +1919,10 @@ msgstr "QR コードを読み取れませんでした"
 msgid "Could not read the import file."
 msgstr "インポートファイルを読み取れませんでした。"
 
+#: src/pages/rename-saved-page-dialog.tsx
+msgid "Could not rename this page. Please try again."
+msgstr ""
+
 #: src/components/device-qr-code.tsx
 msgid "Could not render pairing code."
 msgstr "ペアリングコードを表示できませんでした。"
@@ -2422,6 +2438,10 @@ msgstr "説明"
 msgid "Description (optional)"
 msgstr "説明（任意）"
 
+#: src/pages/desktop-browser-address-bar.tsx
+msgid "Desktop app"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Dev Settings"
@@ -2607,6 +2627,10 @@ msgstr "アプリをダウンロード"
 #: src/components/sidebar-footer.tsx
 msgid "Download App"
 msgstr "アプリをダウンロード"
+
+#: src/pages/desktop-browser-prompt.tsx
+msgid "Download desktop app"
+msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
 msgid "Download HTML"
@@ -3766,6 +3790,7 @@ msgstr "変更されたモデル"
 
 #: src/components/settings/detail-actions-menu.tsx
 #: src/layout/sidebar/chat-list-item.tsx
+#: src/pages/saved-page-menu-item.tsx
 msgid "More"
 msgstr "その他"
 
@@ -4240,8 +4265,8 @@ msgstr "サイドバーで開く"
 msgid "Open in Thunderbolt"
 msgstr ""
 
+#: src/pages/desktop-browser-prompt.tsx
 #: src/pages/page-message-part.tsx
-#: src/pages/page-panel.tsx
 msgid "Open in your browser"
 msgstr ""
 
@@ -4270,8 +4295,8 @@ msgid "Open this project in the desktop app to run its agent."
 msgstr ""
 
 #: src/pages/page-panel.tsx
-msgid "Open this website in a new browser tab."
-msgstr ""
+#~ msgid "Open this website in a new browser tab."
+#~ msgstr ""
 
 #: src/settings/search/index.tsx
 msgid "Open Thunderbolt"
@@ -4280,6 +4305,10 @@ msgstr ""
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Open Thunderbolt CLI"
 msgstr "Thunderbolt CLI を開く"
+
+#: src/pages/desktop-browser-prompt.tsx
+msgid "Open websites and let your agent work alongside you in the Thunderbolt desktop app."
+msgstr ""
 
 #: src/settings/connections/new-connection-picker.tsx
 #~ msgid "OpenAI-compatible"
@@ -4400,6 +4429,10 @@ msgstr "曇り"
 #: src/pages/page-message-part.tsx
 #: src/pages/page-tab-strip.tsx
 msgid "Page"
+msgstr ""
+
+#: src/pages/rename-saved-page-dialog.tsx
+msgid "Page name"
 msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
@@ -4794,12 +4827,18 @@ msgid "Removing…"
 msgstr "削除しています…"
 
 #: src/layout/sidebar/chat-list-item.tsx
+#: src/pages/page-tab-strip.tsx
+#: src/pages/saved-page-menu-item.tsx
 msgid "Rename"
 msgstr "名前を変更"
 
 #: src/layout/sidebar/rename-chat-dialog.tsx
 msgid "Rename chat"
 msgstr "チャットの名前を変更"
+
+#: src/pages/rename-saved-page-dialog.tsx
+msgid "Rename pinned page"
+msgstr ""
 
 #: src/skills/suggestion-chip.tsx
 msgid "Reorder"
@@ -4957,9 +4996,9 @@ msgstr "コマンドを実行"
 msgid "Run this on the machine hosting the bridge, then add it — the connection is verified on first use."
 msgstr "ブリッジをホストしているマシンでこれを実行してから追加してください — 接続は初回利用時に検証されます。"
 
+#: src/components/rename-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
-#: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/mini-apps/mini-app-download-prompt.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
@@ -6525,7 +6564,7 @@ msgstr "パスキーでロック解除"
 
 #: src/pages/page-panel.tsx
 #: src/pages/page-tab-strip.tsx
-#: src/pages/saved-page-menu-items.tsx
+#: src/pages/saved-page-menu-item.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/skills/suggestion-chip.tsx

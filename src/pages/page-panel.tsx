@@ -3,17 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import {
-  ArrowLeft,
-  ArrowRight,
-  ExternalLink,
-  Maximize2,
-  MousePointer2,
-  PanelTop,
-  PinOff,
-  RotateCw,
-  X,
-} from 'lucide-react'
+import { ArrowLeft, ArrowRight, Maximize2, MousePointer2, PanelTop, PinOff, RotateCw, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { PanelRightRounded } from '@/components/icons/panel-right-rounded'
 import { BrowserAddressBar } from '@/content-view/browser-address-bar'
@@ -25,6 +15,9 @@ import { usePageStore } from './page-store'
 import { PageSlot } from './page-slot'
 import { PageTabStrip } from './page-tab-strip'
 import { usePagePanelState } from './use-page-panel-state'
+import { DesktopBrowserAddressBar } from './desktop-browser-address-bar'
+import { DesktopBrowserPrompt } from './desktop-browser-prompt'
+import { RenameSavedPageDialog } from './rename-saved-page-dialog'
 
 /** Chrome and placement only: running documents belong to the app-level permanent hosts. */
 export const PagePanel = ({
@@ -94,14 +87,15 @@ export const PagePanel = ({
             onSelect={state.select}
             onClose={state.closeTab}
             onCloseAll={state.closeAllTabs}
-            onNewTab={isTauri() ? state.newTab : undefined}
+            onNewTab={state.newTab}
             onPin={(target, chrome) => {
               void state.pinPage(target, chrome)
             }}
             onUnpin={(id) => {
               void state.unpin(id)
             }}
-            pinnedIds={state.pinnedIds}
+            pinnedPages={state.pinnedPages}
+            onRename={state.setRenamingPage}
             actions={actions}
             headerStart={headerStart}
           />
@@ -174,16 +168,9 @@ export const PagePanel = ({
           />
         </div>
       )}
-      {session.chrome === 'browser' && webFallback && session.page.source.kind === 'url' && (
-        <div
-          data-page-address-row
-          data-page-external-address
-          className="flex shrink-0 items-center gap-2 border-b px-3 py-2 text-sm text-muted-foreground"
-        >
-          <ExternalLink aria-hidden="true" className="size-4 shrink-0" />
-          <span className="min-w-0 select-text truncate" title={session.browser.url}>
-            {session.browser.url}
-          </span>
+      {session.chrome === 'browser' && !isTauri() && session.page.source.kind === 'url' && (
+        <div data-page-address-row className="flex shrink-0 items-center gap-1 border-b px-2 py-2">
+          <DesktopBrowserAddressBar key={session.id} url={blank ? '' : session.browser.url} />
         </div>
       )}
       <BrowserAgentStatus tabId={session.id} />
@@ -200,41 +187,26 @@ export const PagePanel = ({
       )}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {blank ? (
-          <BrowserNewTab>
-            {!isTauri() && (
-              <Trans>
-                Ask your agent to create a page.
-                <br /> Websites open in your browser.
-              </Trans>
-            )}
-          </BrowserNewTab>
+          <BrowserNewTab>{isTauri() ? undefined : <DesktopBrowserPrompt />}</BrowserNewTab>
         ) : webFallback ? (
-          <div className="m-auto max-w-sm space-y-4 p-6 text-center text-sm text-muted-foreground">
-            {session.page.source.kind === 'url' ? (
-              <>
-                <p>
-                  <Trans>Open this website in a new browser tab.</Trans>
-                </p>
-                <a
-                  className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-foreground hover:bg-accent"
-                  href={session.browser.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <ExternalLink className="size-4" />
-                  <Trans>Open in your browser</Trans>
-                </a>
-              </>
-            ) : (
+          session.page.source.kind === 'url' ? (
+            <BrowserNewTab>
+              <DesktopBrowserPrompt externalUrl={session.browser.url} />
+            </BrowserNewTab>
+          ) : (
+            <div className="m-auto max-w-sm space-y-4 p-6 text-center text-sm text-muted-foreground">
               <p>
                 <Trans>This local app is available in the desktop app on the computer where it was created.</Trans>
               </p>
-            )}
-          </div>
+            </div>
+          )
         ) : (
           <PageSlot sessionId={session.id} mode={mode} />
         )}
       </div>
+      {state.renamingPage && (
+        <RenameSavedPageDialog page={state.renamingPage} onClose={() => state.setRenamingPage(null)} />
+      )}
     </section>
   )
 }

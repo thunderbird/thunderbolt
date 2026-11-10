@@ -409,7 +409,7 @@ const exerciseBrowser = async () => {
     const webviews = (await invokeNative('plugin:webview|get_all_webviews')) as { label: string }[]
     return webviews.filter((webview) => webview.label.startsWith('sidebar-webview-')).map((webview) => webview.label)
   }
-  const waitForPage = async (label: string, url: string, title: string) => {
+  const waitForPage = async (label: string, url: string, title: string, tabTitle = title) => {
     await browser.waitUntil(
       async () => {
         const state = (await invokeNative('browser_get_state', { label })) as NativeBrowserState
@@ -421,8 +421,8 @@ const exerciseBrowser = async () => {
       timeout: 5000,
       timeoutMsg: 'Address bar did not follow the native page URL',
     })
-    await (await tab(title)).waitForDisplayed()
-    await browser.waitUntil(async () => (await (await tab(title)).getAttribute('aria-selected')) === 'true')
+    await (await tab(tabTitle)).waitForDisplayed()
+    await browser.waitUntil(async () => (await (await tab(tabTitle)).getAttribute('aria-selected')) === 'true')
   }
   const navigate = async (url: string) => {
     await (await control('input[aria-label="Address"]')).setValue(url)
@@ -512,7 +512,7 @@ const exerciseBrowser = async () => {
     await assertBrowserToggleGeometry()
     await (await browser.$('button[aria-label="Open browser"]')).click()
     await (await control('[data-browser-new-tab]')).waitForDisplayed()
-    assert.equal(await (await control('[data-page-external-address]')).isExisting(), false)
+    assert.equal(await (await control('[data-desktop-browser-address-bar]')).isExisting(), false)
     assert.equal(await (await control('input[aria-label="Address"]')).isDisplayed(), true)
     assert.equal(await (await control('button[aria-label="New tab"]')).isDisplayed(), true)
     assert.equal(await (await control('button[aria-label="Go"]')).isEnabled(), false)
@@ -582,6 +582,22 @@ const exerciseBrowser = async () => {
     )
     await exerciseBrowserOverlayBoundary(activePanel)
     await exerciseBrowserChrome(activePanel)
+    await (await tab('Browser smoke two')).click({ button: 'right' })
+    await (await browser.$('[role="menuitem"]=Pin')).click()
+    await (await browser.$('[data-saved-page-id] [data-sidebar="menu-button"]=Browser smoke two')).waitForDisplayed()
+    await (await tab('Browser smoke two')).click({ button: 'right' })
+    await (await browser.$('[role="menuitem"]=Rename')).click()
+    const pageName = await browser.$('input[aria-label="Page name"]')
+    await pageName.waitForDisplayed()
+    await pageName.setValue('My browser fixture')
+    await (await browser.$('[role="dialog"] button=Save')).click()
+    await (await tab('My browser fixture')).waitForDisplayed()
+    await (await control('button[aria-label="Reload page"]')).click()
+    await waitForPage(secondLabel, secondUrl, 'Browser smoke two', 'My browser fixture')
+    await (await tab('My browser fixture')).waitForDisplayed()
+    await (await tab('My browser fixture')).click({ button: 'right' })
+    await (await browser.$('[role="menuitem"]=Unpin')).click()
+    await (await tab('Browser smoke two')).waitForDisplayed()
     const beforeExpand = await getLabels()
     const originalRoute = await browser.execute(() => location.pathname)
     await (await control('button[aria-label="Expand page"]')).click()

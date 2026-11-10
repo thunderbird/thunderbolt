@@ -320,8 +320,8 @@ describe('Header', () => {
     expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
   })
 
-  it('opens and closes the desktop browser from the shared header', () => {
-    const desktop = spyOn(platform, 'isTauriDesktop').mockReturnValue(true)
+  it.each([true, false])('opens and closes the browser from the shared header (native: %s)', (native) => {
+    const desktop = spyOn(platform, 'isTauriDesktop').mockReturnValue(native)
     restoreViewport()
     setupWithAgent(builtInAgent)
     const PreviewProbe = () => {
@@ -363,24 +363,6 @@ describe('Header', () => {
       expect(screen.getByTestId('preview-url')).toBeEmptyDOMElement()
       expect(screen.getByRole('button', { name: 'Open browser' })).toHaveAttribute('aria-pressed', 'false')
       expect(screen.getByRole('button', { name: 'Open browser' })).toHaveFocus()
-    } finally {
-      desktop.mockRestore()
-    }
-  })
-
-  it('hides the browser opener outside the desktop app', () => {
-    const desktop = spyOn(platform, 'isTauriDesktop').mockReturnValue(false)
-    restoreViewport()
-    setupWithAgent(builtInAgent)
-    try {
-      render(
-        <ContentViewProvider>
-          <Header />
-        </ContentViewProvider>,
-        { wrapper: TestWrapper },
-      )
-
-      expect(screen.queryByRole('button', { name: 'Open browser' })).toBeNull()
     } finally {
       desktop.mockRestore()
     }

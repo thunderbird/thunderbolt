@@ -370,7 +370,7 @@ export const Header = () => {
   // the toggle stays inside the sidebar itself. Hidden while the collapse is
   // forced by a narrow window — expanding is a no-op there.
   const showSidebarToggle = isMacDesktop() && sidebarState === 'collapsed' && !forceCollapsed
-  const browserButton = isTauriDesktop() && preview && (
+  const browserButton = preview && (
     <Button
       ref={browserToggleRef}
       data-browser-toggle

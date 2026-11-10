@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { AppWindow, LoaderCircle, Pin, PinOff, Plus, X, CopyX } from 'lucide-react'
+import { AppWindow, LoaderCircle, Pin, PinOff, Plus, X, CopyX, Pencil } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { PageChrome } from '@shared/page-protocol'
 import {
@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 import type { PageSession } from './page-store'
 import { canPinPage } from './page-display'
 import { PageIcon } from './page-icon'
+import type { SavedPage } from './saved-page'
 
 export const PageTabStrip = ({
   sessions,
@@ -29,7 +30,8 @@ export const PageTabStrip = ({
   onNewTab,
   onPin,
   onUnpin,
-  pinnedIds,
+  pinnedPages,
+  onRename,
   actions,
   headerStart,
 }: {
@@ -41,11 +43,14 @@ export const PageTabStrip = ({
   onNewTab?: () => void
   onPin: (session: PageSession, chrome: PageChrome) => void
   onUnpin: (id: string) => void
-  pinnedIds: Set<string>
+  pinnedPages: SavedPage[]
+  onRename: (page: SavedPage) => void
   headerStart?: ReactNode
   actions?: ReactNode
 }) => {
   const { t } = useLingui()
+  const pinnedById = new Map(pinnedPages.map((page) => [page.id, page]))
+  const openingRename = useRef(false)
   const stripRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     stripRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
@@ -96,10 +101,12 @@ export const PageTabStrip = ({
         }}
       >
         {sessions.map((session) => {
+          const pinned = pinnedById.get(session.page.id)
           const title =
-            session.browser.url === 'about:blank'
+            pinned?.title ??
+            (session.browser.url === 'about:blank'
               ? t`New tab`
-              : session.browser.title || session.page.title || URL.parse(session.browser.url)?.hostname || t`Page`
+              : session.browser.title || session.page.title || URL.parse(session.browser.url)?.hostname || t`Page`)
           const selected = session.id === activeId
           return (
             <ContextMenu key={session.id}>
@@ -153,7 +160,14 @@ export const PageTabStrip = ({
                   </button>
                 </div>
               </ContextMenuTrigger>
-              <ContextMenuContent>
+              <ContextMenuContent
+                onCloseAutoFocus={(event) => {
+                  if (openingRename.current) {
+                    event.preventDefault()
+                    openingRename.current = false
+                  }
+                }}
+              >
                 <ContextMenuItem disabled={!canPinPage(session)} onSelect={() => onPin(session, 'browser')}>
                   <Pin />
                   <Trans>Pin</Trans>
@@ -162,7 +176,18 @@ export const PageTabStrip = ({
                   <AppWindow />
                   <Trans>Pin as app</Trans>
                 </ContextMenuItem>
-                {pinnedIds.has(session.page.id) && (
+                {pinned && (
+                  <ContextMenuItem
+                    onSelect={() => {
+                      openingRename.current = true
+                      onRename(pinned)
+                    }}
+                  >
+                    <Pencil />
+                    <Trans>Rename</Trans>
+                  </ContextMenuItem>
+                )}
+                {pinned && (
                   <ContextMenuItem onSelect={() => onUnpin(session.page.id)}>
                     <PinOff />
                     <Trans>Unpin</Trans>

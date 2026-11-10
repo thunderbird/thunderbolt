@@ -17,14 +17,14 @@ export const BrowserNewTab = ({ children }: { children?: ReactNode }) => (
       <div className="size-24 [perspective:480px]">
         <AppLogo size={96} className="browser-new-tab-logo" />
       </div>
-      <p className="text-sm leading-relaxed text-muted-foreground">
-        {children || (
+      {children ?? (
+        <p className="text-sm leading-relaxed text-muted-foreground">
           <Trans>
             Enter a URL above
             <br /> or ask your agent to open a page.
           </Trans>
-        )}
-      </p>
+        </p>
+      )}
     </div>
   </div>
 )

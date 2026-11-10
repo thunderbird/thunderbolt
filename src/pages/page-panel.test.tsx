@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, mock, spyOn } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -56,7 +56,7 @@ it('expands the exact HTML session without mounting another renderer or creating
   expect(container.querySelector('iframe')).toBeNull()
   expect(container.querySelector('[data-page-slot]')).toHaveAttribute('data-page-slot', id)
   const controls = screen.getByRole('button', { name: 'Select element on page' }).parentElement!
-  expect(controls.children[1]).toHaveAttribute('aria-label', 'Expand page')
+  expect(controls.children[2]).toHaveAttribute('aria-label', 'Expand page')
   fireEvent.click(screen.getByRole('button', { name: 'Expand page' }))
   expect(screen.getByTestId('location')).toHaveTextContent('/pages/stateful')
   expect(usePageStore.getState().sessions).toHaveLength(1)
@@ -92,23 +92,32 @@ it('shows an external browser fallback on web and never renders a remote iframe'
   expect(screen.getByRole('link', { name: 'Open in your browser' })).toHaveAttribute('href', 'https://example.com/')
   expect(screen.getByRole('button', { name: 'Select element on page' })).toBeDisabled()
   expect(screen.queryByRole('textbox', { name: 'Address' })).toBeNull()
-  expect(screen.queryByRole('button', { name: 'New tab' })).toBeNull()
+  expect(screen.getByRole('button', { name: 'New tab' })).toBeEnabled()
   expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull()
   expect(screen.queryByRole('button', { name: 'Go forward' })).toBeNull()
   expect(screen.queryByRole('button', { name: 'Reload page' })).toBeNull()
-  expect(container.querySelector('[data-page-external-address]')).toHaveTextContent('https://example.com/')
+  expect(screen.getByRole('button', { name: 'Browse in the desktop app' })).toHaveTextContent('https://example.com/')
+  fireEvent.click(screen.getByRole('button', { name: 'Browse in the desktop app' }))
+  const prompt = within(screen.getByRole('dialog', { name: 'Browse in the desktop app' }))
+  expect(prompt.getByRole('link', { name: 'Download desktop app' })).toHaveAttribute(
+    'href',
+    'https://github.com/thunderbird/thunderbolt/releases/latest',
+  )
+  expect(prompt.getByRole('link', { name: 'Open in your browser' })).toHaveAttribute('href', 'https://example.com/')
   expect(container.querySelector('iframe')).toBeNull()
 })
 
-it('explains web page support on a blank page without inviting URL entry or creating more empty tabs', () => {
+it('opens desktop download tabs from the plus button and empty tab-strip double-click', () => {
   usePageStore.getState().ensure({ id: 'blank', title: '', source: { kind: 'url', url: 'about:blank' } })
   const { container } = mount()
   expect(screen.queryByRole('textbox', { name: 'Address' })).toBeNull()
-  expect(screen.queryByRole('button', { name: 'New tab' })).toBeNull()
-  expect(container.querySelector('[data-browser-new-tab]')).toHaveTextContent('Ask your agent to create a page.')
+  expect(screen.getByRole('button', { name: 'New tab' })).toBeEnabled()
+  expect(container.querySelector('[data-browser-new-tab]')).toHaveTextContent('Browse with your agent')
   expect(container.querySelector('[data-browser-new-tab]')).not.toHaveTextContent('Enter a URL above')
+  fireEvent.click(screen.getByRole('button', { name: 'New tab' }))
+  fireEvent.click(screen.getByRole('button', { name: 'New tab' }))
   fireEvent.doubleClick(container.querySelector('[data-browser-tab-empty]')!)
-  expect(usePageStore.getState().sessions).toHaveLength(1)
+  expect(usePageStore.getState().sessions).toHaveLength(4)
 })
 
 it.each([true, false])('retains URL entry and tab creation in native apps (desktop: %s)', (desktop) => {
@@ -121,7 +130,7 @@ it.each([true, false])('retains URL entry and tab creation in native apps (deskt
     expect(screen.getByRole('button', { name: 'New tab' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Go back' })).toBeDisabled()
     expect(container.querySelector('[data-browser-new-tab]')).toHaveTextContent('Enter a URL above')
-    expect(container.querySelector('[data-page-external-address]')).toBeNull()
+    expect(container.querySelector('[data-desktop-browser-address-bar]')).toBeNull()
   } finally {
     cleanup()
     native.mockRestore()

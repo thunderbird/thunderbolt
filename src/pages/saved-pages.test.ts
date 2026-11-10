@@ -12,7 +12,7 @@ import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable, settingsTable } from '@/db/tables'
 import { localSavedPagesStore } from './local-saved-pages'
 import { createSavedPage, maxSavedPageHtmlBytes, parseSavedPage, savedPageKey } from './saved-page'
-import { getSavedPagesQuery, removeSavedPage, savedPagesFromRows, savePage } from './saved-pages'
+import { getSavedPagesQuery, removeSavedPage, renameSavedPage, savedPagesFromRows, savePage } from './saved-pages'
 
 const website: PageDefinition = {
   id: 'page-one',
@@ -91,6 +91,27 @@ describe('saved page persistence', () => {
     await savePage(db, local)
     expect(localSavedPagesStore.getSnapshot().find((page) => page.id === local.id)?.deletedAt).toBeNull()
   })
+
+  it.each([website, html, local])(
+    'renames $source.kind pins without changing their content, order, or storage',
+    async (page) => {
+      const db = getDb()
+      const before = await savePage(db, page, 'app')
+      const renamed = await renameSavedPage(db, page.id, '  My page  ')
+      expect(renamed).toEqual({ ...before, title: 'My page', updatedAt: renamed.updatedAt })
+      if (page.source.kind === 'local-app') {
+        expect(await getSavedPagesQuery(db)).toEqual([])
+        expect(localSavedPagesStore.getSnapshot().find((saved) => saved.id === page.id)).toEqual(renamed)
+      } else {
+        expect(savedPagesFromRows(await getSavedPagesQuery(db))).toEqual([renamed])
+      }
+      await expect(renameSavedPage(db, page.id, '   ')).rejects.toThrow()
+      await removeSavedPage(db, page.id)
+      await expect(renameSavedPage(db, page.id, 'Do not restore')).rejects.toThrow('no longer pinned')
+      expect(savedPagesFromRows(await getSavedPagesQuery(db))).toEqual([])
+      expect(localSavedPagesStore.getSnapshot().filter((saved) => saved.deletedAt === null)).toEqual([])
+    },
+  )
 
   it('rejects local launch references smuggled into synchronized rows', () => {
     const valid = createSavedPage(website, 'browser')

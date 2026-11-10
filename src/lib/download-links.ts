@@ -4,6 +4,8 @@
 
 import { getWebOsPlatform } from '@/lib/platform'
 
+export const desktopDownloadsUrl = 'https://github.com/thunderbird/thunderbolt/releases/latest'
+
 export const downloadLinks = {
   macos:
     'https://github.com/thunderbird/thunderbolt/releases/download/untagged-2336dbd4acc33a514985/Thunderbolt_0.1.61_aarch64.dmg',

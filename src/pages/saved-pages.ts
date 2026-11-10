@@ -54,6 +54,22 @@ export const savePage = async (
   return saved
 }
 
+/** Rename the latest saved record without changing its destination, chrome, or pin date. */
+export const renameSavedPage = async (db: AnyDrizzleDatabase, id: string, title: string): Promise<SavedPage> => {
+  const local = localSavedPagesStore.getSnapshot().find((saved) => saved.id === id)
+  const previous = local ?? parseSavedPage((await getSavedPagesQuery(db, id))[0]?.value)
+  if (!previous || previous.deletedAt !== null) {
+    throw new Error('This page is no longer pinned.')
+  }
+  const saved = createSavedPage({ ...previous, title }, previous.chrome, previous)
+  if (local) {
+    localSavedPagesStore.save(saved)
+  } else {
+    await updateSettings(db, { [savedPageKey(id)]: JSON.stringify(saved) })
+  }
+  return saved
+}
+
 /** An explicit tombstone preserves unpinning across sync without deleting source chats or files. */
 export const removeSavedPage = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   const local = localSavedPagesStore.getSnapshot().find((saved) => saved.id === id)

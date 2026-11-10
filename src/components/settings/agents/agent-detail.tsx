@@ -48,8 +48,7 @@ type TestState = 'idle' | 'testing' | { isReachable: boolean; testedAt: string; 
 type AgentDetailProps = {
   initialAction?: 'edit' | 'remove'
   agent: Agent
-  /** Gates the management affordances — only customs the current user owns are
-   *  editable / removable. */
+  /** Custom agents can be managed locally or by their signed-in owner. */
   currentUserId: string | null
   onClose: () => void
   /** Called after a custom agent is removed so the parent closes the panel. */

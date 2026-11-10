@@ -60,9 +60,9 @@ const createRoutingHarness = async (threadId: string, history: ThunderboltUIMess
   const proxyFetch = Object.assign(async () => new Response('unused proxy'), { preconnect: async () => true })
   const connect = mock(async () => adapter)
   const route = createAgentRoutingFetch(threadId, save, {} as HttpClient, () => proxyFetch, {
+    getAvailableModels: async () => [model],
     getOrConnectAdapter: connect,
     getChatReasoningEffort: async () => undefined,
-    getAvailableModels: async () => [model],
   })
   return {
     save,

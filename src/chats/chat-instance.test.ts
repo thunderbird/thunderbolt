@@ -30,8 +30,29 @@ import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from './chat-store'
-import { createAgentRoutingFetch, createChatInstance, type CreateChatInstanceDeps } from './chat-instance'
+import {
+  createAgentRoutingFetch as createRoutingFetch,
+  createChatInstance,
+  type CreateChatInstanceDeps,
+} from './chat-instance'
 import { getTurnActivity } from './turn-activity'
+
+/** Keep routing unit tests independent of database model and reasoning settings. */
+const createAgentRoutingFetch = (...args: Parameters<typeof createRoutingFetch>) => {
+  const [id, saveMessages, httpClient, getProxyFetch, dependencies, state] = args
+  return createRoutingFetch(
+    id,
+    saveMessages,
+    httpClient,
+    getProxyFetch,
+    {
+      getAvailableModels: async () => useChatStore.getState().models,
+      getChatReasoningEffort: async () => undefined,
+      ...dependencies,
+    },
+    state,
+  )
+}
 
 const sessionId = 'sess-1'
 const testModels = [
@@ -213,7 +234,6 @@ describe('createAgentRoutingFetch — connection status', () => {
   it('refreshes access from the database even when the store still has usable credentials', async () => {
     const fetchModel = mock(async () => new Response('ok'))
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
-      getChatReasoningEffort: async () => undefined,
       getAvailableModels: async () => [],
       getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch: fetchModel }),
     })
@@ -235,7 +255,6 @@ describe('createAgentRoutingFetch — connection status', () => {
       useChatStore.getState().updateSession(sessionId, { chatThread: thread })
     }
     const fetch = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
-      getChatReasoningEffort: async () => undefined,
       getAvailableModels: async () => [{ ...testModels[0], isConfidential: 1 }],
       getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch: fetchModel }),
     })
@@ -253,7 +272,6 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
-      getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: connect,
     })
     const request = fetch('https://backend.test', { body: '{}' })
@@ -270,7 +288,6 @@ describe('createAgentRoutingFetch — connection status', () => {
     const seenKeys: Array<string | null | undefined> = []
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
-      getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: () => connected.promise,
     })
     const request = fetch('https://backend.test', { body: '{}' })
@@ -286,6 +303,41 @@ describe('createAgentRoutingFetch — connection status', () => {
     await request
     expect(seenKeys).toEqual(['rotated'])
   })
+
+  it.each(['prompt', 'compact'] as const)(
+    'uses the logical turn model for prompts and the currently selected model for compaction: %s',
+    async (operation) => {
+      useChatStore.getState().updateSession(sessionId, { selectedModel: testModels[1] })
+      const seen: AgentAdapterContext[] = []
+      const route = createAgentRoutingFetch(
+        sessionId,
+        async () => {},
+        httpClient,
+        getProxyFetch,
+        {
+          getOrConnectAdapter: async () => ({
+            ...makeAdapter(builtInAgent),
+            fetch: async (_init, context) => {
+              seen.push(context)
+              return new Response('ok')
+            },
+            compact: async (_init, context) => {
+              seen.push(context)
+              return { version: 1, summary: 'Summary', tokensBefore: 100, contextTokens: 10, retainedTail: [] }
+            },
+          }),
+        },
+        { getTurnModel: () => testModels[0] },
+      )
+      if (operation === 'prompt') {
+        await route('https://backend.test', { body: '{}' })
+      } else {
+        await route.compact([], undefined, new AbortController().signal)
+      }
+      expect(seen).toHaveLength(1)
+      expect(seen[0].selectedModel.id).toBe(operation === 'prompt' ? 'm1' : 'm2')
+    },
+  )
 
   it.each(['prompt', 'compact'] as const)('rechecks access after reasoning discovery before %s', async (operation) => {
     const discovering = Promise.withResolvers<void>()
@@ -330,7 +382,6 @@ describe('createAgentRoutingFetch — connection status', () => {
       getProxyFetch,
       {
         getAvailableModels: async () => useChatStore.getState().models,
-        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => ({
           ...makeAdapter(builtInAgent),
           fetch: async (_init, context) => {
@@ -352,7 +403,6 @@ describe('createAgentRoutingFetch — connection status', () => {
     const fetchModel = mock(async () => new Response('ok'))
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
       getAvailableModels: async () => useChatStore.getState().models,
-      getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => ({ ...makeAdapter(remote), fetch: fetchModel }),
     })
     await fetch('https://backend.test', { body: '{}' })

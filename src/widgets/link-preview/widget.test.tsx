@@ -9,6 +9,7 @@ import { ContentViewProvider } from '@/content-view/context'
 import type { SourceMetadata } from '@/types/source'
 import { act, cleanup, render, fireEvent } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import type { HttpClient } from '@/lib/http'
@@ -27,7 +28,6 @@ import * as searchAvailability from '@/integrations/standalone-search/use-search
 import { createTestProvider } from '@/test-utils/test-provider'
 import { LinkPreviewWidget } from './widget'
 import { LinkPreview } from './display'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { ReactElement } from 'react'
 
 const originalLocalSettings = useLocalSettingsStore.getState()

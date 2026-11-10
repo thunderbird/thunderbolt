@@ -377,9 +377,10 @@ export const createAgentRoutingFetch = (
 
     await session.configurationChange
     const { chatThread, selectedAgent } = session
-    const selectedModel = isBuiltInAgent(selectedAgent)
-      ? (routingState.getTurnModel?.() ?? session.selectedModel)
-      : session.selectedModel
+    const selectedModel =
+      operation === 'prompt' && isBuiltInAgent(selectedAgent)
+        ? (routingState.getTurnModel?.() ?? session.selectedModel)
+        : session.selectedModel
     requireRunnableModel(selectedAgent, selectedModel)
     const telemetry =
       operation === 'prompt' && isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined

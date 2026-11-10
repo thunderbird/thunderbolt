@@ -29,7 +29,7 @@
 
 import { resolveAuthSession, type Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { getMiniApps, isRequestOriginAllowed, toPublicMiniApps } from '@/config/settings'
+import { getMiniApps, isMiniAppAllowed, isRequestOriginAllowed, toPublicMiniApps } from '@/config/settings'
 import type { User } from '@shared/types/auth'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { SignJWT } from 'jose'
@@ -72,6 +72,9 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
    * log volume any caller could drive.
    */
   const publicApps = toPublicMiniApps(apps)
+  // Only a gated app makes the list depend on the caller. Without one the route
+  // does no session lookup, as before, so an auth or DB outage cannot fail it.
+  const hasGatedApps = [...apps.values()].some((app) => app.allowedEmails)
 
   // Mounted even with an empty registry. Skipping the routes made `GET
   // /mini-apps` 404, which the client cannot tell apart from a network failure
@@ -91,29 +94,48 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
       .onError(safeErrorHandler)
       /**
        * The registry the frontend renders from — same config as the token route
-       * reads, minus the secrets.
+       * reads, minus the secrets and allowlists.
        *
-       * Unauthenticated on purpose. There is nothing here to protect: the
-       * response is `toPublicMiniApps`, which strips every app's secret, and
-       * the token route below is what actually guards identity. Session-gating
-       * it only cost behaviour — a 403 for anonymous and signed-out callers
-       * left the client unable to say "this deployment runs no apps" without
+       * Usable without a session. There is nothing to protect in an ungated
+       * app's entry: the response is `toPublicMiniApps`, and the token route
+       * below is what actually guards identity. Session-gating the whole route
+       * only cost behaviour — a 403 for anonymous and signed-out callers left
+       * the client unable to say "this deployment runs no apps" without
        * inventing a permanent `loading` state, so `/apps/:id` hung blank
        * forever for them.
        *
-       * What that gives up is app ids and origins being enumerable by anyone
-       * who can reach the deployment. Accepted while the registry is
+       * When any app has `allowedEmails`, the session is read, because that app
+       * is left out for everyone not on the list, anonymous and signed-out
+       * callers included. Those callers still get a 200 with whatever remains.
+       * With no gated app the route does no lookup at all.
+       *
+       * What that gives up is ungated app ids and origins being enumerable by
+       * anyone who can reach the deployment. Accepted while the registry is
        * operator-declared config; revisit alongside the first customer
        * deployment, when we know whether naming their apps is sensitive.
        */
-      .get('/', () => ({ apps: publicApps }))
+      .get('/', async ({ request, set }) => {
+        if (!hasGatedApps) {
+          return { apps: publicApps }
+        }
+        // The answer varies by caller from here on, so nothing may cache it.
+        set.headers['cache-control'] = 'private, no-store'
+        const session = await resolveAuthSession(auth, request.headers)
+        const user = session?.user as User | undefined
+        // An anonymous user's email is a generated placeholder, not an identity.
+        const email = user?.isAnonymous ? null : user?.email
+        // Filtered on the config entries, then made public, so an allowlist is
+        // always checked against its own app whatever order the public list takes.
+        const visible = new Map([...apps].filter(([, app]) => isMiniAppAllowed(app, email)))
+        return { apps: toPublicMiniApps(visible) }
+      })
       .post(
         '/:appId/token',
         async ({ params, request, set }) => {
           /*
            * Resolved here rather than in a `.derive` on the instance: the
-           * registry route above needs no session, and deriving one made every
-           * sidebar render pay for an auth lookup it never read.
+           * registry route above reads a session only when an app is gated, and
+           * deriving one made every sidebar render pay for a lookup it may not use.
            *
            * Through `resolveAuthSession`, not `auth.api.getSession` directly —
            * that throws an `APIError` for a rejected credential, which reaches
@@ -143,7 +165,7 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
           // indexing a plain object with it let inherited `Object.prototype` keys
           // pass the guard below (see `getMiniApps`).
           const app = apps.get(params.appId)
-          if (!app) {
+          if (!app || !isMiniAppAllowed(app, user.email)) {
             set.status = 404
             return { error: 'Unknown Mini App' }
           }

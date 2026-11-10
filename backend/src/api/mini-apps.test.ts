@@ -287,3 +287,117 @@ describe('GET /mini-apps', () => {
     expect(body.apps).toEqual([])
   })
 })
+
+describe('allowedEmails', () => {
+  const gatedRegistry = (allowedEmails?: unknown) =>
+    JSON.stringify({
+      open: { name: 'Open', origin: 'http://localhost:5174', secret: financeSecret },
+      gated: {
+        name: 'Gated',
+        origin: 'http://localhost:5180',
+        secret: journeysSecret,
+        ...(allowedEmails === undefined ? {} : { allowedEmails }),
+      },
+    })
+  const gatedSettings = (allowedEmails?: unknown) =>
+    createTestSettings({ miniApps: gatedRegistry(allowedEmails), appUrl: 'http://localhost:1420' })
+  const listed = ['Demo@Example.com', 'other@example.com']
+
+  const list = async (auth: Auth, allowedEmails?: unknown) => {
+    const response = await createMiniAppRoutes(auth, gatedSettings(allowedEmails)).handle(
+      new Request('http://localhost/mini-apps'),
+    )
+    expect(response.status).toBe(200)
+    return ((await response.json()) as { apps: { id: string }[] }).apps.map((app) => app.id)
+  }
+  const token = (auth: Auth, allowedEmails?: unknown) =>
+    createMiniAppRoutes(auth, gatedSettings(allowedEmails)).handle(
+      new Request('http://localhost/mini-apps/gated/token', {
+        method: 'POST',
+        headers: { origin: 'http://localhost:1420' },
+      }),
+    )
+
+  it('leaves an app without the field open to everyone, signed out included', async () => {
+    expect(await list(authWithUser(null))).toEqual(['open', 'gated'])
+    expect(await list(authWithUser(realUser))).toEqual(['open', 'gated'])
+    expect((await token(authWithUser(realUser))).status).toBe(200)
+  })
+
+  it('shows a listed user the app and mints them a token, matching case-insensitively', async () => {
+    expect(await list(authWithUser(realUser), listed)).toEqual(['open', 'gated'])
+    expect((await token(authWithUser(realUser), listed)).status).toBe(200)
+    expect(await list(authWithUser({ ...realUser, email: 'DEMO@EXAMPLE.COM' }), listed)).toEqual(['open', 'gated'])
+  })
+
+  it('hides the app from an unlisted user and answers the token route with 404', async () => {
+    const stranger = { ...realUser, email: 'stranger@example.com' }
+
+    expect(await list(authWithUser(stranger), listed)).toEqual(['open'])
+    const response = await token(authWithUser(stranger), listed)
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({ error: 'Unknown Mini App' })
+  })
+
+  it('hides the app from signed-out and anonymous callers while still answering 200', async () => {
+    expect(await list(authWithUser(null), listed)).toEqual(['open'])
+    expect(await list(authWithUser({ ...realUser, isAnonymous: true }), listed)).toEqual(['open'])
+  })
+
+  it('never puts the allowlist on the wire', async () => {
+    const response = await createMiniAppRoutes(authWithUser(realUser), gatedSettings(listed)).handle(
+      new Request('http://localhost/mini-apps'),
+    )
+    const text = await response.text()
+
+    expect(text).not.toContain('allowedEmails')
+    expect(text).not.toContain('other@example.com')
+    expect(JSON.stringify(toPublicMiniApps(getMiniApps({ miniApps: gatedRegistry(listed) })))).not.toContain(
+      'allowedEmails',
+    )
+  })
+
+  it('matches an email with stray whitespace in the config', async () => {
+    expect(await list(authWithUser(realUser), [' demo@example.com '])).toEqual(['open', 'gated'])
+  })
+
+  const authThatFails = (): Auth =>
+    ({
+      api: {
+        getSession: async () => {
+          throw new Error('db down')
+        },
+      },
+    }) as unknown as Auth
+
+  it('does no session lookup when no app is gated, so an auth outage cannot fail the list', async () => {
+    expect(await list(authThatFails())).toEqual(['open', 'gated'])
+  })
+
+  it('fails the list when the session lookup throws and an app is gated, rather than guessing', async () => {
+    const routes = createMiniAppRoutes(authThatFails(), gatedSettings(listed))
+    const response = await routes.handle(new Request('http://localhost/mini-apps'))
+
+    expect(response.status).toBe(500)
+  })
+
+  it('marks a caller-dependent list private and uncacheable', async () => {
+    const response = await createMiniAppRoutes(authWithUser(realUser), gatedSettings(listed)).handle(
+      new Request('http://localhost/mini-apps'),
+    )
+
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it('drops an entry whose allowedEmails is not an array of strings', () => {
+    const original = console.error
+    console.error = () => {}
+    try {
+      for (const bad of ['demo@example.com', [1, 2], { a: 'b' }]) {
+        expect([...getMiniApps({ miniApps: gatedRegistry(bad) }).keys()]).toEqual(['open'])
+      }
+    } finally {
+      console.error = original
+    }
+  })
+})

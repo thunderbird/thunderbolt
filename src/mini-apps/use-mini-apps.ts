@@ -3,17 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * The Mini App registry, fetched once per session.
+ * The Mini App registry, fetched once per identity.
  *
  * Held in a module-level store rather than component state so the sidebar and
  * the app route share one fetch and one answer — two independent fetches could
  * briefly disagree about whether an app exists, which surfaces as a Not Found
  * flashing over a page that is about to work.
  *
- * Ungated: `GET /mini-apps` is unauthenticated and carries no secret, so every
- * session resolves to the same two terminal states — apps, or none. There is no
+ * `GET /mini-apps` works without a session and carries no secret, so every
+ * caller resolves to the same two terminal states — apps, or none. There is no
  * third "you may not ask" state to model, which is what used to leave
- * `/apps/:id` on `loading` forever for anonymous and signed-out callers.
+ * `/apps/:id` on `loading` forever for anonymous and signed-out callers. The
+ * answer can still depend on the caller: an app with `allowedEmails` is only
+ * listed for the users on it. So the list is fetched again when the signed-in
+ * user changes (see {@link syncMiniAppsUser}), not once per page session.
  *
  * Every path out of `loading` is now bounded. Removing the auth gate fixed the
  * cases where we *chose* not to ask; it left the case where we ask and are never
@@ -23,7 +26,7 @@
  */
 
 import { useEffect, useSyncExternalStore } from 'react'
-import { useHttpClient } from '@/contexts'
+import { useAuth, useHttpClient } from '@/contexts'
 import type { HttpClient } from '@/lib/http'
 import { parseMiniAppRegistry, type MiniAppDefinition } from './registry'
 
@@ -60,11 +63,13 @@ let inFlight: Promise<void> | null = null
 /**
  * Which era of the store a load belongs to.
  *
- * Only {@link resetMiniAppsForTesting} advances it, and only tests call that —
- * but without it a load started by one test file could still be in flight when
- * the next file resets the store, and its `setState` would land afterwards.
- * That made two tests here fail roughly one randomized run in four, which is
- * exactly the kind of flake nobody can reproduce on demand.
+ * Advanced when the signed-in user changes, so a request still in flight for the
+ * previous identity cannot land its answer over the new one's, and by
+ * {@link resetMiniAppsForTesting}: without that, a load started by one test file
+ * could still be in flight when the next file resets the store, and its
+ * `setState` would land afterwards. That made two tests here fail roughly one
+ * randomized run in four, which is exactly the kind of flake nobody can
+ * reproduce on demand.
  */
 let generation = 0
 const listeners = new Set<() => void>()
@@ -87,7 +92,7 @@ const subscribe = (listener: () => void) => {
  * transient 502 at startup left the tab with no apps for the rest of its life,
  * and no way to recover short of a reload.
  */
-const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
+const loadMiniApps = (httpClient: HttpClient, keepListOnFailure = false): Promise<void> => {
   const era = generation
   inFlight ??= (async () => {
     try {
@@ -115,12 +120,76 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
       if (era !== generation) {
         return
       }
-      setState({ apps: [], loading: false, failed: true })
+      // A failed refetch drops to `failed`, except when an anonymous session
+      // became a real user: an anonymous session never sees gated apps, so its
+      // list is a subset of what the new user may see and stays valid. For a
+      // different user, or signing out, the old list belongs to someone else and
+      // showing it would be showing the wrong user's apps. Only a list that
+      // actually loaded is kept: one still pending is not an answer, and calling
+      // it settled would read as "no apps configured". No retry either way; the
+      // next mount tries again.
+      const keep = keepListOnFailure && !state.loading && !state.failed
+      setState(keep ? state : { apps: [], loading: false, failed: true })
       // Cleared so the next mount retries, rather than the session being stuck.
       inFlight = null
     }
   })()
   return inFlight
+}
+
+/**
+ * The identity the current registry was fetched for: a user id, `null` for
+ * signed out, `undefined` until a session settles.
+ */
+let registryIdentity: string | null | undefined
+/** Whether that identity was an anonymous session. */
+let registryAnonymous = false
+
+/**
+ * Fetch again when the signed-in identity changes, including signing out.
+ *
+ * The registry depends on who is asking: an app with `allowedEmails` is left
+ * out for an anonymous session, and the in-tab sign-in modal turns that session
+ * into a real one without a reload. Keyed on the user id rather than on the
+ * modal's success event, so it also fires when the modal is dismissed after the
+ * code was accepted. The list on screen stays while the refetch is in flight;
+ * if that fails the store drops to `failed`, unless an anonymous session became
+ * a real user (see the failure branch of `loadMiniApps`). Advancing the era
+ * drops any request still in flight for the old identity.
+ *
+ * `undefined` means the session has not settled and is ignored. The first
+ * settled identity is recorded without a refetch: the initial load already
+ * covers it.
+ */
+export const syncMiniAppsUser = (identity: string | null | undefined, httpClient: HttpClient, isAnonymous = false) => {
+  if (identity === undefined || identity === registryIdentity) {
+    return
+  }
+  const isFirstIdentity = registryIdentity === undefined
+  const anonymousBecameReal = registryAnonymous && identity !== null && !isAnonymous
+  registryIdentity = identity
+  registryAnonymous = isAnonymous
+  if (isFirstIdentity) {
+    return
+  }
+  generation += 1
+  inFlight = null
+  void loadMiniApps(httpClient, anonymousBecameReal)
+}
+
+/**
+ * Keeps the registry in step with the session. Mount once at app level, so every
+ * reader of the store is covered at every width; `useMiniApps` consumers stay
+ * free of auth.
+ */
+export const useMiniAppsUserSync = () => {
+  const httpClient = useHttpClient()
+  const { data: session, isPending } = useAuth().useSession()
+  const identity = isPending ? undefined : (session?.user?.id ?? null)
+  const isAnonymous = !!session?.user?.isAnonymous
+  useEffect(() => {
+    syncMiniAppsUser(identity, httpClient, isAnonymous)
+  }, [identity, httpClient, isAnonymous])
 }
 
 /**
@@ -134,6 +203,8 @@ export const resetMiniAppsForTesting = () => {
   generation += 1
   state = emptyState
   inFlight = null
+  registryIdentity = undefined
+  registryAnonymous = false
   listeners.clear()
 }
 

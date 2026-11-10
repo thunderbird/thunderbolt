@@ -192,6 +192,11 @@ Registering something else means editing `MINI_APPS` — see the block in `backe
 One config, `MINI_APPS` on the backend, keyed by app id. The frontend reads it over `GET /mini-apps` with secrets
 stripped; the token route signs with them.
 
+An entry may carry `allowedEmails`, an array of emails matched case-insensitively against the signed-in user's email.
+When present, `GET /mini-apps` leaves the app out for everyone else (anonymous and signed-out callers included) and the
+token route answers 404 as for an unknown app. When absent the app is open to everyone. The list never leaves the
+backend, and the client refetches the registry after an in-tab sign-in so an allowed user sees the app without a reload.
+
 It is deliberately not two configs. An earlier cut kept presentation in a frontend array and only the audience on
 the backend, which meant two lists of the same apps that could disagree — and the failure was silent: an app the
 backend didn't know about rendered in the sidebar, loaded fine, and then couldn't authenticate.

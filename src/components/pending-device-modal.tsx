@@ -4,6 +4,7 @@
 
 import { Trans } from '@lingui/react/macro'
 import { useState } from 'react'
+import type { Device } from '@/dal'
 import { Smartphone } from 'lucide-react'
 
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
@@ -14,24 +15,29 @@ import { IconCircle } from '@/components/onboarding/icon-circle'
 import { useApproveDevice } from '@/hooks/use-approve-device'
 import { useDenyDevice } from '@/hooks/use-deny-device'
 import { usePendingDeviceNotification } from '@/hooks/use-pending-device-notification'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 export const PendingDeviceModal = () => {
-  const { pendingDeviceToNotify, pendingDevices } = usePendingDeviceNotification()
-  const [confirmApproveOpen, setConfirmApproveOpen] = useState(false)
+  const syncEnabled = useLocalSettingsStore((state) => state.syncEnabled)
+  return syncEnabled ? <SyncedPendingDeviceModal /> : null
+}
+
+const SyncedPendingDeviceModal = () => {
+  const { pendingDeviceToNotify } = usePendingDeviceNotification()
+  const [approvalTarget, setApprovalTarget] = useState<Device | null>(null)
   const [confirmDenyOpen, setConfirmDenyOpen] = useState(false)
 
-  const approveMutation = useApproveDevice(pendingDevices)
+  const approveMutation = useApproveDevice()
   const denyMutation = useDenyDevice()
 
   const isOpen = pendingDeviceToNotify !== null
 
-  const confirmApprove = () => {
-    if (!pendingDeviceToNotify) {
+  const confirmApprove = async (fingerprint: string) => {
+    if (!approvalTarget) {
       return
     }
-    approveMutation.mutate(pendingDeviceToNotify.id, {
-      onSuccess: () => setConfirmApproveOpen(false),
-    })
+    await approveMutation.mutateAsync({ device: approvalTarget, fingerprint })
+    setApprovalTarget(null)
   }
 
   const confirmDeny = () => {
@@ -80,7 +86,10 @@ export const PendingDeviceModal = () => {
             </div>
 
             <div className="pt-5 flex flex-col gap-2">
-              <Button className="w-full" onClick={() => setConfirmApproveOpen(true)}>
+              <Button
+                className="w-full"
+                onClick={() => pendingDeviceToNotify && setApprovalTarget({ ...pendingDeviceToNotify })}
+              >
                 <Trans>Approve</Trans>
               </Button>
               <Button className="w-full" variant="ghost" onClick={() => setConfirmDenyOpen(true)}>
@@ -102,11 +111,11 @@ export const PendingDeviceModal = () => {
         with missing public keys.
       */}
       <ApproveDeviceDialog
-        open={confirmApproveOpen}
-        onOpenChange={(open) => !open && setConfirmApproveOpen(false)}
+        device={approvalTarget}
+        open={approvalTarget !== null}
+        onOpenChange={(open) => !open && setApprovalTarget(null)}
         onConfirm={confirmApprove}
         isPending={approveMutation.isPending}
-        error={approveMutation.error?.message}
       />
 
       <RevokeDeviceDialog

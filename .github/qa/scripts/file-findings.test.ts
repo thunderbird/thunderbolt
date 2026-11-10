@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { computeScorecard, fileFindings, shouldBrake } from './file-findings'
+import { computeScorecard, fileFindings, type Filed, shouldBrake } from './file-findings'
 import { sanitize } from './sanitize'
 import { fingerprint, type RawFinding } from './findings'
+import { type CreateMessage, groupFindings, type Verified } from './verify'
 
 const runUrl = 'https://github.com/o/r/actions/runs/1'
 const now = Date.parse('2026-09-29T00:00:00Z')
@@ -29,8 +30,12 @@ type Existing = { id: string; identifier: string; url: string; completedAt: stri
 type Handlers = {
   existing?: Record<string, Existing[]>
   labels?: string[]
-  triage?: boolean
+  /** The team's workflow states; the fake returns the ones whose type the query asks for. */
+  states?: { id: string; type: string }[]
+  /** Served 250 a page, as the query asks, with the next page's start index as its cursor. */
   scorecard?: { labels: { nodes: { name: string }[] } }[]
+  /** Answers an operation (`PUT` for the storage upload) with this response instead of success, when it returns one. */
+  fail?: (op: string) => Response | undefined
 }
 
 type Input = { title: string; stateId: string; labelIds: string[]; description: string; priority: number }
@@ -42,35 +47,50 @@ type Vars = {
   label?: string
   contentType?: string
   filename?: string
+  after?: string | null
 }
 
 /** A function usable as `fetch` (adds the `preconnect` member Bun's type requires). */
 const asFetch = (fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>): typeof fetch =>
   Object.assign(fn, { preconnect: () => {} })
 
-/** Fake Linear API keyed on the GraphQL operation name; records every operation. */
 const fakeLinear = (handlers: Handlers = {}) => {
   const ops: { op: string; variables: Vars }[] = []
   const fetchFn = asFetch(async (url, init) => {
     if (String(url).includes('upload.test')) {
       ops.push({ op: 'PUT', variables: { headers: Object.fromEntries(new Headers(init?.headers)) } })
-      return new Response('', { status: 200 })
+      return handlers.fail?.('PUT') ?? new Response('', { status: 200 })
     }
     const { query, variables }: { query: string; variables: Vars } = JSON.parse(String(init?.body))
     const op = /^\s*(?:query|mutation) (\w+)/.exec(query)?.[1] ?? ''
     ops.push({ op, variables })
+    const failure = handlers.fail?.(op)
+    if (failure) return failure
     const data = (() => {
       if (op === 'Teams') return { teams: { nodes: [{ id: 't1', name: 'Thunderbolt' }] } }
       if (op === 'QaSetup') {
         const names = handlers.labels ?? ['qa-agent', 'Bug', 'Security', 'Human Required']
         return {
-          workflowStates: { nodes: handlers.triage === false ? [] : [{ id: 'triage-id' }] },
+          workflowStates: {
+            nodes: (handlers.states ?? [{ id: 'backlog-id', type: 'backlog' }]).filter(
+              (state) => state.type === /workflowStates\([^)]*type: \{ eq: "(\w+)" \}/.exec(query)?.[1],
+            ),
+          },
           issueLabels: { nodes: names.map((name) => ({ id: `l-${name}`, name, team: null })) },
         }
       }
       if (op === 'Dedupe') return { issues: { nodes: handlers.existing?.[variables.needle ?? ''] ?? [] } }
       if (op === 'Scorecard') {
-        return { issues: { nodes: variables.label === 'qa-agent' ? (handlers.scorecard ?? []) : [] } }
+        const all = variables.label === 'qa-agent' ? (handlers.scorecard ?? []) : []
+        const start = Number(variables.after ?? 0)
+        const end = start + 250
+        const hasNextPage = end < all.length
+        return {
+          issues: {
+            nodes: all.slice(start, end),
+            pageInfo: { hasNextPage, endCursor: hasNextPage ? String(end) : null },
+          },
+        }
       }
       if (op === 'CreateIssue') {
         const n = ops.filter((o) => o.op === 'CreateIssue').length
@@ -100,11 +120,9 @@ const fakeLinear = (handlers: Handlers = {}) => {
   }
 }
 
-/** Inputs of every issueCreate the fake saw. */
 const created = (api: ReturnType<typeof fakeLinear>): Input[] =>
   api.ops.flatMap((o) => (o.op === 'CreateIssue' && o.variables.input ? [o.variables.input] : []))
 
-/** Variables of every fileUpload the fake saw, `contentType` included. */
 const uploads = (api: ReturnType<typeof fakeLinear>): Vars[] =>
   api.ops.flatMap((o) => (o.op === 'FileUpload' ? [o.variables] : []))
 
@@ -112,7 +130,6 @@ const uploads = (api: ReturnType<typeof fakeLinear>): Vars[] =>
 const png = Buffer.from('89504e470d0a1a0a0000000d494844520000001000000010', 'hex')
 const jpeg = Buffer.from('ffd8ffc000110800100010', 'hex')
 
-/** A visual finding: a screenshot instead of a repro spec. */
 const visualVerified = (fields: Partial<RawFinding> = {}): Partial<RawFinding> => ({
   area: 'layout',
   oracle: { type: 'visual', evidence: 'The Continue button sits under the cookie banner' },
@@ -129,10 +146,12 @@ beforeEach(async () => {
 })
 afterEach(() => rm(outDir, { recursive: true, force: true }))
 
-/** Write verified.json with these findings (plus their repro specs, and a PNG per screenshot) as confirmed. */
-const writeVerified = async (findings: Partial<RawFinding>[], video?: string, charterDir = 'c2-chat') => {
+/** `priority` is what the judge proposed for that finding, written as is so a test can send a malformed one. */
+type Judged = Partial<RawFinding> & { priority?: string }
+
+const writeVerified = async (findings: Judged[], video?: string, charterDir = 'c2-chat') => {
   const confirmed = []
-  for (const [i, fields] of findings.entries()) {
+  for (const [i, { priority, ...fields }] of findings.entries()) {
     const finding = { ...base, ...fields }
     await mkdir(join(outDir, charterDir, 'repro'), { recursive: true })
     if (finding.screenshot) {
@@ -151,6 +170,7 @@ const writeVerified = async (findings: Partial<RawFinding>[], video?: string, ch
       finding,
       replay: { failed: 3, runs: 3 },
       artifacts: { video },
+      judge: { keep: true, reason: 'A real bug.', priority },
     })
   }
   await writeFile(
@@ -159,7 +179,7 @@ const writeVerified = async (findings: Partial<RawFinding>[], video?: string, ch
   )
 }
 
-/** A distinct finding per index (the fingerprint follows the evidence text). */
+/** The evidence differs per index because the fingerprint follows the evidence text. */
 const numbered = (n: number, fields: Partial<RawFinding> = {}): Partial<RawFinding>[] =>
   Array.from({ length: n }, (_, i) => ({
     title: `Bug ${i}`,
@@ -172,13 +192,13 @@ const run = (fetchFn: typeof fetch, extra: Partial<Parameters<typeof fileFinding
   fileFindings({ outDir, live: true, key: 'k', runUrl, sha: 'abc123', fetchFn, log: () => {}, now, ...extra })
 
 describe('dedupe', () => {
-  test('a new finding is created in Triage with labels, priority and no assignee', async () => {
+  test('a new finding is created in Backlog with labels, priority and no assignee', async () => {
     await writeVerified([{}])
     const api = fakeLinear()
     const [entry] = await run(api.fetchFn)
     expect(entry).toMatchObject({ action: 'created', identifier: 'THB-1', severity: 'Urgent' })
     const [input] = created(api)
-    expect(input).toMatchObject({ stateId: 'triage-id', labelIds: ['l-qa-agent', 'l-Bug'], priority: 1 })
+    expect(input).toMatchObject({ stateId: 'backlog-id', labelIds: ['l-qa-agent', 'l-Bug'], priority: 1 })
     expect(input.title).toBe(`Chat title disappears [qa:${fp({})}]`)
     expect(input).not.toHaveProperty('assigneeId')
     expect(input.description).toContain(runUrl)
@@ -241,73 +261,28 @@ describe('dedupe', () => {
   })
 })
 
-describe('cap and roll-up', () => {
-  test('files the 8 most severe, rolls the rest into one ticket', async () => {
-    await writeVerified([
-      ...numbered(9, { area: 'layout', oracle: { type: 'layout', evidence: 'wide' } }).map((f, i) => ({
-        ...f,
-        oracle: { type: 'layout', evidence: `wide ${'y'.repeat(i + 1)}` },
-      })),
-      { title: 'Urgent one' },
-    ])
-    const api = fakeLinear()
-    const filed = await run(api.fetchFn)
-    expect(filed[0]).toMatchObject({ severity: 'Urgent', action: 'created' })
-    expect(filed.filter((f) => f.action === 'created')).toHaveLength(8)
-    const rolled = filed.filter((f) => f.action === 'rolled-up')
-    expect(rolled).toHaveLength(2)
-    expect(new Set(rolled.map((f) => f.identifier)).size).toBe(1)
-    expect(created(api)).toHaveLength(9)
-  })
+describe('one ticket per finding, however many', () => {
+  const many = () => writeVerified([...numbered(9), ...numbered(4, { area: 'security' })])
 
-  test('a security finding over the cap still gets its own ticket, never the roll-up', async () => {
-    await writeVerified([
-      ...numbered(9),
-      { title: 'Leaky thing', area: 'security', oracle: { type: 'console-error', evidence: 'boom' } },
-    ])
+  test('a live run files every bug and every security finding as its own ticket', async () => {
+    await many()
     const api = fakeLinear()
     const filed = await run(api.fetchFn)
-    expect(filed.map((f) => f.action)).toEqual([...Array(8).fill('created'), 'created', 'rolled-up'])
-    const [security, rollup] = created(api).slice(-2)
-    expect(security.title).toContain('Leaky thing')
-    expect(security.labelIds).toContain('l-Security')
-    expect(security.description).not.toContain(runUrl)
-    expect(rollup.title).toContain('1 more finding')
-    expect(rollup.description).not.toContain('Leaky thing')
-  })
-
-  test('security findings have their own cap of 3, then one security roll-up with fingerprints only', async () => {
-    await writeVerified(numbered(5, { area: 'security' }))
-    const api = fakeLinear()
-    const filed = await run(api.fetchFn)
-    expect(filed.map((f) => f.action)).toEqual(['created', 'created', 'created', 'rolled-up', 'rolled-up'])
+    expect(filed.map((f) => f.action)).toEqual(Array(13).fill('created'))
+    expect(new Set(filed.map((f) => f.fp)).size).toBe(13)
     const tickets = created(api)
-    expect(tickets.slice(0, 3).every((t) => t.labelIds.includes('l-Security'))).toBe(true)
-    const rollup = tickets[3]
-    expect(rollup.title).toBe('QA agent: 2 more security findings over the 3-ticket cap')
-    expect(rollup.labelIds).toEqual(['l-qa-agent', 'l-Bug', 'l-Security'])
-    expect(rollup.description).not.toContain(runUrl)
-    expect(rollup.description).not.toContain('Bug ')
-    expect(rollup.description).toContain(`[qa:${filed[3].fp}] High`)
+    expect(tickets.map((t) => t.title)).toEqual(filed.map((f) => expect.stringContaining(`[qa:${f.fp}]`)))
+    expect(tickets.filter((t) => t.labelIds.includes('l-Security'))).toHaveLength(4)
+    expect(new Set(filed.map((f) => f.identifier)).size).toBe(13)
   })
 
-  test('a dry-run security roll-up leaves no finding text in the log or filed.json', async () => {
-    await writeVerified(numbered(4, { area: 'security' }))
+  test('a dry run would file every bug and every security finding as its own ticket', async () => {
+    await many()
     const lines: string[] = []
     const filed = await run(fakeLinear().fetchFn, { live: false, log: (l) => lines.push(l) })
-    expect(filed.map((f) => f.would)).toEqual(['created', 'created', 'created', 'rolled-up'])
-    const written = lines.join('\n') + (await readFile(join(outDir, 'filed.json'), 'utf8'))
-    expect(written).not.toContain('Bug ')
-    expect(written).not.toContain('Distinct failure')
-  })
-
-  test('a dry run over the cap logs the roll-up without any finding text', async () => {
-    await writeVerified(numbered(9))
-    const lines: string[] = []
-    const filed = await run(fakeLinear().fetchFn, { live: false, log: (l) => lines.push(l) })
-    expect(filed.map((f) => f.would)).toEqual([...Array(8).fill('created'), 'rolled-up'])
-    expect(lines.at(-1)).toBe('[dry run] would create the roll-up "QA agent: 1 more finding over the 8-ticket cap"')
-    expect(lines.join('\n')).not.toContain('Bug ')
+    expect(filed.map((f) => f.would)).toEqual(Array(13).fill('created'))
+    expect(new Set(filed.map((f) => f.fp)).size).toBe(13)
+    expect(lines).toEqual(filed.map((f) => `[dry run] would created ${f.fp} (${f.severity})`))
   })
 })
 
@@ -424,6 +399,236 @@ describe('one ticket per bug across platforms', () => {
   })
 })
 
+describe('one ticket per defect from the grouping call', () => {
+  // The confirmed findings of a real run, where each platform worded some defects differently.
+  const codeField = ['c1-first-run-desktop/1', 'c1-first-run-phone/1', 'c1-first-run-ios/1']
+  const backButton = ['c1-first-run-desktop/2', 'c1-first-run-phone/2', 'c1-first-run-ios/2', 'c1-first-run-android/1']
+  const locationField = ['c1-first-run-phone/3', 'c1-first-run-android/3']
+  const keyboard = ['c1-first-run-android/2', 'c1-first-run-ios/3']
+
+  const answer =
+    (text: string): CreateMessage =>
+    async () => ({
+      content: [{ type: 'text', text, citations: null }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 500, output_tokens: 50 },
+    })
+
+  /** Groups the fixture's findings with the scripted `reply` standing in for the model, then files a dry run. */
+  const fileGrouped = async (reply: string) => {
+    const verified: Verified = await Bun.file(join(import.meta.dir, '../fixtures/grouping/verified.json')).json()
+    for (const { charterDir, finding } of verified.confirmed) {
+      if (finding.repro_spec) await Bun.write(join(outDir, charterDir, finding.repro_spec), '// spec')
+    }
+    const { groups } = await groupFindings(verified.confirmed, answer(reply), 2, () => {})
+    await writeFile(join(outDir, 'verified.json'), JSON.stringify({ ...verified, groups }))
+    return fileFindings({ outDir, live: false, log: () => {}, now })
+  }
+
+  /** Each ticket the dry run would open, by fingerprint: its severity and its platforms line. */
+  const tickets = (filed: Filed[]) =>
+    Object.fromEntries(
+      filed.map(({ fp, severity, preview }) => [
+        fp,
+        [severity, /\*\*Platforms:\*\* (\w+(?:, \w+)*)/.exec(preview?.body ?? '')?.[1]],
+      ]),
+    )
+
+  test('files one ticket per defect, listing every platform, under its first platform finding fingerprint', async () => {
+    const filed = await fileGrouped(JSON.stringify({ groups: [codeField, backButton, locationField, keyboard] }))
+
+    expect(filed).toHaveLength(11)
+    expect(tickets(filed)).toEqual({
+      c2df0dd5: ['High', 'desktop, phone, ios'],
+      '32e97796': ['High', 'desktop, phone, ios, android'],
+      '75fcfd86': ['High', 'phone, android'],
+      '7944d694': ['High', 'ios, android'],
+    })
+    const body = (fp: string) => filed.find((f) => f.fp === fp)?.preview?.body ?? ''
+    // The Android wording reaches the ticket in case the grouping was wrong; members sharing the lead's fp add nothing.
+    expect(body('7944d694')).toContain(
+      '- android: Name field on onboarding is hidden behind the keyboard ([qa-layout] behind-keyboard textbox',
+    )
+    expect(body('32e97796')).toContain('- android: Onboarding back arrow button has no accessible name')
+    expect(body('32e97796')).not.toContain('- phone:')
+  })
+
+  test('a secret in any member refuses the whole group', async () => {
+    const wordings = numbered(2)
+    // The leaking member is rated lower, so it is never the one whose text leads the ticket.
+    await writeVerified([
+      { ...wordings[0], viewport: 'desktop' },
+      { ...wordings[1], title: 'Leak lin_api_abc123', priority: 'High' },
+    ])
+    const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
+    await writeFile(
+      join(outDir, 'verified.json'),
+      JSON.stringify({ ...verified, groups: [['c2-chat/0', 'c2-chat/1']] }),
+    )
+
+    const filed = await fileFindings({ outDir, live: false, log: () => {}, now })
+
+    expect(filed.map((f) => f.action)).toEqual(['refused', 'refused'])
+  })
+
+  test('a group files with the highest priority among its members', async () => {
+    const filed = await fileGrouped(JSON.stringify({ groups: [codeField, backButton, locationField, keyboard] }))
+
+    // The judge rated the Android keyboard finding Medium and the iOS one High.
+    expect(filed.find((f) => f.charterDir === 'c1-first-run-android' && f.id === '2')?.severity).toBe('High')
+  })
+
+  const fingerprintTickets = {
+    c2df0dd5: ['High', 'desktop, phone, ios'],
+    '32e97796': ['High', 'desktop, phone, ios'],
+    '75fcfd86': ['High', 'phone'],
+    cfa5e25a: ['High', 'android'],
+    '92ab6f2a': ['Medium', 'android'],
+    ee7d67ea: ['Medium', 'android'],
+    '7944d694': ['High', 'ios'],
+  }
+  test('a malformed answer files by fingerprint', async () => {
+    expect(tickets(await fileGrouped('{"groups": "all of them"}'))).toEqual(fingerprintTickets)
+  })
+
+  test('a group that joins two areas files the whole run by fingerprint', async () => {
+    const mixed = JSON.stringify({ groups: [[...codeField, ...backButton], locationField, keyboard] })
+    expect(tickets(await fileGrouped(mixed))).toEqual(fingerprintTickets)
+  })
+
+  test("the ticket fingerprint follows platform order, not severity or the fingerprint's own order", async () => {
+    // Two wordings of one bug; desktop gets the one whose fingerprint sorts last, and Android the more severe rating.
+    const wordings = numbered(2).toSorted((a, b) => fp(b).localeCompare(fp(a)))
+    await writeVerified([
+      { ...wordings[0], viewport: 'desktop', priority: 'High' },
+      { ...wordings[1], viewport: 'android' },
+    ])
+    const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
+    await writeFile(
+      join(outDir, 'verified.json'),
+      JSON.stringify({ ...verified, groups: [['c2-chat/0', 'c2-chat/1']] }),
+    )
+
+    const filed = await fileFindings({ outDir, live: false, log: () => {}, now })
+
+    expect(filed.map((f) => [f.fp, f.severity])).toEqual([
+      [fp(wordings[0]), 'Urgent'],
+      [fp(wordings[0]), 'Urgent'],
+    ])
+  })
+})
+
+describe('Linear failures', () => {
+  const twoVisual = () =>
+    writeVerified([visualVerified(), visualVerified({ element: 'button "Back"', screenshot: 'mcp/page-2.png' })])
+  const graphqlError = (message: string, status = 400) => Response.json({ errors: [{ message }] }, { status })
+
+  test('a rejected upload files the ticket without it, logs why, and moves on to the next ticket', async () => {
+    await twoVisual()
+    let uploadsAnswered = 0
+    const api = fakeLinear({
+      fail: (op) =>
+        op === 'FileUpload' && uploadsAnswered++ === 0 ? graphqlError('File uploads are not allowed') : undefined,
+    })
+    const lines: string[] = []
+    const filed = await run(api.fetchFn, { log: (l) => lines.push(l) })
+    expect(filed.map((f) => f.action)).toEqual(['created', 'created'])
+    expect(created(api).map((input) => input.description.includes('![Screenshot]'))).toEqual([false, true])
+    const reason = 'Linear FileUpload HTTP 400: File uploads are not allowed'
+    expect(filed[0].lostAttachments).toEqual([{ kind: 'screenshot', reason }])
+    expect(filed[1].lostAttachments).toBeUndefined()
+    expect(lines).toEqual([`::warning::${filed[0].fp}: filing without the screenshot: ${reason}`])
+    expect(JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))[0].lostAttachments).toEqual([
+      { kind: 'screenshot', reason },
+    ])
+  })
+
+  test("a failed storage upload logs storage's message, never the upload URL's signature", async () => {
+    await writeVerified([{}], 'replay/v.webm')
+    await mkdir(join(outDir, 'replay'), { recursive: true })
+    await writeFile(join(outDir, 'replay/v.webm'), 'video')
+    // The sanitizer keeps links to Linear's uploads host, so only the query strip keeps the signature out.
+    const signed = 'https://uploads.linear.app/x?X-Goog-Signature=deadbeef'
+    const xml = `<Error><Code>AccessDenied</Code><Message>Denied for ${signed}</Message></Error>`
+    const lines: string[] = []
+    const [entry] = await run(
+      fakeLinear({ fail: (op) => (op === 'PUT' ? new Response(xml, { status: 403 }) : undefined) }).fetchFn,
+      { log: (l) => lines.push(l) },
+    )
+    expect(entry).toMatchObject({ action: 'created', lostAttachments: [{ kind: 'video' }] })
+    expect(lines.join('\n')).toContain('Linear upload HTTP 403: Denied for')
+    expect(lines.join('\n')).not.toContain('deadbeef')
+  })
+
+  test('a ticket Linear will not create fails the run only after the others are filed', async () => {
+    await writeVerified(numbered(2))
+    let createsAnswered = 0
+    const api = fakeLinear({
+      fail: (op) =>
+        op === 'CreateIssue' && createsAnswered++ === 0 ? graphqlError('Title is too long', 200) : undefined,
+    })
+    const lines: string[] = []
+    await expect(run(api.fetchFn, { log: (l) => lines.push(l) })).rejects.toThrow('Filing failed for 1')
+    expect(created(api)).toHaveLength(2)
+    expect(lines.join('\n')).toContain('Linear CreateIssue HTTP 200 GraphQL errors: Title is too long')
+    const filed: Filed[] = JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))
+    expect(filed.map((f) => [f.action, f.identifier])).toEqual([['created', 'THB-2']])
+  })
+
+  test("a refused security ticket logs only the status, never Linear's message quoting its text", async () => {
+    await writeVerified([{ area: 'security', title: 'Leaky token list', oracle: { type: 'http-5xx', evidence: 'x' } }])
+    const echo = 'Variable "$input" got invalid value { title: "Leaky token list" }'
+    const api = fakeLinear({ fail: (op) => (op === 'CreateIssue' ? graphqlError(echo) : undefined) })
+    const lines: string[] = []
+    const error = await run(api.fetchFn, { log: (l) => lines.push(l) }).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(lines).toEqual([expect.stringContaining('Linear CreateIssue HTTP 400')])
+    expect(`${lines.join('\n')}\n${String(error)}`).not.toContain('Leaky')
+  })
+})
+
+describe('judged priority', () => {
+  test('a sign-in code field with no accessible name, judged High, files High', async () => {
+    const signInCodeField: Judged = {
+      title: 'Sign-in code field has no accessible name',
+      area: 'auth',
+      charter: 'c1-first-run-desktop',
+      oracle: {
+        type: 'layout',
+        evidence: '[qa-layout] unnamed-control textbox "after If you received a code to log in, enter "',
+      },
+      steps: ['Open http://localhost:1425', 'Enter a fresh email and press Continue', 'Code entry screen shows'],
+      expected: 'The code text field has an accessible name',
+      actual: "The code input below 'If you received a code to log in, enter it here:' has no name",
+      priority: 'High',
+    }
+    await writeVerified([signInCodeField], undefined, 'c1-first-run-desktop')
+    const api = fakeLinear()
+    const [entry] = await run(api.fetchFn)
+    expect(entry).toMatchObject({ action: 'created', severity: 'High' })
+    expect(created(api)[0].priority).toBe(2)
+  })
+
+  test('a malformed judge priority files at the table severity', async () => {
+    await writeVerified([{ priority: 'Critical' }])
+    const api = fakeLinear()
+    const [entry] = await run(api.fetchFn)
+    expect(entry).toMatchObject({ action: 'created', severity: 'Urgent' })
+    expect(created(api)[0].priority).toBe(1)
+  })
+
+  test('one bug on several platforms files with the highest priority any of them was judged', async () => {
+    await writeVerified([
+      { viewport: 'desktop', priority: 'High' },
+      { viewport: 'phone', priority: 'Urgent' },
+    ])
+    const api = fakeLinear()
+    const filed = await run(api.fetchFn)
+    expect(filed.map((f) => f.severity)).toEqual(['Urgent', 'Urgent'])
+    expect(created(api).map((input) => input.priority)).toEqual([1])
+  })
+})
+
 describe('visual findings', () => {
   test('a visual ticket is left to the fix agent, not Human Required, and shows its screenshot', async () => {
     await writeVerified([visualVerified({ screenshot: 'mcp/page-1.png' })])
@@ -445,12 +650,16 @@ describe('visual findings', () => {
     expect(api.ops.find((o) => o.op === 'PUT')?.variables.headers).toMatchObject({ 'content-type': 'image/jpeg' })
   })
 
-  test('a screenshot that is not a PNG or JPEG is never uploaded', async () => {
+  test('a screenshot that is not a PNG or JPEG is never uploaded, and the ticket files without it', async () => {
     await writeVerified([visualVerified({ screenshot: 'mcp/page-1.png' })])
     await writeFile(join(outDir, 'c2-chat', 'mcp', 'page-1.png'), '<svg onload="x()">')
     const api = fakeLinear()
-    await expect(run(api.fetchFn)).rejects.toThrow('not a PNG, JPEG, WebM or MP4 file')
+    const [entry] = await run(api.fetchFn)
     expect(uploads(api)).toEqual([])
+    expect(created(api)[0].description).not.toContain('![Screenshot]')
+    expect(entry.lostAttachments).toEqual([
+      { kind: 'screenshot', reason: 'not a PNG, JPEG, WebM or MP4 file: page-1.png' },
+    ])
   })
 
   test('a security visual finding uploads no screenshot', async () => {
@@ -461,30 +670,36 @@ describe('visual findings', () => {
     expect(uploads(api)).toEqual([])
   })
 
-  test('an Android layout finding is held back until an Android sweep, and its iOS twin is still filed', async () => {
-    const layout = { type: 'layout', evidence: '[qa-layout] covered button "Preferences"' }
-    const native = { oracle: layout, repro_spec: undefined, repro_flow: 'repro/1.yaml' }
-    // The Android keyboard line comes from the tree rule, not the probe, and still waits for the sweep.
-    const keyboard = { type: 'layout', evidence: '[qa-layout] behind-keyboard textbox "Enter your name"' }
+  test('only an Android covered finding is held back; its iOS twin and other Android kinds are filed', async () => {
+    const covered = { type: 'layout', evidence: '[qa-layout] covered button "Preferences"' }
+    const native = { oracle: covered, repro_spec: undefined, repro_flow: 'repro/1.yaml' }
+    const layout = (evidence: string) => ({ ...native, viewport: 'android', oracle: { type: 'layout', evidence } })
     await writeVerified([
       { ...native, viewport: 'ios' },
       { ...native, viewport: 'android' },
-      { ...native, viewport: 'android', oracle: keyboard },
-      { viewport: 'android', repro_spec: undefined, repro_flow: 'repro/2.yaml' },
+      layout('[qa-layout] behind-keyboard textbox "Enter your name"'),
+      layout('[qa-layout] unnamed-control button "after Connect Google"'),
+      layout('[qa-layout] focus-covered textbox "Email"'),
     ])
     const api = fakeLinear()
 
     const filed = await run(api.fetchFn)
 
-    const held = 'Android layout finding, held back until the probe sweeps correct Android screens clean'
+    const held = 'Android covered finding, held back until the probe sweeps correct Android screens clean'
     expect(filed.map((f) => [f.id, f.action, f.reason]).sort()).toEqual([
       ['0', 'created', undefined],
       ['1', 'refused', held],
-      ['2', 'refused', held],
+      ['2', 'created', undefined],
       ['3', 'created', undefined],
+      ['4', 'created', undefined],
     ])
     const platforms = created(api).map((input) => /\*\*Platforms:\*\* \w+/.exec(input.description)?.[0])
-    expect(platforms.sort()).toEqual(['**Platforms:** android', '**Platforms:** ios'])
+    expect(platforms.sort()).toEqual([
+      '**Platforms:** android',
+      '**Platforms:** android',
+      '**Platforms:** android',
+      '**Platforms:** ios',
+    ])
   })
 
   test.each([
@@ -525,9 +740,23 @@ describe('setup errors', () => {
     ).rejects.toThrow('Missing Linear labels: Security')
   })
 
-  test('no Triage state fails loudly', async () => {
+  test('a team without a Triage state still files, in its backlog state', async () => {
     await writeVerified([{}])
-    await expect(run(fakeLinear({ triage: false }).fetchFn)).rejects.toThrow('Triage')
+    const api = fakeLinear({
+      states: [
+        { id: 'started-id', type: 'started' },
+        { id: 'team-backlog-id', type: 'backlog' },
+      ],
+    })
+    await run(api.fetchFn)
+    expect(created(api)[0].stateId).toBe('team-backlog-id')
+  })
+
+  test('a team with no backlog state fails loudly', async () => {
+    await writeVerified([{}])
+    const api = fakeLinear({ states: [{ id: 'triage-id', type: 'triage' }] })
+    await expect(run(api.fetchFn)).rejects.toThrow('no workflow state of type backlog')
+    expect(created(api)).toHaveLength(0)
   })
 })
 
@@ -613,6 +842,13 @@ describe('scorecard and precision brake', () => {
     const card = await computeScorecard(api.fetchFn, 'k')
     expect(card.labelled).toBe(7)
     expect(shouldBrake(card)).toBe(false)
+  })
+
+  test('reads every page of tickets, so a later page can pull precision under the brake', async () => {
+    const api = fakeLinear({ scorecard: tickets({ 'qa:valid': 250, 'qa:not-a-bug': 200 }) })
+    const card = await computeScorecard(api.fetchFn, 'k')
+    expect(card).toMatchObject({ counts: { valid: 250, notABug: 200 }, labelled: 450 })
+    expect(shouldBrake(card)).toBe(true)
   })
 
   test('a dry run with a key writes the scorecard once and does not brake', async () => {

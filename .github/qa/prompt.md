@@ -27,12 +27,13 @@ another session's user.
 
 Unless your charter says otherwise, the app's AI is a local fake: every reply is "Hello from the fake provider, one
 word at a time." Before your first chat message, open the model picker (the button with test id
-`model-selector-trigger`, it shows the current model's name) and select "Opus 5.5". No other model is configured here,
+`model-selector-trigger`, it shows the current model's name), select "Opus 5.5", and press Escape to close the picker.
+No other model is configured here,
 so an error message from another model is expected (a screen that hangs is still a bug).
 
 When your charter says the AI is real, replies vary and can use tools (weather, maps, search, link previews, MCP
 servers, files). Read every reply in full, besides the console and the network, and check that the AI really did
-what you asked. A reply saying it could not is exactly the kind of bug only a real AI shows (`ai-reported-failure`).
+what you asked. A reply saying it could not do what you asked is an `ai-reported-failure` bug.
 
 ### What the test fixtures contain
 
@@ -122,9 +123,8 @@ status, or the text on screen):
   a text field or combobox, whose `txt` is its value) or the screenshot. It reports a problem
   only after it held for half a second, and it skips controls behind an open dialog, toasts and popovers. A
   `[qa-layout]` line other than `[qa-layout] ready` is a `layout` finding with that line as its evidence, never a
-  `console-error` one, even though it is a console error. Do not measure the layout yourself. The finding's `area` is
-  the area of the screen where the problem shows (onboarding, chat, settings, ...), never `layout`: a covered
-  Continue button on onboarding is an `onboarding` finding.
+  `console-error` one, even though it is a console error. Do not measure the layout yourself. The finding's `area` follows
+  the area table below, never `layout`: a covered Continue button on onboarding is an `onboarding` finding.
 - `visual`: a screenshot shows a defect a user would notice and the probe did not report: a control covered by
   something, text cut off, elements overlapping, a broken layout. The evidence is one sentence saying what the
   screenshot shows. A problem the probe reported is a `layout` finding, never a `visual` one.
@@ -159,8 +159,26 @@ file per finding, never append; number findings 1, 2, 3…
    }
    ```
 
-   `area` is exactly one of these words (anything else throws the finding away): chat, settings, skills, projects,
-   widgets, layout, i18n, models, sync, auth, onboarding, data, security, other.
+   `area` is the feature that owns the broken control or message, never your charter, the flow you are in or the URL;
+   `security` is the one exception and wins over it.
+   Use exactly one of these words (anything else throws the finding away):
+
+   | area         | owns                                                                                                                                     |
+   | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+   | `auth`       | sign-in, email code entry, the waitlist, sign-out, deleting the account                                                                  |
+   | `onboarding` | the steps after sign-in: name, privacy, location, language, passkey, Connect Google, welcome                                             |
+   | `chat`       | a chat: messages, composer, model picker, attachments, the chat list, search                                                             |
+   | `models`     | Settings → Models: the list, Add Model, a model's page (under `/settings`, still `models`)                                               |
+   | `skills`     | the Skills list and editor, slash skills (under `/settings`, still `skills`)                                                             |
+   | `projects`   | Projects and moving chats into them                                                                                                      |
+   | `widgets`    | the cards in a reply: weather, map, citations, link previews, documents                                                                  |
+   | `settings`   | every other Settings page: Preferences (with its encryption, passkey and recovery key sections) and Connections                          |
+   | `data`       | export, import and Delete All Local Data                                                                                                 |
+   | `sync`       | syncing between devices, approving a new device, Settings → Devices                                                                      |
+   | `security`   | any finding that exposes data or breaks a security property (auth bypass, leaked secret, encryption not applied, XSS), wherever it shows |
+   | `i18n`       | missing or wrong translations, date, number and unit formats                                                                             |
+   | `other`      | a console error or warning from a shared component (dialog, sheet, menu) that names no feature; a page error follows the screen it broke |
+   | `layout`     | never an area, whatever the oracle                                                                                                       |
 
    A `visual` finding has no `repro_spec` and no spec file. Instead it has three fields:
    - `element`: the affected element as `<role> "<accessible name>"`, for example `button "Continue"`.

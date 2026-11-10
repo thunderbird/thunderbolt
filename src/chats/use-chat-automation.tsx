@@ -28,6 +28,8 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
   // assistant response yet. Gated on `stopping`: a stopped turn also ends with a
   // trailing user message (the aborted shell is dropped), so without the gate this
   // effect would restart the very turn the user just cancelled (THU-791).
+  // `stopping` is not saved, so after a reload the prompt's saved `stoppedByUser`
+  // flag is what keeps the stopped turn from running again.
   // A private chat that resolved to a non-built-in agent (an automation thread
   // has no agent of its own, so it takes the last-used one) is never sent
   // unasked. Switching it to the built-in agent re-runs the effect and sends.
@@ -37,7 +39,9 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
       !stopping &&
       chatInstance?.status === 'ready' &&
       hasMessages &&
-      chatInstance?.messages[chatInstance?.messages.length - 1].role === 'user'
+      chatInstance?.messages[chatInstance?.messages.length - 1].role === 'user' &&
+      !chatInstance.messages.at(-1)?.metadata?.stoppedByUser &&
+      !chatInstance.messages.at(-1)?.metadata?.acpCommand
     ) {
       if (
         isPrivateAutoRunBlocked({

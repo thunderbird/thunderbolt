@@ -116,7 +116,7 @@ describe('model catalog policy', () => {
       try {
         const models = await fetchModelsForProvider({ provider: 'anthropic', apiKey: 'own-key' }, () => proxyFetch)
 
-        expect(models).toEqual([{ id: 'claude-test', name: 'Claude Test', supports_tools: true }])
+        expect(models).toEqual([{ id: 'claude-test', name: 'Claude Test' }])
         expect(requests[0].url).toBe('https://api.anthropic.com/v1/models?limit=1000')
         expect(requests[0].headers.get('x-api-key')).toBe('own-key')
         expect(requests[0].headers.get('authorization')).toBeNull()

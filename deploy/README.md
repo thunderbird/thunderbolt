@@ -82,7 +82,7 @@ deploy/
     keycloak.Dockerfile
     powersync.Dockerfile
     marketing.Dockerfile
-    backend-entrypoint.sh   # Waits for Postgres, runs migrations, starts server
+    backend-entrypoint.sh   # Waits for Postgres, starts server (which migrates)
     postgres-init/          # 01-powersync.sh — replication role, publication, storage DB
   config/                   # Shared config files
     nginx.conf.template     # Frontend nginx with COEP/COOP headers; ${THUNDERBOLT_BACKEND_HOST}/${THUNDERBOLT_BACKEND_PORT} substituted at container start
@@ -166,7 +166,7 @@ docker compose down -v       # Stop containers + delete volumes (full reset)
 ### How It Works
 
 - **Startup order**: Postgres and Keycloak start first (with health checks). Backend waits for both. PowerSync waits for Postgres (it uses the `powersync_storage` database on the same instance for bucket storage).
-- **Backend entrypoint**: `docker/backend-entrypoint.sh` polls Postgres until it's ready, runs Drizzle migrations, then starts the server.
+- **Backend entrypoint**: `docker/backend-entrypoint.sh` polls Postgres until it's ready, then starts the server, which applies pending migrations before it accepts traffic.
 - **Keycloak**: Auto-imports `config/keycloak-realm.json` on first boot, creating the `thunderbolt` realm, `thunderbolt-app` OIDC client, and a demo user.
 - **PowerSync**: Uses `config/powersync-config.yaml` for sync rules. Connects to Postgres via a dedicated `powersync_role` with replication privileges.
 

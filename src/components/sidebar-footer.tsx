@@ -17,7 +17,8 @@ import {
   Terminal,
   UserRound,
 } from 'lucide-react'
-import { type ReactNode, useState, useTransition } from 'react'
+import { type ReactNode, useRef, useState, useTransition } from 'react'
+import { flushSync } from 'react-dom'
 
 import type { User } from '@shared/types/auth'
 
@@ -26,13 +27,16 @@ import { LogoutModal } from '@/components/logout-modal'
 import { BrandGradientIcon } from '@/components/ui/brand-gradient-icon'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
-import { MobileBlurBackdrop } from '@/components/ui/mobile-blur-backdrop'
+import { mobileCardMenuItemClass } from '@/components/ui/mobile-card-menu'
 import { NavLink } from '@/components/ui/nav-link'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { MobileSidebarScrim } from '@/components/ui/scrim'
 import { SidebarFooter as ShadcnSidebarFooter, useSidebar } from '@/components/ui/sidebar'
 import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
+import { useE2eeReady } from '@/hooks/use-e2ee-ready'
+import { supportsKeyStoreLock } from '@/crypto/key-store-lock'
+import { encryptedSyncUpgradeMessage } from '@/lib/encrypted-sync-support'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useHaptics } from '@/hooks/use-haptics'
 import type { Formatters } from '@/i18n/format'
@@ -42,7 +46,6 @@ import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
 import { getDownloadUrl } from '@/lib/download-links'
 import { isWebDesktopPlatform, isTauri } from '@/lib/platform'
-import { edgeSpacing, getMobileSidebarWidth, mobileSidebarWidthCss } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 const showAppDownloads = import.meta.env.VITE_SHOW_APP_DOWNLOADS === 'true'
@@ -62,10 +65,7 @@ type AccountMenuItem = {
 }
 
 const AccountMenuItemButton = ({ icon, label, onClick, to, onNavigate }: AccountMenuItem) => {
-  const className = cn(
-    'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left cursor-pointer',
-    'hover:bg-accent/50',
-  )
+  const className = cn(mobileCardMenuItemClass, 'py-2')
 
   if (to) {
     return (
@@ -171,10 +171,11 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const configLoaded = useConfigStore(selectConfigSettled)
   const formatters = useFormatters()
   const authClient = useAuth()
-  const { isMobile, closeMobileSidebar, setOpenMobile, state } = useSidebar()
+  const { isMobile, closeMobileSidebar, state } = useSidebar()
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const accountTriggerRef = useRef<HTMLButtonElement>(null)
   const [isReconnecting, startReconnect] = useTransition()
   const { triggerImpact } = useHaptics()
 
@@ -183,14 +184,24 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
     setMenuOpen(open)
   }
 
+  // Release the drawer's focus boundary before a sibling modal opens.
+  const closeMenu = () => flushSync(() => setMenuOpen(false))
+
+  const restoreAccountFocus = (event: Event) => {
+    event.preventDefault()
+    accountTriggerRef.current?.focus()
+  }
+
   const isDesktopCollapsed = !isMobile && state === 'collapsed'
 
   const showDownloadAppButton = showAppDownloads && !isTauri() && isWebDesktopPlatform()
 
   const { connectionStatus, hasSynced, lastSyncedAt } = usePowerSyncStatus()
   const { syncEnabled, syncSetupOpen, setSyncSetupOpen, handleSyncToggle, handleSyncSetupComplete } =
-    useSyncEnabledToggle()
+    useSyncEnabledToggle(closeMenu)
 
+  const e2eeReady = useE2eeReady()
+  const syncUnsupported = syncEnabled && e2eeReady && !supportsKeyStoreLock()
   const createNewChat = useCreateNewChat()
 
   // Close the drawer before navigating, like the chats rail's own "New chat"
@@ -219,12 +230,8 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const displayEmail = user?.email
 
   const handleMenuAction = (action: () => void) => {
-    setMenuOpen(false)
+    closeMenu()
     action()
-  }
-
-  const handleMenuNavigate = () => {
-    setMenuOpen(false)
   }
 
   const handleRetry = () => {
@@ -243,13 +250,122 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
     cn(
       'flex h-[var(--touch-height-lg)] max-w-full min-w-0 cursor-pointer items-center rounded-full md:h-[var(--touch-height-default)]',
       hasLabel ? 'w-fit gap-2 px-3' : 'w-[var(--touch-height-lg)] justify-center md:w-[var(--touch-height-default)]',
-      'text-[length:var(--font-size-body)] transition-colors outline-none',
-      'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+      'text-[length:var(--font-size-body)] transition-colors',
+      'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring',
       menuOpen && 'bg-sidebar-accent text-sidebar-accent-foreground',
     )
 
   const collapsedButtonClass =
-    'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent'
+    'flex size-[var(--touch-height-default)] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring'
+
+  const isConnecting = connectionStatus === 'connecting'
+  // Sync is on but not connected (and not mid-connect): show the Retry button
+  // and tint the status line as a warning.
+  const syncNeedsAttention = syncEnabled && !isConnecting && connectionStatus !== 'connected'
+
+  const accountMenuContent = (
+    <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1 text-[length:var(--font-size-body)]">
+        <div className="flex size-[var(--touch-height-sm)] shrink-0 items-center justify-center rounded-lg border border-border">
+          <UserRound className={cn(iconSize, 'text-muted-foreground')} />
+        </div>
+        <div className="flex flex-1 flex-col justify-center text-left leading-tight min-w-0">
+          {displayName && <span className="truncate font-semibold">{displayName}</span>}
+          <span className="truncate text-xs text-muted-foreground">{displayEmail}</span>
+        </div>
+      </div>
+
+      <div className="h-px bg-border" />
+
+      {/* Inline Cloud Sync control — the single place a signed-in user
+          enables/disables syncing now that the header indicator is gone. */}
+      <div className="flex flex-col gap-1 px-3 py-1">
+        <div className="flex items-center justify-between gap-2">
+          <label
+            htmlFor="account-sync-toggle"
+            className="text-[length:var(--font-size-body)] font-medium cursor-pointer"
+          >
+            <Trans>Cloud Sync</Trans>
+          </label>
+          <Switch
+            id="account-sync-toggle"
+            checked={syncEnabled}
+            onCheckedChange={handleSyncToggle}
+            disabled={isConnecting}
+            aria-label={t`Enable cloud sync`}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className={cn('text-xs text-muted-foreground', syncNeedsAttention && 'text-warning')}>
+            {syncUnsupported
+              ? i18n._(encryptedSyncUpgradeMessage)
+              : syncStatusText(i18n, formatters, syncEnabled, connectionStatus, hasSynced, lastSyncedAt)}
+          </p>
+          {syncNeedsAttention && !syncUnsupported && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 shrink-0 px-2.5 text-xs"
+              disabled={isReconnecting}
+              onClick={handleRetry}
+            >
+              {isReconnecting ? (
+                <Loader2 className="mr-1 size-3 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1 size-3" />
+              )}
+              <Trans>Retry</Trans>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {showDownloadAppButton && (
+        <>
+          <div className="h-px bg-border" />
+
+          <div className="flex flex-col gap-1 px-2">
+            <AccountMenuItemButton
+              icon={<Download className={iconSize} />}
+              label={t`Download App`}
+              onClick={() => openLink(getDownloadUrl())}
+            />
+          </div>
+        </>
+      )}
+
+      {import.meta.env.DEV && (
+        <>
+          <div className="h-px bg-border" />
+
+          <div className="flex flex-col gap-1 px-2">
+            <AccountMenuItemButton
+              icon={<Terminal className={iconSize} />}
+              label={t`Dev Settings`}
+              to="/settings/dev-settings"
+              onNavigate={closeMenu}
+            />
+            <AccountMenuItemButton
+              icon={<Terminal className={iconSize} />}
+              label={t`Message Simulator`}
+              to="/message-simulator"
+              onNavigate={closeMenu}
+            />
+          </div>
+        </>
+      )}
+
+      <div className="h-px bg-border" />
+
+      <div className="flex flex-col gap-1 px-2 pb-2">
+        <AccountMenuItemButton
+          icon={<LogOut className={iconSize} />}
+          label={t`Log out`}
+          onClick={() => handleMenuAction(() => setLogoutModalOpen(true))}
+        />
+      </div>
+    </div>
+  )
 
   /**
    * The footer's one account affordance: a spinner while the session loads,
@@ -291,27 +407,34 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
       )
     }
     return (
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={t`Account menu`}
-          className={cn(
-            controlClass,
-            collapsed && menuOpen && 'bg-sidebar-accent',
-            !collapsed && isMobile && menuOpen && 'relative z-50',
-          )}
-        >
-          {stateIcon}
-          {showLabel && <span className="truncate">{accountLabel}</span>}
-        </button>
-      </PopoverTrigger>
+      <ResponsivePopover
+        open={menuOpen}
+        onOpenChange={handleMenuOpenChange}
+        title={t`Account menu`}
+        desktopMenu={{
+          side: 'top',
+          sideOffset: 5,
+          align: 'start',
+          collisionPadding: 4,
+          className: 'w-[17rem] p-0 rounded-2xl shadow-lg overflow-hidden',
+          onOpenAutoFocus: (event) => event.preventDefault(),
+        }}
+        trigger={
+          <button
+            ref={accountTriggerRef}
+            type="button"
+            aria-label={t`Account menu`}
+            className={cn(controlClass, collapsed && menuOpen && 'bg-sidebar-accent')}
+          >
+            {stateIcon}
+            {showLabel && <span className="truncate">{accountLabel}</span>}
+          </button>
+        }
+      >
+        {accountMenuContent}
+      </ResponsivePopover>
     )
   }
-
-  const isConnecting = connectionStatus === 'connecting'
-  // Sync is on but not connected (and not mid-connect): show the Retry button
-  // and tint the status line as a warning.
-  const syncNeedsAttention = syncEnabled && !isConnecting && connectionStatus !== 'connected'
 
   // Three footer layouts, picked flat: desktop rail circle, mobile
   // pill + New Chat, desktop expanded pill.
@@ -359,157 +482,25 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
     )
   }
 
-  // Popover layout (placement + width) differs wholesale between mobile
-  // (centered over the sidebar) and desktop (anchored to the pill).
-  const popoverLayout = isMobile
-    ? {
-        sideOffset: 8,
-        align: 'center' as const,
-        collisionPadding: edgeSpacing.mobile,
-        width: `calc(${mobileSidebarWidthCss} - ${edgeSpacing.mobile * 2}px)`,
-      }
-    : { sideOffset: 5, align: 'start' as const, collisionPadding: 4, width: '17rem' }
-
   return (
-    <Popover open={menuOpen} onOpenChange={handleMenuOpenChange} modal={isMobile}>
-      <ShadcnSidebarFooter
-        className={cn(
-          'relative !gap-0 bg-transparent',
-          isMobile && 'z-10 pb-[var(--mobile-sidebar-footer-inset)]',
-          isDesktopCollapsed && '!p-0',
-          className,
-        )}
-      >
-        {isMobile && <MobileSidebarScrim data-slot="mobile-sidebar-footer-scrim" edge="bottom" />}
-        {/* z-10 lifts the controls above the mobile footer scrim. */}
-        <div className="relative z-10">{footerControl}</div>
-        <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} />
-        <SyncSetupModal open={syncSetupOpen} onOpenChange={setSyncSetupOpen} onComplete={handleSyncSetupComplete} />
-      </ShadcnSidebarFooter>
-
-      {isMobile && menuOpen && (
-        <MobileBlurBackdrop
-          onClick={() => {
-            setMenuOpen(false)
-            setOpenMobile(false)
-          }}
-        />
+    <ShadcnSidebarFooter
+      className={cn(
+        'relative !gap-0 bg-transparent',
+        isMobile && 'z-10 pb-[var(--mobile-sidebar-footer-inset)]',
+        isDesktopCollapsed && '!p-0',
+        className,
       )}
-
-      <PopoverContent
-        side="top"
-        sideOffset={popoverLayout.sideOffset}
-        align={popoverLayout.align}
-        collisionPadding={popoverLayout.collisionPadding}
-        className={cn('p-0 rounded-2xl shadow-lg overflow-hidden', isMobile && menuOpen && 'z-50')}
-        style={{ width: popoverLayout.width }}
-        onPointerDownOutside={(e) => {
-          if (isMobile && e.detail.originalEvent.clientX > getMobileSidebarWidth(window.innerWidth)) {
-            setOpenMobile(false)
-          }
-        }}
-        onOpenAutoFocus={(e) => e.preventDefault()}
-      >
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 px-3 pt-3 pb-1 text-[length:var(--font-size-body)]">
-            <div className="flex size-[var(--touch-height-sm)] shrink-0 items-center justify-center rounded-lg border border-border">
-              <UserRound className={cn(iconSize, 'text-muted-foreground')} />
-            </div>
-            <div className="flex flex-1 flex-col justify-center text-left leading-tight min-w-0">
-              {displayName && <span className="truncate font-semibold">{displayName}</span>}
-              <span className="truncate text-xs text-muted-foreground">{displayEmail}</span>
-            </div>
-          </div>
-
-          <div className="h-px bg-border" />
-
-          {/* Inline Cloud Sync control — the single place a signed-in user
-              enables/disables syncing now that the header indicator is gone. */}
-          <div className="flex flex-col gap-1 px-3 py-1">
-            <div className="flex items-center justify-between gap-2">
-              <label
-                htmlFor="account-sync-toggle"
-                className="text-[length:var(--font-size-body)] font-medium cursor-pointer"
-              >
-                <Trans>Cloud Sync</Trans>
-              </label>
-              <Switch
-                id="account-sync-toggle"
-                checked={syncEnabled}
-                onCheckedChange={handleSyncToggle}
-                disabled={isConnecting}
-                aria-label={t`Enable cloud sync`}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <p className={cn('text-xs text-muted-foreground', syncNeedsAttention && 'text-warning')}>
-                {syncStatusText(i18n, formatters, syncEnabled, connectionStatus, hasSynced, lastSyncedAt)}
-              </p>
-              {syncNeedsAttention && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 shrink-0 px-2.5 text-xs"
-                  disabled={isReconnecting}
-                  onClick={handleRetry}
-                >
-                  {isReconnecting ? (
-                    <Loader2 className="mr-1 size-3 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-1 size-3" />
-                  )}
-                  <Trans>Retry</Trans>
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {showDownloadAppButton && (
-            <>
-              <div className="h-px bg-border" />
-
-              <div className="flex flex-col gap-1 px-2">
-                <AccountMenuItemButton
-                  icon={<Download className={iconSize} />}
-                  label={t`Download App`}
-                  onClick={() => openLink(getDownloadUrl())}
-                />
-              </div>
-            </>
-          )}
-
-          {import.meta.env.DEV && (
-            <>
-              <div className="h-px bg-border" />
-
-              <div className="flex flex-col gap-1 px-2">
-                <AccountMenuItemButton
-                  icon={<Terminal className={iconSize} />}
-                  label={t`Dev Settings`}
-                  to="/settings/dev-settings"
-                  onNavigate={handleMenuNavigate}
-                />
-                <AccountMenuItemButton
-                  icon={<Terminal className={iconSize} />}
-                  label={t`Message Simulator`}
-                  to="/message-simulator"
-                  onNavigate={handleMenuNavigate}
-                />
-              </div>
-            </>
-          )}
-
-          <div className="h-px bg-border" />
-
-          <div className="flex flex-col gap-1 px-2 pb-2">
-            <AccountMenuItemButton
-              icon={<LogOut className={iconSize} />}
-              label={t`Log out`}
-              onClick={() => handleMenuAction(() => setLogoutModalOpen(true))}
-            />
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+    >
+      {isMobile && <MobileSidebarScrim data-slot="mobile-sidebar-footer-scrim" edge="bottom" />}
+      {/* z-10 lifts the controls above the mobile footer scrim. */}
+      <div className="relative z-10">{footerControl}</div>
+      <LogoutModal open={logoutModalOpen} onOpenChange={setLogoutModalOpen} onCloseAutoFocus={restoreAccountFocus} />
+      <SyncSetupModal
+        open={syncSetupOpen}
+        onOpenChange={setSyncSetupOpen}
+        onComplete={handleSyncSetupComplete}
+        onCloseAutoFocus={restoreAccountFocus}
+      />
+    </ShadcnSidebarFooter>
   )
 }

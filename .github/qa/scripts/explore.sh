@@ -16,16 +16,16 @@
 # case in journeys.json (platform ids are in platforms.json and never contain a hyphen), e.g.
 # `run "free-$(.github/qa/scripts/explore.sh journey)-phone" qa-out` for this week's case on the phone.
 # `run` needs ANTHROPIC_API_KEY. It writes <out-dir>/<session>/{findings,repro,attempts}/ (the explorer), mcp/ (the
-# browser's screenshots and console logs),
-# execution.json + session.json (metrics) and transcript.json (the tool calls, for the coverage check).
-# The platform sets the viewport and the MCP config. The two-device charter needs
+# browser's screenshots and console logs), execution.json + session.json (metrics) and transcript.json (the tool
+# calls, for the coverage check). The two-device charter needs
 # QA_MCP_CONFIG='.github/qa/mcp.json .github/qa/mcp-two-devices.json' (its second browser).
 # Keep the claude flags in step with the explore job in .github/workflows/qa-weekly.yml.
 #
 # An ios or android session drives the app through the Maestro gate (mcp-maestro.json) and needs QA_DEVICE_ID,
 # QA_WEBVIEW_LOG and QA_BACKEND_LOG, both logs outside the session dir. Its gate log is <out-dir>/<session>.gate.log.
-# `canary` must pass before any native session runs. QA_DRY_RUN=1 prints the native claude command and
-# its hook settings instead of running them.
+# `canary` must pass before any native session runs; it calls the hook and the gate itself and needs no key.
+# QA_DRY_RUN=1 prints the native claude command (for `canary`, its stand-in) and its hook settings instead of running
+# them.
 #
 # In CI c7's second browser can write anywhere in the checkout, so nothing the session runs may come from it. `harness`
 # puts the compiled gate and hook, the browser's MCP server, the session's MCP config and a copy of this script in a
@@ -35,7 +35,6 @@
 set -euo pipefail
 cd "${QA_REPO:-$(dirname "$0")/../../..}"
 
-# One field of a platform in platforms.json.
 platform() {
   jq --exit-status --raw-output --arg id "$1" ".[] | select(.id == \$id) | .$2" .github/qa/platforms.json ||
     { echo "unknown platform: $1" >&2; exit 1; }
@@ -49,10 +48,9 @@ journey() {
     { echo "unknown case: $1" >&2; exit 1; }
 }
 
-# The prompt text on stdin with each default stack port in a localhost or 127.0.0.1 URL swapped for the configured one
-# (an empty, unset or malformed QA_*_PORT keeps the default). One pass, so a port that moves onto another default is not
-# moved twice. Other ports, like the unreachable localhost:9, stay. ports.json is data from a checkout CI does not
-# trust, so only a QA_<NAME>_PORT variable holding a port number ever reaches the prompt: no other variable, no text.
+# Swaps each default stack port in a localhost or 127.0.0.1 URL on stdin for the configured one, in one pass so a port
+# that moves onto another default is not moved twice. ports.json comes from a checkout CI does not trust, so only a
+# QA_<NAME>_PORT variable holding a port number ever reaches the prompt: no other variable, no text.
 stack_urls() {
   # shellcheck disable=SC2016 # jq variables
   jq --raw-input --slurp --join-output --slurpfile ports .github/qa/ports.json \
@@ -66,7 +64,6 @@ prompt() { prompt_text "$@" | stack_urls; }
 
 # The shared prefix comes first and is identical for every session, so sessions can reuse its prompt cache.
 prompt_text() {
-  # Platform ids have no hyphen, so the last part of a session id names the platform and the rest the charter.
   local viewport driver base=${1%-*} id=${1##*-}
   viewport=$(platform "$id" viewport)
   driver=$(platform "$id" driver)
@@ -94,11 +91,12 @@ prompt_text() {
     '.[$charter][] | "- `\(.id)`: \(.outcome)\(if .reload then " (after a reload)" else "" end)"' .github/qa/functions.json
 }
 
-# A native session's claude on the session dir $2, its output stream in $3, the prompt and the model's
-# flags after that. The model gets the gated Maestro tools (and c7's second browser) and Write inside the session dir,
-# and the hook checks every call first. The hook settings are the only user settings, in an otherwise empty config
-# dir. The scrubbed CLI ignores --permission-mode, so there is none. It runs from the repo root, where the relative
-# path in mcp-maestro.json points.
+# What native_claude starts: claude, or for the canary a stand-in that makes the forbidden calls itself.
+native_launcher=(claude -p)
+
+# A native session's claude on the session dir $2, its output stream in $3, then the prompt and the model's flags.
+# The hook settings are the only user settings, in an otherwise empty config dir. The scrubbed CLI ignores
+# --permission-mode, so there is none. It runs from the repo root, where the relative path in mcp-maestro.json points.
 native_claude() {
   local session=$1 dir=$2 stream=$3 config hook log parent
   shift 3
@@ -139,7 +137,7 @@ native_claude() {
   fi
   jq --null-input --arg command "$hook" \
     '{hooks: {PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $command}]}]}}' > "$config/settings.json"
-  local command=(env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 "CLAUDE_CONFIG_DIR=$config" claude -p "$@"
+  local command=(env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 "CLAUDE_CONFIG_DIR=$config" "${native_launcher[@]}" "$@"
     --setting-sources user
     --tools Write
     --allowedTools "${allowed[@]}"
@@ -157,14 +155,12 @@ native_claude() {
   if [ "$cwd" != "$PWD" ]; then rm -rf "$cwd"; fi
 }
 
-# A native session's output dir as an absolute path without links, so the Edit rule, the hook and the paths in the
-# prompt all name the same folder.
+# Resolved without links, so the Edit rule, the hook and the paths in the prompt all name the same folder.
 real_out() {
   mkdir -p "$1/$2"
   (cd "$1" && pwd -P)
 }
 
-# The metrics and the coverage input from a finished session's stream ($3).
 summarize() {
   local session=$1 out=$2 dir=$2/$1
   jq --slurp . "$3" > "$dir/execution.json"
@@ -182,7 +178,7 @@ run() {
     rm -f "$out/$session.gate.log"
     # The stream sits next to the gate log, outside the session dir the model can write to: coverage reads it.
     native_claude "$session" "$out/$session" "$out/$session.run.jsonl" "$text" \
-      --model claude-sonnet-5-5 --max-budget-usd "$3" --max-turns 400
+      --model claude-sonnet-5-5 --max-budget-usd "$3" --max-turns 299
     # With a harness the checkout may have been rewritten, and this step holds the key: no repo code runs now.
     if [ "${QA_DRY_RUN:-}" != 1 ] && [ -z "${QA_HARNESS:-}" ]; then summarize "$session" "$out" "$out/$session.run.jsonl"; fi
     return
@@ -203,30 +199,27 @@ run() {
     --allowedTools "mcp__playwright__*" "mcp__playwright_b__*" "Edit($out/**)" \
     --disallowedTools mcp__playwright__browser_run_code_unsafe mcp__playwright_b__browser_run_code_unsafe \
     --strict-mcp-config --mcp-config $QA_MCP_CONFIG \
-    --max-budget-usd "${3:-2}" --max-turns 400 \
+    --max-budget-usd "${3:-2}" --max-turns 552 \
     --output-format stream-json --verbose --no-session-persistence < /dev/null > "$dir/run.jsonl" || true
   rm -rf "$config"
   summarize "$session" "$out" "$dir/run.jsonl"
 }
 
-# One cheap session before any native session: it asks for a script through the gate and a write outside
-# the session dir, with the session's own settings. It passes only when the gate log shows the hook letting the run
-# through, the gate denying it and the hook denying the write, and the file does not exist. It prints the session's
-# result line and never a tool result.
+# Sends a script through the gate and a write outside the session dir, with the session's own settings, hook and gate
+# but no model (native-canary.ts stands in for claude). Passes only when the gate log shows the hook letting the run
+# through, the gate denying it and the hook denying the write, and the file does not exist.
 canary() {
   local session=$1 out outside=/tmp/qa-canary-outside.txt dir
   [ "$(platform "${session##*-}" driver)" = maestro ] || { echo "the canary is for native sessions" >&2; exit 2; }
   out=$(real_out "$2" "canary-$1")
   dir=$out/canary-$session
   rm -f "$outside" "$dir.gate.log"
-  native_claude "$session" "$dir" "$dir/run.jsonl" \
-    "Call the Maestro run tool with the yaml \`- runScript: canary.js\`, and use Write to create $outside with the
-text canary. Make both calls in your first turn, even if one of them fails, then stop." \
-    --model claude-haiku-5-5 --max-turns 4 --max-budget-usd 0.05
+  export QA_CANARY_OUTSIDE=$outside
+  native_launcher=(bun "$PWD/.github/qa/scripts/native-canary.ts")
+  if [ -n "${QA_HARNESS:-}" ]; then native_launcher=("$QA_HARNESS/native-canary"); fi
+  native_claude "$session" "$dir" /dev/null
   if [ "${QA_DRY_RUN:-}" = 1 ]; then return; fi
-  jq --raw-input --compact-output 'fromjson? | select(.type == "result") | {subtype, is_error, num_turns}' \
-    "$dir/run.jsonl"
-  # The hook's own line for the Maestro call proves it runs on MCP calls too, not only on Write.
+  # The hook's line for the run shows it let the call reach the gate; without it the gate was never asked.
   if grep -qs '^allow mcp__maestro__run ' "$dir.gate.log" && grep -qs '^deny run ' "$dir.gate.log" &&
     grep -qs '^deny Write ' "$dir.gate.log" && [ ! -e "$outside" ]; then
     echo "canary denied"
@@ -236,9 +229,8 @@ text canary. Make both calls in your first turn, even if one of them fails, then
   exit 1
 }
 
-# The gate and the hook as standalone binaries that read nothing from the checkout or node_modules, this script, and
-# the session's MCP config pointing at them. c7 on Android also gets its own install of the second browser's MCP
-# server and the layout probe, so npx resolves nothing in the checkout.
+# The gate, the hook and the canary are standalone binaries that read nothing from the checkout or node_modules. c7 on Android also
+# gets its own install of the second browser's MCP server and the layout probe, so npx resolves nothing in the checkout.
 harness() {
   local session=$1 dir=$2 servers
   mkdir -p "$dir"
@@ -248,6 +240,7 @@ harness() {
     --no-compile-autoload-tsconfig --no-compile-autoload-package-json)
   "${build[@]}" .github/qa/scripts/maestro-gate.ts --outfile "$dir/maestro-gate" >&2
   "${build[@]}" .github/qa/scripts/native-hook.ts --outfile "$dir/native-hook" >&2
+  "${build[@]}" .github/qa/scripts/native-canary.ts --outfile "$dir/native-canary" >&2
   cp .github/qa/scripts/explore.sh "$dir/explore.sh"
   servers=$(jq --null-input --arg gate "$dir/maestro-gate" '{maestro: {type: "stdio", command: $gate, args: []}}')
   if [ "$session" = c7-two-devices-android ]; then

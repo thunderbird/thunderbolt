@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import * as downloads from '@/lib/download'
 import { HttpClientProvider } from '@/contexts'
 import { getActiveLocale } from '@/i18n/active-locale'
 import { ThemeProvider } from '@/lib/theme-provider'
@@ -14,7 +15,7 @@ import {
   type MiniAppInitializeResult,
 } from '@shared/mini-app-protocol'
 import { act, render } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { Wallet } from 'lucide-react'
 import {
@@ -162,7 +163,8 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
 
   const Harness = () => {
     bridge.current = useMiniAppBridge({ app, onChatOpen })
-    return <iframe ref={bridge.current.frameRef} title={app.name} src="about:blank" />
+    // srcdoc provides a local guest window without enabling Happy DOM's iframe page loading.
+    return <iframe ref={bridge.current.frameRef} title={app.name} srcDoc="" />
   }
 
   const { unmount } = render(
@@ -687,6 +689,52 @@ describe('useMiniAppBridge message handling', () => {
    * that no longer exists; serving its tools to the model means calling functions
    * into a document that never defined them.
    */
+  it('cannot revive a document when its delayed handshake mint finishes after navigation', async () => {
+    const response = Promise.withResolvers<Response>()
+    const client = createClient({ prefixUrl: 'http://test-api.local', fetch: () => response.promise })
+    const { bridge, replyTo, handshake, elapse } = mountBridge(() => {}, client)
+    await handshake({ auth: true }, { id: 99 })
+    act(() => bridge.current?.handleFrameLoad())
+    await elapse(identifyTimeoutMs)
+    expect(bridge.current?.status).toBe('connecting')
+    response.resolve(Response.json(token))
+    await elapse(1)
+    expect(bridge.current?.status).toBe('connecting')
+    expect(replyTo(99)).toBeUndefined()
+  })
+
+  it('does not let an unmounted identification reset the next app tools', async () => {
+    const { bridge, handshake, unmount, settle } = mountBridge()
+    await handshake()
+    act(() => bridge.current?.handleFrameLoad())
+    unmount()
+    useMiniAppStore.getState().openApp({ ...app, id: 'replacement' })
+    const tools = [{ name: 'replacement-tool', description: 'belongs to the next app' }]
+    useMiniAppStore.getState().setTools(tools, async () => ({ content: '' }))
+    await settle()
+    expect(useMiniAppStore.getState().tools).toEqual(tools)
+  })
+
+  it.each(['handshake', 'load'])('clears stale selections and requests on a document %s', async (change) => {
+    const { bridge, send, envelope, handshake, elapse } = mountBridge()
+    await handshake({ selection: true, context: true })
+    await send(
+      envelope({ method: 'ui/notifications/selection-changed', params: { selection: { text: 'old document' } } }),
+    )
+    let context: ReturnType<Bridge['requestContext']>
+    act(() => {
+      context = bridge.current!.requestContext()
+    })
+    if (change === 'handshake') {
+      await handshake({}, { documentId: 'doc-b', id: 2 })
+    } else {
+      act(() => bridge.current?.handleFrameLoad())
+      await elapse(identifyTimeoutMs)
+    }
+    expect(bridge.current?.selection).toBeNull()
+    expect(await context!).toBeNull()
+  })
+
   it('drops the previous document state when a different document handshakes', async () => {
     const { send, envelope, handshake } = mountBridge()
     await handshake()
@@ -729,19 +777,6 @@ describe('useMiniAppBridge message handling', () => {
     // Still answered in full: the second `connect()` is waiting on a reply and
     // has no idea the first one happened.
     expect(replyTo(2)).toMatchObject({ result: { hostName: 'Thunderbolt' } })
-  })
-
-  /** A guest with no id to compare cannot be recognised, so it stays the old way. */
-  it('treats a repeat from a guest with no document id as a new document', async () => {
-    const { handshake } = mountBridge()
-    await handshake({}, { documentId: null })
-    useMiniAppStore.getState().setTools([{ name: 'refresh', description: 'Reload the books' }], async () => ({
-      content: '',
-    }))
-
-    await handshake({}, { documentId: null, id: 2 })
-
-    expect(useMiniAppStore.getState().tools).toEqual([])
   })
 
   /*
@@ -892,47 +927,36 @@ describe('useMiniAppBridge message handling', () => {
     expect(bridge.current?.status).toBe('ready')
   })
 
-  /**
-   * An empty string is a guest with no id to give. The protocol lets one
-   * through rather than dropping the handshake over it — a floor on a field
-   * riding `initialize` rejects the whole message, and the app would see only a
-   * timeout — so the host has to read it as absent at both ends.
-   */
-  it('treats an empty document id as no id at all', async () => {
-    const { bridge, posted, handshake } = mountBridge()
-    await handshake({}, { documentId: '' })
-
-    expect(bridge.current?.status).toBe('ready')
-
-    act(() => bridge.current?.handleFrameLoad())
-
-    expect(posted.some((message) => 'method' in message && message.method === 'ui/identify')).toBe(false)
-  })
-
-  /**
-   * A guest that cannot be asked keeps the old best-effort guess. Wrong for a
-   * React app that navigates, right for everything else — and strictly better
-   * than resetting a live document on every load, which is what asking a guest
-   * that will never answer would do.
-   */
-  it('falls back to the load-ordering guess for a guest with no document id', async () => {
-    const { bridge, handshake, elapse } = mountBridge()
+  it('does not run bridge actions for a guest whose handshake was rejected', async () => {
+    const opened: (string | undefined)[] = []
+    const openChat = (prompt?: string) => opened.push(prompt)
+    const { bridge, handshake, send, envelope, replyTo } = mountBridge(openChat)
     await handshake({}, { documentId: null })
-
-    act(() => bridge.current?.handleFrameLoad())
-    await elapse(identifyTimeoutMs)
-
-    expect(bridge.current?.status).toBe('ready')
+    await send(envelope({ id: 99, method: 'ui/open-chat', params: {} }))
+    expect(opened).toEqual([])
+    expect(replyTo(99)).toMatchObject({ error: { code: miniAppRpcErrors.invalidRequest } })
+    await send(envelope({ method: 'ui/notifications/tools-changed', params: {} }))
+    expect(bridge.current?.status).toBe('unsupported')
   })
 
-  it('does not ask a guest with no document id to identify', async () => {
-    const { bridge, posted, handshake } = mountBridge()
-    await handshake({}, { documentId: null })
-
-    act(() => bridge.current?.handleFrameLoad())
-
-    expect(posted.some((message) => 'method' in message && message.method === 'ui/identify')).toBe(false)
-  })
+  it.each([null, '', '  '])(
+    'rejects legacy document id %p with an upgrade response and no retained capabilities',
+    async (documentId) => {
+      const { bridge, handshake, replyTo } = mountBridge()
+      await handshake()
+      useMiniAppStore.getState().setTools([{ name: 'old', description: 'Old tool' }], async () => ({ content: '' }))
+      await handshake({ auth: true, tools: true }, { documentId, id: 99 })
+      expect(bridge.current?.status).toBe('unsupported')
+      expect(replyTo(99)).toMatchObject({
+        error: { code: miniAppRpcErrors.invalidRequest, message: expect.stringContaining('update the mini app SDK') },
+      })
+      expect(useMiniAppStore.getState().tools).toEqual([])
+      act(() => bridge.current?.handleFrameLoad())
+      expect(bridge.current?.status).toBe('unsupported')
+      await handshake({}, { documentId: 'updated-document', id: 100 })
+      expect(bridge.current?.status).toBe('ready')
+    },
+  )
 })
 
 describe('useMiniAppBridge downloads', () => {
@@ -1066,6 +1090,25 @@ describe('useMiniAppBridge downloads', () => {
     await send(envelope(downloadRequest(11)))
 
     expect(bridge.current?.pendingDownload).toEqual({ name: 'export.csv' })
+  })
+
+  it('does not deliver an old native save completion to a replacement document', async () => {
+    const pending = Promise.withResolvers<string>()
+    const save = spyOn(downloads, 'downloadFile').mockImplementation(() => pending.promise)
+    try {
+      const { bridge, send, envelope, handshake, settle, replyTo } = mountBridge()
+      await handshake()
+      await send(envelope(downloadRequest(9)))
+      await act(async () => bridge.current?.answerDownload(true))
+      await settle()
+      expect(save).toHaveBeenCalledTimes(1)
+      await handshake({}, { documentId: 'new-document', id: 99 })
+      pending.resolve('/saved/export.csv')
+      await settle()
+      expect(replyTo(9)).toBeUndefined()
+    } finally {
+      save.mockRestore()
+    }
   })
 
   it('does not hold an approved save against the next one', async () => {

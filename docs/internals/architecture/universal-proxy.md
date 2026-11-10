@@ -81,12 +81,20 @@ document. The client strips the two `proxyFramingHeaders` when rebuilding.
 
 ## SSRF and the redirect loop
 
-`validateAndPin` ([backend/src/utils/url-validation.ts:77-118](../../../backend/src/utils/url-validation.ts#L77))
+`validateAndPin` ([backend/src/utils/url-validation.ts:99-144](../../../backend/src/utils/url-validation.ts#L99))
 resolves the hostname, rejects if _any_ resolved address is private, internal or reserved, then
 connects to that IP with the original `Host` header. Pinning closes the DNS-rebinding window
 between check and connect.
 
-- An IP-literal target skips the lookup but is classified the same way.
+A pinned HTTPS request needs a second half: Bun's `tls: { serverName }` fetch option, which
+`validateAndPin` returns alongside the headers. It names the original hostname for TLS SNI and
+certificate verification, which would otherwise follow the IP in the URL. Bun derived SNI from
+the `Host` header through 1.4.0; from 1.4.1 every pinned HTTPS request fails the handshake
+without it. Both the route and `createSafeFetch` pass it through, and the real-handshake test in
+`url-validation.test.ts` guards it across Bun upgrades.
+
+- An IP-literal target skips the lookup but is classified the same way, and gets no `tls`
+  override since the URL was not rewritten.
 - Userinfo is stripped by both the route and `validateAndPin`.
 - `ensureHttps` normalises first and rejects any non-`http(s)` scheme.
 
@@ -155,7 +163,7 @@ bytes and corrupt the decode. `decompress: false` keeps the bytes and the header
 
 **Silent-breakage risk on a Bun upgrade:** the unit test asserts the option is _passed_, not that
 Bun honours it, so a Bun behaviour change keeps the suite green while responses break. Verified on
-Bun 1.3.10; add an integration test before bumping the Bun major.
+Bun 1.4.4; add an integration test before bumping the Bun major.
 
 ## The WebSocket relay
 
@@ -179,16 +187,21 @@ list (logged by none). Hence:
   subprotocol token ([shared/ws-bearer.ts](../../../shared/ws-bearer.ts)).
 - **The carrier exists** because RFC 6455 requires the server to echo one offered subprotocol for
   strict clients, and echoing the _bearer_ would expose the credential on `WebSocket.protocol` to
-  page JS and response logs ([ws.ts:237-259](../../../backend/src/proxy/ws.ts#L237)).
+  page JS and response logs ([ws.ts:264-286](../../../backend/src/proxy/ws.ts#L264)).
 - **The bearer is validated in `open()`, not `beforeHandle`**, which Elysia/Bun can invoke more than
   once per upgrade and so holds only synchronous, idempotent target checks. `open()` runs once per
   accepted socket, validates through the Better Auth path REST uses, and refuses anonymous users
-  ([ws.ts:276-293](../../../backend/src/proxy/ws.ts#L276),
+  ([ws.ts:303-340](../../../backend/src/proxy/ws.ts#L303),
   [backend/src/auth/ws-bearer-auth.ts](../../../backend/src/auth/ws-bearer-auth.ts)).
 - **The whole `tbproxy.*` and `thunderbolt.*` namespace is stripped before the upstream handshake**
   ([ws.ts:86](../../../backend/src/proxy/ws.ts#L86)); caller protocols pass through so the upstream
   negotiates normally.
-- Messages arriving before the upstream socket opens are queued and flushed on `open`.
+- Messages arriving before the upstream socket opens are queued and flushed on `open`. The queue
+  exists from the moment the socket is accepted, so frames sent while the bearer check is still
+  running are queued too, under the same caps. Bun can deliver a frame together with the upgrade. A
+  refused socket discards its queue, and a socket closed during the check never dials the upstream.
+  The Haystack ACP route (`/v1/haystack/ws`) queues frames during its own bearer check under the
+  same caps and the same `4008`, and closes with the same `1013` when that check throws.
 
 `createProxyWebSocket` reads Use Cloud Proxy for each connection. Tauri defaults to direct
 `new WebSocket(url, protocols)` with no app bearer; enabling the setting uses the same carrier,
@@ -208,12 +221,19 @@ and unchanged.
 | `4003` | Reserved for a non-`wss://` target; classified but not emitted today  |
 | `4008` | Pre-connect queue exceeded its message or byte budget                 |
 | `1011` | Upstream connection failed or errored                                 |
+| `1013` | Bearer check threw (for example, database down); the app may retry    |
 
-Otherwise the upstream's close code and reason are relayed verbatim. An unparseable subprotocol or
-invalid target is caught earlier, in `beforeHandle`, and refused with an HTTP 400, so the client
-sees a failed handshake (`1002`/`1006`) rather than a close code. `4001`, in the app-defined
-4000-4999 range, distinguishes "accepted my socket, then refused me" (re-login) from "never reached
-the server" (network error).
+Otherwise a close code and reason are relayed verbatim, upstream to client and client to upstream,
+except codes a close frame may not carry (`relayCloseCode` in `ws.ts`), on which Bun's
+`WebSocket.close()` throws and would leave the other side open. A clean close that carried no status
+(`1005`) is relayed as `1000`, a deliberate end. A dropped connection (`1006`), a TLS failure
+(`1015`), the reserved `1004` or an out-of-range code is relayed as a close frame without a status,
+which a browser reads as `1005` and may retry: `1000` would end the session for good.
+
+An unparseable subprotocol or invalid target is caught earlier, in `beforeHandle`, and refused with
+an HTTP 400, so the client sees a failed handshake (`1002`/`1006`) rather than a close code. `4001`,
+in the app-defined 4000-4999 range, distinguishes "accepted my socket, then refused me" (re-login)
+from "never reached the server" (network error).
 
 `/v1/proxy/ws` is exempt from the minimum-app-version gate: a browser cannot attach `X-App-Version`
 to a handshake. `/v1/proxy` is gated normally, so the client adds the header to the outer hop.

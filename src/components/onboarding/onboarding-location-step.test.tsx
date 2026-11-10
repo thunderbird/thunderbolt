@@ -2,423 +2,87 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { useOnboardingState } from '@/hooks/use-onboarding-state'
-import { mockLocationData } from '@/test-utils/http-client'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
-import '@testing-library/jest-dom'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
-import type { ConsoleSpies } from '@/test-utils/console-spies'
-import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { OnboardingLocationStep } from './onboarding-location-step'
 
-const TestOnboardingLocationStep = ({ onFormDirtyChange }: { onFormDirtyChange?: (isDirty: boolean) => void }) => {
-  const { state, actions } = useOnboardingState()
-  return <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={onFormDirtyChange} />
+beforeAll(setupTestDatabase)
+afterAll(teardownTestDatabase)
+
+const response = [{ id: 123, name: 'Zero', region: 'Region', country: 'Country', countryCode: 'ZZ', lat: 0, lon: 0 }]
+const chooseLocation = async () => {
+  fireEvent.change(screen.getByPlaceholderText('Search locations…'), { target: { value: 'Zero' } })
+  await act(async () => {
+    await getClock().tickAsync(300)
+  })
+  await act(async () => {
+    fireEvent.click(screen.getByRole('option', { name: 'Zero, Region, Country' }))
+  })
 }
 
-let consoleSpies: ConsoleSpies
-
-beforeAll(async () => {
-  await setupTestDatabase()
-  consoleSpies = setupConsoleSpy()
-})
-
-afterAll(async () => {
-  await teardownTestDatabase()
-  consoleSpies.restore()
-})
-
 describe('OnboardingLocationStep', () => {
-  beforeEach(async () => {
-    // Reset database before each test to prevent pollution from randomized test order
-    await resetTestDatabase()
-  })
-
-  const renderComponent = async (onFormDirtyChange?: (isDirty: boolean) => void) => {
-    const result = render(<TestOnboardingLocationStep onFormDirtyChange={onFormDirtyChange} />, {
-      wrapper: createTestProvider({ mockResponse: mockLocationData }),
-    })
-
-    // Wait for the component to render
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/Search locations/i)).toBeInTheDocument()
-    })
-
-    return result
-  }
-
-  describe('Component rendering', () => {
-    it('should render location step UI correctly', async () => {
-      await renderComponent()
-
-      expect(screen.getByText('Where are you located?')).toBeInTheDocument()
-      expect(
-        screen.getByText('This helps us personalize your experience with local settings and features.'),
-      ).toBeInTheDocument()
-      expect(screen.getByText('Select location…')).toBeInTheDocument()
-    })
-
-    it('should render MapPin icon', async () => {
-      await renderComponent()
-
-      // The MapPin icon is an SVG with aria-hidden="true", so we check the container
-      const iconContainer = screen
-        .getByText('Where are you located?')
-        .closest('div')
-        ?.parentElement?.querySelector('.mx-auto')
-      expect(iconContainer).toBeInTheDocument()
+  it('saves a typed picker selection including zero coordinates exactly once', async () => {
+    const submitLocation = mock(async () => {})
+    render(
+      <OnboardingLocationStep
+        state={{ locationValue: '', isSubmittingLocation: false }}
+        actions={{ submitLocation }}
+      />,
+      {
+        wrapper: createTestProvider({ mockResponse: response }),
+      },
+    )
+    expect(screen.getAllByRole('combobox')[0]).toHaveAccessibleName('Location')
+    await chooseLocation()
+    expect(submitLocation).toHaveBeenCalledTimes(1)
+    expect(submitLocation).toHaveBeenCalledWith({
+      locationName: 'Zero, Region, Country',
+      locationId: 123,
+      locationLat: 0,
+      locationLng: 0,
+      locationCountryCode: 'ZZ',
     })
   })
 
-  describe('Form interaction', () => {
-    it('should toggle location search when combobox is clicked', async () => {
-      await renderComponent()
-
-      // Get the trigger button by its text content
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      expect(triggerButton).toBeInTheDocument()
-      fireEvent.click(triggerButton!)
-
-      // Button should still be in document after click
-      expect(triggerButton).toBeInTheDocument()
-    })
-
-    it('should have proper form structure', async () => {
-      await renderComponent()
-
-      const form = document.querySelector('form')
-      expect(form).toBeInTheDocument()
-    })
-
-    it('should have proper combobox structure', async () => {
-      await renderComponent()
-
-      // Get the trigger button by its text content
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      expect(triggerButton).toBeInTheDocument()
-      // The real hook behavior may vary - just check that the attribute exists
-      expect(triggerButton?.getAttribute('aria-expanded')).toBeTruthy()
-    })
+  it('shows a retained selection on revisit and prevents replacement during persistence', () => {
+    const submitLocation = mock(async () => {})
+    render(
+      <OnboardingLocationStep
+        state={{ locationValue: 'Paris', isSubmittingLocation: true }}
+        actions={{ submitLocation }}
+      />,
+      {
+        wrapper: createTestProvider(),
+      },
+    )
+    expect(screen.getByRole('combobox', { name: 'Location' })).toHaveTextContent('Paris')
+    expect(screen.getByRole('combobox', { name: 'Location' })).toBeDisabled()
+    expect(screen.queryByPlaceholderText('Search locations…')).toBeNull()
+    expect(submitLocation).not.toHaveBeenCalled()
   })
 
-  describe('Accessibility', () => {
-    it('should have proper form labels and structure', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      // The component exposes a trigger button and search input
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      const searchInput = screen.getByPlaceholderText(/Search locations/i)
-      expect(triggerButton).toBeInTheDocument()
-      expect(searchInput).toBeInTheDocument()
-      expect(triggerButton?.getAttribute('aria-expanded')).toBeTruthy()
+  it('handles a rejected save at the event boundary without an unhandled rejection', async () => {
+    const submitLocation = mock(async () => {
+      throw new Error('disk full')
     })
-
-    it('should maintain accessibility during interactions', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      fireEvent.click(triggerButton!)
-
-      await waitFor(() => {
-        expect(triggerButton).toBeInTheDocument()
-      })
-      // The real hook behavior may vary - just check that the attribute exists
-      expect(triggerButton?.getAttribute('aria-expanded')).toBeTruthy()
-    })
-  })
-
-  describe('Edge cases', () => {
-    it('should handle rapid button clicks', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')
-
-      // Rapid clicks should not cause issues
-      fireEvent.click(triggerButton!)
-      fireEvent.click(triggerButton!)
-      fireEvent.click(triggerButton!)
-
-      // Wait for all state updates to settle
-      await waitFor(() => {
-        expect(triggerButton).toBeInTheDocument()
-      })
-    })
-
-    it('should maintain accessibility during error states', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      expect(triggerButton).toBeInTheDocument()
-      // LocationSearchCombobox is wrapped in FormControl, so aria-invalid is set to "false" (no errors)
-      expect(triggerButton?.getAttribute('aria-invalid')).toBe('false')
-    })
-  })
-
-  describe('Form Validation Business Logic', () => {
-    it('should show validation error when submitting empty form', async () => {
-      await renderComponent()
-
-      const form = document.querySelector('form')
-      expect(form).toBeInTheDocument()
-
-      fireEvent.submit(form!)
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      const errorMessage = screen.queryByText('Location is required.')
-      expect(errorMessage).toBeInTheDocument()
-    })
-
-    it('should require valid location data for submission', async () => {
-      await renderComponent()
-
-      const form = document.querySelector('form')
-      expect(form).toBeInTheDocument()
-
-      fireEvent.submit(form!)
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      const errorMessage = screen.queryByText('Location is required.')
-      expect(errorMessage).toBeInTheDocument()
-    })
-  })
-
-  describe('Location Selection Business Logic', () => {
-    it('should have clickable trigger button', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      expect(triggerButton).toBeInTheDocument()
-      expect(triggerButton?.getAttribute('role')).toBe('combobox')
-    })
-
-    it('should handle trigger button clicks', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')!
-      fireEvent.click(triggerButton)
-
-      // Wait for state updates and verify button is still in document
-      await waitFor(() => {
-        expect(triggerButton).toBeInTheDocument()
-      })
-    })
-  })
-
-  describe('State Management Business Logic', () => {
-    it('should initialize form with empty values', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      expect(triggerButton).toBeInTheDocument()
-      expect(triggerButton?.textContent).toContain('Select location…')
-    })
-
-    it('should call onFormDirtyChange when provided', async () => {
-      let formDirty: boolean | undefined = undefined
-      const onFormDirtyChange = (isDirty: boolean) => {
-        formDirty = isDirty
-      }
-
-      renderComponent(onFormDirtyChange)
-
-      // Component calls onFormDirtyChange(false) on initialization
-      await waitFor(() => {
-        expect(formDirty).toBe(false)
-      })
-
-      expect(screen.getByText('Where are you located?')).toBeInTheDocument()
-    })
-
-    it('should reset form state on initialization', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      expect(triggerButton).toBeInTheDocument()
-      expect(triggerButton?.textContent).toContain('Select location…')
-    })
-  })
-
-  describe('Error Handling Business Logic', () => {
-    it('should render component even when errors occur', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Where are you located?')).toBeInTheDocument()
-      })
-
-      expect(screen.getByText('Select location…')).toBeInTheDocument()
-    })
-  })
-
-  describe('Component Initialization Business Logic', () => {
-    it('should auto-focus search input on mount', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        const searchInput = screen.getByPlaceholderText(/Search locations/i)
-        expect(searchInput).toBeInTheDocument()
-      })
-    })
-
-    it('should auto-click trigger button on mount', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        const triggerButton = screen.getByText('Select location…').closest('button')
-        expect(triggerButton).toBeInTheDocument()
-      })
-    })
-
-    it('should initialize form with correct default values', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      expect(triggerButton).toBeInTheDocument()
-      expect(triggerButton?.textContent).toContain('Select location…')
-    })
-  })
-
-  describe('Form Submission Business Logic', () => {
-    it('should have form element for submission', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        const form = document.querySelector('form')
-        expect(form).toBeInTheDocument()
-      })
-    })
-
-    it('should prevent submission of invalid form', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const form = document.querySelector('form')!
-      fireEvent.submit(form)
-
-      await act(async () => {
-        await getClock().runAllAsync()
-      })
-
-      const errorMessage = screen.queryByText('Location is required.')
-      expect(errorMessage).toBeInTheDocument()
-    })
-  })
-
-  describe('Location Search Integration Business Logic', () => {
-    it('should integrate with real location search hook', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const searchInput = screen.getByPlaceholderText(/Search locations/i)
-      const triggerButton = screen.getByText('Select location…').closest('button')
-
-      expect(searchInput).toBeInTheDocument()
-      expect(triggerButton).toBeInTheDocument()
-    })
-
-    it('should handle search query changes', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Search locations/i)).toBeInTheDocument()
-      })
-
-      const searchInput = screen.getByPlaceholderText(/Search locations/i)
-
-      fireEvent.change(searchInput, { target: { value: 'New York' } })
-
-      await waitFor(() => {
-        expect(searchInput).toBeInTheDocument()
-      })
-    })
-
-    it('should display search input when open', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(/Search locations/i)).toBeInTheDocument()
-      })
-    })
-
-    it('should show loading state during search', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      fireEvent.click(triggerButton!)
-
-      await waitFor(() => {
-        expect(triggerButton).toBeInTheDocument()
-      })
-    })
-
-    it('should show empty state when no results found', async () => {
-      await renderComponent()
-
-      await waitFor(() => {
-        expect(screen.getByText('Select location…')).toBeInTheDocument()
-      })
-
-      const triggerButton = screen.getByText('Select location…').closest('button')
-      fireEvent.click(triggerButton!)
-
-      await waitFor(() => {
-        expect(triggerButton).toBeInTheDocument()
-      })
-    })
+    const log = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(
+        <OnboardingLocationStep
+          state={{ locationValue: '', isSubmittingLocation: false }}
+          actions={{ submitLocation }}
+        />,
+        {
+          wrapper: createTestProvider({ mockResponse: response }),
+        },
+      )
+      await chooseLocation()
+      expect(log).toHaveBeenCalledWith('Failed to save location:', expect.any(Error))
+    } finally {
+      log.mockRestore()
+    }
   })
 })

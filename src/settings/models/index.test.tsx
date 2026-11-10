@@ -113,6 +113,16 @@ describe('add model form', () => {
     expect(within(panel).queryByRole('button', { name: 'Refresh model catalog' })).not.toBeInTheDocument()
   })
 
+  it('names the provider dropdown after its label', async () => {
+    renderModelsPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Model' }))
+    await waitForElement(() => screen.queryByRole('heading', { name: 'Add Model' }))
+
+    const panel = screen.getByRole('complementary')
+    expect(within(panel).getByRole('combobox', { name: 'Provider' })).toBeInTheDocument()
+  })
+
   it('clears the picked model without validating untouched fields when the provider changes', async () => {
     // Drives the state hook directly — the regression (a stale 'custom'
     // selection surviving a provider switch and keeping the custom-ID field

@@ -670,3 +670,8 @@ describe('parseCommandSyntax — iroh admin', () => {
     expect(parseCommandSyntax(['iroh', 'bogus']).kind).toBe('error')
   })
 })
+
+test('help explains normalization when a model cannot disable reasoning', () => {
+  expect(helpText).toContain('When off is unsupported (e.g. GLM 5.3)')
+  expect(helpText).toContain('otherwise the lowest enabled level; reasoning remains on.')
+})

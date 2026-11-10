@@ -26,7 +26,7 @@ type ResponsivePopoverProps = {
    */
   openOnTriggerClickMobile?: boolean
   /** Placement/styling for the mobile drawer card. */
-  mobileMenu?: Pick<ComponentProps<typeof MobileCardMenu>, 'side' | 'className' | 'initialFocus'>
+  mobileMenu?: Pick<ComponentProps<typeof MobileCardMenu>, 'side' | 'className' | 'showTitle'>
   /** Positioning/sizing for the desktop popover panel. */
   desktopMenu?: Pick<
     ComponentProps<typeof PopoverContent>,
@@ -73,7 +73,9 @@ export const ResponsivePopover = ({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent {...desktopMenu}>{children}</PopoverContent>
+      <PopoverContent aria-label={title} {...desktopMenu}>
+        {children}
+      </PopoverContent>
     </Popover>
   )
 }

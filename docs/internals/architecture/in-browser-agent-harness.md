@@ -36,9 +36,7 @@ point:
 - carves the calling thread's workspace and binds the four coding tools to it;
 - resolves the model and seeds prior conversation turns;
 - converts the app's integration and MCP tools from AI-SDK shape
-  ([`mcp-tools.ts`](../../../shared/agent-core/mcp-tools.ts)) and activates them alongside the coding tools;
-- on the `confidential` path, attaches a receipt lifecycle (`build-app-harness.ts:205`) correlating provider receipts
-  with the terminal assistant message that owns their usage.
+  ([`mcp-tools.ts`](../../../shared/agent-core/mcp-tools.ts)) and activates them alongside the coding tools.
 
 ### How each model path gets the injected `fetch`
 
@@ -49,16 +47,15 @@ Thunderbolt SSO fetch for managed models. Pi's providers do not all offer that s
 | --------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `anthropic`     | [`anthropic-model.ts`](../../../shared/agent-core/anthropic-model.ts)         | Builds the `@anthropic-ai/sdk` client with the `fetch` hook, passed to Pi's public `client?` option; re-implements Pi's simple→full options bridge because `streamSimple` drops `client` |
 | `openai-compat` | [`openai-compat-model.ts`](../../../shared/agent-core/openai-compat-model.ts) | No seam, so it swaps `globalThis.fetch` for the synchronous window in which Pi constructs the `openai` client, restoring it in a `finally`                                               |
-| `confidential`  | [`confidential-model.ts`](../../../shared/agent-core/confidential-model.ts)   | Wraps the OpenAI-compatible builder with catalog compatibility, attestation normalization, and usage-receipt capture                                                                     |
+| `confidential`  | [`confidential-model.ts`](../../../shared/agent-core/confidential-model.ts)   | Wraps the OpenAI-compatible builder with catalog compatibility and attestation normalization                                                                                             |
 
 The global-`fetch` swap is race-free only because Pi's `openai-completions` provider constructs its SDK client before
 its first `await`. Both builders record their upstream reliances in their file headers; re-check them on any
 `@earendil-works/pi-ai` or `openai` bump ([below](#upgrading-the-pi-packages)).
 
 The CLI imports the same builders, so `shared/agent-core` is shared surface, not app-only code:
-`buildOpenAiCompatModel` ([`direct.ts`](../../../cli/src/provider-runtime/direct.ts)), `buildConfidentialModel`
-([`tinfoil.ts`](../../../cli/src/provider-runtime/tinfoil.ts)), receipt lifecycle
-([`usage-receipt.ts`](../../../cli/src/provider-runtime/usage-receipt.ts)).
+`buildOpenAiCompatModel` ([`direct.ts`](../../../cli/src/provider-runtime/direct.ts)) and `buildConfidentialModel`
+([`tinfoil.ts`](../../../cli/src/provider-runtime/tinfoil.ts)).
 
 ### How events reach the chat layer
 
@@ -86,6 +83,20 @@ same mount. Sharing it removes the copy step: what Pi writes, `cat` sees, and vi
 - **`defenseInDepth` is deliberately off** (`browser-execution-env.ts:145`). It guards just-bash's _sandboxed JS_
   surfaces (`js-exec`/QuickJS, python), neither enabled here, and breaks the bash interpreter it protects by tripping
   over just-bash's internal `Proxy` use. The sandbox is the virtual mount, which has no host-process access.
+
+### Commands the browser shell lacks
+
+The app resolves just-bash's **browser** bundle, which excludes `xan`, `sqlite3`, `tar`, and `python3` (they exit 127),
+and no JavaScript runtime is enabled. `awk` has no CSV mode. The environment prompt names only commands that run, and
+[`environment-prompt.test.ts`](../../../shared/agent-core/environment-prompt.test.ts) executes each one against the
+browser bundle, because Bun resolves the Node bundle, where the excluded commands work.
+
+### Attachments in the workspace
+
+[`writeAgentWorkspaceFiles`](../../../shared/agent-core/build-app-harness.ts) writes the turn's text attachments under
+`attachments/` before each prompt, overwriting any edit the model made, so the model can compute over a file too large
+to inline. What gets written, and the preview the prompt carries instead, is described in
+[attachments.md](attachments.md#the-built-in-agent-queries-text-attachments-from-its-workspace).
 
 ## The workspace jail
 
@@ -173,6 +184,94 @@ onto stubs in [`shared/agent-core/browser-stubs/`](../../../shared/agent-core/br
 are several megabytes and must not sit on the chat entry chunk. The `install-process` shim is confined there too,
 and the browser check fails unless the build emits exactly one `agent-core-*.js`.
 
+## Context compaction
+
+The context circle opens a menu with manual compaction and optional summary instructions.
+The built-in Pi adapter also checks usage before each provider request, including requests
+between tool steps, and considers compaction at 80% of the selected model's context window.
+Below the hard limit, it keeps history that already fits the retention budget (10% of the
+window, capped by Pi's normal budget), including any previous summary. This avoids repeated
+summaries when system/tool overhead dominates; that overhead cannot be compacted. Manual
+compaction waits for an idle conversation; Stop cancels the summary request. Manual
+checkpoints end at the latest assistant message with content, leaving unanswered user turns
+outside the summary so Retry replays them once, verbatim. Compaction
+uses the selected model and its existing authenticated, proxied or confidential transport.
+A tool-style row in the transcript shows compaction progress. Saved checkpoints render
+as completed rows after their boundary messages, remaining visible across later turns
+and reloads. Cancellation and failure clear progress without reporting success. Manual
+completion waits for persistence.
+Automatic compaction leaves a fresh request intact when there is no earlier history to
+summarize; input that still exceeds the model window fails with context-overflow guidance.
+
+`shared/agent-core/compaction.ts` uses Pi's exported `prepareCompaction` and `generateSummary`.
+Pi owns the cut point, paired tool history and summary prompts. The app supplies threshold,
+retention and cancellation: Pi 0.82.1's `AgentHarness.compact()` hardcodes its budgets and
+does not forward cancellation to the summary request. The selected history and any
+split-turn prefix are summarized together in one request,
+retaining Pi's exact cut and tool pairs. This avoids separate prefix requests dropping
+custom instructions or previous summaries. The raw response must contain summary text
+before the app appends the deterministic read/modified-file inventory; otherwise Pi's
+split-turn headings or file tags can disguise an empty response and discard context.
+Recheck these adaptations when upgrading Pi.
+
+Compaction preserves the visible transcript. A versioned checkpoint lives in the boundary
+message's existing encrypted `metadata` column, so it syncs without a schema migration.
+It stores the summary and retained Pi messages, including tool pairs. The optional `files`
+field holds sorted `readFiles` and `modifiedFiles` arrays, restored as Pi compaction details
+so subsequent summaries preserve the exact inventory independently of model output. A short
+manual compaction that summarizes the entire conversation collects paths from that entire
+range. Older version-1 checkpoints without `files` still restore their summary and tail. Structured image
+parts become text markers and raw tool-result `details` are omitted from the durable copy:
+image binaries and original attachments stay local, matching ordinary transcript replay.
+Live Pi messages are not rewritten by checkpoint serialization. On reload or model
+change the adapter restores it, then seeds only visible turns after that boundary.
+When workspace tools are enabled, attachment files are restored from the full visible
+transcript, including turns before the checkpoint, so paths referenced by a summary still
+resolve. Without workspace tools, compacted attachments are not reopened or re-extracted;
+only turns after the checkpoint need preparation.
+Manual compaction uses the same attachment previews and tool-availability policy as
+normal requests. Stopped-reply markers are included in both model-input paths without
+being inserted into the visible or saved transcript.
+Regeneration removes the regenerated response from the request, so its checkpoint is
+excluded too. Automatic checkpoints are emitted only when compaction actually runs,
+avoiding a copy of the growing context on every subsequent message. Retained Pi messages
+cannot be reconstructed losslessly from visible text turns: they carry tool-call/result
+pairing and provider-specific content. Each checkpoint therefore stores its own tail, and
+older checkpoints remain available for inspecting or regenerating earlier branches. Pi's
+retention target is the smaller of its default budget and 10% of the model window, though
+an indivisible turn can exceed that target.
+
+After compaction, the cached harness is marked for rebuilding on the next operation.
+Cache reuse also requires its last user turn to match the supplied transcript, so
+turns from another agent or a newly loaded transcript are included before compaction.
+That rebuild reads the caller's saved checkpoint, so a failed manual save or a Stop
+that closes the stream before automatic checkpoint publication cannot leave an unsaved
+summary active on subsequent requests. Workspace ownership remains with the cache.
+The same context transformation applies to summary inputs and normal requests, keeping
+superseded Mini App reads out of durable summaries.
+
+The context menu's **View summary** opens the latest saved checkpoint; each completed
+transcript row opens its own checkpoint in the shared inspection sidebar. It renders the summary as
+Markdown and exposes retained messages and tool results in an expandable section.
+Summary images render as alt text so opening untrusted model-generated content does not
+fetch embedded image URLs.
+Opening the viewer takes a stable snapshot; it does not trigger compaction or change
+the transcript. The menu entry remains available after reloads and agent changes.
+
+The restored tail becomes real Pi message entries after the summary entry, allowing the
+next compaction to summarize it again. Retained assistant usage is cleared in this context
+copy: its old provider counts describe the full pre-compaction prompt. Original transcript
+usage remains intact. `contextTokens` supplies the indicator's reduced estimate separately
+from generation usage; the next provider response supplies measured usage again. Provider
+usage already includes system/tool overhead, which is added only to character estimates.
+
+Summary failures and cancellation leave the old context intact. A failed automatic summary
+allows the original request to proceed while its estimated context is below the model window;
+cancellation and failures at or above the window still stop the request. Manual compaction locks
+sending/regeneration through the final persistence write, and publishes its checkpoint to
+the live chat only after saving succeeds. An oversized retained context fails visibly
+instead of looping over repeated summaries.
+
 ## Tests
 
 `shared/agent-core` is a **test island**: unit tests are colocated but sit outside frontend test discovery, so
@@ -186,7 +285,8 @@ bun run test:agent-core:browser # production chunk in real browsers
 
 The browser check ([`scripts/agent-core-browser-check.ts`](../../../scripts/agent-core-browser-check.ts)) runs a
 **production Vite build**, serves it, imports the emitted chunk in Chromium and WebKit, drives two conversation turns
-through the OpenRouter, Thunderbolt, and confidential paths with injected SSE responses, then checks that OPFS data
+through the OpenRouter, Thunderbolt, and confidential paths with injected SSE responses, compacts with custom
+instructions and restores the serialized checkpoint into another harness, then checks that OPFS data
 survives a reload.
 
 - Each case runs twice, the second with the native iterator helpers deleted from the prototype before import,
@@ -216,6 +316,7 @@ On a bump, check what compiles either way:
   [`coding-tools/index.ts`](../../../shared/agent-core/coding-tools/index.ts), replicated verbatim from Pi because the
   model's priors depend on the exact wording;
 - the model-catalog aliases in `confidential-model.ts`, which paper over ids Pi's catalog does not yet carry;
+- the compaction adapters described above, including repeated restoration, split-turn guidance and cancellation;
 - `browser-stubs/node-fs.cjs`, which exists only for a specific `require("node:fs")` inside `pi-ai`.
 
 Then run the browser check: a dependency cascade regression (a newly imported Node builtin, a lost browser condition)
@@ -229,7 +330,7 @@ shows up there and nowhere else.
 | `shared/agent-core/build-app-harness.ts`   | `buildAppHarness`, `workspaceDirFor`, `removeAgentWorkspace`, model descriptors      |
 | `shared/agent-core/anthropic-model.ts`     | Anthropic model over an injected `fetch`                                             |
 | `shared/agent-core/openai-compat-model.ts` | OpenAI-wire model; the synchronous global-`fetch` swap                               |
-| `shared/agent-core/confidential-model.ts`  | Tinfoil/confidential model, attestation normalization, receipt lifecycle             |
+| `shared/agent-core/confidential-model.ts`  | Tinfoil/confidential model, attestation normalization                                |
 | `shared/agent-core/pi-to-aisdk-stream.ts`  | Pi harness events → AI SDK v5 UI message stream                                      |
 | `shared/agent-core/seed-history.ts`        | Prior turns → Pi messages (text only; tool calls deliberately dropped)               |
 | `shared/agent-core/mcp-tools.ts`           | AI-SDK tools → Pi `AgentTool`s (schema and result bridging)                          |
@@ -244,3 +345,41 @@ shows up there and nowhere else.
 | `src/acp/built-in-adapter.ts`              | Adapter seam, harness cache and signature, lazy engine import, teardown              |
 | `src/acp/built-in-conversation.ts`         | Request body → seed history plus the current prompt (including attachments)          |
 | `scripts/agent-core-browser-check.ts`      | Production-chunk regression check in Chromium and WebKit                             |
+
+## Reasoning effort
+
+The combined chat picker lists models directly and discovers effort controls from the selected provider. Unsupported
+or unknown models hide the effort panel while keeping model selection available. Without an explicit selection, the existing model-profile/provider behavior is preserved. The UI leaves the slider unselected rather than inventing a level, and offers only concrete supported values. Off appears only when the
+serving model supports disabling reasoning. Preferences use the existing encrypted settings table, scoped to chat and model.
+A saved value that is no longer supported resolves to no override.
+
+`shared/reasoning-effort.ts` owns provider capability rules and exact wire values. OpenAI Chat Completions uses
+`reasoning_effort`; OpenRouter uses `reasoning.effort`. Tinfoil uses its documented native `reasoning_effort` values,
+including values that differ from Pi's catalog aliases. Explicit overrides replace conflicting profile controls.
+OpenAI/Anthropic capabilities come from Pi's model catalog. OpenRouter and Tinfoil use their public model catalogs;
+Tinfoil's top-level `supported_efforts` lists exact native values, while its `reasoning_params.effort_map` only maps
+presets and is not a capability list. No per-model effort list is bundled. Discovery shares a five-minute cache per
+provider and keeps the last successful catalog during refresh outages. Missing metadata hides effort controls;
+a cold discovery failure also hides controls. The app preserves explicit saved wire choices during an outage;
+the CLI retains its saved thinking level with Pi's legacy compatibility mapping until metadata is available. Public catalog requests
+contain no session credentials, cache secret, or conversation data. The CLI uses the same Tinfoil metadata and cache
+policy, with Pi's compatibility aliases retained for legacy inference defaults when native support is unknown.
+CLI discovery may wait only during the first half of the overall provider-preparation budget, measured before
+credential and managed-catalog loading. If that budget is exhausted, binding construction continues with legacy
+defaults; an already-running public catalog request can still populate the cache for subsequent bindings.
+
+The browser harness changes thinking level between turns without rebuilding the session or losing compaction
+checkpoints. An absent override uses the profile's level and leaves the provider payload unchanged.
+
+Remote ACP agents remain authoritative: the composer displays their `thought_level` select options verbatim,
+including grouped choices, and commits through `session/set_config_option`. Initial responses, setter responses,
+and idle `config_option_update` notifications refresh the control. No advertised option means no selector.
+The CLI Pi harness exposes concrete supported levels, serializes changes against active prompts, and restores saved
+thinking-level entries when resuming a session. If an inherited level cannot resolve to a supported effort, it
+initializes Medium when available, otherwise the lowest enabled reasoning level (Off only if it is the sole option). Valid explicit and resumed choices are
+preserved. No synthetic Default option is advertised.
+
+Provider references: [OpenAI](https://developers.openai.com/api/docs/guides/reasoning),
+[OpenRouter](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens),
+[Tinfoil](https://docs.tinfoil.sh/guides/reasoning),
+[ACP configuration](https://agentclientprotocol.com/protocol/v1/session-config-options).

@@ -1,6 +1,6 @@
-# The native replay's control, the counterpart of stack.spec.ts: `verify.ts replay --native` runs it three times on
-# a fresh install of the build without onboarding before any finding's flow, and if one run fails the stack is broken
-# and no replayed finding counts. It passes the same allow list as the findings' flows, which adds the appId header.
+# The native counterpart of stack.spec.ts: `verify.ts replay --native` runs it three times on a fresh install of the
+# build without onboarding before any finding's flow, and if one run fails the stack is broken and no replayed
+# finding counts. It passes the same allow list as the findings' flows, which adds the appId header.
 - launchApp
 - extendedWaitUntil:
     visible: Want early access?

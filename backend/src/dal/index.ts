@@ -11,9 +11,10 @@ export {
   isCliDeviceId,
   isTrustedAppDevice,
   getDeviceById,
-  upsertDevice,
+  touchDevice,
   upsertCliDevice,
   revokeDevice,
+  requireMigrationSiblingApproval,
   denyDevice,
   markDeviceTrusted,
   registerDevice,
@@ -49,7 +50,7 @@ export {
 export {
   getOrCreateOtpChallenge,
   validateOtpChallenge,
-  deleteOtpChallengesForEmail,
+  consumeOtpChallenge,
   deletePersistedSignInOtp,
 } from './otp-challenge'
 

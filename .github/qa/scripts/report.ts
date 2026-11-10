@@ -11,7 +11,7 @@ import { z } from 'zod'
 import type { Canary } from './canaries'
 import type { Filed, Scorecard } from './file-findings'
 import { sanitize } from './sanitize'
-import { type FindingFile, loadFindings, parseSession, realAiCharters } from './findings'
+import { findingId, loadFindings, parseSession, realAiCharters } from './findings'
 import { selects } from './legs'
 import type { Verified, VerifiedFinding } from './verify'
 
@@ -61,8 +61,7 @@ const readJson = async <T>(path: string): Promise<T | undefined> => {
 
 /**
  * Session metrics from a claude-code-action execution file (a JSON array of SDK messages ending in the
- * `result` message). Tokens are summed from `modelUsage`: on a budget cut `usage` is all zeros.
- * A missing file or result message is `timeout` when the job timed out, otherwise `error`.
+ * `result` message).
  */
 export const sessionFromExecution = async (path: string, charter: string, timedOut = false): Promise<Session> => {
   // A job killed mid-write leaves a truncated file: the session was cut, and its numbers are unknown.
@@ -87,7 +86,6 @@ export const sessionFromExecution = async (path: string, charter: string, timedO
   }
 }
 
-/** Suggested cap = max observed + 50%; undefined without samples. A run has at most nine sessions per step. */
 export const suggestCap = (samples: number[]) => (samples.length === 0 ? undefined : Math.max(...samples) * 1.5)
 
 type CanaryResult = {
@@ -99,8 +97,6 @@ type CanaryResult = {
   /** Visual findings: confirmed from a screenshot with no baseline replay, so neither found nor real. */
   unmeasured: string[]
 }
-
-const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir}/${f.id}`
 
 /**
  * A canary is found when a judge-confirmed canary-leg finding from the canary's charter replays on the normal build
@@ -130,7 +126,7 @@ export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], b
   }
 }
 
-/** One entry of `.github/qa/functions.json`: what must work in an area, and whether it must survive a reload. */
+/** One entry of `.github/qa/functions.json`; `reload` means the outcome must survive a reload. */
 export type QaFunction = { id: string; outcome: string; reload?: boolean }
 
 const attemptSchema = z.object({
@@ -180,10 +176,7 @@ const toSteps = (transcript: TranscriptMessage[]): Step[] => {
   )
 }
 
-/**
- * `click` for `mcp__playwright__browser_click` (and device B's `mcp__playwright_b__…`), `run` for
- * `mcp__maestro__run`; undefined for other tools.
- */
+/** The tool's short name, such as `click` (either browser) or `run` (Maestro); undefined for other tools. */
 const browserTool = (tool: string) => /^mcp__(?:playwright(?:_b)?__browser_|maestro__)(\w+)$/.exec(tool)?.[1]
 const readyLine = '[qa-layout] ready'
 /** The gate puts the probe's ready line on a line of its own, so text inside another line does not match. */
@@ -219,7 +212,6 @@ const sessionLogPath = (link: string, sessionDir: string) => {
   return rest ? join(sessionDir, rest) : link
 }
 
-/** The load's result links console lines that hold the probe's ready line. */
 const probeRan = async (result: string, sessionDir: string, readLog: (path: string) => Promise<string | undefined>) => {
   const [, link, from, to = from] = consoleLink.exec(result) ?? []
   const log = link ? await readLog(sessionLogPath(link, sessionDir)) : undefined
@@ -234,9 +226,9 @@ const probeRan = async (result: string, sessionDir: string, readLog: (path: stri
 /**
  * Screens in a session and how many of them did not show `[qa-layout] ready`: page loads and native `run` calls.
  * Back is not a load: it is a same-document history move in this SPA, and the probe runs on document loads only.
- * The Playwright MCP puts no console text in a navigate result, only a count and a link to the log lines the load
- * wrote, so each link is followed (`readLog`) under `sessionDir`. A load with no link, or whose linked lines lack
- * the ready line, counts as missing. The Maestro gate appends the ready line to a `run` result itself.
+ * The Playwright MCP puts no console text in a navigate result, only a link to the log lines the load wrote, so each
+ * link is followed under `sessionDir`. A load with no link counts as missing. The Maestro gate appends the ready
+ * line to a `run` result itself.
  */
 export const probeGaps = async (
   transcript: TranscriptMessage[],
@@ -253,18 +245,16 @@ export const probeGaps = async (
 }
 // A relaunch, as the gate's allow list forces it: launchApp right after stopApp or killApp, as top-level commands.
 const relaunch = /^- (?:stopApp|killApp)\b[\s\S]*?^- launchApp\b/m
-/** A reload: a page navigation, or on native a `run` whose commands stop the app and launch it again. */
 const isNavigation = (step: Step) =>
   step.kind === 'call' &&
   (['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '') ||
     (browserTool(step.tool) === 'run' && relaunch.test(step.yaml ?? '')))
-/** The id of the attempt record a Write call wrote; undefined for every other step. */
 const recordWritten = (step: Step) =>
   step.kind === 'call' && step.tool === 'Write' ? /\/attempts\/([^/]+)\.json$/.exec(step.path ?? '')?.[1] : undefined
 
 /**
- * Spacing, the JSON escapes of an evaluate result and the snapshot's `[ref=…]` and `[cursor=…]` markers do not count,
- * so a quote may span snapshot lines and be copied from an evaluate result either escaped or not.
+ * Spacing, the JSON escapes of an evaluate result and the snapshot's `[ref=…]` and `[cursor=…]` markers
+ * do not count, so a quote may span snapshot lines and be copied from an evaluate result either escaped or not.
  */
 const normalize = (text: string) =>
   text
@@ -291,10 +281,9 @@ const quotable = (step: Step) => {
 }
 
 /**
- * Why an attempt's `observed` quote is not backed by the transcript, or undefined when it is. The quote must be in a
- * browser tool's result within the attempt's window (from the previous record written after a browser action to
- * its own record), after a browser action in that window and, with `reload`, after a navigation that follows a
- * change in that window. The code a tool echoes back never counts.
+ * Why an attempt's `observed` quote is not backed by the transcript. The quote must be in a browser tool's result
+ * within the attempt's window (from the previous record written after a browser action to its own record), after a
+ * browser action in that window and, with `reload`, after a navigation that follows a change in that window.
  */
 const evidenceProblem = (steps: Step[], { id, attempt }: { id: string; attempt: Attempt }, reload: boolean) => {
   const end = steps.findLastIndex((step) => recordWritten(step) === id)
@@ -312,7 +301,7 @@ const evidenceProblem = (steps: Step[], { id, attempt }: { id: string; attempt: 
   const first = (pick: (step: Step) => boolean) => steps.findIndex((step, i) => i >= start && pick(step))
   const action = first(isAction)
   if (!quoted.some((r) => action >= 0 && action < r)) return 'no browser action before the quoted result'
-  // ponytail: any reload after the window's first change counts, even one before the change under test; tie the
+  // shortcut: any reload after the window's first change counts, even one before the change under test; tie the
   // reload to the last change before the quote if sampled attempts show explorers exploiting it.
   const change = first((step) => isAction(step) && !isNavigation(step))
   if (reload && !quoted.some((r) => change >= 0 && steps.slice(change, r).some(isNavigation))) {
@@ -331,10 +320,9 @@ export type Coverage = {
 }
 
 /**
- * Evidence-supported coverage of one session. Every function in the area's list gets a verdict, so one without a
- * record is unattempted. A function is covered (passed or failed) only when one of its passed or failed attempts is
- * backed by the transcript (`evidenceProblem`); without a transcript none is. A passed attempt at a `reload`
- * function also needs the reload; a failed one does not.
+ * Evidence-supported coverage of one session. A function is covered (passed or failed) only when one of its passed or
+ * failed attempts is backed by the transcript (`evidenceProblem`); without a transcript none is. A passed attempt at
+ * a `reload` function also needs the reload; a failed one does not.
  */
 export const checkCoverage = (
   functions: QaFunction[],
@@ -441,7 +429,7 @@ const coverageParts = (charter: string, { verdicts, records, invalid, unknown, t
 const coverageLine = (charter: string, coverage?: Coverage) =>
   `- **${charter}**: ${(coverage ? coverageParts(charter, coverage) : ['no function list']).join('; ')}`
 
-/** A flaky finding with its evidence. A security finding's text stays out of the public summary. */
+/** A security finding's text stays out of the public summary. */
 const flakyLine = ({ charterDir, id, finding, replay }: VerifiedFinding) => {
   const text =
     finding.area === 'security'
@@ -500,7 +488,6 @@ const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: numbe
 /** One group of sessions' findings: how many the explorers wrote, what verify made of them, and what was filed. */
 type Findings = { found: number; verified?: Verified; filed?: Filed[] }
 
-/** The findings of the sessions whose charter directory `keep` selects. */
 const findingsOf = ({ found, verified, filed }: ReportInput, keep: (charterDir: string) => boolean): Findings => ({
   found: found.filter(keep).length,
   verified: verified && {
@@ -531,7 +518,7 @@ const gateYield = (found: number, verified: Verified, filed?: Filed[]) => {
   ]
 }
 
-/** Gate yield, the flaky, deferred and dropped lists, and what was filed; `label` tells two groups' sections apart. */
+/** `label` tells two groups' sections apart. */
 const findingsSection = ({ found, verified, filed }: Findings, label: string) => {
   const out: string[] = []
   if (verified) {
@@ -541,7 +528,7 @@ const findingsSection = ({ found, verified, filed }: Findings, label: string) =>
     if (deferred.length > 0) {
       out.push(
         '',
-        `### Deferred (${deferred.length}), over a cap`,
+        `### Deferred (${deferred.length}), not replayed or judged`,
         ...deferred.map((d) => `- ${d.file.charterDir}/${d.file.id}: **${d.step}** — ${d.reason}`),
       )
     }
@@ -574,7 +561,6 @@ const cutNote = (s: Session) => {
   return isFree(s.charter) ? 'the case was not fully played' : 'the charter was not fully explored'
 }
 
-/** The free sessions, apart from the charters: one case on every platform, what each tried, and their findings. */
 const freeSection = ({ coverage }: ReportInput, free: Session[], findings: Findings) => [
   '',
   '## Free session',
@@ -592,7 +578,7 @@ const freeSection = ({ coverage }: ReportInput, free: Session[], findings: Findi
   ...findingsSection(findings, ' (free session)'),
 ]
 
-/** Render the run report as Markdown. Cut and failed sessions come first so an incomplete charter never looks clean. */
+/** Cut and failed sessions come first so an incomplete charter never looks clean. */
 export const renderReport = (input: ReportInput) => {
   const { sessions, coverage, verified, scorecard, canary } = input
   const out: string[] = ['# Weekly QA run']
@@ -687,7 +673,7 @@ const loadAttempts = async (charterDir: string): Promise<AttemptFile[]> => {
 
 /**
  * Writes `<outDir>/report.md` from everything the run produced, appends it to `stepSummary` when given, and says
- * whether nothing was explored. Coverage reads each session's attempt records and transcript against `functions.json`.
+ * whether nothing was explored.
  */
 export const runSummary = async (
   outDir: string,
@@ -734,11 +720,10 @@ export const runSummary = async (
 }
 
 /**
- * Canary leg: match its confirmed findings against the canaries `canaries.ts` picked and the baseline (the
- * same findings replayed on the normal build, its `candidates.json`), and write `canary.json`. The filer never sees
- * the canary leg: the file job downloads only the weekly leg's `verified.json`. A dispatch's `charters` list runs only
- * some canary legs, chosen as `planLegs` chooses them; the canaries of the others never ran, so they are left out
- * rather than counted as missed.
+ * Canary leg: match its confirmed findings against the canaries and the baseline (the same findings replayed on the
+ * normal build), and write `canary.json`. The filer never sees the canary leg: the file job downloads only the weekly
+ * leg's `verified.json`. A dispatch's `charters` list runs only some canary legs; the canaries of the others never
+ * ran, so they are left out rather than counted as missed.
  */
 export const runCanary = async (outDir: string, baselineDir: string, canariesPath: string, chartersInput = '') => {
   const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()

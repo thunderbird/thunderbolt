@@ -3,15 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { LanguageModelV2Usage } from '@ai-sdk/provider'
-import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { SourceMetadata } from './types/source'
-import type { Window } from '@tauri-apps/api/window'
 import type { UIMessage, UITools } from 'ai'
 import type { DrizzleQuery } from '@powersync/drizzle-driver'
 import type { InferSelectModel } from 'drizzle-orm'
 import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
+import type { CompactionCheckpoint } from '@shared/agent-core'
+import type { AcpCompaction, AcpContextUsage } from '@/acp/compaction'
 import type { DebugTranscriptMessageMetadataV1 } from './debug-transcript/types'
 import type { EmbeddedSurfaceChoice } from './ai/embedded-surface'
 import type { HttpClient } from './contexts'
@@ -33,8 +33,6 @@ import type {
 export type InitData = {
   db: AnyDrizzleDatabase
   cloudUrl: string
-  tray: TrayIcon | undefined
-  window: Window | undefined
   posthogClient: PostHog | null
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
@@ -82,11 +80,17 @@ export type QuoteData = {
 export type ThunderboltUIDataTypes = {
   attachment: AttachmentData
   quote: QuoteData
+  'acp-compaction': AcpCompaction
 }
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDataTypes, UITools>
 
-export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
+export type SaveMessagesFunction = (params: {
+  id: string
+  messages: ThunderboltUIMessage[]
+  /** Historical message edits must not replace the thread's current context size. */
+  updateContext?: boolean
+}) => Promise<void>
 
 /**
  * Persists a single in-flight assistant message during streaming (crash-recovery
@@ -139,12 +143,12 @@ export type Model = WithRequired<
 /**
  * Compile-time invariant: every shipped `SharedModel` default (see
  * `shared/defaults/models.ts`) must be structurally assignable to `Model` with
- * the DAL-joined `apiKey` stripped. If `Model` gains a required field that
+ * the DAL-joined `apiKey` and user-owned `reasoningEffort` stripped. If `Model` gains a required field that
  * `SharedModel` doesn't cover, the assignment below errors, forcing us to
  * update the shared type in the same change. Never called at runtime; exported
  * so `noUnusedLocals` doesn't strip the guard.
  */
-export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey'> => model
+export const _sharedModelIsSubsetOfModel = (model: SharedModel): Omit<Model, 'apiKey' | 'reasoningEffort'> => model
 export type Task = WithRequired<TaskRow, 'item' | 'order' | 'isComplete'>
 export type McpServer = WithRequired<McpServerRow, 'name' | 'type' | 'enabled'>
 export type Prompt = WithRequired<PromptRow, 'prompt' | 'modelId'>
@@ -167,6 +171,13 @@ export type AutomationRun = {
 }
 
 export type UIMessageMetadata = {
+  /** Pi context checkpoint; the visible transcript remains intact. */
+  contextCompaction?: CompactionCheckpoint
+  /** Current model context, separate from billable generation usage. */
+  contextTokens?: number
+  acpContextUsage?: AcpContextUsage
+  /** An explicit agent command, sent verbatim without prompt decoration. */
+  acpCommand?: 'compact'
   modelId?: string
   /** Correlates a persisted turn with its richer session-scoped debug capture. */
   debugTranscript?: DebugTranscriptMessageMetadataV1
@@ -202,6 +213,12 @@ export type UIMessageMetadata = {
    * alone, since they may well be artifact reads.
    */
   embeddedSurface?: Exclude<EmbeddedSurfaceChoice, null>
+  /**
+   * Set on a prompt when the user stopped its reply. If the reply had no text
+   * yet, later turns show the model a stop marker after the prompt, so the
+   * model doesn't answer it again.
+   */
+  stoppedByUser?: boolean
 }
 
 /**

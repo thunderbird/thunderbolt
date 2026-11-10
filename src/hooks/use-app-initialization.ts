@@ -19,7 +19,7 @@ import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { createSearchIndex } from '@/search/fts-setup'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
-import { createAppDir, resetAppDir } from '@/lib/fs'
+import { createAppDir, resetAppDir, runAppStorageOperation } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
 import { beginInitRun, getInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
@@ -36,8 +36,6 @@ import { defaultTasksVersion } from '@/defaults/tasks'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
 import type { HandleResult } from '@/types/handle-errors'
-import type { TrayIcon } from '@tauri-apps/api/tray'
-import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
 import { sql } from 'drizzle-orm'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -95,9 +93,10 @@ const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleD
   const databaseType = await getDatabaseType()
   const dbPath = await getDatabasePath(appDirPath)
 
-  const database = new Database()
-  const db = await database.initialize({ type: databaseType, path: dbPath })
+  const database = existing ?? new Database()
+  // Keep the owner registered even if opening fails, so Retry/Reset can retire partial resources.
   setDatabase(database)
+  const db = await database.initialize({ type: databaseType, path: dbPath })
   return { db, database }
 }
 
@@ -107,6 +106,9 @@ const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleD
  * seconds on a cold one, so this is a stuck-detector rather than a perf budget.
  */
 export const dbReadyTimeoutMs = 30_000
+
+/** Offline session binding must not hold local storage ownership indefinitely. */
+export const sessionBindingTimeoutMs = 10_000
 
 export type DatabaseReadyResult =
   | { outcome: 'ready' }
@@ -132,12 +134,6 @@ export const waitForDatabaseReady = async (
     }
   })()
   return (await withTimeout(firstQuery, timeoutMs, 'waitForDatabaseReady')) ?? { outcome: 'timed_out' }
-}
-
-type TrayInitResult = { tray: TrayIcon | undefined; window: Window | undefined }
-
-const initializeTray = async (): Promise<TrayInitResult> => {
-  return await TrayManager.initIfSupported()
 }
 
 const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | null> => {
@@ -191,15 +187,14 @@ const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
   }
 }
 
-/** Step 7 wrapper: never throws — falls back to an empty tray on failure. */
-const initializeTraySafely = async (): Promise<TrayInitResult> => {
+/** Keep boot usable if the platform cannot create its native tray. */
+const initializeTraySafely = async (): Promise<void> => {
   try {
-    return await time('step7_initialize_tray', () => initializeTray())
+    await time('step7_initialize_tray', () => TrayManager.initIfSupported())
   } catch (error) {
     console.warn('Failed to initialize tray, continuing without tray support:', error)
     const trayError = createHandleError('TRAY_INIT_FAILED', 'Failed to initialize tray', error)
     trackError(trayError, { initialization_step: 'tray' })
-    return { tray: undefined, window: undefined }
   }
 }
 
@@ -367,7 +362,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
 
   // Complete binding before trust requests or the mounted session observer run.
   // If this attempt fails, that observer can retry after the local app mounts.
-  await sessionBinding
+  await withTimeout(sessionBinding, sessionBindingTimeoutMs, 'bindSessionDuringBoot')
   startKeyRequestResponder({
     stageKeyring: () => stageKeyring(client),
     refreshAK: () => refreshAK(client),
@@ -470,23 +465,15 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     console.warn('[init] runEncryptionInit failed:', error)
   })
 
-  // Native close-to-tray handling must be ready before content. Web returns immediately.
-  const tray = await initializeTraySafely()
-
-  const initTotalMs = Math.round(performance.now() - totalStartedAt)
-  console.info(`[init] complete (total ${initTotalMs}ms)`)
-
   // Snapshot blocking work before analytics attaches so its completion cannot
   // move the core-ready milestone.
   const initTimingPayload = {
     ...getInitTimingPayload(),
-    init_core_ms: initTotalMs,
     initial_sync_outcome: initialSyncOutcome,
     init_path: canSkipSyncWait ? ('returning' as const) : ('fresh' as const),
     sync_enabled: getLocalSetting('syncEnabled'),
     platform: getPlatform(),
   }
-  performance.mark('thunderbolt:core-ready')
 
   return {
     success: true,
@@ -501,7 +488,6 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
         sidebarOpen: sidebarState,
         posthogClient: null,
         httpClient: client,
-        ...tray,
       },
     },
   }
@@ -525,8 +511,10 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
     const isCurrent = () => run.current === currentRun
     setState(undefined)
     try {
-      const result = await executeInitializationSteps(httpClient)
-      if (!isCurrent()) {
+      const result = await runAppStorageOperation(async () =>
+        isCurrent() ? executeInitializationSteps(httpClient) : undefined,
+      )
+      if (!isCurrent() || !result) {
         return
       }
       if (!result.success) {
@@ -534,9 +522,19 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
         return
       }
       const core = result.data
-      setState({ success: true, data: core.initData })
+      // Native readiness gates rendering, but owns no database files and must not block reset.
+      await initializeTraySafely()
+      if (!isCurrent()) {
+        return
+      }
+      const { initData } = core
+      const initCoreMs = Math.round(performance.now() - core.startedAt)
+      const timing = { ...core.timing, ...getInitTimingPayload(), init_core_ms: initCoreMs }
+      console.info(`[init] complete (total ${initCoreMs}ms)`)
+      performance.mark('thunderbolt:core-ready')
+      setState({ success: true, data: initData })
       cancelAnalytics.current = afterPaint(async () => {
-        const posthogClient = await initializePostHogSafely(core.initData.httpClient)
+        const posthogClient = await initializePostHogSafely(initData.httpClient)
         if (!isCurrent()) {
           return
         }
@@ -544,7 +542,7 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
           previous?.success ? { success: true, data: { ...previous.data, posthogClient } } : previous,
         )
         trackEvent('app_init_timing', {
-          ...core.timing,
+          ...timing,
           ...getInitTimingPayload(),
           init_total_ms: Math.round(performance.now() - core.startedAt),
         })

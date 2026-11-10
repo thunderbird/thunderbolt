@@ -16,6 +16,7 @@ import { useChatStore } from '@/chats/chat-store'
 import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
 import { createModel, getAvailableModels } from '@/dal'
+import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
@@ -37,6 +38,7 @@ export const createAddModelFormSchema = (i18n: I18n) =>
       customModel: z.string().optional(),
       url: z.string().optional(),
       apiKey: z.string().optional(),
+      supportsTools: z.boolean(),
     })
     .refine((data) => data.provider !== 'custom' || Boolean(data.url), {
       message: i18n._(urlRequiredForCustom),
@@ -112,6 +114,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   const [state, dispatch] = useReducer(addModelReducer, initialState)
   const { selectedModelId, submitError } = state
   const catalog = useModelCatalog()
+  const submission = useAsyncAttempt()
   const form = useForm<AddModelFormValues>({
     resolver: zodResolver(createAddModelFormSchema(i18n)),
     mode: 'onChange',
@@ -122,6 +125,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
       customModel: '',
       url: '',
       apiKey: '',
+      supportsTools: true,
     },
   })
   const provider = form.watch('provider')
@@ -134,6 +138,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   useAutoCatalogFetch({ armed: isOpen, request: catalogRequest, catalog })
 
   const reset = () => {
+    submission.cancel()
     form.reset()
     form.clearErrors()
     connection.reset()
@@ -147,7 +152,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   }
 
   const addMutation = useMutation({
-    mutationFn: async (values: AddModelFormValues) => {
+    mutationFn: async ({ supportsTools, ...values }: AddModelFormValues) => {
       await createModel(db, {
         id: uuidv7(),
         ...values,
@@ -155,41 +160,53 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
         url: values.url || null,
         isSystem: 0,
         enabled: 1,
-        toolUsage: 1,
+        toolUsage: supportsTools ? 1 : 0,
         contextWindow: null,
       })
       return getAvailableModels(db)
     },
-    onMutate: () => {
-      onMutationStart?.()
-      dispatch({ type: 'MUTATION_STARTED' })
-    },
     onSuccess: async (models) => {
       useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
-      close()
-    },
-    onError: (error: unknown) => {
-      console.error('Failed to add the model.', error)
-      dispatch({ type: 'MUTATION_FAILED' })
     },
   })
 
   const resolveModelId = (values: AddModelFormValues) =>
     selectedModelId === 'custom' && values.customModel ? values.customModel : values.model
 
-  const submit = (values: AddModelFormValues) => {
-    addMutation.mutate({ ...values, model: resolveModelId(values) })
+  const submit = async (values: AddModelFormValues) => {
+    const attempt = submission.begin()
+    if (!attempt) {
+      return
+    }
+    try {
+      onMutationStart?.()
+      dispatch({ type: 'MUTATION_STARTED' })
+      await addMutation.mutateAsync({ ...values, model: resolveModelId(values) })
+      if (attempt.isCurrent()) {
+        close()
+      }
+    } catch (error) {
+      console.error('Failed to add the model.', error)
+      if (attempt.isCurrent()) {
+        dispatch({ type: 'MUTATION_FAILED' })
+      }
+    } finally {
+      attempt.finish()
+    }
   }
 
-  const testConnection = () => {
+  const testConnection = async () => {
     const values = form.getValues()
-    connection.test({
+    const toolSupport = await connection.test({
       provider: values.provider,
       model: resolveModelId(values),
       url: values.url,
       apiKey: values.apiKey,
     })
+    if (toolSupport) {
+      form.setValue('supportsTools', toolSupport === 'supported')
+    }
   }
 
   const selectModel = (modelId: string) => {
@@ -204,6 +221,10 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     form.setValue('customModel', '')
     const selected = catalog.models.find((candidate) => candidate.id === modelId)
     form.setValue('name', selected?.name || generateModelName(modelId), { shouldValidate: true })
+    // Thunderbolt models skip the connection test; the shipped defaults already know.
+    if (provider === 'thunderbolt') {
+      form.setValue('supportsTools', selected?.supports_tools !== false)
+    }
   }
 
   // Recomputes formState.isValid for the freshly blanked fields (the submit
@@ -217,14 +238,11 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     catalog.invalidateCatalog()
     form.setValue('provider', nextProvider, { shouldValidate: false, shouldDirty: true })
     dispatch({ type: 'MODEL_SELECTED', modelId: '' })
-    for (const field of ['name', 'model', 'customModel', 'apiKey'] as const) {
+    // The URL starts blank so the catalog auto-fetch never calls an endpoint the user did not enter.
+    for (const field of ['name', 'model', 'customModel', 'apiKey', 'url'] as const) {
       form.setValue(field, '', { shouldValidate: false, shouldDirty: false })
     }
-    // Ollama's default local endpoint — the most common custom provider.
-    form.setValue('url', nextProvider === 'custom' ? 'http://localhost:11434/v1' : '', {
-      shouldValidate: false,
-      shouldDirty: false,
-    })
+    form.setValue('supportsTools', true, { shouldDirty: false })
     void revalidateSilently()
   }
 
@@ -236,10 +254,6 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     return provider === 'thunderbolt' ? items : [...items, customModelItem(i18n)]
   }
   const modelItems = buildModelItems()
-  const supportsTools =
-    !selectedModelId ||
-    selectedModelId === 'custom' ||
-    catalog.models.find((candidate) => candidate.id === selectedModelId)?.supports_tools === true
 
   return {
     form,
@@ -247,11 +261,11 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     selectedModelId,
     isLoadingCatalog: catalog.isLoading,
     catalogError: catalog.error,
-    supportsTools,
     isPending: addMutation.isPending,
     isTesting: connection.isTesting,
     connectionStatus: connection.status,
     connectionError: connection.error,
+    toolSupport: connection.toolSupport,
     submitError,
     onSubmit: submit,
     onCancel: close,
@@ -263,6 +277,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     resetForm: reset,
     /** Clears leftover probe/error state when the add panel opens. */
     prepareForOpen: () => {
+      submission.cancel()
       connection.reset()
       dispatch({ type: 'PANEL_OPENED' })
     },

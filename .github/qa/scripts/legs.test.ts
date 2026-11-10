@@ -135,15 +135,15 @@ describe('native platforms', () => {
 
   it('keeps native sessions out of the web legs and the web replay', () => {
     const { legs, verify } = plan()
-    expect(legs.every((leg) => leg.driver === 'playwright' && leg.runner === 'ubuntu-latest')).toBe(true)
-    expect(verify.every((v) => v.runner === 'ubuntu-latest')).toBe(true)
+    expect(legs.every((leg) => leg.driver === 'playwright' && leg.runner === 'ubuntu-24.04')).toBe(true)
+    expect(verify.every((v) => v.runner === 'ubuntu-24.04')).toBe(true)
   })
 
   it('plans no web legs for a native-only dispatch, and one replay leg per native artifact', () => {
     const only = plan(['c1-first-run-ios'])
     expect(only.legs).toEqual([])
     expect(only.verify).toEqual([])
-    // Still judged, filed and fixed: the weekly judge leg takes the native candidates with no web replay.
+    // The weekly judge leg takes native candidates with no web replay.
     expect(only.judge).toEqual([expect.objectContaining({ name: 'weekly', out: 'qa-out', onboarding: false })])
     expect(plan(['c2-chat-power-user-phone']).judge.map((v) => v.name)).toEqual(['weekly'])
     expect(plan(['free']).judge.map((v) => v.name)).toEqual(['weekly'])

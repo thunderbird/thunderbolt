@@ -8,17 +8,24 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { linear } from '../../../scripts/notify-on-failure'
-import { type Finding, findingSchema, fingerprint, platformIds, type Severity, severity } from './findings'
-import { sanitize, secretPattern } from './sanitize'
+import {
+  type Finding,
+  findingId,
+  findingSchema,
+  fingerprint,
+  judgedSeverity,
+  platformIds,
+  proposedSeveritySchema,
+  type Severity,
+} from './findings'
+import { cleanLogLine, sanitize, secretPattern } from './sanitize'
 import { imageInfo, screenshotPath, type Verified, type VerifiedFinding } from './verify'
 
-export type Action = 'created' | 'commented' | 'regression' | 'suppressed' | 'rolled-up' | 'refused' | 'dry-run'
-/** What a live run would send to Linear. */
+export type Action = 'created' | 'commented' | 'regression' | 'suppressed' | 'refused' | 'dry-run'
 type Preview = { title?: string; issue?: string; labels?: string[]; body: string }
-/**
- * One line of `filed.json`. In a dry run `action` is `dry-run`, `would` is what a live run would do and `preview`
- * what it would send; security findings get no preview, their text only ever goes to Linear.
- */
+/** An attachment the ticket was filed without, and the cleaned error that cost it. */
+export type LostAttachment = { kind: 'video' | 'screenshot'; reason: string }
+/** One `filed.json` entry. Security findings get no dry-run preview: their text only ever goes to Linear. */
 export type Filed = {
   fp: string
   charterDir: string
@@ -31,14 +38,13 @@ export type Filed = {
   identifier?: string
   url?: string
   reason?: string
+  lostAttachments?: LostAttachment[]
 }
 
-/** Linear priority per severity; lower is more urgent, so it also sorts findings. */
+/** Linear's scale: lower is more urgent, which also makes it the sort order. */
 export const priority = { Urgent: 1, High: 2, Medium: 3, Low: 4 } satisfies Record<Severity, number>
-/** New tickets per run, with a separate cap for security findings so neither kind crowds out the other. */
-const ticketCap = { bug: 8, security: 3 }
 const regressionWindowMs = 60 * 24 * 60 * 60 * 1000
-/** The Linear label names, case-sensitive: Linear matches them exactly (team Thunderbolt). */
+/** Linear matches label names exactly, case included. */
 export const qaLabels = {
   agent: 'qa-agent',
   bug: 'Bug',
@@ -55,29 +61,43 @@ const brakeMinPrecision = 0.7
 export type Scorecard = {
   window: string
   counts: { valid: number; notABug: number; duplicate: number; envArtifact: number }
-  /** Triaged tickets that are not duplicates: the sample precision is computed on. */
   labelled: number
   precision: number | null
 }
 
-/**
- * Precision of the last ~28 days of `qa-agent` tickets from the triage labels a human put on them:
- * valid / (valid + not-a-bug + env-artifact). Duplicates are counted but move neither precision nor the sample.
- */
-export const computeScorecard = async (fetchFn: typeof fetch, key: string): Promise<Scorecard> => {
-  // ponytail: one page of 250 tickets, far above the weekly cap of 9; paginate if that ever changes
-  const { issues } = await linear<{ issues: { nodes: { labels: { nodes: { name: string }[] } }[] } }>(
+type LabelledTicket = { labels: { nodes: { name: string }[] } }
+
+/** Every `qa-agent` ticket of the last 28 days, archived ones too, read page by page from `after`. */
+const scorecardTickets = async (
+  fetchFn: typeof fetch,
+  key: string,
+  after: string | null = null,
+): Promise<LabelledTicket[]> => {
+  const { issues } = await linear<{
+    issues: { nodes: LabelledTicket[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } }
+  }>(
     fetchFn,
     key,
-    `query Scorecard($since: DateTimeOrDuration!, $label: String!) {
-      issues(first: 250, includeArchived: true, filter: { labels: { some: { name: { eq: $label } } }, createdAt: { gte: $since } }) {
+    `query Scorecard($since: DateTimeOrDuration!, $label: String!, $after: String) {
+      issues(first: 250, after: $after, includeArchived: true, filter: { labels: { some: { name: { eq: $label } } }, createdAt: { gte: $since } }) {
         nodes { labels { nodes { name } } }
+        pageInfo { hasNextPage endCursor }
       }
     }`,
-    { since: '-P28D', label: qaLabels.agent },
+    { since: '-P28D', label: qaLabels.agent, after },
   )
+  if (!issues.pageInfo.hasNextPage) return issues.nodes
+  return [...issues.nodes, ...(await scorecardTickets(fetchFn, key, issues.pageInfo.endCursor))]
+}
+
+/**
+ * Precision over the last 28 days of `qa-agent` tickets: valid / (valid + not-a-bug + env-artifact).
+ * Duplicates are counted but move neither precision nor the sample (`labelled`).
+ */
+export const computeScorecard = async (fetchFn: typeof fetch, key: string): Promise<Scorecard> => {
+  const tickets = await scorecardTickets(fetchFn, key)
   const [valid, notABug, duplicate, envArtifact] = triageLabels.map(
-    (label) => issues.nodes.filter((issue) => issue.labels.nodes.some((l) => l.name === label)).length,
+    (label) => tickets.filter((ticket) => ticket.labels.nodes.some((l) => l.name === label)).length,
   )
   const judged = valid + notABug + envArtifact
   return {
@@ -88,7 +108,6 @@ export const computeScorecard = async (fetchFn: typeof fetch, key: string): Prom
   }
 }
 
-/** True when enough tickets were judged and too many were noise: filing must stay a dry run. */
 export const shouldBrake = (card: Scorecard): boolean =>
   card.labelled >= brakeMinLabelled && card.precision !== null && card.precision < brakeMinPrecision
 
@@ -97,11 +116,10 @@ export const shouldBrake = (card: Scorecard): boolean =>
 type Issue = { id: string; identifier: string; url: string }
 type Existing = Issue & { completedAt: string | null; state: { type: string } }
 type Decision = { kind: 'new' } | { kind: 'suppressed' } | { kind: 'commented' | 'regression'; issue: Existing }
-/** What the ticket helpers shared with the fix step need. */
 export type LinearAuth = { fetchFn: typeof fetch; key: string }
-type Ctx = LinearAuth & { teamId: string; triageId: string; labels: Map<string, string> }
+type Ctx = LinearAuth & { teamId: string; backlogId: string; labels: Map<string, string> }
 
-/** Resolve team, Triage state and labels once, failing loudly on anything missing. */
+/** Resolve team, Backlog state and labels once. */
 const setup = async (fetchFn: typeof fetch, key: string): Promise<Ctx> => {
   const { teams } = await linear<{ teams: { nodes: { id: string; name: string }[] } }>(
     fetchFn,
@@ -117,20 +135,20 @@ const setup = async (fetchFn: typeof fetch, key: string): Promise<Ctx> => {
     fetchFn,
     key,
     `query QaSetup($teamId: ID!, $names: [String!]!) {
-      workflowStates(first: 10, filter: { team: { id: { eq: $teamId } }, type: { eq: "triage" } }) { nodes { id } }
+      workflowStates(first: 10, filter: { team: { id: { eq: $teamId } }, type: { eq: "backlog" } }) { nodes { id } }
       issueLabels(first: 250, filter: { name: { in: $names } }) { nodes { id name team { id } } }
     }`,
     { teamId, names: requiredLabels },
   )
-  const triageId = data.workflowStates.nodes[0]?.id
-  if (!triageId) throw new Error('Thunderbolt team has no Triage workflow state; enable Triage in the team settings')
+  const backlogId = data.workflowStates.nodes[0]?.id
+  if (!backlogId) throw new Error('Thunderbolt team has no workflow state of type backlog to file new tickets in')
   const labels = new Map<string, string>()
   for (const label of data.issueLabels.nodes) {
     if (!label.team || label.team.id === teamId) labels.set(label.name, label.id)
   }
   const missing = requiredLabels.filter((name) => !labels.has(name))
   if (missing.length) throw new Error(`Missing Linear labels: ${missing.join(', ')}`)
-  return { fetchFn, key, teamId, triageId, labels }
+  return { fetchFn, key, teamId, backlogId, labels }
 }
 
 /** Dedupe by the `[qa:<fp>]` title tag, across open, completed, canceled and archived tickets. */
@@ -154,7 +172,6 @@ const decide = async (ctx: Ctx, fp: string, now: number): Promise<Decision> => {
   return recent ? { kind: 'regression', issue: recent } : { kind: 'new' }
 }
 
-/** The id of a label `setup` resolved; throws for any other name. */
 const labelId = (ctx: Ctx, name: string) => {
   const id = ctx.labels.get(name)
   if (!id) throw new Error(`Missing Linear label: ${name}`)
@@ -169,19 +186,20 @@ const createIssue = async (ctx: Ctx, title: string, description: string, sev: Se
     {
       input: {
         teamId: ctx.teamId,
-        stateId: ctx.triageId,
+        stateId: ctx.backlogId,
         labelIds: names.map((name) => labelId(ctx, name)),
         title,
         description,
         priority: priority[sev],
       },
     },
+    // Linear's message can quote the input back, and a security ticket's text must stay out of the public log.
+    { errorDetail: !names.includes(qaLabels.security) },
   )
   if (!issueCreate.success) throw new Error('Linear did not create the ticket')
   return issueCreate.issue
 }
 
-/** Add a comment to a Linear ticket, failing loudly when Linear refuses. */
 export const addComment = async ({ fetchFn, key }: LinearAuth, issueId: string, body: string) => {
   const { commentCreate } = await linear<{ commentCreate: { success: boolean } }>(
     fetchFn,
@@ -192,15 +210,11 @@ export const addComment = async ({ fetchFn, key }: LinearAuth, issueId: string, 
   if (!commentCreate.success) throw new Error('Linear did not add the comment')
 }
 
-/**
- * Upload a replay video or a screenshot to Linear storage and return its asset URL; undefined when the file is
- * missing. The model chose the screenshot, so the content type comes from the bytes, never from the name.
- */
+/** The model chose the screenshot, so an image's content type comes from its bytes, never from its name. */
 const uploadAsset = async (ctx: Ctx, path: string): Promise<string | undefined> => {
   const file = Bun.file(path)
   if (!(await file.exists())) return undefined
   const bytes = Buffer.from(await file.arrayBuffer())
-  // Playwright records every replay video as WebM, the native replay as MP4.
   const videoTypes = new Map([
     ['.webm', 'video/webm'],
     ['.mp4', 'video/mp4'],
@@ -219,6 +233,7 @@ const uploadAsset = async (ctx: Ctx, path: string): Promise<string | undefined> 
       fileUpload(contentType: $contentType, filename: $filename, size: $size) { success uploadFile { uploadUrl assetUrl headers { key value } } }
     }`,
     { contentType, filename: basename(path), size: bytes.length },
+    { errorDetail: true },
   )
   if (!fileUpload.success) throw new Error('Linear did not prepare the upload')
   const { uploadUrl, assetUrl, headers } = fileUpload.uploadFile
@@ -235,33 +250,41 @@ const uploadAsset = async (ctx: Ctx, path: string): Promise<string | undefined> 
     .catch(() => {
       throw new Error('Linear upload request failed')
     })
-  if (!response.ok) throw new Error(`Linear upload HTTP ${response.status}`)
+  if (!response.ok) {
+    // Storage answers XML; its <Message> is the reason without the request details echoed around it.
+    const body = await response.text()
+    throw new Error(`Linear upload HTTP ${response.status}: ${/<Message>([^<]*)/.exec(body)?.[1] ?? body}`)
+  }
   return assetUrl
 }
+
+/**
+ * An error message as one public log line: no URL query string (an upload URL's is its signature), no secret shapes,
+ * no link outside Linear's uploads, at most 300 characters.
+ */
+const logSafe = (message: string) =>
+  cleanLogLine(message.replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, '$1'))
+    .replace(/\s+/g, ' ')
+    .slice(0, 300)
 
 // ---------- ticket text ----------
 
 /**
- * One bug: the confirmed findings of a run that share a fingerprint, filed as one ticket. `v` and `f` are the most
- * severe of them and give the ticket its text; `group` holds them all, and each gets the same action and ticket.
+ * Findings of one defect (a group from `verified.json`, or else a fingerprint), filed as one ticket. `v` and `f` are
+ * the most severe and give it its text; `fp` is `ticketFingerprint`. `group` starts with that most severe finding.
  */
-type Entry = {
-  v: VerifiedFinding
-  f: Finding
-  fp: string
-  sev: Severity
+type Member = { v: VerifiedFinding; f: Finding; fp: string; sev: Severity }
+type Entry = Member & {
   /** The group's platforms, in `platforms.json` order. */
   platforms: string[]
-  group: VerifiedFinding[]
+  group: Member[]
 }
-/** Findings over their kind's ticket cap, rolled up into one ticket per kind. */
-type Overflow = { bug: Entry[]; security: Entry[] }
 
 /** Text an attacker-influenced page could have shaped; scanned for secrets before anything is sent. */
 const modelText = (f: Finding, spec: string) =>
   [f.title, f.charter, ...f.steps, f.expected, f.actual, f.oracle.evidence, f.element ?? '', spec].join('\n')
 
-/** A finding's model-written fields as its ticket shows them: sanitized, capped, and one line for short fields. */
+/** The model-written fields as the ticket shows them, sanitized and capped. */
 export const ticketView = (f: Finding, runUrl?: string) => {
   const clean = (text: string, max: number) => sanitize(text, max, runUrl)
   return {
@@ -275,17 +298,20 @@ export const ticketView = (f: Finding, runUrl?: string) => {
   }
 }
 
-/**
- * Markdown body of a new ticket. Security findings carry no run link. The charter is the session's directory, not
- * what the model wrote, so a free session's ticket always names its case and platform (`free-<case>-<platform>`).
- */
+/** The charter is the session's directory, not model text, so a free session's ticket names its case and platform. */
 const buildBody = (
-  { v, f, sev, platforms }: Entry,
+  { v, f, sev, platforms, group }: Entry,
   spec: string,
   extra: { runUrl?: string; sha?: string; videoUrl?: string; screenshotUrl?: string; regressionOf?: Existing },
 ): string => {
   const runUrl = f.area === 'security' ? undefined : extra.runUrl
   const view = ticketView(f, runUrl)
+  // The grouping call can be wrong, so a member worded differently keeps its own title and evidence on the ticket.
+  const others = group.slice(1).flatMap(({ f: other, fp }) => {
+    if (fp === group[0].fp) return []
+    const { title, oracle } = ticketView(other, runUrl)
+    return [`- ${other.viewport}: ${title} (${oracle.evidence.replace(/\s+/g, ' ')})`]
+  })
   return [
     extra.regressionOf &&
       `Regression: previously fixed in ${extra.regressionOf.identifier} (${extra.regressionOf.url})`,
@@ -298,6 +324,7 @@ const buildBody = (
     `## Expected\n${view.expected}`,
     `## Actual\n${view.actual}`,
     `## Oracle: ${f.oracle.type}\n\`\`\`\n${view.oracle.evidence}\n\`\`\``,
+    others.length > 0 && `## Also in this group\n${others.join('\n')}`,
     spec && `## Repro spec\n\`\`\`ts\n${sanitize(spec, 6000, runUrl)}\n\`\`\``,
     extra.screenshotUrl && `![Screenshot](${extra.screenshotUrl})`,
     extra.videoUrl && `[Replay video](${extra.videoUrl})`,
@@ -313,21 +340,26 @@ const videoPath = (outDir: string, video: string) =>
 
 // ---------- filing ----------
 
-/**
- * Why a confirmed finding is never filed, or undefined. It runs before findings are grouped by fingerprint, so
- * holding back an Android finding never holds back its iOS twin.
- */
+/** Runs before grouping, so holding back an Android finding never holds back its iOS twin. */
 const refusal = (f: Finding) => {
   if (f.oracle.type === 'visual' && !(f.element?.trim() && f.function?.trim())) {
     return 'visual finding without an element and a function to deduplicate on'
   }
-  // A platform files layout tickets only after the probe has swept its correct screens clean. Android's never
-  // ran, and runs 39380764343 and 39391108579 logged `covered` on sidebar buttons their screenshots show uncovered.
-  if (f.viewport === 'android' && f.oracle.type === 'layout') {
-    return 'Android layout finding, held back until the probe sweeps correct Android screens clean'
+  // Android's probe reports uncovered sidebar buttons as covered; its other layout kinds file normally.
+  if (f.viewport === 'android' && f.oracle.type === 'layout' && /\[qa-layout\] covered\s/.test(f.oracle.evidence)) {
+    return 'Android covered finding, held back until the probe sweeps correct Android screens clean'
   }
   return undefined
 }
+
+/**
+ * The fingerprint a group files under: its first finding in `platforms.json` order, then by fingerprint. Nothing is
+ * stored across weeks, so the same findings must pick the same `[qa:<fp>]` ticket every week.
+ */
+const ticketFingerprint = (group: Member[]) =>
+  group.toSorted(
+    (a, b) => platformIds.indexOf(a.f.viewport) - platformIds.indexOf(b.f.viewport) || a.fp.localeCompare(b.fp),
+  )[0].fp
 
 type FileOptions = {
   outDir: string
@@ -341,9 +373,8 @@ type FileOptions = {
 }
 
 /**
- * File the confirmed findings of a run in Linear (or describe what would be filed) and write `filed.json`, plus
- * `scorecard.json` when there is a key. Needs no LLM. `live` is downgraded to a dry run when the last 28 days of
- * triage show low precision. A finding `refusal` names is listed as refused and never reaches Linear or the fix agent.
+ * `live` is downgraded to a dry run when the last 28 days of triage show low precision. A refused finding never
+ * reaches Linear or the fix agent.
  */
 export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const { outDir, runUrl, sha, key, fetchFn = fetch, log = console.log, now = Date.now() } = opts
@@ -364,28 +395,28 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const filed: Filed[] = []
   const scored = verified.confirmed.flatMap((v) => {
     const f = findingSchema.parse(v.finding)
-    const found = { v, f, fp: fingerprint(v.finding), sev: severity(f) }
+    const sev = judgedSeverity(f, proposedSeveritySchema.parse(v.judge?.priority))
+    const found = { v, f, fp: fingerprint(v.finding), sev }
     const reason = refusal(f)
     if (!reason) return [found]
     filed.push({ fp: found.fp, severity: found.sev, charterDir: v.charterDir, id: v.id, action: 'refused', reason })
     return []
   })
+  // Sorted before grouping, so a group files with the severity of its most severe finding.
   scored.sort((a, b) => priority[a.sev] - priority[b.sev] || a.fp.localeCompare(b.fp))
-  const entries: Entry[] = [...Map.groupBy(scored, (s) => s.fp).values()].map((group) => ({
-    ...group[0],
-    platforms: platformIds.filter((id) => group.some((s) => s.f.viewport === id)),
-    group: group.map((s) => s.v),
-  }))
+  const groupOf = new Map(verified.groups?.flatMap((ids, i) => ids.map((id) => [id, i] as const)))
+  const entries: Entry[] = [...Map.groupBy(scored, (s) => groupOf.get(findingId(s.v)) ?? s.fp).values()].map(
+    (group) => ({
+      ...group[0],
+      fp: ticketFingerprint(group),
+      platforms: platformIds.filter((id) => group.some((s) => s.f.viewport === id)),
+      group,
+    }),
+  )
 
-  const opened = { bug: 0, security: 0 }
-  const overflow: Overflow = { bug: [], security: [] }
-  /** One `filed.json` line per finding of the entry's group, all with the same outcome. */
   const record = ({ group, fp, sev }: Entry, outcome: Omit<Filed, 'fp' | 'severity' | 'charterDir' | 'id'>) =>
-    filed.push(...group.map((v) => ({ fp, severity: sev, charterDir: v.charterDir, id: v.id, ...outcome })))
-  /**
-   * Records a mutation: performed when live. A dry run logs one line without the ticket text, since the job log
-   * is public, and keeps the text as `preview` in `filed.json` unless the finding is a security one.
-   */
+    filed.push(...group.map(({ v }) => ({ fp, severity: sev, charterDir: v.charterDir, id: v.id, ...outcome })))
+  /** The job log is public, so a dry run logs no ticket text; `filed.json` keeps it as `preview` unless security. */
   const act = async (
     entry: Entry,
     would: Action,
@@ -399,47 +430,42 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
     }
     record(entry, { action: would, ...(await run(ctx)) })
   }
-
-  /** One roll-up ticket per kind over its cap. A security roll-up lists fingerprints only and has no run link. */
-  const rollUp = async (kind: keyof typeof ticketCap) => {
-    const rest = overflow[kind]
-    if (rest.length === 0) return
-    const security = kind === 'security'
-    const noun = `${security ? 'security finding' : 'finding'}${rest.length > 1 ? 's' : ''}`
-    const title = `QA agent: ${rest.length} more ${noun} over the ${ticketCap[kind]}-ticket cap`
-    const lines = rest.map(({ f, fp, sev }) =>
-      security ? `- [qa:${fp}] ${sev}` : `- [qa:${fp}] ${sev} · ${f.area} · ${ticketView(f).title}`,
-    )
-    const description = [!security && runUrl && `**Run:** ${runUrl}`, 'Not filed individually this run:', ...lines]
-      .filter(Boolean)
-      .join('\n\n')
-    const labels = [qaLabels.agent, qaLabels.bug, ...(security ? [qaLabels.security] : [])]
-    const issue = live && ctx ? await createIssue(ctx, title, description, rest[0].sev, labels) : undefined
-    if (!issue) log(`[dry run] would create the roll-up "${title}"`)
-    for (const entry of rest) {
-      record(
-        entry,
-        issue
-          ? { action: 'rolled-up', issueId: issue.id, identifier: issue.identifier, url: issue.url }
-          : { action: 'dry-run', would: 'rolled-up' },
-      )
+  /** A failed upload costs the ticket only that attachment. */
+  const attach = async (ctx: Ctx, fp: string, kind: LostAttachment['kind'], path: string, lost: LostAttachment[]) => {
+    try {
+      return await uploadAsset(ctx, path)
+    } catch (error) {
+      const reason = logSafe(error instanceof Error ? error.message : String(error))
+      lost.push({ kind, reason })
+      log(`::warning::${fp}: filing without the ${kind}: ${reason}`)
+      return undefined
+    }
+  }
+  /** A ticket that fails is logged and kept for the end, so every other ticket is still tried. */
+  const failures: string[] = []
+  const attempt = async (what: string, step: () => Promise<void>) => {
+    try {
+      await step()
+    } catch (error) {
+      const reason = logSafe(error instanceof Error ? error.message : String(error))
+      failures.push(`${what}: ${reason}`)
+      log(`::error::Linear failed on ${what}: ${reason}`)
     }
   }
 
-  try {
-    for (const entry of entries) {
+  for (const entry of entries) {
+    await attempt(entry.fp, async () => {
       const { v, f, fp, sev } = entry
-      // A visual finding has a screenshot instead of a spec. Only this finding's text reaches Linear; the rest of
-      // its group adds platform ids, which the schema checked.
+      // The lead's spec and text reach Linear, and the other members' titles and evidence with them.
       const spec = f.repro_spec ? await readFile(join(outDir, v.charterDir, f.repro_spec), 'utf8') : ''
-      if (secretPattern.test(modelText(f, spec))) {
+      if ([modelText(f, spec), ...entry.group.map((m) => modelText(m.f, ''))].some((t) => secretPattern.test(t))) {
         record(entry, { action: 'refused', reason: 'secret pattern in model-written text' })
-        continue
+        return
       }
       const decision: Decision = ctx ? await decide(ctx, fp, now) : { kind: 'new' }
       if (decision.kind === 'suppressed') {
         record(entry, { action: 'suppressed', reason: 'a canceled ticket carries this fingerprint' })
-        continue
+        return
       }
       if (decision.kind === 'commented') {
         const link = f.area === 'security' || !runUrl ? '' : `: ${runUrl}`
@@ -448,14 +474,8 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
           await addComment(ctx, decision.issue.id, body)
           return { issueId: decision.issue.id, identifier: decision.issue.identifier, url: decision.issue.url }
         })
-        continue
+        return
       }
-      const kind = f.area === 'security' ? 'security' : 'bug'
-      if (opened[kind] >= ticketCap[kind]) {
-        overflow[kind].push(entry)
-        continue
-      }
-      opened[kind]++
       const regressionOf = decision.kind === 'regression' ? decision.issue : undefined
       const visual = f.oracle.type === 'visual'
       const names = [qaLabels.agent, qaLabels.bug, ...(f.area === 'security' ? [qaLabels.security] : [])]
@@ -465,19 +485,23 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
       const screenshot = f.area === 'security' || !visual ? undefined : screenshotPath(outDir, v)
       const preview = { title, labels: names, body: buildBody(entry, spec, { runUrl, sha, regressionOf }) }
       await act(entry, regressionOf ? 'regression' : 'created', preview, async (ctx) => {
-        const videoUrl = video ? await uploadAsset(ctx, videoPath(outDir, video)) : undefined
-        const screenshotUrl = screenshot ? await uploadAsset(ctx, screenshot) : undefined
+        const lost: LostAttachment[] = []
+        const videoUrl = video ? await attach(ctx, fp, 'video', videoPath(outDir, video), lost) : undefined
+        const screenshotUrl = screenshot ? await attach(ctx, fp, 'screenshot', screenshot, lost) : undefined
         const body = buildBody(entry, spec, { runUrl, sha, videoUrl, screenshotUrl, regressionOf })
         const issue = await createIssue(ctx, title, body, sev, names)
-        return { issueId: issue.id, identifier: issue.identifier, url: issue.url }
+        return {
+          issueId: issue.id,
+          identifier: issue.identifier,
+          url: issue.url,
+          lostAttachments: lost.length ? lost : undefined,
+        }
       })
-    }
-
-    await rollUp('bug')
-    await rollUp('security')
-  } finally {
-    await writeFile(join(outDir, 'filed.json'), JSON.stringify(filed, null, 2))
+    })
   }
+
+  await writeFile(join(outDir, 'filed.json'), JSON.stringify(filed, null, 2))
+  if (failures.length) throw new Error(`Filing failed for ${failures.length}:\n${failures.join('\n')}`)
   return filed
 }
 

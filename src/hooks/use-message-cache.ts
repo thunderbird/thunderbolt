@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useDatabase } from '@/contexts'
-import { getMessage, updateMessageCache } from '@/dal/chat-messages'
+import { getMessageCache, updateMessageCache } from '@/dal/chat-messages'
 import { useQuery } from '@tanstack/react-query'
 
 type UseMessageCacheOptions<T> = {
@@ -43,7 +43,7 @@ export const useMessageCache = <T>({ messageId, cacheKey, fetchFn, enabled = tru
     queryKey: ['messageCache', messageId, ...cacheKey],
     queryFn: async () => {
       // 1. Check DB for cached data
-      const message = await getMessage(db, messageId)
+      const message = await getMessageCache(db, messageId)
 
       if (!message) {
         throw new Error(`Message ${messageId} not found`)

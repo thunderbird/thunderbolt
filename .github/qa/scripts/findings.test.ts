@@ -7,10 +7,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  areas,
   type Finding,
   findingSchema,
   fingerprint,
   hasOracle,
+  judgedSeverity,
   lintReproSpec,
   loadFindings,
   parseSession,
@@ -39,7 +41,6 @@ const finding: Finding = {
   repro_spec: 'repro/1.spec.ts',
 }
 
-/** The finding with some fields replaced. */
 const variant = (fields: Partial<RawFinding>): RawFinding => ({ ...finding, ...fields })
 
 describe('loadFindings', () => {
@@ -82,7 +83,6 @@ describe('hasOracle', () => {
   })
 })
 
-/** A spec whose body runs inside a test that has `page`. */
 const spec = (body: string) => `import { test, expect, type Page } from '@playwright/test'
 import { loginViaEmailCode } from '../../../e2e/helpers'
 
@@ -278,6 +278,35 @@ describe('severity', () => {
   })
 })
 
+describe('judgedSeverity', () => {
+  const skillsBug: Finding = { ...finding, area: 'skills' }
+  const signInBug: Finding = { ...finding, area: 'auth', oracle: { type: 'assert-failed', evidence: 'quoted' } }
+
+  test('takes the judge priority within one level of the table', () => {
+    expect(judgedSeverity(skillsBug, 'High')).toBe('High')
+    expect(judgedSeverity(skillsBug, 'Low')).toBe('Low')
+    expect(judgedSeverity(signInBug, 'High')).toBe('High')
+  })
+
+  test('moves at most one level up or down from the table', () => {
+    expect(judgedSeverity(skillsBug, 'Urgent')).toBe('High')
+    expect(judgedSeverity(signInBug, 'Low')).toBe('High')
+  })
+
+  test('without a proposal the table value stands', () => {
+    expect(judgedSeverity(skillsBug, undefined)).toBe('Medium')
+    expect(judgedSeverity(signInBug, undefined)).toBe('Urgent')
+  })
+
+  test('a console error or an overflow never goes above Medium', () => {
+    const consoleError: Finding = { ...finding, oracle: { type: 'console-error', evidence: 'Warning: key' } }
+    const overflow: Finding = { ...finding, oracle: { type: 'layout', evidence: '[qa-layout] overflow-text span "A"' } }
+    expect(judgedSeverity(consoleError, 'Urgent')).toBe('Medium')
+    expect(judgedSeverity(overflow, 'Urgent')).toBe('Medium')
+    expect(judgedSeverity(overflow, 'Low')).toBe('Low')
+  })
+})
+
 describe('layout oracle', () => {
   const layoutFinding = (area: Finding['area'], evidence: string): Finding => ({
     ...finding,
@@ -297,7 +326,7 @@ describe('layout oracle', () => {
     expect(severity(layoutFinding('onboarding', '[qa-layout] unnamed-control checkbox "after Consent"'))).toBe('High')
   })
 
-  test('overflow is no longer an oracle', () => {
+  test('overflow is not an oracle type', () => {
     expect(hasOracle(variant({ oracle: { type: 'overflow', evidence: 'x' } }))).toBe(false)
     expect(hasOracle(variant({ oracle: { type: 'layout', evidence: '[qa-layout] covered button "Go"' } }))).toBe(true)
   })
@@ -327,7 +356,6 @@ describe('layout oracle', () => {
 })
 
 describe('visual oracle', () => {
-  /** A visual finding: a screenshot the explorer took instead of a repro spec. */
   const visual = (fields: Partial<RawFinding>): RawFinding => ({
     ...finding,
     area: 'layout',
@@ -370,7 +398,6 @@ describe('visual oracle', () => {
 })
 
 describe('native findings', () => {
-  /** A finding from the iOS app, proven by a Maestro flow. */
   const native = (fields: Partial<RawFinding>): RawFinding => ({
     ...finding,
     viewport: 'ios',
@@ -443,6 +470,12 @@ test('each charter names exactly the functions of its list, and says the AI is r
   expect(charters.filter((charter) => !(charter in lists))).toEqual([])
 })
 
+test("the prompt's area table has one line for every area and no other", async () => {
+  const prompt = await Bun.file(join(import.meta.dir, '../prompt.md')).text()
+  const tabled = [...prompt.matchAll(/^\s*\| `(\w+)`\s+\|/gm)].map(([, area]) => area)
+  expect(tabled.sort()).toEqual([...areas].sort())
+})
+
 test('parseSession splits the platform off the last hyphen', () => {
   expect(parseSession('c1-first-run-phone')).toEqual({ charter: 'c1-first-run', platform: 'phone' })
   expect(parseSession('free-trip-planner-desktop')).toEqual({ charter: 'free-trip-planner', platform: 'desktop' })
@@ -470,13 +503,13 @@ test('a finding names a known platform', () => {
 
 test('every free session is real AI where the platform has real providers, and every case is complete', async () => {
   for (const { id, driver, realAi, viewport, mcp } of platforms) {
-    // A session id is free-<case>-<platform>; a platform id without hyphens keeps the case readable before it.
+    // Session ids are free-<case>-<platform>, so a hyphen-free platform id keeps the case readable.
     expect(id).toMatch(/^[a-z]+$/)
     expect(cases.every((c) => realAiCharters.has(`free-${c.id}-${id}`))).toBe(realAi)
     const repro = nativePlatformIds.includes(id) ? { repro_spec: undefined, repro_flow: 'repro/1.yaml' } : {}
     expect(findingSchema.safeParse({ ...finding, ...repro, viewport: id }).success, id).toBe(true)
     if (driver === 'playwright') expect(viewport).toMatch(/^\d+x\d+$/)
-    // The Maestro config arrives with the native tasks.
+    // explore.sh hard-codes the Maestro gate's config, so only the Playwright paths in platforms.json are checked.
     if (driver === 'playwright') expect(await Bun.file(join(import.meta.dir, '../../..', mcp)).exists()).toBe(true)
   }
   expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length)

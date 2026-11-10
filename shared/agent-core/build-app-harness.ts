@@ -26,16 +26,29 @@ import {
   InMemorySessionRepo,
   type AgentHarnessOptions,
   type AgentTool,
+  type FileError,
   type ThinkingLevel,
 } from '@earendil-works/pi-agent-core'
 import { buildAnthropicModel, type AgentFetch } from './anthropic-model.ts'
-import { buildConfidentialModel, type ReceiptLifecycle } from './confidential-model.ts'
+import { buildConfidentialModel } from './confidential-model.ts'
 import { buildOpenAiCompatModel } from './openai-compat-model.ts'
 import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
+import type { ReasoningEffort } from '../reasoning-effort.ts'
 import { mountAgentFs } from './browser-env/mount.ts'
 import { createBrowserCodingTools } from './coding-tools/index.ts'
 import { ensureBufferPolyfill } from './ensure-buffer.ts'
 import { buildSeedMessages, type SeedTurn } from './seed-history.ts'
+import {
+  createHarnessCompaction,
+  restoreCompaction,
+  type CompactionCheckpoint,
+  type HarnessCompaction,
+} from './compaction.ts'
+
+export type AppHarness = AgentHarness & {
+  compaction: HarnessCompaction
+  setReasoningEffort: (effort: ReasoningEffort | undefined, defaultLevel: ThinkingLevel) => Promise<void>
+}
 
 /** Mount-relative root under which every thread carves its isolated workspace. */
 const workspaceRoot = '/workspace'
@@ -68,9 +81,8 @@ export const workspaceDirFor = (threadId: string): string => {
  *   - `openai-compat` synthesizes an `openai-completions` model for the app's
  *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`thunderbolt`) and
  *     injects `fetch` around client construction ({@link buildOpenAiCompatModel}).
- *   - `confidential` adds catalog compatibility, attestation normalization, and
- *     usage-receipt capture around an OpenAI-compatible model
- *     ({@link buildConfidentialModel}).
+ *   - `confidential` adds catalog compatibility and attestation normalization
+ *     around an OpenAI-compatible model ({@link buildConfidentialModel}).
  */
 export type PiModelDescriptor =
   | {
@@ -114,7 +126,6 @@ export type PiModelDescriptor =
       readonly baseURL: string
       readonly apiKey: string
       readonly fetch: AgentFetch
-      readonly receipts: ReceiptLifecycle
       readonly reasoning: boolean
       readonly contextWindow?: number
       readonly supportsImages: boolean
@@ -136,6 +147,7 @@ export type BuildAppHarnessOptions = {
   /** Prior conversation turns to seed into the session before the first prompt,
    *  so the agent has multi-turn context. Omitted/empty starts a blank session. */
   readonly history?: readonly SeedTurn[]
+  readonly compaction?: CompactionCheckpoint
 }
 
 /** Remove the isolated browser workspace owned by a thread. */
@@ -144,6 +156,45 @@ export const removeAgentWorkspace = async (threadId: string): Promise<void> => {
   const workspaceDir = workspaceDirFor(threadId)
   const env = new BrowserExecutionEnv({ cwd: workspaceDir })
   await env.remove(workspaceDir, { recursive: true, force: true })
+}
+
+/** A file to place in a thread's workspace, at a workspace-relative path. */
+export type WorkspaceFile = {
+  readonly path: string
+  readonly content: string
+}
+
+/** A workspace file that could not be written, and why. */
+export type WorkspaceWriteFailure = {
+  readonly path: string
+  readonly error: FileError
+}
+
+/**
+ * Write files into a thread's workspace, overwriting what is there so any edit
+ * the model made is undone. A file that fails to write is returned, not thrown,
+ * so one bad file can't fail every turn.
+ *
+ * @param threadId - the thread whose workspace receives the files
+ * @param files - workspace-relative paths and their text content
+ * @returns the files that could not be written
+ */
+export const writeAgentWorkspaceFiles = async (
+  threadId: string,
+  files: readonly WorkspaceFile[],
+): Promise<WorkspaceWriteFailure[]> => {
+  await mountAgentFs()
+  const workspaceDir = workspaceDirFor(threadId)
+  const env = new BrowserExecutionEnv({ cwd: workspaceDir })
+  const encoder = new TextEncoder()
+  const failures: WorkspaceWriteFailure[] = []
+  for (const file of files) {
+    const written = await env.writeFile(file.path, encoder.encode(file.content))
+    if (!written.ok) {
+      failures.push({ path: file.path, error: written.error })
+    }
+  }
+  return failures
 }
 
 /**
@@ -157,7 +208,7 @@ export const removeAgentWorkspace = async (threadId: string): Promise<void> => {
  * @param options - model descriptor, prompt, thinking level, thread id, extra tools, history
  * @returns the constructed {@link AgentHarness}
  */
-export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<AgentHarness> => {
+export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<AppHarness> => {
   ensureBufferPolyfill()
   await mountAgentFs()
   const workspaceDir = workspaceDirFor(options.threadId)
@@ -167,6 +218,8 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     throw created.error
   }
   const session = await new InMemorySessionRepo().create({})
+  const effortState: { current: ReasoningEffort | undefined } = { current: undefined }
+  const getReasoningEffort = () => effortState.current
   const { models, model } =
     options.model.kind === 'anthropic'
       ? buildAnthropicModel({
@@ -178,8 +231,9 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
           modelId: options.model.modelId,
         })
       : options.model.kind === 'confidential'
-        ? buildConfidentialModel(options.model)
+        ? buildConfidentialModel({ ...options.model, getReasoningEffort })
         : buildOpenAiCompatModel({
+            getReasoningEffort,
             providerId: options.model.providerId,
             modelId: options.model.modelId,
             baseURL: options.model.baseURL,
@@ -201,16 +255,25 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     thinkingLevel: options.thinkingLevel,
     systemPrompt: options.systemPrompt,
   })
-  if (options.model.kind === 'confidential') {
-    options.model.receipts.attach(harness)
-  }
 
   // Seed prior turns into the (idle) session so the first prompt runs with full
   // conversational context. `appendMessage` writes straight to the session while
   // idle; `prompt` then reads them back via `session.buildContext()`.
+  if (options.compaction) {
+    await restoreCompaction(session, options.compaction)
+  }
   for (const message of buildSeedMessages(options.history)) {
     await harness.appendMessage(message)
   }
 
-  return harness
+  return Object.assign(harness, {
+    setReasoningEffort: async (effort: ReasoningEffort | undefined, defaultLevel: ThinkingLevel) => {
+      const level = effort === undefined ? defaultLevel : effort === 'none' ? 'off' : effort
+      if (harness.getThinkingLevel() !== level) {
+        await harness.setThinkingLevel(level)
+      }
+      effortState.current = effort
+    },
+    compaction: createHarnessCompaction(harness, session, options.compaction),
+  })
 }

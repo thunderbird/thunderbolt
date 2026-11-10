@@ -41,17 +41,17 @@ const Drawer = ({ open: controlledOpen, defaultOpen = false, onOpenChange, ...pr
  * viewport after the page has been scrolled. */
 const backdropClass =
   'fixed inset-0 z-40 min-h-dvh bg-black/30 backdrop-blur-xs backdrop-saturate-75 select-none ' +
-  'opacity-[calc(1-var(--drawer-swipe-progress,0))] transition-opacity duration-450 ease-[cubic-bezier(0.32,0.72,0,1)] ' +
+  'opacity-[calc(1-var(--drawer-swipe-progress,0))] transition-opacity duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] ' +
   'data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[ending-style]:pointer-events-none ' +
-  'data-[ending-style]:duration-[calc(var(--drawer-swipe-strength)*400ms)] data-[swiping]:duration-0 ' +
+  'data-[ending-style]:duration-[calc(var(--drawer-swipe-strength)*200ms)] data-[swiping]:duration-0 ' +
   'supports-[-webkit-touch-callout:none]:absolute'
 
 const popupClass = cn(
   'group/drawer-content pointer-events-auto fixed z-50 flex h-auto max-h-[85dvh] w-full flex-col bg-popover/80 text-popover-foreground outline-none backdrop-blur-lg select-none',
   // Swipe follows the finger; open/close slide from/to the sheet's edge.
-  'transform-[translate3d(0,var(--translate-y,0px),0)] transition-transform duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform',
+  'transform-[translate3d(0,var(--translate-y,0px),0)] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform',
   'data-[starting-style]:transform-[var(--closed-transform)] data-[ending-style]:transform-[var(--closed-transform)]',
-  'data-[swiping]:duration-0 data-[ending-style]:duration-[calc(var(--drawer-swipe-strength)*400ms)]',
+  'data-[swiping]:duration-0 data-[ending-style]:duration-[calc(var(--drawer-swipe-strength)*200ms)]',
   // Directional shadows come from the --shadow-drawer-down/up tokens in
   // index.css :root — the single source they share with
   // .mobile-sidebar-main-shadow.
@@ -66,12 +66,20 @@ const popupClass = cn(
 type DrawerContentProps = DrawerPrimitive.Popup.Props & {
   /** Render the backdrop even when this drawer is nested in another drawer. */
   forceBackdrop?: boolean
+  /** Keep a nested sheet inside its host dialog's stacking and focus boundary. */
+  portalContainer?: DrawerPrimitive.Portal.Props['container']
 }
 
-const DrawerContent = ({ className, children, forceBackdrop = false, ...props }: DrawerContentProps) => {
+const DrawerContent = ({
+  className,
+  children,
+  forceBackdrop = false,
+  portalContainer,
+  ...props
+}: DrawerContentProps) => {
   return (
     <DrawerPrimitive.VirtualKeyboardProvider>
-      <DrawerPrimitive.Portal data-slot="drawer-portal">
+      <DrawerPrimitive.Portal data-slot="drawer-portal" container={portalContainer}>
         <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} forceRender={forceBackdrop} />
         {/* Portaled events still bubble through the React tree, so this
             deliberately stops ALL parent pointerdown handling — not just the

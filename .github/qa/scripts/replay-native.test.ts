@@ -27,7 +27,7 @@ afterAll(() => rmSync(work, { recursive: true, force: true }))
 test('an Android run reinstalls and warms the app first, and adds the tree line for a field behind the keyboard', () => {
   const bin = join(work, 'bin')
   const calls = join(work, 'calls.log')
-  // The run 39373388149 control tree, with the focused Email field moved under the keyboard.
+  // The focused Email field moved under the keyboard.
   const hierarchy = join(work, 'hierarchy.json')
   const tree = readFileSync(join(import.meta.dir, '../fixtures/native/hier-android-control.json'), 'utf8')
   writeFileSync(hierarchy, tree.replace('[84,1131][1000,1281]', '[84,1700][1000,1850]'))
@@ -73,12 +73,17 @@ exit 0
   expect(proc.stderr.toString()).toBe('')
   expect(JSON.parse(proc.stdout.toString())).toEqual(['[qa-layout] behind-keyboard textbox "Email"'])
   const log = readFileSync(calls, 'utf8').trim().split('\n')
-  expect(log.slice(0, 3)).toEqual([
+  expect(log.slice(0, 2)).toEqual([
     'adb -s emulator-5554 uninstall net.thunderbird.thunderbolt',
     `adb -s emulator-5554 install -r ${join(realpathSync(work), 'apps/plain.apk')}`,
-    'adb -s emulator-5554 shell monkey -p net.thunderbird.thunderbolt -c android.intent.category.LAUNCHER 1',
   ])
   const at = (pattern: RegExp) => log.findIndex((line) => pattern.test(line))
+  // Then the stack's ports again, which a reset of adb's connection to the emulator drops, and the first launch.
+  const firstLaunch = at(/ shell monkey -p net\.thunderbird\.thunderbolt /)
+  expect(firstLaunch).toBeGreaterThan(2)
+  expect(
+    log.slice(2, firstLaunch).filter((line) => !/^adb -s emulator-5554 reverse tcp:\d+ tcp:\d+$/.test(line)),
+  ).toEqual([])
   expect(at(/^maestro .* test /)).toBeGreaterThan(at(/am force-stop net\.thunderbird\.thunderbolt$/))
   expect(at(/^maestro .* hierarchy$/)).toBeGreaterThan(at(/^maestro .* test /))
 })
@@ -87,11 +92,7 @@ exit 0
 const probeCheckbox = '[qa-layout] unnamed-control checkbox "#terms-agreement"'
 const probeButton = '[qa-layout] unnamed-control button "arrow-left icon after Connect Google"'
 
-/**
- * One iOS replay run with fake `xcrun` and `maestro`, ending on the recorded privacy step without the checkbox's
- * label, where the probe logs `probeCheckbox` and `probeButton`. `failure` makes the sign-in fail, or the flow's
- * driver time out.
- */
+/** Ends on the privacy step with the checkbox unlabeled; `failure` fails the sign-in or times out the flow's driver. */
 const iosRun = (failure: '' | 'sign-in' | 'driver') => {
   const dir = mkdtempSync(join(work, 'ios-'))
   const bin = join(dir, 'bin')
@@ -142,8 +143,7 @@ exit 0
 }
 
 test('an iOS run adds the tree line of the screen it ends on, read once after the flow', () =>
-  // Only the last screen is read, so a screen the sign-in passed, the privacy step among them, adds no line. The
-  // tree's line stands for the checkbox, so the probe's own line for it is left out.
+  // Only the last screen is read, and the tree's line stands for the checkbox, so the probe's own line is left out.
   expect(iosRun('')).toEqual({
     layout: [probeButton, '[qa-layout] unnamed-control checkbox "after Data is stored securely on your device."'],
     maestro: ['maestro test', 'maestro test', 'maestro hierarchy'],
@@ -171,7 +171,7 @@ esac
 exit 0
 `,
   )
-  // Logs which flow each `maestro test` got, and fails the sign-in while the flag file exists.
+  // Fails the sign-in while the flag file exists.
   writeFileSync(
     join(bin, 'maestro'),
     `#!/bin/bash

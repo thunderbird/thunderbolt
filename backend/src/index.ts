@@ -19,7 +19,6 @@ import { createInferenceRoutes } from '@/inference/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { deleteExpiredCaptchaChallenges, deleteExpiredOrConsumedNonces } from '@/dal'
 import { sweepIdleAnonymousUsers } from '@/auth/idle-anonymous-users'
-import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import {
@@ -160,19 +159,11 @@ export const createApp = async (deps?: AppDeps) => {
         createTinfoilRoutes({
           auth,
           database,
-          fetchFn,
+          // Keep the route's own transport by default: it reads the HTTP trailers that Bun's `fetch` drops.
+          fetchFn: deps?.fetchFn,
           logger: appLogger,
           usageLogger: appLogger,
           rateLimit: proRateLimit,
-        }),
-      )
-      .use(
-        createInferenceUsageReceiptRoutes({
-          auth,
-          database,
-          secret: settings.betterAuthSecret,
-          logger: appLogger,
-          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'receipt'),
         }),
       )
       .use(

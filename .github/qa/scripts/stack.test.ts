@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// stack.sh's port handling: where it reads its ports, what it refuses, and which stack `stop` stops, plus the TypeScript
-// side that reads the same ports (`ports.ts` and the replay config, which one test loads in a `bun -e` child). No test
-// starts a server: every case ends before the first one would.
+// No case starts a server: each ends before the first one would.
 
 import { afterAll, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -25,7 +23,6 @@ const sh = (args: string[], env: Record<string, string>) => {
   return { code: proc.exitCode, stdout: proc.stdout.toString(), stderr: proc.stderr.toString() }
 }
 
-/** Holds a port on `hostname` while `check` runs. Port 0 asks the OS for a free one. */
 const withListener = (hostname: string, check: (port: number) => void) => {
   const listener = Bun.listen({ hostname, port: 0, socket: { data() {} } })
   try {
@@ -71,7 +68,6 @@ const alive = (pid: number) => {
   }
 }
 
-/** Runs `stop` over two stacks' pid files, the default one and the one of backend port 2005. */
 const stopWith = (env: Record<string, string>) => {
   const [defaultStack, otherStack] = [detachedSleep(), detachedSleep()]
   try {

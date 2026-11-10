@@ -38,7 +38,8 @@
  */
 
 import type { AgentEvent, AgentHarness, AgentHarnessEvent } from '@earendil-works/pi-agent-core'
-import type { AssistantMessage, Usage } from '@earendil-works/pi-ai'
+import { fauxAssistantMessage, type AssistantMessage, type Usage } from '@earendil-works/pi-ai'
+import { stoppedReplyText } from './stopped-reply.ts'
 
 const encoder = new TextEncoder()
 
@@ -371,6 +372,27 @@ const createPiTranslator = (
 }
 
 /**
+ * Abort the run and keep the stopped reply in the session as a finished answer.
+ * Pi records it with `stopReason: 'aborted'`, and pi-ai drops those messages
+ * from the next request. The prompt would then look unanswered, and the model
+ * would write the stopped reply again before answering the next message.
+ *
+ * The append happens inside the run (Pi queues it until the turn ends), so the
+ * session holds it before the harness goes idle and accepts the next prompt.
+ */
+const abortAndKeepStoppedReply = (harness: Pick<AgentHarness, 'subscribe' | 'abort' | 'appendMessage'>): void => {
+  const unsubscribe = harness.subscribe((event) => {
+    if (event.type === 'message_end' && event.message.role === 'assistant' && event.message.stopReason === 'aborted') {
+      return harness.appendMessage(fauxAssistantMessage(stoppedReplyText(event.message)))
+    }
+  })
+  void harness
+    .abort()
+    .catch(() => {})
+    .finally(unsubscribe)
+}
+
+/**
  * Subscribes to a Pi {@link AgentHarness} run and produces the AI SDK UI message
  * stream the app's chat transport expects. The harness's own lifecycle events
  * drive every chunk; `runPrompt` only *initiates* the run (and its settlement is
@@ -399,7 +421,7 @@ const createPiTranslator = (
  * @returns a `ReadableStream` of SSE-encoded AI SDK chunks for the `Response` body
  */
 export const piHarnessToUiMessageStream = (
-  harness: Pick<AgentHarness, 'subscribe' | 'abort'>,
+  harness: Pick<AgentHarness, 'subscribe' | 'abort' | 'appendMessage'>,
   runPrompt: () => Promise<unknown>,
   metadata: PiStreamMetadata = {},
   signal?: AbortSignal,
@@ -470,7 +492,7 @@ export const piHarnessToUiMessageStream = (
             close()
           }
         }
-        void harness.abort().catch(() => {})
+        abortAndKeepStoppedReply(harness)
       }
 
       if (signal?.aborted) {
@@ -497,13 +519,13 @@ export const piHarnessToUiMessageStream = (
         }
       })()
     },
-    async cancel() {
+    cancel() {
       closed = true
       detachSignal?.()
       detachSignal = null
       unsubscribe?.()
       unsubscribe = null
-      await harness.abort()
+      abortAndKeepStoppedReply(harness)
     },
   })
 }

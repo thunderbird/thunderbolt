@@ -5,6 +5,7 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { describe, expect, spyOn, test } from 'bun:test'
+import type { ImageSupport, SharedModel } from '../../../shared/defaults/models.ts'
 import type { CliDeviceMetadata } from '../auth/account-client.ts'
 import { createCredentialedFetch, type CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
 import { createByokBinding } from './byok.ts'
@@ -750,6 +751,38 @@ describe('ProviderRuntime one-producer managed dispatch', () => {
     await futureHarness.runtime.prepare({ providerId: 'thunderbolt', model: 'future-direct-fixture' })
     expect(futureHarness.calls).toMatchObject({ byok: 0, direct: 1, tinfoil: 0, register: 0 })
     expect(futureHarness.directArguments[0]?.model).toEqual(futureCatalog.data[0])
+  })
+
+  const catalogWith = (model: SharedModel, support: ImageSupport): ManagedCatalog => ({
+    ...bundledManagedCatalog,
+    data: [...bundledManagedCatalog.data, model],
+    imageSupport: { ...bundledManagedCatalog.imageSupport, [model.id]: support },
+  })
+
+  test('sends images to a catalog-only confidential model the catalog declares supported', async () => {
+    const serverOnly = { ...confidentialModel, id: '019f0000-0000-7000-8000-000000000002', model: 'server-only-fixture' }
+    const harness = await createRuntimeHarness({
+      initialConfig: config({ activeProviderId: 'thunderbolt' }),
+      credential: sessionCredential,
+      catalog: catalogWith(serverOnly, 'supported'),
+    })
+
+    await harness.runtime.prepare({ providerId: 'thunderbolt', model: serverOnly.id })
+
+    expect(harness.tinfoilArguments[0]).toMatchObject({ model: serverOnly, supportsImages: true })
+  })
+
+  test('withholds images from a direct model the catalog declares unsupported, over its vendor rule', async () => {
+    const serverOnly = { ...directModel, id: '019f0000-0000-7000-8000-000000000003', model: 'server-only-direct-fixture' }
+    const harness = await createRuntimeHarness({
+      initialConfig: config({ activeProviderId: 'thunderbolt' }),
+      credential: sessionCredential,
+      catalog: catalogWith(serverOnly, 'unsupported'),
+    })
+
+    await harness.runtime.prepare({ providerId: 'thunderbolt', model: serverOnly.id })
+
+    expect(harness.directArguments[0]).toMatchObject({ model: serverOnly, supportsImages: false })
   })
 
   test('never tries an alternate producer after the selected producer fails', async () => {

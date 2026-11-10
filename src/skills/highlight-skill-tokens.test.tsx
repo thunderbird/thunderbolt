@@ -95,22 +95,14 @@ describe('renderHighlightedSkillTokens', () => {
     expect(hidden?.textContent).toBe('/')
   })
 
-  it('hides the slash of an in-progress token — the trigger is never visible while typing', () => {
-    const { container } = renderTokens('hello /partial')
-    const hidden = container.querySelector('.text-transparent')
-    expect(hidden?.textContent).toBe('/')
-  })
-
-  it('hides a bare trailing "/" (just opened the picker, not yet a token)', () => {
-    const { container } = renderTokens('hello /')
-    const hidden = container.querySelector('.text-transparent')
-    expect(hidden?.textContent).toBe('/')
-  })
-
-  it('hides a "/" typed as the very first character', () => {
-    const { container } = renderTokens('/')
-    const hidden = container.querySelector('.text-transparent')
-    expect(hidden?.textContent).toBe('/')
+  it.each([
+    ['an in-progress token', '/con'],
+    ['a bare trailing slash', 'hello /'],
+    ['a slash as the first character', '/'],
+  ])('paints a literal "/" for %s, so a restored sigil never reads as a blank', (_, text) => {
+    const { container } = renderTokens(text)
+    expect(container.querySelector('.text-transparent')).toBeNull()
+    expect(container.textContent).toContain(text)
   })
 
   it('keeps mid-text slashes visible (fractions, paths)', () => {

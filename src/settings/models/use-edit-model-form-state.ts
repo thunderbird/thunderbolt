@@ -33,6 +33,7 @@ const editModelFormSchema = (i18n: I18n) =>
     model: z.string().min(1, { message: i18n._(modelNameRequired) }),
     url: z.string().optional(),
     apiKey: z.string().optional(),
+    supportsTools: z.boolean(),
   })
 
 const buildEditModelFormSchema = (i18n: I18n, provider: Model['provider']) =>
@@ -43,9 +44,10 @@ const buildEditModelFormSchema = (i18n: I18n, provider: Model['provider']) =>
 
 type EditModelFormValues = z.infer<ReturnType<typeof editModelFormSchema>>
 
-export type EditModelSubmission = Omit<EditModelFormValues, 'apiKey'> & {
+export type EditModelSubmission = Omit<EditModelFormValues, 'apiKey' | 'supportsTools'> & {
   id: string
   apiKey: string | null | undefined
+  toolUsage: number
 }
 
 /** Owns edit-model form, catalog, API-key policy, and connection-test orchestration. */
@@ -53,7 +55,13 @@ export const useEditModelFormState = (model: Model) => {
   const { i18n } = useLingui()
   const form = useForm<EditModelFormValues>({
     resolver: zodResolver(buildEditModelFormSchema(i18n, model.provider)),
-    defaultValues: { name: model.name || '', model: model.model, url: model.url || '', apiKey: '' },
+    defaultValues: {
+      name: model.name || '',
+      model: model.model,
+      url: model.url || '',
+      apiKey: '',
+      supportsTools: model.toolUsage !== 0,
+    },
   })
   const watchedModel = form.watch('model')
   const watchedUrl = form.watch('url')
@@ -136,17 +144,26 @@ export const useEditModelFormState = (model: Model) => {
     setApiKeyEdit(apiKeyEdit.kind === 'clear' ? { kind: 'keep' } : { kind: 'clear' })
     catalog.invalidateCatalog()
   }
-  const testConnection = () => {
+  // A verdict that differs from the saved value dirties the form, so re-testing
+  // an unchanged model is enough to repair its tool setting.
+  const testConnection = async () => {
     const values = form.getValues()
-    connection.test({
+    const toolSupport = await connection.test({
       provider: model.provider,
       model: values.model,
       url: values.url,
       apiKey: effectiveApiKey,
     })
+    if (toolSupport) {
+      form.setValue('supportsTools', toolSupport === 'supported', { shouldDirty: true })
+    }
   }
-  const submissionFor = (values: EditModelFormValues): EditModelSubmission => ({
+  const changeSupportsTools = (checked: boolean) => {
+    form.setValue('supportsTools', checked, { shouldDirty: true })
+  }
+  const submissionFor = ({ supportsTools, ...values }: EditModelFormValues): EditModelSubmission => ({
     ...values,
+    toolUsage: supportsTools ? 1 : 0,
     apiKey: apiKeyEditValue(apiKeyEdit),
     id: model.id,
   })
@@ -170,6 +187,7 @@ export const useEditModelFormState = (model: Model) => {
     changeApiKey,
     toggleClearApiKey,
     testConnection,
+    changeSupportsTools,
     submissionFor,
   }
 }

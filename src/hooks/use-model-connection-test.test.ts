@@ -4,6 +4,7 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import { APICallError } from 'ai'
 import { createDefaultProbe } from './use-model-connection-test'
 
 const proxyFetch: FetchFn = Object.assign(async () => new Response(), {
@@ -93,7 +94,114 @@ describe('createDefaultProbe', () => {
       prompt: 'Say "test successful" if you can read this.',
       maxRetries: 0,
       abortSignal: expect.any(AbortSignal),
+      tools: { get_current_time: expect.anything() },
     })
     expect(getTinfoilClient).toHaveBeenCalledTimes(0)
+  })
+})
+
+const apiCallError = (statusCode: number) =>
+  new APICallError({
+    message: `status ${statusCode}`,
+    url: 'http://localhost:11434/v1/chat/completions',
+    requestBodyValues: {},
+    statusCode,
+  })
+
+/** A probe over a stubbed model whose `generateText` answers each call in turn. */
+const probeWith = (...outcomes: Array<Error | 'ok'>) => {
+  const calls: Array<Record<string, unknown>> = []
+  const runGenerateText = mock(async (options: Record<string, unknown>) => {
+    calls.push(options)
+    const outcome = outcomes[calls.length - 1]
+    if (outcome instanceof Error) {
+      throw outcome
+    }
+    return { text: 'test successful' }
+  })
+  const probe = createDefaultProbe({
+    createModel: mock(async () => ({ id: 'model' }) as never) as never,
+    generateText: runGenerateText as never,
+  })
+  const run = () =>
+    probe(
+      { provider: 'custom', model: 'gemma3:4b', url: 'http://localhost:11434/v1', apiKey: null },
+      () => proxyFetch,
+      new AbortController().signal,
+    )
+  return { run, calls }
+}
+
+describe('createDefaultProbe tool support', () => {
+  it('reports tools as supported when the tools request succeeds', async () => {
+    const { run, calls } = probeWith('ok')
+
+    expect(await run()).toBe('supported')
+    expect(calls).toHaveLength(1)
+    expect(calls[0].tools).toBeDefined()
+  })
+
+  it.each([400, 404, 422])(
+    'reports tools as unsupported when a %i tools request is followed by a plain success',
+    async (statusCode) => {
+      const { run, calls } = probeWith(apiCallError(statusCode), 'ok')
+
+      expect(await run()).toBe('unsupported')
+      expect(calls).toHaveLength(2)
+      expect(calls[1].tools).toBeUndefined()
+    },
+  )
+
+  it.each([500, 503])('reports tools as unsupported when a %i tools request fails twice', async (statusCode) => {
+    const { run, calls } = probeWith(apiCallError(statusCode), 'ok', apiCallError(statusCode))
+
+    expect(await run()).toBe('unsupported')
+    expect(calls).toHaveLength(3)
+    expect(calls[1].tools).toBeUndefined()
+    expect(calls[2].tools).toBeDefined()
+  })
+
+  it.each([401, 429])('fails instead of turning tools off when the 5xx confirmation hits a %i', async (statusCode) => {
+    const { run, calls } = probeWith(apiCallError(503), 'ok', apiCallError(statusCode))
+
+    await expect(run()).rejects.toThrow(`status ${statusCode}`)
+    expect(calls).toHaveLength(3)
+  })
+
+  it('fails instead of turning tools off when the 5xx confirmation loses its connection', async () => {
+    const { run } = probeWith(apiCallError(503), 'ok', new TypeError('Failed to fetch'))
+
+    await expect(run()).rejects.toThrow('Failed to fetch')
+  })
+
+  it('reports tools as supported when a 5xx tools request succeeds on the second try', async () => {
+    const { run, calls } = probeWith(apiCallError(503), 'ok', 'ok')
+
+    expect(await run()).toBe('supported')
+    expect(calls).toHaveLength(3)
+  })
+
+  it('fails with the plain request error when both requests fail', async () => {
+    const { run, calls } = probeWith(apiCallError(400), apiCallError(404))
+
+    await expect(run()).rejects.toThrow('status 404')
+    expect(calls).toHaveLength(2)
+  })
+
+  it.each([401, 403, 408, 429])(
+    'fails without retrying on a %i, which says nothing about tools',
+    async (statusCode) => {
+      const { run, calls } = probeWith(apiCallError(statusCode), 'ok')
+
+      await expect(run()).rejects.toThrow(`status ${statusCode}`)
+      expect(calls).toHaveLength(1)
+    },
+  )
+
+  it('fails without retrying on a network error', async () => {
+    const { run, calls } = probeWith(new TypeError('Failed to fetch'), 'ok')
+
+    await expect(run()).rejects.toThrow('Failed to fetch')
+    expect(calls).toHaveLength(1)
   })
 })

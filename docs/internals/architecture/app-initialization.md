@@ -2,7 +2,7 @@
 
 `executeInitializationSteps`
 ([`src/hooks/use-app-initialization.ts`](../../../src/hooks/use-app-initialization.ts)) opens local storage and prepares the data needed to mount the app. The hook publishes `InitData`
-to [`src/app.tsx`](../../../src/app.tsx) once native window/tray setup has settled, then attaches
+to [`src/app.tsx`](../../../src/app.tsx) once desktop tray initialization has settled, then attaches
 analytics after a rendering opportunity. Auth routing and chat hydration follow core initialization.
 
 ## The steps, in execution order
@@ -22,7 +22,7 @@ analytics after a rendering opportunity. Auth routing and chat hydration follow 
 | `step4_reconcile_defaults`    | `reconcileDefaults` (`src/lib/reconcile-defaults.ts`)                         | Fatal: `RECONCILE_DEFAULTS_FAILED`   |
 | `step4b_run_data_migrations`  | `runDataMigrations` (`src/lib/data-migrations/index.ts:53`)                   | Swallowed per migration; never fatal |
 | `step5_get_settings`          | Reads feature flags and the initial `sidebar_state`                           | n/a                                  |
-| `step7_initialize_tray`       | Tauri window/close-handler and tray setup before content                      | Logged; boots with no tray           |
+| `step7_initialize_tray`       | Awaits native desktop tray creation or a refresh of its translated labels     | Logged; boot continues               |
 | `step8_initialize_posthog`    | Deferred PostHog client                                                       | Logged; boots with a null client     |
 
 Several steps sit where they do because moving them breaks something no test and no type will
@@ -35,8 +35,10 @@ catch, mostly multi-device convergence of default data.
   start after the storage check, overlapping binding with the local database open. Binding settles before the key-request responder and initial-sync gate. The mounted session
   observer retains its independent retry if the startup handshake failed. The migration/follower
   check starts after reconciliation and binding.
-- **Step 7 preserves the existing native setup boundary before content appears.** Deferring this
-  step would extend the window without close-to-tray handling into usable content. On web this step is a no-op.
+- **Step 7 awaits native desktop tray initialization before content appears.** Rust owns the tray,
+  menu and close handler for the process lifetime; retries, HMR and frontend reloads refresh the
+  labels without creating duplicates. The close handler is installed only after tray creation
+  succeeds. On web and native mobile this step is a no-op. See [native tray lifecycle](tauri-shell.md#native-tray-and-window-lifecycle).
   Step 8 does not gate content: analytics attaches after a rendering opportunity. Hidden tabs use
   a timer instead, including if the tab becomes hidden while a frame is pending. Browser timer
   throttling still applies, but initialization does not wait for the tab to become visible.
@@ -104,7 +106,7 @@ falls back to the global `hasSynced` and the gate quietly waits for everything.
 `hasCurrentDefaultsVersions` requires every `defaults_version.*` marker to exist **and**
 meet-or-exceed the version reconcile would apply on this boot: the bundled constant for tasks,
 skills and settings; for models, whichever source `pickModelsDefaults`
-([`src/lib/pick-defaults.ts:35`](../../../src/lib/pick-defaults.ts)) picks (the cached OTA payload only
+([`src/lib/pick-defaults.ts:42`](../../../src/lib/pick-defaults.ts)) picks (the cached OTA payload only
 when it declares a strictly higher version than the bundle and clears its sanity guards, the bundle
 otherwise). That value is computed once above step 2c and shared with step 4, so the two cannot
 disagree.
@@ -116,7 +118,7 @@ must take the slow path once.
 
 ### Invariant: a new reconciled table must join the probe
 
-`versionMarkerKeys` (`src/lib/reconcile-defaults.ts:34`) lists the four markers; the
+`versionMarkerKeys` (`src/lib/reconcile-defaults.ts:44`) lists the four markers; the
 `defaultsTargets` map at `src/hooks/use-app-initialization.ts:300-305`, typed
 `Record<VersionMarkerKey, number>`, must cover every one (a missing or typo'd key is a compile
 error). Miss the probe and that table's version bumps strand on every returning device, silently.
@@ -199,7 +201,7 @@ needs updating by hand.
 ## Startup performance boundaries
 
 Core initialization opens storage, reconciles defaults, runs migrations and snapshots the initial
-sidebar preference. Native window/tray setup retains its readiness boundary before content appears;
+sidebar preference. Native desktop tray initialization retains its readiness boundary before content appears;
 analytics attaches after a rendering opportunity. Only the analytics configuration request has a
 five-second timeout. Device binding retains the existing HTTP timeout policy and overlaps database
 setup, but its attempt settles before the key responder and initial-sync gate.

@@ -3,9 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# Sourced from the repo root (`. .github/qa/scripts/ports.sh`). Exports the stack's six ports: each QA_*_PORT from the
-# environment when it is set and not empty, otherwise its default from .github/qa/ports.json. A value that is not a
-# port number exits 2.
+# Sourced from the repo root (`. .github/qa/scripts/ports.sh`). Exports each QA_*_PORT from the environment, else its
+# default from .github/qa/ports.json. A value that is not a port number exits 2.
 
 while read -r name default; do
   port=${!name:-$default}

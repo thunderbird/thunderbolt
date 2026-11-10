@@ -178,7 +178,7 @@ Sessions from `/device/token` are stamped `session.deviceId = 'cli-registration-
 | `DEVICE_LIMIT_REACHED`                                            | 422    |
 | Route absent unless `CLI_DEVICE_REGISTRATION_ENABLED=true`        | 404    |
 
-Until the swap, `rejectUnregisteredCliDevice` ([`inference/cli-device.ts`](../src/inference/cli-device.ts)) answers `409 CLI_DEVICE_NOT_BOUND` on the managed-inference, confidential and usage-receipt routes: a device-grant session is not usable for metered work until it is attributable to a device the user can see and revoke.
+Until the swap, `rejectUnregisteredCliDevice` ([`inference/cli-device.ts`](../src/inference/cli-device.ts)) answers `409 CLI_DEVICE_NOT_BOUND` on the managed-inference and confidential routes: a device-grant session is not usable for metered work until it is attributable to a device the user can see and revoke.
 
 Both halves ride the same kill switch: with `CLI_DEVICE_REGISTRATION_ENABLED` unset the marker is still stamped but the check returns early, so the session reaches those routes unregistered.
 

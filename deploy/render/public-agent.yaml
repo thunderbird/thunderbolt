@@ -31,6 +31,9 @@ services:
     buildCommand: bun install; NODE_OPTIONS="--max-old-space-size=4096" bun run build
     staticPublishPath: dist
     envVars:
+      # Without it Render builds with its default Bun for the service's creation date.
+      - key: BUN_VERSION
+        value: "1.4.4"
       # Build time: Vite inlines these into the bundle.
       - key: VITE_THUNDERBOLT_CLOUD_URL
         sync: false # the backend's public URL, ending in /v1
@@ -92,6 +95,8 @@ services:
     # agent has a shared run lock.
     numInstances: 1
     envVars:
+      - key: BUN_VERSION
+        value: "1.4.4" # see public-agent-web
       - key: DATABASE_URL
         fromDatabase:
           name: public-agent-db

@@ -46,8 +46,9 @@ model of its own, chosen at its end, and ignores what you configure here.
 | Tinfoil               | Required   | Not needed   | Confidential inference in a verified hardware enclave                                 |
 | Custom                | Optional   | Required     | Any OpenAI-compatible endpoint on this machine, or on an address reachable over HTTPS |
 
-The **Custom** form pre-fills `http://localhost:11434/v1`, the usual address of a local Ollama
-install. Leave the key blank if the endpoint does not need one.
+The **Custom** URL field starts empty. Its placeholder shows `http://localhost:11434/v1`, the usual
+address of a local Ollama install. The model list loads once you enter a URL. Leave the key blank if
+the endpoint does not need one.
 
 ### Adding a model
 
@@ -55,6 +56,11 @@ Where the provider publishes a catalog, the model list fills itself in. OpenAI, 
 OpenRouter need a valid key before their catalog loads, and you can always type the model identifier
 by hand instead. Every provider except the managed Thunderbolt models must pass **Test Connection**
 before the model can be saved.
+
+The connection test also checks whether the model accepts tools. A model that rejects them, such as
+Ollama's `gemma3`, is saved with **Supports tools** turned off, and its chats run without web search,
+integrations or other tools. The switch is on the add and edit forms if the test gets it wrong, and
+running the test again on a saved model updates it.
 
 ### Models your deployment provides
 

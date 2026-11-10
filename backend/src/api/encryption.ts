@@ -17,6 +17,7 @@ import {
   deleteRevokedBridgeDevice,
   denyDevice,
   markDeviceTrusted,
+  requireMigrationSiblingApproval,
   setDeviceNodeId,
   getTrustedNodeIds,
   listEnvelopeCapableDeviceIds,
@@ -46,11 +47,11 @@ import {
 import { isPasskeyEnabled, type Settings } from '@/config/settings'
 import type { QueryableDatabase, db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
-import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
+import { verifyAccountSignature, verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
-import type { StepUpAction } from '@/lib/step-up-otp'
-import { burnStepUpCode, requireStepUpCode, sendStepUpCode, stepUpRequiredMessage } from './step-up'
+import { consumeStepUpOtp, type StepUpAction } from '@/lib/step-up-otp'
+import { requireStepUpCode, sendStepUpCode } from './step-up'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import {
@@ -62,6 +63,7 @@ import {
   challengeNonceTtlMs,
   challengeOperations,
   initialKeyId,
+  encodeDeviceAttestationPayload,
   keyIdPattern,
   legacyKeyId,
 } from '@shared/e2ee-types'
@@ -193,8 +195,8 @@ const getCallerDevice = async (
 }
 
 /**
- * Envelope coverage validation (AK rotation + upgrade): the client must supply a
- * new-AK envelope for EXACTLY the set of envelope-capable devices — a missing one
+ * Envelope coverage validation: rotation covers all envelope-capable devices;
+ * upgrade covers only the caller. The submitted set must match exactly — a missing one
  * locks a device out; an extra one hands the new AK to a revoked/pending device.
  * Throws BadRequestError on any mismatch.
  *
@@ -202,7 +204,7 @@ const getCallerDevice = async (
  * non-revoked AND holding both hybrid public keys. Requiring coverage for a
  * keyless trusted device (a bridge, or a v1 device that never published v2 keys)
  * would be unsatisfiable — the client cannot wrap an AK without those keys — and
- * would fail every rotation and upgrade on such an account.
+ * would fail every rotation on such an account. Upgrade instead covers only its caller.
  */
 const assertEnvelopeCoverage = (capableDeviceIds: string[], envelopes: Array<{ deviceId: string }>): void => {
   const capable = new Set(capableDeviceIds)
@@ -212,11 +214,11 @@ const assertEnvelopeCoverage = (capableDeviceIds: string[], envelopes: Array<{ d
   }
   const missing = [...capable].filter((deviceId) => !submitted.has(deviceId))
   if (missing.length > 0) {
-    throw new BadRequestError(`envelopes must cover every envelope-capable device — missing: ${missing.join(', ')}`)
+    throw new BadRequestError(`Missing expected envelope recipients: ${missing.join(', ')}`)
   }
   const unknown = [...submitted].filter((deviceId) => !capable.has(deviceId))
   if (unknown.length > 0) {
-    throw new BadRequestError(`envelopes contains non-trusted devices: ${unknown.join(', ')}`)
+    throw new BadRequestError(`Unexpected envelope recipients: ${unknown.join(', ')}`)
   }
 }
 
@@ -858,6 +860,20 @@ export const createEncryptionRoutes = (
             if (!targetDevice || targetDevice.deviceType === 'cli' || targetDevice.revokedAt != null) {
               throw new ForbiddenError('Device has been revoked')
             }
+            // Honest-server race defense; a malicious server can replace its verification metadata.
+            if (
+              callerDeviceId !== deviceId &&
+              metadata &&
+              (!targetDevice.publicKey ||
+                !targetDevice.mlkemPublicKey ||
+                !(await verifyAccountSignature(
+                  metadata.signingPublicKey ?? '',
+                  attestation,
+                  encodeDeviceAttestationPayload(userId, deviceId, targetDevice.publicKey, targetDevice.mlkemPublicKey),
+                )))
+            ) {
+              throw new KeyConflictError('Device approval attestation does not match the current device tuple')
+            }
 
             // Store envelope (carries the AK)
             await upsertEnvelope(txDb, { deviceId, userId, wrappedCk: wrappedCK, attestation })
@@ -986,6 +1002,7 @@ export const createEncryptionRoutes = (
           trusted: device.trusted,
           // Carries the AK in v2 — field name kept for wire compatibility.
           wrappedCK: envelope.wrappedCk,
+          attestation: envelope.attestation,
         }
       },
       { auth: true },
@@ -1048,11 +1065,11 @@ export const createEncryptionRoutes = (
       },
       { auth: true },
     )
-    // The exact device set an AK rotation / upgrade must cover, with the public
+    // The exact device set an AK rotation must cover, with the public
     // keys needed to wrap for each — served from the SAME predicate
     // `assertEnvelopeCoverage` validates against. Clients previously derived this
-    // from their PowerSync-synced `devices` table, so a replication lag (two
-    // devices migrating at once, a freshly approved peer) produced envelopes the
+    // from their PowerSync-synced `devices` table, so a replication lag around
+    // a freshly approved peer produced envelopes the
     // server then rejected as incomplete, with no way to recover. Public keys are
     // not secrets — they already sync to every device on the account.
     .get(
@@ -1212,24 +1229,22 @@ export const createEncryptionRoutes = (
         } catch (err) {
           return mapEncryptionError(err, set)
         }
-        const storedMetadata = await getEncryptionMetadata(database, userId)
-        const recoveryChanged =
-          storedMetadata != null &&
-          (storedMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
-            storedMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
-        if (recoveryChanged) {
-          // Session email, never client input — see the step-up note above.
-          const refusal = await requireStepUpCode(database, stepUpAction, sessionUser!.email, body.stepUpOtp)
-          if (refusal) {
-            set.status = refusal.status
-            return refusal.body
-          }
-        }
-
         try {
-          const keyVersion = await database.transaction(async (tx) => {
+          const result = await database.transaction(async (tx) => {
             const txDb: QueryableDatabase = tx
             await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+
+            const metadata = await getEncryptionMetadata(txDb, userId)
+            const recoveryChanged =
+              metadata != null &&
+              (metadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
+                metadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
+            if (recoveryChanged) {
+              const refusal = await requireStepUpCode(txDb, stepUpAction, sessionUser!.email, body.stepUpOtp)
+              if (refusal) {
+                return { refusal }
+              }
+            }
 
             // Verify inside the tx so nonce consumption serializes under the lock
             // (concurrent rotates: the second fails on its own nonce or on coverage
@@ -1285,19 +1300,6 @@ export const createEncryptionRoutes = (
               }
               await setPrimaryKeyId(txDb, userId, body.newPrimaryKey.keyId)
             }
-            // Race guard for the THU-875 gate: the pre-tx compare ran against a
-            // snapshot; if the stored keys moved between that read and this lock
-            // (a concurrent phrase change), an un-stepped-up request must not
-            // slide through on the stale "unchanged" verdict.
-            const txMetadata = await getEncryptionMetadata(txDb, userId)
-            const txRecoveryChanged =
-              txMetadata != null &&
-              (txMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
-                txMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
-            if (txRecoveryChanged && !recoveryChanged) {
-              throw new ForbiddenError(stepUpRequiredMessage[stepUpAction])
-            }
-
             // The org envelope wraps the NEW AK — replaced atomically with the rotation.
             await persistOrgEnvelope(txDb, settings, userId, body.orgEnvelope)
             await replaceEncryptionMetadata(txDb, {
@@ -1316,11 +1318,17 @@ export const createEncryptionRoutes = (
             if (newVersion == null) {
               throw new BadRequestError('Encryption not set up')
             }
-            return newVersion
+            if (recoveryChanged) {
+              await consumeStepUpOtp(txDb, stepUpAction, sessionUser!.email)
+            }
+            return { keyVersion: newVersion, recoveryChanged }
           })
 
-          if (recoveryChanged) {
-            await burnStepUpCode(database, stepUpAction, sessionUser!.email)
+          if (result.refusal) {
+            set.status = result.refusal.status
+            return result.refusal.body
+          }
+          if (result.recoveryChanged) {
             notifyBestEffort(
               'recovery-phrase-changed',
               notifications.sendRecoveryPhraseChanged({
@@ -1331,7 +1339,7 @@ export const createEncryptionRoutes = (
             )
           }
 
-          return { key_version: keyVersion }
+          return { key_version: result.keyVersion }
         } catch (err) {
           return mapEncryptionError(err, set)
         }
@@ -1364,9 +1372,10 @@ export const createEncryptionRoutes = (
     )
     // v1→v2 migration (WS1). The migrator absorbs the legacy CK into the keyring
     // as the reserved read-only `"v1"` slot AND mints a fresh primary DEK `"0"`,
-    // registers the signing key + kdf_salt + recovery slot, re-encrypts the canary
-    // under the new primary DEK, writes a new-AK envelope for every trusted
-    // device and for the phrase-derived recovery keypair, and flips
+    // registers the signing key + kdf_salt + recovery slot, seals the canary
+    // under the new AK, writes an envelope only for the migrator's local keys
+    // and the phrase-derived recovery keypair, removes obsolete regular-sibling
+    // envelopes and returns trusted regular siblings to approval, then flips
     // scheme_version 1→2 atomically (CAS) as the LAST step — one all-or-nothing
     // transaction under the per-user advisory lock.
     //
@@ -1383,15 +1392,21 @@ export const createEncryptionRoutes = (
           set.status = caller.status
           return { error: caller.error }
         }
-        if (!caller.device.trusted) {
-          set.status = 403
-          return { error: 'Only trusted devices can upgrade encryption' }
-        }
 
         try {
           const result = await database.transaction(async (tx) => {
             const txDb: QueryableDatabase = tx
             await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+
+            // A concurrent loser may already be pending; preserve the follower's 409 path first.
+            const metadata = await getEncryptionMetadata(txDb, userId)
+            if (metadata?.schemeVersion === 2) {
+              throw new SchemeConflictError('Account already migrated to scheme v2')
+            }
+            const lockedCaller = await getDeviceById(txDb, caller.deviceId)
+            if (!isTrustedAppDevice(lockedCaller, userId) || lockedCaller?.revokedAt != null) {
+              throw new ForbiddenError('Only trusted devices can upgrade encryption')
+            }
 
             // Replay protection only (bootstrap op — NOT signature-verified).
             const nonceRow = await consumeChallengeNonce(txDb, body.nonce)
@@ -1411,9 +1426,10 @@ export const createEncryptionRoutes = (
             }
 
             assertUpgradeKeyCoverage(body.wrappedKeys, body.primaryKeyId)
-            const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
-            assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
+            assertEnvelopeCoverage([caller.deviceId], body.envelopes)
             assertRecoveryCoverage(body)
+
+            await requireMigrationSiblingApproval(txDb, userId, caller.deviceId)
 
             for (const entry of body.wrappedKeys) {
               const inserted = await insertWrappedKey(txDb, {

@@ -11,12 +11,19 @@
 #                                                               layout-probe.js)
 #   native.sh build <platform> <out-dir> [onboarding] [control] build the app into <out-dir> (onboarding is off
 #                                                               unless asked; control also injects control/cover.js)
+#   native.sh system-image                                      Android only: install the emulator and the AVD's
+#                                                               system image, retrying once after a failed download
 #   native.sh device <platform>                                 boot a device, print its id on stdout
-#   native.sh install <platform> <device> <app-path>            on Android also open the app until a launch gets
-#                                                               past the storage check, up to 4 launches of
-#                                                               $QA_WARM_SECONDS (30) each, and stop it
+#   native.sh install <platform> <device> <app-path>            on Android also reverse the stack's ports again and
+#                                                               open the app until a launch gets past the storage
+#                                                               check, up to 4 launches of $QA_WARM_SECONDS (30)
+#                                                               each, and stop it
 #   native.sh logs <platform> <device> <file>                   stream the WebView console to <file> in the
-#                                                               background, pid in <file>.pid
+#                                                               background, pid in <file>.pid; on iOS it returns at
+#                                                               once and records the start time in <file>.start
+#   native.sh wait-logs <device> <file>                         iOS only: wait for that stream to attach, replacing
+#                                                               it once; the first gets until 60 s after its start,
+#                                                               the replacement 60 s of its own
 #   native.sh stop-logs <file>
 #   native.sh control <platform> <device> [out-dir]             run the positive control on the control build
 #                                                               installed on <device>; exit 0 when the layout check
@@ -34,28 +41,35 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
-# The stack's own URLs and VITE_* settings, read from stack.sh so the two cannot drift. They use its ports.
+# Read from stack.sh so the URLs and VITE_* settings cannot drift from the stack's.
 . .github/qa/scripts/ports.sh
 eval "$(sed -n '/^backend_url=/p; /^fake_google_url=/p; /^frontend_env=(/,/^)/p' .github/qa/scripts/stack.sh)"
 
 fixtures=.github/qa/fixtures
-# The CI PowerSync service of c7, reached by the app through POWERSYNC_URL, which the backend hands out.
+# c7's CI PowerSync service, which the backend hands to the app through POWERSYNC_URL.
 powersync=localhost:18081
 stack_ports="$QA_BACKEND_PORT $QA_PROVIDER_PORT $QA_MCP_PORT $QA_GOOGLE_PORT ${powersync#*:}"
+android_abi=x86_64
+case $(uname -m) in arm64 | aarch64) android_abi=arm64-v8a ;; esac
+android_image="system-images;android-36;google_apis;$android_abi"
 
 die() {
   echo "$*" >&2
   exit 2
 }
 
-# Writes the dev config with the CSP that lets the app reach the stack. The Android build keeps its own identifier:
-# the dev one points the Gradle project at a package directory that does not exist.
+# adb drops the mappings when its connection to the device resets.
+reverse_ports() {
+  for port in $stack_ports; do adb -s "$1" reverse "tcp:$port" "tcp:$port" >&2; done
+}
+
+# The Android build keeps its own identifier: the dev one points the Gradle project at a package directory that does
+# not exist.
 config() {
   # shellcheck disable=SC2016 # jq variables, not shell ones
   local filter='.app.security.csp["connect-src"] = $real[0].app.security.csp["connect-src"] + " " + $extra'
   [ "$1" = android ] && filter="$filter | del(.identifier)"
-  # Every QA build carries the layout probe as an inline script, and the control build cover.js after it. Runs from
-  # the repo root, like the `bun run build` it replaces.
+  # Runs from the repo root, like the `bun run build` it replaces.
   local inject='bun run build && bun -e '\''const f = "dist/index.html"; const html = await Bun.file(f).text(); if (!html.includes("</head>")) throw new Error("no </head>"); const scripts = await Promise.all(process.argv.slice(1).map((s) => Bun.file(s).text())); await Bun.write(f, html.replace("</head>", () => scripts.map((js) => "<script>" + js + "</script>").join("") + "</head>"))'\'' .github/qa/layout-probe.js'
   [ "${3:-}" = control ] && inject="$inject .github/qa/control/cover.js"
   filter="$filter | .build.beforeBuildCommand = \$cmd"
@@ -101,7 +115,6 @@ build() {
   [ -f "$out/app-debug.apk" ] || die "no debug APK was built"
 }
 
-# An existing qa-iphone-17-pro-max, or a new one on the newest iOS runtime.
 ios_create() {
   local name=qa-iphone-17-pro-max found runtime
   found=$(xcrun simctl list devices available -j | jq -r --arg n "$name" '[.devices[][] | select(.name == $n)][0].udid // empty')
@@ -126,15 +139,38 @@ device_ios() {
   echo "$udid"
 }
 
+# A download can arrive corrupt ("Error on ZipFile unknown archive"), so the retry starts without what it left behind.
+system_image() {
+  local sdk=${ANDROID_HOME:?}
+  local sdkmanager=$sdk/cmdline-tools/latest/bin/sdkmanager
+  yes | "$sdkmanager" --licenses > /dev/null || true
+  "$sdkmanager" --install emulator "$android_image" > /dev/null && return
+  echo "warning: sdkmanager failed; removing its partial downloads and trying once more" >&2
+  rm -rf "${sdk:?}/.downloadIntermediates" "${sdk:?}/.temp" "${sdk:?}/${android_image//;//}"
+  "$sdkmanager" --install emulator "$android_image" > /dev/null
+}
+
+# A system error dialog ("System UI isn't responding") covers the app and hides its screen from Maestro. The setting
+# stops system_server from showing any new ANR or crash dialog; the broadcast closes one already on screen, which
+# the setting alone leaves in place (the dialogs listen for it, and the shell may send it), so a refusal only warns.
+# An app that stops responding is killed instead of asked to wait, so a hang shows as the app disappearing.
+hide_error_dialogs() {
+  local serial=$1
+  adb -s "$serial" shell settings put global hide_error_dialogs 1
+  adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null ||
+    echo "warning: could not close a system dialog already on screen" >&2
+  [ "$(adb -s "$serial" shell settings get global hide_error_dialogs | tr -d '\r')" = 1 ] ||
+    die "the emulator ignored hide_error_dialogs, so a system error dialog can cover the app during a flow"
+}
+
 device_android() {
   export ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}
   mkdir -p "$ANDROID_AVD_HOME"
-  local abi=x86_64 avd=qa-android avds devices
-  case $(uname -m) in arm64 | aarch64) abi=arm64-v8a ;; esac
+  local avd=qa-android avds devices
   # Captured first: `grep -q` closing the pipe early fails the producer under pipefail.
   avds=$(avdmanager list avd -c)
   if ! grep -qx "$avd" <<< "$avds"; then
-    echo no | avdmanager create avd --name "$avd" --package "system-images;android-36;google_apis;$abi" --device pixel_7 >&2
+    echo no | avdmanager create avd --name "$avd" --package "$android_image" --device pixel_7 >&2
     local config="$ANDROID_AVD_HOME/$avd.avd/config.ini"
     grep -v '^hw.keyboard=' "$config" > "$config.tmp" || true
     mv "$config.tmp" "$config"
@@ -146,7 +182,7 @@ device_android() {
     emulator -avd "$avd" -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > /tmp/qa-emulator.log 2>&1 &
     emulator_pid=$!
   fi
-  # Up to 10 minutes for the device to show up, and a dead emulator ends the wait at once.
+  # A dead emulator ends the wait at once.
   local serial=
   for _ in $(seq 300); do
     if [ -n "$emulator_pid" ] && ! kill -0 "$emulator_pid" 2> /dev/null; then
@@ -163,40 +199,72 @@ device_android() {
     sleep 2
   done
   [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] || die "the emulator did not boot"
-  for port in $stack_ports; do adb -s "$serial" reverse "tcp:$port" "tcp:$port" >&2; done
+  hide_error_dialogs "$serial"
+  reverse_ports "$serial"
+  # Room for a whole replay leg, so the log a job saves at its end still holds its first runs: about 5 MB an hour.
+  adb -s "$serial" logcat -b main,system,crash,events -G 64M >&2 || echo "warning: could not grow the emulator's log" >&2
   # sys.boot_completed comes before the emulated storage is mounted: until then /sdcard does not resolve, and both
-  # mkdir and push fail (runs 39343228365 and 39344254036).
+  # mkdir and push fail.
   for _ in $(seq 90); do
     adb -s "$serial" shell test -d /sdcard/Android && break
     sleep 2
   done
   adb -s "$serial" shell test -d /sdcard/Android || die "the emulator's /sdcard never mounted"
   adb -s "$serial" shell mkdir -p /sdcard/Download
-  # One at a time, and a refused push only warns: Android 16 refused sample.png with "Operation not permitted", and a
-  # session without that fixture still runs.
+  # A refused push only warns (Android 16 refused sample.png): a session without that fixture still runs.
   for file in "$fixtures"/*.png "$fixtures"/*.pdf; do
     adb -s "$serial" push "$file" /sdcard/Download/ >&2 || echo "warning: could not push $(basename "$file") to the emulator" >&2
   done
   echo "$serial"
 }
 
+# Starts the iOS stream into <file>, which the redirect empties, and records its pid. It starts right after the
+# boot, so its 7 h limit has to outlast replay-native's 360-minute job.
+start_ios_stream() {
+  # A killed stream's process can outlive its wrapper; unlinking keeps it from overwriting the new stream's file.
+  rm -f "$2"
+  xcrun simctl spawn "$1" log stream --level debug --style compact --predicate 'eventMessage CONTAINS "CONSOLE"' --timeout 7h > "$2" 2>&1 &
+  echo $! > "$2.pid"
+}
+
+# Waits up to <seconds> for the stream's header; with none left it checks once.
+wait_for_header() {
+  local i
+  for ((i = 0; i < $2 * 5; i++)); do
+    grep -q 'Filtering the log data' "$1" && return
+    sleep 0.2
+  done
+  grep -q 'Filtering the log data' "$1"
+}
+
+# Console lines written before the stream attaches are lost. On a slow runner it can take over a minute to attach,
+# or never, so a stream still silent 60 s after `logs ios` started it is replaced once. The first wait counts from that
+# start, so time spent on other steps since then is not waited again; the replacement gets 60 s of its own, because
+# those steps can already have used up the first stream's budget.
+wait_logs() {
+  local device=$1 file=$2 start
+  start=$(cat "$file.start")
+  wait_for_header "$file" $((start + 60 - $(date +%s))) && return
+  stop_logs "$file"
+  start_ios_stream "$device" "$file"
+  wait_for_header "$file" 60 && return
+  stop_logs "$file"
+  die "the log stream never attached"
+}
+
+# On iOS this only starts the stream, so the app install and the stack start can run while it attaches; wait-logs
+# then waits for it.
 logs() {
   local platform=$1 device=$2 file=$3
   if [ "$platform" = ios ]; then
-    xcrun simctl spawn "$device" log stream --level debug --style compact --predicate 'eventMessage CONTAINS "CONSOLE"' --timeout 2h > "$file" 2>&1 &
-  else
-    # logcat first replays its whole buffer, so lines of an earlier run would look like this one's.
-    adb -s "$device" logcat -c
-    adb -s "$device" logcat -v epoch -s 'Tauri/Console:*' > "$file" 2>&1 &
+    start_ios_stream "$device" "$file"
+    date +%s > "$file.start"
+    return
   fi
+  # logcat first replays its whole buffer, so lines of an earlier run would look like this one's.
+  adb -s "$device" logcat -c
+  adb -s "$device" logcat -v epoch -s 'Tauri/Console:*' > "$file" 2>&1 &
   echo $! > "$file.pid"
-  [ "$platform" = ios ] || return 0
-  # Console lines written before the stream attaches are lost, so wait for its header.
-  for _ in $(seq 100); do
-    grep -q 'Filtering the log data' "$file" && return
-    sleep 0.2
-  done
-  die "the log stream never attached"
 }
 
 install_app() {
@@ -210,8 +278,10 @@ install_app() {
   fi
   adb -s "$device" uninstall "$app_id" > /dev/null || true
   adb -s "$device" install -r "$app"
-  # A fresh install's first opens can time out on the IndexedDB check and stop the init (runs 39373388149 and
-  # 39380764343, several in a row), so the app is opened until a launch gets past it.
+  # Without the mappings the backend gets no request and the WebView log stream can end.
+  reverse_ports "$device"
+  # A fresh install's first opens can time out on the IndexedDB check and stop the init (sometimes
+  # several in a row), so the app is opened until a launch gets past it.
   for _ in 1 2 3 4; do
     adb -s "$device" shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 > /dev/null
     deadline=$((SECONDS + ${QA_WARM_SECONDS:-30}))
@@ -233,12 +303,11 @@ install_app() {
 
 stop_logs() {
   kill "$(cat "$1.pid" 2> /dev/null)" 2> /dev/null || true
-  rm -f "$1.pid"
+  rm -f "$1.pid" "$1.start"
 }
 
-# The positive control: runs control/native-control.yaml on the calibration build already installed on the
-# device, with the WebView log on, and exits 0 only when the keyboard is open and the probe logged focus-covered for the
-# Email field. The flow, log and hierarchy stay in <out-dir>.
+# Exits 0 only when the keyboard is open and the probe logged focus-covered for the Email field. The flow, log and
+# hierarchy stay in <out-dir>.
 control() {
   local platform=$1 device=$2 out=${3:-$(mktemp -d)} app_id
   mkdir -p "$out"
@@ -248,11 +317,12 @@ control() {
   # shellcheck disable=SC2064 # $out is fixed by now
   trap "stop_logs '$out/webview.log'" EXIT
   logs "$platform" "$device" "$out/webview.log"
+  [ "$platform" != ios ] || wait_logs "$device" "$out/webview.log"
   # The iOS driver sometimes is not ready in time, so one more try.
   maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
     || maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
     || { tail -20 "$out/maestro.log" >&2; die "the control flow failed"; }
-  # The probe debounces 250 ms and confirms a problem over 500 ms; a plain build never logs the line, so it waits it out.
+  # The probe debounces and confirms a problem over time; a plain build never logs the line, so wait it out.
   for _ in $(seq 20); do
     grep -q 'focus-covered' "$out/webview.log" && break
     sleep 0.5
@@ -263,10 +333,9 @@ control() {
     "$platform" "$out/hierarchy.json" "$out/webview.log"
 }
 
-# The build half of a fix's native verification: applies <patch> (`qa-out/fix/<fp>.patch`) in a temporary
-# worktree and builds the app there into <out-dir>, with onboarding for a c1 session. The patched tree's code runs
-# here (the build, and through it anything the patch adds), so this only outputs the app: the verdict comes from
-# verify-run in a checkout this never ran in, in CI a later job on a fresh checkout.
+# Applies <patch> (`qa-out/fix/<fp>.patch`) in a temporary worktree and builds the app there into <out-dir>, with
+# onboarding for a c1 session. The patch's code runs here, so this only outputs the app: the verdict comes from
+# verify-run on a checkout this never ran in (in CI, a fresh one in a later job).
 verify_build() {
   local platform=$1 patch=$2 session=$3 out=$4 work tree onboarding=''
   mkdir -p "$out"
@@ -287,30 +356,45 @@ verify_build() {
 
 # The run half, with no key and from this checkout's own verify.ts: runs <flow> three times on <app> (verify-build's
 # output) on <device>, with the stack already serving, and writes the verdict to <out-json>, named `<fp>.<…>.json`,
-# with the videos beside it. A finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any
+# with the videos and the WebView log beside it. It exits 0 when the patch passes, 3 when the check could not tell
+# whether it works, 4 when it fails, and 2 on its own errors; CI uploads the pass, the inconclusive marker or the
+# failure marker on that. A finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any
 # other flow is the fix agent's visual check. <original-app> is the build-native artifact of the same variant, without
 # the patch, where the flow must fail too: a visual check and a real-AI session need it.
 verify_run() {
-  local platform=$1 device=$2 app=$3 flow=$4 session=$5 result=$6 original=${7:-} work name
+  local platform=$1 device=$2 app=$3 flow=$4 session=$5 result=$6 original=${7:-} log name
   : "${QA_BACKEND_LOG:?must name the log of the stack, for the http-5xx oracle}"
-  work=$(mktemp -d)
-  # shellcheck disable=SC2064 # the path is fixed by now
-  trap "stop_logs '$work/webview.log'; rm -rf '$work'" EXIT
-  logs "$platform" "$device" "$work/webview.log"
   mkdir -p "$(dirname "$result")"
+  log="${result%.json}.webview.log"
+  # shellcheck disable=SC2064 # the path is fixed by now
+  trap "stop_logs '$log'" EXIT
+  logs "$platform" "$device" "$log"
+  # A stream that never attached fails before the patched app runs, which says nothing about the patch: verify.ts's
+  # inconclusive code. A subshell, since `die` exits the shell it runs in.
+  [ "$platform" != ios ] || (wait_logs "$device" "$log") || exit 3
   name=$(basename "$result")
-  QA_WEBVIEW_LOG="$work/webview.log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
+  QA_WEBVIEW_LOG="$log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
     --native "$platform" --device "$device" --app "$app" --fp "${name%%.*}" --flow "$flow" \
     --session "$session" --result "$result" ${original:+--original "$original"}
 }
 
-usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
+usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | system-image | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | wait-logs <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
 [ $# -ge 1 ] || die "$usage"
 command=$1
 shift
 if [ "$command" = stop-logs ]; then
   [ $# -eq 1 ] || die "$usage"
   stop_logs "$1"
+  exit
+fi
+if [ "$command" = system-image ]; then
+  [ $# -eq 0 ] || die "$usage"
+  system_image
+  exit
+fi
+if [ "$command" = wait-logs ]; then
+  [ $# -eq 2 ] || die "$usage"
+  wait_logs "$@"
   exit
 fi
 [ $# -ge 1 ] || die "$usage"

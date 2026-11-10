@@ -90,6 +90,13 @@ export const assistantMessage = (stopReason: PiStopReason = 'stop'): AssistantMe
 
 /** Creates a complete no-op ACP harness with targeted behavior overrides. */
 export const fakeHarness = (overrides: Partial<ServeHarness> = {}): ServeHarness => ({
+  reasoning: {
+    capabilities: () => ({ efforts: [] }),
+    current: () => undefined,
+    set: async () => {
+      throw new Error('Unsupported reasoning effort.')
+    },
+  },
   subscribe: () => () => {},
   registerToolCallGate: () => {},
   prompt: async () => assistantMessage(),

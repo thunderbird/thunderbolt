@@ -29,38 +29,17 @@ The response contains the plaintext `key` once; store it as `THUNDERBOLT_TOKEN`.
 
 ## Confidential models and PATs
 
-By default a PAT is refused on the confidential routes (`/v1/tinfoil/*` and the usage-receipt endpoint) with `403 WEB_LOGIN_REQUIRED`, and the CLI does not replay that failure through another provider. Set `CONFIDENTIAL_API_KEYS_ENABLED=true` to allow it.
+By default a PAT is refused on the confidential routes (`/v1/tinfoil/*`) with `403 WEB_LOGIN_REQUIRED`, and the CLI does not replay that failure through another provider. Set `CONFIDENTIAL_API_KEYS_ENABLED=true` to allow it.
 
 The gate is an authorization choice, not a cryptographic one. Confidentiality comes from the caller: the Tinfoil SDK attests the enclave and HPKE-seals the body, and the proxy forwards ciphertext it cannot read. The `userCacheSecret` that partitions the enclave's prompt cache is generated client-side (`randomBytes(32)` in the CLI, `crypto.getRandomValues` in the browser) and never reaches the backend, so any PAT-authenticated caller can supply its own. What a PAT lacks is the device binding a web session carries, and it lives longer; confidential inference is metered against the account, so enabling the flag means accepting spend on that tier from a long-lived headless credential.
 
 The CLI still requires `thunderbolt login` for confidential models regardless of the flag: `resolveAccountCredential` returns no cache secret on the PAT path, so `createTinfoilBinding` has nothing to namespace with. The flag is for service callers that manage their own cache secret, such as a backend using `tinfoil-python` with `base_url` pointed at `/v1/tinfoil`.
 
-### Reporting usage from a service caller
+### Metering for a service caller
 
-The proxy forwards ciphertext it cannot read, so it cannot count tokens. The caller decrypts the response and reports the counts back; skipping this leaves the call out of the account's usage ledger, which is what the confidential-tier quota checks read. Every caller owes this step, but a service caller implements it by hand.
+The backend meters these calls itself, so a service caller has nothing to submit. The proxy cannot read the ciphertext it forwards, so it asks the enclave for a usage report and writes the account's ledger row at the price loaded at admission. Closing the stream early does not lower the charge, because the backend reads the response to the end to get the report.
 
-Send `X-Inference-Model` on the inference request so the receipt names the model you used. A request without it is priced as `glm-5-3`; an unrecognised value is rejected with 400 before anything reaches the enclave. Every successful managed chat completion answers with a signed receipt in the `X-Inference-Usage-Receipt` response header. Read it, decrypt the body, then POST the receipt with the counts:
-
-```bash
-curl --fail-with-body --silent --show-error \
-  -X POST "$THUNDERBOLT_API/v1/inference-usage/receipts" \
-  -H "x-api-key: $THUNDERBOLT_TOKEN" \
-  -H "Content-Type: application/json" \
-  --data '{"receipt":"<X-Inference-Usage-Receipt value>","promptTokens":412,"completionTokens":168,"totalTokens":580}'
-```
-
-The receipt signs `eventId`, `userId`, `provider`, `model` and the prices; the counts are yours and unsigned. It is valid for two hours, and replays of the same `eventId` are deduplicated, so retrying a submission you are unsure landed is safe.
-
-Responses carry no body.
-
-| Status       | Action                                           |
-| ------------ | ------------------------------------------------ |
-| `503`, `429` | Retry (`503` is a transient storage failure)     |
-| `401`        | Keep the receipt, retry after credential refresh |
-| `403`        | Drop it: the receipt belongs to another account  |
-| `400`        | Drop it: malformed, expired, or out of range     |
-
-Copy the shape of the CLI's `createUsageReceiptLifecycle` and `submitInferenceUsageReceipt` in `cli/src/provider-runtime/usage-receipt.ts`: receipts go to a durable on-disk outbox before the first attempt and are removed only once acknowledged, so a crash between the completion and the submission does not lose the usage.
+Send `X-Inference-Model` with the model you call. The backend prices the call as that model and has the enclave reject, with 400, a body that names another one. Without the header the call is priced as `glm-5-3`, so the body must name `glm-5-3`. An unrecognised value is rejected with 400 before anything reaches the enclave. Only `POST /v1/tinfoil/v1/chat/completions` is metered; other paths, such as audio, are forwarded without a charge. If the enclave's report never arrives, the call is not charged.
 
 ## List
 

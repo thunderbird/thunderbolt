@@ -5,6 +5,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { setActiveLocale } from '@/i18n/active-locale'
 import {
+  captureAuthRequestLifetime,
+  invalidateAuthRequests,
+  isCurrentSessionToken,
   clearAuthToken,
   clearDeviceId,
   clearUserCacheSecret,
@@ -166,7 +169,11 @@ describe('auth-token', () => {
       })
 
       afterEach(() => {
-        env.VITE_APP_VERSION = savedVersion
+        if (savedVersion === undefined) {
+          delete env.VITE_APP_VERSION
+        } else {
+          env.VITE_APP_VERSION = savedVersion
+        }
       })
 
       it('includes X-App-Version when VITE_APP_VERSION is set', () => {
@@ -175,7 +182,7 @@ describe('auth-token', () => {
       })
 
       it('omits X-App-Version when VITE_APP_VERSION is unset', () => {
-        env.VITE_APP_VERSION = undefined
+        delete env.VITE_APP_VERSION
         expect(getAuthenticatedHeaders()['X-App-Version']).toBeUndefined()
       })
     })
@@ -258,5 +265,34 @@ describe('onAuthTokenChangedInOtherTab', () => {
 
     expect(listener).not.toHaveBeenCalled()
     unsub()
+  })
+})
+
+describe('session bearer correlation', () => {
+  it.each(['raw-token.signature', 'raw-token.signature%2Fwith%2Bencoding%3D', 'raw-token'])(
+    'matches the raw session token to %s',
+    (bearer) => {
+      setAuthToken(bearer)
+      expect(isCurrentSessionToken('raw-token')).toBe(true)
+      expect(isCurrentSessionToken('different-account')).toBe(false)
+    },
+  )
+
+  it.each([null, '', '%bad-encoding'])('does not match missing or malformed bearer %p', (bearer) => {
+    if (bearer !== null) {
+      setAuthToken(bearer)
+    }
+    expect(isCurrentSessionToken('raw-token')).toBe(false)
+    expect(isCurrentSessionToken(undefined)).toBe(false)
+  })
+
+  it('invalidates cookie-only work before cleanup even with no bearer token', () => {
+    const isCurrent = captureAuthRequestLifetime()
+    expect(isCurrent()).toBe(true)
+    invalidateAuthRequests()
+    expect(isCurrent()).toBe(false)
+    const afterReset = captureAuthRequestLifetime()
+    clearAuthToken()
+    expect(afterReset()).toBe(false)
   })
 })

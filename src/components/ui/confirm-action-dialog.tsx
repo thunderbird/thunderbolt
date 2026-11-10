@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
 
 import {
   AlertDialog,
@@ -21,7 +21,7 @@ import { useLingui } from '@lingui/react/macro'
 type ConfirmActionDialogProps = {
   open: boolean
   title: string
-  description: string
+  description: ReactNode
   confirmLabel: string
   cancelLabel?: string
   /** Defaults to `destructive`; pass `default` for an action that destroys nothing, such as saving a file. */

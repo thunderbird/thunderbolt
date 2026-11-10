@@ -9,7 +9,7 @@
 # of under QEMU emulation for the target platform — faster, and sidesteps any
 # arch-specific quirks in bun's/rollup's native build tooling. Only the final
 # nginx stage below is built per target platform.
-FROM --platform=$BUILDPLATFORM oven/bun:1.3.14 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS build
 
 WORKDIR /app
 
@@ -48,6 +48,10 @@ RUN bunx vite build && \
 
 # Stage 2: Serve with nginx
 FROM nginxinc/nginx-unprivileged:alpine
+
+# The base image can lag Alpine's security fixes; take them at build time (nightly-images.yml rebuilds daily).
+USER root
+RUN apk upgrade --no-cache
 
 # Backend upstream — resolved at container start via the official nginx
 # image's `envsubst` entrypoint over /etc/nginx/templates/*.template.

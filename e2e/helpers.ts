@@ -8,9 +8,9 @@ import { expect, type Page } from '@playwright/test'
 const e2eSignInCode = '12345678'
 
 /**
- * The backend refuses a second code for the same email within 15 s (`defaultCooldownMs` in waitlist/routes.ts). This
- * remembers when this process last asked for a code per address, and `wait` sleeps until the address may ask again.
- * Tests inject `now` and `sleep`.
+ * The backend refuses a second code for the same email within `defaultCooldownMs` (15 s, waitlist/routes.ts; 15_250
+ * adds a margin); `wait` sleeps out what remains for an address this process already asked. Tests inject `now` and
+ * `sleep`.
  */
 export const createOtpCooldown = (
   now = Date.now,
@@ -33,9 +33,8 @@ export const createOtpCooldown = (
 const otpCooldown = createOtpCooldown()
 
 /**
- * Sign in by hand up to the code: open the entry page, request a code for `email` (a fresh address by default) and
- * type it. Nothing after the code is awaited, so it works with onboarding on as well. Signing in again with the same
- * address first waits out the backend's per-address cooldown. Returns the address.
+ * Signs in up to the code and awaits nothing after it, so it works with onboarding on. Signing in again with the same
+ * address first waits out the backend's cooldown. Returns the address.
  */
 export const enterEmailCode = async (page: Page, email = `e2e-${crypto.randomUUID()}@thunderbolt.test`) => {
   await page.goto('/')
@@ -105,7 +104,7 @@ export const openSidebarOnMobile = async (page: Page) => {
 }
 
 /**
- * Open the account popover, click "Log out", confirm in the modal, and wait
+ * Open the account menu, click "Log out", confirm in the modal, and wait
  * for the signed-out landing page to appear.
  *
  * Expects the caller to have already authenticated (e.g. via loginViaOidc / loginViaSaml).
@@ -129,7 +128,16 @@ export const logoutViaSidebar = async (page: Page, option: 'keep' | 'delete' = '
 }
 
 /**
- * Collect uncaught JS errors, filtering Tauri-specific noise.
+ * Browser-raised page errors that no app code threw:
+ * - ResizeObserver defers notifications when a callback changes layout; nothing is lost.
+ * - WebKit reports a failed or navigation-cancelled cross-origin fetch as a pageerror
+ *   even when the app catches it.
+ */
+const isBrowserNoise = (message: string) =>
+  message.startsWith('ResizeObserver loop') || message.endsWith('due to access control checks.')
+
+/**
+ * Collect uncaught JS errors, filtering Tauri-specific and browser-raised noise.
  */
 export const collectPageErrors = (page: Page): string[] => {
   const errors: string[] = []
@@ -138,7 +146,8 @@ export const collectPageErrors = (page: Page): string[] => {
       !error.message.includes('__TAURI__') &&
       !error.message.includes('tauri') &&
       !error.message.includes('window.__TAURI_INTERNALS__') &&
-      !error.message.includes('convertFileSrc')
+      !error.message.includes('convertFileSrc') &&
+      !isBrowserNoise(error.message)
     ) {
       errors.push(error.message)
     }

@@ -16,12 +16,19 @@ import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
 import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
-import { deleteSkillTokenAt, normalizeSkillTokensToSlugs } from '@/skills/parse-skill-tokens'
+import {
+  chipMarker,
+  deleteSkillTokenAt,
+  foldPendingSigils,
+  normalizeSkillTokensToSlugs,
+} from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import { useAgentCommands } from '@/acp/agent-commands-store'
+import { useAcpSessionStore } from '@/acp/session-state-store'
+import { sessionConfigKey } from '@/acp/session-config-store'
 import { useWarmAcpCommands as useWarmAcpCommands_default } from '@/chats/use-warm-acp-commands'
 import {
   useEnabledSkills as useEnabledSkills_default,
@@ -40,7 +47,9 @@ import { AnimatePresence } from 'framer-motion'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import {
   type ClipboardEvent,
+  type KeyboardEvent,
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -52,11 +61,15 @@ import { useLocation as useLocation_default, useNavigate as useNavigate_default 
 import { ChatAddMenu } from './chat-add-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
-import { ContextUsageIndicator } from '../context-usage-indicator'
+import { ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
+import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
+import { EffortSelector } from './effort-selector'
 import { ChatModelPicker } from './chat-model-picker'
+import { ChatAttestation } from './attestation'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { collapseTextSelectionToEnd } from '@/lib/focus'
+import { hasAssistantContent } from '@/lib/message-utils'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
@@ -116,6 +129,29 @@ const acceptedAttachmentExtensions = [
 
 /** `accept` attribute string for the file picker. */
 const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachmentExtensions].join(',')
+
+/** True for ArrowRight at the end of the text or ArrowLeft at the start, where the caret cannot move. */
+const isArrowAtBoundary = (key: string, ta: HTMLTextAreaElement): boolean => {
+  if (ta.selectionStart !== ta.selectionEnd) {
+    return false
+  }
+  if (key === 'ArrowRight') {
+    return ta.selectionStart === ta.value.length
+  }
+  return key === 'ArrowLeft' && ta.selectionStart === 0
+}
+
+/** Caret target when an unmodified arrow would step onto a chip marker (zero-width, so the step is invisible). */
+const caretPastChipMarker = (e: KeyboardEvent<HTMLTextAreaElement>, ta: HTMLTextAreaElement): number | null => {
+  if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || ta.selectionStart !== ta.selectionEnd) {
+    return null
+  }
+  const caret = ta.selectionStart
+  if (e.key === 'ArrowRight' && ta.value[caret] === chipMarker) {
+    return Math.min(ta.value.length, caret + 2)
+  }
+  return e.key === 'ArrowLeft' && ta.value[caret - 1] === chipMarker ? Math.max(0, caret - 2) : null
+}
 
 const isAcceptedAttachment = (file: File): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
@@ -191,7 +227,7 @@ type ChatPromptInputProps = {
   useWarmAcpCommands?: typeof useWarmAcpCommands_default
 }
 
-export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
+const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
   (
     {
       useNavigate = useNavigate_default,
@@ -226,6 +262,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       retryCount,
       retriesExhausted,
       stopping,
+      compactionStatus,
       selectedAgent,
       selectedModel,
     } = useCurrentChatSession()
@@ -243,6 +280,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       chat: chatInstance,
       experimental_throttle: messageBookkeepingThrottleMs,
     })
+    const summaryView = useCompactionSummaryState(messages)
 
     // Hidden system skills still resolve when typed, because the agent runs them.
     const { allSkills: library } = useLibrarySkills()
@@ -291,7 +329,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     // Show the Stop button whenever the thread is busy — the same signal
     // `ChatMessages` uses for its loading spinner, so the two stay in sync.
-    const { isActive: isBusy, isStopping } = getTurnActivity({
+    const { isActive, isStopping } = getTurnActivity({
       status,
       lastMessage: messages[messages.length - 1],
       hasChatError: chatError != null,
@@ -299,6 +337,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       retryCount,
       stopRequested: stopping,
     })
+    const compacting = compactionStatus === 'compacting'
+    const isBusy = isActive || compacting
+    const builtIn = isBuiltInAgent(selectedAgent)
+    const acpSession = useAcpSessionStore((state) =>
+      state.sessions.get(sessionConfigKey(selectedAgent.id, chatThreadId)),
+    )
+    const compactCommand = acpSession?.commands.find((command) => command.name === 'compact')
+    const canCompact =
+      !!chatInstance.compactContext && (builtIn ? supportsPiCompaction(selectedModel) : !!compactCommand)
     const isConnecting = connectionStatus === 'connecting'
     const isConnectionError = connectionStatus === 'error' && connectionError != null
 
@@ -370,7 +417,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
      * behaviour and it silently ate whatever the user had typed when an app
      * decided to propose something.
      */
-    useConsumePendingPrompt(chatThreadId, (prompt) => setInput(mergeIntoDraft(inputRef.current, prompt)))
+    useConsumePendingPrompt(chatThreadId, (prompt) =>
+      setInput(mergeIntoDraft(foldPendingSigils(inputRef.current), prompt)),
+    )
     const formRef = useRef<HTMLFormElement>(null)
     // Discovered lazily — the form ref is set after the first render, and we
     // need a stable ref to pass to `useSlashCommand` so it can focus / set
@@ -378,16 +427,19 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // one for the form and one for the textarea) avoids two cached pointers
     // to the same node drifting out of sync.
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-    const hasPreloadedSendDependencies = useRef(false)
+    const preloadedAgentType = useRef<typeof selectedAgent.type | null>(null)
 
     const preloadSendDependencies = useCallback(() => {
-      if (hasPreloadedSendDependencies.current) {
+      if (preloadedAgentType.current === selectedAgent.type) {
         return
       }
-      hasPreloadedSendDependencies.current = true
-      preloadAgentConnection()
-      preloadChatMessageList()
-    }, [])
+      const firstInput = preloadedAgentType.current === null
+      preloadedAgentType.current = selectedAgent.type
+      preloadAgentConnection(selectedAgent.type)
+      if (firstInput) {
+        preloadChatMessageList()
+      }
+    }, [selectedAgent.type])
 
     const getTextarea = (): HTMLTextAreaElement | null => {
       textareaRef.current = formRef.current?.querySelector('textarea') ?? null
@@ -408,6 +460,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setHighlightedIdx,
       selectItem: selectItemFromPopup,
       handleKeyDown: handleSlashKeyDown,
+      handleChange: handleSlashChange,
+      handleSelect: handleSlashSelect,
     } = useSlashCommand({
       value: input,
       setValue: setInput,
@@ -428,7 +482,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // so the token stays resolvable at send time.
         const skill = typeof skillOrSlug === 'string' ? skillBySlug.get(skillOrSlug) : skillOrSlug
         const fallbackSlug = typeof skillOrSlug === 'string' ? skillOrSlug : skillOrSlug.name
-        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug)
+        const next = appendSlashToken(
+          foldPendingSigils(inputRef.current),
+          skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug,
+        )
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -447,11 +504,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const insertInstructionText = useCallback(
       (text: string) => {
         const ta = getTextarea()
-        const start = ta?.selectionStart ?? input.length
-        const end = ta?.selectionEnd ?? input.length
-        const needsSpace = start > 0 && input[start - 1] !== ' '
+        const current = foldPendingSigils(input)
+        const start = ta?.selectionStart ?? current.length
+        const end = ta?.selectionEnd ?? current.length
+        const needsSpace = start > 0 && current[start - 1] !== ' '
         const insert = needsSpace ? ` ${text}` : text
-        const next = input.slice(0, start) + insert + input.slice(end)
+        const next = current.slice(0, start) + insert + current.slice(end)
         const pos = start + insert.length
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
@@ -545,7 +603,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // One memo feeds both the estimate and the send so they agree by
     // construction.
     const normalizedInput = useMemo(
-      () => (minimalMode ? input : normalizeSkillTokensToSlugs(input, displayNameToSlug)),
+      () => (minimalMode ? foldPendingSigils(input) : normalizeSkillTokensToSlugs(input, displayNameToSlug)),
       [minimalMode, input, displayNameToSlug],
     )
 
@@ -562,13 +620,27 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       return total
     }, [normalizedInput, enabledInstructionBySlug, quotes])
 
-    const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
+    const builtInContext = useContextTracking({
       model: selectedModel,
       chatThreadId,
       currentInput: normalizedInput,
       additionalInputTokens,
       onOverflow: () => handleShowOverflowModal(selectedModel, normalizedInput.trim().length, messages.length + 1),
     })
+
+    const acpSessionId =
+      acpSession?.sessionId ?? (chatThread?.agentId === selectedAgent.id ? chatThread.acpSessionId : undefined)
+    const savedAcpUsage = acpSessionId
+      ? messages.findLast(
+          (message) =>
+            message.metadata?.acpContextUsage?.sessionId === acpSessionId &&
+            message.metadata.acpContextUsage.agentId === selectedAgent.id,
+        )?.metadata?.acpContextUsage
+      : undefined
+    const acpUsage = acpSession?.usage ?? savedAcpUsage
+    const usedTokens = builtIn ? builtInContext.usedTokens : (acpUsage?.used ?? null)
+    const maxTokens = builtIn ? builtInContext.maxTokens : (acpUsage?.size ?? null)
+    const isContextKnown = builtIn ? builtInContext.isContextKnown : acpUsage !== undefined
 
     // Store dropped/picked PDFs locally (IndexedDB) and add reference-only
     // attachments. Bytes never enter a message part — only the localFileId ref.
@@ -661,7 +733,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           return
         }
 
-        if (isOverflowing) {
+        if (builtIn && builtInContext.isOverflowing && !canCompact) {
           handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)
           return
         }
@@ -729,7 +801,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const voice = useVoiceSession()
 
     const footerStartElements = (
-      <div className="flex items-center gap-2">
+      <>
         <ChatAddMenu
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
           onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
@@ -738,17 +810,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           <div
             role="status"
             aria-live="polite"
-            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
+            className="flex min-w-0 items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
           >
             <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin" />
-            <span>
+            <span className="truncate">
               <Trans>Connecting to {agentName}…</Trans>
             </span>
           </div>
         ) : isConnectionError ? (
           <div
             role="alert"
-            className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
+            className="flex min-w-0 items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
           >
             <AlertCircle className="size-[var(--icon-size-default)] shrink-0" />
             <span className="truncate" title={i18n._(extractErrorDisplay(connectionError))}>
@@ -756,16 +828,40 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </span>
           </div>
         ) : null}
-        {isContextKnown && !isMobile && (
-          <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
+        {(isContextKnown || (canCompact && (!builtIn || messages.length > 0)) || !!summaryView.onViewSummary) && (
+          <ContextUsageIndicator
+            key={`${chatThreadId}:${selectedAgent.id}`}
+            usedTokens={usedTokens}
+            maxTokens={maxTokens}
+            onCompact={canCompact ? chatInstance.compactContext : undefined}
+            supportsInstructions={builtIn || compactCommand?.inputHint !== undefined}
+            busy={isActive}
+            compacting={compacting}
+            hasHistory={!builtIn || messages.some(hasAssistantContent)}
+            onViewSummary={summaryView.onViewSummary}
+          />
         )}
-      </div>
+      </>
     )
 
     // The model picker sits in the footer's right cluster, next to the send
     // button; the connecting / connection-error status replaces it on the
     // left, so the right side only renders it in the healthy state.
-    const footerEndElements = !isConnecting && !isConnectionError ? <ChatModelPicker /> : undefined
+    const footerEndElements = (
+      <div className="flex min-w-0 items-center gap-0.5">
+        {selectedAgent.type !== 'built-in' && <ChatAttestation />}
+        {!isConnecting && !isConnectionError && (
+          <EffortSelector
+            key={`${chatThreadId}:${selectedAgent.id}`}
+            modelPicker={
+              selectedAgent.type === 'built-in'
+                ? (onClose) => <ChatModelPicker embedded onClose={onClose} />
+                : undefined
+            }
+          />
+        )}
+      </div>
+    )
 
     const handleAddChipFromBar = useCallback(
       (skill: Skill) => {
@@ -781,6 +877,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (e: Parameters<typeof handleSlashKeyDown>[0]) => {
         const ta = e.currentTarget
         const caretCollapsed = ta.selectionStart === ta.selectionEnd
+        const skipTo = caretPastChipMarker(e, ta)
+        if (skipTo !== null) {
+          e.preventDefault()
+          ta.setSelectionRange(skipTo, skipTo)
+          setCursorPos(skipTo)
+          return
+        }
+        if (isArrowAtBoundary(e.key, ta)) {
+          // WKWebView inserts the arrow's private-use codepoint as text when the caret can't move.
+          e.preventDefault()
+          return
+        }
         if (!minimalMode && e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
           const deletion = deleteSkillTokenAt(inputRef.current, ta.selectionStart, displayNameToSlug)
           if (deletion) {
@@ -832,11 +940,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           // so a dropped file is ignored rather than opened by the browser in
           // place of the app.
           onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) {
+              return
+            }
             e.preventDefault()
             setIsDragging(acceptsAttachments)
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
+            if (!e.dataTransfer.types.includes('Files')) {
+              return
+            }
             e.preventDefault()
             setIsDragging(false)
             if (acceptsAttachments) {
@@ -871,16 +985,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               they slide back down on dismiss. pointer-events gated so the empty
               overlay area doesn't eat clicks behind it. */}
           <div className="pointer-events-none absolute inset-x-0 bottom-full flex flex-col">
-            {/* Chips keep their normal resting gap above the composer (pb-2). */}
-            <div className="pointer-events-auto pb-2">
-              <ChatSkillsBar
-                onAddToChat={handleAddChipFromBar}
-                onAddInstruction={insertInstructionText}
-                // Pinning is a "starting a new chat" affordance — once the thread
-                // has any message, hide the bar so chips don't compete for space.
-                hidden={messages.length > 0}
-              />
-            </div>
+            {/* Pinning is a new-chat affordance. Unmount its queries once the
+                thread starts; the composer owns ongoing skill insertion. */}
+            {messages.length === 0 && (
+              <div className="pointer-events-auto pb-2">
+                <ChatSkillsBar onAddToChat={handleAddChipFromBar} onAddInstruction={insertInstructionText} />
+              </div>
+            )}
             <AnimatePresence initial={false}>
               {attachError && (
                 <ComposerAlert key="attach-error" onDismiss={() => setAttachError(null)}>
@@ -955,7 +1066,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               if (value.length > 0) {
                 preloadSendDependencies()
               }
-              setInput(value)
+              handleSlashChange(value, getTextarea()?.selectionStart ?? value.length)
             }}
             placeholder={t`Ask me anything…`}
             showSubmitButton
@@ -1009,7 +1120,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               ) : null
             }
             onTextareaKeyDown={handleTextareaKeyDown}
-            onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
+            onTextareaSelect={(e) => handleSlashSelect(e.currentTarget.selectionStart, e.currentTarget.selectionEnd)}
             onTextareaPaste={handlePaste}
           />
           {/* Voice mode morphs the composer in-place: the overlay covers the
@@ -1036,3 +1147,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     )
   },
 )
+
+ChatPromptInputComponent.displayName = 'ChatPromptInput'
+
+// The composer owns its draft and throttled chat subscription. Parent scroll
+// updates must not force it (and its menus) to render between those updates.
+export const ChatPromptInput = memo(ChatPromptInputComponent)

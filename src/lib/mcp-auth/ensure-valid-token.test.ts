@@ -3,6 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { refreshAuthorization } from '@modelcontextprotocol/sdk/client/auth.js'
+import {
+  InvalidClientError,
+  InvalidGrantError,
+  InvalidRequestError,
+  ServerError,
+  TemporarilyUnavailableError,
+  UnauthorizedClientError,
+} from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secrets'
@@ -265,7 +273,7 @@ describe('ensureValidMcpOAuthToken', () => {
     })
 
     const refresh: RefreshFn = async () => {
-      throw Object.assign(new Error('invalid_grant: refresh token revoked'), { errorCode: 'invalid_grant' })
+      throw new InvalidGrantError('refresh token revoked')
     }
 
     await expect(ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)).rejects.toBeInstanceOf(
@@ -297,6 +305,54 @@ describe('ensureValidMcpOAuthToken', () => {
     }
 
     await expect(ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)).rejects.toThrow('network down')
+  })
+
+  // Metabase answers a dead refresh token with invalid_request, where RFC 6749 says invalid_grant.
+  it.each([
+    ['invalid_request', new InvalidRequestError('The token request is invalid.')],
+    ['invalid_client', new InvalidClientError('Unknown client')],
+    ['unauthorized_client', new UnauthorizedClientError('Client may not refresh')],
+  ])('maps a refresh rejected with %s to McpOAuthNeedsReauthError', async (_code, rejection) => {
+    await seedServer()
+    await setMcpServerCredentials(getDb(), serverId, {
+      type: 'oauth',
+      access_token: 'stale',
+      refresh_token: 'rotated-away',
+      expires_at: Date.now() - 1_000,
+      issuer,
+      tokenEndpoint,
+      clientId: 'client-1',
+    })
+
+    const refresh: RefreshFn = async () => {
+      throw rejection
+    }
+
+    await expect(ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)).rejects.toBeInstanceOf(
+      McpOAuthNeedsReauthError,
+    )
+  })
+
+  it.each([
+    ['server_error', new ServerError('HTTP 502: Invalid OAuth error response')],
+    ['temporarily_unavailable', new TemporarilyUnavailableError('Try later')],
+  ])('rethrows a transient %s refresh failure instead of forcing re-authorization', async (_code, failure) => {
+    await seedServer()
+    await setMcpServerCredentials(getDb(), serverId, {
+      type: 'oauth',
+      access_token: 'stale',
+      refresh_token: 'r1',
+      expires_at: Date.now() - 1_000,
+      issuer,
+      tokenEndpoint,
+      clientId: 'client-1',
+    })
+
+    const refresh: RefreshFn = async () => {
+      throw failure
+    }
+
+    await expect(ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)).rejects.toBe(failure)
   })
 
   it('throws needs-reauth when a stale token lacks the fields required to refresh', async () => {

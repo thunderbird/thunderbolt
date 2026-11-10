@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hookDecision } from './native-hook'
 
-// tmpdir() is under /var on macOS, itself a symlink to /private/var, so the session dir is reached through a link.
+// macOS tmpdir() sits under a /var link, so the session dir is reached through a link.
 const sessionDir = mkdtempSync(join(tmpdir(), 'qa-hook-'))
 const outside = mkdtempSync(join(tmpdir(), 'qa-hook-outside-'))
 symlinkSync(outside, join(sessionDir, 'escape'))

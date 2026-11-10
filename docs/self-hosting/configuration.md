@@ -34,7 +34,7 @@ Thunderbolt stores accounts, sessions, and usage records in PostgreSQL. When syn
 | -------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`       | none       | PostgreSQL connection string. Required.                                                                                                                                     |
 | `DATABASE_DRIVER`    | `postgres` | Set to `pglite` to run an embedded database with no PostgreSQL server. Sync does not work in this mode.                                                                     |
-| `SKIP_MIGRATIONS`    | unset      | `true` skips the in-process migration pass. The container image's entrypoint runs `drizzle-kit migrate` regardless, so override the container command too.                  |
+| `SKIP_MIGRATIONS`    | unset      | `true` skips the migrations the API applies when it starts. Run them yourself first, from a source checkout: `cd backend && bun db migrate`.                                |
 | `MIGRATIONS_DIR`     | `drizzle`  | Location of the migration files, relative to the working directory.                                                                                                         |
 | `POSTGRES_ADMIN_URL` | unset      | Admin connection used at container start to create the database named in `DATABASE_URL` if it does not exist. For shared PostgreSQL instances hosting several environments. |
 
@@ -181,16 +181,16 @@ openssl rand 32 | basenc --base64url --wrap=0
 
 ## Encryption
 
-End-to-end encryption is always on, with nothing to set. The device encrypts message content and the other covered fields before they sync, and each new device has to be approved from one the user already trusts, or recovered with their recovery phrase. The apps decide this from their own key material, not from the server, so a compromised server cannot switch it off.
+End-to-end encryption is always on, with nothing to set. The device encrypts message content and the other covered fields before they sync. A new device unlocks through fingerprint approval from a trusted device, the current recovery phrase, or a passkey enrolled for sync. Fingerprint approval requires trusted client code on both the approving device and the new device; a malicious web host can replace the code it serves.
 
-> Because the servers hold only ciphertext for that content, an administrator cannot recover a user's data for them unless you run [organizational key escrow](#organizational-key-escrow). Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost.
+> Users unlock devices through fingerprint approval, their current recovery phrase, or an available passkey enrolled for sync. [Organizational key escrow](#organizational-key-escrow) separately supports offline decryption by an operator holding its private key; the supported escrow workflow decrypts data offline and does not restore the user's recovery phrase.
 
 **Upgrading from a release before 0.1.135**, where encryption was the `E2EE_ENABLED` setting:
 
 1. Set `MIN_APP_VERSION=0.1.135` in the same deploy that moves the backend to 0.1.135 or later. Older apps then show an upgrade screen instead of uploading plain text or silently failing to sync.
 2. Remove `E2EE_ENABLED`. Nothing reads it any more.
 
-Rows synced in plain text before the upgrade stay in plain text on your server; there is no re-encryption pass. Devices set up afterwards never download them, so that data stays only on the devices that already had it. A device that was syncing without encryption has sync switched off when it updates, and resumes once the user finishes setup. Accounts that already used encryption are upgraded in place: the first device to open the new version shows the user a new recovery phrase once, and the old phrase stops working.
+Rows synced in plain text before the upgrade stay in plain text on your server; there is no re-encryption pass. Devices set up afterwards never download them, so that data stays only on the devices that already had it. A device that was syncing without encryption has sync switched off when it updates, and resumes once the user finishes setup. For a legacy encrypted account, the migrating device shows a new recovery phrase once; save that new phrase because the old one stops working. Other trusted regular app devices return to pending approval, while existing pending or denied requests keep their state. They unlock through verified approval, the new phrase, or a passkey enrolled for sync. Existing encrypted data is preserved; CLI and bridge entries keep their state.
 
 ### Organizational key escrow
 
@@ -225,7 +225,7 @@ Minimal mode has no theme control: the app follows the visitor's stored theme, w
 
 The logo shows only to visitors who open the site directly in a browser. Inside a native app's WebView the app's own chrome already carries the branding, so the logo stays hidden. The app counts as embedded once a load carries `?embed=app`: any load carrying it sets the marker. The marker is saved in `localStorage` from then on, so it survives navigation and restarts, and the web UI never clears it. There is no user agent detection: link the app with `?embed=app`, and a visitor who opens the plain URL sees the logo.
 
-A `data:image/` URL is the form that works everywhere, so it is the recommended one. An `https:` logo loads only where the page's policies allow it. On a deployment that sends `Cross-Origin-Embedder-Policy: require-corp` (the Render blueprint, `deploy/render/public-agent.yaml`), the logo's host must also send `Cross-Origin-Resource-Policy: cross-origin`. The desktop and mobile apps' content security policy allows images from `'self'`, `asset:`, `data:` and `https://api.thunderbolt.io`, so an `https:` logo there would need its origin added to `img-src` in `src-tauri/tauri.conf.json`.
+A `data:image/` URL is the form that works everywhere, so it is the recommended one. An `https:` logo loads only where the page's policies allow it. On a deployment that sends `Cross-Origin-Embedder-Policy: require-corp` (the Render blueprint, `deploy/render/public-agent.yaml`), the logo's host must also send `Cross-Origin-Resource-Policy: cross-origin`. The desktop and mobile apps' content security policy allows images from `'self'`, `asset:`, `data:`, `blob:` and `https://api.thunderbolt.io`, so an `https:` logo there would need its origin added to `img-src` in `src-tauri/tauri.conf.json`.
 
 ### Hosted agent
 
@@ -421,7 +421,6 @@ Apart from anonymous sign-in, the limits are not configurable:
 | Request group                                                                    | Limit          |
 | -------------------------------------------------------------------------------- | -------------- |
 | Standard-tier chat responses                                                     | 60 per minute  |
-| Usage receipts                                                                   | 100 per minute |
 | Private chat, the bring-your-own-key relay, tools, search and previews, together | 100 per minute |
 | Sign-in                                                                          | 10 per minute  |
 | Debug transcript upload                                                          | 10 per hour    |
@@ -463,7 +462,7 @@ The challenge route has its own per-IP bucket, sized by the same `ANONYMOUS_SIGN
 | ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `MIN_APP_VERSION` | empty   | Lowest app version allowed to talk to this deployment, as a semver string (`0.2.0`, or `0.2.0-rc.1`). Empty disables the check. |
 
-Older clients receive `426 Upgrade Required` and prompt the user to update. The check fails closed: a client that sends no version is treated as too old, and a personal access token earns no exemption, so scripts and the command-line client must send a version on their API calls.
+On an honest deployment, every gated request must declare an accepted `X-App-Version` header at or above the configured minimum. Missing, malformed or below-minimum headers receive `426 Upgrade Required`. Apps that support the version gate show the update prompt. Personal access tokens earn no exemption, so API scripts and the CLI must send the header on their gated API calls. The value is client-supplied and does not prove which executable is running; a malicious server can ignore the policy.
 
 Exempt, because none of them can set the header: the startup configuration request, health checks, SSO and SAML browser callbacks, the command-line client's device-grant login, analytics capture, static assets, and the proxy WebSocket upgrade. `OPTIONS` preflights are always exempt. A blocked user can therefore still reach the update prompt.
 

@@ -17,8 +17,9 @@ export type AvailableModel = {
   name?: string
   created?: number
   owned_by?: string
+  /** Only the built-in Thunderbolt catalog sets this; other providers' tool
+   *  support is learned by the connection test. */
   supports_tools?: boolean
-  supported_parameters?: string[]
   /** Whether the model accepts image input. Undefined when the provider doesn't say. */
   supports_images?: boolean
 }
@@ -58,8 +59,7 @@ const fetchAnthropicModels = async (apiKey: string, getProxyFetch: () => FetchFn
       fetch: getProxyFetch(),
     })
     .json<{ data: Array<{ id: string; display_name?: string }> }>()
-  // The endpoint doesn't report tool support; every listed Claude model supports tools.
-  return response.data.map((model) => ({ id: model.id, name: model.display_name, supports_tools: true }))
+  return response.data.map((model) => ({ id: model.id, name: model.display_name }))
 }
 
 /** Debounce window shared by the add/edit forms before an auto catalog fetch,
@@ -110,11 +110,11 @@ export const fetchModelsForProvider = async (
   if (provider === 'tinfoil') {
     const client = await getTinfoilClient()
     const response = await http.get(`${client.getBaseURL()}models`, { fetch: client.fetch }).json<{
-      data: Array<AvailableModel & { endpoints?: string[]; tool_calling?: boolean; multimodal?: boolean }>
+      data: Array<AvailableModel & { endpoints?: string[]; multimodal?: boolean }>
     }>()
     return response.data
       .filter((model) => model.endpoints?.includes('/v1/chat/completions'))
-      .map((model) => ({ ...model, supports_tools: model.tool_calling === true, supports_images: model.multimodal }))
+      .map((model) => ({ ...model, supports_images: model.multimodal }))
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 
@@ -135,13 +135,7 @@ export const fetchModelsForProvider = async (
     })
     .json<{ data: ModalityCatalogRow[] }>()
   return response.data
-    .map((model) => ({
-      ...model,
-      supports_tools:
-        model.supports_tools === true ||
-        model.supported_parameters?.some((parameter) => parameter === 'tools' || parameter === 'tool_choice') === true,
-      supports_images: catalogRowSupportsImages(model),
-    }))
+    .map((model) => ({ ...model, supports_images: catalogRowSupportsImages(model) }))
     .sort((left, right) => left.id.localeCompare(right.id))
 }
 

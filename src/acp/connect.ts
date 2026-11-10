@@ -27,10 +27,9 @@ import type { Agent, AgentAdapter } from '@/types/acp'
 import { getAllSkills } from '@/dal'
 import { getDb } from '@/db/database'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
-import { connectAcpAdapter, type AcpAdapterDeps } from './acp-adapter'
+import type { AcpAdapterDeps } from './acp-adapter'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
-import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-adapter'
-import { createManagedHttpAdapter } from './managed-http-adapter'
+import type { BuiltInAdapterOptions } from './built-in-adapter'
 
 /** Connection-scoped context handed to {@link connectToAgent}. Deliberately
  *  carries only what's needed to OPEN a connection — per-thread fields travel
@@ -62,15 +61,20 @@ export const connectToAgent = async (
   deps: ConnectToAgentDeps = {},
 ): Promise<AgentAdapter> => {
   switch (agent.type) {
-    case 'built-in':
+    case 'built-in': {
+      const { createBuiltInAdapter } = await import('./built-in-adapter')
       return createBuiltInAdapter(agent, deps)
-    case 'managed-http':
+    }
+    case 'managed-http': {
       if (agent.isSystem !== 1) {
         throw new Error(`Refusing managed-http for non-system agent ${agent.id}`)
       }
+      const { createManagedHttpAdapter } = await import('./managed-http-adapter')
       return createManagedHttpAdapter(agent)
+    }
     case 'remote-acp':
-    case 'managed-acp':
+    case 'managed-acp': {
+      const { connectAcpAdapter } = await import('./acp-adapter')
       return connectAcpAdapter(
         agent,
         { httpClient: ctx.httpClient, onAvailableCommands: ctx.onAvailableCommands },
@@ -83,6 +87,7 @@ export const connectToAgent = async (
           getEnabledSkills: deps.getEnabledSkills ?? getEnabledSkills,
         },
       )
+    }
     default: {
       const unknownType: never = agent.type
       throw new Error(`Unknown agent type ${String(unknownType)} for agent ${agent.id}`)

@@ -80,7 +80,7 @@ Other distributions: [Tauri Linux prerequisites](https://v2.tauri.app/start/prer
 | `make up` fails with a Postgres data-format error   | The Postgres image was bumped to v18, changing its on-disk layout. `make nuke` wipes the old volume and re-inits (loses local DB state). |
 | Backend errors with `BETTER_AUTH_SECRET`            | Run `make doctor`, or set it manually with `openssl rand -base64 32`.                                                                    |
 | `powersyncJwtSecret must be at least 32 characters` | Set `POWERSYNC_JWT_SECRET` in `backend/.env` to match the one in `powersync-service/config/config.yaml`.                                 |
-| Playwright on Ubuntu 26.04 ARM64                    | `make setup` automatically uses Playwright's Ubuntu 24.04 ARM64 browser build until Playwright supports 26.04.                           |
+| Playwright on Ubuntu 26.04 ARM64                    | `make setup` downloads current Chrome for Testing Stable, including its Linux ARM64 build.                                               |
 | Tests behave weirdly                                | Fake timers are globally installed. See [testing.md](testing.md).                                                                        |
 
 ## Helpful Makefile Targets

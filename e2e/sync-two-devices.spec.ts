@@ -21,7 +21,7 @@ const enrollWithRecoveryPhrase = async (page: Page, recoveryPhrase: string) => {
   await finishAdditionalDeviceSetup(page)
 }
 
-test('a chat created on one device appears on another without reloading', async ({
+test('chats and model reasoning preferences sync between devices without reloading', async ({
   page,
   browser,
   baseURL,
@@ -48,8 +48,32 @@ test('a chat created on one device appears on another without reloading', async 
     await page.goto('/')
     await secondPage.goto('/')
 
-    await page.getByTestId('model-selector-trigger').click()
-    await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+    for (const devicePage of [page, secondPage]) {
+      await devicePage.getByTestId('model-selector-trigger').click()
+      await devicePage.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+      await devicePage.keyboard.press('Escape')
+    }
+
+    const firstSelector = page.getByTestId('model-selector-trigger')
+    const secondSelector = secondPage.getByTestId('model-selector-trigger')
+    await expect(firstSelector).toHaveAttribute('title', 'Reasoning effort: Medium')
+    await firstSelector.click()
+    const firstEffort = page.getByRole('slider', { name: 'Reasoning effort' })
+    await firstEffort.press('ArrowRight')
+    await expect(firstSelector).toHaveAttribute('title', 'Reasoning effort: High')
+    await expect(firstEffort).toBeEnabled()
+    await page.keyboard.press('Escape')
+    await expect(secondSelector).toHaveAttribute('title', 'Reasoning effort: High', { timeout: 60_000 })
+
+    // The second device changes the same model in its own, unrelated chat.
+    await secondSelector.click()
+    const secondEffort = secondPage.getByRole('slider', { name: 'Reasoning effort' })
+    await secondEffort.press('ArrowLeft')
+    await expect(secondSelector).toHaveAttribute('title', 'Reasoning effort: Medium')
+    await expect(secondEffort).toBeEnabled()
+    await secondPage.keyboard.press('Escape')
+    await expect(firstSelector).toHaveAttribute('title', 'Reasoning effort: Medium', { timeout: 60_000 })
+
     const title = `Sync check ${crypto.randomUUID().slice(0, 8)}`
     await sendChatPrompt(page, title)
     await expect(page.getByText(fakeProviderReply)).toBeVisible()

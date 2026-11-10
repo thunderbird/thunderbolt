@@ -67,12 +67,14 @@ bun db migrate
 ### Production
 
 ```bash
-# Build the application
-bun run build
+# Build the application (bun build bakes NODE_ENV into ./server)
+NODE_ENV=production bun run build
 
 # Start production server
 bun run start
 ```
+
+The build passes `--no-compile-autoload-bunfig` so `./server` does not read `bunfig.toml` from where it starts. Its preload would load the instrumentation from disk, where a Bun 1.4 binary cannot resolve `@elysiajs/opentelemetry`. Bun 1.2 ignores the flag.
 
 ## Email Templates
 

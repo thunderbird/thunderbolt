@@ -5,9 +5,10 @@
 import { Trans } from '@lingui/react/macro'
 import { useState } from 'react'
 import type { Device } from '@/dal'
+import type { DeviceApprovalConfirmation } from '@/services/encryption'
 import { Smartphone } from 'lucide-react'
 
-import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
+import { ApproveDeviceDialog } from '@/components/approve-device'
 import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { Button } from '@/components/ui/button'
 import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
@@ -25,27 +26,33 @@ export const PendingDeviceModal = () => {
 const SyncedPendingDeviceModal = () => {
   const { pendingDeviceToNotify } = usePendingDeviceNotification()
   const [approvalTarget, setApprovalTarget] = useState<Device | null>(null)
-  const [confirmDenyOpen, setConfirmDenyOpen] = useState(false)
+  /** The device the deny confirmation acts on: the one being approved, not whichever is newest by then. */
+  const [denyTarget, setDenyTarget] = useState<Device | null>(null)
 
   const approveMutation = useApproveDevice()
   const denyMutation = useDenyDevice()
 
   const isOpen = pendingDeviceToNotify !== null
 
-  const confirmApprove = async (fingerprint: string) => {
+  const confirmApprove = async (confirmation: DeviceApprovalConfirmation) => {
     if (!approvalTarget) {
       return
     }
-    await approveMutation.mutateAsync({ device: approvalTarget, fingerprint })
+    await approveMutation.mutateAsync({ device: approvalTarget, confirmation })
+    setApprovalTarget(null)
+  }
+
+  const denyFromApproval = () => {
+    setDenyTarget(approvalTarget)
     setApprovalTarget(null)
   }
 
   const confirmDeny = () => {
-    if (!pendingDeviceToNotify) {
+    if (!denyTarget) {
       return
     }
-    denyMutation.mutate(pendingDeviceToNotify.id, {
-      onSuccess: () => setConfirmDenyOpen(false),
+    denyMutation.mutate(denyTarget.id, {
+      onSuccess: () => setDenyTarget(null),
     })
   }
 
@@ -92,7 +99,7 @@ const SyncedPendingDeviceModal = () => {
               >
                 <Trans>Approve</Trans>
               </Button>
-              <Button className="w-full" variant="ghost" onClick={() => setConfirmDenyOpen(true)}>
+              <Button className="w-full" variant="ghost" onClick={() => setDenyTarget(pendingDeviceToNotify)}>
                 <span className="text-destructive">
                   <Trans>Deny</Trans>
                 </span>
@@ -115,12 +122,13 @@ const SyncedPendingDeviceModal = () => {
         open={approvalTarget !== null}
         onOpenChange={(open) => !open && setApprovalTarget(null)}
         onConfirm={confirmApprove}
+        onDeny={denyFromApproval}
         isPending={approveMutation.isPending}
       />
 
       <RevokeDeviceDialog
-        open={confirmDenyOpen}
-        onOpenChange={(open) => !open && setConfirmDenyOpen(false)}
+        open={denyTarget !== null}
+        onOpenChange={(open) => !open && setDenyTarget(null)}
         onConfirm={confirmDeny}
         isPending={denyMutation.isPending}
         variant="pending"

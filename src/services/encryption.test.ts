@@ -48,6 +48,13 @@ import {
 } from '@/crypto/recovery-key'
 import { derivePasskeyKeyPair } from '@/crypto/passkey-key'
 import { createDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
+import {
+  createApprovalCodeContext,
+  createApprovalCommitment,
+  createApprovalNonce,
+  createApprovalSessionId,
+  deriveApprovalCode,
+} from '@/crypto/device-approval-code'
 import { clearRecoveryPhrasePending, isRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { type KeyId, deviceBindHkdfInfo, ecdhKeyAlgorithm, initialKeyId, isMintableKeyId } from '@shared/e2ee-types'
 
@@ -1211,7 +1218,10 @@ describe('encryption service (v2)', () => {
       })
 
       await expect(
-        approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, fingerprint),
+        approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, {
+          kind: 'fingerprint',
+          fingerprint,
+        }),
       ).rejects.toBeInstanceOf(AKAnchorError)
       expect(server.requests).not.toContain('POST /devices/pending-dev/envelope')
       expect(server.envelopes.has('pending-dev')).toBe(false)
@@ -1235,18 +1245,18 @@ describe('encryption service (v2)', () => {
       })
       for (const fingerprint of ['', '0000-0000-0000-0000-0000-0000-0000-0000', correct.replace(/[0-9A-F]/, 'Z')]) {
         await expect(
-          approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, fingerprint),
+          approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, {
+            kind: 'fingerprint',
+            fingerprint,
+          }),
         ).rejects.toMatchObject({ reason: 'fingerprint-mismatch' })
       }
       const other = await generateFullKeyPair()
       await expect(
-        approveDevice(
-          clientFor(server),
-          'pending-dev',
-          await exportPublicKey(other.ecdhPublicKey),
-          mlkemPublicKey,
-          correct,
-        ),
+        approveDevice(clientFor(server), 'pending-dev', await exportPublicKey(other.ecdhPublicKey), mlkemPublicKey, {
+          kind: 'fingerprint',
+          fingerprint: correct,
+        }),
       ).rejects.toThrow('fingerprint')
       expect(server.requests).toEqual([])
       expect(server.envelopes.size).toBe(0)
@@ -1279,12 +1289,15 @@ describe('encryption service (v2)', () => {
         'pending-dev',
         await exportPublicKey(pending.ecdhPublicKey),
         exportMlKemPublicKey(pending.mlkemPublicKey),
-        await createDeviceApprovalFingerprint({
-          userId: testUserId,
-          deviceId: 'pending-dev',
-          ecdhPublicKey: await exportPublicKey(pending.ecdhPublicKey),
-          mlkemPublicKey: exportMlKemPublicKey(pending.mlkemPublicKey),
-        }),
+        {
+          kind: 'fingerprint',
+          fingerprint: await createDeviceApprovalFingerprint({
+            userId: testUserId,
+            deviceId: 'pending-dev',
+            ecdhPublicKey: await exportPublicKey(pending.ecdhPublicKey),
+            mlkemPublicKey: exportMlKemPublicKey(pending.mlkemPublicKey),
+          }),
+        },
       )
 
       // The pending device now has an envelope it can unwrap.
@@ -1299,6 +1312,74 @@ describe('encryption service (v2)', () => {
       await expect(
         unwrapAK(server.envelopes.get('pending-dev')!, other.ecdhPrivateKey, other.mlkemSecretKey),
       ).rejects.toThrow()
+    })
+  })
+
+  describe('approveDevice with an approval code', () => {
+    /** The trusted device's view of an honest attempt: the new device's commitment, our challenge, its reveal. */
+    const codeConfirmationFor = async (ecdhPublicKey: string, mlkemPublicKey: string) => {
+      const sessionId = createApprovalSessionId()
+      const challenge = createApprovalNonce()
+      const reveal = createApprovalNonce()
+      const context = await createApprovalCodeContext(
+        { userId: testUserId, deviceId: 'pending-dev', ecdhPublicKey, mlkemPublicKey },
+        sessionId,
+      )
+      return {
+        kind: 'code' as const,
+        sessionId,
+        challenge,
+        reveal,
+        commitment: await createApprovalCommitment(context, reveal),
+        code: await deriveApprovalCode(context, 'test-device-id', challenge, reveal),
+      }
+    }
+
+    it('rewraps the AK for the pending device when the code matches', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      storedAK = await unwrapDeviceAK(server)
+      storedDEKs.set('0', server.wrappedKeys.get('0')!)
+      const pending = await generateFullKeyPair()
+      const ecdhPublicKey = await exportPublicKey(pending.ecdhPublicKey)
+      const mlkemPublicKey = exportMlKemPublicKey(pending.mlkemPublicKey)
+
+      await approveDevice(
+        clientFor(server),
+        'pending-dev',
+        ecdhPublicKey,
+        mlkemPublicKey,
+        await codeConfirmationFor(ecdhPublicKey, mlkemPublicKey),
+      )
+
+      const opened = await unwrapAK(
+        server.envelopes.get('pending-dev')!,
+        pending.ecdhPrivateKey,
+        pending.mlkemSecretKey,
+      )
+      expect(await unwrapDEK(server.wrappedKeys.get('0')!, opened.ak, '0')).toBeInstanceOf(CryptoKey)
+    })
+
+    it('refuses a wrong code, a forged commitment, or substituted keys before any request', async () => {
+      const server = createFakeServer()
+      const pending = await generateFullKeyPair()
+      const ecdhPublicKey = await exportPublicKey(pending.ecdhPublicKey)
+      const mlkemPublicKey = exportMlKemPublicKey(pending.mlkemPublicKey)
+      const honest = await codeConfirmationFor(ecdhPublicKey, mlkemPublicKey)
+      const substitutedEcdh = await exportPublicKey((await generateFullKeyPair()).ecdhPublicKey)
+      const attempts = [
+        { ecdh: ecdhPublicKey, confirmation: { ...honest, code: honest.code === '01' ? '02' : '01' } },
+        { ecdh: ecdhPublicKey, confirmation: { ...honest, commitment: 'f'.repeat(64) } },
+        { ecdh: substitutedEcdh, confirmation: honest },
+      ]
+      for (const attempt of attempts) {
+        await expect(
+          approveDevice(clientFor(server), 'pending-dev', attempt.ecdh, mlkemPublicKey, attempt.confirmation),
+        ).rejects.toMatchObject({ reason: 'code-mismatch' })
+      }
+      expect(server.requests).toEqual([])
     })
   })
 

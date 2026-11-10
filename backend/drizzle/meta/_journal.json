@@ -295,6 +295,13 @@
       "when": 1794264531043,
       "tag": "0041_model_reasoning_effort",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794317415569,
+      "tag": "0042_device_approval_sessions",
+      "breakpoints": true
     }
   ]
 }

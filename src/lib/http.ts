@@ -26,6 +26,11 @@ export class HttpError extends Error {
   }
 }
 
+/** The TypeError fetch throws in Chromium, WebKit and Firefox when the request never got a response. */
+export const isFetchNetworkError = (error: Error): boolean =>
+  error instanceof TypeError &&
+  /^(Failed to fetch|Load failed|NetworkError when attempting to fetch resource\.)$/i.test(error.message)
+
 export type RequestOptions = {
   headers?: Record<string, string>
   searchParams?: Record<string, string | number | boolean | undefined> | URLSearchParams

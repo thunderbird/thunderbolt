@@ -67,7 +67,7 @@ File attachments do not follow a chat. The message carries the file's name but n
 
 Install or open Thunderbolt on the new device and sign in with the same account. It registers as pending and shows an "Approve this device" screen until you either:
 
-- Approve it from an already trusted device under **Settings → Devices**, entering the fingerprint shown on the new device's screen or received through a separate trusted channel.
+- Approve it from an already trusted device under **Settings → Devices**. Tap **Approve**, then tap the code that matches the 2-digit code on the new device's screen. If none match, choose **None of these match** and do not approve. **Use fingerprint instead** lets you type the full fingerprint, which is also the way when one of the two devices runs an older version.
 - Enter the current 24 word recovery phrase. Use the new phrase if it was replaced during migration or a phrase change.
 - Choose **Unlock with passkey** if the account has an available passkey enrolled for sync.
 

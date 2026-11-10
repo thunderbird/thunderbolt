@@ -23,7 +23,7 @@ const defaultDependencies = {
 /** A rotating token belongs to the same grant even after another window refreshes it. */
 const sameAuthorization = (
   current: { access_token: string; refresh_token?: string; authorizationId?: string },
-  incoming: TinfoilCredentials,
+  incoming: Pick<TinfoilCredentials, 'access_token' | 'refresh_token' | 'authorizationId'>,
 ): boolean =>
   Boolean(current.authorizationId && current.authorizationId === incoming.authorizationId) ||
   current.access_token === incoming.access_token ||
@@ -44,21 +44,21 @@ export const revokeReplacedTinfoilAuthorization = async (
   // A failed revoke leaves the old credential available for retry.
   await auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
   // Cancellation or a failed replacement cannot make the revoked session usable again.
-  // Preserve the attempt's snapshot, including legacy rows without an explicit revision.
+  // Retire this grant even if its enabled state or tokens changed during the request.
   await db.transaction(async (tx) => {
     const current = await getIntegrationCredentials(tx, 'tinfoil')
-    if (JSON.stringify(current) !== JSON.stringify(row)) {
+    if (!current || !sameAuthorization(current.credentials, row.credentials)) {
       throw new Error('Tinfoil connection changed during revocation')
     }
     await saveIntegrationCredentials(
       tx,
       'tinfoil',
       {
-        ...row.credentials,
-        sessionRevision: row.credentials.sessionRevision ?? JSON.stringify(row),
+        ...current.credentials,
+        sessionRevision: current.credentials.sessionRevision ?? JSON.stringify(current),
         reauth_required: true,
       },
-      row.enabled,
+      current.enabled,
     )
   })
 }
@@ -130,6 +130,13 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
         await deps.auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
       }
       await db.transaction(async (tx) => {
+        const current = await getIntegrationCredentials(tx, 'tinfoil')
+        const unchanged = row?.credentials.access_token
+          ? current && sameAuthorization(current.credentials, row.credentials)
+          : JSON.stringify(current) === JSON.stringify(row)
+        if (!unchanged) {
+          throw new Error('Tinfoil connection changed during revocation')
+        }
         for (const model of await getAllModels(tx)) {
           if (
             model.provider === 'tinfoil' &&

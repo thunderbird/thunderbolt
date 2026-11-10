@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock,
 import { createModel, getAllModels, getAvailableModels, getModel, getSettings } from '@/dal'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
-import { tinfoilAuth } from '@/lib/tinfoil-auth'
+import { createTinfoilAuth, tinfoilAuth } from '@/lib/tinfoil-auth'
 import { StrictMode, type ReactNode } from 'react'
 import {
   cancelTinfoilMobileConnection,
@@ -358,6 +358,80 @@ describe('useOnboardingProviderState', () => {
     expect(deps.prepareModel).not.toHaveBeenCalled()
     expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
   })
+
+  it.each(['headers', 'body'] as const)(
+    'revokes a Tinfoil grant when cancellation arrives during token %s',
+    async (phase) => {
+      const requested = Promise.withResolvers<Request>()
+      const headers = Promise.withResolvers<Response>()
+      const body = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>()
+      const response = new Response(new ReadableStream<Uint8Array>({ start: (controller) => body.resolve(controller) }))
+      const requests: Request[] = []
+      const auth = createTinfoilAuth('client', {
+        fetch: async (input) => {
+          const request = input as Request
+          requests.push(request)
+          if (request.url.endsWith('/revoke')) {
+            return new Response(null, { status: 204 })
+          }
+          requested.resolve(request)
+          return headers.promise
+        },
+      })
+      const session = tinfoilSession.createTinfoilSession({
+        db: getDb,
+        auth,
+        lock: async (operation) => operation(),
+        now: Date.now,
+      })
+      const discarded = Promise.withResolvers<void>()
+      const deps = makeDependencies({
+        startTinfoil: (options = {}) =>
+          auth.exchangeCode(
+            { code: 'code', verifier: 'verifier', redirectUri: 'https://app.example/oauth/tinfoil' },
+            options.signal,
+          ),
+        discardTinfoil: async (credentials) => {
+          await session.discardAuthorization(credentials)
+          discarded.resolve()
+        },
+      })
+      const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+      let connection!: Promise<void>
+      await act(async () => {
+        connection = result.current.connectTinfoil()
+      })
+      const request = await requested.promise
+      if (phase === 'body') {
+        await act(async () => headers.resolve(response))
+      }
+      act(() => result.current.cancelConnection())
+      expect(result.current.isConnecting).toBe(false)
+      expect(request.signal.aborted).toBe(false)
+      await act(async () => {
+        headers.resolve(response)
+        const stream = await body.promise
+        stream.enqueue(
+          new TextEncoder().encode(
+            JSON.stringify({
+              access_token: 'unused',
+              refresh_token: 'unused-refresh',
+              expires_in: 900,
+              token_type: 'Bearer',
+            }),
+          ),
+        )
+        stream.close()
+        await connection
+        await discarded.promise
+      })
+      expect(requests).toHaveLength(2)
+      expect(requests[1].url).toBe('https://api.tinfoil.sh/oauth/revoke')
+      expect(new URLSearchParams(await requests[1].text()).get('token')).toBe('unused-refresh')
+      expect(deps.prepareModel).not.toHaveBeenCalled()
+      expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+    },
+  )
 
   it('retains a failed Tinfoil setup for retry, then releases its unused grant when leaving', async () => {
     const deps = makeDependencies({

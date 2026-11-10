@@ -95,8 +95,10 @@ verification and checks it again inside the model-save transaction. Disconnectin
 toggling, or replacing a connection advances that revision, so an older attempt in
 another window cannot restore access. Revisions remain in `integrations_secrets`;
 OpenRouter's row contains only this lifecycle metadata, while its API keys stay in
-`models_secrets`. Tinfoil token refresh preserves the revision. Cancellation also
-aborts pending network work and rolls back saves that have not committed.
+`models_secrets`. Tinfoil token refresh preserves the revision. Cancellation stops
+setup and rolls back saves that have not committed. Once a Tinfoil token exchange
+has been sent, it finishes within its thirty-second deadline so an issued grant
+can still be returned to the cancelled flow and revoked.
 
 OAuth sessions live in the existing local-only `integrations_secrets` table;
 `models_secrets.oauth_provider` links a user model to that session. Neither tokens

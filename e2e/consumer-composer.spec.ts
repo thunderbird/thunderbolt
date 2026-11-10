@@ -64,9 +64,9 @@ for (const { width, desktopSizing } of [
       await page.goto('/chats/new')
       await expect(selector).toHaveAttribute('title', 'Reasoning effort: High')
       await selector.click()
-      await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+      await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
       await expect(selector).toHaveAttribute('title', 'Reasoning effort: Medium')
-      await page.getByRole('button', { name: `${defaultModelDeepSeekV41Flash.name} Private`, exact: true }).click()
+      await page.getByRole('button', { name: `${defaultModelDeepSeekV41Flash.name} Thunderbolt`, exact: true }).click()
       await expect(selector).toHaveAttribute('title', 'Reasoning effort: High')
       await page.keyboard.press('Escape')
 
@@ -128,7 +128,7 @@ for (const { width, desktopSizing } of [
       // A real response supplies the context count. Public and confidential
       // models cannot be interchanged once a conversation has started.
       await selector.click()
-      await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+      await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
       await page.keyboard.press('Escape')
       await send.click()
       await expect(page.getByText(fakeProviderReply, { exact: true })).toBeVisible()

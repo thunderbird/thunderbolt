@@ -116,7 +116,7 @@ describe('SourceCard', () => {
       fireEvent.click(card)
 
       expect(screen.getByRole('alertdialog')).toBeInTheDocument()
-      expect(screen.getByText('Open External Link')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Open Link' })).toBeInTheDocument()
       expect(screen.getByText('https://example.com/article')).toBeInTheDocument()
     })
 

@@ -2,22 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  artifactRequest,
-  artifactElementAtSchema,
-  artifactElementAtMethod,
-  formatHarnessError,
-  parseHarnessMessage,
-  wrapArtifactHtml,
-  wrapArtifactPreviewHtml,
-  type ArtifactContext,
-  type ArtifactTextSelection,
-} from '@/artifacts/harness'
-import { createPendingRequests, elementAtTimeoutMs } from '@/components/embedded'
-import type { SurfaceHighlightedElement } from '@/components/embedded'
+import { artifactRequest, formatHarnessError, wrapArtifactHtml, wrapArtifactPreviewHtml } from '@/artifacts/harness'
+import { bindArtifactChannel } from '@/artifacts/channel'
+import { createPendingRequests } from '@/components/embedded'
 
 import { cn } from '@/lib/utils'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 /** Height used before the page reports its own, and the floor/ceiling for the reported height. */
 const defaultAutoHeightPx = 400
@@ -45,30 +35,10 @@ export type SandboxedHtmlFrameProps = {
   autoHeight?: boolean
   /** Fired once the page has loaded and run its initial synchronous script. */
   onReady?: () => void
+  onHeightChange?: (height: number) => void
+  onRequestReady?: (request: ((method: string, params: unknown) => Promise<unknown>) | null) => void
   /** Fired if the page reports a runtime error (including after load, during use). */
   onError?: (error: string) => void
-  /**
-   * Fired when the user highlights text inside the artifact, and again with null
-   * when they clear it. Reported by the page because the host cannot read a
-   * selection inside a frame it shares no origin with.
-   */
-  onSelectionChange?: (selection: ArtifactTextSelection | null) => void
-  /**
-   * Receives a resolver for element picking: hand it a point in the artifact's
-   * own viewport coordinates and it answers with the element under it, or null
-   * over padding and background.
-   *
-   * Passed out rather than exposed on a ref because the nonce and the frame
-   * element are both private to this component, and the caller only ever needs
-   * the one question.
-   */
-  onQueryReady?: (query: (point: { x: number; y: number }) => Promise<SurfaceHighlightedElement | null>) => void
-  /**
-   * What the page currently shows, derived by the harness and re-sent when the
-   * page changes — so an artifact the user has interacted with reports what it
-   * looks like now, not what it looked like at load.
-   */
-  onContextChange?: (context: ArtifactContext) => void
 }
 
 /**
@@ -86,16 +56,18 @@ export const SandboxedHtmlFrame = ({
   allowScripts = true,
   autoHeight = false,
   onReady,
+  onHeightChange,
+  onRequestReady,
   onError,
-  onSelectionChange,
-  onQueryReady,
-  onContextChange,
 }: SandboxedHtmlFrameProps) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  // One nonce per mounted frame; correlates the harness's messages with this iframe. useState (not
-  // useMemo) so it's a real stability guarantee — React may drop a useMemo cache and recompute,
-  // which would regenerate the nonce, silently reload the iframe, and re-key the message listener.
-  const [nonce] = useState(() => crypto.randomUUID())
+  // WindowProxy identity survives iframe navigation. Rotate the nonce with each
+  // document so queued messages from its predecessor cannot initialize this one.
+  const [renderedDocument, setDocument] = useState(() => ({ html, allowScripts, nonce: crypto.randomUUID() }))
+  if (renderedDocument.html !== html || renderedDocument.allowScripts !== allowScripts) {
+    setDocument({ html, allowScripts, nonce: crypto.randomUUID() })
+  }
+  const nonce = renderedDocument.nonce
   // Scripts on: wrap with the harness. Scripts off (streaming preview): still inject the
   // offline CSP so the preview can't beacon out via a subresource before verification.
   const srcDoc = useMemo(
@@ -115,95 +87,57 @@ export const SandboxedHtmlFrame = ({
 
   // Keep the latest callbacks in refs so the message subscription is set up once
   // per document, not re-subscribed on every parent render.
+  const heightCallback = useRef(onHeightChange)
+  heightCallback.current = onHeightChange
+  const requestCallback = useRef(onRequestReady)
+  requestCallback.current = onRequestReady
   const onReadyRef = useRef(onReady)
   onReadyRef.current = onReady
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
-  const onSelectionChangeRef = useRef(onSelectionChange)
-  onSelectionChangeRef.current = onSelectionChange
-  const onContextChangeRef = useRef(onContextChange)
-  onContextChangeRef.current = onContextChange
+  const pendingRef = useRef<ReturnType<typeof createPendingRequests> | null>(null)
+  pendingRef.current ??= createPendingRequests()
+  const pending = pendingRef.current
 
-  /**
-   * Hand the caller an element-at resolver, once per document.
-   *
-   * Re-issued at each document boundary, so a resolver captured before a reload
-   * cannot be answered by the new document — the outstanding query is aborted
-   * and resolves empty instead of pointing at the previous artifact's DOM.
-   *
-   * The nonce alone could not do this: it comes from `useState` and is stable
-   * for the component's lifetime, while `srcDoc` recomputes when the HTML
-   * changes. The boundary is `srcDoc`.
-   */
-  const onQueryReadyRef = useRef(onQueryReady)
-  onQueryReadyRef.current = onQueryReady
-  // One registry per frame, shared with the message handler below so replies
-  // route through a single listener rather than one per request.
-  const [pending] = useState(() => createPendingRequests())
-  useEffect(() => {
-    onQueryReadyRef.current?.(async (point) => {
-      const frame = iframeRef.current?.contentWindow
-      if (!frame) {
-        return null
-      }
-      const result = await pending.issue(
-        // `'*'` is the only targetOrigin that can reach this frame, not a
-        // shortcut: `sandbox="allow-scripts"` without `allow-same-origin` gives
-        // the document an **opaque** origin, and an opaque origin never matches
-        // a URL-derived targetOrigin — naming one would silently drop every
-        // message. (The Mini App bridge, whose frames load from a real origin,
-        // does pin `app.origin`; the difference is the sandbox, not the care.)
-        // What travels is a viewport coordinate and the per-mount nonce the
-        // document was rendered with and already knows.
-        // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- opaque sandbox origin; see above
-        (id) => frame.postMessage(artifactRequest(nonce, id, artifactElementAtMethod, point), '*'),
-        elementAtTimeoutMs,
-      )
-      // Parsed rather than cast: a page answering with `{}` would otherwise
-      // render `undefined` into an outline. Anything unexpected resolves null,
-      // which reads as "nothing here" — the routine answer over padding.
-      const parsed = artifactElementAtSchema.safeParse(result)
-      return parsed.success ? parsed.data.element : null
+  // The first srcdoc script bootstraps its channel before load. Subscribe during
+  // commit, before the browser can run that script, rather than in a passive effect.
+  useLayoutEffect(() => {
+    let current = true
+    let ready = false
+    const channel = bindArtifactChannel({
+      getFrameWindow: () => iframeRef.current?.contentWindow ?? null,
+      nonce,
+      onMessage: (data) => {
+        if (data.type === 'artifact-ready' && !ready) {
+          ready = true
+          requestCallback.current?.(async (method, params) => {
+            if (!current) {
+              throw new Error('The page document changed. Observe it again.')
+            }
+            return pending.issue((id) => channel.send(artifactRequest(nonce, id, method, params)), 5000)
+          })
+          onReadyRef.current?.()
+        }
+        if (data.type === 'artifact-error') {
+          onErrorRef.current?.(formatHarnessError(data))
+        }
+        if (data.type === 'artifact-reply') {
+          pending.settle(data.id, data.result)
+        }
+        if (data.type === 'artifact-height' && Number.isFinite(data.height)) {
+          const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))
+          heightCallback.current?.(next)
+          // Ignore sub-pixel jitter so a self-measuring page can't oscillate.
+          setContentHeight((prev) => (prev !== null && Math.abs(prev - next) <= 1 ? prev : next))
+        }
+      },
+      onClose: () => {
+        current = false
+        requestCallback.current?.(null)
+        pending.abortAll()
+      },
     })
-  }, [nonce, srcDoc, pending])
-
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const data = parseHarnessMessage(event, iframeRef.current?.contentWindow ?? null, nonce)
-      if (!data) {
-        return
-      }
-      if (data.type === 'artifact-ready') {
-        onReadyRef.current?.()
-      }
-      if (data.type === 'artifact-error') {
-        onErrorRef.current?.(formatHarnessError(data))
-      }
-      if (data.type === 'artifact-selection') {
-        onSelectionChangeRef.current?.(data.selection)
-      }
-      if (data.type === 'artifact-context') {
-        onContextChangeRef.current?.(data.context)
-      }
-      if (data.type === 'artifact-reply') {
-        pending.settle(data.id, data.result)
-      }
-      if (data.type === 'artifact-height' && Number.isFinite(data.height)) {
-        const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))
-        // Ignore sub-pixel jitter so a self-measuring page can't oscillate.
-        setContentHeight((prev) => (prev !== null && Math.abs(prev - next) <= 1 ? prev : next))
-      }
-    }
-    window.addEventListener('message', handleMessage)
-    return () => {
-      window.removeEventListener('message', handleMessage)
-      // A caller awaiting an answer when the document reloads gets an empty one
-      // rather than a promise that never settles. `srcDoc` is a dependency for
-      // exactly that reason: the nonce is stable for the component's lifetime, so
-      // keying only on it meant a reload never re-ran this and a query issued
-      // against the old document sat until its timeout.
-      pending.abortAll()
-    }
+    return channel.close
   }, [nonce, srcDoc, pending])
 
   return (

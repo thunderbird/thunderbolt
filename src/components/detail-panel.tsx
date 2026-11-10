@@ -5,7 +5,9 @@
 import { useLingui } from '@lingui/react/macro'
 import { X } from 'lucide-react'
 import type { AnimationEvent, ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
+import { useAppContentOverlayContainer } from '@/components/app-content-overlay'
 import { SlideInPanel } from '@/components/slide-in-panel'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -158,6 +160,8 @@ type DetailPanelSurfaceProps = {
  * flex row unclipped so the glow can extend beyond that inset naturally. Its
  * right edge stays flush and square with only the left corners rounded. Mobile
  * uses the same full-screen fade/scale modal as other responsive views.
+ * Beside the desktop browser, the app's bounded portal hosts the card over the
+ * main content instead, preserving the browser's position and available width.
  */
 export const DetailPanelSurface = ({
   open,
@@ -167,9 +171,10 @@ export const DetailPanelSurface = ({
   children,
 }: DetailPanelSurfaceProps) => {
   const { isMobile } = useIsMobile()
+  const overlayContainer = useAppContentOverlayContainer()
 
   if (!isMobile) {
-    return (
+    const surface = (
       // The warm 6% glow is invisible on the dark background (same rationale
       // as the .dark elevation overrides in index.css), so dark mode swaps in
       // a slightly stronger black ink at the same blur radius.
@@ -180,13 +185,23 @@ export const DetailPanelSurface = ({
         // :root). It plus the 360px ResizablePanel minSize in main-layout.tsx
         // derive the 840px create-item-layout container breakpoint in
         // index.css — re-derive that literal if either floor changes.
-        width="clamp(var(--create-panel-min-width), calc(50vw - 128px), 540px)"
-        className="[filter:drop-shadow(var(--shadow-glow-strong))] dark:[filter:drop-shadow(0_0_32px_rgb(0_0_0/24%))]"
+        width={
+          overlayContainer
+            ? 'min(100cqw, clamp(var(--create-panel-min-width), calc(50vw - 128px), 540px))'
+            : 'clamp(var(--create-panel-min-width), calc(50vw - 128px), 540px)'
+        }
+        className={cn(
+          '[filter:drop-shadow(var(--shadow-glow-strong))] dark:[filter:drop-shadow(0_0_32px_rgb(0_0_0/24%))]',
+          overlayContainer && 'absolute inset-y-0 right-0',
+        )}
       >
         <div className={cn('h-full pb-12', topInset && 'pt-12')}>
           <div
+            data-slot="detail-panel-surface"
             className={cn(
-              'h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60 bg-sidebar',
+              'h-full overflow-hidden rounded-l-2xl border border-r-0 border-border/60',
+              // The native sidebar token is translucent; an overlay must cover the content beneath it.
+              overlayContainer ? 'bg-card' : 'bg-sidebar',
               panelFieldSurfaceClass,
             )}
           >
@@ -195,6 +210,7 @@ export const DetailPanelSurface = ({
         </div>
       </SlideInPanel>
     )
+    return overlayContainer ? createPortal(surface, overlayContainer) : surface
   }
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>

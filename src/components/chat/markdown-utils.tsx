@@ -192,6 +192,8 @@ export const ExternalLinkDialogProvider = memo(
       setDialogOpen,
       openError,
       isOpening,
+      rememberChoice,
+      setRememberChoice,
     } = useExternalLinkDialog()
 
     const showPreview = useShowPreview()
@@ -247,6 +249,8 @@ export const ExternalLinkDialogProvider = memo(
           onOpenInApp={desktop ? handleOpenInApp : undefined}
           openError={openError}
           isOpening={isOpening}
+          rememberChoice={rememberChoice}
+          onRememberChoiceChange={setRememberChoice}
         />
       </ExternalLinkDialogContext.Provider>
     )

@@ -11,6 +11,7 @@
 import { createTurnBudget, maxRequestsPerTurn, type TurnBudget } from '@/ai/retry-budget'
 import { webToolCaps } from '@/ai/web-tool-budget'
 import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
+import { browserController } from '@/browser/browser-controller'
 import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
@@ -211,6 +212,18 @@ const createDeferredSaveMessages = () => {
   }
   const resolveSave = (index: number) => resolvers[index]!()
   return { resolveSave, saveMessages }
+}
+
+/** Observe turn ownership without creating real browser sessions. */
+const trackBrowserTurns = () => {
+  const active = new Set<string>()
+  const start = spyOn(browserController, 'startAgentTurn').mockImplementation((id) => {
+    active.add(id)
+    return () => {
+      active.delete(id)
+    }
+  })
+  return { active, start }
 }
 
 /** Fully consume one injected chat-instance turn budget. */
@@ -842,6 +855,145 @@ describe('createChatInstance — retry policy', () => {
     resetStore()
     sessionStorage.clear()
   })
+
+  it('keeps browser activity through retry backoff and releases it when the turn succeeds', async () => {
+    const browser = trackBrowserTurns()
+    const { finishWithError, finishSuccessfully, instance, trackEvent } = createRetryHarness()
+    try {
+      await instance.sendMessage({ text: 'Use the browser' })
+      const traceId = trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')?.[1]?.trace_id
+      expect(typeof traceId).toBe('string')
+      if (typeof traceId !== 'string') {
+        throw new Error('Expected the turn to have a trace id')
+      }
+      expect([...browser.active]).toEqual([traceId])
+
+      await finishWithError()
+      expect([...browser.active]).toEqual([traceId])
+      await getClock().tickAsync(3_000)
+      expect([...browser.active]).toEqual([traceId])
+      expect(browser.start).toHaveBeenCalledTimes(1)
+
+      await finishSuccessfully()
+      expect(browser.active.size).toBe(0)
+    } finally {
+      browser.start.mockRestore()
+    }
+  })
+
+  it('releases browser activity on a terminal model error', async () => {
+    const browser = trackBrowserTurns()
+    const { finishWithError, instance } = createRetryHarness()
+    try {
+      await instance.sendMessage({ text: 'Use the browser' })
+      await finishWithError(new Error(JSON.stringify({ kind: 'provider-error', isRetryable: false })))
+      expect(browser.active.size).toBe(0)
+    } finally {
+      browser.start.mockRestore()
+    }
+  })
+
+  it.each(['submitted', 'streaming'] as const)(
+    'releases browser activity immediately when Stop interrupts %s',
+    async (status) => {
+      const browser = trackBrowserTurns()
+      const { instance } = createRetryHarness()
+      try {
+        await instance.sendMessage({ text: 'Use the browser' })
+        ;(instance as unknown as { status: string }).status = status
+        await instance.stop()
+        expect(browser.active.size).toBe(0)
+      } finally {
+        browser.start.mockRestore()
+      }
+    },
+  )
+
+  it('releases browser activity when a turn aborts without an explicit Stop', async () => {
+    const browser = trackBrowserTurns()
+    const { finishAborted, instance } = createRetryHarness()
+    try {
+      await instance.sendMessage({ text: 'Use the browser' })
+      await finishAborted()
+      expect(browser.active.size).toBe(0)
+    } finally {
+      browser.start.mockRestore()
+    }
+  })
+
+  it('releases browser activity when Stop cancels retry backoff', async () => {
+    const browser = trackBrowserTurns()
+    const { finishWithError, instance } = createRetryHarness()
+    try {
+      await instance.sendMessage({ text: 'Use the browser' })
+      await finishWithError()
+      expect(browser.active.size).toBe(1)
+      await instance.stop()
+      expect(browser.active.size).toBe(0)
+    } finally {
+      browser.start.mockRestore()
+    }
+  })
+
+  it('releases an unfinished browser turn when a new prompt supersedes it', async () => {
+    const browser = trackBrowserTurns()
+    const { instance } = createRetryHarness()
+    try {
+      await instance.sendMessage({ text: 'First browser turn' })
+      const firstId = [...browser.active][0]
+      await instance.sendMessage({ text: 'Second browser turn' })
+      expect(browser.active.size).toBe(1)
+      expect(browser.active.has(firstId!)).toBe(false)
+      expect(browser.start).toHaveBeenCalledTimes(2)
+    } finally {
+      browser.start.mockRestore()
+    }
+  })
+
+  it('keeps a newer browser turn active when an older final save completes', async () => {
+    const browser = trackBrowserTurns()
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishSuccessfully, instance } = createRetryHarness(saveMessages)
+    try {
+      await instance.sendMessage({ text: 'First browser turn' })
+      const firstFinish = finishSuccessfully()
+      expect(browser.active.size).toBe(0)
+
+      await instance.sendMessage({ text: 'Second browser turn' })
+      const secondId = [...browser.active][0]
+      expect(secondId).toBeDefined()
+      resolveSave(0)
+      await firstFinish
+      expect([...browser.active]).toEqual([secondId])
+    } finally {
+      browser.start.mockRestore()
+    }
+  })
+
+  it.each(['success', 'error'] as const)(
+    'releases browser activity if saving the final %s response fails',
+    async (outcome) => {
+      const browser = trackBrowserTurns()
+      const { finishSuccessfully, finishWithError, instance } = createRetryHarness(async () => {
+        throw new Error('Final save failed')
+      })
+      try {
+        await instance.sendMessage({ text: 'Use the browser' })
+        const finished =
+          outcome === 'success'
+            ? finishSuccessfully()
+            : finishWithError(undefined, {
+                id: 'partial',
+                role: 'assistant',
+                parts: [{ type: 'text', text: 'Partial' }],
+              })
+        await expect(Promise.resolve(finished)).rejects.toThrow('Final save failed')
+        expect(browser.active.size).toBe(0)
+      } finally {
+        browser.start.mockRestore()
+      }
+    },
+  )
 
   it('uses 2s, 4s, and 8s exponential retry delays', async () => {
     const random = spyOn(Math, 'random').mockReturnValue(0.5)

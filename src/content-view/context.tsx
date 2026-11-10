@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { artifactPageId } from '@/pages/artifact-page-id'
 import { msg } from '@lingui/core/macro'
+import { pageController } from '@/pages/page-controller'
+import { usePageStore, openUrlPage } from '@/pages/page-store'
+import { PageSessionHosts } from '@/pages/page-session-hosts'
 import { i18n } from '@lingui/core'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
@@ -10,7 +14,7 @@ import { getToolMetadataSync } from '@/lib/tool-metadata'
 import { formatToolOutput } from '@/lib/utils'
 import type { UIMessageMetadata } from '@/types'
 import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
-import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
 import type { CompactionSummary } from '@/components/context-usage'
 
@@ -33,16 +37,7 @@ export type ArtifactViewData = {
   title: string
   /** The render_html tool-call id; also the key for the render-target toggle. */
   artifactId: string
-  /**
-   * The conversation that produced it, so a highlighted passage has somewhere
-   * to go.
-   *
-   * Carried with the view rather than read from the route. `/apps/:appId` has
-   * no `chatThreadId` param — its conversation is held by the Mini App panel —
-   * so deriving it from `useParams` dropped every passage picked out of an
-   * artifact opened beside an app, and warned about a missing composer while a
-   * real one was open.
-   */
+  /** The conversation that owns selected passages. */
   chatThreadId: string | null
 }
 
@@ -51,7 +46,6 @@ type ContentViewState =
   | { type: 'object-view'; data: ObjectViewData }
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: SideviewData }
-  | { type: 'artifact'; data: ArtifactViewData }
   | { type: 'compaction-summary'; data: CompactionSummary }
 
 type ContentViewContextType = {
@@ -94,6 +88,12 @@ export const ContentViewProvider = ({
 }) => {
   const [state, setState] = useState<ContentViewState>({ type: null, data: null })
   const [previewHidden, setPreviewHidden] = useState(false)
+  const hasActivePage = usePageStore((pages) =>
+    pages.sessions.some((page) => page.id === pages.activeId && page.presentation !== 'inline'),
+  )
+  // Pages can leave the sidebar through transcript actions or agent tools, too.
+  // A preview without a live tab must not reserve space in the app layout.
+  const visibleState: ContentViewState = state.type === 'preview' && !hasActivePage ? { type: null, data: null } : state
 
   const showObjectView = useCallback(
     (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
@@ -126,6 +126,7 @@ export const ContentViewProvider = ({
     (url: string) => {
       trackEvent('content_view_open', { view_type: 'preview' })
       trackEvent('preview_open')
+      openUrlPage(url, url === 'about:blank')
       setState({
         type: 'preview',
         data: {
@@ -149,10 +150,34 @@ export const ContentViewProvider = ({
     [trackEvent],
   )
 
+  useEffect(() => {
+    const reveal = () => {
+      setPreviewHidden(false)
+      setState({ type: 'preview', data: { url: 'about:blank' } })
+    }
+    const unregisterPage = pageController.registerReveal(reveal)
+    return () => {
+      unregisterPage()
+    }
+  }, [showPreview])
+
   const showArtifact = useCallback(
     (data: ArtifactViewData) => {
       trackEvent('content_view_open', { view_type: 'artifact' })
-      setState({ type: 'artifact', data })
+      const id = usePageStore.getState().ensure(
+        {
+          id: artifactPageId(data.artifactId),
+          title: data.title,
+          source: {
+            kind: 'html',
+            html: data.html,
+            artifact: { toolCallId: data.artifactId, chatThreadId: data.chatThreadId },
+          },
+        },
+        { chatThreadId: data.chatThreadId },
+      )
+      usePageStore.getState().present(id, 'sidebar')
+      setState({ type: 'preview', data: { url: 'about:blank' } })
     },
     [trackEvent],
   )
@@ -175,14 +200,14 @@ export const ContentViewProvider = ({
   return (
     <ContentViewContext.Provider
       value={{
-        state,
+        state: visibleState,
         showObjectView,
         showPreview,
         showSideview,
         showArtifact,
         showCompactionSummary,
         close,
-        isOpen: state.type !== null,
+        isOpen: visibleState.type !== null,
         previewHidden,
         setPreviewHidden,
       }}
@@ -190,6 +215,7 @@ export const ContentViewProvider = ({
       <ShowCompactionSummaryContext.Provider value={showCompactionSummary}>
         {children}
       </ShowCompactionSummaryContext.Provider>
+      <PageSessionHosts />
     </ContentViewContext.Provider>
   )
 }
@@ -228,6 +254,18 @@ export const usePreview = () => {
 /** Returns showPreview when inside ContentViewProvider, undefined otherwise. */
 export const useShowPreview = (): ((url: string) => void) | undefined => {
   return useContext(ContentViewContext)?.showPreview
+}
+
+/** Browser panel controls for shared headers that also render outside this provider. */
+export const usePreviewControls = () => {
+  const context = useContext(ContentViewContext)
+  return context
+    ? {
+        isPreviewOpen: context.state.type === 'preview',
+        showPreview: context.showPreview,
+        closePreview: context.close,
+      }
+    : undefined
 }
 
 /** Returns showSideview when inside ContentViewProvider, undefined otherwise. */

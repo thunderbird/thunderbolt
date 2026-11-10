@@ -700,6 +700,38 @@ jobs:
           cargo clippy --all-targets -- -D warnings
           cargo test
 
+  rust-windows:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: ''
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          components: clippy
+          cache: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ hashFiles('src-tauri/src/**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}-
+      - name: Check Windows desktop and plugins
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test Windows process ownership and desktop behavior
+        run: cargo test --workspace --locked
+
   backend:
     runs-on: ubuntu-latest
     # Healthy run is ~130s; a CPU-starved one was observed at 4920s (~82min). A

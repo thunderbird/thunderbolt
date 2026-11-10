@@ -21,6 +21,7 @@ import {
 } from '@/ai/retry-budget'
 import { createTurnTelemetry as defaultCreateTurnTelemetry, type TurnTelemetry } from '@/ai/turn-telemetry'
 import { createWebToolBudget, type WebToolBudget } from '@/ai/web-tool-budget'
+import { browserController } from '@/browser/browser-controller'
 import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills, getAvailableModels as defaultGetAvailableModels } from '@/dal'
@@ -61,12 +62,16 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import { Chat } from '@ai-sdk/react'
+import { getAgentExecution } from '@/agent-execution/store'
+import { getProjectExecution } from '@/agent-execution/project-execution'
+import { assertProjectAgent, isProjectAgentUnavailableError } from '@/agent-execution/project-agent'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport, type ChatInit, type ChatOnFinishCallback } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 import { withStoppedReplyMarkers } from './stopped-prompts'
+import { waitForChatThreadWrites } from './chat-thread-write'
 import { applyAcpSessionEvent, getAcpCompactions } from './acp-session-events'
 
 export const maxRetries = 3
@@ -196,17 +201,36 @@ const requestPermissionViaStore = (
   sessionId: string,
   agentId: string,
   request: RequestPermissionRequest,
+  signal?: AbortSignal | null,
+  rememberAllowances = true,
 ): Promise<RequestPermissionResponse> => {
   const toolKey = deriveToolKey(request)
   const allowOption = findAllowOption(request.options)
 
-  if (allowOption && useChatStore.getState().isAlwaysAllowed(agentId, toolKey)) {
+  if (rememberAllowances && allowOption && useChatStore.getState().isAlwaysAllowed(agentId, toolKey)) {
     return Promise.resolve({ outcome: { outcome: 'selected', optionId: allowOption.optionId } })
   }
 
   return new Promise<RequestPermissionResponse>((resolve) => {
     const requestId = uuidv7()
-    useChatStore.getState().setPendingPermission(sessionId, { agentId, requestId, request, resolve })
+    const cancel = () => {
+      if (useChatStore.getState().sessions.get(sessionId)?.pendingPermission?.requestId === requestId) {
+        useChatStore.getState().resolvePendingPermission(sessionId, { outcome: { outcome: 'cancelled' } })
+      }
+    }
+    useChatStore.getState().setPendingPermission(sessionId, {
+      agentId,
+      requestId,
+      request,
+      resolve: (response) => {
+        signal?.removeEventListener('abort', cancel)
+        resolve(response)
+      },
+    })
+    signal?.addEventListener('abort', cancel, { once: true })
+    if (signal?.aborted) {
+      cancel()
+    }
   })
 }
 
@@ -363,6 +387,7 @@ export const createAgentRoutingFetch = (
       throw new Error('Missing init')
     }
 
+    await waitForChatThreadWrites(id)
     const { getMcpClients, reconnectClient, sessions } = useChatStore.getState()
 
     // Read clients fresh per send (not a hydrate-time snapshot) so a server
@@ -376,6 +401,7 @@ export const createAgentRoutingFetch = (
     }
 
     const { chatThread, selectedAgent } = session
+    assertProjectAgent(selectedAgent, session.projectId)
     const selectedModel =
       operation === 'prompt' && isBuiltInAgent(selectedAgent)
         ? (routingState.getTurnModel?.() ?? session.selectedModel)
@@ -474,10 +500,8 @@ export const createAgentRoutingFetch = (
     // common case — never pays for the lookup.
     const projectSection =
       isBuiltInAgent(selectedAgent) || !session.projectId ? undefined : await resolveAcpProjectSection(id)
-    // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
-    const requestPermission = isBuiltInAgent(selectedAgent)
-      ? undefined
-      : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
+    const requestPermission = (request: RequestPermissionRequest, signal?: AbortSignal) =>
+      requestPermissionViaStore(id, selectedAgent.id, request, signal ?? init.signal, !isBuiltInAgent(selectedAgent))
 
     const turnBudget = getTurnBudget().consumer
     if (operation === 'prompt' && !turnBudget.tryConsumeRequest()) {
@@ -526,6 +550,13 @@ export const createAgentRoutingFetch = (
       projectSection,
       onAcpSessionId: persistAcpSessionId,
       requestPermission,
+      execution: isBuiltInAgent(selectedAgent)
+        ? session.projectId
+          ? await getProjectExecution(getDb(), session.projectId)
+          : getAgentExecution(id)
+        : undefined,
+      workspaceId: session.projectId ? `project-${session.projectId}` : id,
+      projectId: session.projectId ?? undefined,
       onSessionSideEffect: applySessionSideEffect,
       getAcpCompactions: session.chatInstance.getAcpCompactions,
       onAcpSessionEvent: session.chatInstance.onAcpSessionEvent,
@@ -704,6 +735,7 @@ type TurnModelProperties = { model_id: string; model_name: string; provider: str
 type TurnState = {
   model: Model | undefined
   telemetry: TurnTelemetry | undefined
+  releaseBrowserControl: (() => void) | undefined
   modelProperties: TurnModelProperties | undefined
   traceId: string | undefined
   engine: DebugTranscriptEngine | undefined
@@ -715,12 +747,19 @@ type TurnState = {
 const createTurnState = (): TurnState => ({
   model: undefined,
   telemetry: undefined,
+  releaseBrowserControl: undefined,
   modelProperties: undefined,
   traceId: undefined,
   engine: undefined,
   agentId: undefined,
   completed: false,
 })
+
+/** End only this turn's browser activity, including when final persistence fails. */
+const releaseBrowserControl = (turn: TurnState): void => {
+  turn.releaseBrowserControl?.()
+  turn.releaseBrowserControl = undefined
+}
 
 const getTraceProperties = (telemetry: TurnTelemetry | undefined) => ({
   trace_id: telemetry?.traceId,
@@ -774,6 +813,7 @@ export const createChatInstance = (
       return
     }
     turn.telemetry = createTurnTelemetry()
+    turn.releaseBrowserControl = browserController.startAgentTurn(turn.telemetry.traceId)
     turn.engine = 'legacy'
     turn.traceId = turn.telemetry.traceId
     turn.telemetry.setDimensions({
@@ -870,6 +910,7 @@ export const createChatInstance = (
     outcome: 'success' | 'error' | 'abort',
     message?: ThunderboltUIMessage,
   ) => {
+    releaseBrowserControl(turn)
     if (turn.completed) {
       return
     }
@@ -887,6 +928,7 @@ export const createChatInstance = (
 
   /** Clear retry state and replace the completed turn's request budget. */
   const resetRetryStateForNewTurn = () => {
+    releaseBrowserControl(currentTurn)
     if (retryTimeout) {
       clearTimeout(retryTimeout)
       retryTimeout = null
@@ -1033,6 +1075,9 @@ export const createChatInstance = (
       !messages[messages.length - 1].metadata?.acpCommand,
     onFinish: finishWithAcpEvents(async ({ message, isError, isAbort }) => {
       const finishedTurn = currentTurn
+      if (isAbort || (!isError && message && !isEmptyAssistantMessage(message))) {
+        releaseBrowserControl(finishedTurn)
+      }
       const resetRetryStateIfUnswapped = () => {
         if (currentTurn !== finishedTurn) {
           return
@@ -1042,7 +1087,12 @@ export const createChatInstance = (
       /** Persist the terminal snapshot independently of mounted UI subscribers. */
       const saveFinalMessage = async (completedMessage: ThunderboltUIMessage) => {
         finishedTurn.telemetry?.startPhase('final_save')
-        await saveMessages({ id, messages: [completedMessage] })
+        try {
+          await saveMessages({ id, messages: [completedMessage] })
+        } catch (error) {
+          releaseBrowserControl(finishedTurn)
+          throw error
+        }
         finishedTurn.telemetry?.endPhase('final_save')
       }
 
@@ -1184,6 +1234,7 @@ export const createChatInstance = (
       // succeed anyway. Remediation surfaces the error itself once the ladder is
       // exhausted, so bailing here doesn't swallow it.
       if (
+        isProjectAgentUnavailableError(lastError) ||
         isContextOverflowError(lastError) ||
         isContentRejectionError(lastError) ||
         getErrorRetryable(lastError) === false
@@ -1485,6 +1536,7 @@ export const createChatInstance = (
    * leaves the user message trailing, exactly the shape that hook auto-runs.
    */
   instance.stop = async function () {
+    releaseBrowserControl(currentTurn)
     compaction.controller?.abort()
     stopRequested = true
     // Mirrored into the store for the two reactive consumers: the composer's

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-state"
+description = "Enables the state command without any pre-configured scope."
+commands.allow = ["state"]
+
+[[permission]]
+identifier = "deny-state"
+description = "Denies the state command without any pre-configured scope."
+commands.deny = ["state"]

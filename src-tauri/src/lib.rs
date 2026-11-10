@@ -4,10 +4,27 @@
 
 // These modules are used by Tauri's command system through macros
 // The compiler can't see the usage, so we allow dead_code warnings
+pub mod agent_execution;
+mod agent_output_files;
+#[cfg(desktop)]
+mod browser;
+#[cfg(desktop)]
+mod browser_control;
+#[cfg(target_os = "macos")]
+mod browser_focus_macos;
+#[cfg(desktop)]
+mod browser_menu;
+#[cfg(desktop)]
+mod browser_operation;
+#[cfg(desktop)]
+mod browser_presentation;
+#[cfg(desktop)]
+mod browser_resize;
 pub mod cli_installer;
 #[allow(dead_code)]
 pub mod commands;
 pub mod oauth_server;
+pub mod page_preview;
 pub mod platform_utils;
 #[cfg(desktop)]
 mod tray;
@@ -22,7 +39,20 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     // Single-instance: focus existing window when a second instance is launched (desktop only)
     #[cfg(desktop)]
     {
-        builder = builder.manage(tray::TrayState::default());
+        builder = builder
+            .manage(tray::TrayState::default())
+            .manage(browser::BrowserRegistry::default())
+            .manage(browser_menu::BrowserMenuState::default())
+            .manage(browser_resize::BrowserResizeState::default())
+            .on_page_load(|webview, payload| {
+                if webview.label() == "main"
+                    && payload.event() == tauri::webview::PageLoadEvent::Started
+                {
+                    browser::main_page_started(webview);
+                    browser_resize::main_page_started(webview);
+                }
+            });
+        builder = builder.plugin(tauri_plugin_dialog::init());
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Err(error) = commands::show_main_window(app.clone()) {
                 eprintln!("Could not restore the main window: {error}");
@@ -32,27 +62,95 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
 
     // Core plugins that are always enabled
     builder = builder
+        .manage(page_preview::PreviewSessions::default())
+        .manage(agent_execution::Commands::default())
+        .manage(agent_output_files::OutputFiles::default())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                // The main renderer handles external links itself. Global injection would
+                // swallow browser child views' _blank links, whose opener IPC is denied.
+                .open_js_links_on_click(!cfg!(desktop))
+                .build(),
+        )
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_haptics::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_passkey::init())
+        .plugin(tauri_plugin_pages::init())
         .plugin(platform_utils::init())
-        .invoke_handler(tauri::generate_handler![
-            commands::show_main_window,
-            commands::hide_main_window,
-            #[cfg(desktop)]
-            tray::initialize_tray,
-            commands::set_interface_style,
-            commands::start_oauth_server,
-            commands::stop_oauth_server,
-            commands::install_thunderbolt_cli,
-        ]);
+        .invoke_handler({
+            let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                #[cfg(desktop)]
+                browser::browser_create,
+                #[cfg(desktop)]
+                browser_presentation::browser_present,
+                #[cfg(desktop)]
+                browser_presentation::browser_set_visibility,
+                #[cfg(desktop)]
+                browser::browser_navigate,
+                #[cfg(desktop)]
+                browser::browser_action,
+                #[cfg(desktop)]
+                browser::browser_get_state,
+                #[cfg(desktop)]
+                browser::browser_close,
+                #[cfg(desktop)]
+                browser_control::browser_agent_snapshot,
+                #[cfg(desktop)]
+                browser_control::browser_agent_action,
+                #[cfg(desktop)]
+                browser_control::browser_begin_agent_action,
+                #[cfg(desktop)]
+                browser_control::browser_cancel_agent_action,
+                #[cfg(desktop)]
+                browser_control::browser_set_picker,
+                #[cfg(desktop)]
+                browser_control::browser_poll_picker,
+                #[cfg(desktop)]
+                browser_menu::browser_configure_shortcuts,
+                #[cfg(desktop)]
+                browser_resize::browser_resize_update,
+                #[cfg(desktop)]
+                browser_resize::browser_resize_drag,
+                #[cfg(desktop)]
+                browser_resize::browser_resize_raise,
+                page_preview::agent_preview_start,
+                page_preview::agent_preview_status,
+                page_preview::agent_preview_stop,
+                agent_execution::agent_pick_workspace,
+                agent_execution::agent_fs,
+                agent_execution::agent_cleanup_output_files,
+                agent_execution::agent_prepare_command,
+                agent_execution::agent_cancel_command,
+                agent_execution::agent_forget_command,
+                agent_execution::agent_exec,
+                commands::show_main_window,
+                commands::hide_main_window,
+                #[cfg(desktop)]
+                tray::initialize_tray,
+                commands::set_interface_style,
+                commands::start_oauth_server,
+                commands::stop_oauth_server,
+                commands::install_thunderbolt_cli,
+            ];
+            move |invoke| {
+                #[cfg(desktop)]
+                if invoke.message.webview().label() == "browser-resize-handle"
+                    && invoke.message.command() != "browser_resize_drag"
+                {
+                    invoke
+                        .resolver
+                        .reject("Only resize gestures are available to the browser grip");
+                    return true;
+                }
+                handler(invoke)
+            }
+        });
 
     #[cfg(debug_assertions)]
     {
@@ -139,6 +237,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app, _event| {
+            if matches!(_event, tauri::RunEvent::Exit) {
+                page_preview::shutdown(_app);
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = _event {
                 if let Err(error) = commands::show_main_window(_app.clone()) {

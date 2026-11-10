@@ -6,13 +6,13 @@ import { describe, expect, it } from 'bun:test'
 import { routeHostsContentView } from './content-view-host'
 
 describe('routeHostsContentView', () => {
-  it('is the Mini App route, which layers the view over its own chat pane', () => {
-    expect(routeHostsContentView('/apps/finance-model')).toBeTrue()
-    expect(routeHostsContentView('/apps/finance-model?chat=abc')).toBeTrue()
+  it('is the expanded page route', () => {
+    expect(routeHostsContentView('/pages/html-one')).toBeTrue()
   })
 
-  it('leaves every other route to main-layout', () => {
+  it('leaves chat and settings routes to the persistent content-view layout', () => {
     expect(routeHostsContentView('/chats/abc')).toBeFalse()
+    expect(routeHostsContentView('/apps/retired-app')).toBeFalse()
     expect(routeHostsContentView('/settings/preferences')).toBeFalse()
     expect(routeHostsContentView('/')).toBeFalse()
   })

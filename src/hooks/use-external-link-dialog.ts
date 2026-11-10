@@ -7,6 +7,7 @@ import { msg } from '@lingui/core/macro'
 import { useCallback, useReducer, useRef } from 'react'
 import { openExternalUrl } from '@/lib/open-external-url'
 import { isSafeUrl } from '@/lib/url-utils'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 // `msg` (not `t`) because these live at module scope, and descriptors (not strings)
 // because the dialog holds the error in state — a string would freeze whichever
@@ -20,6 +21,7 @@ type DialogState = {
   pendingUrl: string
   openError: MessageDescriptor | null
   isOpening: boolean
+  rememberChoice: boolean
 }
 
 type DialogAction =
@@ -28,26 +30,30 @@ type DialogAction =
   | { type: 'set_open'; open: boolean }
   | { type: 'start_opening' }
   | { type: 'set_error'; error: MessageDescriptor }
+  | { type: 'remember_choice'; remember: boolean }
 
 const initialState: DialogState = {
   dialogOpen: false,
   pendingUrl: '',
   openError: null,
   isOpening: false,
+  rememberChoice: false,
 }
 
 const dialogReducer = (state: DialogState, action: DialogAction): DialogState => {
   switch (action.type) {
     case 'open':
-      return { dialogOpen: true, pendingUrl: action.url, openError: action.error ?? null, isOpening: false }
+      return { ...initialState, dialogOpen: true, pendingUrl: action.url, openError: action.error ?? null }
     case 'close':
-      return { ...state, dialogOpen: false, isOpening: false }
+      return { ...state, dialogOpen: false, isOpening: false, rememberChoice: false }
     case 'set_open':
-      return { ...state, dialogOpen: action.open }
+      return { ...state, dialogOpen: action.open, rememberChoice: action.open && state.rememberChoice }
     case 'start_opening':
       return { ...state, isOpening: true, openError: null }
     case 'set_error':
       return { ...state, openError: action.error, isOpening: false }
+    case 'remember_choice':
+      return { ...state, rememberChoice: action.remember }
   }
 }
 
@@ -61,6 +67,8 @@ type UseExternalLinkDialogReturn = {
   setDialogOpen: (open: boolean) => void
   openError: MessageDescriptor | null
   isOpening: boolean
+  rememberChoice: boolean
+  setRememberChoice: (remember: boolean) => void
 }
 
 /**
@@ -77,9 +85,13 @@ type UseExternalLinkDialogReturn = {
 export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
   const [state, dispatch] = useReducer(dialogReducer, initialState)
   const pendingUrlRef = useRef<string>('')
+  const rememberChoiceRef = useRef(false)
+  const dialogVersionRef = useRef(0)
 
   const openDialog = useCallback((url: string, error?: MessageDescriptor) => {
     pendingUrlRef.current = url
+    rememberChoiceRef.current = false
+    dialogVersionRef.current += 1
     dispatch({ type: 'open', url, error })
   }, [])
 
@@ -106,11 +118,22 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
   )
 
   const setDialogOpen = useCallback((open: boolean) => {
+    if (!open) {
+      rememberChoiceRef.current = false
+      dialogVersionRef.current += 1
+    }
     dispatch({ type: 'set_open', open })
+  }, [])
+
+  const setRememberChoice = useCallback((remember: boolean) => {
+    rememberChoiceRef.current = remember
+    dispatch({ type: 'remember_choice', remember })
   }, [])
 
   const handleConfirm = useCallback(async () => {
     const urlToOpen = pendingUrlRef.current
+    const rememberChoice = rememberChoiceRef.current
+    const dialogVersion = dialogVersionRef.current
 
     if (!urlToOpen) {
       dispatch({ type: 'close' })
@@ -127,12 +150,16 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
 
     try {
       await openExternalUrl(urlToOpen)
-      if (pendingUrlRef.current === urlToOpen) {
+      if (pendingUrlRef.current === urlToOpen && dialogVersionRef.current === dialogVersion) {
+        if (rememberChoice) {
+          useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'browser')
+        }
+        rememberChoiceRef.current = false
         dispatch({ type: 'close' })
       }
     } catch (error) {
       console.error('Failed to open URL:', error)
-      if (pendingUrlRef.current === urlToOpen) {
+      if (pendingUrlRef.current === urlToOpen && dialogVersionRef.current === dialogVersion) {
         dispatch({ type: 'set_error', error: openFailedMessage })
       }
     }
@@ -149,9 +176,14 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
       dispatch({ type: 'set_error', error: unsafeUrlMessage })
       return
     }
-    pendingUrlRef.current = ''
-    dispatch({ type: 'close' })
     action(url)
+    if (rememberChoiceRef.current) {
+      useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'sidebar')
+    }
+    pendingUrlRef.current = ''
+    rememberChoiceRef.current = false
+    dialogVersionRef.current += 1
+    dispatch({ type: 'close' })
   }, [])
 
   return {
@@ -164,5 +196,7 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
     setDialogOpen,
     openError: state.openError,
     isOpening: state.isOpening,
+    rememberChoice: state.rememberChoice,
+    setRememberChoice,
   }
 }

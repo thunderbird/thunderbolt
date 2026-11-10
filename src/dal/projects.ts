@@ -8,13 +8,17 @@
  *
  */
 
-import { and, asc, desc, eq, exists, getTableColumns, inArray, isNull, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, getTableColumns, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
+import { useEffect } from 'react'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
+import { useChatStore } from '@/chats/chat-store'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { chatThreadsTable, projectsTable } from '../db/tables'
+import { chatThreadsTable, projectsTable, settingsTable } from '../db/tables'
+import { defaultAgentExecution, useAgentExecutionStore, type AgentExecution } from '@/agent-execution/store'
+import { projectExecutionKey, validateProjectExecution } from '@/agent-execution/project-execution'
 import { nowIso } from '../lib/utils'
 import type { Project } from '../types'
 import { getChatActivityQuery, getChatLastActivityId } from './chat-activity-query'
@@ -36,6 +40,8 @@ export type CreateProjectInput = {
   instructions?: string | null
   icon?: string | null
   userId?: string | null
+  /** Chosen once at creation; native paths and access grants stay on this device. */
+  execution?: AgentExecution
 }
 
 export type UpdateProjectInput = Partial<
@@ -94,7 +100,7 @@ export const getProject = async (db: AnyDrizzleDatabase, id: string): Promise<Pr
   return (rows[0] as Project | undefined) ?? null
 }
 
-export const createProject = async (db: AnyDrizzleDatabase, input: CreateProjectInput): Promise<Project> => {
+const insertProject = async (db: AnyDrizzleDatabase, input: CreateProjectInput): Promise<Project> => {
   const row = {
     id: uuidv7(),
     name: assertValidName(input.name),
@@ -107,8 +113,35 @@ export const createProject = async (db: AnyDrizzleDatabase, input: CreateProject
     deletedAt: null,
     userId: input.userId ?? null,
   }
-  await db.insert(projectsTable).values(row)
+  const execution = validateProjectExecution(input.execution ?? defaultAgentExecution)
+  // Persist the local binding first: storage failure must not leave an unusable project behind.
+  useAgentExecutionStore.getState().setProjectExecution(row.id, execution)
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(projectsTable).values(row)
+      await tx.insert(settingsTable).values({
+        key: projectExecutionKey(row.id),
+        value: JSON.stringify({ version: 1, location: execution.location }),
+      })
+    })
+  } catch (error) {
+    useAgentExecutionStore.getState().setProjectExecution(row.id, null)
+    throw error
+  }
   return row as Project
+}
+
+const pendingProjectCreations = new WeakMap<AnyDrizzleDatabase, Promise<unknown>>()
+
+/** Serialize multi-row creation so concurrent callers cannot nest SQLite transactions. */
+export const createProject = (db: AnyDrizzleDatabase, input: CreateProjectInput): Promise<Project> => {
+  const previous = pendingProjectCreations.get(db) ?? Promise.resolve()
+  const pending = previous.then(() => insertProject(db, input))
+  pendingProjectCreations.set(
+    db,
+    pending.catch(() => undefined),
+  )
+  return pending
 }
 
 /** Patch a project and record its edit time without changing its chat activity. */
@@ -137,7 +170,7 @@ export const updateProject = async (db: AnyDrizzleDatabase, id: string, patch: U
  */
 const softDeleteProjects = async (db: AnyDrizzleDatabase, target: SQL): Promise<void> => {
   const deletedAt = nowIso()
-  await db.transaction(async (tx) => {
+  const removed = await db.transaction(async (tx) => {
     await tx
       .update(chatThreadsTable)
       .set({ projectId: null })
@@ -147,8 +180,33 @@ const softDeleteProjects = async (db: AnyDrizzleDatabase, target: SQL): Promise<
           inArray(chatThreadsTable.projectId, tx.select({ id: projectsTable.id }).from(projectsTable).where(target)),
         ),
       )
-    await tx.update(projectsTable).set({ deletedAt }).where(target)
+    const projects = await tx.update(projectsTable).set({ deletedAt }).where(target).returning({ id: projectsTable.id })
+    if (projects.length > 0) {
+      await tx
+        .update(settingsTable)
+        .set({ value: JSON.stringify({ version: 1, deletedAt }), updatedAt: deletedAt })
+        .where(
+          inArray(
+            settingsTable.key,
+            projects.map(({ id }) => projectExecutionKey(id)),
+          ),
+        )
+    }
+    return new Set(projects.map(({ id }) => id))
   })
+  await detachDeletedProjects(removed)
+}
+
+/** Revoke local bindings and stop cached turns only after an authoritative deletion. */
+const detachDeletedProjects = async (removed: ReadonlySet<string>): Promise<void> => {
+  const { byProject } = useAgentExecutionStore.getState()
+  if (Object.keys(byProject).some((id) => removed.has(id))) {
+    // Persist middleware writes even when a setter returns its old state.
+    useAgentExecutionStore.setState({
+      byProject: Object.fromEntries(Object.entries(byProject).filter(([id]) => !removed.has(id))),
+    })
+  }
+  await useChatStore.getState().orphanProjectSessions(removed)
 }
 
 /** Remove one project while keeping its chats as ordinary chats. */
@@ -196,6 +254,28 @@ export const setChatThreadProject = async (
 /** Live projects and readiness, so chats stay visible while their project membership loads. */
 export const useProjectsState = () => {
   const db = useDatabase()
+  const { data: deletedProjects } = useQuery({
+    queryKey: ['deletedProjects'],
+    query: toCompilableQuery(
+      db.select({ id: projectsTable.id }).from(projectsTable).where(isNotNull(projectsTable.deletedAt)),
+    ),
+  })
+  useEffect(() => {
+    if (!deletedProjects?.length) {
+      return
+    }
+    const removed = new Set(deletedProjects.map(({ id }) => id))
+    const synchronize = () => {
+      void detachDeletedProjects(removed).catch((error) =>
+        console.error('[projects] Could not stop deleted project chats', error),
+      )
+    }
+    // Also catch a chat hydrating after its project's tombstone arrived. Missing
+    // rows during partial sync never imply deletion; only explicit tombstones do.
+    const unsubscribe = useChatStore.subscribe(synchronize)
+    synchronize()
+    return unsubscribe
+  }, [deletedProjects])
   const { data = [], isLoading } = useQuery({
     queryKey: ['projects'],
     query: toCompilableQuery(getAllProjectsQuery(db)),

@@ -37,11 +37,11 @@ import {
 import { MessageCircle } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useProjectsState } from '@/dal/projects'
-import { useMiniApps } from '@/mini-apps/use-mini-apps'
-import { miniAppPath } from '@/mini-apps/use-chat-destination'
+import { SavedPageMenuItems } from '@/pages/saved-page-menu-items'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
-import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
+import { ProjectMoveErrorDialog } from '@/projects/project-move-error-dialog'
+import { useProjectMoveFeedback } from '@/projects/use-project-move-feedback'
 import { ChatList } from './chat-list'
 import { SidebarNavToggle } from './nav-toggle'
 import { SidebarHeader } from './sidebar-header'
@@ -64,13 +64,13 @@ type ChatSidebarContentProps = {
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   threadIdRef: RefObject<string | null>
   showTasks: boolean
-  showMiniApps: boolean
+  showPages: boolean
   activeSection: SidebarSection
   onSectionChange: (section: SidebarSection) => void
   onCreateNewChat: () => void
   onTasksClick: () => void
-  onMiniAppClick: (appId: string) => void
-  onChatClick: (threadId: string, miniAppId: string | null) => void
+  onPageClick: (pageId: string, returnTo: string) => void
+  onChatClick: (threadId: string) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: () => void
 }
@@ -95,31 +95,6 @@ const TasksMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
   )
 }
 
-/**
- * One entry per registered Mini App. Rendered straight from the registry so
- * onboarding a customer app is a config entry, not a sidebar change.
- */
-const MiniAppMenuItems = ({ pathname, onClick }: { pathname: string; onClick: (appId: string) => void }) => {
-  const { apps } = useMiniApps()
-  return (
-    <>
-      {apps.map((app) => (
-        <SidebarMenuItem key={app.id}>
-          <SidebarMenuButton
-            onClick={() => onClick(app.id)}
-            tooltip={app.description}
-            className="cursor-pointer"
-            isActive={pathname === miniAppPath(app.id)}
-          >
-            <app.icon className="size-[var(--icon-size-default)]" />
-            <span>{app.name}</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ))}
-    </>
-  )
-}
-
 export const ChatSidebarContent = ({
   isMobile,
   isCollapsed,
@@ -131,12 +106,12 @@ export const ChatSidebarContent = ({
   deleteChatDialogRef,
   threadIdRef,
   showTasks,
-  showMiniApps,
+  showPages,
   activeSection,
   onSectionChange,
   onCreateNewChat,
   onTasksClick,
-  onMiniAppClick,
+  onPageClick,
   onChatClick,
   onRename,
   onSearchClick,
@@ -144,7 +119,7 @@ export const ChatSidebarContent = ({
   const { i18n, t } = useLingui()
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
-  const moveChatToProject = useMoveChatToProject()
+  const { moveChat, error: moveError, clearError: clearMoveError } = useProjectMoveFeedback()
   const minimalMode = useConfigCapability(selectMinimalMode)
   const configLoaded = useConfigStore(selectConfigSettled)
   // Projects wait for `/config` like the section toggle, so they never paint and vanish.
@@ -183,21 +158,7 @@ export const ChatSidebarContent = ({
     setDraggingChat((active.data.current as ChatDragData | undefined) ?? { title: null, projectId: null })
   }
 
-  /**
-   * Shared by the drop handler and the menu.
-   *
-   * dnd-kit ignores the promise this returns, so a rejected write would leave the
-   * chat where it was with nothing said about it. There is no notification surface
-   * in the sidebar, so the failure is logged with its target — the same treatment
-   * `chat-instance.ts` gives its own fire-and-forget writes.
-   */
-  const runMove = async (chatThreadId: string, projectId: string | null) => {
-    try {
-      await moveChatToProject({ chatThreadId, projectId })
-    } catch (error) {
-      console.error('Moving a chat into a project failed', { chatThreadId, projectId, error })
-    }
-  }
+  const runMove = (chatThreadId: string, projectId: string | null) => moveChat({ chatThreadId, projectId })
 
   const handleDragEnd = async ({ active, over }: DragEndEvent) => {
     setDraggingChat(null)
@@ -275,7 +236,7 @@ export const ChatSidebarContent = ({
                     {showTasks && (
                       <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                     )}
-                    {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
+                    {showPages && <SavedPageMenuItems pathname={location.pathname} onClick={onPageClick} />}
                   </SidebarMenu>
                   {/* Drop targets for dragging a chat into a project. */}
                   {projectTree}
@@ -306,7 +267,7 @@ export const ChatSidebarContent = ({
                   {showTasks && (
                     <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                   )}
-                  {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
+                  {showPages && <SavedPageMenuItems pathname={location.pathname} onClick={onPageClick} />}
                 </SidebarMenu>
               }
               onChatClick={onChatClick}
@@ -330,6 +291,7 @@ export const ChatSidebarContent = ({
         )}
       </DragOverlay>
 
+      <ProjectMoveErrorDialog error={moveError} onClose={clearMoveError} />
       {moveTarget && !minimalMode && (
         <MoveChatToProjectDialog
           open

@@ -36,7 +36,6 @@ const chats = Array.from({ length: 27 }, (_, index) => ({
   id: `chat-${index + 1}`,
   title: `Recent chat ${index + 1}`,
   projectId: null,
-  miniAppId: null,
   isEncrypted: 0,
 }))
 
@@ -209,7 +208,7 @@ it('shows one Recents rail button and starts with twenty chats and reveals five 
   expect(screen.getAllByRole('menuitem', { name: /^Recent chat / })).toHaveLength(25)
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   fireEvent.click(screen.getByRole('menuitem', { name: 'Recent chat 9' }))
-  expect(onChatClick).toHaveBeenCalledWith('chat-9', null)
+  expect(onChatClick).toHaveBeenCalledWith('chat-9')
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
 
   fireEvent.keyDown(trigger, { key: 'Enter' })

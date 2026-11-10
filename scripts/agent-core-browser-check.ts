@@ -13,13 +13,14 @@ import { getChromeLaunchOptions } from './chrome'
 const bigTsvRows = 600_000
 const temporaryDist = await mkdtemp(join(tmpdir(), 'thunderbolt-agent-core-'))
 const dist = resolve(process.env.BROWSER_TEST_DIST ?? temporaryDist)
+const harnessDocument = '<!doctype html><title>Agent core regression</title><div id="root"></div>'
 const server = Bun.serve({
   hostname: '127.0.0.1',
   port: 0,
-  fetch: (request) => {
+  fetch: async (request) => {
     const pathname = new URL(request.url).pathname
     if (pathname === '/') {
-      return new Response('<!doctype html><title>Agent core regression</title><div id="root"></div>', {
+      return new Response(harnessDocument, {
         headers: { 'Content-Type': 'text/html' },
       })
     }
@@ -27,7 +28,15 @@ const server = Bun.serve({
     if (!file.startsWith(`${dist}/`)) {
       return new Response(null, { status: 403 })
     }
-    return new Response(Bun.file(file))
+    const asset = Bun.file(file)
+    if (await asset.exists()) {
+      return new Response(asset)
+    }
+    // Shared app imports can navigate to /chats/new. Reloads still need the harness's root.
+    if (request.headers.get('accept')?.includes('text/html')) {
+      return new Response(harnessDocument, { headers: { 'Content-Type': 'text/html' } })
+    }
+    return new Response(null, { status: 404 })
   },
 })
 try {

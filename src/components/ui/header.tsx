@@ -4,24 +4,28 @@
 
 import { useConfigCapability } from '@/hooks/use-config-capability'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { ProjectBadge } from '@/projects/project-badge'
 import { useCreateItem } from '@/components/create-item/context'
+import { usePreviewControls } from '@/content-view/context'
+import { useAppContentOverlayContainer } from '@/components/app-content-overlay'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
+import { canUseProjectAgent } from '@/agent-execution/project-agent'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isEmbedded } from '@/lib/embed'
-import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
+import { isFramelessControlsPlatform, isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { useResolvedTheme } from '@/lib/theme-provider'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { PanelRightRounded } from '@/components/icons/panel-right-rounded'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { exposesPrivateThread } from '@/chats/private-thread'
@@ -33,8 +37,8 @@ import {
   useConfigStore,
 } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
-import { useNavigate, useLocation } from 'react-router'
-import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
+import { useLocation } from 'react-router'
+import { HistoryNavButtons } from './history-nav-buttons'
 import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import type { Agent } from '@/types/acp'
@@ -149,59 +153,27 @@ const HeaderAgentSelector = ({
   )
 }
 
-const headerIconButtonClass = 'size-[var(--touch-height-sm)] cursor-pointer text-muted-foreground hover:text-foreground'
-
-/**
- * Back/forward history arrows for the Tauri desktop app, where there's no
- * browser chrome to navigate with. Web is skipped (the browser has its own
- * buttons) and so are mobile-width layouts (no room in the 3-column header).
- * Enabled state derives from react-router's history index (`history.state.idx`),
- * re-read on every location change.
- */
-const HistoryNavButtons = () => {
-  const navigate = useNavigate()
-  // Subscribe to location so the enabled states recompute after navigation.
-  useLocation()
-  const { index, ceiling } = useHistoryCeiling()
-
-  const canGoBack = index > 0
-  const canGoForward = index < ceiling
-
-  return (
-    <div className="flex items-center">
-      <Button
-        variant="ghost"
-        size="icon"
-        className={cn(headerIconButtonClass, 'rounded-full')}
-        disabled={!canGoBack}
-        onClick={() => void navigate(-1)}
-      >
-        <ArrowLeft className="size-[var(--icon-size-default)]" />
-        <span className="sr-only">
-          <Trans>Go back</Trans>
-        </span>
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className={cn(headerIconButtonClass, 'rounded-full')}
-        disabled={!canGoForward}
-        onClick={() => void navigate(1)}
-      >
-        <ArrowRight className="size-[var(--icon-size-default)]" />
-        <span className="sr-only">
-          <Trans>Go forward</Trans>
-        </span>
-      </Button>
-    </div>
-  )
-}
+const headerIconButtonClass =
+  'size-[var(--touch-height-sm)] cursor-pointer rounded-xl text-muted-foreground hover:text-foreground'
 
 /**
  * Reusable page header component with sidebar trigger and agent selector. Model
  * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
+  const preview = usePreviewControls()
+  const overlayContainer = useAppContentOverlayContainer()
+  const browserToggleRef = useRef<HTMLButtonElement>(null)
+  const restoreBrowserToggleFocus = useRef(false)
+  const browserToggleContainer = preview?.isPreviewOpen ? overlayContainer : undefined
+  // Changing portal containers remounts the button. Preserve focus only when
+  // the user activated that button; agent-driven opens never request focus.
+  useLayoutEffect(() => {
+    if (restoreBrowserToggleFocus.current && (browserToggleContainer || !preview?.isPreviewOpen)) {
+      restoreBrowserToggleFocus.current = false
+      browserToggleRef.current?.focus({ preventScroll: true })
+    }
+  }, [browserToggleContainer, preview?.isPreviewOpen])
   const { t } = useLingui()
   const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
@@ -225,7 +197,7 @@ export const Header = () => {
   const brandLogo = selectBrandLogo(useConfigStore((state) => state.config))
   const resolvedTheme = useResolvedTheme()
 
-  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread } = useChatStore(
+  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread, projectId } = useChatStore(
     useShallow((state) => {
       const session = state.sessions.get(state.currentSessionId ?? '')
 
@@ -235,6 +207,7 @@ export const Header = () => {
         setSelectedAgent: state.setSelectedAgent,
         chatThreadId: session?.id,
         chatThread: session?.chatThread,
+        projectId: session?.projectId,
       }
     }),
   )
@@ -245,6 +218,7 @@ export const Header = () => {
   // loading and the list is empty. Fall back to built-in only when the thread
   // has no agent.
   const effectiveAgent = selectedAgent ?? builtInAgent
+  const availableAgents = projectId ? allAgents.filter(canUseProjectAgent) : allAgents
   const hasThread = chatThread != null
   // A switch that would send a private chat off the device waits here for the
   // user to confirm it. Guarded in this handler rather than in `setSelectedAgent`
@@ -295,6 +269,9 @@ export const Header = () => {
   }
 
   const handleAgentSelect = (agent: Agent) => {
+    if (projectId && !canUseProjectAgent(agent)) {
+      return
+    }
     if (chatThreadId && agent.id !== effectiveAgent.id && exposesPrivateThread(chatThread, agent)) {
       setPrivateSwitch({ agent, threadId: chatThreadId, open: true })
       return
@@ -322,9 +299,9 @@ export const Header = () => {
     <HeaderAgentSelector
       chatInstance={chatInstance}
       selectedAgent={effectiveAgent}
-      agents={allAgents}
+      agents={availableAgents}
       onSelect={handleAgentSelect}
-      onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
+      onAddAgent={allowCustomAgents && !projectId ? handleAddAgent : undefined}
       projectControl={
         isChatRoute
           ? (joined) => (
@@ -386,18 +363,45 @@ export const Header = () => {
   // Desktop: a single left-aligned group — optional expand toggle, history
   // arrows (Tauri app only), then the agent selector (fully left on web,
   // right of the arrows in the app). Theme and sync/account controls live in
-  // the sidebar footer, so the right side stays empty (it remains a drag
-  // surface on the Tauri desktop app).
+  // the sidebar footer; the browser opener sits at the right edge.
   // On macOS the expand toggle lives here while the sidebar is collapsed to a
   // rail — just right of the traffic lights, the same spot the collapse toggle
   // occupies in the expanded sidebar's strip. On web and the Windows/Linux apps
   // the toggle stays inside the sidebar itself. Hidden while the collapse is
   // forced by a narrow window — expanding is a no-op there.
   const showSidebarToggle = isMacDesktop() && sidebarState === 'collapsed' && !forceCollapsed
+  const browserButton = preview && (
+    <Button
+      ref={browserToggleRef}
+      data-browser-toggle
+      variant="ghost"
+      size="icon"
+      className={cn(mutedIconButtonClass, browserToggleContainer && 'absolute right-2 top-2')}
+      aria-label={preview.isPreviewOpen ? t`Close browser` : t`Open browser`}
+      title={preview.isPreviewOpen ? t`Close browser` : t`Open browser`}
+      aria-pressed={preview.isPreviewOpen}
+      onClick={(event) => {
+        restoreBrowserToggleFocus.current = event.currentTarget === document.activeElement
+        if (preview.isPreviewOpen) {
+          preview.closePreview()
+        } else {
+          preview.showPreview('about:blank')
+        }
+      }}
+    >
+      <PanelRightRounded />
+    </Button>
+  )
 
   return (
     <header
       {...dragProps}
+      data-main-header
+      style={
+        isFramelessControlsPlatform() && !overlayContainer
+          ? { paddingRight: 'calc(var(--window-controls-width) + 0.5rem)' }
+          : undefined
+      }
       className="relative flex h-[var(--touch-height-xl)] w-full items-center justify-between px-2 flex-shrink-0"
     >
       <div {...dragProps} className={cn('flex items-center gap-2', needsTrafficLightClearance && 'ml-8')}>
@@ -417,6 +421,9 @@ export const Header = () => {
       </div>
       {brandLogoImage}
       {privateSwitchDialog}
+      {/* The bounded host includes the app's resize strip and escapes route
+          overflow clipping. Only this control moves to the actual divider. */}
+      {browserToggleContainer ? createPortal(browserButton, browserToggleContainer) : browserButton}
     </header>
   )
 }

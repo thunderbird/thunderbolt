@@ -4,8 +4,6 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
-  artifactElementAtMethod,
-  artifactElementAtSchema,
   artifactCsp,
   artifactRequest,
   formatHarnessError,
@@ -81,98 +79,52 @@ describe('formatHarnessError', () => {
 })
 
 describe('parseHarnessMessage', () => {
-  const win = {} as Window
   const nonce = 'nonce-1'
   const ready = { artifactNonce: 'nonce-1', type: 'artifact-ready' as const }
 
-  it('accepts a message from the matching window with the matching nonce', () => {
-    expect(parseHarnessMessage({ source: win, data: ready } as MessageEvent, win, nonce)).toEqual(ready)
-  })
-
-  it('rejects a message from a different window (spoofing guard)', () => {
-    expect(parseHarnessMessage({ source: {} as Window, data: ready } as MessageEvent, win, nonce)).toBeNull()
+  it('accepts a message with the matching nonce', () => {
+    expect(parseHarnessMessage(ready, nonce)).toEqual(ready)
   })
 
   it('rejects a message with a mismatched nonce', () => {
     const other = { artifactNonce: 'other', type: 'artifact-ready' as const }
-    expect(parseHarnessMessage({ source: win, data: other } as MessageEvent, win, nonce)).toBeNull()
+    expect(parseHarnessMessage(other, nonce)).toBeNull()
   })
 
   it('rejects a non-harness message', () => {
-    expect(parseHarnessMessage({ source: win, data: undefined } as MessageEvent, win, nonce)).toBeNull()
+    expect(parseHarnessMessage(undefined, nonce)).toBeNull()
   })
 
-  /*
-   * The caps inside the injected script are advisory: the page owns its own
-   * document and knows its own nonce, so it can overwrite the harness handlers
-   * or post whatever it likes. Anything the host trusts is enforced here.
-   *
-   * Enforced by clamping rather than rejection, though. These are prompt and
-   * memory budgets, not correctness constraints, and dropping the message threw
-   * away a whole context update — leaving `get_app_context` to report the page
-   * as silent — over one long string.
-   */
-  it('clamps a context summary past the cap instead of dropping the update', () => {
-    const oversized = {
-      artifactNonce: nonce,
-      type: 'artifact-context' as const,
-      context: { title: 'Q3', summary: 'x'.repeat(20_001) },
+  it('clamps oversized diagnostics while preserving the error', () => {
+    const data = { artifactNonce: nonce, type: 'artifact-error', reason: 'exception', detail: 'x'.repeat(2_001) }
+    const parsed = parseHarnessMessage(data, nonce)
+    expect(parsed?.type).toBe('artifact-error')
+    expect(parsed?.type === 'artifact-error' && parsed.detail).toHaveLength(2_000)
+  })
+
+  it('rejects non-finite heights and non-integer reply ids', () => {
+    for (const data of [
+      { artifactNonce: nonce, type: 'artifact-height', height: Infinity },
+      { artifactNonce: nonce, type: 'artifact-reply', id: 1.5, result: null },
+    ]) {
+      expect(parseHarnessMessage(data, nonce)).toBeNull()
     }
-
-    const parsed = parseHarnessMessage({ source: win, data: oversized } as MessageEvent, win, nonce)
-
-    expect(parsed?.type).toBe('artifact-context')
-    expect(parsed?.type === 'artifact-context' && parsed.context.summary).toHaveLength(20_000)
   })
 
-  /*
-   * Pointing at a wide table row is exactly where this bites: text past the cap
-   * used to fail the whole answer, so the outline never appeared over the
-   * content-dense artifacts the gesture exists for.
-   */
-  it('clamps an over-long element text rather than losing the whole answer', () => {
-    const parsed = artifactElementAtSchema.safeParse({
-      element: { id: 'r1', label: 'Row 1', text: 'x'.repeat(6_000), rect: { x: 0, y: 0, width: 10, height: 10 } },
-    })
-
-    expect(parsed.success && parsed.data.element?.text).toHaveLength(5_000)
-  })
-
-  /** Nothing under the pointer is a routine answer, not a malformed one. */
-  it('accepts null for nothing under the pointer', () => {
-    const parsed = artifactElementAtSchema.safeParse({ element: null })
-    expect(parsed.success && parsed.data.element).toBeNull()
-  })
-
-  it('rejects an element with no geometry to outline', () => {
-    const parsed = artifactElementAtSchema.safeParse({ element: { id: 'r1', label: 'Row 1', text: 'cell' } })
-    expect(parsed.success).toBe(false)
-  })
-
-  it('rejects a selection rect with a non-finite coordinate', () => {
-    const hostile = {
+  it('accepts a correlated generic reply without assuming its method-specific result shape', () => {
+    const data = {
       artifactNonce: nonce,
-      type: 'artifact-selection' as const,
-      selection: { text: 'hi', rect: { x: Number.POSITIVE_INFINITY, y: 0, width: 10, height: 10 } },
+      type: 'artifact-reply' as const,
+      id: 4,
+      result: { documentId: 'document', elements: [] },
     }
-
-    expect(parseHarnessMessage({ source: win, data: hostile } as MessageEvent, win, nonce)).toBeNull()
+    expect(parseHarnessMessage(data, nonce)).toEqual(data)
   })
 
   it('rejects an unknown message type rather than passing it through', () => {
     const unknown = { artifactNonce: nonce, type: 'artifact-something-else' }
 
-    expect(parseHarnessMessage({ source: win, data: unknown } as MessageEvent, win, nonce)).toBeNull()
-  })
-
-  it('still accepts a well-formed selection', () => {
-    const selection = {
-      artifactNonce: nonce,
-      type: 'artifact-selection' as const,
-      selection: { text: 'Revenue 4.2M', rect: { x: 1, y: 2, width: 3, height: 4 } },
-    }
-
-    expect(parseHarnessMessage({ source: win, data: selection } as MessageEvent, win, nonce)).toEqual(selection)
+    expect(parseHarnessMessage(unknown, nonce)).toBeNull()
   })
 })
 
@@ -183,12 +135,12 @@ describe('parseHarnessMessage', () => {
  */
 describe('artifactRequest', () => {
   it('stamps the render nonce so another render cannot answer', () => {
-    expect(artifactRequest('nonce-1', 7, artifactElementAtMethod, { x: 1, y: 2 })).toEqual({
+    expect(artifactRequest('nonce-1', 7, 'page/action', { type: 'click', x: 1, y: 2 })).toEqual({
       artifactNonce: 'nonce-1',
       type: 'artifact-request',
       id: 7,
-      method: artifactElementAtMethod,
-      params: { x: 1, y: 2 },
+      method: 'page/action',
+      params: { type: 'click', x: 1, y: 2 },
     })
   })
 })

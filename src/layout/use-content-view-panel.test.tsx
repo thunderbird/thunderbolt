@@ -71,6 +71,45 @@ const setup = (savedWidth: number | null = 50) => {
 }
 
 describe('useContentViewPanel', () => {
+  it('stops queued resize callbacks before the native panel is unregistered by a route change', () => {
+    const resize = mock((_value: string | number) => {})
+    const panelRef = { current: { getSize: () => ({ asPercentage: 50, inPixels: 500 }), resize } }
+    const hook = renderHook(
+      ({ isOpen, enabled }) =>
+        useContentViewPanel({ isOpen, enabled, panelRef, savedWidth: 50, saveWidth: async () => {} }),
+      { initialProps: { isOpen: false, enabled: true } },
+    )
+    hook.rerender({ isOpen: true, enabled: true })
+    act(() => getClock().tick(16))
+    const animation = animations[0]
+    hook.rerender({ isOpen: false, enabled: false })
+    expect(animation.stop).toHaveBeenCalledTimes(1)
+    act(() => {
+      animation.update(10)
+      animation.complete()
+      getClock().tick(16)
+    })
+    expect(resize).not.toHaveBeenCalled()
+    expect(animations).toHaveLength(1)
+  })
+
+  it('persists only the final native grip drag position', () => {
+    const panel = setup()
+    panel.setOpen(true)
+    panel.finish()
+    panel.result.current.beginExternalResize()
+    for (const width of [51, 54, 58, 62]) {
+      panel.settleResize(width)
+    }
+    expect(panel.saveWidth).not.toHaveBeenCalled()
+    act(() => {
+      void panel.result.current.endExternalResize()
+    })
+    expect(panel.saveWidth.mock.calls.map(([width]) => width)).toEqual([62])
+    panel.settleResize(65)
+    expect(panel.saveWidth.mock.calls.map(([width]) => width)).toEqual([62, 65])
+  })
+
   it('restores width without persisting any of the animation frames or closing frames', () => {
     const panel = setup(42)
     panel.setOpen(true)

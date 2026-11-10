@@ -855,6 +855,7 @@ describe('ChatPromptInput', () => {
 
       it('opens the slash popup on `/` only when active', () => {
         const textarea = setupWithToken(1, '/')
+        act(() => textarea.focus())
         fireEvent.select(textarea)
         expect(screen.queryByRole('listbox') !== null).toBe(active)
       })
@@ -1422,11 +1423,26 @@ describe('ChatPromptInput', () => {
   })
 
   describe('new-chat focus request', () => {
+    const setBrowserUrl = (url: string) =>
+      (window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(url)
+    let originalUrl: string
+    let originalHistoryState: unknown
+    beforeEach(() => {
+      originalUrl = window.location.href
+      originalHistoryState = window.history.state
+      setBrowserUrl('https://example.com/chats/new')
+      window.history.replaceState({ key: 'test' }, '')
+    })
+    afterEach(() => {
+      window.history.replaceState(originalHistoryState, '')
+      setBrowserUrl(originalUrl)
+    })
     // Typed against the real hooks so a router signature change is a compile
     // error rather than a fake drifting out of shape.
-    const fakeUseLocation =
-      (state: unknown): typeof import('react-router').useLocation =>
-      () => ({ pathname: '/chats/new', search: '', hash: '', state, key: 'test' })
+    const fakeUseLocation = (state: unknown): typeof import('react-router').useLocation => {
+      const { pathname, search, hash } = new URL(window.location.href)
+      return () => ({ pathname, search, hash, state, key: 'test' })
+    }
 
     const renderWithState = (state: unknown) => {
       const { mockUseChat } = setupStore()
@@ -1464,6 +1480,36 @@ describe('ChatPromptInput', () => {
       })
 
       expect(navigate).toHaveBeenCalledWith('/chats/new', { replace: true, state: {} })
+    })
+
+    it('keeps the current project query and fragment when consuming its request', () => {
+      setBrowserUrl('https://example.com/chats/new?projectId=project#draft')
+      const { textarea, navigate } = renderWithState({ focusComposer: true })
+      act(() => getClock().tick(20))
+      expect(textarea).toHaveFocus()
+      expect(navigate).toHaveBeenCalledWith('/chats/new?projectId=project#draft', { replace: true, state: {} })
+    })
+
+    it.each(['/chats/existing', '/chats/new?projectId=another', '/chats/new#different'])(
+      'does not focus or restore the old route when navigation to %s wins before React commits',
+      (destination) => {
+        const { textarea, navigate } = renderWithState({ focusComposer: true })
+        // BrowserRouter changes history before its concurrent render unmounts the old composer.
+        // Keep the captured useLocation unchanged to reproduce that interval deterministically.
+        setBrowserUrl(new URL(destination, window.location.href).href)
+        act(() => getClock().tick(20))
+        expect(navigate).not.toHaveBeenCalled()
+        expect(textarea).not.toHaveFocus()
+      },
+    )
+
+    it('does not consume a newer New Chat request at the same URL', () => {
+      const { textarea, navigate } = renderWithState({ focusComposer: true })
+      window.history.replaceState({ key: 'newer', usr: { focusComposer: true, newChatRequestId: 'newer' } }, '')
+      act(() => getClock().tick(20))
+      expect(navigate).not.toHaveBeenCalled()
+      expect(textarea).not.toHaveFocus()
+      expect(window.history.state).toMatchObject({ usr: { newChatRequestId: 'newer' } })
     })
 
     it('leaves focus alone when the navigation carries no request', () => {

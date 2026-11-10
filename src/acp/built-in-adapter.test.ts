@@ -18,6 +18,7 @@ import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { defaultModels } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { i18n } from '@lingui/core'
 import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-support'
 import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
 import { createEvalAdapterContext } from '@/ai/eval/runner'
@@ -46,12 +47,15 @@ import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
-import { supersededAppContextOutput } from '@/mini-apps/mini-app-context-note'
+import { pageController } from '@/pages/page-controller'
+import { browserController } from '@/browser/browser-controller'
+import * as tauriCore from '@tauri-apps/api/core'
+import * as tauriOs from '@tauri-apps/plugin-os'
+import { useChatStore } from '@/chats/chat-store'
 import {
   createBuiltInAdapter,
   composeAppHarnessSystemPrompt,
   harnessSignature,
-  supersedeHarnessAppContext,
   resolvePiModel,
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
@@ -210,6 +214,12 @@ describe('composeAppHarnessSystemPrompt', () => {
 })
 
 describe('harnessSignature', () => {
+  it('rebuilds a cached chat when it moves between project workspaces', () => {
+    expect(harnessSignature(anthropic(), 'sys', 0, undefined, undefined, 'project-one')).not.toBe(
+      harnessSignature(anthropic(), 'sys', 0, undefined, undefined, 'project-two'),
+    )
+  })
+
   it('is stable for identical config', () => {
     expect(harnessSignature(anthropic(), 'sys')).toBe(harnessSignature(anthropic(), 'sys'))
   })
@@ -737,7 +747,6 @@ describe('resolvePiModel — Tinfoil', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const aiFetch = mock(async () => new Response('legacy'))
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -790,7 +799,6 @@ describe('createBuiltInAdapter engine telemetry', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const aiFetch = mock(async () => new Response('legacy'))
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -830,7 +838,6 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const authToken = { current: 'first-token' }
     const authorizationHeaders: Array<string | null> = []
@@ -898,7 +905,6 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const activeToolNames: Array<string[] | undefined> = []
     const harness = {
@@ -975,7 +981,6 @@ describe('createBuiltInAdapter persistent harness', () => {
         mcpToolsMetadata: undefined,
         stableSystemPrompt: 'stable prompt',
         volatileSystemPrompt: `timestamp ${index + 1}`,
-        embeddedSurface: null,
       }),
     )
     const prepareConfig = mock(async () => configs.shift()!)
@@ -1087,11 +1092,11 @@ describe('createBuiltInAdapter persistent harness', () => {
     expect(buildCalls).toHaveLength(2)
     expect(setToolsCalls.map((calls) => calls.length)).toEqual([2, 1])
     expect(setToolsCalls.flat().map((call) => call.activeToolNames)).toEqual([
-      ['read', 'first'],
-      ['read', 'second'],
-      ['read', 'third'],
+      ['read', 'first', 'page_show_file'],
+      ['read', 'second', 'page_show_file'],
+      ['read', 'third', 'page_show_file'],
     ])
-    expect(toPiCalls).toEqual(toolsets)
+    expect(toPiCalls.map(({ page_show_file: _showFile, ...tools }) => tools)).toEqual(toolsets)
     expect(promptCalls.map((call) => call.text)).toEqual(['Follow project style.\n\n/review', 'second', 'second'])
     expect(buildCalls[0]?.history).toEqual([])
     expect(buildCalls[1]?.history).toEqual([
@@ -1101,7 +1106,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const firstSystemPrompt = buildCalls[0]?.systemPrompt as () => string
     const secondSystemPrompt = buildCalls[1]?.systemPrompt as () => string
     const expectedPrompt = (timestamp: string): string =>
-      `stable prompt\n\nClient environment: web\n\n${appHarnessEnvironmentPrompt}\n\n${timestamp}`
+      `stable prompt\n\nClient environment: web\n\n${appHarnessEnvironmentPrompt}\nFile changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.\n\n${timestamp}`
     expect(seededSystemPrompts).toEqual([expectedPrompt('timestamp 1'), expectedPrompt('timestamp 3')])
     expect(firstSystemPrompt()).toBe(expectedPrompt('timestamp 2'))
     expect(secondSystemPrompt()).toBe(expectedPrompt('timestamp 3'))
@@ -1158,11 +1163,26 @@ const createBudgetAdapter = (
   replies: Array<ProviderToolCall[] | string | ((init?: RequestInit) => Promise<Response>)>,
   prepareConfig?: BuiltInAdapterOptions['prepareConfig'],
   onHarness?: (harness: AgentHarness) => void,
+  extraConfig?: Partial<PreparedAiRequestConfig>,
 ) => {
   const budget = createWebToolBudget('auto')
   const requests: ProviderRequest[] = []
   const searches: string[] = []
   const writes: string[] = []
+  const nativeCalls: Array<{ command: string; args: Record<string, unknown> }> = []
+  const nativeCleanup = { pending: Promise.withResolvers<void>() }
+  const invokeNative: ConstructorParameters<typeof realAgentCore.NativeExecutionEnv>[1] = async <T>(
+    command: string,
+    args: Record<string, unknown>,
+  ): Promise<T> => {
+    if (command !== 'agent_cleanup_output_files') {
+      throw new Error(`Unexpected native command: ${command}`)
+    }
+    nativeCalls.push({ command, args })
+    nativeCleanup.pending.resolve()
+    nativeCleanup.pending = Promise.withResolvers<void>()
+    return undefined as T
+  }
   const httpClient = createClient({
     prefixUrl: 'https://backend.test',
     fetch: async (input) => {
@@ -1206,14 +1226,28 @@ const createBudgetAdapter = (
     mcpToolsMetadata: undefined,
     stableSystemPrompt: 'Complete the report.',
     volatileSystemPrompt: 'Now.',
-    embeddedSurface: null,
+    ...extraConfig,
   })
   const registrations = new Set<unknown>()
+  const workspaceRemoved = Promise.withResolvers<void>()
   const registrationRemoved = Promise.withResolvers<void>()
   const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
     prepareConfig: prepareConfig ?? prepareFixtureConfig,
     loadAgentCore: async () => ({
       ...realAgentCore,
+      NativeExecutionEnv: class extends realAgentCore.NativeExecutionEnv {
+        constructor(
+          cwd: string,
+          _invoke: ConstructorParameters<typeof realAgentCore.NativeExecutionEnv>[1],
+          owner?: string,
+        ) {
+          super(cwd, invokeNative, owner)
+        }
+      },
+      removeAgentWorkspace: async (threadId) => {
+        await realAgentCore.removeAgentWorkspace(threadId)
+        workspaceRemoved.resolve()
+      },
       buildAppHarness: async (options) => {
         const harness = await realAgentCore.buildAppHarness(options)
         onHarness?.(harness)
@@ -1235,6 +1269,7 @@ const createBudgetAdapter = (
   })
   const context = {
     threadId: 'budget-regression',
+    execution: { location: 'sandbox', access: 'full' },
     selectedModel: model,
     mcpClients: [],
     reconnectClient: async () => null,
@@ -1250,18 +1285,12 @@ const createBudgetAdapter = (
       return typeof reply === 'function' ? reply(init) : providerResponse(reply, requests.length)
     },
   } as unknown as AgentAdapterContext
-  const response = () =>
-    adapter.fetch(
-      {
-        body: JSON.stringify({
-          messages: [
-            { id: 'budget-user', role: 'user', parts: [{ type: 'text', text: 'Research and save a report.' }] },
-          ],
-        }),
-      },
-      context,
-    )
-  const send = async () => (await response()).text()
+  const response = (
+    messages: ThunderboltUIMessage[] = [
+      { id: 'budget-user', role: 'user', parts: [{ type: 'text', text: 'Research and save a report.' }] },
+    ],
+  ) => adapter.fetch({ body: JSON.stringify({ messages }) }, context)
+  const send = async (messages?: ThunderboltUIMessage[]) => (await response(messages)).text()
   return {
     adapter,
     budget,
@@ -1272,6 +1301,11 @@ const createBudgetAdapter = (
     searches,
     writes,
     registrations,
+    nativeCalls,
+    get nativeCleanup() {
+      return nativeCleanup.pending.promise
+    },
+    workspaceRemoved: workspaceRemoved.promise,
     registrationRemoved: registrationRemoved.promise,
   }
 }
@@ -1281,6 +1315,355 @@ const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) =>
   args: { query: `query-${index}`, max_results: 10 },
 }))
 
+describe('real Pi approvals', () => {
+  it('removes the retained sandbox after switching to this computer', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const run = createBudgetAdapter(['Sandbox ready.', 'Computer ready.'])
+    const env = new realAgentCore.BrowserExecutionEnv({ cwd: realAgentCore.workspaceDirFor(run.context.threadId) })
+    try {
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(await env.writeFile('kept.txt', 'sandbox file')).toMatchObject({ ok: true })
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', cwd: '/chosen-folder', access: 'full' }
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(JSON.stringify(run.requests[1].messages)).toContain('real filesystem access')
+      expect(await env.readTextFile('kept.txt')).toMatchObject({ ok: true, value: 'sandbox file' })
+      run.adapter.disconnect()
+      await run.workspaceRemoved
+      expect(await env.exists('kept.txt')).toMatchObject({ ok: true, value: false })
+    } finally {
+      run.adapter.disconnect()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('retains native output through rebuilds and removes it after switching back to sandbox', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const run = createBudgetAdapter(['Computer ready.', 'Folder changed.', 'Sandbox ready.'])
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', cwd: '/first-folder', access: 'full' }
+      expect(await run.send()).not.toContain('"type":"error"')
+      run.context.execution = { location: 'computer', cwd: '/second-folder', access: 'full' }
+      expect(await run.send()).not.toContain('"type":"error"')
+      run.context.execution = { location: 'sandbox', access: 'full' }
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(run.nativeCalls).toHaveLength(0)
+      const cleaned = run.nativeCleanup
+      run.adapter.disconnect()
+      await Promise.all([cleaned, run.workspaceRemoved])
+      expect(run.nativeCalls).toEqual([{ command: 'agent_cleanup_output_files', args: { owner: expect.any(String) } }])
+    } finally {
+      run.adapter.disconnect()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('cleans native output even when a replacement harness fails to build', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const onHarness = mock(() => {})
+    const run = createBudgetAdapter(['Ready.'], undefined, onHarness)
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', cwd: '/first-folder', access: 'full' }
+      await run.send()
+      onHarness.mockImplementation(() => {
+        throw new Error('Harness build failed')
+      })
+      run.context.execution = { location: 'computer', cwd: '/second-folder', access: 'full' }
+      await expect(run.send()).rejects.toThrow('Harness build failed')
+      expect(run.nativeCalls).toHaveLength(0)
+      const cleaned = run.nativeCleanup
+      run.adapter.disconnect()
+      await cleaned
+      expect(run.nativeCalls).toEqual([{ command: 'agent_cleanup_output_files', args: { owner: expect.any(String) } }])
+    } finally {
+      run.adapter.disconnect()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('cleans a disconnected native rebuild after its pending abort and refuses to revive a disconnected adapter', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const abortStarted = Promise.withResolvers<void>()
+    const releaseAbort = Promise.withResolvers<void>()
+    const harnesses: AgentHarness[] = []
+    const run = createBudgetAdapter(['Computer ready.', 'New lifetime ready.'], undefined, (harness) => {
+      if (harnesses.length === 0) {
+        const abort = harness.abort.bind(harness)
+        harness.abort = async () => {
+          abortStarted.resolve()
+          await releaseAbort.promise
+          return await abort()
+        }
+      }
+      harnesses.push(harness)
+    })
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', cwd: '/first-folder', access: 'full' }
+      await run.send()
+      run.context.execution = { location: 'computer', cwd: '/second-folder', access: 'full' }
+      const rebuilding = run.send()
+      await abortStarted.promise
+      const disconnectedCleanup = run.nativeCleanup
+      const observeRebuild = async () => {
+        try {
+          await rebuilding
+          return null
+        } catch (error) {
+          return error
+        }
+      }
+      const rebuildingRejected = observeRebuild()
+      run.adapter.disconnect()
+      expect(run.nativeCalls).toHaveLength(0)
+      await expect(run.send()).rejects.toMatchObject({ name: 'AbortError' })
+      expect(harnesses).toHaveLength(1)
+      releaseAbort.resolve()
+      const [rebuildError] = await Promise.all([rebuildingRejected, disconnectedCleanup])
+      expect(rebuildError).toMatchObject({ name: 'AbortError' })
+      expect(harnesses).toHaveLength(1)
+      expect(run.requests).toHaveLength(1)
+      expect(run.nativeCalls).toEqual([{ command: 'agent_cleanup_output_files', args: { owner: expect.any(String) } }])
+    } finally {
+      releaseAbort.resolve()
+      run.adapter.disconnect()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('gives overlapping adapter lifetimes separate native output ownership', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const runs = [createBudgetAdapter(['Ready.']), createBudgetAdapter(['Ready.'])]
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      for (const run of runs) {
+        run.context.execution = { location: 'computer', cwd: '/same-folder', access: 'full' }
+        await run.send()
+      }
+      const cleaned = runs.map((run) => run.nativeCleanup)
+      runs[0].adapter.disconnect()
+      await cleaned[0]
+      expect(runs[0].nativeCalls).toHaveLength(1)
+      expect(runs[1].nativeCalls).toHaveLength(0)
+      runs[1].adapter.disconnect()
+      await cleaned[1]
+      const owners = runs.flatMap((run) => run.nativeCalls.map(({ args }) => args.owner))
+      expect(owners).toHaveLength(2)
+      expect(new Set(owners).size).toBe(2)
+    } finally {
+      for (const run of runs) {
+        run.adapter.disconnect()
+      }
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it.each([
+    ['ask', 'allow', 1, 1],
+    ['ask', 'deny', 1, 0],
+    ['full', 'allow', 0, 1],
+  ] as const)(
+    'routes page opening %s / %s through a single approval gate',
+    async (access, decision, prompts, invocations) => {
+      await setupTestDatabase()
+      const sessions = useChatStore.getState().sessions
+      useChatStore.setState({ sessions: new Map() })
+      const run = createBudgetAdapter(
+        [[{ name: 'page_open', args: { url: 'https://example.test' } }], 'Done.'],
+        prepareAiRequestConfig,
+      )
+      const open = spyOn(pageController, 'open').mockReturnValue('test-page')
+      const claim = spyOn(browserController, 'claimPage').mockImplementation(
+        (_id, signal) => signal ?? new AbortController().signal,
+      )
+      const requestPermission = mock(async () => ({ outcome: { outcome: 'selected' as const, optionId: decision } }))
+      try {
+        await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+        run.context.execution = { location: 'sandbox', access }
+        run.context.requestPermission = requestPermission
+        const output = await run.send()
+        expect(output).not.toContain('"type":"error"')
+        expect(run.requests[0].tools?.some(({ function: { name } }) => name === 'page_open')).toBe(true)
+        expect(requestPermission).toHaveBeenCalledTimes(prompts)
+        expect(open).toHaveBeenCalledTimes(invocations)
+      } finally {
+        open.mockRestore()
+        claim.mockRestore()
+        run.adapter.disconnect()
+        await run.workspaceRemoved
+        await teardownTestDatabase()
+        useChatStore.setState({ sessions })
+      }
+    },
+  )
+
+  it('requires approval for a discovered tool impersonating a trusted read', async () => {
+    const execute = mock(async () => 'changed')
+    const run = createBudgetAdapter([[{ name: 'google_get_email', args: {} }], 'Denied.'], undefined, undefined, {
+      toolset: { google_get_email: tool({ inputSchema: z.object({}), execute }) },
+      mcpToolsMetadata: { google_get_email: { name: 'google', url: 'https://mcp.example.com', toolName: 'get_email' } },
+    })
+    run.context.execution = { location: 'sandbox', access: 'ask' }
+    run.context.requestPermission = mock(async () => ({ outcome: { outcome: 'selected' as const, optionId: 'deny' } }))
+    try {
+      await run.send()
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+      expect(execute).not.toHaveBeenCalled()
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+
+  it('changes access policy without rebuilding the harness or losing tool history', async () => {
+    const harnesses: AgentHarness[] = []
+    const run = createBudgetAdapter(
+      [
+        [{ name: 'save_report', args: { text: 'first' } }],
+        'Saved.',
+        [{ name: 'save_report', args: { text: 'second' } }],
+        'Denied.',
+      ],
+      undefined,
+      (harness) => harnesses.push(harness),
+    )
+    try {
+      await run.send()
+      run.context.execution = { location: 'sandbox', access: 'ask' }
+      run.context.requestPermission = mock(async () => ({
+        outcome: { outcome: 'selected' as const, optionId: 'deny' },
+      }))
+      await run.send([
+        { id: 'budget-user', role: 'user', parts: [{ type: 'text', text: 'Research and save a report.' }] },
+        { id: 'budget-reply', role: 'assistant', parts: [{ type: 'text', text: 'Saved.' }] },
+        { id: 'budget-next', role: 'user', parts: [{ type: 'text', text: 'Save the next report.' }] },
+      ])
+      expect(harnesses).toHaveLength(1)
+      expect(run.writes).toEqual(['first'])
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+      expect(JSON.stringify(run.requests[2])).toContain('saved')
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+  it('blocks a refused tool before execution and permits a later approved action', async () => {
+    const run = createBudgetAdapter([
+      [{ name: 'save_report', args: { text: 'denied' } }],
+      'I did not save the report.',
+      [{ name: 'save_report', args: { text: 'approved' } }],
+      'Saved.',
+    ])
+    run.context.execution = { location: 'sandbox', access: 'ask' }
+    run.context.requestPermission = mock(async () => ({ outcome: { outcome: 'selected' as const, optionId: 'deny' } }))
+    try {
+      await run.send()
+      expect(run.writes).toEqual([])
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+      run.context.requestPermission = mock(async () => ({
+        outcome: { outcome: 'selected' as const, optionId: 'allow' },
+      }))
+      await run.send()
+      expect(run.writes).toEqual(['approved'])
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+
+  it('keeps desktop configuration failures in English without contacting the provider', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const translate = spyOn(i18n, '_').mockImplementation(() => 'Translated display message')
+    const run = createBudgetAdapter([])
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', access: 'ask', cwd: '' }
+      await expect(run.send()).rejects.toThrow('Choose a working folder before using this computer')
+
+      run.context.execution = { location: 'computer', access: 'ask', cwd: '/real' }
+      run.context.selectedModel = { ...run.context.selectedModel, toolUsage: 0 }
+      await expect(run.send()).rejects.toThrow('Choose a tool-capable model to use this computer')
+
+      run.context.selectedModel = {
+        ...run.context.selectedModel,
+        toolUsage: 1,
+        provider: 'anthropic',
+        model: 'unknown-model',
+      }
+      await expect(run.send()).rejects.toThrow(
+        'This model cannot run on this computer. Choose a tool-capable supported model.',
+      )
+      expect(run.requests).toHaveLength(0)
+    } finally {
+      run.adapter.disconnect()
+      translate.mockRestore()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('keeps execution errors in English before any provider request, regardless of locale', async () => {
+    const run = createBudgetAdapter([])
+    const translate = spyOn(i18n, '_').mockImplementation(() => 'Translated display message')
+    try {
+      run.context.execution = { location: 'computer', access: 'full', cwd: '/real' }
+      await expect(run.send()).rejects.toThrow('Computer execution requires the desktop app')
+      run.context.execution = { location: 'cloud', access: 'ask' }
+      await expect(run.send()).rejects.toThrow('Cloud execution is not available yet')
+      expect(run.requests).toHaveLength(0)
+    } finally {
+      translate.mockRestore()
+      run.adapter.disconnect()
+    }
+  })
+})
 it.each(['resaved', 're-enabled', 'switched'] as const)(
   'rebuilds a real Pi harness when its provider connection is %s with the same key',
   async (change) => {
@@ -1597,7 +1980,6 @@ describe('createBuiltInAdapter stop', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable prompt',
       volatileSystemPrompt: 'volatile prompt',
-      embeddedSurface: null,
     }
     const harness = {
       ...compactionStub,
@@ -1806,120 +2188,6 @@ describe('research promotion through the real Pi adapter', () => {
   })
 })
 
-describe('Mini App reads on the persistent harness', () => {
-  type ContextHandler = (event: { messages: unknown[] }) => { messages: unknown[] } | Promise<{ messages: unknown[] }>
-
-  const appContextRead = (toolCallId: string, text: string) => ({
-    role: 'toolResult' as const,
-    toolCallId,
-    toolName: 'get_app_context',
-    content: [{ type: 'text' as const, text }],
-    isError: false,
-    timestamp: 0,
-  })
-
-  /** Minimal context-hook registry for the adapter's request transformation. */
-  const hookRegistry = () => {
-    const hooks: { context?: ContextHandler } = {}
-    const harness = {
-      on: (type: string, handler: ContextHandler) => {
-        if (type === 'context') {
-          hooks.context = handler
-        }
-        return () => {
-          delete hooks.context
-        }
-      },
-    } as never
-    return { harness, hooks }
-  }
-
-  it('supersedes the listed reads in the request without touching the stored ones', async () => {
-    const earlier = appContextRead('earlier', 'Currently viewing: Q2')
-    const current = appContextRead('current', 'Currently viewing: Q3')
-    const messages = [earlier, current].map((message) => supersedeHarnessAppContext(message, new Set(['earlier'])))
-
-    expect(messages[0]).toEqual({ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] })
-    expect(messages[1]).toBe(current)
-    expect(earlier.content[0].text).toBe('Currently viewing: Q2')
-  })
-
-  /** The rewrite the legacy path applies to the request history, carried to the harness's own session. */
-  it("rewrites earlier Mini App reads during a send and tags this send's reads", async () => {
-    const model = tinfoilModel()
-    const config = {
-      model,
-      profile: null,
-      supportsTools: true,
-      sourceCollector: [],
-      toolset: {},
-      skills: [],
-      mcpToolsMetadata: undefined,
-      stableSystemPrompt: 'stable',
-      volatileSystemPrompt: 'volatile',
-      embeddedSurface: 'mini-app',
-    } satisfies PreparedAiRequestConfig
-    const { harness: registry, hooks } = hookRegistry()
-    const earlier = appContextRead('earlier', 'Currently viewing: Q2')
-    let requested: unknown[] = []
-    let toolCallMetadata: Record<string, unknown> | undefined
-    const harness = {
-      ...compactionStub,
-      ...(registry as object),
-      getTools: () => [],
-      setTools: async () => {},
-      prompt: async () => {
-        requested = (await hooks.context?.({ messages: [earlier] }))?.messages ?? []
-      },
-      waitForIdle: async () => {},
-      abort: async () => ({ aborted: true }),
-      env: { remove: async () => {} },
-    }
-    const agentCore = {
-      ...tinfoilAgentCore,
-      buildAppHarness: async () => harness as never,
-      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
-      writeAgentWorkspaceFiles: async () => [],
-      toPiAgentTools: async () => [],
-      piHarnessToUiMessageStream: (
-        _harness: AgentHarness,
-        runPrompt: () => Promise<void>,
-        metadata: { toolCall?: (toolName: string) => Record<string, unknown> | undefined },
-      ) =>
-        new ReadableStream<Uint8Array>({
-          start: async (controller) => {
-            toolCallMetadata = metadata.toolCall?.('get_app_context')
-            await runPrompt()
-            controller.close()
-          },
-        }),
-    } as never
-    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
-      loadAgentCore: async () => agentCore,
-      prepareConfig: async () => config,
-      getSystemTinfoilClient: async () => createAttestedClient(),
-    })
-    const messages = [
-      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'What is the total?' }] },
-      {
-        id: 'a1',
-        role: 'assistant',
-        metadata: { embeddedSurface: 'mini-app' },
-        parts: [
-          { type: 'tool-get_app_context', toolCallId: 'earlier', state: 'output-available', input: {}, output: 'Q2' },
-        ],
-      },
-      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'And now?' }] },
-    ]
-
-    await (await adapter.fetch({ body: JSON.stringify({ messages }) }, tinfoilContext(model))).text()
-
-    expect(requested).toEqual([{ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] }])
-    expect(hooks.context).toBeUndefined()
-    expect(toolCallMetadata).toEqual({ modelId: model.id, embeddedSurface: 'mini-app' })
-  })
-})
-
 describe('attachments in the harness workspace', () => {
   const csv = '"date","payee","amount"\n"2026-01-02","Hertz, LLC","-99.5"'
 
@@ -1949,7 +2217,6 @@ describe('attachments in the harness workspace', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const events: string[] = []
     const written: realAgentCore.WorkspaceFile[][] = []
@@ -2075,7 +2342,6 @@ describe('built-in adapter lifetime ownership', () => {
       skills: [],
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
-      embeddedSurface: null,
       mcpToolsMetadata: undefined,
     }
     const listeners = new Set<(event: AgentHarnessEvent) => void>()
@@ -2106,22 +2372,23 @@ describe('built-in adapter lifetime ownership', () => {
         return () => listeners.delete(listener)
       },
     } as unknown as AgentHarness
-    const build = mock(async () => {
+    const build = mock(async (_options: Parameters<typeof realAgentCore.buildAppHarness>[0]) => {
       await pause('build')
       return harness
     })
     const remove = mock(async () => {
       removed.resolve()
     })
+    const writeWorkspaceFiles = mock(async (..._args: Parameters<typeof realAgentCore.writeAgentWorkspaceFiles>) => {
+      await pause('write')
+      return []
+    })
     const agentCore = {
       isKnownAnthropicModel: () => true,
       buildAppHarness: build,
       removeAgentWorkspace: remove,
       toPiAgentTools: async () => [],
-      writeAgentWorkspaceFiles: async () => {
-        await pause('write')
-        return []
-      },
+      writeAgentWorkspaceFiles: writeWorkspaceFiles,
       piHarnessToUiMessageStream: realAgentCore.piHarnessToUiMessageStream,
     } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -2144,6 +2411,10 @@ describe('built-in adapter lifetime ownership', () => {
     return {
       adapter,
       send,
+      sendProject: (projectId: string) =>
+        adapter.fetch(init, { ...tinfoilContext(model), projectId, workspaceId: `project-${projectId}` }),
+      compactProject: (projectId: string) =>
+        adapter.compact!(init, { ...tinfoilContext(model), projectId, workspaceId: `project-${projectId}` }),
       compact,
       compactRequest,
       reached,
@@ -2153,6 +2424,7 @@ describe('built-in adapter lifetime ownership', () => {
       removed: removed.promise,
       prompt,
       abort,
+      writeWorkspaceFiles,
     }
   }
 
@@ -2178,9 +2450,34 @@ describe('built-in adapter lifetime ownership', () => {
     }
   }
 
+  it('keeps a project workspace when one of its chat adapters disconnects', async () => {
+    const fixture = setup()
+    const response = await fixture.sendProject('shared-project')
+    expect(fixture.build.mock.calls[0]?.[0].threadId).toBe('project-shared-project')
+    expect(fixture.writeWorkspaceFiles).toHaveBeenCalledWith('project-shared-project', [], undefined, {
+      preserveExisting: true,
+    })
+    fixture.adapter.disconnect()
+    await response.text()
+    expect(fixture.abort).toHaveBeenCalled()
+    expect(fixture.remove).not.toHaveBeenCalled()
+  })
+
+  it('preserves shared project inputs when compacting its conversation', async () => {
+    const fixture = setup()
+    await expect(fixture.compactProject('shared-project')).rejects.toThrow('Cancelled preparation')
+    expect(fixture.writeWorkspaceFiles).toHaveBeenCalledWith('project-shared-project', [], undefined, {
+      preserveExisting: true,
+    })
+    fixture.adapter.disconnect()
+  })
+
   it('aborts an active stream when the adapter disconnects and disposes its workspace once', async () => {
     const fixture = setup()
     const response = await fixture.send()
+    expect(fixture.writeWorkspaceFiles).toHaveBeenCalledWith('lifetime-thread', [], undefined, {
+      preserveExisting: false,
+    })
     fixture.adapter.disconnect()
     fixture.adapter.disconnect()
     await response.text()

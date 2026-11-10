@@ -53,6 +53,8 @@ const styleByExt: Record<string, CommentStyle> = {
 }
 
 const skipPathPatterns: RegExp[] = [
+  // Pinned upstream Tauri sources retain their original MIT/Apache-2.0 notices.
+  /(^|\/)src-tauri\/vendor\/tauri\//,
   /(^|\/)src-tauri\/gen\//,
   /(^|\/)drizzle\/meta\//,
   /(^|\/)dist(-[^/]+)?\//,

@@ -65,6 +65,7 @@ import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
 import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
+import { AgentExecutionControls } from '../agent-execution-controls'
 import { EffortSelector } from './effort-selector'
 import { ChatModelPicker } from './chat-model-picker'
 import { ChatAttestation } from './attestation'
@@ -258,6 +259,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
     const {
       chatInstance,
       chatThread,
+      projectId,
       connectionStatus,
       connectionError,
       id: chatThreadId,
@@ -455,7 +457,7 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
 
     // Eagerly connect the agent + warm its ACP session so the agent commands
     // are populated before the user's first message (not just after a send).
-    useWarmAcpCommands({ id: chatThreadId, selectedAgent, chatThread })
+    useWarmAcpCommands({ id: chatThreadId, selectedAgent, chatThread, projectId })
 
     const {
       setCursorPos,
@@ -570,6 +572,17 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
         return
       }
       const frame = requestAnimationFrame(() => {
+        // BrowserRouter updates history before concurrent React navigation commits.
+        // A newer click must win even while this old composer is still mounted.
+        const historyKey = (window.history.state as { key?: string } | null)?.key ?? 'default'
+        if (
+          historyKey !== location.key ||
+          window.location.pathname !== location.pathname ||
+          window.location.search !== location.search ||
+          window.location.hash !== location.hash
+        ) {
+          return
+        }
         // Queried from the form rather than read off `textareaRef`: that ref
         // is filled during render, and the mount render runs before the form
         // ref itself is set.
@@ -578,10 +591,10 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
         collapseTextSelectionToEnd(textarea)
         // Consume the request so a back/forward navigation can't re-raise the
         // keyboard over a chat the user came to read.
-        navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+        navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: {} })
       })
       return () => cancelAnimationFrame(frame)
-    }, [focusRequested, navigate, location.pathname, location.search])
+    }, [focusRequested, navigate, location.key, location.pathname, location.search, location.hash])
 
     // Map of enabled-skill slug → instruction. Shared by the overflow
     // estimate below and the send-time resolver in `ai/fetch.ts` (via
@@ -811,6 +824,14 @@ const ChatPromptInputComponent = forwardRef<ChatPromptInputRef, ChatPromptInputP
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
           onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
         />
+        {isBuiltInAgent(selectedAgent) && (
+          <AgentExecutionControls
+            key={chatThreadId}
+            threadId={chatThreadId}
+            projectId={projectId ?? undefined}
+            disabled={isBusy || isConnecting}
+          />
+        )}
         {isConnecting ? (
           <div
             role="status"

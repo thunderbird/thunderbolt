@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
 import { widgetRegistry } from '@/widgets'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
+import { pageToolPrompt } from '@/pages/page-tools'
 import { assembleBuiltInModelInput, createPrompt, createPromptParts, type PromptParams } from './prompt'
 
 const createStubProfile = (overrides: Partial<ModelProfile> = {}): ModelProfile => ({
@@ -49,6 +50,13 @@ const baseParams: PromptParams = {
   integrationStatus: 'READY',
   availableToolNames: [],
 }
+
+test('includes browser policy only when its tools are registered', () => {
+  const enabled = createPromptParts({ ...baseParams, browserSection: pageToolPrompt })
+  expect(enabled.stablePrompt).toContain(pageToolPrompt)
+  expect(enabled.volatilePrompt).not.toContain(pageToolPrompt)
+  expect(createPromptParts(baseParams).fullPrompt).not.toContain(pageToolPrompt)
+})
 
 describe('assembleBuiltInModelInput', () => {
   const sharedHistory = [

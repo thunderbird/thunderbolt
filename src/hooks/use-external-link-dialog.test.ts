@@ -3,10 +3,113 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { renderHook, act } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { openFailedMessage, unsafeUrlMessage, useExternalLinkDialog } from './use-external-link-dialog'
 
 describe('useExternalLinkDialog', () => {
+  describe('remembered destination', () => {
+    const originalOpen = window.open
+    beforeEach(() => {
+      useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'ask')
+      window.open = mock(() => null) as typeof window.open
+    })
+    afterEach(() => {
+      useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'ask')
+      window.open = originalOpen
+    })
+
+    it('updates the existing preference to sidebar only after a checked in-app choice', () => {
+      const { result } = renderHook(() => useExternalLinkDialog())
+      act(() => {
+        result.current.openDialog('https://example.com')
+        result.current.setRememberChoice(true)
+      })
+      expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('ask')
+      act(() => result.current.dismissWithAction(() => {}))
+      expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('sidebar')
+      expect(result.current.rememberChoice).toBe(false)
+    })
+
+    it('updates the existing preference to browser after a checked external choice succeeds', async () => {
+      const { result } = renderHook(() => useExternalLinkDialog())
+      act(() => {
+        result.current.openDialog('https://example.com')
+        result.current.setRememberChoice(true)
+      })
+      await act(async () => result.current.handleConfirm())
+      expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('browser')
+      expect(result.current.dialogOpen).toBe(false)
+    })
+
+    it('leaves the preference unchanged for unchecked choices', async () => {
+      const { result } = renderHook(() => useExternalLinkDialog())
+      act(() => result.current.openDialog('https://example.com'))
+      await act(async () => result.current.handleConfirm())
+      act(() => {
+        result.current.openDialog('https://example.com')
+        result.current.dismissWithAction(() => {})
+      })
+      expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('ask')
+    })
+
+    it('does not save when canceled and resets the checkbox on the next opening', () => {
+      const { result } = renderHook(() => useExternalLinkDialog())
+      act(() => {
+        result.current.openDialog('https://example.com')
+        result.current.setRememberChoice(true)
+        result.current.setDialogOpen(false)
+        result.current.openDialog('https://example.com')
+      })
+      expect(result.current.rememberChoice).toBe(false)
+      expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('ask')
+    })
+
+    it('does not save or close a reopened dialog when a canceled open finishes', async () => {
+      const { result } = renderHook(() => useExternalLinkDialog())
+      act(() => {
+        result.current.openDialog('https://example.com')
+        result.current.setRememberChoice(true)
+      })
+      await act(async () => {
+        const opening = result.current.handleConfirm()
+        result.current.setDialogOpen(false)
+        result.current.openDialog('https://example.com')
+        await opening
+      })
+      expect(result.current.dialogOpen).toBe(true)
+      expect(result.current.rememberChoice).toBe(false)
+      expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('ask')
+    })
+
+    it('does not remember an unsafe destination', async () => {
+      const { result } = renderHook(() => useExternalLinkDialog())
+      act(() => {
+        result.current.openDialog('javascript:alert(1)')
+        result.current.setRememberChoice(true)
+        result.current.dismissWithAction(() => {})
+      })
+      await act(async () => result.current.handleConfirm())
+      expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('ask')
+      expect(result.current.openError).toBe(unsafeUrlMessage)
+    })
+
+    it('keeps Ask when the selected opener fails', async () => {
+      window.open = mock(() => {
+        throw new Error('open failed')
+      }) as typeof window.open
+      const { result } = renderHook(() => useExternalLinkDialog())
+      act(() => {
+        result.current.openDialog('https://example.com')
+        result.current.setRememberChoice(true)
+      })
+      await act(async () => result.current.handleConfirm())
+      expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('ask')
+      expect(result.current.dialogOpen).toBe(true)
+      expect(result.current.rememberChoice).toBe(true)
+    })
+  })
+
   describe('initial state', () => {
     it('should initialize with dialog closed, empty URL, no error, not opening', () => {
       const { result } = renderHook(() => useExternalLinkDialog())

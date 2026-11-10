@@ -3,18 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
+import * as chatDal from '@/dal'
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { moveChatToProject } from '@/projects/use-move-chat-to-project'
-import { setChatThreadProject } from '@/dal/projects'
+import { createProject, setChatThreadProject, softDeleteProject } from '@/dal/projects'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
 import { agentsSystemTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
+import { eq } from 'drizzle-orm'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
 import { updateSettings } from '@/dal/settings'
@@ -813,6 +815,106 @@ describe('useHydrateChatStore', () => {
   })
 
   describe('project assignment', () => {
+    it('preserves a newer project move while a cached hydration is waiting for models', async () => {
+      const db = getDb()
+      const original = await createProject(db, { name: 'Original workspace' })
+      const destination = await createProject(db, { name: 'Destination workspace' })
+      const threadId = await createTestThread(await createSystemModel())
+      await setChatThreadProject(db, threadId, original.id)
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => result.current.hydrateChatStore())
+      const modelsRequested = Promise.withResolvers<void>()
+      const releaseModels = Promise.withResolvers<void>()
+      const query = chatDal.getAvailableModels(db)
+      const readRows = query.all.bind(query)
+      const execution = spyOn(query, 'all').mockImplementationOnce(async (...args) => {
+        modelsRequested.resolve()
+        await releaseModels.promise
+        return readRows(...args)
+      })
+      const models = spyOn(chatDal, 'getAvailableModels').mockReturnValueOnce(query)
+      try {
+        await act(async () => {
+          const hydration = result.current.hydrateChatStore()
+          await modelsRequested.promise
+          await moveChatToProject(
+            { chatThreadId: threadId, projectId: destination.id },
+            {
+              db,
+              setProject: setChatThreadProject,
+              updateOpenSession: (id, projectId) => useChatStore.getState().updateSession(id, { projectId }),
+              refreshChatList: async () => {},
+            },
+          )
+          releaseModels.resolve()
+          await hydration
+        })
+        expect(getCurrentSession()?.projectId).toBe(destination.id)
+        expect((await getThread(db, threadId))?.projectId).toBe(destination.id)
+      } finally {
+        releaseModels.resolve()
+        models.mockRestore()
+        execution.mockRestore()
+      }
+    })
+
+    it('does not reactivate a cached chat when navigation aborts while stopping its old environment', async () => {
+      const db = getDb()
+      const project = await createProject(db, { name: 'Old environment' })
+      const threadId = await createTestThread(await createSystemModel())
+      await setChatThreadProject(db, threadId, project.id)
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => result.current.hydrateChatStore())
+      const controller = new AbortController()
+      const stop = spyOn(getCurrentSession()!.chatInstance, 'stop').mockImplementationOnce(async () =>
+        controller.abort(),
+      )
+      useChatStore.getState().setCurrentSessionId('new-navigation')
+      await db.update(chatThreadsTable).set({ projectId: null }).where(eq(chatThreadsTable.id, threadId))
+      try {
+        await act(async () => result.current.hydrateChatStore(controller.signal))
+        expect(stop).toHaveBeenCalledTimes(1)
+        expect(useChatStore.getState().currentSessionId).toBe('new-navigation')
+      } finally {
+        stop.mockRestore()
+      }
+    })
+
+    it.each(['local', 'synced'])(
+      'reopens a cached chat after a %s project deletion without reloading',
+      async (source) => {
+        const db = getDb()
+        const project = await createProject(db, { name: 'Removed workspace' })
+        const threadId = await createTestThread(await createSystemModel())
+        await setChatThreadProject(db, threadId, project.id)
+        const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => result.current.hydrateChatStore())
+        const chatInstance = getCurrentSession()!.chatInstance
+        expect(getCurrentSession()?.projectId).toBe(project.id)
+        useChatStore.getState().setCurrentSessionId('another-chat')
+
+        await act(async () => {
+          if (source === 'local') {
+            await softDeleteProject(db, project.id)
+          } else {
+            await db
+              .update(projectsTable)
+              .set({ deletedAt: new Date().toISOString() })
+              .where(eq(projectsTable.id, project.id))
+            await db.update(chatThreadsTable).set({ projectId: null }).where(eq(chatThreadsTable.id, threadId))
+          }
+          await result.current.hydrateChatStore()
+        })
+
+        expect(getCurrentSession()?.projectId).toBeNull()
+        expect(getCurrentSession()?.chatThread?.projectId).toBeNull()
+        expect(getCurrentSession()?.chatInstance).toBe(chatInstance)
+        expect((await getThread(db, threadId))?.projectId).toBeNull()
+      },
+    )
+
     it('starts a new chat in the project it was opened from', async () => {
       const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true, projectId: 'project-a' }), {
         wrapper: TestWrapper,
@@ -1164,12 +1266,6 @@ describe('useHydrateChatStore', () => {
       expect((await getThread(getDb(), threadId))?.contextSize).toBe(600)
     })
   })
-  /*
-   * The first save of a new chat promotes the URL from /chats/new to
-   * /chats/<id>. That is right for the chat route and wrong for a chat embedded
-   * in another surface — the Mini App panel navigated away mid-send, unmounting
-   * the app and clearing the context the model was being asked about.
-   */
   describe('navigation on create', () => {
     /** Renders nothing; mirrors the router's current path into `seen`. */
     const makeRouterWrapper = (initialPath: string, seen: { path: string }) => {
@@ -1188,18 +1284,8 @@ describe('useHydrateChatStore', () => {
       }
     }
 
-    /**
-     * Hydrate a brand-new thread and save one message through it.
-     *
-     * `onCreated` is the whole switch: supplying it means the host records the
-     * id itself and nothing navigates.
-     */
-    const hydrateAndSave = async (
-      threadId: string,
-      onCreated: ((chatThreadId: string) => void) | undefined,
-      wrapper: ReturnType<typeof makeRouterWrapper>,
-    ) => {
-      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true, onCreated }), {
+    const hydrateAndSave = async (threadId: string, wrapper: ReturnType<typeof makeRouterWrapper>) => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true }), {
         wrapper,
       })
       await act(async () => {
@@ -1215,23 +1301,9 @@ describe('useHydrateChatStore', () => {
       const threadId = uuidv7()
       const seen = { path: '' }
 
-      await hydrateAndSave(threadId, undefined, makeRouterWrapper('/chats/new', seen))
+      await hydrateAndSave(threadId, makeRouterWrapper('/chats/new', seen))
 
       expect(seen.path).toBe(`/chats/${threadId}`)
-    })
-
-    it('stays put, and hands the id over, when the host takes it', async () => {
-      await createSystemModel()
-      const threadId = uuidv7()
-      const seen = { path: '' }
-      const recorded: string[] = []
-
-      await hydrateAndSave(threadId, (id) => recorded.push(id), makeRouterWrapper('/apps/finance-model', seen))
-
-      expect(seen.path).toBe('/apps/finance-model')
-      // The pair that used to be separable: suppressing the navigation without
-      // recording the id created a real row nothing knew about.
-      expect(recorded).toEqual([threadId])
     })
   })
 })

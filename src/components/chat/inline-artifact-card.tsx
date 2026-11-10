@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { AppWindow, PanelRight } from 'lucide-react'
 import { useRef, useState } from 'react'
+import type { PageDefinition } from '@shared/page-protocol'
+import { InlinePage } from '@/pages/inline-page'
 
 /**
  * Whether the (possibly partial) HTML has anything renderable in `<body>` yet.
@@ -27,6 +29,7 @@ const hasRenderableBody = (html: string): boolean => {
 
 type InlineArtifactCardProps = {
   html: string
+  page?: PageDefinition
   title: string
   /** While true, render a live scripts-off preview of the (partial) HTML as it streams in. */
   streaming?: boolean
@@ -45,7 +48,13 @@ type InlineArtifactCardProps = {
  * the iframe auto-sizes to its content (so a tall artifact grows the card rather
  * than scrolling inside it) and runtime errors surface as a strip.
  */
-export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPanel }: InlineArtifactCardProps) => {
+export const InlineArtifactCard = ({
+  html,
+  title,
+  page,
+  streaming = false,
+  onOpenInPanel,
+}: InlineArtifactCardProps) => {
   const { t } = useLingui()
   const [open, setOpen] = useState(true)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
@@ -145,15 +154,18 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
             sliver of the frame above the card's bottom border when closed. */}
         <div className="min-h-0 overflow-hidden">
           {!streaming && runtimeError && <EmbeddedErrorStrip message={runtimeError} />}
-          {showContent && (
-            <SandboxedHtmlFrame
-              html={html}
-              title={title}
-              autoHeight
-              allowScripts={!streaming && active}
-              onError={streaming ? undefined : setRuntimeError}
-            />
-          )}
+          {showContent &&
+            (page && !streaming ? (
+              <InlinePage page={page} enabled={active} />
+            ) : (
+              <SandboxedHtmlFrame
+                html={html}
+                title={title}
+                autoHeight
+                allowScripts={!streaming && active}
+                onError={streaming ? undefined : setRuntimeError}
+              />
+            ))}
         </div>
       </div>
     </div>

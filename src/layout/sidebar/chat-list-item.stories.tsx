@@ -44,7 +44,6 @@ const mockThread: ChatThread = {
   title: 'Example Chat Thread',
   isEncrypted: 0,
   projectId: null,
-  miniAppId: null,
 }
 
 const encryptedThread: ChatThread = {
@@ -52,7 +51,6 @@ const encryptedThread: ChatThread = {
   title: 'Encrypted Chat Thread',
   isEncrypted: 1,
   projectId: null,
-  miniAppId: null,
 }
 
 export const Expanded: Story = {

@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.161"
+version = "0.1.162"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -16,8 +16,12 @@ name = "thunderbolt_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
-members = ["plugins/tauri-plugin-passkey"]
+members = ["plugins/tauri-plugin-passkey", "tauri-plugin-pages"]
 default-members = ["."]
+exclude = ["vendor/tauri"]
+
+[patch.crates-io]
+tauri = { path = "vendor/tauri" }
 
 [[bin]]
 name = "thunderbolt"
@@ -27,7 +31,7 @@ path = "src/main.rs"
 tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
-tauri = { version = "2.12.5", features = [
+tauri = { version = "=2.12.5", features = [
     "tray-icon",
     "devtools",
     "unstable",            # Required for webview
@@ -38,7 +42,10 @@ tauri-plugin-os = "2.3.2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.150"
 anyhow = "1.0.99"
-tokio = "1.52.3"
+tokio = { version = "1.52.3", features = ["process", "io-util", "sync", "time", "macros"] }
+tempfile = "3"
+libc = "0.2"
+base64 = "0.22"
 
 # CLI installer: download the prebuilt `thunderbolt` binary + SHA256SUMS and
 # verify the checksum before install. rustls (no OpenSSL) matches the rest of the
@@ -58,6 +65,7 @@ tauri-plugin-updater = "2.14.1"
 tauri-plugin-store = "2.4.3"
 # Native WebAuthn passkey ceremonies (iOS, macOS, Android, Windows); no-op stub on Linux.
 tauri-plugin-passkey = { path = "plugins/tauri-plugin-passkey" }
+tauri-plugin-pages = { path = "tauri-plugin-pages" }
 
 # Used only in debug builds to install a rustls crypto provider before
 # tauri-plugin-devtools' reqwest stack initializes (otherwise iOS dev panics
@@ -65,7 +73,25 @@ tauri-plugin-passkey = { path = "plugins/tauri-plugin-passkey" }
 rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-dialog = "~2.7.3"
 tauri-plugin-single-instance = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-web-kit = { version = "0.3.2", default-features = false, features = ["std", "WKWebView", "WKNavigation", "WKWebViewConfiguration", "WKWebsiteDataStore", "WKSnapshotConfiguration", "block2"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSBitmapImageRep", "NSImageRep", "NSImage", "NSEvent", "NSGraphics", "NSGraphicsContext", "NSResponder", "NSView", "NSClipView", "NSWindow", "objc2-core-graphics", "block2"] }
+objc2-foundation = "0.3.2"
+block2 = "0.6.2"
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGEvent", "CGEventTypes"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "2.0.2", features = ["v2_10"] }
+gtk = "0.18.2"
+cairo-rs = { version = "0.18.5", features = ["png"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "0.39.1"
+windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2-ui-kit = { version = "0.3.2", features = ["UIApplication", "UIWindow", "UIView", "UIInterface", "UIScene", "UIWindowScene"] }

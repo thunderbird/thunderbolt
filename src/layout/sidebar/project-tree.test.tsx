@@ -5,16 +5,19 @@
 import '@/testing-library'
 import { DndContext } from '@dnd-kit/core'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it, mock } from 'bun:test'
-import type { ReactNode } from 'react'
-import { MemoryRouter, useLocation } from 'react-router'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, mock, spyOn } from 'bun:test'
+import type { ComponentType, ReactNode } from 'react'
+import { eq } from 'drizzle-orm'
+import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar'
 import { registerFramerMotionMock } from '@/test-utils/framer-motion-mock'
 import { ChatPromptInput } from '@/components/chat/chat-prompt-input'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { ContentViewProvider } from '@/content-view/context'
-import { createProject, getAllProjects, getProject } from '@/dal/projects'
-import { chatThreadsTable } from '@/db/tables'
+import { createProject, getAllProjects, getProject, useProjectsState } from '@/dal/projects'
+import { chatThreadsTable, projectsTable } from '@/db/tables'
+import { useChatStore } from '@/chats/chat-store'
+import { useAgentExecutionStore } from '@/agent-execution/store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
@@ -63,18 +66,22 @@ const tree = (isDragging: boolean, isMobile = false, overrides: Partial<ProjectT
   />
 )
 
-/** Mount the real project navigation with isolated database and router contexts. */
-const createWrapper = () => {
+const MemoryNavigation = ({ children }: { children: ReactNode }) => (
+  <MemoryRouter initialEntries={['/chats/new']}>{children}</MemoryRouter>
+)
+
+/** Mount project navigation with isolated data and the router needed by the scenario. */
+const createWrapper = (Router: ComponentType<{ children: ReactNode }> = MemoryNavigation) => {
   const TestProvider = createTestProvider()
   return ({ children }: { children: ReactNode }) => (
     <TestProvider>
-      <MemoryRouter initialEntries={['/chats/new']}>
+      <Router>
         <ContentViewProvider>
           <SidebarProvider>
             <DndContext>{children}</DndContext>
           </SidebarProvider>
         </ContentViewProvider>
-      </MemoryRouter>
+      </Router>
     </TestProvider>
   )
 }
@@ -106,35 +113,49 @@ const MobileCreationFixture = ({ useChat }: { useChat: ReturnType<typeof createM
 }
 
 it('closes mobile navigation after creating a project, then focuses its new-chat composer', async () => {
-  forceMobileViewport()
-  const chatInstance = createMockChatInstance()
-  const model = createMockModel()
-  hydrateStore({
-    id: 'new-chat',
-    chatInstance,
-    chatThread: null,
-    models: [model],
-    selectedModel: model,
-    triggerData: null,
-  })
-  render(<MobileCreationFixture useChat={createMockUseChat(chatInstance)} />, { wrapper: createWrapper() })
-  fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
-  fireEvent.contextMenu(await waitForElement(() => screen.queryByRole('button', { name: 'Projects' })))
-  fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New project' })))
-  fireEvent.change(await waitForElement(() => screen.queryByRole('textbox', { name: 'Name' })), {
-    target: { value: 'Mobile research' },
-  })
-  await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-  })
-  await act(async () => {
-    await getClock().tickAsync(1000)
-  })
-  expect(screen.queryByRole('dialog', { name: 'Navigation' })).toBeNull()
-  expect(screen.queryByRole('dialog', { name: 'Create project' })).toBeNull()
-  expect(screen.getByRole('status', { name: 'Location' }).textContent).toMatch(/^\/chats\/new\?projectId=/)
-  expect(screen.getByPlaceholderText('Ask me anything…')).toHaveFocus()
-  expect(document.querySelector('[data-slot="sidebar-main"]')?.firstElementChild).not.toHaveAttribute('inert')
+  const originalUrl = window.location.href
+  const originalHistoryState = window.history.state
+  const setBrowserUrl = (url: string) =>
+    (window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(url)
+  setBrowserUrl('https://example.com/chats/new')
+  window.history.replaceState({ key: 'default' }, '')
+  try {
+    forceMobileViewport()
+    const chatInstance = createMockChatInstance()
+    const model = createMockModel()
+    hydrateStore({
+      id: 'new-chat',
+      chatInstance,
+      chatThread: null,
+      models: [model],
+      selectedModel: model,
+      triggerData: null,
+    })
+    render(<MobileCreationFixture useChat={createMockUseChat(chatInstance)} />, {
+      wrapper: createWrapper(BrowserRouter),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    fireEvent.contextMenu(await waitForElement(() => screen.queryByRole('button', { name: 'Projects' })))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New project' })))
+    fireEvent.change(await waitForElement(() => screen.queryByRole('textbox', { name: 'Name' })), {
+      target: { value: 'Mobile research' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    })
+    await act(async () => {
+      await getClock().tickAsync(1000)
+    })
+    expect(screen.queryByRole('dialog', { name: 'Navigation' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Create project' })).toBeNull()
+    expect(screen.getByRole('status', { name: 'Location' }).textContent).toMatch(/^\/chats\/new\?projectId=/)
+    expect(document.activeElement === screen.getByPlaceholderText('Ask me anything…')).toBe(true)
+    expect(document.querySelector('[data-slot="sidebar-main"]')?.firstElementChild).not.toHaveAttribute('inert')
+  } finally {
+    cleanup()
+    setBrowserUrl(originalUrl)
+    window.history.replaceState(originalHistoryState, '')
+  }
 })
 
 it.each(['context', 'overflow', 'mobile'])(
@@ -233,9 +254,7 @@ it('groups collapsed projects in a menu with incremental lists and working chat 
     tree(false, false, {
       isCollapsed: true,
       onChatClick,
-      chatThreads: [
-        { id: 'research-chat', title: 'Interview notes', projectId: project.id, miniAppId: null, isEncrypted: 0 },
-      ],
+      chatThreads: [{ id: 'research-chat', title: 'Interview notes', projectId: project.id, isEncrypted: 0 }],
     }),
     { wrapper: createWrapper() },
   )
@@ -255,7 +274,7 @@ it('groups collapsed projects in a menu with incremental lists and working chat 
   const chat = await waitForElement(() => screen.queryByRole('menuitem', { name: 'Interview notes' }))
   expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeVisible()
   fireEvent.click(chat)
-  expect(onChatClick).toHaveBeenCalledWith('research-chat', null)
+  expect(onChatClick).toHaveBeenCalledWith('research-chat')
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryByText('Interview notes')).not.toBeInTheDocument()
 })
@@ -567,4 +586,59 @@ it('keeps an editor draft when live projects push its row out of the preview', a
   })
   expect(screen.queryByRole('dialog', { name: 'Project settings' })).toBeNull()
   expect((await getAllProjects(getDb())).some((project) => project.name === 'Unsaved draft')).toBe(true)
+})
+
+it('stops cached project turns on explicit synced deletion, never on missing partial-sync rows', async () => {
+  const project = await createProject(getDb(), { name: 'Synced workspace' })
+  const active = createMockChatInstance([], 'streaming')
+  const pendingSync = createMockChatInstance([], 'streaming')
+  const seed = (id: string, projectId: string, chatInstance = active) => {
+    hydrateStore({ id, chatInstance, chatThread: null, selectedModel: null, triggerData: null })
+    useChatStore.getState().updateSession(id, { projectId })
+  }
+  seed('synced-chat', project.id)
+  seed('awaiting-project-sync', 'not-downloaded-yet', pendingSync)
+  const Probe = () => {
+    // A second consumer shares the query; revocation must remain idempotent.
+    useProjectsState()
+    const projectId = useChatStore((state) => state.sessions.get('synced-chat')?.projectId)
+    return <output>{projectId ?? 'standalone'}</output>
+  }
+  const triggerChangeRef = { current: null as ((tables: string[]) => void) | null }
+  render(
+    <PowerSyncReactivityTestProvider tables={['projects']} triggerChangeRef={triggerChangeRef}>
+      {tree(false)}
+      <Probe />
+    </PowerSyncReactivityTestProvider>,
+    { wrapper: createWrapper() },
+  )
+  await waitForElement(() => screen.queryByRole('button', { name: 'Synced workspace' }))
+  expect(active.stop).not.toHaveBeenCalled()
+  expect(pendingSync.stop).not.toHaveBeenCalled()
+  await act(async () => {
+    // Simulate the incoming synced row, bypassing the local delete DAL entirely.
+    await getDb()
+      .update(projectsTable)
+      .set({ deletedAt: new Date().toISOString() })
+      .where(eq(projectsTable.id, project.id))
+    triggerChangeRef.current!(['projects'])
+  })
+  await waitForElement(() => screen.queryByText('standalone', { selector: 'output' }))
+  expect(active.stop).toHaveBeenCalledTimes(1)
+  expect(useAgentExecutionStore.getState().byProject[project.id]).toBeUndefined()
+  expect(useChatStore.getState().sessions.get('awaiting-project-sync')?.projectId).toBe('not-downloaded-yet')
+  expect(pendingSync.stop).not.toHaveBeenCalled()
+
+  const lateHydration = createMockChatInstance()
+  await act(async () => seed('hydrated-after-tombstone', project.id, lateHydration))
+  expect(useChatStore.getState().sessions.get('hydrated-after-tombstone')?.projectId).toBeNull()
+  expect(lateHydration.stop).toHaveBeenCalledTimes(1)
+  const persist = spyOn(useAgentExecutionStore, 'setState')
+  try {
+    await act(async () => useChatStore.getState().updateSession('synced-chat', { retryCount: 1 }))
+    expect(persist).not.toHaveBeenCalled()
+    expect(active.stop).toHaveBeenCalledTimes(1)
+  } finally {
+    persist.mockRestore()
+  }
 })

@@ -4,6 +4,7 @@
 
 import type { AcpCompaction } from '@/acp/compaction'
 import { isRenderHtmlPart, renderHtmlOutput } from '@/artifacts/render-html-tool'
+import { publishedPageOutput } from '@/pages/published-page-output'
 import {
   type DynamicToolUIPart,
   isToolOrDynamicToolUIPart,
@@ -107,7 +108,7 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
       // preview streams into place (even before any HTML has arrived), then it becomes the
       // verified result. Only a finished call that FAILED verification — or errored — stays in
       // the group as an ordinary tool call.
-      if (isRenderHtmlPart(part) && artifactRendersStandalone(part)) {
+      if ((isRenderHtmlPart(part) && artifactRendersStandalone(part)) || publishedPageOutput(part)) {
         flushGroup()
         grouped.push(part)
         return

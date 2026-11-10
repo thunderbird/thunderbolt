@@ -1013,6 +1013,9 @@ describe('prepareAiRequestConfig — web search availability', () => {
 })
 
 describe('logical-turn citation registry', () => {
+  beforeEach(() => useSearchProviderStore.getState().clearSearchProvider())
+  afterEach(() => useSearchProviderStore.getState().clearSearchProvider())
+
   it('keeps cached source labels and metadata across rebuilt toolsets and starts fresh for a new turn', async () => {
     await setupTestDatabase()
     setAuthToken('test-session')

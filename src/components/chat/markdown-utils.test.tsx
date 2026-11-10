@@ -249,7 +249,7 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
     expect(dialogs).toHaveLength(1)
   })
 
-  test('works without ContentViewProvider: no Open in Sidebar, Open link does not crash', () => {
+  test('works without ContentViewProvider: no Open in Thunderbolt, Open link does not crash', () => {
     const markdown = '[link](https://example.com)'
     const { container } = render(
       <ExternalLinkDialogProvider>
@@ -267,7 +267,7 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
 
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(screen.getByText('https://example.com')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Open in Sidebar' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open in Thunderbolt' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open Link' })).toBeInTheDocument()
 
     const originalOpen = window.open
@@ -418,6 +418,44 @@ describe('ExternalLinkDialogProvider — externalLinkBehavior routing', () => {
 
     expect(windowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  test('remembering the in-app choice updates Preferences and bypasses future dialogs', () => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'ask')
+    const link = renderLink('https://example.com', { isDesktopPlatform: () => true })
+    fireEvent.click(link)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Remember my choice' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Thunderbolt' }))
+    expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('sidebar')
+    expect(screen.getByTestId('preview-state')).toHaveTextContent('https://example.com')
+    fireEvent.click(link)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  test('remembering the browser choice updates Preferences and bypasses future dialogs', async () => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'ask')
+    const windowOpen = stubWindowOpen()
+    const link = renderLink('https://example.com', { isDesktopPlatform: () => true })
+    fireEvent.click(link)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Remember my choice' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Browser' }))
+    await act(async () => {})
+    expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('browser')
+    fireEvent.click(link)
+    await act(async () => {})
+    expect(windowOpen).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  test('canceling a checked dialog leaves Ask selected and the next checkbox clear', () => {
+    useLocalSettingsStore.getState().setLocalSetting('externalLinkBehavior', 'ask')
+    const link = renderLink('https://example.com', { isDesktopPlatform: () => true })
+    fireEvent.click(link)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Remember my choice' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(useLocalSettingsStore.getState().externalLinkBehavior).toBe('ask')
+    fireEvent.click(link)
+    expect(screen.getByRole('checkbox', { name: 'Remember my choice' })).not.toBeChecked()
   })
 
   test('sidebar on web: degrades to the dialog because there is no side panel', () => {

@@ -23,7 +23,6 @@ import { useChatStore } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
 import { RenameChatDialog } from './rename-chat-dialog'
-import { MiniAppChatBadge } from '@/mini-apps/mini-app-chat-badge'
 
 /** `useChat` is injectable so tests exercise the real component without a global
  *  `mock.module('@ai-sdk/react')` (which leaks across files under `--randomize`). */
@@ -241,7 +240,7 @@ export const ChatListItem = memo(
               longPressFiredRef.current = false
               return
             }
-            onChatClick(thread.id, thread.miniAppId)
+            onChatClick(thread.id)
           }}
           isActive={isActive}
           className={cn(
@@ -251,7 +250,6 @@ export const ChatListItem = memo(
         >
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {showSpinner && streamingIcon}
-            {thread.miniAppId && <MiniAppChatBadge appId={thread.miniAppId} />}
             <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
           </div>
         </SidebarMenuButton>
@@ -313,7 +311,7 @@ export const ChatListItem = memo(
             >
               <ContextMenuTrigger asChild>
                 <SidebarMenuButton
-                  onClick={() => onChatClick(thread.id, thread.miniAppId)}
+                  onClick={() => onChatClick(thread.id)}
                   isActive={isActive}
                   className={cn(
                     'cursor-pointer flex items-center gap-2 pr-9 group-hover/item:bg-sidebar-accent group-hover/item:text-sidebar-accent-foreground',
@@ -324,7 +322,6 @@ export const ChatListItem = memo(
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     {showSpinner && streamingIcon}
-                    {thread.miniAppId && <MiniAppChatBadge appId={thread.miniAppId} />}
                     <span className="truncate flex-1 min-w-0">{displayTitle}</span>
                   </div>
                 </SidebarMenuButton>

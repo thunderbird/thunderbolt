@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Minesweeper · Browser Playground</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/minesweeper.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav" aria-label="Main navigation">
+        <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">↗</span>Browser Playground</a>
+        <div class="nav-links">
+          <a href="/minesweeper.html" aria-current="page">Minesweeper</a><a href="/sudoku.html">Sudoku</a
+          ><a href="/interactions.html">Interaction lab</a>
+        </div>
+      </nav>
+    </header>
+    <main>
+      <div class="eyebrow">01 / Click &amp; explore</div>
+      <h1>A field of possibilities.</h1>
+      <p class="intro">Clear every safe square. Leave the ten hidden mines alone.</p>
+      <div class="workspace">
+        <section class="panel" aria-label="Minesweeper game">
+          <div class="toolbar">
+            <button id="new-game" class="button primary">New game</button
+            ><button id="flag-mode" class="button" aria-pressed="false">⚑ Flag mode</button
+            ><label class="compact-field"
+              >Seed <input id="seed" type="number" min="1" max="2147483647" value="42"
+            /></label>
+          </div>
+          <div class="stats">
+            <div><strong id="mines-left">10</strong>Mines unflagged</div>
+            <div><strong id="safe-left">71</strong>Safe squares left</div>
+            <div><strong>9 × 9</strong>Board size</div>
+          </div>
+          <div id="mine-board" class="mine-board" role="group" aria-label="Minesweeper board"></div>
+          <p id="game-status" class="status" role="status">Pick any square. Your first reveal is always safe.</p>
+        </section>
+        <aside class="panel side-panel">
+          <h2>How to play</h2>
+          <ol>
+            <li>Click a square to reveal it. A number tells you how many mines touch that square.</li>
+            <li>Right-click to place a flag, or turn on Flag mode and use a regular click.</li>
+            <li>Reveal all 71 safe squares to win.</li>
+          </ol>
+          <p class="hint">
+            <strong>Keyboard friendly</strong><br />Tab to a square; Enter or Space reveals it. Press F on a focused
+            square to toggle its flag.
+          </p>
+          <p>
+            <strong>Try asking</strong><br />“Play Minesweeper. Start at row 1, column 1 and explain your next move.”
+          </p>
+          <p>
+            Use the same seed and first square for a repeatable board. Change the seed, then choose New game for a
+            different layout.
+          </p>
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>

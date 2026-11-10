@@ -26,7 +26,7 @@ export const ChatMenuItems = ({
           key={thread.id}
           aria-current={thread.id === currentChatThreadId ? 'page' : undefined}
           className={cn('cursor-pointer', thread.id === currentChatThreadId && 'bg-accent font-medium')}
-          onSelect={() => onChatClick(thread.id, thread.miniAppId)}
+          onSelect={() => onChatClick(thread.id)}
         >
           <span className="truncate">{chatTitleLabel(i18n, thread.title)}</span>
         </DropdownMenuItem>

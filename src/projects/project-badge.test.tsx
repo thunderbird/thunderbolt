@@ -382,3 +382,28 @@ it('closes project creation when navigating to another chat and does not reopen 
   expect(screen.queryByRole('dialog', { name: 'Create project' })).not.toBeInTheDocument()
   expect((await getAllProjects(getDb())).map((project) => project.name)).toEqual(['Q3 Planning'])
 })
+
+it.each(['streaming', 'compacting'] as const)(
+  'explains why an active %s chat cannot leave its project',
+  async (activity) => {
+    if (activity === 'streaming') {
+      useChatStore.getState().updateSession('chat-1', { chatInstance: createMockChatInstance([], 'streaming') })
+    } else {
+      useChatStore.getState().updateSession('chat-1', { compactionStatus: 'compacting' })
+    }
+    await renderBadge()
+    fireEvent.click(screen.getByRole('button', { name: 'Q3 Planning' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Remove from project' }))
+      await getClock().runAllAsync()
+    })
+    const error = screen.getByRole('alertdialog', { name: 'Could not move chat' })
+    expect(error).toHaveTextContent('Stop the current reply before moving this chat to another project.')
+    expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+    fireEvent.click(within(error).getByRole('button', { name: /^Close$/ }))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  },
+)

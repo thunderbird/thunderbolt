@@ -25,7 +25,10 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { SignInModalProvider } from '@/contexts'
+import { ContentViewProvider, usePreview } from '@/content-view/context'
+import { AppContentOverlayHost, AppContentOverlayProvider } from '@/components/app-content-overlay'
 import * as embed from '@/lib/embed'
+import * as platform from '@/lib/platform'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { Header } from './header'
@@ -191,6 +194,28 @@ describe('Header', () => {
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
   })
 
+  it('offers only agents that honor the fixed project environment without changing the persisted selection', async () => {
+    await createAgent(getDb(), {
+      id: customAgent.id,
+      name: customAgent.name,
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://example.com',
+      userId: 'user-1',
+    })
+    const project = await createProject(getDb(), { name: 'Shared workspace' })
+    setupWithAgent(customAgent, { projectId: project.id })
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+    expect(screen.getByText(customAgent.name)).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    await flushAgentsQuery()
+    expect(screen.getByText(builtInAgent.name)).toBeInTheDocument()
+    expect(screen.getAllByText(customAgent.name)).toHaveLength(1)
+    expect(screen.queryByText('Add Agent')).toBeNull()
+    expect(useChatStore.getState().sessions.get('thread-1')?.selectedAgent.id).toBe(customAgent.id)
+  })
+
   it('falls back to the built-in agent when the session has no agent', () => {
     setupWithAgent(builtInAgent)
 
@@ -293,6 +318,54 @@ describe('Header', () => {
     fireEvent.click(await screen.findByText('Add Agent'))
 
     expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
+  })
+
+  it.each([true, false])('opens and closes the browser from the shared header (native: %s)', (native) => {
+    const desktop = spyOn(platform, 'isTauriDesktop').mockReturnValue(native)
+    restoreViewport()
+    setupWithAgent(builtInAgent)
+    const PreviewProbe = () => {
+      const { previewConfig } = usePreview()
+      return (
+        <>
+          <output data-testid="preview-url">{previewConfig?.url}</output>
+          {previewConfig && <AppContentOverlayHost />}
+        </>
+      )
+    }
+
+    try {
+      render(
+        <ContentViewProvider>
+          <AppContentOverlayProvider>
+            <Header />
+            <PreviewProbe />
+          </AppContentOverlayProvider>
+        </ContentViewProvider>,
+        { wrapper: TestWrapper },
+      )
+      const opener = screen.getByRole('button', { name: 'Open browser' })
+      expect(opener.closest('header')).toBeInTheDocument()
+      expect(opener).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByTestId('preview-url')).toBeEmptyDOMElement()
+
+      opener.focus()
+      fireEvent.click(opener)
+
+      expect(screen.getByTestId('preview-url')).toHaveTextContent('about:blank')
+      const closer = screen.getByRole('button', { name: 'Close browser' })
+      expect(closer.closest('[data-slot="app-content-overlay-host"]')).toBeInTheDocument()
+      expect(closer).toHaveAttribute('aria-pressed', 'true')
+      expect(closer).toHaveFocus()
+
+      fireEvent.click(closer)
+
+      expect(screen.getByTestId('preview-url')).toBeEmptyDOMElement()
+      expect(screen.getByRole('button', { name: 'Open browser' })).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByRole('button', { name: 'Open browser' })).toHaveFocus()
+    } finally {
+      desktop.mockRestore()
+    }
   })
 
   describe('operator logo', () => {

@@ -17,14 +17,29 @@
  */
 
 import { useQueryClient } from '@tanstack/react-query'
-import { useChatStore } from '@/chats/chat-store'
+import { useChatStore, type ChatSession } from '@/chats/chat-store'
 import { withChatThreadWrite } from '@/chats/chat-thread-write'
 import { useDatabase } from '@/contexts'
 import { setChatThreadProject } from '@/dal/projects'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { ChatDrop } from '@/projects/chat-drop'
 
+export const activeChatProjectMoveMessage = 'Stop the current reply before moving this chat to another project.'
+export class ActiveChatProjectMoveError extends Error {
+  constructor() {
+    super(activeChatProjectMoveMessage)
+    this.name = 'ActiveChatProjectMoveError'
+  }
+}
+type MovingChat = Pick<
+  ChatSession,
+  'projectId' | 'stopping' | 'compactionStatus' | 'retryCount' | 'retriesExhausted'
+> & {
+  chatInstance: Pick<ChatSession['chatInstance'], 'status'>
+}
+
 export type MoveChatDeps = {
+  getOpenSession?: (chatThreadId: string) => MovingChat | undefined
   db: AnyDrizzleDatabase
   setProject: typeof setChatThreadProject
   /** Update the live session's badge; skipped when the chat isn't open. */
@@ -35,6 +50,19 @@ export type MoveChatDeps = {
 
 export const moveChatToProject = async ({ chatThreadId, projectId }: ChatDrop, deps: MoveChatDeps): Promise<void> => {
   await withChatThreadWrite(chatThreadId, async () => {
+    const session = (deps.getOpenSession ?? ((id) => useChatStore.getState().sessions.get(id)))(chatThreadId)
+    if (session?.projectId === projectId) {
+      return
+    }
+    if (
+      session &&
+      (session.chatInstance.status === 'submitted' ||
+        session.chatInstance.status === 'streaming' ||
+        (!session.stopping && session.retryCount > 0 && !session.retriesExhausted) ||
+        session.compactionStatus === 'compacting')
+    ) {
+      throw new ActiveChatProjectMoveError()
+    }
     const assigned = await deps.setProject(deps.db, chatThreadId, projectId)
     if (assigned) {
       deps.updateOpenSession(chatThreadId, projectId)

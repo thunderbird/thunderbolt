@@ -4,6 +4,8 @@
 
 import { AcpCompactionNotice } from '@/components/context-usage'
 import { isRenderHtmlPart } from '@/artifacts/render-html-tool'
+import { PageMessagePart } from '@/pages/page-message-part'
+import { publishedPageOutput } from '@/pages/published-page-output'
 import {
   artifactRendersStandalone,
   filterMessageParts,
@@ -73,7 +75,7 @@ export const mountMessageParts = (
   // which otherwise leaves a large empty gap above an artifact card.
   const hasResponseBody = groupedParts.some((part) => {
     const [partType] = splitPartType(part.type)
-    return partType === 'text' || partType === 'tool'
+    return partType === 'text' || partType === 'tool' || part.type === 'dynamic-tool'
   })
 
   groupedParts.forEach((part, index) => {
@@ -111,9 +113,16 @@ export const mountMessageParts = (
           />,
         )
         break
+      case 'dynamic':
       case 'tool':
-        // groupMessageParts only lifts render_html tool parts out of the group.
-        partElements.push(<ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />)
+        // Only verified artifact and published-page results are lifted out of tool groups.
+        partElements.push(
+          isRenderHtmlPart(part as ToolOrDynamicToolUIPart) ? (
+            <ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />
+          ) : (
+            <PageMessagePart part={part as ToolOrDynamicToolUIPart} messageId={messageId} />
+          ),
+        )
         break
     }
   })
@@ -187,7 +196,10 @@ export const AssistantMessage = memo(
     // same condition that actually lifts the card out (streaming or verified-ok), so a
     // last message whose only render_html call FAILED still gets the normal reserve.
     const hasArtifact = useMemo(
-      () => message.parts.some((part) => isRenderHtmlPart(part) && artifactRendersStandalone(part)),
+      () =>
+        message.parts.some(
+          (part) => (isRenderHtmlPart(part) && artifactRendersStandalone(part)) || publishedPageOutput(part),
+        ),
       [message.parts],
     )
 

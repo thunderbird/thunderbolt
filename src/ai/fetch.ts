@@ -2,21 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { withToolApproval, type AuthorizeTool } from '@/agent-execution/approval'
 import { bindModelProvider } from '@/providers/model-connection'
 import { loadReasoningCapabilities } from './reasoning-effort'
 import { reasoningProviderOptions } from './reasoning-provider-options'
 import type { ReasoningEffort } from '@shared/reasoning-effort'
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
-import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
-import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
-import { requestMiniAppApproval } from '@/mini-apps/mini-app-approval'
-import { chooseEmbeddedSurface, type EmbeddedSurfaceChoice } from '@/ai/embedded-surface'
-import { buildMiniAppContextNote, supersedeAppContextResults } from '@/mini-apps/mini-app-context-note'
-import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
-import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
-import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
-import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from '@/mini-apps/mini-app-tools'
+import { createPageTools, pageToolPrompt } from '@/pages/page-tools'
+import { browserController } from '@/browser/browser-controller'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
@@ -142,6 +136,7 @@ export const ollama = createOpenAI({
 })
 
 type AiFetchStreamingResponseOptions = {
+  authorizeTool?: AuthorizeTool
   reasoningEffort?: ReasoningEffort
   init: RequestInit
   modelId: string
@@ -499,14 +494,13 @@ export type PreparedAiRequestConfig = {
   readonly skills: readonly SkillDefinition[]
   readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
   readonly stableSystemPrompt: string
-  /** Per-send tail of the system prompt: the date/time, plus the open Mini App's
-   *  current view when that is the surface the model is answering about. */
+  /** Per-send tail of the system prompt, including the current date and time. */
   readonly volatileSystemPrompt: string
-  /** Which embedded surface `get_app_context` describes this send, if any. */
-  readonly embeddedSurface: EmbeddedSurfaceChoice
 }
 
 export type PrepareAiRequestConfigOptions = {
+  /** The caller gates every tool through the chat's access policy. */
+  readonly toolApprovalHandled?: boolean
   readonly modelId: string
   readonly mcpClients?: NamedMCPClient[]
   readonly reconnectClient?: ReconnectClient
@@ -598,6 +592,12 @@ export const prepareAiRequestConfig = async ({
     loadsSkillsByTool,
     webToolBudget,
   )
+  if (supportsTools) {
+    Object.assign(
+      appToolset,
+      createPageTools({ activity: telemetry ? browserController.forAgentTurn(telemetry.traceId) : browserController }),
+    )
+  }
   // Cross-chat recall is a tool, not an injection: it costs nothing when unused
   // and leaves the cacheable stable prompt untouched. Only registered when there
   // is actually something to search.
@@ -609,71 +609,11 @@ export const prepareAiRequestConfig = async ({
       titleByThreadId: projectContext.titleByThreadId,
     })
   }
-  // Mini App context is a tool for the same reason cross-chat recall is: the
-  // app's state changes on every click, and injecting it would invalidate the
-  // cacheable stable prompt on every send. Registered only while an app is open.
-  const miniAppSnapshot = getMiniAppSnapshot()
-  const miniApp = miniAppSnapshot.app
-  // One tool name for both embedded surfaces — see `chooseEmbeddedSurface` for
-  // which one it describes when both are open, and why that is a rule rather
-  // than a condition.
-  const artifactSnapshot = getArtifactContextSnapshot()
-  const surface = chooseEmbeddedSurface({
-    miniAppOpenedAt: miniApp ? miniAppSnapshot.openedAt : null,
-    artifactOpenedAt: artifactSnapshot.openedAt,
-    hasArtifactTitle: artifactSnapshot.title !== null,
-  })
-  // Reads the frame live rather than a cache, so state the user changed a
-  // moment ago is in the answer with no notification needed.
-  const readMiniAppContext = () => useMiniAppStore.getState().requestContext?.() ?? Promise.resolve(null)
-  if (supportsTools && surface === 'artifact') {
-    appToolset.get_app_context = createArtifactContextTool({ getSnapshot: getArtifactContextSnapshot })
-  } else if (supportsTools && surface === 'mini-app') {
-    appToolset.get_app_context = createMiniAppContextTool({
-      getSnapshot: getMiniAppSnapshot,
-      requestContext: readMiniAppContext,
-    })
-  }
-  // The view also goes into the volatile system prompt on every send, because a
-  // tool is only as fresh as the model's decision to call it — see
-  // `mini-app-context-note.ts`. Started here so the frame round trip overlaps
-  // MCP discovery below instead of adding to it.
-  const miniAppContextPromise = supportsTools && surface === 'mini-app' && miniApp ? readMiniAppContext() : null
-  // Tools the app declares over the bridge. Merged the same way MCP tools are
-  // (prefixed, conflicts skipped) since both are externally-defined toolsets we
-  // discover at runtime.
-  const { invokeTool } = useMiniAppStore.getState()
-  // Approvals are queued on the chat that provoked them, so the request needs
-  // the thread id — a global queue showed one chat's prompt over another's.
-  const miniAppTools =
-    supportsTools && miniApp && invokeTool && chatThreadId
-      ? createMiniAppTools({
-          app: miniApp,
-          tools: miniAppSnapshot.tools,
-          invoke: invokeTool,
-          requestApproval: (tool, args) => requestMiniAppApproval({ chatThreadId, app: miniApp, tool, args }),
-        })
-      : {}
-  // Tracked, not just counted: a tool skipped for a name conflict is not
-  // callable, and advertising it in the prompt anyway had the model calling a
-  // name that was never registered.
-  const registeredMiniAppTools = new Set<string>()
-  for (const [name, miniAppTool] of Object.entries(miniAppTools)) {
-    if (appToolset[name]) {
-      console.warn(`Mini App tool "${name}" conflicts with an existing tool and was skipped`)
-      continue
-    }
-    appToolset[name] = miniAppTool
-    registeredMiniAppTools.add(name)
-  }
   telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
     : { toolset: appToolset, summary: undefined, mcpTools: undefined }
   telemetry?.endPhase('mcp_discovery')
-  const miniAppContextNote =
-    miniAppContextPromise && miniApp ? buildMiniAppContextNote(miniApp, await miniAppContextPromise) : null
-
   const integrationStatuses = [
     integrationStatus.googleConnected && !integrationStatus.googleEnabled ? 'GOOGLE_DISABLED' : null,
     integrationStatus.microsoftConnected && !integrationStatus.microsoftEnabled ? 'MICROSOFT_DISABLED' : null,
@@ -686,21 +626,6 @@ export const prepareAiRequestConfig = async ({
       // Only advertise the tool when it was actually registered above.
       hasSearchableChats: supportsTools && (projectContext?.siblingThreadIds.length ?? 0) > 0,
     }),
-    // Same rule: only describe the app when `get_app_context` actually exists,
-    // and only advertise the actions that survived the merge above.
-    miniAppSection: supportsTools
-      ? [
-          // Gated on the surface: with an artifact selected, `get_app_context`
-          // reports the artifact, so claiming the app is on screen would point
-          // the model at a tool that answers about something else.
-          buildMiniAppPromptSection(miniApp, surface),
-          buildMiniAppToolsPromptSection(
-            miniAppSnapshot.tools.filter((tool) => registeredMiniAppTools.has(toToolsetName(tool))),
-          ),
-        ]
-          .filter((section) => section !== null)
-          .join('\n\n') || null
-      : null,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,
@@ -715,6 +640,7 @@ export const prepareAiRequestConfig = async ({
     },
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
     availableToolNames: Object.keys(merged.toolset),
+    browserSection: supportsTools ? pageToolPrompt : null,
     mcpServersSummary: merged.summary,
     skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
     supportsTools: loadsSkillsByTool,
@@ -733,13 +659,7 @@ export const prepareAiRequestConfig = async ({
     skills,
     mcpToolsMetadata: merged.mcpTools,
     stableSystemPrompt: prompt.stablePrompt,
-    // The note rides the volatile prompt rather than a separate field so every
-    // engine that composes stable + volatile (this file and the ACP harness)
-    // carries it without knowing it exists.
-    volatileSystemPrompt: miniAppContextNote
-      ? `${prompt.volatilePrompt}\n\n${miniAppContextNote}`
-      : prompt.volatilePrompt,
-    embeddedSurface: surface,
+    volatileSystemPrompt: prompt.volatilePrompt,
   }
 }
 
@@ -801,6 +721,7 @@ export const aiFetchStreamingResponse = async ({
   webToolBudget,
   telemetry,
   debugTranscript,
+  authorizeTool,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body) as { messages: ThunderboltUIMessage[]; id: string }
@@ -818,12 +739,11 @@ export const aiFetchStreamingResponse = async ({
     profile,
     supportsTools,
     sourceCollector,
-    toolset,
+    toolset: rawToolset,
     skills,
     mcpToolsMetadata,
     stableSystemPrompt,
     volatileSystemPrompt,
-    embeddedSurface,
   } = await prepareAiRequestConfig({
     modelId,
     mcpClients,
@@ -833,8 +753,10 @@ export const aiFetchStreamingResponse = async ({
     // The chat id rides the request body (see the destructure above), which is
     // how this path knows which thread — and so which project — it is serving.
     chatThreadId: body.id,
+    toolApprovalHandled: authorizeTool !== undefined,
     telemetry,
   })
+  const toolset = authorizeTool ? withToolApproval(rawToolset, authorizeTool, mcpToolsMetadata) : rawToolset
   if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')
   }
@@ -1051,13 +973,9 @@ export const aiFetchStreamingResponse = async ({
         // read from IndexedDB) so the model receives them. Only the reference is
         // persisted/synced; the bytes are inlined here, in-flight to the model.
         // Quote parts are likewise flattened to Markdown blockquote text parts.
-        // With a Mini App on screen, prior-turn `get_app_context` results are
-        // superseded by the view in the system prompt — two descriptions of the
-        // screen in one request is an invitation to pick the stale one.
         telemetry?.startPhase('attachment_hydration')
-        const historyMessages = embeddedSurface === 'mini-app' ? supersedeAppContextResults(messages) : messages
         const baseMessages = await convertToModelMessages(
-          hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(historyMessages)),
+          hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(messages)),
         )
         telemetry?.endPhase('attachment_hydration')
         let currentInput = assembleBuiltInModelInput(stableSystemPrompt, baseMessages, volatileSystemNotes)
@@ -1079,12 +997,7 @@ export const aiFetchStreamingResponse = async ({
           }
 
           const result = runStreamText(currentInput)
-          const messageMetadata = createMessageMetadata(
-            modelId,
-            sourceCollector,
-            mcpToolsMetadata,
-            embeddedSurface ?? undefined,
-          )
+          const messageMetadata = createMessageMetadata(modelId, sourceCollector, mcpToolsMetadata)
 
           // If this is not the last possible attempt, we need to check for empty response
           if (attemptNumber < maxAttempts) {

@@ -21,6 +21,7 @@ it('creates from only a name and emoji, and never submits when opening the icon 
   const name = screen.getByRole('textbox', { name: 'Name' })
   expect(name).toHaveFocus()
   expect(screen.getAllByRole('textbox')).toHaveLength(1)
+  expect(screen.getByRole('button', { name: 'Project environment' })).toHaveTextContent('Local sandbox')
   expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled()
   fireEvent.change(name, { target: { value: '   ' } })
   fireEvent.submit(name.closest('form')!)
@@ -34,7 +35,11 @@ it('creates from only a name and emoji, and never submits when opening the icon 
   await act(async () => {
     fireEvent.submit(name.closest('form')!)
   })
-  expect(onSubmit).toHaveBeenCalledWith({ name: 'Research', icon: '📁' })
+  expect(onSubmit).toHaveBeenCalledWith({
+    name: 'Research',
+    icon: '📁',
+    execution: { location: 'sandbox', access: 'ask' },
+  })
 })
 
 it('keeps the draft on failure and allows retrying without duplicate pending submissions', async () => {

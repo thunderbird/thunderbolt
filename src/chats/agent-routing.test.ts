@@ -29,6 +29,7 @@ import {
   setDebugTranscriptCaptureEnabled,
 } from '@/debug-transcript/recorder'
 import { createAgentRoutingFetch } from './chat-instance'
+import { withChatThreadWrite } from './chat-thread-write'
 
 const remoteAgent: Agent = {
   id: 'remote-foo',
@@ -532,35 +533,56 @@ describe('createAgentRoutingFetch', () => {
     expect(ctx.skillInstructions).toEqual(['Tell a cat joke.'])
   })
 
-  it('forwards the chat’s project context to a remote-acp agent', async () => {
-    // Project context was prepared only in the built-in pipeline, so switching a
-    // project's chat to a remote agent silently dropped its instructions and
-    // knowledge. ACP has no system channel; the adapter folds this into the prompt.
+  it.each(['remote-acp', 'managed-acp', 'managed-http'] as const)(
+    'rejects %s inside a project before connecting without rewriting its selection',
+    async (type) => {
+      resetStore()
+      const agent: Agent = { ...remoteAgent, type }
+      const { adapter, fetch: adapterFetch } = buildFakeAdapter(agent)
+      const connectToAgent = mock(async () => adapter)
+      hydrateSessionWith('t-project', agent, null, 'p1')
+      const customFetch = createAgentRoutingFetch('t-project', saveMessages, httpClient, getProxyFetch, {
+        connectToAgent: connectToAgent as never,
+        getDb: (() => ({})) as never,
+      })
+      const body = JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] })
+      await expect(customFetch('/chat', { method: 'POST', body })).rejects.toThrow(
+        "cannot use the project's environment",
+      )
+      await expect(customFetch.compact([], undefined, new AbortController().signal)).rejects.toThrow(
+        "cannot use the project's environment",
+      )
+      expect(connectToAgent).not.toHaveBeenCalled()
+      expect(adapterFetch).not.toHaveBeenCalled()
+      expect(useChatStore.getState().sessions.get('t-project')?.selectedAgent).toBe(agent)
+      expect(useChatStore.getState().sessions.get('t-project')?.projectId).toBe('p1')
+      // Moving the same chat out explicitly restores the existing external agent path.
+      useChatStore.getState().updateSession('t-project', { projectId: null })
+      await customFetch('/chat', { method: 'POST', body })
+      expect(adapterFetch).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('waits for an in-flight project move before choosing the runtime', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(remoteAgent)
     const connectToAgent = mock(async () => adapter)
-    hydrateSessionWith('t-project', remoteAgent, null, 'p1')
-
-    const customFetch = createAgentRoutingFetch('t-project', saveMessages, httpClient, getProxyFetch, {
-      getChatReasoningEffort: async () => undefined,
-      getAvailableModels: async () => useChatStore.getState().models,
-      connectToAgent: connectToAgent as never,
-      getAllSkills: (async () => []) as never,
-      getDb: (() => ({})) as never,
-      loadProjectContext: (async () => ({
-        id: 'p1',
-        siblingThreadIds: [],
-        titleByThreadId: {},
-        prompt: { name: 'Cabin build', instructions: 'Prefer metric units.', knowledge: [] },
-      })) as never,
+    hydrateSessionWith('t-moving', remoteAgent)
+    const committed = Promise.withResolvers<void>()
+    const move = withChatThreadWrite('t-moving', async () => {
+      await committed.promise
+      useChatStore.getState().updateSession('t-moving', { projectId: 'new-project' })
     })
-
-    const body = JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] })
-    await customFetch('/chat', { method: 'POST', body })
-
-    const [, ctx] = adapterFetch.mock.calls[0] as unknown as [unknown, { projectSection?: string }]
-    expect(ctx.projectSection).toContain('Cabin build')
-    expect(ctx.projectSection).toContain('Prefer metric units.')
+    const fetch = createAgentRoutingFetch('t-moving', saveMessages, httpClient, getProxyFetch, {
+      connectToAgent: connectToAgent as never,
+    })
+    const pending = fetch('/chat', { method: 'POST', body: JSON.stringify({ messages: [] }) })
+    await Promise.resolve()
+    expect(connectToAgent).not.toHaveBeenCalled()
+    committed.resolve()
+    await move
+    await expect(pending).rejects.toThrow("cannot use the project's environment")
+    expect(adapterFetch).not.toHaveBeenCalled()
   })
 
   it('skips the project lookup for a chat that is not in a project', async () => {

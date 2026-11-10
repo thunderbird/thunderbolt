@@ -58,7 +58,7 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
             variant="ghost"
             size="icon"
             className={cn(
-              'size-[var(--touch-height-sm)] shrink-0 cursor-pointer text-muted-foreground hover:text-sidebar-accent-foreground',
+              'size-[var(--touch-height-sm)] shrink-0 cursor-pointer rounded-xl text-muted-foreground hover:text-sidebar-accent-foreground',
               isMacDesktop() && 'ml-20',
             )}
             onClick={onToggle}
@@ -113,7 +113,7 @@ export const SidebarHeader = ({ onToggle, navToggle }: SidebarHeaderProps) => {
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       onClick={onToggle}
-                      className="cursor-pointer size-8 justify-center text-muted-foreground"
+                      className="cursor-pointer size-8 justify-center rounded-xl text-muted-foreground"
                     >
                       <PanelLeftRounded className="size-[var(--icon-size-default)]" />
                       <span className="sr-only">

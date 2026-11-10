@@ -9,11 +9,13 @@
  * non-UUID-shaped id loudly.
  */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import * as fsp from '@zenfs/core/promises'
+import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
 import {
   buildAppHarness,
   removeAgentWorkspace,
+  readAgentWorkspaceFile,
   workspaceDirFor,
   writeAgentWorkspaceFiles,
 } from './build-app-harness.ts'
@@ -51,6 +53,80 @@ describe('writeAgentWorkspaceFiles', () => {
     await writeAgentWorkspaceFiles(threadId, [{ path: 'attachments/a/data.tsv', content: 'x\ty\n1\t2' }])
     expect(await readWorkspaceFile(threadId, 'attachments/a/data.tsv')).toBe('x\ty\n1\t2')
     await removeAgentWorkspace(threadId)
+  })
+
+  it('restores attachments into the selected execution environment', async () => {
+    const nativeThread = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(nativeThread, [])
+    const cwd = workspaceDirFor(nativeThread)
+    const env = new BrowserExecutionEnv({ cwd })
+    const failures = await writeAgentWorkspaceFiles(
+      'native/thread',
+      [{ path: 'attachments/a.txt', content: 'native context' }],
+      { env, cwd },
+    )
+    expect(failures).toEqual([])
+    expect(await fsp.readFile(`${cwd}/attachments/a.txt`, 'utf-8')).toBe('native context')
+    await removeAgentWorkspace(nativeThread)
+  })
+
+  it('preserves edited inputs when the environment restores files without overwriting', async () => {
+    const threadId = crypto.randomUUID()
+    await writeAgentWorkspaceFiles(threadId, [])
+    const cwd = workspaceDirFor(threadId)
+    const env = new BrowserExecutionEnv({ cwd })
+    const restoreFile = spyOn(env, 'writeFile')
+    const execution = {
+      cwd,
+      env: Object.assign(env, {
+        restoreFile: async (path: string, content: string | Uint8Array) => {
+          if (!(await env.readBinaryFile(path)).ok) {
+            return env.writeFile(path, content)
+          }
+          return { ok: true as const, value: undefined }
+        },
+      }),
+    }
+    try {
+      await writeAgentWorkspaceFiles(threadId, [{ path: 'input.txt', content: 'original' }], execution)
+      await fsp.writeFile(`${cwd}/input.txt`, 'edited')
+      await writeAgentWorkspaceFiles(threadId, [{ path: 'input.txt', content: 'original' }], execution)
+      expect(restoreFile).toHaveBeenCalledTimes(1)
+      expect(await readWorkspaceFile(threadId, 'input.txt')).toBe('edited')
+    } finally {
+      restoreFile.mockRestore()
+      await removeAgentWorkspace(threadId)
+    }
+  })
+
+  it('preserves project input edits and imports new files without weakening the jail', async () => {
+    const id = crypto.randomUUID()
+    try {
+      await writeAgentWorkspaceFiles(id, [{ path: 'input.txt', content: 'original' }])
+      const cwd = workspaceDirFor(id)
+      const firstChat = new BrowserExecutionEnv({ cwd })
+      const secondChat = new BrowserExecutionEnv({ cwd })
+      expect((await firstChat.writeFile('input.txt', 'agent edits')).ok).toBe(true)
+      const secondRead = await secondChat.readBinaryFile('input.txt')
+      expect(secondRead.ok && new TextDecoder().decode(secondRead.value)).toBe('agent edits')
+      const failures = await writeAgentWorkspaceFiles(
+        id,
+        [
+          { path: 'input.txt', content: 'original' },
+          { path: 'new.txt', content: 'new attachment' },
+          { path: '../escape.txt', content: 'forbidden' },
+        ],
+        undefined,
+        { preserveExisting: true },
+      )
+      expect(await readWorkspaceFile(id, 'input.txt')).toBe('agent edits')
+      expect(await readWorkspaceFile(id, 'new.txt')).toBe('new attachment')
+      expect(failures.map(({ path, error }) => ({ path, code: error.code }))).toEqual([
+        { path: '../escape.txt', code: 'permission_denied' },
+      ])
+    } finally {
+      await removeAgentWorkspace(id)
+    }
   })
 
   it('overwrites a same-size edit with the original content', async () => {
@@ -116,5 +192,33 @@ describe('buildAppHarness confidential model', () => {
     })
 
     expect((await harness.prompt('hello')).stopReason).toBe('stop')
+  })
+})
+
+describe('readAgentWorkspaceFile', () => {
+  it('reads a saved HTML page while preserving the sandbox jail', async () => {
+    const id = crypto.randomUUID()
+    try {
+      await writeAgentWorkspaceFiles(id, [{ path: 'page.html', content: '<h1>Preview</h1>' }])
+      expect(await readAgentWorkspaceFile(id, 'page.html')).toBe('<h1>Preview</h1>')
+      await expect(readAgentWorkspaceFile(id, '../other/page.html')).rejects.toThrow()
+      await expect(readAgentWorkspaceFile(id, 'page.txt')).rejects.toThrow('.html')
+    } finally {
+      await removeAgentWorkspace(id)
+    }
+  })
+
+  it('rejects oversized HTML and forwards native environment cancellation', async () => {
+    const id = crypto.randomUUID()
+    try {
+      await writeAgentWorkspaceFiles(id, [{ path: 'huge.html', content: 'x'.repeat(2 * 1024 * 1024 + 1) }])
+      const env = new BrowserExecutionEnv({ cwd: workspaceDirFor(id) })
+      await expect(readAgentWorkspaceFile('unused', 'huge.html', { env, cwd: workspaceDirFor(id) })).rejects.toThrow(
+        '2 MiB',
+      )
+      await expect(readAgentWorkspaceFile(id, 'huge.html', undefined, AbortSignal.abort())).rejects.toThrow()
+    } finally {
+      await removeAgentWorkspace(id)
+    }
   })
 })

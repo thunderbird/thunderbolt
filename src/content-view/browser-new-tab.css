@@ -1,0 +1,26 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.browser-new-tab-logo {
+  display: block;
+  animation: browser-new-tab-rotate 4s linear infinite;
+  transform-origin: center;
+  /* Both faces stay visible; the flat bolt disappears only when edge-on. */
+  backface-visibility: visible;
+}
+
+@keyframes browser-new-tab-rotate {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-new-tab-logo {
+    animation: none;
+  }
+}

@@ -11,9 +11,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { PanelRightRounded } from '@/components/icons/panel-right-rounded'
 import type { MessageDescriptor } from '@lingui/core'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { ExternalLink, PanelRight, X } from 'lucide-react'
+import { ExternalLink, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 
 type ExternalLinkDialogProps = {
@@ -27,6 +29,8 @@ type ExternalLinkDialogProps = {
   /** A descriptor, not a string, so it renders in the locale active now rather than when the open failed. */
   openError?: MessageDescriptor | null
   isOpening?: boolean
+  rememberChoice?: boolean
+  onRememberChoiceChange?: (remember: boolean) => void
 }
 
 export const ExternalLinkDialog = memo(
@@ -39,6 +43,8 @@ export const ExternalLinkDialog = memo(
     onOpenInApp,
     openError = null,
     isOpening = false,
+    rememberChoice = false,
+    onRememberChoiceChange,
   }: ExternalLinkDialogProps) => {
     const { i18n } = useLingui()
 
@@ -59,7 +65,7 @@ export const ExternalLinkDialog = memo(
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              <Trans>Open External Link</Trans>
+              <Trans>Open Link</Trans>
             </AlertDialogTitle>
             <AlertDialogDescription className="sr-only">
               <Trans>Confirm opening an external link</Trans>
@@ -81,17 +87,22 @@ export const ExternalLinkDialog = memo(
 
           {openError && <p className="text-sm text-destructive">{i18n._(openError)}</p>}
 
+          {onRememberChoiceChange && (
+            <label className="flex min-h-8 cursor-pointer items-center gap-2 text-sm">
+              <Checkbox
+                checked={rememberChoice}
+                onCheckedChange={(checked) => onRememberChoiceChange(checked === true)}
+                disabled={isOpening}
+              />
+              <Trans>Remember my choice</Trans>
+            </label>
+          )}
+
           <AlertDialogFooter>
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
               <Trans>Cancel</Trans>
             </Button>
-            {onOpenInApp && (
-              <Button onClick={onOpenInApp} variant="outline" disabled={isOpening}>
-                <PanelRight className="size-4" />
-                <Trans>Open in Sidebar</Trans>
-              </Button>
-            )}
-            <Button onClick={handleConfirmClick} disabled={isOpening}>
+            <Button onClick={handleConfirmClick} variant={onOpenInApp ? 'outline' : 'default'} disabled={isOpening}>
               {onOpenInApp && <ExternalLink className="size-4" />}
               {isOpening ? (
                 <Trans>Opening…</Trans>
@@ -101,6 +112,12 @@ export const ExternalLinkDialog = memo(
                 <Trans>Open Link</Trans>
               )}
             </Button>
+            {onOpenInApp && (
+              <Button onClick={onOpenInApp} disabled={isOpening}>
+                <PanelRightRounded className="size-4" />
+                <Trans>Open in Thunderbolt</Trans>
+              </Button>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

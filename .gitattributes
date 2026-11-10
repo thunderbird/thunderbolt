@@ -25,3 +25,6 @@ Makefile text eol=lf
 *.zip binary
 *.gz binary
 *.wasm binary
+
+# Preserve published third-party formatting and collapse it in GitHub diffs.
+src-tauri/vendor/tauri/** linguist-vendored -whitespace

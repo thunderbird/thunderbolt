@@ -8,8 +8,10 @@ import { CheckIcon, ChevronRightIcon, CircleIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
-const DropdownMenu = ({ ...props }: ComponentProps<typeof DropdownMenuPrimitive.Root>) => {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+const DropdownMenu = ({ modal = false, ...props }: ComponentProps<typeof DropdownMenuPrimitive.Root>) => {
+  // Sibling triggers open on pointerdown. Keeping menus non-modal lets the
+  // previous menu receive that same outside click instead of stacking behind it.
+  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" modal={modal} {...props} />
 }
 
 const DropdownMenuPortal = ({ ...props }: ComponentProps<typeof DropdownMenuPrimitive.Portal>) => {
@@ -25,13 +27,14 @@ const DropdownMenuContent = ({
   sideOffset = 4,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.Content>) => {
+  // Unmount on dismissal so a closing menu cannot consume a rapid reopen click.
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         className={cn(
-          'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) flex flex-col gap-0.5 overflow-x-hidden overflow-y-auto rounded-xl border p-1 shadow-lg',
+          'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) flex flex-col gap-0.5 overflow-x-hidden overflow-y-auto rounded-xl border p-1 shadow-lg',
           className,
         )}
         {...props}
@@ -194,7 +197,7 @@ const DropdownMenuSubContent = ({ className, ...props }: ComponentProps<typeof D
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
       className={cn(
-        'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-xl border p-1 shadow-lg',
+        'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-xl border p-1 shadow-lg',
         className,
       )}
       {...props}

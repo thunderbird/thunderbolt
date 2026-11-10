@@ -2803,8 +2803,12 @@ msgid "Enclave endpoint"
 msgstr "Enclave endpoint"
 
 #: src/components/chat/attestation/attestation-details.tsx
-msgid "Enclave fingerprint"
-msgstr "Enclave fingerprint"
+#~ msgid "Enclave fingerprint"
+#~ msgstr "Enclave fingerprint"
+
+#: src/components/chat/attestation/attestation-details.tsx
+msgid "Enclave measurement"
+msgstr "Enclave measurement"
 
 #: src/components/chat/attestation/attestation-details.tsx
 msgid "Enclave-bound encryption key"

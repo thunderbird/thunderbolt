@@ -380,7 +380,14 @@ export const deleteProviderConnection = async (db: AnyDrizzleDatabase, id: strin
     return
   }
   await disconnectProviderConnection(db, id)
-  await db.update(connections).set({ deletedAt: new Date().toISOString(), enabled: 0 }).where(eq(connections.id, id))
+  await db.transaction(async (tx) => {
+    const current = await tx.select({ binding: secrets.binding }).from(secrets).where(eq(secrets.id, id)).get()
+    // Disconnect clears the binding. A replacement authorization must not be removed by this old request.
+    if (current?.binding) {
+      throw new Error('The provider connection changed during removal. Try again.')
+    }
+    await tx.update(connections).set({ deletedAt: new Date().toISOString(), enabled: 0 }).where(eq(connections.id, id))
+  })
 }
 
 /** Resolve live authentication at request time, including serialized Tinfoil refresh. */

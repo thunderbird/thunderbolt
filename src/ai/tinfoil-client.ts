@@ -27,8 +27,8 @@ type TinfoilAttestationProperties = {
   model_id?: string
   enclave_host?: string
   release_digest?: string
-  enclave_fingerprint?: string
-  router_endpoint?: string
+  /** V3's structured measurement as JSON; distinct from the retired v1 fingerprint series. */
+  enclave_measurement?: string
 }
 
 type TinfoilTraceProperties = Pick<TinfoilAttestationProperties, 'trace_id' | 'engine' | 'provider' | 'model_id'>
@@ -69,8 +69,7 @@ const getEnclaveIdentity = (
 ): Partial<TinfoilAttestationProperties> => ({
   enclave_host: client.enclave,
   release_digest: verification.codeDigest,
-  enclave_fingerprint: JSON.stringify(verification.toJSON().enclaveMeasurement),
-  router_endpoint: client.enclave,
+  enclave_measurement: JSON.stringify(verification.toJSON().enclaveMeasurement),
 })
 
 /** Observe the adapter's bounded readiness operation and emit structured telemetry. */
@@ -79,12 +78,15 @@ const waitForAttestation = async (
   clientType: TinfoilClientType,
   trackAttestation: (properties: TinfoilAttestationProperties) => void,
   traceProperties: TinfoilTraceProperties,
+  signal: AbortSignal,
 ): Promise<{ client: AttestedTinfoilClient; properties: TinfoilAttestationProperties }> => {
   const startedAt = Date.now()
 
   try {
     const client = await pending
+    signal.throwIfAborted()
     const verification = await client.ensureVerified()
+    signal.throwIfAborted()
     return {
       client,
       properties: {
@@ -96,6 +98,10 @@ const waitForAttestation = async (
       },
     }
   } catch (error) {
+    signal.throwIfAborted()
+    if (!isTinfoilAttestationFailure(error)) {
+      throw error
+    }
     const isTimeout = getErrorName(error) === 'TinfoilAttestationTimeoutError'
     trackAttestation({
       outcome: isTimeout ? 'timeout' : 'error',
@@ -125,15 +131,20 @@ export const createTinfoilClientLifecycle = ({
   const attestationKeys = new Set<string>()
   const reportedClients = new WeakSet<AttestedTinfoilClient>()
 
-  /** Abort in-flight construction and close even a client that resolves after eviction. */
+  /** Release resources even when a failed factory returns its client late. */
   const release = (entry: CachedTinfoilClient): void => {
     entry.detachIdentity()
-    entry.controller.abort()
     entry.reporter.close()
     void entry.clientPromise.then(
       (client) => client.close(),
       () => {},
     )
+  }
+
+  /** Explicit teardown cancels acquisitions without classifying them as trust failures. */
+  const cancel = (entry: CachedTinfoilClient): void => {
+    entry.controller.abort()
+    release(entry)
   }
 
   /** Resolve the cache key for a client type. */
@@ -153,7 +164,7 @@ export const createTinfoilClientLifecycle = ({
         clients.delete(key)
         attestations.clear(attestationKey)
       }
-      release(entry)
+      cancel(entry)
     }
     const reporter: AttestationReporter = {
       publish: (state) => {
@@ -200,7 +211,9 @@ export const createTinfoilClientLifecycle = ({
         type,
         trackAttestation,
         traceProperties,
+        entry.controller.signal,
       )
+      entry.controller.signal.throwIfAborted()
       if (clients.get(key) !== entry) {
         throw createAttestationError(new Error('This Tinfoil client was revoked during verification.'))
       }
@@ -236,7 +249,7 @@ export const createTinfoilClientLifecycle = ({
     const key = expectedEntry?.key ?? getClientKey(type)
     const entry = clients.get(key)
     if (entry) {
-      release(entry)
+      cancel(entry)
     }
     clients.delete(key)
     attestations.clear(`tinfoil:${key}`)
@@ -247,7 +260,7 @@ export const createTinfoilClientLifecycle = ({
   const evictUserTinfoilClient = (expectedClient?: object): void => evict('user', expectedClient)
   /** Revoke every identity-scoped client and snapshot, including failed generations. */
   const clearTinfoilClients = (): void => {
-    clients.forEach(release)
+    clients.forEach(cancel)
     clients.clear()
     attestationKeys.forEach((key) => attestations.clear(key))
     attestationKeys.clear()

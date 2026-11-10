@@ -164,9 +164,10 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
     return 'provider'
   }
   if (
-    name === 'TypeError' &&
-    normalizedMessage &&
-    networkErrorMarkers.some((marker) => normalizedMessage.includes(marker))
+    (typeof error === 'object' && error !== null && 'category' in error && error.category === 'network') ||
+    (name === 'TypeError' &&
+      normalizedMessage &&
+      networkErrorMarkers.some((marker) => normalizedMessage.includes(marker)))
   ) {
     return 'network'
   }

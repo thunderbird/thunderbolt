@@ -30,6 +30,17 @@ env:
 - extendedWaitUntil:
     visible: ${DEFAULT_MODEL}
     timeout: 120000
+- tapOn: Agent location
+- assertVisible: Cloud
+- tapOn: Agent access
+- assertVisible: Full access
+- assertNotVisible: Cloud
+- tapOn: Agent location
+- assertVisible: Cloud
+- assertNotVisible: Full access
+- tapOn:
+    point: 50%,15%
+- assertNotVisible: Cloud
 - retry:
     maxRetries: 2
     commands:

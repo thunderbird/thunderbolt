@@ -26,6 +26,63 @@ const expectControlsToFit = async (page: Page, controls: Locator[]) => {
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
 }
 
+for (const width of [1280, 390]) {
+  test.describe(`composer menu dismissal at ${width}px`, () => {
+    test.use({ viewport: { width, height: 900 }, hasTouch: width === 390 })
+
+    test('switches menus with one click and dismisses them outside or with Escape', async ({ page }) => {
+      await loginViaEmailCode(page)
+      const location = page.getByRole('button', { name: 'Agent location', exact: true })
+      const access = page.getByRole('button', { name: 'Agent access', exact: true })
+      const press = async (target: Locator) => (width === 390 ? target.tap() : target.click())
+      const openMenus = page.locator('[role="menu"][data-state="open"]')
+      for (const [next, previous] of [
+        [location, access],
+        [access, location],
+        [location, access],
+      ]) {
+        await test.step(`Open ${await next.getAttribute('aria-label')} and dismiss ${await previous.getAttribute('aria-label')}`, async () => {
+          await press(next)
+          await expect(next).toHaveAttribute('aria-expanded', 'true')
+          await expect(previous).toHaveAttribute('aria-expanded', 'false')
+          await expect(openMenus).toHaveCount(1)
+        })
+      }
+      if (width === 390) {
+        // The tall touch menu overlaps the composer; tap the empty margin first.
+        await page.touchscreen.tap(width - 4, 80)
+        await expect(openMenus).toHaveCount(0)
+      }
+      await press(page.locator('textarea'))
+      await expect(openMenus).toHaveCount(0)
+      await expect(page.locator('textarea')).toBeFocused()
+      await press(access)
+      await page.keyboard.press('Escape')
+      await expect(openMenus).toHaveCount(0)
+      await expect(access).toBeFocused()
+
+      if (width === 1280) {
+        const model = page.getByTestId('model-selector-trigger')
+        const add = page.getByRole('button', { name: 'Add to chat', exact: true })
+        await location.click()
+        await model.click()
+        await expect(location).toHaveAttribute('aria-expanded', 'false')
+        await expect(model).toHaveAttribute('aria-expanded', 'true')
+        await access.click()
+        await expect(model).toHaveAttribute('aria-expanded', 'false')
+        await expect(access).toHaveAttribute('aria-expanded', 'true')
+        await add.click()
+        await expect(access).toHaveAttribute('aria-expanded', 'false')
+        await expect(add).toHaveAttribute('aria-expanded', 'true')
+        await expect(openMenus).toHaveCount(1)
+        await page.locator('textarea').click()
+        await expect(openMenus).toHaveCount(0)
+        await expect(page.locator('textarea')).toBeFocused()
+      }
+    })
+  })
+}
+
 for (const { width, desktopSizing } of [
   { width: 320, desktopSizing: false },
   { width: 390, desktopSizing: false },

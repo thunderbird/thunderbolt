@@ -43,6 +43,32 @@ type NativeBrowserState = {
   canGoForward: boolean
 }
 
+/** Menus in the composer must hand off to their siblings without stacking. */
+const exerciseComposerMenus = async () => {
+  const location = await browser.$('button[aria-label="Agent location"]')
+  const access = await browser.$('button[aria-label="Agent access"]')
+  for (const [next, previous] of [
+    [location, access],
+    [access, location],
+    [location, access],
+  ]) {
+    await next.click()
+    await browser.waitUntil(async () => (await next.getAttribute('aria-expanded')) === 'true')
+    await browser.waitUntil(async () => (await previous.getAttribute('aria-expanded')) === 'false')
+    assert.equal(await browser.execute(() => document.querySelectorAll('[role="menu"][data-state="open"]').length), 1)
+  }
+  const composer = await browser.$('textarea')
+  await composer.click()
+  await browser.waitUntil(async () =>
+    browser.execute(() => document.querySelectorAll('[role="menu"][data-state="open"]').length === 0),
+  )
+  assert(await composer.isFocused(), 'Dismissing a menu should let the user type into the composer immediately')
+  await access.click()
+  await browser.keys(Key.Escape)
+  await browser.waitUntil(async () => (await access.getAttribute('aria-expanded')) === 'false')
+  assert(await access.isFocused(), 'Escape should restore focus to the menu trigger')
+}
+
 /** App dialogs and detail asides occupy the chat pane while a native page remains visible. */
 const exerciseBrowserOverlayBoundary = async (activePanel: string) => {
   const originalBrowserBounds = await browser.execute((selector) => {
@@ -860,6 +886,7 @@ try {
   await invokeNative('show_main_window')
   await browser.waitUntil(async () => (await invokeNative('plugin:window|is_visible', { label: 'main' })) === true)
 
+  await exerciseComposerMenus()
   await (await browser.$('[data-testid="model-selector-trigger"]')).click()
   await (await browser.$('//button[normalize-space()="Opus 5.5"]')).click()
   await browser.keys(Key.Escape)

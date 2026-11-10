@@ -13,6 +13,7 @@ import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 export type ProviderAuthorizationConfig = {
   authorizationEndpoint: string
+  authorizationResponseIssuer?: string
   loopbackHostname?: 'localhost' | '127.0.0.1'
   buildUrl?: (challenge: string, redirectUri: string, state: string) => string
 }
@@ -248,7 +249,9 @@ export const createProviderAuthorization = (
             url.pathname !== '/' ||
             url.searchParams.getAll('code').length > 1 ||
             url.searchParams.getAll('state').length > 1 ||
-            url.searchParams.getAll('client_id').length > 1
+            url.searchParams.getAll('client_id').length > 1 ||
+            (config.authorizationResponseIssuer &&
+              !isAuthorizationResponseIssuerValid(url.searchParams, config.authorizationResponseIssuer))
           ) {
             deliver({ error: 'invalid_response' })
             return
@@ -283,6 +286,10 @@ export const createProviderAuthorization = (
 
   return { startConnection }
 }
+
+/** Validate RFC 9207 when supplied, while supporting servers predating issuer responses. */
+export const isAuthorizationResponseIssuerValid = (params: URLSearchParams, expected: string): boolean =>
+  !params.has('iss') || (params.getAll('iss').length === 1 && params.get('iss') === expected)
 
 /** Creates the configured OpenRouter PKCE-to-key flow. */
 export const createOpenRouterAuth = (overrides: Partial<OpenRouterAuthDependencies> = {}) => {

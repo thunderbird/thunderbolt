@@ -46,11 +46,13 @@ const setup = () => {
     async (_origin: string, _grant: { code: string; verifier: string; redirectUri: string }, _signal: AbortSignal) =>
       'delegated-key',
   )
+  const revoke = mock(async (_origin: string, _token: string) => {})
   const random = mock(() => nonce).mockImplementationOnce(() => verifier)
   return {
     storage,
     navigate,
     exchange,
+    revoke,
     deps: {
       storage: () => storage,
       currentUrl: () => currentUrl,
@@ -58,6 +60,7 @@ const setup = () => {
       verifier: random,
       now: () => 1_000,
       exchange,
+      revoke,
     },
   }
 }
@@ -70,6 +73,28 @@ afterEach(() => {
 })
 
 describe('Otari same-tab authorization', () => {
+  test.each(['https://wrong.example', '', 'https://otari.ai&iss=https://otari.ai'])(
+    'rejects an unexpected authorization issuer: %s',
+    async (issuer) => {
+      const { deps, exchange } = setup()
+      await startOtariBrowserConnection('https://otari.ai', 'connections', new AbortController().signal, attempt, deps)
+      const result = captureOtariBrowserReturn(callback(`code=one-use&state=${nonce}&iss=${issuer}`), deps)!
+      await expect(result.complete()).rejects.toThrow('Otari authorization failed')
+      expect(exchange).not.toHaveBeenCalled()
+    },
+  )
+  test('accepts the custom authorization issuer', async () => {
+    const { deps } = setup()
+    await startOtariBrowserConnection(
+      'https://work.example',
+      'connections',
+      new AbortController().signal,
+      attempt,
+      deps,
+    )
+    const result = captureOtariBrowserReturn(callback(`code=one-use&state=${nonce}&iss=https://work.example`), deps)!
+    expect(await result.complete()).toBe('delegated-key')
+  })
   test('explicit cancellation removes pending browser state after navigation has returned', async () => {
     const { deps, exchange } = setup()
     const browser = { ...deps, storage: () => sessionStorage, mobile: () => false }
@@ -435,9 +460,32 @@ describe('Otari same-tab authorization', () => {
     clearOtariBrowserReturn(result.id)
     expect(getOtariBrowserReturn('models')).toBeNull()
   })
+  test('revokes a token returned after cancellation instead of losing an issued key', async () => {
+    const { deps, revoke } = setup()
+    const issued = Promise.withResolvers<string>()
+    await startOtariBrowserConnection('https://otari.ai', 'models', new AbortController().signal, attempt, deps)
+    const result = captureOtariBrowserReturn(callback(), { ...deps, exchange: () => issued.promise })!
+    const completion = result.complete()
+    result.cancel()
+    issued.resolve('unused-token')
+    await expect(completion).rejects.toHaveProperty('name', 'AbortError')
+    expect(revoke).toHaveBeenCalledWith('https://otari.ai', 'unused-token')
+  })
 })
 
 describe('Otari native mobile authorization', () => {
+  test('rejects a different issuer on the verified mobile app link', async () => {
+    const harness = mobileSetup()
+    await getClock().tickAsync(0)
+    const result = captureOtariBrowserReturn(
+      new URL(`${mobileOAuthRedirectUri}?code=one-use&state=${nonce}&iss=https://wrong.example`),
+      harness.deps,
+    )!
+    await expect(result.complete()).rejects.toThrow('Otari authorization failed')
+    expect(harness.exchange).not.toHaveBeenCalled()
+    harness.controller.abort()
+    await harness.pending
+  })
   /** Model a native WebView while isolating the external browser and durable storage. */
   const mobileSetup = () => {
     const harness = setup()

@@ -19,6 +19,7 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import SearchSettingsPage from './index'
 import * as otariBrowser from '@/lib/otari-browser-auth'
+import * as otariAuth from '@/lib/otari-auth'
 import * as platform from '@/lib/platform'
 import { getClock } from '@/testing-library'
 import * as otariCapabilities from '@/integrations/otari-search/capabilities'
@@ -27,6 +28,7 @@ beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
 beforeEach(async () => {
   await resetTestDatabase()
+  spyOn(otariAuth, 'revokeOtariToken').mockResolvedValue()
   await updateSettings(getDb(), { experimental_feature_otari: true })
   useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
   useSearchProviderStore.getState().clearSearchProvider()

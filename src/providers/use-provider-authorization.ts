@@ -11,7 +11,6 @@ import { useLingui } from '@lingui/react/macro'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useDatabase } from '@/contexts'
 import {
-  normalizeOtariConnectionUrl,
   getProviderConnection,
   resolveProviderConnection,
   saveProviderConnectionWithRevision,
@@ -45,7 +44,8 @@ import {
   startTinfoilMobileConnection,
   cancelTinfoilMobileConnection,
 } from '@/lib/tinfoil-mobile-auth'
-import { connectOtari, defaultOtariOrigin, getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
+import { connectOtari, getOtariAuthorizationOrigin, getOtariEndpoints } from '@/lib/otari-auth'
+import { discardOtariAuthorization } from './otari-session'
 import {
   getOtariBrowserReturn,
   clearOtariBrowserReturn,
@@ -64,7 +64,7 @@ import { getProviderDefinition } from './registry'
 import { getProviderConnectionRevision } from './revision'
 import { createIdentityController } from '@/lib/identity-lifetime'
 
-type AuthorizationController = ReturnType<typeof createIdentityController>
+type AuthorizationController = ReturnType<typeof createIdentityController> & { returnId?: string }
 
 type AuthorizationInput = {
   purpose?: 'onboarding-search'
@@ -93,15 +93,6 @@ const clearAuthorizationDraft = () => {
   }
 }
 
-/** Use the authorization origin, keeping the official API hostname out of the sign-in flow. */
-const otariOrigin = (url?: string): string => {
-  if (!url || url === getOtariEndpoints(defaultOtariOrigin).inference) {
-    return defaultOtariOrigin
-  }
-  const parsed = new URL(normalizeOtariConnectionUrl(url))
-  return normalizeOtariOrigin(parsed.origin)
-}
-
 /** Read the pending handoff without consuming it; the connection surface owns completion. */
 export const getProviderAuthorizationReturn = () =>
   getProviderBrowserReturn('connections') ??
@@ -128,14 +119,15 @@ export const useProviderAuthorization = ({
   })
   const pending = useRef<AuthorizationController | null>(null)
 
-  const complete = async (
+  const saveAuthorization = async (
     input: AuthorizationInput,
     credentials: ProviderCredentials,
     attempt: ProviderConnectionAttempt<OAuthProviderType>,
     controller: AuthorizationController,
   ) => {
     controller.signal.throwIfAborted()
-    const url = input.provider === 'otari' ? getOtariEndpoints(otariOrigin(input.url)).inference : undefined
+    const url =
+      input.provider === 'otari' ? getOtariEndpoints(getOtariAuthorizationOrigin(input.url)).inference : undefined
     const existing = await getProviderConnection(db, `oauth:${input.provider}`)
     const { id, revision } = await saveProviderConnectionWithRevision(db, {
       ...input,
@@ -184,6 +176,28 @@ export const useProviderAuthorization = ({
       useSearchProviderStore.getState().selectSearchConnection(id)
     }
     onConnected(id)
+  }
+
+  const complete = async (
+    input: AuthorizationInput,
+    credentials: ProviderCredentials,
+    attempt: ProviderConnectionAttempt<OAuthProviderType>,
+    controller: AuthorizationController,
+  ) => {
+    try {
+      await saveAuthorization(input, credentials, attempt, controller)
+    } catch (error) {
+      // StrictMode may transfer a shared redirect result to the replacement effect.
+      const transferred =
+        returned &&
+        pending.current !== controller &&
+        pending.current?.returnId === returned.id &&
+        !pending.current.signal.aborted
+      if (input.provider === 'otari' && credentials.access_token && !transferred) {
+        await discardOtariAuthorization(db, getOtariAuthorizationOrigin(input.url), credentials.access_token)
+      }
+      throw error
+    }
   }
 
   const fail = (controller: AuthorizationController, error?: unknown) => {
@@ -235,7 +249,7 @@ export const useProviderAuthorization = ({
       } else {
         clearTinfoilMobileReturn(returned.id)
       }
-      const controller = createIdentityController()
+      const controller = { ...createIdentityController(), returnId: returned.id }
       pending.current = controller
       void resume(controller)
     }
@@ -277,7 +291,7 @@ export const useProviderAuthorization = ({
       }
       const redirectAttempt = { ...attempt, provider: input.provider }
       if (input.provider === 'otari') {
-        const origin = otariOrigin(input.url)
+        const origin = getOtariAuthorizationOrigin(input.url)
         if (!isTauri() || isMobile()) {
           await startOtariBrowserConnection(origin, 'connections', controller.signal, redirectAttempt)
           return

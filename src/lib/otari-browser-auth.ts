@@ -6,7 +6,8 @@ import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { z } from 'zod'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { exchangeOtariCode, getOtariAuthorizationUrl, normalizeOtariOrigin } from '@/lib/otari-auth'
+import { exchangeOtariCode, getOtariAuthorizationUrl, normalizeOtariOrigin, revokeOtariToken } from '@/lib/otari-auth'
+import { isAuthorizationResponseIssuerValid } from '@/lib/openrouter-auth'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import type { ProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import { isMobile, isTauri } from '@/lib/platform'
@@ -66,6 +67,7 @@ const defaultDependencies = {
   challenge: generateCodeChallenge,
   now: Date.now,
   exchange: exchangeOtariCode,
+  revoke: revokeOtariToken,
 }
 
 /** Explicit cancellation retires the handoff even when its tab or mobile storage cannot be cleared. */
@@ -224,7 +226,10 @@ export const captureOtariBrowserReturn = (
       ? msg`This connection expired. Please connect to Otari again.`
       : url.searchParams.get('error') === 'access_denied'
         ? msg`Connection cancelled. You can connect to Otari whenever you're ready.`
-        : url.searchParams.has('error') || !code?.trim() || url.searchParams.getAll('code').length !== 1
+        : url.searchParams.has('error') ||
+            !code?.trim() ||
+            url.searchParams.getAll('code').length !== 1 ||
+            !isAuthorizationResponseIssuerValid(url.searchParams, flow.origin)
           ? msg`Otari returned an invalid response. Please connect again.`
           : null
   const controller = new AbortController()
@@ -249,7 +254,10 @@ export const captureOtariBrowserReturn = (
           { code: code!, verifier: flow.verifier, redirectUri: flow.redirectUri },
           signal,
         )
-        signal.throwIfAborted()
+        if (signal.aborted) {
+          await deps.revoke(flow.origin, token)
+          signal.throwIfAborted()
+        }
         return token
       })()
       return completion

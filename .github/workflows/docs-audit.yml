@@ -8,6 +8,9 @@ name: Docs audit
 # path is a doc. `isInScope` in .github/scripts/docs-audit-select.ts is the one definition of "a doc".
 
 on:
+  # TEMP(THU-901 branch test): remove before merge.
+  push:
+    branches: [THU-901/automated-weekly-docs-audit]
   schedule:
     - cron: '0 6 * * 1' # Monday 06:00 UTC
   workflow_dispatch:
@@ -34,7 +37,8 @@ env:
 
 jobs:
   audit:
-    if: vars.DOCS_AUDIT_ENABLED == 'true'
+    # TEMP(THU-901 branch test): remove the push clause before merge.
+    if: vars.DOCS_AUDIT_ENABLED == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: qa-agent
@@ -55,7 +59,8 @@ jobs:
 
       - name: Select the commits and docs to audit
         env:
-          DOCS: ${{ inputs.docs }}
+          # TEMP(THU-901 branch test): restore `${{ inputs.docs }}` before merge.
+          DOCS: ${{ github.event_name == 'push' && 'docs/faq.md' || inputs.docs }}
         run: bun .github/scripts/docs-audit-select.ts --out "$DOCS_AUDIT_OUT/input.json" --docs "$DOCS"
 
       - name: Build the prompt

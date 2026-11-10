@@ -2,9 +2,44 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, test } from './test'
+import { expect, test, type Page } from './test'
 import { importBackup } from './import-backup'
 import { loginViaEmailCode } from './helpers'
+
+/** Import an isolated connection whose catalog is fulfilled locally, without provider credentials. */
+const prepareCatalog = async (page: Page, count: number) => {
+  const email = await loginViaEmailCode(page)
+  const connectionId = crypto.randomUUID()
+  const url = 'http://localhost:18991/v1'
+  await page.route(`${url}/models`, (route) =>
+    route.fulfill({
+      json: {
+        data: Array.from({ length: count }, (_, index) => ({
+          id: `catalog-${String(index + 1).padStart(2, '0')}`,
+          name: `Catalog model ${index + 1}`,
+        })),
+      },
+    }),
+  )
+  await importBackup(page, {
+    format: 'thunderbolt-export',
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    user: { id: 'catalog-layout-fixture', email },
+    tables: {
+      provider_connections: [
+        { id: connectionId, provider: 'custom', name: 'Catalog fixture', authMethod: 'api_key', url, enabled: 1 },
+      ],
+      provider_connection_secrets: [
+        {
+          id: connectionId,
+          binding: JSON.stringify(['custom', 'api_key', url]),
+          credentials: JSON.stringify({ apiKey: 'catalog-layout-key' }),
+        },
+      ],
+    },
+  })
+}
 
 for (const viewport of [
   { width: 1280, height: 900 },
@@ -15,37 +50,7 @@ for (const viewport of [
 
     test('fills the aside while keeping the controls and actions outside the scrolling catalog', async ({ page }) => {
       await page.emulateMedia({ reducedMotion: 'reduce' })
-      const email = await loginViaEmailCode(page)
-      const connectionId = crypto.randomUUID()
-      const url = 'http://localhost:18991/v1'
-      await page.route(`${url}/models`, (route) =>
-        route.fulfill({
-          json: {
-            data: Array.from({ length: 60 }, (_, index) => ({
-              id: `catalog-${String(index + 1).padStart(2, '0')}`,
-              name: `Catalog model ${index + 1}`,
-            })),
-          },
-        }),
-      )
-      await importBackup(page, {
-        format: 'thunderbolt-export',
-        schemaVersion: 1,
-        exportedAt: new Date().toISOString(),
-        user: { id: 'catalog-layout-fixture', email },
-        tables: {
-          provider_connections: [
-            { id: connectionId, provider: 'custom', name: 'Catalog fixture', authMethod: 'api_key', url, enabled: 1 },
-          ],
-          provider_connection_secrets: [
-            {
-              id: connectionId,
-              binding: JSON.stringify(['custom', 'api_key', url]),
-              credentials: JSON.stringify({ apiKey: 'catalog-layout-key' }),
-            },
-          ],
-        },
-      })
+      await prepareCatalog(page, 60)
 
       for (const entry of ['chat', 'settings']) {
         await page.goto(entry === 'chat' ? '/chats/new' : '/settings/models')
@@ -121,6 +126,48 @@ for (const viewport of [
           await page.evaluate(() => document.documentElement.style.removeProperty('--kb'))
         }
       }
+    })
+
+    test('keeps catalog selections through search and keyboard input, and discards them on cancel', async ({
+      page,
+    }) => {
+      await prepareCatalog(page, 500)
+      await page.goto('/settings/models')
+      const openCatalog = async () => {
+        await page.getByRole('button', { name: 'New Model', exact: true }).click()
+        await page.getByRole('combobox', { name: 'Connection', exact: true }).click()
+        await page.getByRole('option', { name: 'Catalog fixture', exact: true }).click()
+      }
+      await openCatalog()
+      const catalog = page.getByRole('group', { name: 'Models', exact: true })
+      await expect(catalog.getByRole('checkbox')).toHaveCount(500)
+      const first = catalog.getByRole('checkbox', { name: 'Catalog model 1', exact: true })
+      await first.focus()
+      await page.keyboard.press('Space')
+      await expect(first).toBeChecked()
+
+      const search = page.getByRole('textbox', { name: 'Search models', exact: true })
+      await search.fill('Catalog model 500')
+      const last = catalog.getByRole('checkbox', { name: 'Catalog model 500', exact: true })
+      await expect(catalog.getByRole('checkbox')).toHaveCount(1)
+      await last.focus()
+      await page.keyboard.press('Space')
+      await expect(last).toBeChecked()
+      await search.fill('')
+      await expect(catalog.getByRole('checkbox')).toHaveCount(500)
+      await expect(first).toBeChecked()
+      await expect(last).toBeChecked()
+      await expect(page.getByRole('button', { name: 'Add models', exact: true })).toBeEnabled()
+
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(catalog).toBeHidden()
+      await openCatalog()
+      await expect(catalog.getByRole('checkbox')).toHaveCount(500)
+      await expect(first).not.toBeChecked()
+      await expect(last).not.toBeChecked()
+      await expect(page.getByRole('button', { name: 'Add models', exact: true })).toBeDisabled()
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(catalog).toBeHidden()
     })
   })
 }

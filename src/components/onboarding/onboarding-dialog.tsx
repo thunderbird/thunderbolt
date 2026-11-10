@@ -29,13 +29,18 @@ import { Loader2 } from 'lucide-react'
 import { useSearchProviderAvailability } from '@/integrations/standalone-search/use-search-provider-availability'
 import { OnboardingServerStep } from './onboarding-server-step'
 import { useOnboardingServerState } from './use-onboarding-server-state'
-import { OnboardingSearchStep } from './onboarding-search-step'
 import { useNeedsOwnModel } from '@/hooks/use-needs-own-model'
 import { preloadInBackground } from '@/lib/after-paint'
 
 /** Share the AI setup bundle between lazy rendering and background preloading. */
 const loadOnboardingModelStep = () => import('./onboarding-model-step')
 const OnboardingModelStep = lazy(loadOnboardingModelStep)
+/** Keep provider forms and OAuth SDKs off the initial sign-in and returning-chat paths. */
+const loadOnboardingSearchStep = async () => {
+  const { OnboardingSearchStep } = await import('./onboarding-search-step')
+  return { default: OnboardingSearchStep }
+}
+const OnboardingSearchStep = lazy(loadOnboardingSearchStep)
 
 /** Wizard position of the passkey step. */
 const passkeyStep = 6
@@ -77,6 +82,9 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
   useEffect(() => {
     if (isOpen && state.currentStep === 8) {
       return preloadInBackground([loadOnboardingModelStep])
+    }
+    if (isOpen && state.currentStep === 9) {
+      return preloadInBackground([loadOnboardingSearchStep])
     }
   }, [isOpen, state.currentStep])
 
@@ -164,12 +172,14 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
         <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
           <StepIndicators currentStep={stepIndex + 1} totalSteps={totalSteps} />
         </div>
-        {state.currentStep === 9 ? (
+        {state.currentStep === 9 || state.currentStep === 10 ? (
           <Suspense fallback={<Loader2 className="size-6 animate-spin self-center text-muted-foreground" />}>
-            <OnboardingModelStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
+            {state.currentStep === 9 ? (
+              <OnboardingModelStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
+            ) : (
+              <OnboardingSearchStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
+            )}
           </Suspense>
-        ) : state.currentStep === 10 ? (
-          <OnboardingSearchStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
         ) : (
           <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
             {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}

@@ -20,46 +20,11 @@ import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import { readChatGPTRegistration, retainChatGPTRegistration } from './chatgpt-registration'
 export { readChatGPTRegistration } from './chatgpt-registration'
 import { hasChatGPTPlanScope, oauthTokensSchema, withProviderOAuthLock } from './oauth-session'
+import { chatGPTIssuer, chatGPTResource, loadChatGPTMetadata, revokeChatGPTSession } from './chatgpt-session'
 import type { ProviderCredentials } from './types'
-
-const issuer = 'https://auth.openai.com'
-const resource = 'https://api.openai.com/v1'
-const metadataSchema = z.object({
-  issuer: z.literal(issuer),
-  authorization_endpoint: z.url(),
-  token_endpoint: z.url(),
-  jwks_uri: z.url(),
-  revocation_endpoint: z.url(),
-})
 
 /** ChatGPT's OSS flow requires a loopback listener and native credential storage. */
 export const canConnectChatGPT = () => isTauri() && !isMobile()
-
-/** Pins all credential-bearing requests to OpenAI's issuer even if discovery is misconfigured. */
-export const loadChatGPTMetadata = async (signal?: AbortSignal) => {
-  const metadata = metadataSchema.parse(
-    await http
-      .get(`${issuer}/.well-known/openid-configuration`, {
-        fetch: nativeFetch,
-        redirect: 'error',
-        credentials: 'omit',
-        signal: createOAuthRequestSignal(signal),
-      })
-      .json(),
-  )
-  for (const endpoint of [
-    metadata.authorization_endpoint,
-    metadata.token_endpoint,
-    metadata.jwks_uri,
-    metadata.revocation_endpoint,
-  ]) {
-    const url = new URL(endpoint)
-    if (url.origin !== issuer || url.username || url.password || url.hash) {
-      throw new Error('Unexpected ChatGPT OAuth endpoint')
-    }
-  }
-  return metadata
-}
 
 /** Validate identity independently from the separate permission to use the account’s plan. */
 export const validateChatGPTIdentity = async (
@@ -70,7 +35,7 @@ export const validateChatGPTIdentity = async (
   subject?: string,
 ) => {
   const { payload } = await jwtVerify(idToken, createLocalJWKSet(jwks), {
-    issuer,
+    issuer: chatGPTIssuer,
     audience: clientId,
     requiredClaims: ['sub', 'exp', 'iat', 'nonce'],
     algorithms: ['RS256'],
@@ -122,7 +87,7 @@ export const connectChatGPT = async (
           ...(registration?.subject && !hasChatGPTPlanScope(registration.scope) ? { prompt: 'consent' } : {}),
           response_type: 'code',
           redirect_uri: redirectUri,
-          resource,
+          resource: chatGPTResource,
           scope: 'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct',
           state,
           nonce,
@@ -153,7 +118,7 @@ export const connectChatGPT = async (
           code: callback.code,
           code_verifier: callback.verifier,
           redirect_uri: callback.redirectUri,
-          resource,
+          resource: chatGPTResource,
         }),
       })
       .json(),
@@ -164,10 +129,10 @@ export const connectChatGPT = async (
     refresh_token: tokens.refresh_token,
     expires_at: Date.now() + tokens.expires_in * 1000,
     oauth: {
-      issuer,
+      issuer: chatGPTIssuer,
       clientId,
       tokenEndpoint: metadata.token_endpoint,
-      resource,
+      resource: chatGPTResource,
       idToken: tokens.id_token,
       scope: tokens.scope,
     },
@@ -188,25 +153,6 @@ export const connectChatGPT = async (
     await discardChatGPTAuthorization(db, credentials)
     throw error
   }
-}
-
-/** Revokes the renewable session before removing device tokens; failed revocation leaves a retryable connection. */
-export const revokeChatGPTSession = async (credentials: ProviderCredentials) => {
-  if (!credentials.refresh_token || !credentials.oauth) {
-    return
-  }
-  const metadata = await loadChatGPTMetadata()
-  await http.post(metadata.revocation_endpoint, {
-    fetch: nativeFetch,
-    redirect: 'error',
-    credentials: 'omit',
-    signal: createOAuthRequestSignal(),
-    body: new URLSearchParams({
-      token: credentials.refresh_token,
-      token_type_hint: 'refresh_token',
-      client_id: credentials.oauth.clientId,
-    }),
-  })
 }
 
 /** The caller can explain that OpenAI could not confirm revocation without exposing transport details. */

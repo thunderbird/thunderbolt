@@ -6,14 +6,13 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { Link } from 'react-router'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox } from '@/components/ui/combobox'
 import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getProviderDefinition } from '@/providers/registry'
 import { ProviderConnectionIcon } from '@/settings/connections/provider-connection-icon'
-import { getModelDisplayName } from './model-display-name'
+import { ProviderModelOption } from './provider-model-option'
 import type { useAddProviderModels } from './use-add-provider-models'
 
 /** Connection-first, searchable model selection without copying provider credentials. */
@@ -108,31 +107,16 @@ export const AddProviderModels = (state: ReturnType<typeof useAddProviderModels>
                       <Trans>No models found.</Trans>
                     </p>
                   )}
-                  {state.visibleModels.map((model) => {
-                    const added = state.existingIds.has(model.id)
-                    return (
-                      <label
-                        key={model.id}
-                        className="flex cursor-pointer items-center gap-3 rounded-md p-3 hover:bg-accent"
-                      >
-                        <Checkbox
-                          checked={added || state.selected.includes(model.id)}
-                          onCheckedChange={() => state.toggleModel(model.id)}
-                          disabled={added || state.isPending}
-                          aria-label={getModelDisplayName(model)}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm">{getModelDisplayName(model)}</span>
-                          <span className="block truncate text-xs text-muted-foreground">{model.id}</span>
-                        </span>
-                        {added && (
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            <Trans>Added</Trans>
-                          </span>
-                        )}
-                      </label>
-                    )
-                  })}
+                  {state.visibleModels.map((model) => (
+                    <ProviderModelOption
+                      key={model.id}
+                      model={model}
+                      selected={state.selected.includes(model.id)}
+                      added={state.existingIds.has(model.id)}
+                      disabled={state.isPending}
+                      onToggle={state.toggleModel}
+                    />
+                  ))}
                 </div>
               )}
             </>

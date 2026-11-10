@@ -28,7 +28,7 @@ import {
   assertProviderConnectionAttemptCurrent,
   type ProviderConnectionAttempt,
 } from '@/lib/provider-connection-attempt'
-import { revokeChatGPTSession } from '@/providers/chatgpt-auth'
+import { revokeChatGPTSession } from '@/providers/chatgpt-session'
 import { writeChatGPTRegistration } from '@/providers/chatgpt-registration'
 import { resolveOAuthAccessToken, withProviderOAuthLock } from '@/providers/oauth-session'
 import { getIdentitySignal } from '@/lib/identity-lifetime'

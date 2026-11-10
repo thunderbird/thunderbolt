@@ -419,7 +419,7 @@ msgstr "Add web search"
 msgid "Add Your First Task"
 msgstr "Add Your First Task"
 
-#: src/settings/models/add-provider-models.tsx
+#: src/settings/models/provider-model-option.tsx
 msgid "Added"
 msgstr "Added"
 

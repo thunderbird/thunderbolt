@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useProviderVisibility } from '@/providers/use-provider-visibility'
-import { useDeferredValue, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useDeferredValue, useEffect, useReducer, useRef } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
@@ -71,6 +71,7 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
   const getProxyFetch = useProxyFetchGetter()
   const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(providerModelPickerReducer, initialState)
+  const toggleModel = useCallback((id: string) => dispatch({ type: 'toggle', id }), [])
   const pending = useRef<AbortController | null>(null)
   useEffect(() => () => pending.current?.abort(), [])
   const { data: allConnections = [], isLoading } = usePowerSyncQuery({
@@ -168,7 +169,7 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
       resetForm()
       dispatch({ type: 'connection', id })
     },
-    toggleModel: (id: string) => dispatch({ type: 'toggle', id }),
+    toggleModel,
     setSearch: (value: string) => dispatch({ type: 'search', value }),
     setManual: (value: boolean) => dispatch({ type: 'manual', value }),
     setManualId: (value: string) => dispatch({ type: 'manualId', value }),

@@ -419,7 +419,7 @@ msgstr ""
 msgid "Add Your First Task"
 msgstr "Erste Aufgabe hinzufügen"
 
-#: src/settings/models/add-provider-models.tsx
+#: src/settings/models/provider-model-option.tsx
 msgid "Added"
 msgstr ""
 

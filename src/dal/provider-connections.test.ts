@@ -5,7 +5,7 @@
 import { beforeEach, afterEach, afterAll, describe, expect, it, spyOn } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import * as oauthSession from '@/providers/oauth-session'
-import * as chatGPTAuth from '@/providers/chatgpt-auth'
+import * as chatGPTSession from '@/providers/chatgpt-session'
 import type { ProviderCredentials } from '@/providers/types'
 import { listChatGPTAccounts } from '@/providers/chatgpt-registration'
 import { getDb } from '@/db/database'
@@ -352,7 +352,7 @@ describe('ChatGPT account switching', () => {
         released.resolve()
       }
     })
-    const revoke = spyOn(chatGPTAuth, 'revokeChatGPTSession').mockResolvedValue(undefined)
+    const revoke = spyOn(chatGPTSession, 'revokeChatGPTSession').mockResolvedValue(undefined)
     return { lock, revoke }
   }
   let mocks: ReturnType<typeof setupMocks>

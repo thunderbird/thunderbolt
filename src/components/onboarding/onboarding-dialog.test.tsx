@@ -35,8 +35,9 @@ let originalLocalMode: boolean
 
 beforeAll(async () => {
   await setupTestDatabase()
-  // Preload the lazy provider step before fake timers drive wizard transitions.
+  // Preload the lazy provider steps before fake timers drive wizard transitions.
   await import('./onboarding-model-step')
+  await import('./onboarding-search-step')
   consoleSpies = setupConsoleSpy()
 })
 

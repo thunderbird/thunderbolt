@@ -32,10 +32,8 @@ export const ProviderConnectionSummary = ({
           <ProviderConnectionIcon provider={connection.provider} />
         </span>
         {signedIn && (
-          <span className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full bg-sidebar">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground [background-image:var(--gradient-brand)]">
-              <Check className="size-3" aria-hidden="true" />
-            </span>
+          <span className="absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full bg-brand text-brand-foreground ring-2 ring-sidebar [background-image:var(--gradient-brand)]">
+            <Check className="size-3" aria-hidden="true" />
           </span>
         )}
       </div>

@@ -2126,8 +2126,8 @@ msgid "Failed to change the recovery phrase"
 msgstr ""
 
 #: src/hooks/use-sync-setup.ts
-msgid "Failed to check approval"
-msgstr "承認を確認できませんでした"
+#~ msgid "Failed to check approval"
+#~ msgstr "承認を確認できませんでした"
 
 #: src/hooks/use-oauth-connect.ts
 msgid "Failed to complete authentication"

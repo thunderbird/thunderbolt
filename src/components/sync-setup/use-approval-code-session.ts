@@ -98,12 +98,15 @@ export const useApprovalCodeSession = ({
   liveSessionId.current = state.sessionId
   const isMounted = useRef(false)
 
-  /** Without its keys this device can still be approved with the fingerprint, so log and fall back. */
+  /**
+   * Without its keys this device can still be approved with the fingerprint, so log and fall back.
+   * The log leaves out the error itself, which may carry key material.
+   */
   const loadContext = async (sessionId: string) => {
     try {
       return await getContext(sessionId)
-    } catch (error) {
-      console.error('Failed to prepare an approval code:', error)
+    } catch {
+      console.error('Failed to prepare an approval code.')
       return null
     }
   }

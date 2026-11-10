@@ -382,7 +382,8 @@ describe('sync setup operation outcomes', () => {
     [false, 'intro', 'not been approved'],
     [httpError(422), 'denied', null],
     [new DeviceApprovalError('recipient-unverified'), 'intro', "Couldn't verify"],
-    [new Error('offline'), 'intro', 'offline'],
+    [new Error('Failed to unwrap account key'), 'intro', "Couldn't verify"],
+    [new EncryptionRequestTimeoutError(), 'intro', 'took too long'],
     [true, 'intro', null],
   ] as const)('settles approval outcome %s', async (outcome, step, message) => {
     if (outcome instanceof Error) {
@@ -450,10 +451,12 @@ describe('sync setup operation outcomes', () => {
     expect(spies.unlock).toHaveBeenCalledTimes(1)
   })
 
-  it('shows a failure the automatic check keeps hitting', () => {
+  it('shows a failure the automatic check keeps hitting, without its internal message', () => {
     const { result } = mount()
-    act(() => result.current.approvalCheckFailed(new DecryptionError('Envelope could not be opened')))
-    expect(result.current.approvalError).toBe('Envelope could not be opened')
+    act(() => result.current.approvalCheckFailed(new DecryptionError('Failed to unwrap account key')))
+    expect(result.current.approvalError).toBe(
+      "Couldn't verify this device's approval. Select Check now to try again, or choose another option below.",
+    )
     act(() => result.current.approvalCheckFailed(new EncryptedSyncUnsupportedError()))
     expect(result.current.approvalError).toBe(
       'To use encrypted sync, open this app over HTTPS and use an up-to-date browser or operating system.',

@@ -173,15 +173,6 @@ describe('useSyncEnabledToggle', () => {
   })
 })
 
-it('reads the authoritative sync preference without a duplicate change event', () => {
-  useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
-  const { result } = renderHook(() => useSyncEnabledToggle())
-  act(() => useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true))
-  expect(result.current.syncEnabled).toBe(true)
-  act(() => useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false))
-  expect(result.current.syncEnabled).toBe(false)
-})
-
 afterEach(() => useLocalSettingsStore.setState({ syncEnabled: false }))
 
 it('reads the authoritative sync preference without a duplicate change event', () => {

@@ -51,7 +51,8 @@ test.describe('OIDC logout', () => {
       await expect(dialog.getByRole('button', { name: /Delete data from device/ })).toHaveClass(/border-destructive/)
       const session = await page.request.get('http://localhost:8002/v1/api/auth/get-session')
       expect(session.ok()).toBe(true)
-      expect(await session.json()).toMatchObject({ user: { email: 'e2e@thunderbolt.test' } })
+      // The nightly signs each test in as a unique e2e-<id>@thunderbolt.test user.
+      expect(await session.json()).toMatchObject({ user: { email: expect.stringMatching(/@thunderbolt\.test$/) } })
 
       await page.unroute(signOutRoute)
       await dialog.getByRole('button', { name: 'Log out', exact: true }).click()

@@ -771,6 +771,79 @@ describe('Tinfoil account replacement', () => {
     expect(await getProviderConnection(getDb(), 'oauth:tinfoil')).toMatchObject({ name: 'Renamed', connected: false })
   })
 
+  it.each(['old', 'unrelated', undefined] as const)(
+    'marks only the revoked grant after a concurrent credential update (%s)',
+    async (authorizationId) => {
+      await save('old')
+      spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
+        await getDb()
+          .update(providerConnectionSecretsTable)
+          .set({
+            credentials: JSON.stringify({
+              access_token: 'rotated-access',
+              refresh_token: 'rotated-refresh',
+              authorizationId,
+              sessionRevision: 'concurrent',
+            }),
+          })
+          .where(eq(providerConnectionSecretsTable.id, 'oauth:tinfoil'))
+      })
+      await expect(save('new')).rejects.toThrow('changed')
+      const secret = await getDb()
+        .select()
+        .from(providerConnectionSecretsTable)
+        .where(eq(providerConnectionSecretsTable.id, 'oauth:tinfoil'))
+        .get()
+      expect(JSON.parse(secret!.credentials!)).toEqual({
+        access_token: 'rotated-access',
+        refresh_token: 'rotated-refresh',
+        authorizationId,
+        sessionRevision: 'concurrent',
+        ...(authorizationId === 'old' ? { reauth_required: true } : {}),
+      })
+    },
+  )
+
+  it('retires a changed legacy grant without accepting its stale replacement attempt', async () => {
+    await saveIntegrationCredentials(
+      getDb(),
+      'tinfoil',
+      {
+        access_token: 'old-access',
+        refresh_token: 'old-refresh',
+        authorizationId: 'old',
+        sessionRevision: 'original',
+      },
+      true,
+    )
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
+      await saveIntegrationCredentials(
+        getDb(),
+        'tinfoil',
+        {
+          access_token: 'rotated-access',
+          refresh_token: 'rotated-refresh',
+          authorizationId: 'old',
+          sessionRevision: 'concurrent',
+        },
+        false,
+      )
+    })
+    await expect(save('new', { attempt })).rejects.toThrow('changed')
+    expect(await getProviderConnection(getDb(), 'oauth:tinfoil')).toBeNull()
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual({
+      enabled: false,
+      credentials: {
+        access_token: 'rotated-access',
+        refresh_token: 'rotated-refresh',
+        authorizationId: 'old',
+        sessionRevision: 'concurrent',
+        reauth_required: true,
+      },
+    })
+  })
+
   it('keeps manual API keys independent and never revokes the current grant on a same-grant save', async () => {
     await save('old')
     const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()

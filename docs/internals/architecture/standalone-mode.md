@@ -94,8 +94,10 @@ verification and checks it again inside the model-save transaction. Disconnectin
 toggling, or replacing a connection advances that revision, so an older attempt in
 another window cannot restore access. Local credential revisions live in
 `provider_connection_secrets`; legacy integrations and model keys migrate there.
-Tinfoil token refresh preserves the revision. Cancellation also
-aborts pending network work and rolls back saves that have not committed.
+Tinfoil token refresh preserves the revision. Cancellation stops setup and rolls
+back saves that have not committed. Once a Tinfoil token exchange has been sent,
+it finishes within its thirty-second deadline so an issued grant can still be
+returned to the cancelled flow and revoked.
 
 OAuth sessions live in local-only `provider_connection_secrets`; synced connection
 and model metadata contains no credentials. Refresh, reconnect persistence, enable/disable and disconnect

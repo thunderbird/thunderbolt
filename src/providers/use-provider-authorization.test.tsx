@@ -20,7 +20,7 @@ import * as tinfoilMobile from '@/lib/tinfoil-mobile-auth'
 import * as tinfoilSession from '@/lib/tinfoil-session'
 import * as capabilities from '@/integrations/otari-search/capabilities'
 import * as providerConnections from '@/dal/provider-connections'
-import { tinfoilAuth } from '@/lib/tinfoil-auth'
+import { createTinfoilAuth, tinfoilAuth } from '@/lib/tinfoil-auth'
 import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import {
   disconnectProviderConnection,
@@ -373,6 +373,69 @@ describe('provider authorization without a model', () => {
     expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
     expect(onConnected).not.toHaveBeenCalled()
   })
+
+  it.each(['headers', 'body'] as const)(
+    'cleans up a Tinfoil grant when cancellation arrives during token %s',
+    async (phase) => {
+      const requested = Promise.withResolvers<Request>()
+      const headers = Promise.withResolvers<Response>()
+      const body = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>()
+      const response = new Response(new ReadableStream<Uint8Array>({ start: (controller) => body.resolve(controller) }))
+      const requests: Request[] = []
+      const auth = createTinfoilAuth('client', {
+        fetch: async (input) => {
+          const request = input as Request
+          requests.push(request)
+          if (request.url.endsWith('/revoke')) {
+            return new Response(null, { status: 204 })
+          }
+          requested.resolve(request)
+          return headers.promise
+        },
+      })
+      spyOn(tinfoilAuth, 'startConnection').mockImplementation((options = {}) =>
+        auth.exchangeCode(
+          {
+            code: 'code',
+            verifier: 'verifier',
+            redirectUri: 'https://app.example/oauth/tinfoil',
+          },
+          options.signal,
+        ),
+      )
+      spyOn(tinfoilAuth, 'revoke').mockImplementation(auth.revoke)
+      const { result, onConnected } = setup()
+      const connecting = result.current.authorize({ provider: 'tinfoil', name: 'Tinfoil' })
+      const request = await requested.promise
+      if (phase === 'body') {
+        await act(async () => headers.resolve(response))
+      }
+      act(() => result.current.cancel())
+      expect(result.current.isPending).toBe(false)
+      expect(request.signal.aborted).toBe(false)
+      await act(async () => {
+        headers.resolve(response)
+        const stream = await body.promise
+        stream.enqueue(
+          new TextEncoder().encode(
+            JSON.stringify({
+              access_token: 'unused',
+              refresh_token: 'unused-refresh',
+              expires_in: 900,
+              token_type: 'Bearer',
+            }),
+          ),
+        )
+        stream.close()
+        await connecting
+      })
+      expect(requests).toHaveLength(2)
+      expect(requests[1].url).toBe('https://api.tinfoil.sh/oauth/revoke')
+      expect(new URLSearchParams(await requests[1].text()).get('token')).toBe('unused-refresh')
+      expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
+      expect(onConnected).not.toHaveBeenCalled()
+    },
+  )
 
   it('releases an unused Tinfoil grant when saving fails without disconnecting the current account', async () => {
     await saveProviderConnection(getDb(), {

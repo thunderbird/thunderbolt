@@ -63,29 +63,36 @@ export const revokeReplacedTinfoilAuthorization = async (
   signal?.throwIfAborted()
   // A failed revoke leaves the previous credentials available for retry.
   await auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
-  return db.transaction(async (tx) => {
+  const retired = await db.transaction(async (tx) => {
     const current = await readStoredAuthorization(tx)
-    if (JSON.stringify(current) !== JSON.stringify(row)) {
+    if (!sameAuthorization(current.credentials, row.credentials)) {
       throw new Error('Tinfoil connection changed during revocation')
     }
-    if (row.secret) {
+    if (current.secret) {
       await writeProviderCredentials(
         tx,
         'oauth:tinfoil',
-        { ...row.credentials, reauth_required: true },
-        row.secret.binding,
+        { ...current.credentials, reauth_required: true },
+        current.secret.binding,
       )
-    } else if (row.legacy) {
+    } else if (current.legacy) {
       await saveIntegrationCredentials(
         tx,
         'tinfoil',
-        { ...row.legacy.credentials, reauth_required: true },
-        row.legacy.enabled,
+        { ...current.legacy.credentials, reauth_required: true },
+        current.legacy.enabled,
       )
     }
-    // Legacy fingerprints include credentials; capture our own retirement inside this transaction.
-    return getProviderConnectionAttempt(tx, 'tinfoil')
+    // Only our own retirement may advance a legacy fingerprint for the guarded replacement.
+    return {
+      attempt: await getProviderConnectionAttempt(tx, 'tinfoil'),
+      changed: JSON.stringify(current) !== JSON.stringify(row),
+    }
   })
+  if (retired.changed) {
+    throw new Error('Tinfoil connection changed during revocation')
+  }
+  return retired.attempt
 }
 
 /** Updates OAuth access within a caller-owned transaction and session lock. */
@@ -182,7 +189,11 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
         await deps.auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
       }
       await db.transaction(async (tx) => {
-        if (JSON.stringify(await readStoredAuthorization(tx)) !== JSON.stringify(row)) {
+        const current = await readStoredAuthorization(tx)
+        const sameSession = row.credentials.access_token
+          ? sameAuthorization(current.credentials, row.credentials)
+          : JSON.stringify(current) === JSON.stringify(row)
+        if (!sameSession) {
           throw new Error('Tinfoil connection changed during revocation')
         }
         const connection = await tx

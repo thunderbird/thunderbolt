@@ -15,7 +15,12 @@ import { saveProviderConnectionInTransaction } from '@/dal/provider-connections'
 import { credentialBinding, writeProviderCredentials } from '@/providers/credentials'
 import { providerConnectionsTable, providerConnectionSecretsTable, integrationsSecretsTable } from '@/db/tables'
 import { eq } from 'drizzle-orm'
-import { tinfoilAuth, TinfoilReauthorizationError, TinfoilConnectionError } from './tinfoil-auth'
+import {
+  tinfoilAuth,
+  TinfoilReauthorizationError,
+  TinfoilConnectionError,
+  type TinfoilCredentials,
+} from './tinfoil-auth'
 import { invalidateIdentityLifetime } from './identity-lifetime'
 import type { RemoteCallback } from 'drizzle-orm/sqlite-proxy'
 
@@ -42,7 +47,7 @@ const harness = () => {
   return { auth, session: createTinfoilSession({ db: getDb, auth, lock: serialLock(), now: () => 100_000 }) }
 }
 
-const saveCanonicalSession = (credentials = expired) =>
+const saveCanonicalSession = (credentials: TinfoilCredentials = expired) =>
   getDb().transaction((tx) =>
     saveProviderConnectionInTransaction(tx, {
       provider: 'tinfoil',
@@ -130,6 +135,30 @@ describe('Tinfoil session lifecycle', () => {
     await session.disconnect()
     expect(auth.revoke).not.toHaveBeenCalled()
   })
+
+  it.each(['original', 'replacement'] as const)(
+    'clears only the revoked grant after concurrent disconnect mutation (%s)',
+    async (authorizationId) => {
+      await saveCanonicalSession({ ...expired, authorizationId: 'original' })
+      const { auth, session } = harness()
+      const changed = { ...renewed, authorizationId, sessionRevision: 'concurrent' }
+      auth.revoke.mockImplementation(async () => {
+        await writeProviderCredentials(
+          getDb(),
+          'oauth:tinfoil',
+          changed,
+          credentialBinding({ provider: 'tinfoil', authMethod: 'oauth', url: null }),
+        )
+      })
+      if (authorizationId === 'original') {
+        await session.disconnect()
+        expect(JSON.parse((await canonicalSecret())!.credentials!)).not.toHaveProperty('access_token')
+      } else {
+        await expect(session.disconnect()).rejects.toThrow('changed')
+        expect(JSON.parse((await canonicalSecret())!.credentials!)).toEqual(changed)
+      }
+    },
+  )
 
   it('revokes only an unused grant while retaining the saved account', async () => {
     await saveCanonicalSession()

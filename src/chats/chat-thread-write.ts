@@ -19,3 +19,10 @@ export const withChatThreadWrite = async <T>(chatThreadId: string, write: () => 
     }
   }
 }
+
+/** Read runtime membership only after any already-started move/creation commits its live-session update. */
+export const waitForChatThreadWrites = async (chatThreadId: string): Promise<void> => {
+  for (let pending = pendingWrites.get(chatThreadId); pending; pending = pendingWrites.get(chatThreadId)) {
+    await pending
+  }
+}

@@ -14,7 +14,8 @@ import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
-import { miniAppPath, useChatDestination } from '@/mini-apps/use-chat-destination'
+import { useChatDestination } from '@/mini-apps/use-chat-destination'
+import { pagePath } from '@/pages/page-path'
 import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -108,11 +109,11 @@ export default function Sidebar() {
   // animation competes for the main thread and makes the gesture visibly jank.
   // Desktop navigation remains synchronous.
   const navigateAndCloseSidebar = useCallback(
-    async (path: string) => {
+    async (path: string, returnTo?: string) => {
       if (isMobile) {
         await closeMobileSidebar()
       }
-      navigate(path)
+      navigate(path, returnTo ? { state: { returnTo } } : undefined)
     },
     [closeMobileSidebar, isMobile, navigate],
   )
@@ -167,14 +168,14 @@ export default function Sidebar() {
             deleteChatDialogRef={deleteChatDialogRef}
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
-            // Web and desktop only, gated on viewport to match `MiniAppPage`
-            // (which explains itself if a deep link lands here anyway).
-            showMiniApps={!isMobile}
+            showPages
             activeSection={activeSection}
             onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
-            onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
+            onPageClick={(pageId, returnTo) => {
+              void navigateAndCloseSidebar(pagePath(pageId), returnTo)
+            }}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={openSearchPalette}

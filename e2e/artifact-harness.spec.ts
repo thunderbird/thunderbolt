@@ -3,7 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, test } from './test'
-import { wrapArtifactHtml } from '../src/artifacts/harness'
+import { readFileSync } from 'node:fs'
+import { wrapArtifactHtml as wrapWithDrivers } from '../src/artifacts/harness-protocol'
+
+// Use the exact same fixed driver bytes that Vite supplies through ?raw in the app.
+const driverSource = [
+  new URL('../src/browser/page-driver.js', import.meta.url),
+  new URL('../src/pages/iframe-page-driver.js', import.meta.url),
+]
+  .map((url) => readFileSync(url, 'utf8'))
+  .join('\n')
+const wrapArtifactHtml = (html: string, nonce: string) => wrapWithDrivers(html, nonce, driverSource)
 
 /**
  * Real-browser coverage for the artifact harness — the runtime path happy-dom

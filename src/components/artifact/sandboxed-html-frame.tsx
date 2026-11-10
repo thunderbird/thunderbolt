@@ -45,6 +45,8 @@ export type SandboxedHtmlFrameProps = {
   autoHeight?: boolean
   /** Fired once the page has loaded and run its initial synchronous script. */
   onReady?: () => void
+  onHeightChange?: (height: number) => void
+  onRequestReady?: (request: ((method: string, params: unknown) => Promise<unknown>) | null) => void
   /** Fired if the page reports a runtime error (including after load, during use). */
   onError?: (error: string) => void
   /**
@@ -86,6 +88,8 @@ export const SandboxedHtmlFrame = ({
   allowScripts = true,
   autoHeight = false,
   onReady,
+  onHeightChange,
+  onRequestReady,
   onError,
   onSelectionChange,
   onQueryReady,
@@ -115,6 +119,10 @@ export const SandboxedHtmlFrame = ({
 
   // Keep the latest callbacks in refs so the message subscription is set up once
   // per document, not re-subscribed on every parent render.
+  const heightCallback = useRef(onHeightChange)
+  heightCallback.current = onHeightChange
+  const requestCallback = useRef(onRequestReady)
+  requestCallback.current = onRequestReady
   const onReadyRef = useRef(onReady)
   onReadyRef.current = onReady
   const onErrorRef = useRef(onError)
@@ -168,12 +176,25 @@ export const SandboxedHtmlFrame = ({
   }, [nonce, srcDoc, pending])
 
   useEffect(() => {
+    let current = true
+    let ready = false
     const handleMessage = (event: MessageEvent) => {
       const data = parseHarnessMessage(event, iframeRef.current?.contentWindow ?? null, nonce)
       if (!data) {
         return
       }
-      if (data.type === 'artifact-ready') {
+      if (data.type === 'artifact-ready' && !ready) {
+        ready = true
+        requestCallback.current?.(async (method, params) => {
+          if (!current) {
+            throw new Error('The page document changed. Observe it again.')
+          }
+          const frame = iframeRef.current?.contentWindow
+          if (!frame) {
+            throw new Error('Page closed')
+          }
+          return pending.issue((id) => frame.postMessage(artifactRequest(nonce, id, method, params), '*'), 5000)
+        })
         onReadyRef.current?.()
       }
       if (data.type === 'artifact-error') {
@@ -190,12 +211,15 @@ export const SandboxedHtmlFrame = ({
       }
       if (data.type === 'artifact-height' && Number.isFinite(data.height)) {
         const next = Math.min(maxAutoHeightPx, Math.max(minAutoHeightPx, Math.round(data.height)))
+        heightCallback.current?.(next)
         // Ignore sub-pixel jitter so a self-measuring page can't oscillate.
         setContentHeight((prev) => (prev !== null && Math.abs(prev - next) <= 1 ? prev : next))
       }
     }
     window.addEventListener('message', handleMessage)
     return () => {
+      current = false
+      requestCallback.current?.(null)
       window.removeEventListener('message', handleMessage)
       // A caller awaiting an answer when the document reloads gets an empty one
       // rather than a promise that never settles. `srcDoc` is a dependency for

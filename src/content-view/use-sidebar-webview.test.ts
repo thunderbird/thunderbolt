@@ -10,7 +10,12 @@ import { clearMocks, mockIPC, mockWindows } from '@tauri-apps/api/mocks'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { type RefObject } from 'react'
-import { useSidebarWebview, type SidebarBrowserState, type SidebarWebviewConfig } from './use-sidebar-webview'
+import {
+  getBrowserClip,
+  useSidebarWebview,
+  type SidebarBrowserState,
+  type SidebarWebviewConfig,
+} from './use-sidebar-webview'
 
 type IpcCall = { command: string; args: Record<string, unknown> }
 const calls: IpcCall[] = []
@@ -42,6 +47,8 @@ const initialize = async () => {
 }
 
 const matchingCalls = (command: string) => calls.filter((call) => call.command === command)
+const visibilityCalls = (hidden: boolean) =>
+  matchingCalls('browser_set_visibility').filter((call) => call.args.hidden === hidden)
 
 beforeEach(() => {
   calls.length = 0
@@ -92,10 +99,8 @@ beforeEach(() => {
           return presentationResponse(command, 'browser-resize-handle')
         case 'plugin:webview|get_all_webviews':
           return labels.map((label) => ({ label, windowLabel: 'main' }))
-        case 'plugin:webview|set_webview_position':
-        case 'plugin:webview|set_webview_size':
-        case 'plugin:webview|webview_hide':
-        case 'plugin:webview|webview_show':
+        case 'browser_present':
+        case 'browser_set_visibility':
           return presentationResponse(command, args.label as string)
       }
     },
@@ -129,7 +134,7 @@ describe('useSidebarWebview', () => {
       expect(matchingCalls('browser_resize_raise')).toHaveLength(1)
       expect(result.current.isInitialized).toBe(true)
       expect(result.current.error).toBeNull()
-      expect(matchingCalls('plugin:webview|webview_show')).toHaveLength(1)
+      expect(visibilityCalls(false)).toHaveLength(1)
     } finally {
       log.mockRestore()
     }
@@ -169,11 +174,9 @@ describe('useSidebarWebview', () => {
       resizeCallback([], {} as ResizeObserver)
       await getClock().tickAsync(20)
     })
-    expect(matchingCalls('plugin:webview|set_webview_position').at(-1)?.args).toMatchObject({
-      value: { position: { type: 'Logical', x: 75, y: 200 } },
-    })
-    expect(matchingCalls('plugin:webview|set_webview_size').at(-1)?.args).toMatchObject({
-      value: { size: { type: 'Logical', width: 550, height: 400 } },
+    expect(matchingCalls('browser_present').at(-1)?.args).toMatchObject({
+      bounds: { x: 75, y: 200, width: 550, height: 400 },
+      clip: { top: 0, right: 0, bottom: 0, left: 0 },
     })
   })
 
@@ -411,8 +414,8 @@ describe('useSidebarWebview', () => {
     first.rerender({ hidden: true })
     second.rerender({ hidden: false })
     await act(async () => {})
-    expect(matchingCalls('plugin:webview|webview_hide').at(-1)?.args.label).toBe(firstLabel)
-    expect(matchingCalls('plugin:webview|webview_show').at(-1)?.args.label).toBe(secondLabel)
+    expect(visibilityCalls(true).at(-1)?.args.label).toBe(firstLabel)
+    expect(visibilityCalls(false).at(-1)?.args.label).toBe(secondLabel)
     await act(async () => {
       await first.result.current.goBack()
       await second.result.current.goForward()
@@ -438,26 +441,28 @@ describe('useSidebarWebview', () => {
     calls.length = 0
     const pendingPosition = Promise.withResolvers<void>()
     presentationResponse = async (command) => {
-      if (command === 'plugin:webview|set_webview_position') {
+      if (command === 'browser_present') {
         await pendingPosition.promise
       }
     }
     viewport.current.getBoundingClientRect = () => new DOMRect(65, 170, 550, 400)
     rerender({ hidden: false })
     await act(async () => {})
-    expect(matchingCalls('plugin:webview|webview_show')).toHaveLength(0)
+    expect(visibilityCalls(false)).toHaveLength(0)
     rerender({ hidden: true })
     await act(async () => {
       pendingPosition.resolve()
     })
-    expect(matchingCalls('plugin:webview|webview_show')).toHaveLength(0)
+    expect(visibilityCalls(false)).toHaveLength(0)
     rerender({ hidden: false })
     await act(async () => {})
-    const sizeIndex = calls.findLastIndex(({ command }) => command === 'plugin:webview|set_webview_size')
-    const showIndex = calls.findLastIndex(({ command }) => command === 'plugin:webview|webview_show')
+    const sizeIndex = calls.findLastIndex(({ command }) => command === 'browser_present')
+    const showIndex = calls.findLastIndex(
+      ({ command, args }) => command === 'browser_set_visibility' && args.hidden === false,
+    )
     expect(sizeIndex).toBeLessThan(showIndex)
     expect(calls[sizeIndex]?.args).toMatchObject({
-      value: { size: { type: 'Logical', width: 550, height: 400 } },
+      bounds: { width: 550, height: 400 },
     })
     expect(matchingCalls('browser_create')).toHaveLength(0)
     expect(matchingCalls('browser_close')).toHaveLength(0)
@@ -477,7 +482,7 @@ describe('useSidebarWebview', () => {
     })
     expect(result.current.url).toBe('https://mozilla.org/')
     expect(matchingCalls('browser_create')).toHaveLength(1)
-    expect(matchingCalls('plugin:webview|webview_hide')).toHaveLength(1)
+    expect(visibilityCalls(true)).toHaveLength(1)
   })
 
   it('hides and shows the native page when dialogs cover it', async () => {
@@ -487,10 +492,10 @@ describe('useSidebarWebview', () => {
     })
     await initialize()
     expect(matchingCalls('browser_create')[0]?.args.hidden).toBe(true)
-    expect(matchingCalls('plugin:webview|webview_hide')).toHaveLength(1)
+    expect(visibilityCalls(true)).toHaveLength(1)
     rerender({ hidden: false })
     await act(async () => {})
-    expect(matchingCalls('plugin:webview|webview_show')).toHaveLength(1)
+    expect(visibilityCalls(false)).toHaveLength(1)
   })
 
   it('keeps the native new-tab page hidden until navigation and hides it again after back', async () => {
@@ -503,20 +508,22 @@ describe('useSidebarWebview', () => {
     expect(result.current.isInitialized).toBe(true)
     expect(result.current.url).toBe('about:blank')
     expect(matchingCalls('browser_create')[0]?.args.hidden).toBe(true)
-    expect(matchingCalls('plugin:webview|webview_show')).toHaveLength(0)
+    expect(visibilityCalls(false)).toHaveLength(0)
     rerender({ hidden: true })
     await act(async () => {})
     rerender({ hidden: false })
     await act(async () => {})
-    expect(matchingCalls('plugin:webview|webview_show')).toHaveLength(0)
+    expect(visibilityCalls(false)).toHaveLength(0)
     await act(async () => {
       await result.current.navigate(defaultUrl)
     })
-    expect(matchingCalls('plugin:webview|webview_show')).toHaveLength(1)
+    expect(visibilityCalls(false)).toHaveLength(1)
     expect(result.current.url).toBe(defaultUrl)
     expect(result.current.canGoBack).toBe(true)
-    const sizeIndex = calls.findLastIndex(({ command }) => command === 'plugin:webview|set_webview_size')
-    const showIndex = calls.findLastIndex(({ command }) => command === 'plugin:webview|webview_show')
+    const sizeIndex = calls.findLastIndex(({ command }) => command === 'browser_present')
+    const showIndex = calls.findLastIndex(
+      ({ command, args }) => command === 'browser_set_visibility' && args.hidden === false,
+    )
     expect(sizeIndex).toBeLessThan(showIndex)
     actionResponse = async () => {
       nativeState = { ...nativeState, url: 'about:blank', canGoBack: false, canGoForward: true }
@@ -525,7 +532,7 @@ describe('useSidebarWebview', () => {
       await result.current.goBack()
     })
     expect(result.current.url).toBe('about:blank')
-    expect(calls.at(-1)?.command).toBe('plugin:webview|webview_hide')
+    expect(calls.at(-1)).toMatchObject({ command: 'browser_set_visibility', args: { hidden: true } })
     expect(matchingCalls('browser_create')).toHaveLength(1)
   })
 
@@ -540,10 +547,10 @@ describe('useSidebarWebview', () => {
       await result.current.navigate(defaultUrl)
     })
     expect(result.current.url).toBe(defaultUrl)
-    expect(matchingCalls('plugin:webview|webview_show')).toHaveLength(0)
+    expect(visibilityCalls(false)).toHaveLength(0)
     rerender({ hidden: false })
     await act(async () => {})
-    expect(matchingCalls('plugin:webview|webview_show')).toHaveLength(1)
+    expect(visibilityCalls(false)).toHaveLength(1)
   })
 
   it('does not re-hide a navigated new tab when a poll started during navigation finishes late', async () => {
@@ -566,12 +573,12 @@ describe('useSidebarWebview', () => {
       await navigation
     })
     expect(result.current.url).toBe(defaultUrl)
-    const hideCount = matchingCalls('plugin:webview|webview_hide').length
+    const hideCount = visibilityCalls(true).length
     await act(async () => {
       pendingPoll.resolve(oldState)
     })
     expect(result.current.url).toBe(defaultUrl)
-    expect(matchingCalls('plugin:webview|webview_hide')).toHaveLength(hideCount)
+    expect(visibilityCalls(true)).toHaveLength(hideCount)
   })
 
   it('closes a browser created after unmount without publishing stale initialized state', async () => {
@@ -631,5 +638,22 @@ describe('useSidebarWebview', () => {
     expect(originalClose).not.toHaveBeenCalled()
     expect(latestClose).toHaveBeenCalledTimes(1)
     expect(disconnect).toHaveBeenCalled()
+  })
+})
+
+describe('getBrowserClip', () => {
+  it('sends clipped insets without shrinking the document viewport', () => {
+    const host = document.createElement('div')
+    host.dataset.pageHost = 'inline'
+    host.style.clipPath = 'inset(120px 8px 40px 10px)'
+    const viewport = createViewport()
+    host.append(viewport.current)
+    document.body.append(host)
+    try {
+      expect(getBrowserClip(viewport.current)).toEqual({ top: 120, right: 8, bottom: 40, left: 10 })
+      expect(viewport.current.getBoundingClientRect().height).toBe(600)
+    } finally {
+      host.remove()
+    }
   })
 })

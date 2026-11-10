@@ -150,12 +150,12 @@ const withoutFenceMarkers = (description: string): string =>
  * for no gain. Returns null when the app exposes nothing, so the section is
  * omitted rather than rendered empty.
  */
-export const buildMiniAppToolsPromptSection = (tools: MiniAppTool[]): string | null => {
+export const buildMiniAppToolsPromptSection = (tools: MiniAppTool[], describeOwnApproval = true): string | null => {
   if (tools.length === 0) {
     return null
   }
   const lines = tools.map((tool) => {
-    const suffix = requiresApproval(tool) ? ' (asks the user before running)' : ''
+    const suffix = describeOwnApproval && requiresApproval(tool) ? ' (asks the user before running)' : ''
     return `- \`${toToolsetName(tool)}\` — ${withoutFenceMarkers(tool.description)}${suffix}`
   })
   /*

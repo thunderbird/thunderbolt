@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { maxProjectNameLength } from '@/dal/projects'
 import { EmojiPicker } from './emoji-picker'
+import { ProjectExecutionField } from './project-execution-field'
 import type { useProjectCreateState } from './use-project-create-state'
 
 /** Create with a name and icon; the full project editor owns the optional details. */
@@ -44,6 +45,7 @@ export const ProjectCreateForm = ({
           />
         </EmojiPicker>
       </fieldset>
+      <ProjectExecutionField execution={form.execution} onChange={form.setExecution} disabled={form.isPending} />
       {form.error && (
         <p role="alert" className="text-sm text-destructive">
           {form.error}

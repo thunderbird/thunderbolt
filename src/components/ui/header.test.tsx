@@ -193,6 +193,28 @@ describe('Header', () => {
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
   })
 
+  it('offers only agents that honor the fixed project environment without changing the persisted selection', async () => {
+    await createAgent(getDb(), {
+      id: customAgent.id,
+      name: customAgent.name,
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://example.com',
+      userId: 'user-1',
+    })
+    const project = await createProject(getDb(), { name: 'Shared workspace' })
+    setupWithAgent(customAgent, { projectId: project.id })
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+    expect(screen.getByText(customAgent.name)).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    await flushAgentsQuery()
+    expect(screen.getByText(builtInAgent.name)).toBeInTheDocument()
+    expect(screen.getAllByText(customAgent.name)).toHaveLength(1)
+    expect(screen.queryByText('Add Agent')).toBeNull()
+    expect(useChatStore.getState().sessions.get('thread-1')?.selectedAgent.id).toBe(customAgent.id)
+  })
+
   it('falls back to the built-in agent when the session has no agent', () => {
     setupWithAgent(builtInAgent)
 

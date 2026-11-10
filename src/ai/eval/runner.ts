@@ -61,6 +61,7 @@ export const createEvalAdapterContext = ({
 }: EvalAdapterContextOptions): AgentAdapterContext => ({
   threadId,
   chatThread: null,
+  execution: { location: 'sandbox', access: 'full' },
   acpSessionId: null,
   saveMessages: async () => {},
   selectedModel,

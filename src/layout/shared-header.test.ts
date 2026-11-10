@@ -28,12 +28,14 @@ describe('sharedHeaderHasControls', () => {
    */
   it('drops the empty bar over an app on web', () => {
     expect(sharedHeaderHasControls({ pathname: '/apps/finance-model', ...onWeb })).toBe(false)
+    expect(sharedHeaderHasControls({ pathname: '/pages/html-one', ...onWeb })).toBe(false)
   })
 
   /** In the desktop app it still carries back/forward — and, on a frameless
    *  window, the only drag surface this route has. */
   it('keeps it over an app in the desktop app', () => {
     expect(sharedHeaderHasControls({ pathname: '/apps/finance-model', ...inDesktopApp })).toBe(true)
+    expect(sharedHeaderHasControls({ pathname: '/pages/html-one', ...inDesktopApp })).toBe(true)
   })
 
   /** The mobile header is a different layout and always has the sidebar

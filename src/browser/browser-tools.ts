@@ -51,7 +51,7 @@ const navigationSchema = z.object({
     .describe('Required for navigate; omit for history and loading actions.'),
 })
 
-const actionSchema = z.object({
+export const actionSchema = z.object({
   tabId,
   type: z.enum(['click', 'move', 'type', 'key', 'scroll']),
   ref: elementRef.optional().describe('An element ref from a fresh snapshot of this same tab and document.'),
@@ -66,7 +66,7 @@ const actionSchema = z.object({
 })
 
 /** Reject incomplete or ambiguous targets before an action reaches the native browser. */
-const actionFromInput = ({ tabId: _tabId, ...input }: z.infer<typeof actionSchema>): BrowserAction => {
+export const actionFromInput = ({ tabId: _tabId, ...input }: z.infer<typeof actionSchema>): BrowserAction => {
   const hasPoint = input.x !== undefined && input.y !== undefined
   const hasPartialPoint = (input.x === undefined) !== (input.y === undefined)
   if (hasPartialPoint) {

@@ -86,6 +86,7 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 const routeChunkLoaders = {
   tasks: () => import('@/tasks'),
   miniApp: () => import('@/mini-apps/mini-app-page'),
+  page: () => import('@/pages/page-route'),
   settings: () => import('@/settings/index'),
   preferences: () => import('@/settings/preferences'),
   models: () => import('@/settings/models'),
@@ -100,6 +101,7 @@ const routeChunkLoaders = {
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
 const MiniAppPage = lazy(routeChunkLoaders.miniApp)
+const PageRoute = lazy(routeChunkLoaders.page)
 const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
 const ModelsPage = lazy(routeChunkLoaders.models)
@@ -231,6 +233,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route path="projects" element={<ProjectRedirect />} />
               <Route path="projects/:projectId" element={<ProjectRedirect />} />
               <Route path="apps/:appId" element={<MiniAppPage />} />
+              <Route path="pages/:pageId" element={<PageRoute />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
 

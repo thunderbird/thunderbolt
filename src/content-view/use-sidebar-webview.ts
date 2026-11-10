@@ -5,7 +5,6 @@
 import { isTauriDesktop } from '@/lib/platform'
 import { browserController } from '@/browser/browser-controller'
 import { invoke } from '@tauri-apps/api/core'
-import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview, Webview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -37,7 +36,7 @@ type BrowserSession = {
   navigate: (url: string) => Promise<boolean>
   action: (action: BrowserAction) => Promise<boolean>
   close: () => Promise<void>
-  updateVisibility: () => Promise<void>
+  updateVisibility: (strict?: boolean) => Promise<void>
 }
 
 /** Measures the page viewport, independent of the browser toolbar's height. */
@@ -50,6 +49,23 @@ const getViewportBounds = async (container: HTMLElement) => {
     width: Math.max(1, Math.floor(rect.width)),
     height: Math.max(1, Math.floor(rect.height)),
   }
+}
+
+/** Read the host's scroll clipping independently of the page's full CSS viewport. */
+export const getBrowserClip = (container: HTMLElement) => {
+  const host = container.closest<HTMLElement>('[data-page-host]')
+  const clip = host ? getComputedStyle(host).clipPath : 'none'
+  const match = /^inset\(([^)]+)\)$/.exec(clip)
+  const values =
+    match?.[1]
+      ?.trim()
+      .split(/\s+/)
+      .map((value) => Number.parseFloat(value)) ?? []
+  if (!values.length || values.length > 4 || values.some((value) => !Number.isFinite(value) || value < 0)) {
+    return { top: 0, right: 0, bottom: 0, left: 0 }
+  }
+  const [top = 0, right = top, bottom = top, left = right] = values
+  return { top, right, bottom, left }
 }
 
 /** Keeps a native browser alive while navigating and synchronizes its viewport and engine state. */
@@ -152,8 +168,8 @@ export const useSidebarWebview = (
       await pending
       return succeeded
     }
-    const updatePresentation = (updateVisibility = false) => {
-      const previous = presentationQueue
+    const updatePresentation = (updateVisibility = false, strict = false) => {
+      const previous = presentationQueue.catch(() => {})
       const pending = (async () => {
         await previous
         if (!active || !session.webview || !containerRef.current) {
@@ -162,7 +178,7 @@ export const useSidebarWebview = (
         try {
           if (hiddenRef.current || blankPage) {
             if (updateVisibility) {
-              await session.webview.hide()
+              await invoke('browser_set_visibility', { label, hidden: true })
             }
             return
           }
@@ -170,17 +186,13 @@ export const useSidebarWebview = (
           if (!active) {
             return
           }
-          await session.webview.setPosition(new LogicalPosition(bounds.x, bounds.y))
-          if (!active) {
-            return
-          }
-          await session.webview.setSize(new LogicalSize(bounds.width, bounds.height))
+          await invoke('browser_present', { label, bounds, clip: getBrowserClip(containerRef.current) })
           if (active && updateVisibility) {
             // A switch while measuring must not reveal a tab that is now inactive.
             if (hiddenRef.current || blankPage) {
-              await session.webview.hide()
+              await invoke('browser_set_visibility', { label, hidden: true })
             } else {
-              await session.webview.show()
+              await invoke('browser_set_visibility', { label, hidden: false })
               try {
                 await invoke('browser_resize_raise')
               } catch (error) {
@@ -190,6 +202,9 @@ export const useSidebarWebview = (
           }
         } catch (error) {
           reportError(error)
+          if (strict) {
+            throw error
+          }
         }
       })()
       presentationQueue = pending
@@ -202,6 +217,7 @@ export const useSidebarWebview = (
       frame = requestAnimationFrame(() => void updatePresentation())
     }
     const observer = new ResizeObserver(requestPositionUpdate)
+    const placementObserver = new MutationObserver(requestPositionUpdate)
     const closeNative = async () => {
       if (!created) {
         return
@@ -213,7 +229,7 @@ export const useSidebarWebview = (
       webview: null,
       navigate: (nextUrl) => execute('browser_navigate', { url: nextUrl }),
       action: (action) => execute('browser_action', { action }),
-      updateVisibility: () => updatePresentation(true),
+      updateVisibility: (strict = false) => updatePresentation(true, strict),
       close: async () => {
         active = false
         if (frame !== undefined) {
@@ -223,6 +239,8 @@ export const useSidebarWebview = (
           clearTimeout(poll)
         }
         observer.disconnect()
+        placementObserver.disconnect()
+        window.removeEventListener('scroll', requestPositionUpdate, true)
         unlisteners.splice(0).forEach((unlisten) => unlisten())
         window.removeEventListener('unload', handleUnload)
         await closeNative()
@@ -299,6 +317,11 @@ export const useSidebarWebview = (
           return
         }
         observer.observe(containerRef.current)
+        const host = containerRef.current.closest('[data-page-host]')
+        if (host) {
+          placementObserver.observe(host, { attributes: true, attributeFilter: ['style'] })
+        }
+        window.addEventListener('scroll', requestPositionUpdate, true)
         window.addEventListener('unload', handleUnload)
         const appWindow = getCurrentWindow()
         for (const subscribe of [appWindow.onResized.bind(appWindow), appWindow.onMoved.bind(appWindow)]) {
@@ -341,6 +364,13 @@ export const useSidebarWebview = (
     void sessionRef.current?.updateVisibility()
   }, [hidden])
 
+  const present = useCallback(async () => {
+    const session = sessionRef.current
+    if (!session?.webview) {
+      throw new Error('Browser page is not ready')
+    }
+    await session.updateVisibility(true)
+  }, [])
   const navigate = useCallback(async (nextUrl: string) => (await sessionRef.current?.navigate(nextUrl)) ?? false, [])
   const goBack = useCallback(async () => (await sessionRef.current?.action('back')) ?? false, [])
   const goForward = useCallback(async () => (await sessionRef.current?.action('forward')) ?? false, [])
@@ -375,5 +405,6 @@ export const useSidebarWebview = (
     reload,
     stop,
     closeWebview,
+    present,
   }
 }

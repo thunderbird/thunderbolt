@@ -16,6 +16,7 @@ import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
+import { canUseProjectAgent } from '@/agent-execution/project-agent'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isEmbedded } from '@/lib/embed'
@@ -241,7 +242,7 @@ export const Header = () => {
   const brandLogo = selectBrandLogo(useConfigStore((state) => state.config))
   const resolvedTheme = useResolvedTheme()
 
-  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread } = useChatStore(
+  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread, projectId } = useChatStore(
     useShallow((state) => {
       const session = state.sessions.get(state.currentSessionId ?? '')
 
@@ -251,6 +252,7 @@ export const Header = () => {
         setSelectedAgent: state.setSelectedAgent,
         chatThreadId: session?.id,
         chatThread: session?.chatThread,
+        projectId: session?.projectId,
       }
     }),
   )
@@ -261,6 +263,7 @@ export const Header = () => {
   // loading and the list is empty. Fall back to built-in only when the thread
   // has no agent.
   const effectiveAgent = selectedAgent ?? builtInAgent
+  const availableAgents = projectId ? allAgents.filter(canUseProjectAgent) : allAgents
   const hasThread = chatThread != null
   // A switch that would send a private chat off the device waits here for the
   // user to confirm it. Guarded in this handler rather than in `setSelectedAgent`
@@ -311,6 +314,9 @@ export const Header = () => {
   }
 
   const handleAgentSelect = (agent: Agent) => {
+    if (projectId && !canUseProjectAgent(agent)) {
+      return
+    }
     if (chatThreadId && agent.id !== effectiveAgent.id && exposesPrivateThread(chatThread, agent)) {
       setPrivateSwitch({ agent, threadId: chatThreadId, open: true })
       return
@@ -338,9 +344,9 @@ export const Header = () => {
     <HeaderAgentSelector
       chatInstance={chatInstance}
       selectedAgent={effectiveAgent}
-      agents={allAgents}
+      agents={availableAgents}
       onSelect={handleAgentSelect}
-      onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
+      onAddAgent={allowCustomAgents && !projectId ? handleAddAgent : undefined}
       projectControl={
         isChatRoute
           ? (joined) => (

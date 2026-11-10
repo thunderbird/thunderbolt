@@ -14,7 +14,9 @@ import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { chatThreadsTable, projectsTable } from '../db/tables'
+import { chatThreadsTable, projectsTable, settingsTable } from '../db/tables'
+import { defaultAgentExecution, useAgentExecutionStore, type AgentExecution } from '@/agent-execution/store'
+import { projectExecutionKey, validateProjectExecution } from '@/agent-execution/project-execution'
 import { nowIso } from '../lib/utils'
 import type { Project } from '../types'
 import { getChatActivityQuery, getChatLastActivityId } from './chat-activity-query'
@@ -36,6 +38,8 @@ export type CreateProjectInput = {
   instructions?: string | null
   icon?: string | null
   userId?: string | null
+  /** Chosen once at creation; native paths and access grants stay on this device. */
+  execution?: AgentExecution
 }
 
 export type UpdateProjectInput = Partial<
@@ -94,7 +98,7 @@ export const getProject = async (db: AnyDrizzleDatabase, id: string): Promise<Pr
   return (rows[0] as Project | undefined) ?? null
 }
 
-export const createProject = async (db: AnyDrizzleDatabase, input: CreateProjectInput): Promise<Project> => {
+const insertProject = async (db: AnyDrizzleDatabase, input: CreateProjectInput): Promise<Project> => {
   const row = {
     id: uuidv7(),
     name: assertValidName(input.name),
@@ -107,8 +111,35 @@ export const createProject = async (db: AnyDrizzleDatabase, input: CreateProject
     deletedAt: null,
     userId: input.userId ?? null,
   }
-  await db.insert(projectsTable).values(row)
+  const execution = validateProjectExecution(input.execution ?? defaultAgentExecution)
+  // Persist the local binding first: storage failure must not leave an unusable project behind.
+  useAgentExecutionStore.getState().setProjectExecution(row.id, execution)
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(projectsTable).values(row)
+      await tx.insert(settingsTable).values({
+        key: projectExecutionKey(row.id),
+        value: JSON.stringify({ version: 1, location: execution.location }),
+      })
+    })
+  } catch (error) {
+    useAgentExecutionStore.getState().setProjectExecution(row.id, null)
+    throw error
+  }
   return row as Project
+}
+
+const pendingProjectCreations = new WeakMap<AnyDrizzleDatabase, Promise<unknown>>()
+
+/** Serialize multi-row creation so concurrent callers cannot nest SQLite transactions. */
+export const createProject = (db: AnyDrizzleDatabase, input: CreateProjectInput): Promise<Project> => {
+  const previous = pendingProjectCreations.get(db) ?? Promise.resolve()
+  const pending = previous.then(() => insertProject(db, input))
+  pendingProjectCreations.set(
+    db,
+    pending.catch(() => undefined),
+  )
+  return pending
 }
 
 /** Patch a project and record its edit time without changing its chat activity. */

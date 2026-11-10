@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { artifactPageId } from '@/pages/artifact-page-id'
 import { msg } from '@lingui/core/macro'
 import { browserController } from '@/browser/browser-controller'
+import { pageController } from '@/pages/page-controller'
+import { usePageStore, openUrlPage } from '@/pages/page-store'
+import { PageSessionHosts } from '@/pages/page-session-hosts'
 import { i18n } from '@lingui/core'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
@@ -127,6 +131,7 @@ export const ContentViewProvider = ({
     (url: string) => {
       trackEvent('content_view_open', { view_type: 'preview' })
       trackEvent('preview_open')
+      openUrlPage(url, url === 'about:blank')
       setState({
         type: 'preview',
         data: {
@@ -150,12 +155,36 @@ export const ContentViewProvider = ({
     [trackEvent],
   )
 
-  useEffect(() => browserController.registerOpener(showPreview, () => setPreviewHidden(false)), [showPreview])
+  useEffect(() => {
+    const reveal = () => {
+      setPreviewHidden(false)
+      setState({ type: 'preview', data: { url: 'about:blank' } })
+    }
+    const unregisterBrowser = browserController.registerOpener(showPreview, reveal)
+    const unregisterPage = pageController.registerReveal(reveal)
+    return () => {
+      unregisterBrowser()
+      unregisterPage()
+    }
+  }, [showPreview])
 
   const showArtifact = useCallback(
     (data: ArtifactViewData) => {
       trackEvent('content_view_open', { view_type: 'artifact' })
-      setState({ type: 'artifact', data })
+      const id = usePageStore.getState().ensure(
+        {
+          id: artifactPageId(data.artifactId),
+          title: data.title,
+          source: {
+            kind: 'html',
+            html: data.html,
+            artifact: { toolCallId: data.artifactId, chatThreadId: data.chatThreadId },
+          },
+        },
+        { chatThreadId: data.chatThreadId },
+      )
+      usePageStore.getState().present(id, 'sidebar')
+      setState({ type: 'preview', data: { url: 'about:blank' } })
     },
     [trackEvent],
   )
@@ -193,6 +222,7 @@ export const ContentViewProvider = ({
       <ShowCompactionSummaryContext.Provider value={showCompactionSummary}>
         {children}
       </ShowCompactionSummaryContext.Provider>
+      <PageSessionHosts />
     </ContentViewContext.Provider>
   )
 }

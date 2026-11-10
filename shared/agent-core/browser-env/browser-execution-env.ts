@@ -58,6 +58,9 @@ export const browserShellDefaultTimeout = 30
 export const browserShellMaximumTimeout = 120
 
 export class BrowserExecutionEnv implements ExecutionEnv {
+  readonly defaultCommandTimeout = browserShellDefaultTimeout
+  readonly maximumCommandTimeout = browserShellMaximumTimeout
+
   cwd: string
   private readonly env: Record<string, string>
   private readonly bashFs: ZenBashFileSystem
@@ -260,6 +263,24 @@ export class BrowserExecutionEnv implements ExecutionEnv {
       await fsp.writeFile(resolved.value, content)
       return ok(undefined)
     } catch (error) {
+      return err(toFileError(error, resolved.value))
+    }
+  }
+
+  /** Import a project input once without replacing an agent's existing edits. */
+  async importFile(path: string, content: string | Uint8Array): Promise<Result<void, FileError>> {
+    const resolved = this.jailed(path)
+    if (!resolved.ok) {
+      return resolved
+    }
+    try {
+      await fsp.mkdir(dirname(resolved.value), { recursive: true })
+      await fsp.writeFile(resolved.value, content, { flag: 'wx' })
+      return ok(undefined)
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
+        return ok(undefined)
+      }
       return err(toFileError(error, resolved.value))
     }
   }

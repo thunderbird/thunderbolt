@@ -34,6 +34,7 @@ export const ContentViewLayout = ({ children }: { children: ReactNode }) => {
   const isDesktopPanelOpen = isOpen && drawsDesktopPanel
   const { handleLayoutChanged, beginExternalResize, endExternalResize } = useContentViewPanel({
     isOpen: isDesktopPanelOpen,
+    enabled: drawsDesktopPanel,
     panelRef,
     savedWidth: contentViewWidth.value,
     saveWidth: contentViewWidth.setValue,

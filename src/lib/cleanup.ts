@@ -58,6 +58,13 @@ const clearLocalDataLocked = async (options?: ClearLocalDataOptions, lock?: KeyS
     console.error('[clearLocalData] Failed to dispose ACP adapters:', error)
   }
 
+  try {
+    const { clearPageIdentity } = await import('@/pages/identity-lifecycle')
+    await clearPageIdentity(clearAuth || clearDatabase)
+  } catch (error) {
+    console.error('[clearLocalData] Failed to close pages and local previews:', error)
+  }
+
   if (disableSync) {
     try {
       await setSyncEnabled(false)

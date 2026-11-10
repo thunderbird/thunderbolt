@@ -43,16 +43,16 @@ struct BrowserNewTab {
     url: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Deserialize)]
 pub struct BrowserBounds {
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+    pub(crate) width: f64,
+    pub(crate) height: f64,
 }
 
 impl BrowserBounds {
-    fn is_valid(&self) -> bool {
+    pub(crate) fn is_valid(&self) -> bool {
         [self.x, self.y, self.width, self.height]
             .iter()
             .all(|value| value.is_finite())
@@ -486,6 +486,8 @@ pub async fn browser_close(
     // Do not close a session's last owner while another tab is adopting its native context.
     let _creation = registry.creation.lock().await;
     if let Some(browser) = webview.get_webview(&label) {
+        #[cfg(target_os = "macos")]
+        crate::browser_presentation::before_close(&browser).await?;
         browser.close().map_err(|error| error.to_string())?;
     }
     registry

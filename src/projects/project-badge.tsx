@@ -10,6 +10,7 @@ import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { SearchableMenu, searchableMenuRowClass } from '@/components/ui/searchable-menu'
 import { cn } from '@/lib/utils'
 import { ProjectIcon } from './project-icon'
+import { ProjectMoveErrorDialog } from './project-move-error-dialog'
 import { useProjectBadgeState } from './use-project-badge-state'
 
 // Project configuration stays off the chat's critical loading path.
@@ -38,6 +39,8 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
   const triggerRef = useRef<HTMLDivElement>(null)
   const {
     projects,
+    moveError,
+    clearMoveError,
     project,
     isVisible,
     dialog,
@@ -129,6 +132,7 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
           </div>
         )}
       />
+      <ProjectMoveErrorDialog error={moveError} onClose={clearMoveError} />
       {dialog?.type === 'move' && (
         <ConfirmActionDialog
           open

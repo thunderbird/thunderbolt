@@ -7,7 +7,7 @@ import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { useProjects } from '@/dal/projects'
 import type { Project } from '@/types'
-import { useMoveChatToProject } from './use-move-chat-to-project'
+import { useProjectMoveFeedback } from './use-project-move-feedback'
 
 type ProjectBadgeDialog = { type: 'create' } | { type: 'edit' | 'move'; project: Project }
 
@@ -16,7 +16,7 @@ export const useProjectBadgeState = (chatThreadId: string | null) => {
   const projectId = useChatStore((state) => (chatThreadId ? state.sessions.get(chatThreadId)?.projectId : undefined))
   const projects = useProjects()
   const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
-  const moveChat = useMoveChatToProject()
+  const { moveChat, error: moveError, clearError: clearMoveError } = useProjectMoveFeedback()
   const [dialog, setDialog] = useState<ProjectBadgeDialog | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -37,6 +37,8 @@ export const useProjectBadgeState = (chatThreadId: string | null) => {
 
   return {
     projects,
+    moveError,
+    clearMoveError,
     isVisible: !minimalMode && projectId !== undefined,
     project: projects.find((candidate) => candidate.id === projectId),
     dialog,

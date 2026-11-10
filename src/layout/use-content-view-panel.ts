@@ -4,7 +4,7 @@
 
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
 import { animate } from 'framer-motion'
-import { useEffect, useEffectEvent, useRef, type RefObject } from 'react'
+import { useLayoutEffect, useEffectEvent, useRef, type RefObject } from 'react'
 import type { Layout, PanelImperativeHandle } from 'react-resizable-panels'
 
 export const contentViewPanelId = 'content-view'
@@ -15,13 +15,22 @@ export const getContentViewOpenWidth = (savedWidth: number | null): number =>
 
 type ContentViewPanelOptions = {
   isOpen: boolean
+  enabled?: boolean
   panelRef: RefObject<Pick<PanelImperativeHandle, 'getSize' | 'resize'> | null>
   savedWidth: number | null
   saveWidth: (width: number) => Promise<void>
 }
 
 /** Animate panel visibility while persisting only settled user layout changes. */
-export const useContentViewPanel = ({ isOpen, panelRef, savedWidth, saveWidth }: ContentViewPanelOptions) => {
+export const useContentViewPanel = ({
+  isOpen,
+  panelRef,
+  savedWidth,
+  saveWidth,
+  enabled = true,
+}: ContentViewPanelOptions) => {
+  const enabledRef = useRef(enabled)
+  enabledRef.current = enabled
   const previousOpen = useRef(isOpen)
   const isAnimating = useRef(false)
   const isExternallyResizing = useRef(false)
@@ -34,7 +43,7 @@ export const useContentViewPanel = ({ isOpen, panelRef, savedWidth, saveWidth }:
     }
     previousOpen.current = isOpen
     const panel = panelRef.current
-    if (!panel) {
+    if (!panel || !enabled) {
       return
     }
 
@@ -43,13 +52,25 @@ export const useContentViewPanel = ({ isOpen, panelRef, savedWidth, saveWidth }:
     const openWidth = getContentViewOpenWidth(preferredWidth)
     const targetWidth = isOpen ? openWidth : 0
     isAnimating.current = true
+    let active = true
     const animation = { current: null as ReturnType<typeof animate> | null }
+    const current = () => active && enabledRef.current && panelRef.current === panel
     const frame = requestAnimationFrame(() => {
+      if (!current()) {
+        return
+      }
       animation.current = animate(panel.getSize().asPercentage, targetWidth, {
         duration: 0.3,
         ease: [0.32, 0.72, 0, 1],
-        onUpdate: (width) => panel.resize(`${width}%`),
+        onUpdate: (width) => {
+          if (current()) {
+            panel.resize(`${width}%`)
+          }
+        },
         onComplete: () => {
+          if (!current()) {
+            return
+          }
           isAnimating.current = false
           if (targetWidth > 0) {
             lastSettledWidth.current = panel.getSize().asPercentage
@@ -59,13 +80,15 @@ export const useContentViewPanel = ({ isOpen, panelRef, savedWidth, saveWidth }:
     })
 
     return () => {
+      active = false
       cancelAnimationFrame(frame)
       animation.current?.stop()
       isAnimating.current = false
     }
   })
 
-  useEffect(() => startTransition(), [isOpen])
+  // Cancel before an expanded route unregisters the panel from its group.
+  useLayoutEffect(() => startTransition(), [isOpen, enabled])
 
   /** Release the temporary preference when a save settles, without clearing a newer resize. */
   const persistWidth = async (width: number) => {

@@ -4,6 +4,7 @@
 
 import '@/testing-library'
 import { getClock } from '@/testing-library'
+import { usePageStore } from '@/pages/page-store'
 import { ContentViewProvider } from '@/content-view/context'
 import { resetAppSettledForTests } from '@/hooks/use-app-settled'
 import type { ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
@@ -39,6 +40,7 @@ const renderPart = (part: ToolOrDynamicToolUIPart) =>
 describe('ArtifactMessagePart', () => {
   let restoreIntersectionObserver: () => void
   beforeEach(() => {
+    usePageStore.setState({ sessions: [], activeId: null })
     restoreIntersectionObserver = mockIntersectionObserver(true)
     resetAppSettledForTests()
   })
@@ -64,7 +66,7 @@ describe('ArtifactMessagePart', () => {
 
   it('renders a verified inline artifact, running scripts once visible + settled', async () => {
     const { container } = renderPart(toolPart({ toolCallId: 'a2', state: 'output-available', output: { ok: true } }))
-    expect(container.querySelector('iframe')?.getAttribute('sandbox')).toBe('')
+    expect(container.querySelector('[data-page-host] iframe')).toBeNull()
     await act(async () => {
       await getClock().tickAsync(1000)
     })
@@ -72,24 +74,29 @@ describe('ArtifactMessagePart', () => {
     expect(container.textContent).toContain('My Artifact')
   })
 
-  it('toggles between inline and the side panel — never both at once', () => {
+  it('moves the display slot without replacing the running iframe between inline and sidebar', async () => {
     const { container, getByTitle, getByText } = renderPart(
       toolPart({ toolCallId: 'a3', state: 'output-available', output: { ok: true } }),
     )
-    expect(container.querySelector('iframe')).not.toBeNull()
-
-    // Open in the side panel → the transcript collapses to a slim placeholder (no iframe).
+    await act(async () => {
+      await getClock().tickAsync(1000)
+    })
+    const frame = container.querySelector('[data-page-host] iframe')
+    expect(frame).not.toBeNull()
+    const sessionId = usePageStore.getState().sessions[0].id
     act(() => {
       fireEvent.click(getByTitle('Open in side panel'))
     })
-    expect(container.querySelector('iframe')).toBeNull()
+    expect(container.querySelectorAll('[data-page-host] iframe')).toHaveLength(1)
+    expect(container.querySelector('[data-page-host] iframe')).toBe(frame)
     expect(container.textContent).toContain('shown in side panel')
-
-    // Show inline → the iframe returns.
+    expect(usePageStore.getState().sessions[0].presentation).toBe('sidebar')
     act(() => {
       fireEvent.click(getByText('Show inline'))
     })
-    expect(container.querySelector('iframe')).not.toBeNull()
+    expect(container.querySelector('[data-page-host] iframe')).toBe(frame)
+    expect(usePageStore.getState().sessions[0].id).toBe(sessionId)
+    expect(usePageStore.getState().sessions[0].presentation).toBe('inline')
   })
 
   it('collapses to just the header when the header is clicked (open by default)', () => {

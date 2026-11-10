@@ -71,6 +71,28 @@ const setup = (savedWidth: number | null = 50) => {
 }
 
 describe('useContentViewPanel', () => {
+  it('stops queued resize callbacks before the native panel is unregistered by a route change', () => {
+    const resize = mock((_value: string | number) => {})
+    const panelRef = { current: { getSize: () => ({ asPercentage: 50, inPixels: 500 }), resize } }
+    const hook = renderHook(
+      ({ isOpen, enabled }) =>
+        useContentViewPanel({ isOpen, enabled, panelRef, savedWidth: 50, saveWidth: async () => {} }),
+      { initialProps: { isOpen: false, enabled: true } },
+    )
+    hook.rerender({ isOpen: true, enabled: true })
+    act(() => getClock().tick(16))
+    const animation = animations[0]
+    hook.rerender({ isOpen: false, enabled: false })
+    expect(animation.stop).toHaveBeenCalledTimes(1)
+    act(() => {
+      animation.update(10)
+      animation.complete()
+      getClock().tick(16)
+    })
+    expect(resize).not.toHaveBeenCalled()
+    expect(animations).toHaveLength(1)
+  })
+
   it('persists only the final native grip drag position', () => {
     const panel = setup()
     panel.setOpen(true)

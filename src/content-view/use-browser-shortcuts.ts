@@ -14,7 +14,10 @@ type BrowserShortcut = {
 }
 
 type BrowserShortcutsOptions = {
-  browser: ReturnType<typeof useSidebarWebview>
+  browser: Pick<
+    ReturnType<typeof useSidebarWebview>,
+    'isInitialized' | 'reload' | 'goBack' | 'goForward' | 'canGoBack' | 'canGoForward'
+  > & { webview: { label: string } | null }
   addressRef: RefObject<HTMLInputElement | null>
   hidden?: boolean
   onNewTab: () => void

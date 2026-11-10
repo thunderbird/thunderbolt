@@ -84,8 +84,12 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   </HttpClientProvider>
 )
 
-const renderWarm = (props: { id: string; selectedAgent: Agent; chatThread: ChatThread | null }) =>
-  renderHook((p) => useWarmAcpCommands(p, deps), { initialProps: props, wrapper })
+const renderWarm = (props: {
+  id: string
+  selectedAgent: Agent
+  chatThread: ChatThread | null
+  projectId?: string | null
+}) => renderHook((p) => useWarmAcpCommands(p, deps), { initialProps: props, wrapper })
 
 /** Flush the hook's async on-select effect (connect → ensureSession → persist),
  *  draining queued microtasks and timers under the shared fake clock. */
@@ -108,6 +112,27 @@ describe('useWarmAcpCommands', () => {
   it('skips built-in agents entirely', () => {
     renderWarm({ id: 'thread-1', selectedAgent: builtIn, chatThread: thread })
     expect(getOrConnectAdapter).not.toHaveBeenCalled()
+  })
+
+  it('does not warm external sessions for new or persisted project chats', async () => {
+    getOrConnectAdapter.mockResolvedValue(makeAdapter(remote))
+    const { rerender } = renderWarm({ id: 'thread-1', selectedAgent: remote, chatThread: null, projectId: 'project-1' })
+    await flush()
+    expect(getOrConnectAdapter).not.toHaveBeenCalled()
+    act(() => rerender({ id: 'thread-1', selectedAgent: remote, chatThread: { ...thread, projectId: 'project-1' } }))
+    await flush()
+    expect(getOrConnectAdapter).not.toHaveBeenCalled()
+    // Explicit null is the live move-out choice, even before the stored thread refreshes.
+    act(() =>
+      rerender({
+        id: 'thread-1',
+        selectedAgent: remote,
+        chatThread: { ...thread, projectId: 'project-1' },
+        projectId: null,
+      }),
+    )
+    await flush()
+    expect(ensureSession).toHaveBeenCalledTimes(1)
   })
 
   it('connects and warms a session when a remote agent is selected', async () => {

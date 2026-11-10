@@ -4,6 +4,8 @@
 
 // These modules are used by Tauri's command system through macros
 // The compiler can't see the usage, so we allow dead_code warnings
+pub mod agent_execution;
+mod agent_output_files;
 #[cfg(desktop)]
 mod browser;
 #[cfg(desktop)]
@@ -13,11 +15,14 @@ mod browser_focus_macos;
 #[cfg(desktop)]
 mod browser_menu;
 #[cfg(desktop)]
+mod browser_presentation;
+#[cfg(desktop)]
 mod browser_resize;
 pub mod cli_installer;
 #[allow(dead_code)]
 pub mod commands;
 pub mod oauth_server;
+pub mod page_preview;
 pub mod platform_utils;
 #[cfg(desktop)]
 mod tray;
@@ -44,6 +49,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
                     browser_resize::main_page_started(webview);
                 }
             });
+        builder = builder.plugin(tauri_plugin_dialog::init());
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Err(error) = commands::show_main_window(app.clone()) {
                 eprintln!("Could not restore the main window: {error}");
@@ -53,6 +59,9 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
 
     // Core plugins that are always enabled
     builder = builder
+        .manage(page_preview::PreviewSessions::default())
+        .manage(agent_execution::Commands::default())
+        .manage(agent_output_files::OutputFiles::default())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
@@ -69,11 +78,14 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_passkey::init())
+        .plugin(tauri_plugin_pages::init())
         .plugin(platform_utils::init())
         .invoke_handler({
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 #[cfg(desktop)]
                 browser::browser_create,
+                browser_presentation::browser_present,
+                browser_presentation::browser_set_visibility,
                 #[cfg(desktop)]
                 browser::browser_navigate,
                 #[cfg(desktop)]
@@ -98,6 +110,16 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
                 browser_resize::browser_resize_drag,
                 #[cfg(desktop)]
                 browser_resize::browser_resize_raise,
+                page_preview::agent_preview_start,
+                page_preview::agent_preview_status,
+                page_preview::agent_preview_stop,
+                agent_execution::agent_pick_workspace,
+                agent_execution::agent_fs,
+                agent_execution::agent_cleanup_output_files,
+                agent_execution::agent_prepare_command,
+                agent_execution::agent_cancel_command,
+                agent_execution::agent_forget_command,
+                agent_execution::agent_exec,
                 commands::show_main_window,
                 commands::hide_main_window,
                 #[cfg(desktop)]
@@ -205,6 +227,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app, _event| {
+            if matches!(_event, tauri::RunEvent::Exit) {
+                page_preview::shutdown(_app);
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = _event {
                 if let Err(error) = commands::show_main_window(_app.clone()) {

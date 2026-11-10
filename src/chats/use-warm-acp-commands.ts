@@ -13,6 +13,7 @@ import type { ChatThread } from '@/types'
 import type { Agent } from '@/types/acp'
 import { makeCommandSink as defaultMakeCommandSink } from './chat-instance'
 import { useChatStore } from './chat-store'
+import { canUseProjectAgent } from '@/agent-execution/project-agent'
 
 /** DI seam so tests can inject fakes for the external dependencies without
  *  `mock.module()` (which is global and would leak into unrelated suites).
@@ -45,10 +46,12 @@ export const useWarmAcpCommands = (
     id: string
     selectedAgent: Agent
     chatThread: ChatThread | null
+    projectId?: string | null
   },
   deps: WarmAcpCommandsDeps = {},
 ): void => {
   const { id, selectedAgent, chatThread } = session
+  const projectId = session.projectId === undefined ? chatThread?.projectId : session.projectId
   const getOrConnectAdapter = deps.getOrConnectAdapter ?? defaultGetOrConnectAdapter
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const makeCommandSink = deps.makeCommandSink ?? defaultMakeCommandSink
@@ -58,7 +61,7 @@ export const useWarmAcpCommands = (
   const warmedKey = useRef<string | null>(null)
 
   useEffect(() => {
-    if (selectedAgent.type === 'built-in') {
+    if (selectedAgent.type === 'built-in' || (projectId && !canUseProjectAgent(selectedAgent))) {
       return
     }
     const key = `${selectedAgent.id}:${id}`
@@ -112,6 +115,7 @@ export const useWarmAcpCommands = (
     }
   }, [
     id,
+    projectId,
     selectedAgent,
     chatThread,
     httpClient,

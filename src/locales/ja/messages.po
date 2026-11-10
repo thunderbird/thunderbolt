@@ -371,8 +371,20 @@ msgstr ""
 msgid "Advanced (JSON)"
 msgstr "詳細設定（JSON）"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Agent access"
+msgstr ""
+
+#: src/projects/project-execution-field.tsx
+msgid "Agent environment"
+msgstr ""
+
 #: src/browser/browser-agent-status.tsx
 msgid "Agent is using this tab"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Agent location"
 msgstr ""
 
 #: src/components/chat/attestation/use-attestation-display.ts
@@ -402,6 +414,14 @@ msgstr "すべてのエージェント"
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
 msgstr "すべてのスキルがピン留めされています"
+
+#: src/agent-execution/approval.ts
+msgid "Allow once"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Allow tools to act without asking"
+msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Always allow all actions of this kind"
@@ -549,6 +569,14 @@ msgstr "確認"
 msgid "Ask about this"
 msgstr ""
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Ask before changes, commands, and external actions"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Ask for approval"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "何でも質問してください…"
@@ -620,6 +648,10 @@ msgstr "利用できるツール:"
 msgid "Back to App"
 msgstr "アプリに戻る"
 
+#: src/pages/page-route.tsx
+msgid "Back to chat"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "Base URL"
 msgstr "ベース URL"
@@ -653,6 +685,7 @@ msgstr "ブリッジのターゲット"
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/sidebar-webview.tsx
 #: src/content-view/use-browser-shortcuts.ts
+#: src/pages/page-panel.tsx
 msgid "Browser"
 msgstr "ブラウザー"
 
@@ -665,6 +698,7 @@ msgid "Browser navigation"
 msgstr ""
 
 #: src/content-view/browser-tab-strip.tsx
+#: src/pages/page-tab-strip.tsx
 msgid "Browser tabs"
 msgstr ""
 
@@ -715,6 +749,10 @@ msgstr "カレンダー"
 #: src/skills/dependents-dialog.tsx
 msgid "Cancel"
 msgstr "キャンセル"
+
+#: src/pages/page-panel.tsx
+msgid "Cancel element selection"
+msgstr ""
 
 #: src/content-view/browser-tab-content.tsx
 msgid "Cancel selection"
@@ -806,6 +844,10 @@ msgstr "更新を確認しています…"
 msgid "Checking sign-in request…"
 msgstr "サインインリクエストを確認しています…"
 
+#: src/pages/page-message-part.tsx
+msgid "Checking this page…"
+msgstr ""
+
 #: src/components/chat/image-support-notice.tsx
 msgid "Checking whether {modelName} can read images…"
 msgstr "{modelName} が画像を読み取れるか確認しています…"
@@ -822,6 +864,14 @@ msgstr "セッションを確認しています。"
 #: src/hooks/use-desktop-update.ts
 msgid "Checking…"
 msgstr "確認中…"
+
+#: src/components/chat/error-message.tsx
+msgid "Choose a tool-capable model to use this computer"
+msgstr ""
+
+#: src/components/chat/error-message.tsx
+msgid "Choose a working folder before using this computer"
+msgstr ""
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Choose agent"
@@ -855,6 +905,19 @@ msgstr "1 つ選択"
 #: src/projects/project-badge.tsx
 msgid "Choose project"
 msgstr "プロジェクトを選択"
+
+#: src/components/agent-execution-controls/use-project-execution-controls-state.ts
+#: src/projects/project-execution-field.tsx
+msgid "Choose project folder"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Choose project folder on this computer"
+msgstr ""
+
+#: src/components/agent-execution-controls/use-project-execution-controls-state.ts
+msgid "Choose this project's working folder on this computer before running its agent."
+msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "Choose your email provider {displayReason}"
@@ -935,11 +998,13 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 #: src/components/ui/sheet.tsx
 #: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
+#: src/projects/project-move-error-dialog.tsx
 msgid "Close"
 msgstr "閉じる"
 
 #: src/components/ui/header.tsx
 #: src/content-view/browser-tab-content.tsx
+#: src/pages/page-panel.tsx
 msgid "Close browser"
 msgstr ""
 
@@ -964,7 +1029,20 @@ msgid "Close tab"
 msgstr ""
 
 #: src/content-view/browser-tab-strip.tsx
+#: src/pages/page-tab-strip.tsx
 msgid "Close tab {title}"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Cloud"
+msgstr ""
+
+#: src/projects/project-execution-field.tsx
+msgid "Cloud — coming soon"
+msgstr ""
+
+#: src/components/chat/error-message.tsx
+msgid "Cloud execution is not available yet"
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -982,6 +1060,10 @@ msgstr "コードが使えませんでした"
 #: src/layout/sidebar/sidebar-header.tsx
 msgid "Collapse Sidebar"
 msgstr "サイドバーを折りたたむ"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Coming soon"
+msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Command / arguments"
@@ -1046,6 +1128,10 @@ msgstr "セットアップを完了して {appName} を使い始めましょう"
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
 msgstr "完了しています…"
+
+#: src/components/chat/error-message.tsx
+msgid "Computer execution requires the desktop app"
+msgstr ""
 
 #: src/components/chat/attestation/attestation-details.tsx
 #~ msgid "Confidential hardware"
@@ -1301,6 +1387,10 @@ msgstr ""
 msgid "Could not complete this action. Please try again."
 msgstr ""
 
+#: src/pages/page-panel.tsx
+msgid "Could not complete this page action. Please try again."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr "エージェントに接続できませんでした。"
@@ -1325,8 +1415,24 @@ msgstr ""
 msgid "Could not delete the projects. Please try again."
 msgstr ""
 
+#: src/components/agent-execution-controls/use-project-execution-controls-state.ts
+msgid "Could not load the project environment."
+msgstr ""
+
+#: src/pages/page-route.tsx
+msgid "Could not load this page."
+msgstr ""
+
 #: src/content-view/browser-tab-content.tsx
 msgid "Could not load this page. Try another address or reload."
+msgstr ""
+
+#: src/projects/project-move-error-dialog.tsx
+msgid "Could not move chat"
+msgstr ""
+
+#: src/projects/use-project-move-feedback.ts
+msgid "Could not move this chat. Please try again."
 msgstr ""
 
 #: src/hooks/use-external-link-dialog.ts
@@ -1349,8 +1455,22 @@ msgstr "ペアリングコードを表示できませんでした。"
 msgid "Could not save the project."
 msgstr "プロジェクトを保存できませんでした。"
 
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+#: src/components/agent-execution-controls/use-project-execution-controls-state.ts
+#: src/projects/project-execution-field.tsx
+msgid "Could not select a working folder. Please try again."
+msgstr ""
+
+#: src/pages/page-panel.tsx
+msgid "Could not select an element on this page."
+msgstr ""
+
 #: src/hooks/use-mcp-server-oauth.ts
 msgid "Could not start authorization. Please try again."
+msgstr ""
+
+#: src/pages/saved-page-menu-items.tsx
+msgid "Could not unpin this page. Please try again."
 msgstr ""
 
 #: src/settings/passkeys.tsx
@@ -1746,6 +1866,7 @@ msgstr "強い霧雨"
 msgid "Dense freezing drizzle"
 msgstr "強い着氷性の霧雨"
 
+#: src/agent-execution/approval.ts
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
@@ -2135,9 +2256,17 @@ msgstr "名前を入力してください"
 msgid "Enter your verification code"
 msgstr ""
 
+#: src/projects/project-execution-field.tsx
+msgid "Every chat in this project uses this environment. It cannot be changed after creation."
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
 msgstr "音声モードを終了"
+
+#: src/pages/page-panel.tsx
+msgid "Expand page"
+msgstr ""
 
 #: src/components/ui/header.tsx
 msgid "Expand Sidebar"
@@ -2291,6 +2420,10 @@ msgstr "食べ物と飲み物"
 msgid "From {0}"
 msgstr ""
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Full access"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
 msgstr ""
@@ -2349,12 +2482,14 @@ msgstr ""
 #: src/components/ui/header.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
+#: src/pages/page-panel.tsx
 msgid "Go back"
 msgstr "戻る"
 
 #: src/components/ui/header.tsx
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
+#: src/pages/page-panel.tsx
 msgid "Go forward"
 msgstr "進む"
 
@@ -2689,6 +2824,10 @@ msgstr "デバイスを読み込んでいます…"
 msgid "Loading emoji…"
 msgstr "絵文字を読み込んでいます…"
 
+#: src/pages/page-route.tsx
+msgid "Loading page…"
+msgstr ""
+
 #: src/settings/passkeys.tsx
 #~ msgid "Loading passkeys…"
 #~ msgstr ""
@@ -2707,6 +2846,11 @@ msgstr "このアプリのペアリング ID を読み込んでいます…"
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "読み込んでいます…"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#: src/projects/project-execution-field.tsx
+msgid "Local sandbox"
+msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
@@ -2977,6 +3121,8 @@ msgstr "新しいスキル"
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/browser-tab-strip.tsx
 #: src/content-view/use-browser-shortcuts.ts
+#: src/pages/page-message-part.tsx
+#: src/pages/page-tab-strip.tsx
 msgid "New tab"
 msgstr "新しいタブ"
 
@@ -3279,6 +3425,7 @@ msgid "Open in new tab"
 msgstr "新しいタブで開く"
 
 #: src/components/chat/inline-artifact-card.tsx
+#: src/pages/page-message-part.tsx
 msgid "Open in side panel"
 msgstr "サイドパネルで開く"
 
@@ -3294,6 +3441,11 @@ msgstr "サイドバーで開く"
 msgid "Open in Thunderbolt"
 msgstr ""
 
+#: src/pages/page-message-part.tsx
+#: src/pages/page-panel.tsx
+msgid "Open in your browser"
+msgstr ""
+
 #: src/mini-apps/mini-app-page.tsx
 msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
 msgstr ""
@@ -3305,6 +3457,10 @@ msgstr "リンクを開く"
 #: src/settings/app-version-section.tsx
 msgid "Open the store to check for updates."
 msgstr "ストアを開いて更新を確認してください。"
+
+#: src/components/agent-execution-controls/use-project-execution-controls-state.ts
+msgid "Open this project in the desktop app to run its agent."
+msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Open Thunderbolt CLI"
@@ -3356,6 +3512,11 @@ msgstr "Outlook とカレンダー"
 #: src/widgets/weather-forecast/lib.ts
 msgid "Overcast"
 msgstr "曇り"
+
+#: src/pages/page-message-part.tsx
+#: src/pages/page-tab-strip.tsx
+msgid "Page"
+msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Pair {deviceName}"
@@ -3420,9 +3581,14 @@ msgstr "許可が必要です"
 msgid "Personalization"
 msgstr "パーソナライズ"
 
+#: src/pages/page-tab-strip.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 msgid "Pin"
+msgstr ""
+
+#: src/pages/page-tab-strip.tsx
+msgid "Pin as app"
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -3505,9 +3671,17 @@ msgstr "非公開"
 msgid "Private inference"
 msgstr ""
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Private workspace inside Thunderbolt"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
 msgstr "処理中…"
+
+#: src/projects/project-execution-field.tsx
+msgid "Project environment"
+msgstr ""
 
 #: src/projects/project-create-form.tsx
 msgid "Project name"
@@ -3571,6 +3745,10 @@ msgstr "{fileName} を読み込み中…"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
 msgstr "送信できます"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Real files and commands on your computer"
+msgstr ""
 
 #: src/content-view/context.tsx
 msgid "Reasoning"
@@ -3641,6 +3819,7 @@ msgstr "再読み込み"
 
 #: src/content-view/browser-tab-content.tsx
 #: src/content-view/use-browser-shortcuts.ts
+#: src/pages/page-panel.tsx
 msgid "Reload page"
 msgstr ""
 
@@ -3783,6 +3962,10 @@ msgstr "今すぐ再起動"
 #: src/hooks/use-desktop-update.ts
 msgid "Restart to update"
 msgstr "再起動して更新"
+
+#: src/pages/page-panel.tsx
+msgid "Restore to sidebar"
+msgstr ""
 
 #: src/browser/browser-agent-status.tsx
 msgid "Resume"
@@ -4028,6 +4211,10 @@ msgstr "該当するものをすべて選択"
 msgid "Select element"
 msgstr ""
 
+#: src/pages/page-panel.tsx
+msgid "Select element on page"
+msgstr ""
+
 #: src/components/location-search-combobox.tsx
 msgid "Select location…"
 msgstr "場所を選択…"
@@ -4149,6 +4336,10 @@ msgstr "{deviceName} のペアリングを設定"
 msgid "Set up sync"
 msgstr "同期を設定"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Set when this project was created"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Setting up encryption…"
 msgstr "暗号化を設定しています…"
@@ -4174,6 +4365,10 @@ msgstr "プロジェクト内のチャットに共通の指示"
 msgid "Show"
 msgstr "表示"
 
+#: src/pages/page-panel.tsx
+msgid "Show browser controls"
+msgstr ""
+
 #. placeholder {0}: project.name
 #: src/layout/sidebar/project-tree-row.tsx
 msgid "Show fewer chats in {0}"
@@ -4188,6 +4383,7 @@ msgid "Show fewer recent chats"
 msgstr ""
 
 #: src/components/chat/artifact-message-part.tsx
+#: src/pages/page-message-part.tsx
 msgid "Show inline"
 msgstr "インラインで表示"
 
@@ -4227,6 +4423,10 @@ msgstr "{deviceName} の QR コードを表示"
 #: src/tasks/index.tsx
 msgid "Showing 50 of {totalCount} tasks"
 msgstr "{totalCount} 件のタスクのうち 50 件を表示中"
+
+#: src/pages/page-message-part.tsx
+msgid "Shown in browser"
+msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Sidebar"
@@ -4452,7 +4652,12 @@ msgid "Stop generating"
 msgstr "生成を停止"
 
 #: src/content-view/browser-tab-content.tsx
+#: src/pages/page-panel.tsx
 msgid "Stop loading"
+msgstr ""
+
+#: src/projects/use-project-move-feedback.ts
+msgid "Stop the current reply before moving this chat to another project."
 msgstr ""
 
 #: src/components/ui/prompt-input.tsx
@@ -4739,6 +4944,10 @@ msgstr "思考中"
 msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
 msgstr "この操作は取り消せません。このチャットとすべてのメッセージが完全に削除されます。"
 
+#: src/components/chat/error-message.tsx
+msgid "This agent cannot use the project's environment. Choose the built-in agent or move this chat out of the project."
+msgstr ""
+
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr "プライベートウィンドウや、サイトデータがブロックされている場合に発生することがあります。このサイトのストレージを有効にして再読み込みしてください。"
@@ -4758,6 +4967,11 @@ msgstr "このチャットは {agentName} を使用していますが、この�
 #: src/lib/otp-error-messages.ts
 msgid "This code has expired. Please request a new one."
 msgstr "このコードは有効期限が切れています。新しいコードをリクエストしてください。"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#: src/projects/project-execution-field.tsx
+msgid "This computer"
+msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
@@ -4815,8 +5029,20 @@ msgstr "このリンクは無効です。新しいリンクをリクエストし
 msgid "This link uses an address the app cannot open."
 msgstr "このリンクのアドレスはアプリで開けません。"
 
+#: src/pages/page-panel.tsx
+msgid "This local app is available in the desktop app on the computer where it was created."
+msgstr ""
+
+#: src/pages/page-message-part.tsx
+msgid "This local app is available in the desktop app on the computer where it was created. Its files do not sync."
+msgstr ""
+
 #: src/mini-apps/mini-app-frame.tsx
 msgid "This mini app uses an outdated SDK. Ask its maintainer to update the SDK and redeploy it."
+msgstr ""
+
+#: src/components/chat/error-message.tsx
+msgid "This model cannot run on this computer. Choose a tool-capable supported model."
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -4841,6 +5067,10 @@ msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "This model or agent does not offer context compaction."
+msgstr ""
+
+#: src/pages/page-route.tsx
+msgid "This page is no longer available."
 msgstr ""
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
@@ -4913,6 +5143,11 @@ msgstr ""
 #: src/components/upgrade-required.tsx
 msgid "This version of {appName} is no longer supported. Update the app to keep chatting and syncing."
 msgstr "このバージョンの {appName} はサポートされていません。チャットと同期を続けるにはアプリを更新してください。"
+
+#: src/pages/page-message-part.tsx
+#: src/pages/page-panel.tsx
+msgid "This website opens in your browser."
+msgstr ""
 
 #: src/components/delete-all-chats-dialog.tsx
 msgid "This will delete all chats outside projects. Chats in projects won't be deleted."
@@ -5143,6 +5378,9 @@ msgstr "パスキーで同期のロックを解除"
 msgid "Unlock with passkey"
 msgstr "パスキーでロック解除"
 
+#: src/pages/page-panel.tsx
+#: src/pages/page-tab-strip.tsx
+#: src/pages/saved-page-menu-items.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/skills/suggestion-chip.tsx
@@ -5514,6 +5752,10 @@ msgstr "ウィンドウの操作"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "word1 word2 word3 ..."
 msgstr "単語1 単語2 単語3 ..."
+
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+msgid "Work on this computer"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"

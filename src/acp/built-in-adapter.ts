@@ -28,18 +28,15 @@
  * re-seeding. The cache is tagged with a config SIGNATURE (model / provider / api
  * key / stable system prompt / thinking level / reasoning / regenerate revision):
  * switching any of these mid-thread rebuilds the harness from request-body history
- * (the workspace, keyed by `threadId`, is kept so its files survive the rebuild). Each thread's
- * harness is bound to its own isolated OPFS workspace (`/workspace/<threadId>`),
- * jailed so a thread's coding tools and shell can't reach another thread's files.
- * Built-in tools auto-run by product decision, restoring the pre-#1032 baseline
- * where the legacy pipeline ran every tool ungated. The harness also runs
- * network-capable app, integration, and MCP tools that are not sandboxed;
- * OPFS/ZenFS isolation is not the safety rationale for auto-run.
+ * (the workspace is kept so its files survive the rebuild). The device-local
+ * execution choice also participates in that signature: Local sandbox uses a
+ * jailed OPFS workspace; This computer uses desktop IPC for real files and bash.
+ * Both engines gate tools through the selected approval policy. OPFS isolation
+ * does not contain network-capable app, integration, or MCP tools.
  *
  * No ACP handshake either way; `capabilities` is null and `ensureSession` is a
  * no-op (no wire to warm). `disconnect` is real: it disposes every cached harness
- * and removes its workspace, so no thread's session or files leak past the
- * adapter's teardown (agent delete / config edit / sign-out).
+ * and removes only standalone sandbox workspaces. Project and computer files are preserved.
  */
 
 import { readProfileThinkingLevel } from '@/ai/profile-thinking-level'
@@ -67,8 +64,21 @@ import { handleSessionRejected } from '@/lib/session-rejected'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
-import { getPlatform } from '@/lib/platform'
-import type { AppHarness, CompactionCheckpoint, PiModelDescriptor, SeedTurn } from '@shared/agent-core'
+import { getPlatform, isTauriDesktop } from '@/lib/platform'
+import { invoke } from '@tauri-apps/api/core'
+import { createLocalAppTools } from '@/local-apps/local-app-tools'
+import { createShowFileTool, showFileToolName } from '@/pages/show-file-tool'
+import { pageController } from '@/pages/page-controller'
+import { browserController } from '@/browser/browser-controller'
+import { defaultAgentExecution, type AgentExecution } from '@/agent-execution/store'
+import { createToolAuthorizer } from '@/agent-execution/approval'
+import type {
+  AppHarness,
+  BuildAppHarnessOptions,
+  CompactionCheckpoint,
+  PiModelDescriptor,
+  SeedTurn,
+} from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { inferenceModelHeader } from '@shared/inference-usage'
@@ -97,6 +107,7 @@ type AgentCoreModule = typeof import('@shared/agent-core')
  *  its isolated OPFS workspace persist across the thread's turns. */
 type HarnessRecord = {
   readonly harness: AppHarness
+  readonly execution?: BuildAppHarnessOptions['execution']
   /** Coding tools owned by agent-core; app/MCP tools are replaced every send. */
   readonly baseTools: AgentHarnessTool<undefined>[]
   /** Mutable prompt cell read by the harness's per-turn system-prompt callback. */
@@ -122,6 +133,13 @@ type CachedHarness = {
  *  build; a failed build is invalidated so the next turn retries against a fresh
  *  harness. */
 type HarnessCache = Map<string, CachedHarness>
+
+/** Native output belongs to one adapter lifetime, independent of harness rebuilds. */
+type NativeOutputScope = {
+  readonly owner: string
+  closed: boolean
+  cleanup?: () => Promise<void>
+}
 
 /** Stable and volatile prompt parts needed by the Pi harness. */
 type AppHarnessSystemPromptConfig = Pick<
@@ -428,6 +446,8 @@ export const harnessSignature = (
   stableSystemPrompt: string,
   regenerationRevision = 0,
   compaction?: CompactionCheckpoint,
+  execution: AgentExecution = defaultAgentExecution,
+  workspaceId?: string,
 ): string => {
   const d = resolved.descriptor
   const vendor = d.kind === 'confidential' ? (d.vendor ?? '') : ''
@@ -436,20 +456,38 @@ export const harnessSignature = (
     d.kind === 'anthropic'
       ? `anthropic|${d.modelId}|${d.catalogModelId ?? ''}|${d.baseURL ?? ''}|${d.contextWindow ?? ''}|${hashSecret(d.apiKey)}`
       : `${d.kind}|${d.providerId}|${d.modelId}|${vendor}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}|${clientId}`
-  return JSON.stringify([model, resolved.thinkingLevel, stableSystemPrompt, regenerationRevision, compaction])
+  return JSON.stringify([
+    model,
+    resolved.thinkingLevel,
+    stableSystemPrompt,
+    regenerationRevision,
+    compaction,
+    [execution.location, execution.cwd, workspaceId],
+  ])
 }
 
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
 // Unlike assembleBuiltInModelInput, ACP harness deliberately keeps Pi's single-string system prompt shape.
 // Exported so tests can assert the real stable prompt survives into this engine's shape.
-export const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string => {
+export const composeAppHarnessSystemPrompt = (
+  config: AppHarnessSystemPromptConfig,
+  execution: AgentExecution = defaultAgentExecution,
+): string => {
   const platform = getPlatform()
   const environment = platform === 'web' || platform === 'ios' || platform === 'android' ? platform : 'desktop'
   const clientIdentity = buildClientIdentityBlock({
     environment,
     appVersion: import.meta.env.VITE_APP_VERSION,
   })
-  const environmentBlock = config.supportsTools ? `\n\n${appHarnessEnvironmentPrompt}` : ''
+  const executionPrompt =
+    execution.location === 'computer'
+      ? `You are running on the user's computer with real filesystem access and a native bash shell. Your working directory is ${JSON.stringify(execution.cwd)}. Files are visible to the user and persist after this chat. The working directory is not a sandbox boundary. Do not claim files live in a virtual workspace.`
+      : appHarnessEnvironmentPrompt
+  const accessPrompt =
+    execution.access === 'ask'
+      ? 'File changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.'
+      : 'The user enabled full access. Tools execute without an approval prompt.'
+  const environmentBlock = config.supportsTools ? `\n\n${executionPrompt}\n${accessPrompt}` : ''
   return `${config.stableSystemPrompt}\n\n${clientIdentity}${environmentBlock}\n\n${config.volatileSystemPrompt}`
 }
 
@@ -465,18 +503,36 @@ const buildHarnessRecord = async (
   resolved: ResolvedPiModel,
   history: readonly SeedTurn[],
   config: AppHarnessSystemPromptConfig,
+  nativeOutput: NativeOutputScope,
   compaction?: CompactionCheckpoint,
 ): Promise<HarnessRecord> => {
-  const systemPrompt = { current: composeAppHarnessSystemPrompt(config) }
+  if (nativeOutput.closed) {
+    throw new Error('Agent disconnected')
+  }
+  const execution = context.execution ?? defaultAgentExecution
+  const native =
+    execution.location === 'computer'
+      ? { env: new agentCore.NativeExecutionEnv(execution.cwd, invoke, nativeOutput.owner), cwd: execution.cwd }
+      : undefined
+  if (native) {
+    nativeOutput.cleanup = () => native.env.cleanup()
+  }
+  const systemPrompt = { current: composeAppHarnessSystemPrompt(config, execution) }
   const harness = await agentCore.buildAppHarness({
     model: resolved.descriptor,
     systemPrompt: () => systemPrompt.current,
     thinkingLevel: resolved.thinkingLevel,
-    threadId: context.threadId,
+    threadId: context.workspaceId ?? context.threadId,
+    execution: native,
     history,
     compaction,
   })
-  return { harness, baseTools: harness.getTools(), systemPrompt }
+  return {
+    harness,
+    execution: native,
+    baseTools: harness.getTools(),
+    systemPrompt,
+  }
 }
 
 /** Refresh per-send prompt and app/MCP tool closures on a persistent harness. */
@@ -484,10 +540,47 @@ const prepareHarnessForSend = async (
   agentCore: AgentCoreModule,
   record: HarnessRecord,
   config: PreparedAiRequestConfig,
+  context: AgentAdapterContext,
 ): Promise<void> => {
-  record.systemPrompt.current = composeAppHarnessSystemPrompt(config)
-  const tools = await agentCore.toPiAgentTools(config.toolset)
-  const allTools = [...record.baseTools, ...tools]
+  record.systemPrompt.current = composeAppHarnessSystemPrompt(config, context.execution)
+  const activity = context.telemetry ? browserController.forAgentTurn(context.telemetry.traceId) : undefined
+  const onOpen = (page: Parameters<typeof pageController.open>[0]) => {
+    activity?.assertControl()
+    const id = pageController.open(page)
+    activity?.claimPage(id)
+    return id
+  }
+  const pageTools = {
+    [showFileToolName]: createShowFileTool({
+      readFile: (path, signal) =>
+        agentCore.readAgentWorkspaceFile(context.workspaceId ?? context.threadId, path, record.execution, signal),
+      onOpen,
+    }),
+    ...(context.execution?.location === 'computer'
+      ? createLocalAppTools({
+          owner: context.projectId
+            ? { kind: 'project', id: context.projectId }
+            : { kind: 'chat', id: context.threadId },
+          cwd: context.execution.cwd,
+          onOpen,
+        })
+      : {}),
+  }
+  const tools = await agentCore.toPiAgentTools({ ...config.toolset, ...pageTools })
+  const authorize = createToolAuthorizer(context.execution ?? defaultAgentExecution, context)
+  const ungatedTools: AgentHarnessTool<undefined>[] = [...record.baseTools, ...tools]
+  const allTools: AgentHarnessTool<undefined>[] = ungatedTools.map((tool) => ({
+    ...tool,
+    execute: async (...args: Parameters<typeof tool.execute>) => {
+      await authorize(
+        { name: tool.name, source: config.mcpToolsMetadata?.[tool.name] ? 'external' : 'built-in' },
+        args[1],
+        args[0],
+        args[2],
+      )
+      return tool.execute(...args)
+    },
+  }))
   const activeToolNames = config.model.toolUsage === 0 ? [] : allTools.map((tool) => tool.name)
   await record.harness.setTools(allTools, activeToolNames)
 }
@@ -658,16 +751,22 @@ const disposeHarness = async (cached: CachedHarness): Promise<void> => {
 /** Dispose every cached harness and clear the cache. Fire-and-forget so the
  *  adapter's synchronous `disconnect` doesn't await teardown; a never-resolved or
  *  rejected build is swallowed so no straggler escapes as an unhandled rejection. */
-const disposeAllHarnesses = (cache: HarnessCache, pendingOperations: Map<Promise<unknown>, string>): void => {
+const disposeAllHarnesses = (
+  cache: HarnessCache,
+  pendingOperations: Map<Promise<unknown>, string>,
+  nativeOutput: NativeOutputScope,
+): void => {
+  nativeOutput.closed = true
   const cached = [...cache]
   cache.clear()
-  for (const [threadId, entry] of cached) {
+  const disposals = cached.map(async ([threadId, entry]) => {
     const preparation = [...pendingOperations].flatMap(([pending, owner]) => (owner === threadId ? [pending] : []))
-    // Wait only for this workspace's writes; another thread may be stuck loading.
-    void Promise.allSettled(preparation)
-      .then(() => disposeHarness(entry))
-      .catch(() => {})
-  }
+    await Promise.allSettled(preparation)
+    await disposeHarness(entry)
+  })
+  void Promise.allSettled([...pendingOperations.keys(), ...disposals])
+    .then(() => nativeOutput.cleanup?.())
+    .catch(console.error)
 }
 
 /** Run the built-in request on the thread's persistent in-browser Pi harness and
@@ -677,6 +776,7 @@ const fetchViaHarness = async (
   init: RequestInit,
   context: AgentAdapterContext,
   cache: HarnessCache,
+  nativeOutput: NativeOutputScope,
   fallback: () => Promise<Response>,
   loadAgentCore: () => Promise<AgentCoreModule>,
   prepareConfig: typeof prepareAiRequestConfig,
@@ -707,12 +807,16 @@ const fetchViaHarness = async (
     // prompt, which `harnessSignature` fingerprints — so editing a project
     // mid-thread rebuilds the harness on the next send by itself.
     chatThreadId: context.threadId,
+    toolApprovalHandled: true,
     telemetry: context.telemetry,
   })
   init.signal?.throwIfAborted()
   const resolved = await resolvePiModel(agentCore, context, config.profile, tinfoilOptions)
   init.signal?.throwIfAborted()
   if (!resolved) {
+    if (context.execution?.location === 'computer') {
+      throw new Error('This model cannot run on this computer. Choose a tool-capable supported model.')
+    }
     context.telemetry?.setDimensions({ engine: 'legacy' })
     return fallback()
   }
@@ -729,7 +833,7 @@ const fetchViaHarness = async (
   init.signal?.throwIfAborted()
   if (debugTraceId) {
     recordDebugTranscriptSystemPrompts(context.threadId, debugTraceId, [
-      composeAppHarnessSystemPrompt(config),
+      composeAppHarnessSystemPrompt(config, context.execution),
       ...skillInstructions,
     ])
   }
@@ -738,7 +842,14 @@ const fetchViaHarness = async (
   // every later turn whose config signature is unchanged, and rebuild it when the
   // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
   context.telemetry?.startPhase('harness_build')
-  const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision, compaction)
+  const signature = harnessSignature(
+    resolved,
+    config.stableSystemPrompt,
+    context.regenerationRevision,
+    compaction,
+    context.execution,
+    context.workspaceId ?? context.threadId,
+  )
   const lastUserIndex = messages.findLastIndex((message) => message.role === 'user')
   const previousUserId = messages.slice(0, lastUserIndex).findLast((message) => message.role === 'user')?.id
   const cached = getOrBuildHarness(
@@ -748,18 +859,23 @@ const fetchViaHarness = async (
     previousUserId,
     () => {
       init.signal?.throwIfAborted()
-      return buildHarnessRecord(agentCore, context, resolved, history, config, compaction)
+      return buildHarnessRecord(agentCore, context, resolved, history, config, nativeOutput, compaction)
     },
-    () => agentCore.removeAgentWorkspace(context.threadId),
+    () =>
+      context.projectId ? Promise.resolve() : agentCore.removeAgentWorkspace(context.workspaceId ?? context.threadId),
   )
   const record = await cached.record
   init.signal?.throwIfAborted()
   await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
   init.signal?.throwIfAborted()
-  await prepareHarnessForSend(agentCore, record, config)
+  await prepareHarnessForSend(agentCore, record, config, context)
   init.signal?.throwIfAborted()
   // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
-  const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
+  const failures = await agentCore.writeAgentWorkspaceFiles(
+    context.workspaceId ?? context.threadId,
+    files,
+    record.execution,
+  )
   init.signal?.throwIfAborted()
   for (const { path, error } of failures) {
     console.error(`Built-in agent: could not save ${path} to the workspace`, error)
@@ -777,6 +893,9 @@ const fetchViaHarness = async (
     agentCore.piHarnessToUiMessageStream(
       harness,
       async () => {
+        if (nativeOutput.closed) {
+          throw new Error('Agent disconnected')
+        }
         // A replay has no current-attempt tool history to synthesize from. The live
         // harness instead reaches the floor through tool_result and keeps its evidence.
         if (context.webToolBudget?.probe.isExhausted) {
@@ -877,6 +996,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   // itself cached per-agent (`adapter-cache.ts`), so a thread's harness survives
   // across all of that thread's turns; `disconnect` disposes them all.
   const harnessCache: HarnessCache = new Map()
+  const nativeOutput: { current: NativeOutputScope } = { current: { owner: crypto.randomUUID(), closed: false } }
   const lifetime = new AbortController()
   const pendingOperations = new Map<Promise<unknown>, string>()
 
@@ -884,6 +1004,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   const fetchViaLegacyPipeline = (init: RequestInit, context: AgentAdapterContext): Promise<Response> =>
     aiFetch({
       init,
+      authorizeTool: createToolAuthorizer(context.execution ?? defaultAgentExecution, context),
       modelId: context.selectedModel.id,
       reasoningEffort: context.reasoningEffort,
       mcpClients: context.mcpClients,
@@ -901,12 +1022,28 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
 
   // Route Pi-serviceable models to the in-browser harness. Tinfoil always takes
   // this route; other providers still fall back when their id/config is unusable.
-  const routeFetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+  const routeFetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+    const execution = context.execution ?? defaultAgentExecution
+    if (execution.location === 'cloud') {
+      throw new Error('Cloud execution is not available yet')
+    }
+    if (execution.location === 'computer') {
+      if (!isTauriDesktop()) {
+        throw new Error('Computer execution requires the desktop app')
+      }
+      if (!execution.cwd) {
+        throw new Error('Choose a working folder before using this computer')
+      }
+      if (context.selectedModel.toolUsage === 0 || !isPiModelCandidate(context.selectedModel)) {
+        throw new Error('Choose a tool-capable model to use this computer')
+      }
+    }
     if (isPiModelCandidate(context.selectedModel)) {
       return fetchViaHarness(
         init,
         context,
         harnessCache,
+        nativeOutput.current,
         () => fetchViaLegacyPipeline(init, context),
         loadAgentCore,
         prepareConfig,
@@ -942,7 +1079,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     lifetime.abort()
     // Preparation may still be writing workspace files. Abort active streams
     // immediately, then let owned preparation settle before removing files.
-    disposeAllHarnesses(harnessCache, pendingOperations)
+    disposeAllHarnesses(harnessCache, pendingOperations, nativeOutput.current)
   }
 
   const compactContext: NonNullable<AgentAdapter['compact']> = async (init, context, instructions) => {
@@ -957,6 +1094,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,
       chatThreadId: context.threadId,
+      toolApprovalHandled: true,
     })
     init.signal?.throwIfAborted()
     const resolved = await resolvePiModel(agentCore, context, config.profile, options)
@@ -969,7 +1107,14 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
     const { history, files, compaction } = await prepareBuiltInHistory(messages, { workspace: config.supportsTools })
     init.signal?.throwIfAborted()
-    const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision, compaction)
+    const signature = harnessSignature(
+      resolved,
+      config.stableSystemPrompt,
+      context.regenerationRevision,
+      compaction,
+      context.execution,
+      context.workspaceId ?? context.threadId,
+    )
     const lastUserId = messages.findLast((message) => message.role === 'user')?.id
     const previous = harnessCache.get(context.threadId)
     const cached = getOrBuildHarness(
@@ -979,9 +1124,10 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       lastUserId,
       () => {
         init.signal?.throwIfAborted()
-        return buildHarnessRecord(agentCore, context, resolved, history, config, compaction)
+        return buildHarnessRecord(agentCore, context, resolved, history, config, nativeOutput.current, compaction)
       },
-      () => agentCore.removeAgentWorkspace(context.threadId),
+      () =>
+        context.projectId ? Promise.resolve() : agentCore.removeAgentWorkspace(context.workspaceId ?? context.threadId),
     )
     const record = await waitForCompactionHarness(cached.record, init.signal).catch((error: unknown) => {
       // A deferred build still belongs to this cancelled request. A retry must
@@ -994,9 +1140,13 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     init.signal?.throwIfAborted()
     await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
     init.signal?.throwIfAborted()
-    await prepareHarnessForSend(agentCore, record, config)
+    await prepareHarnessForSend(agentCore, record, config, context)
     init.signal?.throwIfAborted()
-    const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
+    const failures = await agentCore.writeAgentWorkspaceFiles(
+      context.workspaceId ?? context.threadId,
+      files,
+      record.execution,
+    )
     init.signal?.throwIfAborted()
     for (const { path, error } of failures) {
       console.error(`Built-in agent: could not save ${path} to the workspace`, error)

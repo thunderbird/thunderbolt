@@ -129,6 +129,11 @@ beforeEach(() => {
           return
         case 'plugin:webview|get_all_webviews':
           return [...nativeTabs.keys()].map((label) => ({ label, windowLabel: 'main' }))
+        case 'browser_set_visibility':
+          if (tab) {
+            tab.visible = !args.hidden
+          }
+          return
         case 'plugin:webview|webview_show':
           if (tab) {
             tab.visible = true

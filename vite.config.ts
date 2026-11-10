@@ -9,6 +9,7 @@ import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
+import { realpathSync } from 'node:fs'
 import path from 'path'
 import { type Connect, defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
@@ -49,6 +50,8 @@ const setResponseHeaders: Connect.NextHandleFunction = (req, res, next) => {
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Isolate caches when development worktrees share installed dependencies.
+  cacheDir: process.env.VITE_CACHE_DIR,
   define: {
     // Inject the package.json version so the client can send it as X-App-Version
     // and compare against the server-enforced minAppVersion.
@@ -213,7 +216,7 @@ export default defineConfig({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    port: Number(process.env.VITE_DEV_PORT ?? 1420),
     strictPort: true,
     // The public CI diagnostic uploads only fixed labels from its Playwright case.
     forwardConsole: process.env.VITE_DB_DIAGNOSTIC !== 'true',
@@ -230,7 +233,7 @@ export default defineConfig({
       ? {
           protocol: 'ws',
           host,
-          port: 1421,
+          port: Number(process.env.VITE_HMR_PORT ?? 1421),
         }
       : undefined,
     watch: {
@@ -244,6 +247,7 @@ export default defineConfig({
         path.resolve(__dirname, 'shared'),
         path.resolve(__dirname, 'public'),
         path.resolve(__dirname, 'node_modules'),
+        realpathSync(path.resolve(__dirname, 'node_modules')),
         path.resolve(__dirname, 'dist-isolation'),
         path.resolve(__dirname, '.storybook'),
         // Vite's HTML middleware checks checkLoadingAccess() for index.html

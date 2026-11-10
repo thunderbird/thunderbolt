@@ -8,6 +8,7 @@ import { routeHostsContentView } from './content-view-host'
 describe('routeHostsContentView', () => {
   it('is the Mini App route, which layers the view over its own chat pane', () => {
     expect(routeHostsContentView('/apps/finance-model')).toBeTrue()
+    expect(routeHostsContentView('/pages/html-one')).toBeTrue()
     expect(routeHostsContentView('/apps/finance-model?chat=abc')).toBeTrue()
   })
 

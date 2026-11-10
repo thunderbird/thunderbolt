@@ -6,10 +6,8 @@ import { lazy, Suspense } from 'react'
 import { PageFallback } from '@/loading'
 import { useContentView } from './context'
 import { ObjectSidebarContent } from './object-sidebar-content'
-import { SidebarWebview } from './sidebar-webview'
+import { PagePanel } from '@/pages/page-panel'
 import { Sideview } from './sideview'
-import { useMatch } from 'react-router'
-import { useChatStore } from '@/chats/chat-store'
 
 // Summary inspection is off the landing path; chat rendering warms the shared markdown code.
 const CompactionSummaryContent = lazy(() =>
@@ -40,29 +38,11 @@ const ArtifactSidebarContent = lazy(() =>
  * layer over its own chat pane. Each host decides where the view lives and how
  * it arrives; this decides only what is in it.
  */
-export const ActiveContentView = ({ chatThreadId: hostedChatThreadId }: { chatThreadId?: string | null } = {}) => {
+export const ActiveContentView = (_props: { chatThreadId?: string | null } = {}) => {
   const { state, close, previewHidden } = useContentView()
-  const routeChatThreadId = useMatch('/chats/:chatThreadId')?.params.chatThreadId
-  const currentSessionId = useChatStore((store) => store.currentSessionId)
-  const chatThreadId =
-    hostedChatThreadId !== undefined
-      ? hostedChatThreadId
-      : routeChatThreadId === 'new'
-        ? currentSessionId
-        : routeChatThreadId === currentSessionId
-          ? currentSessionId
-          : null
   return (
     <>
-      {state.type === 'preview' && (
-        <SidebarWebview
-          config={state.data}
-          onClose={close}
-          hidden={previewHidden}
-          chatThreadId={chatThreadId}
-          onReferenceAttached={hostedChatThreadId !== undefined ? close : undefined}
-        />
-      )}
+      {state.type === 'preview' && <PagePanel onClose={close} hidden={previewHidden} />}
       {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
       {state.type === 'sideview' && <Sideview />}
       {state.type === 'compaction-summary' && (

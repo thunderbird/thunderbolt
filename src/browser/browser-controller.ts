@@ -25,6 +25,7 @@ export const createBrowserController = (native: NativeInvoke = invoke) => {
   let reveal: (() => void) | null = null
   let generation = 0
   let controlEpoch = 0
+  let pageControl = new AbortController()
   let queue = Promise.resolve()
   let current: Operation | null = null
   let activityOrder = 0
@@ -207,13 +208,38 @@ export const createBrowserController = (native: NativeInvoke = invoke) => {
     getState: () => state,
     stop: () => {
       controlEpoch += 1
+      pageControl.abort(new Error('Page control stopped by the user.'))
       publish({ busyTabId: null, paused: true })
       current?.stop.abort(new Error('Browser control stopped by the user.'))
       forgetTab()
     },
-    resume: () => publish({ ...state, paused: false }),
+    resume: () => {
+      pageControl = new AbortController()
+      publish({ ...state, paused: false })
+    },
   }
   const operations = (turn?: AgentTurn) => ({
+    assertControl: (signal?: AbortSignal) =>
+      check(
+        AbortSignal.any([pageControl.signal, ...(signal ? [signal] : []), ...(turn ? [turn.lifetime.signal] : [])]),
+      ),
+    /** Share the turn lifetime and Stop control with iframe and mobile adapters. */
+    claimPage: (id: string, signal?: AbortSignal) => {
+      const combined = AbortSignal.any([
+        pageControl.signal,
+        ...(signal ? [signal] : []),
+        ...(turn ? [turn.lifetime.signal] : []),
+      ])
+      check(combined)
+      tab(id)
+      if (turn) {
+        turn.tabId = id
+        turn.order = ++activityOrder
+        publishActivity()
+      }
+      return combined
+    },
+    releasePage: (id: string) => forgetTab(id),
     listTabs: (): BrowserTabInfo[] => {
       turn?.lifetime.signal.throwIfAborted()
       return panel?.listTabs() ?? []

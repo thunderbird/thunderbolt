@@ -9,6 +9,14 @@
         <true />
         <key>LSSupportsOpeningDocumentsInPlace</key>
         <true />
+        <!-- Browser pages may use HTTP, including local development servers.
+             Limit the ATS exception to WebKit content; native URLSession traffic
+             keeps the platform's transport security requirements. -->
+        <key>NSAppTransportSecurity</key>
+        <dict>
+            <key>NSAllowsArbitraryLoadsInWebContent</key>
+            <true />
+        </dict>
         <key>ITSAppUsesNonExemptEncryption</key>
         <false />
         <!-- Voice mode: capture the microphone for speech-to-text. Required by

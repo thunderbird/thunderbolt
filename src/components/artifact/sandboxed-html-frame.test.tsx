@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@/testing-library'
-import { render } from '@testing-library/react'
-import { describe, expect, it } from 'bun:test'
+import { act, render } from '@testing-library/react'
+import { describe, expect, it, mock } from 'bun:test'
 import { SandboxedHtmlFrame } from './sandboxed-html-frame'
 
 describe('SandboxedHtmlFrame', () => {
@@ -32,5 +32,39 @@ describe('SandboxedHtmlFrame', () => {
     expect(srcdoc).toContain('Content-Security-Policy') // preview is still offline
     expect(srcdoc).not.toContain('postMessage') // but no harness — scripts are off
     expect(iframe?.getAttribute('sandbox')).toBe('')
+  })
+  it('registers requests once per ready document and revokes them across reloads', async () => {
+    type Request = (method: string, params: unknown) => Promise<unknown>
+    const requests: (Request | null)[] = []
+    const onRequestReady = mock((request: Request | null) => {
+      requests.push(request)
+    })
+    const { container, rerender } = render(
+      <SandboxedHtmlFrame html="<p>First</p>" title="Page" onRequestReady={onRequestReady} />,
+    )
+    const iframe = container.querySelector('iframe')!
+    const nonce = /var NONCE = "([^"]+)"/.exec(iframe.getAttribute('srcdoc') ?? '')?.[1]
+    expect(nonce).toBeTruthy()
+    const ready = () =>
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          source: iframe.contentWindow,
+          data: { artifactNonce: nonce, type: 'artifact-ready' },
+        }),
+      )
+    act(() => {
+      ready()
+      ready()
+    })
+    expect(onRequestReady).toHaveBeenCalledTimes(1)
+    const request = requests[0]!
+    const pending = request('page/snapshot', {})
+    rerender(<SandboxedHtmlFrame html="<p>Second</p>" title="Page" onRequestReady={onRequestReady} />)
+    expect(requests.at(-1)).toBeNull()
+    expect(await pending).toBeNull()
+    await expect(request('page/snapshot', {})).rejects.toThrow('document changed')
+    act(() => ready())
+    expect(requests.at(-1)).toBeFunction()
+    expect(requests.at(-1)).not.toBe(request)
   })
 })

@@ -6,6 +6,7 @@ import { AppContentOverlayProvider } from '@/components/app-content-overlay'
 import { ContentViewProvider, useContentView } from '@/content-view/context'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import * as platform from '@/lib/platform'
+import { usePageStore } from '@/pages/page-store'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { animateSpy, registerFramerMotionMock } from '@/test-utils/framer-motion-mock'
 import { getClock } from '@/testing-library'
@@ -21,6 +22,7 @@ const originalAnimate = animateSpy.getMockImplementation()!
 
 const nativeTabs = new Map<string, string>()
 const created: string[] = []
+let tauriSpy: ReturnType<typeof spyOn<typeof platform, 'isTauri'>>
 let platformSpy: ReturnType<typeof spyOn<typeof platform, 'isTauriDesktop'>>
 let invokeSpy: ReturnType<typeof spyOn<typeof tauriCore, 'invoke'>>
 let boundsSpy: ReturnType<typeof spyOn<HTMLElement, 'getBoundingClientRect'>>
@@ -37,9 +39,11 @@ beforeEach(() => {
     animation.onComplete()
     return Object.assign(Promise.resolve(), { stop: () => undefined })
   })
+  usePageStore.setState({ sessions: [], activeId: null })
   nativeTabs.clear()
   created.length = 0
   platformSpy = spyOn(platform, 'isTauriDesktop').mockReturnValue(true)
+  tauriSpy = spyOn(platform, 'isTauri').mockReturnValue(true)
   boundsSpy = spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 150, 500, 600))
   mockWindows('main')
   mockIPC(
@@ -74,6 +78,7 @@ afterEach(async () => {
   cleanup()
   await Promise.resolve()
   platformSpy.mockRestore()
+  tauriSpy.mockRestore()
   invokeSpy.mockRestore()
   boundsSpy.mockRestore()
   animateSpy.mockImplementation(originalAnimate)

@@ -6,19 +6,19 @@ import { useState } from 'react'
 
 const ideas = [
   {
-    name: 'Follow a question',
-    prompt: 'Help me turn this unused corner into a tiny urban garden.',
-    steps: [
-      'Research plants that thrive in the shade',
-      'Compare small-space growing methods',
-      'Bring the ideas together into a plan',
-    ],
-    detail: 'Explore a hunch with your model and connected search tools.',
+    name: 'Make sense of it',
+    prompt: 'Help me understand this report and pull out what matters for my team.',
+    steps: ['Pull out the key findings', 'Flag gaps and unanswered questions', 'Draft a concise summary for the team'],
+    detail: 'Work through the details with your model, then dig deeper with connected search tools.',
   },
   {
     name: 'Make something',
-    prompt: 'Build a little tool that helps our book club choose what to read next.',
-    steps: ['Read the project and make a plan', 'Build the voting interface', 'Run the checks and refine the result'],
+    prompt: 'Turn this sales spreadsheet into a dashboard with charts and filters.',
+    steps: [
+      'Inspect the data and plan the dashboard',
+      'Build the charts and filters',
+      'Check the results against the source data',
+    ],
     detail: 'Put the coding agent to work in your project with Thunderbolt CLI.',
   },
   {

@@ -25,7 +25,7 @@ const questions = [
   {
     question: 'Where does my data go?',
     answer:
-      'Your workspace lives on your device. Synced content is end-to-end encrypted. Your chosen provider or agent processes the prompts you send it; sync encryption does not hide those requests. Encryption is in preview and has not yet had a cryptography audit.',
+      'Your workspace lives on your device. Synced content is end-to-end encrypted by default. Your chosen provider or agent processes the prompts you send it; sync encryption does not hide those requests.',
     link: productLinks.privacy,
     label: 'Understand your data',
   },
@@ -115,8 +115,8 @@ export const SparkPage = () => {
             </div>
             <div className="spark-manifesto-copy">
               <p>
-                Free to follow a strange idea. To choose a different model. To see how it works, change what you need,
-                and build something we haven’t imagined.
+                Free to pursue what matters to you. To choose a different model. To see how it works, change what you
+                need, and build something we haven’t imagined.
               </p>
               <p>
                 From the Thunderbird team, part of the Mozilla family. Built in the open, for a future we all get to

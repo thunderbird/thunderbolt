@@ -26,12 +26,12 @@ test('workflow selection updates the complete example and exposes exactly one se
   const choices = [...container.querySelectorAll('button')]
   const example = container.querySelector('[aria-live="polite"]')!
   expect(choices[1].getAttribute('aria-pressed')).toBe('true')
-  expect(example.querySelector('h3')!.textContent).toContain('book club')
+  expect(example.querySelector('h3')!.textContent).toContain('sales spreadsheet')
 
   for (const [index, prompt, step, detail] of [
-    [0, 'urban garden', 'Research plants', 'connected search tools'],
+    [0, 'this report', 'Pull out the key findings', 'connected search tools'],
     [2, 'signup page', 'Connect an agent', 'computer use'],
-    [1, 'book club', 'Read the project', 'Thunderbolt CLI'],
+    [1, 'sales spreadsheet', 'Inspect the data', 'Thunderbolt CLI'],
   ] as const) {
     act(() => choices[index].click())
     expect(choices.filter((button) => button.getAttribute('aria-pressed') === 'true')).toEqual([choices[index]])

@@ -116,7 +116,11 @@ test.describe('Passkey continuity', () => {
       await context.unrouteAll({ behavior: 'wait' })
       await overrideEncryptionMetadata(context, { passkey_continuity: servedSeal })
       await unlock.click()
-      await expect(dialog.getByText(refusal)).toBeVisible({ timeout: 30_000 })
+      // The previous round's refusal is still on screen, so only the button
+      // (disabled while the attempt runs) says this attempt has finished. Without
+      // it the next unroute races the attempt's metadata read and serves it the real seal.
+      await expect(unlock).toBeEnabled({ timeout: 30_000 })
+      await expect(dialog.getByText(refusal)).toBeVisible()
       expect(await getEncryptionKeyNames(page)).not.toContain('thunderbolt_ak')
       expect(envelopePosts).toEqual([])
       await waitForDeviceState(userId, deviceId, (state) => !state.trusted && !state.hasEnvelope)

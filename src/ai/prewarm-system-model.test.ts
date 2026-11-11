@@ -2,50 +2,32 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { prewarmSystemModel } from './prewarm-system-model'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
-const systemModel = { provider: 'tinfoil', isSystem: 1 } as const
-
 describe('prewarmSystemModel', () => {
-  it('does not load a server-authenticated client while standalone', async () => {
-    useLocalSettingsStore.setState({ cloudUrl: '' })
-    const loadPrewarm = mock(async () => async () => {})
-    await prewarmSystemModel(systemModel, loadPrewarm)
-    expect(loadPrewarm).not.toHaveBeenCalled()
-  })
-
-  afterEach(() => {
-    mock.restore()
-  })
-
-  it('warms the system client through the lazily loaded chunk', async () => {
-    const runSystemModelPrewarm = mock(async () => {})
-
-    await prewarmSystemModel(systemModel, async () => runSystemModelPrewarm)
-
-    expect(runSystemModelPrewarm).toHaveBeenCalledWith(systemModel)
-  })
-
-  it('resolves and warns when the chunk fails to load', async () => {
+  it('does not contact a server-authenticated client while standalone', async () => {
+    const previousCloudUrl = useLocalSettingsStore.getState().cloudUrl
+    const fetch = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected standalone prewarm'))
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
-    const loadFailure = new TypeError('Importing a module script failed.')
-
-    await expect(prewarmSystemModel(systemModel, () => Promise.reject(loadFailure))).resolves.toBeUndefined()
-
-    expect(warn).toHaveBeenCalledWith(expect.any(String), loadFailure)
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    try {
+      await prewarmSystemModel({ provider: 'tinfoil', isSystem: 1 })
+      expect(fetch).not.toHaveBeenCalled()
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      useLocalSettingsStore.setState({ cloudUrl: previousCloudUrl })
+      fetch.mockRestore()
+      warn.mockRestore()
+    }
   })
 
   it.each([
     ['no model', null],
     ['a non-Tinfoil model', { provider: 'openai', isSystem: 1 } as const],
     ['a user Tinfoil model', { provider: 'tinfoil', isSystem: 0 } as const],
-  ])('does not load the chunk for %s', async (_label, model) => {
-    const loadPrewarm = mock(async () => async () => {})
-
-    await prewarmSystemModel(model, loadPrewarm)
-
-    expect(loadPrewarm).not.toHaveBeenCalled()
+  ])('skips warm-up for %s', async (_label, model) => {
+    await expect(prewarmSystemModel(model)).resolves.toBeUndefined()
   })
 })

@@ -22,6 +22,7 @@ type MobileCardMenuProps = {
   showTitle?: boolean
   children: ReactNode
   className?: string
+  forceBackdrop?: ComponentProps<typeof DrawerContent>['forceBackdrop']
   initialFocus?: ComponentProps<typeof DrawerContent>['initialFocus']
 }
 
@@ -35,6 +36,7 @@ export const MobileCardMenu = ({
   children,
   className,
   initialFocus,
+  forceBackdrop,
 }: MobileCardMenuProps) => {
   const safeAreaStyle: CSSProperties =
     side === 'top'
@@ -48,6 +50,7 @@ export const MobileCardMenu = ({
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection={side === 'top' ? 'up' : 'down'}>
       <DrawerContent
         initialFocus={initialFocus}
+        forceBackdrop={forceBackdrop}
         className={cn(side === 'bottom' && 'pb-[var(--mobile-card-menu-bottom-padding)]', className)}
         style={safeAreaStyle}
       >

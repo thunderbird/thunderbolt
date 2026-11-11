@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { I18nProvider } from '@lingui/react'
 import { useLingui } from '@lingui/react/macro'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -339,7 +340,7 @@ export const App = () => {
   // the WebView's default white background from flashing before the theme loads.
   useEffect(() => {
     if (isTauri()) {
-      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().show()).catch(console.error)
+      getCurrentWindow().show().catch(console.error)
     }
   }, [])
 

@@ -5,6 +5,7 @@
 import { getUserCacheSecret } from '@/lib/auth-token'
 import { getErrorName } from '@/lib/error-utils'
 import { trackEvent } from '@/lib/posthog'
+import { usesLocalProviders } from '@/lib/provider-mode'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import type { Model } from '@/types'
@@ -266,7 +267,7 @@ export const {
  * attestation on its critical path. Errors surface on real sends.
  */
 export const runSystemModelPrewarm = async (model: Pick<Model, 'provider' | 'isSystem'> | null | undefined) => {
-  if (!model || model.provider !== 'tinfoil' || !model.isSystem) {
+  if (!model || model.provider !== 'tinfoil' || !model.isSystem || usesLocalProviders()) {
     return
   }
   try {

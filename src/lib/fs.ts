@@ -77,8 +77,17 @@ const resetAppDirNow = async (): Promise<void> => {
   const appDataDirPath = await createAppDir()
   const dbPath = await getDatabasePath(appDataDirPath)
 
-  // Only delete file if it's not an in-memory database
+  // When OPFS is unavailable, PowerSync's IDBBatchAtomicVFS stores data in IndexedDB under
+  // the dbPath name (':memory:'), and the next startup must reopen that same IndexedDB store.
+  // Wait if another tab still holds it open so restart does not hang behind a pending delete.
   if (dbPath === ':memory:') {
+    for (const dbName of [':memory:', powerSyncDbFilename]) {
+      await withTimeout(
+        deleteIndexedDbDatabase(dbName, undefined, { waitIfBlocked: true }),
+        10_000,
+        'deleteIndexedDbDatabase',
+      )
+    }
     return
   }
 

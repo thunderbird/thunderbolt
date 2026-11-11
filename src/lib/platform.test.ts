@@ -200,6 +200,28 @@ describe('deleteIndexedDbDatabase', () => {
     await expect(deleteIndexedDbDatabase('thunderbolt-sync.db', idb)).resolves.toBeUndefined()
   })
 
+  it('waits for onsuccess after onblocked when waitIfBlocked is true', async () => {
+    let requestRef: FakeDeleteRequest | undefined
+    const idb = {
+      deleteDatabase: () => {
+        const request: FakeDeleteRequest = {}
+        requestRef = request
+        queueMicrotask(() => request.onblocked?.())
+        return request as unknown as IDBOpenDBRequest
+      },
+    }
+    let settled = false
+    const promise = deleteIndexedDbDatabase(':memory:', idb, { waitIfBlocked: true }).then(() => {
+      settled = true
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    requestRef?.onsuccess?.()
+    await promise
+    expect(settled).toBe(true)
+  })
+
   it('rejects when the delete fails', async () => {
     const { idb } = idbThat('error')
     await expect(deleteIndexedDbDatabase('thunderbolt-sync.db', idb)).rejects.toThrow('delete failed')

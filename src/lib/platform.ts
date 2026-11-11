@@ -229,14 +229,22 @@ export const hasOpfsFile = async (
 }
 
 /**
- * Deletes an IndexedDB database. Resolves early if another tab holds it open; the browser
- * finishes the delete once that tab closes.
+ * Deletes an IndexedDB database. Resolves early if another tab holds it open (unless
+ * `waitIfBlocked` is set); the browser finishes the delete once that tab closes.
  */
-export const deleteIndexedDbDatabase = (name: string, idb: Pick<IDBFactory, 'deleteDatabase'> = indexedDB) =>
+export const deleteIndexedDbDatabase = (
+  name: string,
+  idb: Pick<IDBFactory, 'deleteDatabase'> = indexedDB,
+  options?: { waitIfBlocked?: boolean },
+) =>
   new Promise<void>((resolve, reject) => {
     const request = idb.deleteDatabase(name)
     request.onsuccess = () => resolve()
-    request.onblocked = () => resolve()
+    request.onblocked = () => {
+      if (!options?.waitIfBlocked) {
+        resolve()
+      }
+    }
     request.onerror = () => reject(request.error)
   })
 

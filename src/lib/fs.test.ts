@@ -127,6 +127,56 @@ describe('resetAppDir', () => {
     expect(entries.has('thunderbolt-sync.db')).toBe(true)
     expect(consoleError).toHaveBeenCalled()
   })
+
+  it('deletes the IndexedDB databases when OPFS is unavailable (:memory: fallback)', async () => {
+    const { idb, deleted } = fakeIndexedDb()
+    Object.defineProperty(navigator, 'storage', { value: undefined, configurable: true })
+    Object.defineProperty(globalThis, 'indexedDB', { value: idb, configurable: true })
+    const consoleWarn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await resetAppDir()
+      expect(deleted).toEqual([':memory:', 'thunderbolt-sync.db'])
+    } finally {
+      consoleWarn.mockRestore()
+    }
+  })
+
+  it('waits for blocked IndexedDB deletion to finish when OPFS is unavailable', async () => {
+    const requests: Array<{ onsuccess?: () => void; onblocked?: () => void }> = []
+    const idb = {
+      deleteDatabase: () => {
+        const request: { onsuccess?: () => void; onblocked?: () => void } = {}
+        requests.push(request)
+        queueMicrotask(() => request.onblocked?.())
+        return request
+      },
+    }
+    Object.defineProperty(navigator, 'storage', { value: undefined, configurable: true })
+    Object.defineProperty(globalThis, 'indexedDB', { value: idb, configurable: true })
+    const consoleWarn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      let finished = false
+      const resetPromise = resetAppDir().then(() => {
+        finished = true
+      })
+      while (requests.length < 1) {
+        await Promise.resolve()
+      }
+      await Promise.resolve()
+      expect(finished).toBe(false)
+      requests[0]?.onsuccess?.()
+      while (requests.length < 2) {
+        await Promise.resolve()
+      }
+      await Promise.resolve()
+      expect(finished).toBe(false)
+      requests[1]?.onsuccess?.()
+      await resetPromise
+      expect(finished).toBe(true)
+    } finally {
+      consoleWarn.mockRestore()
+    }
+  })
 })
 
 describe('app directory creation', () => {

@@ -51,11 +51,13 @@ describe('useModelConnectionTest', () => {
     expect(result.current.error).toBeNull()
   })
 
-  it('surfaces error with the probe failure message', async () => {
+  it('reports a safe failure without exposing a provider response or authenticated request', async () => {
     // The hook logs failures via console.error; muted so the test output stays clean.
     const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
     const probe: ConnectionTestProbe = mock(async () => {
-      throw new Error('invalid api key')
+      throw Object.assign(new Error('invalid api key: sk-existing'), {
+        request: { headers: { Authorization: 'Bearer sk-existing' } },
+      })
     })
     const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, probe), { wrapper })
 
@@ -64,8 +66,34 @@ describe('useModelConnectionTest', () => {
     })
 
     expect(result.current.status).toBe('error')
-    expect(result.current.error).toBe('invalid api key')
+    expect(result.current.error).toBe(
+      'Could not connect to the model. Check your connection and credentials, then try again.',
+    )
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('sk-existing')
+    expect(errorSpy).toHaveBeenCalledWith('Model connection test failed.')
     errorSpy.mockRestore()
+  })
+
+  it('distinguishes a bounded timeout from a provider rejection', async () => {
+    const timeout = new AbortController()
+    const timeoutSpy = spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal)
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { result } = renderHook(() => useModelConnectionTest(anthropicConfig, () => new Promise(() => {})), {
+        wrapper,
+      })
+      await act(async () => {
+        const pending = result.current.test(anthropicConfig)
+        timeout.abort(new DOMException('Timed out', 'TimeoutError'))
+        expect(await pending).toBeNull()
+      })
+      expect(result.current.isTesting).toBe(false)
+      expect(result.current.status).toBe('error')
+      expect(result.current.error).toBe('Connection test timed out. Please try again.')
+    } finally {
+      timeoutSpy.mockRestore()
+      errorSpy.mockRestore()
+    }
   })
 
   it('collapses status to idle when current credentials diverge from the tested ones', async () => {

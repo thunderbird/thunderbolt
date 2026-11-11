@@ -4,6 +4,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { X } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -14,6 +15,7 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { StatusCard } from '@/components/ui/status-card'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
+import { providerRequiresUrl } from './model-policy'
 import { SupportsToolsSwitch } from './supports-tools-switch'
 import { useEditModelFormState, type EditModelSubmission } from './use-edit-model-form-state'
 
@@ -82,7 +84,16 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
             </FormItem>
           )}
         />
-        {model.provider === 'custom' && (
+        {model.providerConnectionId && (
+          <Link
+            to="/settings/connections"
+            state={{ providerConnectionId: model.providerConnectionId }}
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            <Trans>Manage provider connection</Trans>
+          </Link>
+        )}
+        {!model.providerConnectionId && providerRequiresUrl(model.provider) && (
           <FormField
             control={state.form.control}
             name="url"
@@ -99,7 +110,7 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
             )}
           />
         )}
-        {model.provider !== 'thunderbolt' && (
+        {!model.providerConnectionId && model.provider !== 'thunderbolt' && !model.oauthProvider && (
           <FormField
             control={state.form.control}
             name="apiKey"
@@ -135,6 +146,7 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
           provider={model.provider}
           model={state.watchedModel}
           apiKey={state.effectiveApiKey}
+          hasOAuth={Boolean(model.providerConnectionId || model.oauthProvider)}
           isTesting={state.connection.isTesting}
           onTest={state.testConnection}
           status={state.connection.status}
@@ -157,7 +169,12 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
         )}
         <FormFooter>
           <ResponsiveModalCancel onClick={onCancel} />
-          <Button type="submit" isLoading={isPending} loadingLabel={t`Saving…`} disabled={state.isSaveDisabled}>
+          <Button
+            type="submit"
+            isLoading={isPending}
+            loadingLabel={t`Saving…`}
+            disabled={isPending || state.isSaveDisabled}
+          >
             <Trans>Save</Trans>
           </Button>
         </FormFooter>

@@ -11,8 +11,10 @@ import { deleteMcpServer } from './mcp-servers'
 import {
   getMcpServerCredentialRows,
   getMcpServerCredentials,
+  getMcpServerCredentialSnapshot,
   parseMcpCredentialSummary,
   setMcpServerCredentials,
+  updateMcpServerCredentialsIfCurrent,
 } from './mcp-secrets'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
@@ -33,6 +35,32 @@ describe('MCP Secrets DAL', () => {
     it('should return null when no row exists', async () => {
       const credentials = await getMcpServerCredentials(getDb(), uuidv7())
       expect(credentials).toBeNull()
+    })
+
+    it('preserves exact credential bytes in a snapshot and rejects a changed representation', async () => {
+      const db = getDb()
+      const id = uuidv7()
+      const url = 'https://mcp.example.com/sse'
+      await db.insert(mcpServersTable).values({ id, name: 'MCP', url, enabled: 1 })
+      const serialized = ' { "type": "oauth", "access_token": "original" } '
+      await db.insert(mcpSecretsTable).values({ id, credentials: serialized })
+      const snapshot = await getMcpServerCredentialSnapshot(db, id)
+      expect(snapshot).toEqual({ serialized, credentials: { type: 'oauth', access_token: 'original' } })
+
+      await setMcpServerCredentials(db, id, snapshot!.credentials)
+      await expect(
+        updateMcpServerCredentialsIfCurrent(
+          db,
+          id,
+          { type: 'oauth', access_token: 'replacement' },
+          {
+            expectedCredentials: snapshot!.serialized,
+            expectedUrl: url,
+            signal: new AbortController().signal,
+          },
+        ),
+      ).rejects.toThrow('changed during token refresh')
+      expect(await getMcpServerCredentials(db, id)).toEqual({ type: 'oauth', access_token: 'original' })
     })
   })
 

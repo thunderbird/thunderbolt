@@ -4,6 +4,7 @@
 
 import { useConfigStore } from '@/api/config-store'
 import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
+import { clearCachedSession } from '@/lib/session-cache'
 import { clearMemoizeCache } from '@/lib/memoize'
 import { installFakeTimers } from '@/test-utils/fake-timers'
 import * as linguiMacros from '@/i18n/identity-macros'
@@ -11,6 +12,7 @@ import type { Clock } from '@sinonjs/fake-timers'
 import * as matchers from '@testing-library/jest-dom/matchers'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach, expect, mock } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 // Lingui macros are compiled away by Babel in the Vite build, but bun test
 // never runs Babel — swap in identity implementations that render the English
@@ -128,6 +130,13 @@ const existingJest = (globalThis as any).jest || {}
 }
 
 beforeEach(() => {
+  // Most fixtures exercise a configured deployment. Serverless tests select an
+  // empty URL explicitly, independent of the fresh-install production default.
+  useLocalSettingsStore.setState({
+    cloudUrl: 'https://test-api.local/v1',
+    localMode: false,
+    serverHasAuthenticated: true,
+  })
   globalClock = installFakeTimers()
   webHapticsTriggerMock.mockClear()
   // Ensure console is suppressed for each test
@@ -154,6 +163,7 @@ afterEach(() => {
   // in localStorage would otherwise make AuthProvider's mount effect fire an extra
   // get-session call against the next file's HTTP client.
   clearAuthToken()
+  clearCachedSession()
   clearDeviceId()
   clearUserCacheSecret()
 })

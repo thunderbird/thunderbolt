@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -236,11 +236,24 @@ describe('PowerSync connection ownership', () => {
     }
     const database = new PowerSyncDatabaseImpl()
     Object.assign(database, { powerSync, _db: {} })
-    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', syncEnabled: true })
     return { database, connecting, disconnecting, powerSync, events }
   }
 
-  afterEach(() => useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false))
+  let originalSettings: ReturnType<typeof useLocalSettingsStore.getState>
+  beforeEach(() => {
+    originalSettings = useLocalSettingsStore.getState()
+  })
+  afterEach(() => useLocalSettingsStore.setState(originalSettings))
+
+  it('keeps standalone storage offline even with a stale enabled preference', async () => {
+    const { database, powerSync } = makeDatabase()
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    await database.connectToSync()
+    expect(powerSync.connect).not.toHaveBeenCalled()
+    expect(database.isConnected).toBe(false)
+    await database.close()
+  })
 
   it('coalesces overlapping connects before native connect has settled', async () => {
     const { database, connecting, powerSync } = makeDatabase()

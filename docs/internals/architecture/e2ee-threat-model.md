@@ -137,17 +137,40 @@ falsify, not a fact.
   self-consistent recipient attestation. Authenticating the account key itself needs
   an additional independent trust root. (2) **Rollback passes the witness by construction** — an old
   honest envelope with its matching old keyring verifies, because DEK `"0"` is immutable. The
-  replayed set includes the canary, `signing_public_key` and `key_version`, so the device is
-  returned wholesale to an epoch a revoked device holds and whose old envelope is valid for: that
-  is **C5 defeated**, not C4's pointer residual, and no DEK-`"0"`-bound artifact can ever catch it.
-  Closing it needs the keyring authenticated, and binding `key_id → material` rather than merely
-  signing `key_version` (THU-890). (3) A refusing device keeps writing under its stale primary,
+  replayed set includes the canary, `signing_public_key` and `key_version`, so on the witness alone
+  the device would be returned wholesale to an epoch a revoked device holds, defeating C5.
+
+  What closes the passive replay: the envelope now seals an epoch counter next to the AK (`0x03`),
+  and the device stores that epoch and the sealed primary pointer with its AK, in one transaction.
+  It refuses an envelope that seals an older epoch (or none, once it holds a versioned AK) or a
+  lower pointer. Minted key_ids only grow on an honest keyring, and the pointer has been sealed
+  since `0x02`. A replay carries its own old sealed values, and the served `key_version` is never
+  a floor. DEK rows from an older epoch do not unwrap under the adopted AK, because every DEK that
+  opens under it was wrapped by a holder of that AK with its `key_id` bound in (`dekWrapAAD`).
+
+  Still open: a new device trusts the first envelope it is served. Until a device holds a
+  versioned AK, it can be returned across an AK-only rotation such as a phrase change. And the
+  floors order epochs without proving ancestry. Any holder of an older AK can seal an authentic
+  envelope at the same or a higher epoch with a higher pointer, and the witness accepts it. A
+  revoked device is such a holder and needs no partition: with A2 serving it the pre-revocation
+  state and accepting its rotation, the stock client mints a new primary DEK and seals the epoch
+  the surviving devices already hold, and they adopt a primary the revoked device minted (A2 with
+  A4, **C5 defeated**). A modified client can seal any higher epoch. A device A2 partitions on an
+  old epoch can do the same and leave out a device revoked elsewhere. Closing this needs
+  authenticated epoch ancestry (THU-890).
+
+  Gated by the `epoch replay` service tests, the loopback page-load test in
+  `key-request-responder.test.ts` and `attacks/epoch-replay.spec.ts`.
+
+  (3) A refusing device keeps writing under its stale primary,
   which after a revocation-driven rotation is a DEK the revoked device holds — confidential against
   A2, **not** against A4. Failing `encode` closed instead would wall a legitimate user on a signal
   they cannot see. (4) **Ending an attack is what wedges the device**: pre-fix a device self-healed
   once A2 stopped lying, whereas a device whose witness was minted inside the attack window can
   never clear the check. Signing out clears it, at the cost of a re-approval; the phrase-recovery
-  path stays ungated for exactly this reason. (5) A2 **withholding** an openable envelope is a DoS —
+  path skips the witness for exactly this reason. It is not exempt from the epoch floors (residual
+  2), so a device holding an inflated floor, such as one it adopted on first use, is cleared only
+  by signing out. (5) A2 **withholding** an openable envelope is a DoS —
   degradation, not disclosure, same shape as C9's first residual. (6) The immutability this rests on
   is enforced at **no layer**: `assertRotateKeyCoverage` validates key_id sets, not key material,
   because the server holds no AK. A keyring compaction that drops `"0"`, a v3 that re-mints it, or a
@@ -235,7 +258,12 @@ falsify, not a fact.
   under its own honest name. What the AAD settles is the `key_id → material` half: a signed pointer
   can no longer be satisfied by an honest-looking relabel, so what remains for THU-890 is
   FRESHNESS — an attestation that proves the pointer is current, not merely well-formed, minus a
-  monotonic local guard's blind spot (a freshly enrolled device has no baseline).
+  monotonic local guard's blind spot (a freshly enrolled device has no baseline). Since this
+  residual was written, the pointer has been sealed in the AK envelope (`0x02`, THU-890), and a
+  device now also refuses an envelope whose sealed pointer is lower than the one in force (see C2
+  residual 2). That closes the rollback to a lower pointer on an established device. Two gaps
+  remain: the freshly enrolled device's blind spot, and a holder of an older AK sealing an equal
+  or higher pointer (C2 residual 2).
 - **C5 — Revocation is cryptographic.** After `revokeDeviceAndRotate`, the removed device cannot
   read new data, cannot obtain the new AK or primary DEK, **and cannot authorize any further trust
   operation.** Note the coupling: the ECDSA signing keypair is derived from the canary, which since
@@ -249,6 +277,8 @@ falsify, not a fact.
   rebind only as itself, and that row is revoked. Revocation also has to SURVIVE a hostile keyring:
   one unopenable `wrapped_keys` row used to throw the whole AK rotation, so a single planted row
   voided the cryptographic half of every future revocation, permanently (THU-871 — see C15).
+  Against A2 working with the removed device, the rotation alone is not enough: the removed device
+  still holds the pre-revocation AK and can seal an envelope the epoch floors accept (C2 residual 2).
 - **C6 — Challenge-response is not replayable or confusable.** Nonces are single-use, expiring, and
   bound to user, device, and operation (approve / deny / revoke / rotate / recover / node-id). No
   cross-operation confusion, no cross-device reuse, no TOCTOU between issue and consume, no endpoint

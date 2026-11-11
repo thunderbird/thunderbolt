@@ -39,10 +39,15 @@ const openLongConversation = async (page: Page) => {
   await expect(page.getByText('Paragraph 60.', { exact: false })).toBeAttached()
   const scroller = page.locator('.overflow-y-auto').filter({ has: page.locator('[data-message-id]') })
   await expect(scroller).toHaveCount(1)
+  // At mobile widths the list slides up into place as it mounts; positions read mid-slide are off by a few pixels.
+  await expect(scroller).toHaveCSS('transform', 'none')
   await scroller.evaluate((element) => {
     element.scrollTop = (element.scrollHeight - element.clientHeight) / 2
   })
-  await expect(page.getByRole('button', { name: 'Scroll to bottom' })).toBeVisible()
+  const button = page.getByRole('button', { name: 'Scroll to bottom' })
+  await expect(button).toBeVisible()
+  // The button slides in on its own as it appears.
+  await expect(button.locator('..')).toHaveCSS('transform', 'none')
   return scroller
 }
 

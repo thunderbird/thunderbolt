@@ -116,6 +116,7 @@ describe('adapter-cache', () => {
   afterEach(() => {
     clearAdapterCache()
     useChatStore.setState({ sessions: new Map() })
+    mock.restore()
   })
 
   it('reuses ONE adapter for the same agentId across two different sessionIds (connect once)', async () => {

@@ -34,6 +34,11 @@ const invokeNative = (command: string, args: Record<string, unknown> = {}) =>
   )
 
 try {
+  const signIn = await browser.$('button[aria-label="Sign in"]')
+  await signIn.waitForDisplayed({ timeout: 60_000 })
+  await signIn.click()
+  await (await browser.$('input[aria-label="Cloud (Waitlist)"]')).click()
+  await (await browser.$('//button[normalize-space()="Continue"]')).click()
   const email = await browser.$('input[placeholder="Email"]')
   await email.waitForDisplayed({ timeout: 60_000 })
   await email.setValue(`native-${crypto.randomUUID()}@thunderbolt.test`)
@@ -41,6 +46,9 @@ try {
   const otp = await browser.$('input[autocomplete="one-time-code"]')
   await otp.waitForDisplayed({ timeout: 30_000 })
   await otp.setValue('12345678')
+  const syncSetup = await browser.$('//div[@role="dialog"][.//h2[normalize-space()="Set up sync"]]')
+  await syncSetup.waitForDisplayed({ timeout: 60_000 })
+  await (await syncSetup.$('.//button[normalize-space()="Close"]')).click()
   await (await browser.$('textarea')).waitForDisplayed({ timeout: 60_000 })
 
   const trayBeforeReload = await invokeNative('plugin:tray|get_by_id', { id: 'main-tray' })
@@ -65,7 +73,9 @@ try {
   await browser.waitUntil(async () => (await invokeNative('plugin:window|is_visible', { label: 'main' })) === true)
 
   await (await browser.$('[data-testid="model-selector-trigger"]')).click()
-  await (await browser.$('//button[normalize-space()="Opus 5.5"]')).click()
+  const standardModel = await browser.$('//button[normalize-space()="Opus 5.5"]')
+  await (await standardModel.$('[role="img"][aria-label="Thunderbolt"]')).waitForDisplayed()
+  await standardModel.click()
   await browser.keys(Key.Escape)
   await composer.setValue('Please greet me briefly.')
   await (await browser.$('button[aria-label="Send message"]')).click()

@@ -78,8 +78,8 @@ export const workspaceDirFor = (threadId: string): string => {
  *
  *   - `anthropic` resolves a model from Pi's built-in catalog and wires the
  *     `@anthropic-ai/sdk` client through `fetch` ({@link buildAnthropicModel}).
- *   - `openai-compat` synthesizes an `openai-completions` model for the app's
- *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`thunderbolt`) and
+ *   - `openai-compat` synthesizes a completions or Responses model for the app's
+ *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`thunderbolt`/`otari`) and
  *     injects `fetch` around client construction ({@link buildOpenAiCompatModel}).
  *   - `confidential` adds catalog compatibility and attestation normalization
  *     around an OpenAI-compatible model ({@link buildConfidentialModel}).
@@ -100,6 +100,7 @@ export type PiModelDescriptor =
     }
   | {
       readonly kind: 'openai-compat'
+      readonly api?: 'openai-completions' | 'openai-responses'
       /** App provider name, also used as the Pi provider id. */
       readonly providerId: string
       /** Upstream model id sent on the wire. */
@@ -233,6 +234,7 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
       : options.model.kind === 'confidential'
         ? buildConfidentialModel({ ...options.model, getReasoningEffort })
         : buildOpenAiCompatModel({
+            api: options.model.api,
             getReasoningEffort,
             providerId: options.model.providerId,
             modelId: options.model.modelId,

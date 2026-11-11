@@ -3,10 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { fetch } from 'bun'
 import { execFileSync } from 'node:child_process'
 import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { exaRelayEndpoints } from '../../shared/exa-relay'
 
 const fixtureDir = mkdtempSync(join(tmpdir(), 'thunderbolt-nginx-'))
 const containerName = `thunderbolt-nginx-test-${process.pid}`
@@ -31,6 +33,10 @@ beforeAll(async () => {
     containerName,
     '--publish',
     '127.0.0.1::8080',
+    '--dns',
+    '192.0.2.53',
+    '--env',
+    'NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1',
     '--env',
     'THUNDERBOLT_BACKEND_HOST=127.0.0.1',
     '--env',
@@ -104,5 +110,51 @@ describe('deployed frontend caching', () => {
   test('source maps remain blocked even when present on disk', async () => {
     const response = await fetch(`${origin}/assets/entry-current.js.map`)
     expect(response.status).toBe(404)
+  })
+})
+
+describe('encrypted search relay', () => {
+  test('uses the container DNS resolver rather than Docker-specific loopback DNS', () => {
+    const config = docker('exec', containerName, 'cat', '/etc/nginx/conf.d/default.conf')
+    expect(config).toContain('resolver 192.0.2.53 valid=60s;')
+    expect(config).toContain('resolver 192.0.2.53 valid=10s;')
+    expect(config).not.toContain('127.0.0.11')
+    expect(config).not.toContain('${NGINX_LOCAL_RESOLVERS}')
+  })
+
+  test('blocks unsupported methods, missing credentials and plaintext requests', async () => {
+    const url = `${origin}/_tinfoil/search`
+    expect((await fetch(url, { method: 'PUT' })).status).toBe(405)
+    expect((await fetch(url, { method: 'POST' })).status).toBe(401)
+    expect((await fetch(url, { method: 'POST', headers: { authorization: 'Bearer fake' }, body: '{}' })).status).toBe(
+      400,
+    )
+    expect(
+      (
+        await fetch(url, {
+          method: 'POST',
+          headers: { authorization: 'Bearer fake', 'sec-fetch-site': 'cross-site' },
+          body: '{}',
+        })
+      ).status,
+    ).toBe(403)
+  })
+})
+
+describe('Exa browser relay', () => {
+  test('only maps the same fixed endpoints as the client and development relay', () => {
+    const config = docker('exec', containerName, 'cat', '/etc/nginx/conf.d/default.conf')
+    for (const [path, endpoint] of Object.entries(exaRelayEndpoints)) {
+      expect(config).toContain(`${path} ${endpoint.url};`)
+    }
+    expect(config).toContain('proxy_ssl_verify on;')
+    expect(config).toContain('proxy_pass_request_headers off;')
+  })
+  test('rejects unknown paths, wrong methods and cross-site callers before contacting Exa', async () => {
+    expect((await fetch(`${origin}/_exa/unknown`)).status).toBe(404)
+    expect((await fetch(`${origin}/_exa/register`)).status).toBe(405)
+    expect(
+      (await fetch(`${origin}/_exa/token`, { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } })).status,
+    ).toBe(403)
   })
 })

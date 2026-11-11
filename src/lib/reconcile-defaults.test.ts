@@ -896,6 +896,7 @@ for (const [target, model, name] of [
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()).toEqual({
       ...edited,
+      providerConnectionId: null,
       reasoningEffort: null,
       model: target.model,
     })
@@ -926,6 +927,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
+      providerConnectionId: null,
       reasoningEffort: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
@@ -952,6 +954,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...customizedLegacy,
+      providerConnectionId: null,
       reasoningEffort: null,
       model: defaultModelOpus55.model,
     })
@@ -975,6 +978,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
+      providerConnectionId: null,
       reasoningEffort: null,
       defaultHash: hashModel(defaultModelOpus55),
     })
@@ -1000,6 +1004,7 @@ describe('Opus data migration', () => {
 
     expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...defaultModelOpus55,
+      providerConnectionId: null,
       reasoningEffort: null,
       defaultHash: hashModel(defaultModelOpus55),
     })

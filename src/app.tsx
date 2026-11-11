@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { I18nProvider } from '@lingui/react'
 import { useLingui } from '@lingui/react/macro'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from '@/lib/query-client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
 
@@ -13,6 +15,9 @@ import { i18n } from '@/i18n'
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
+import TinfoilCallback from '@/components/tinfoil-callback'
+import { OtariCallback } from '@/components/otari-connection/otari-callback'
+import OpenRouterCallback from '@/components/openrouter-callback'
 import { AccountDeleted } from '@/components/account-deleted'
 import { DeviceRevoked } from '@/components/device-revoked'
 import { SignedOut } from '@/components/signed-out'
@@ -64,7 +69,10 @@ import { useSettings } from './hooks/use-settings'
 import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
 import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync/sync-state'
-import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
+import { type ComponentProps, Suspense, lazy, useEffect, useMemo, useState } from 'react'
+import { isCurrentServer, useLocalSettingsStore } from '@/stores/local-settings-store'
+import { createAuthenticatedClient } from '@/lib/http'
+import { getAuthToken } from '@/lib/auth-token'
 import { markAppMounted } from '@/lib/init-timing'
 import { preloadInBackground } from '@/lib/after-paint'
 import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
@@ -89,6 +97,7 @@ const routeChunkLoaders = {
   settings: () => import('@/settings/index'),
   preferences: () => import('@/settings/preferences'),
   models: () => import('@/settings/models'),
+  search: () => import('@/settings/search'),
   devices: () => import('@/settings/devices'),
   connections: () => import('@/settings/connections'),
   skills: () => import('@/settings/skills'),
@@ -103,6 +112,7 @@ const MiniAppPage = lazy(routeChunkLoaders.miniApp)
 const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
 const ModelsPage = lazy(routeChunkLoaders.models)
+const SearchSettingsPage = lazy(routeChunkLoaders.search)
 const DevicesSettingsPage = lazy(routeChunkLoaders.devices)
 const ConnectionsPage = lazy(routeChunkLoaders.connections)
 const SkillsPage = lazy(routeChunkLoaders.skills)
@@ -134,8 +144,6 @@ const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools
 const preloadAllRouteChunks = () => {
   return preloadInBackground(Object.values(routeChunkLoaders))
 }
-
-const queryClient = new QueryClient()
 
 const AppContent = ({ initData }: { initData: InitData }) => {
   useDeviceSessionBinding()
@@ -202,6 +210,9 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       <Routes>
         {/* Auth flow routes - NO guards (must work during auth) */}
         <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <Route path="/oauth/otari" element={<OtariCallback />} />
+        <Route path="/oauth/openrouter/:flowId" element={<OpenRouterCallback />} />
+        <Route path="/oauth/tinfoil" element={<TinfoilCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />
         <Route path="/device" element={<DeviceApproval />} />
 
@@ -239,6 +250,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route index element={<Settings />} />
               <Route path="preferences" element={<PreferencesSettingsPage />} />
               <Route path="models" element={<ModelsPage />} />
+              <Route path="search" element={<SearchSettingsPage />} />
               {experimentalFeatureVoice.value && <Route path="voice" element={<VoiceSettingsPage />} />}
               <Route path="devices" element={<DevicesSettingsPage />} />
               <Route path="connections" element={<ConnectionsPage />} />
@@ -296,6 +308,17 @@ export const App = () => {
   // "React mounted" mark for startup telemetry.
   useState(markAppMounted)
   const { initData, initError, clearDatabase } = useAppInitialization()
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
+  useConfigStore((state) => state.config.authMode)
+  const ssoMode = isSsoMode()
+  const httpClient = useMemo(
+    () =>
+      createAuthenticatedClient(cloudUrl, getAuthToken, {
+        credentials: ssoMode ? 'include' : undefined,
+        isCurrent: () => isCurrentServer(cloudUrl),
+      }),
+    [cloudUrl, ssoMode],
+  )
   const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()
   useAppVersionUnsupportedListener()
 
@@ -318,7 +341,7 @@ export const App = () => {
   // the WebView's default white background from flashing before the theme loads.
   useEffect(() => {
     if (isTauri()) {
-      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().show()).catch(console.error)
+      getCurrentWindow().show().catch(console.error)
     }
   }, [])
 
@@ -364,8 +387,8 @@ export const App = () => {
       >
         <QueryClientProvider client={queryClient}>
           <DatabaseProvider db={initData.db}>
-            <HttpClientProvider httpClient={initData.httpClient}>
-              <AuthProvider cloudUrl={initData.cloudUrl}>
+            <HttpClientProvider httpClient={httpClient}>
+              <AuthProvider cloudUrl={cloudUrl}>
                 <SignInModalProvider>
                   <PostHogProvider client={initData.posthogClient}>
                     <ProxyFetchProvider>

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Loader2, X } from 'lucide-react'
 import type { UseFormReturn } from 'react-hook-form'
@@ -17,9 +18,10 @@ import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import type { ToolSupport } from '@/hooks/use-model-connection-test'
 import { useAppName } from '@/lib/branding-selectors'
+import { defaultOtariOrigin, getOtariEndpoints } from '@/lib/otari-auth'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
-import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
+import { providerAutoFetchesCatalog, providerRequiresUrl, shouldDisableAddModel } from './model-policy'
 import { getProviderLabel, providerPickerOrder } from './model-presentation'
 import { SupportsToolsSwitch } from './supports-tools-switch'
 import type { AddModelFormValues } from './use-add-model-form'
@@ -42,6 +44,10 @@ type AddModelFormProps = {
   onCatalogInvalidated: () => void
   onSelectModel: (id: string) => void
   onTestConnection: () => void
+  showCancel?: boolean
+  allowServerModels?: boolean
+  showProvider?: boolean
+  showApiKey?: boolean
 }
 
 /** Presentational add-model form; provider and mutation behavior stays in the page controller. */
@@ -63,7 +69,12 @@ export const AddModelForm = ({
   onCatalogInvalidated,
   onSelectModel,
   onTestConnection,
+  showCancel = true,
+  allowServerModels = true,
+  showProvider = true,
+  showApiKey = true,
 }: AddModelFormProps) => {
+  const { isProviderVisible } = useProviderVisibility()
   const { i18n, t } = useLingui()
   const appName = useAppName()
   const provider = form.watch('provider')
@@ -83,38 +94,43 @@ export const AddModelForm = ({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-1 flex-col gap-4 pb-2 pt-4">
-        <FormField
-          control={form.control}
-          name="provider"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>
-                <Trans>Provider</Trans>
-              </FormLabel>
-              <Select
-                onValueChange={(value: Model['provider']) => {
-                  onProviderChange(value)
-                }}
-                value={field.value}
-              >
-                <FormControl>
-                  <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
-                    <SelectValue placeholder={t`Select provider`} />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {providerPickerOrder.map((provider) => (
-                    <SelectItem key={provider} value={provider}>
-                      {getProviderLabel(i18n, provider, appName)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        {provider === 'custom' && (
+        {showProvider && (
+          <FormField
+            control={form.control}
+            name="provider"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  <Trans>Provider</Trans>
+                </FormLabel>
+                <Select
+                  onValueChange={(value: Model['provider']) => {
+                    onProviderChange(value)
+                  }}
+                  value={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
+                      <SelectValue placeholder={t`Select provider`} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {providerPickerOrder
+                      .filter(isProviderVisible)
+                      .filter((provider) => allowServerModels || provider !== 'thunderbolt')
+                      .map((provider) => (
+                        <SelectItem key={provider} value={provider}>
+                          {getProviderLabel(i18n, provider, appName)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+        {providerRequiresUrl(provider) && (
           <FormField
             control={form.control}
             name="url"
@@ -123,29 +139,33 @@ export const AddModelForm = ({
                 <FormLabel>
                   <Trans>URL</Trans>
                 </FormLabel>
-                <FormControl>
-                  <div className="relative">
+                <div className="relative">
+                  <FormControl>
                     <Input
                       {...field}
-                      placeholder="http://localhost:11434/v1"
+                      placeholder={
+                        provider === 'otari'
+                          ? getOtariEndpoints(defaultOtariOrigin).inference
+                          : 'http://localhost:11434/v1'
+                      }
                       className="rounded-lg pr-10"
                       onChange={(event) => {
                         field.onChange(event)
                         onCatalogInvalidated()
                       }}
                     />
-                    {isLoadingCatalog && (
-                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                    )}
-                  </div>
-                </FormControl>
+                  </FormControl>
+                  {isLoadingCatalog && (
+                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                  )}
+                </div>
                 {catalogError && <p className="mt-1 whitespace-pre-line text-sm text-destructive">{catalogError}</p>}
                 <FormMessage />
               </FormItem>
             )}
           />
         )}
-        {provider !== 'thunderbolt' && (
+        {showApiKey && provider !== 'thunderbolt' && (
           <FormField
             control={form.control}
             name="apiKey"
@@ -166,13 +186,23 @@ export const AddModelForm = ({
                     }}
                   />
                 </FormControl>
-                {catalogError && provider !== 'custom' && (
+                {catalogError && !providerRequiresUrl(provider) && (
                   <p className="mt-1 whitespace-pre-line text-sm text-destructive">{catalogError}</p>
                 )}
                 <FormMessage />
               </FormItem>
             )}
           />
+        )}
+        {!showApiKey && catalogError && (
+          <div className="flex flex-col items-start gap-2">
+            <p role="alert" className="whitespace-pre-line text-sm text-destructive">
+              {catalogError}
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={onCatalogInvalidated}>
+              <Trans>Retry loading models</Trans>
+            </Button>
+          </div>
         )}
         {showModelSelection && (
           <FormField
@@ -266,7 +296,7 @@ export const AddModelForm = ({
           />
         )}
         <FormFooter>
-          <ResponsiveModalCancel onClick={onCancel} />
+          {showCancel && <ResponsiveModalCancel onClick={onCancel} />}
           <Button
             type="submit"
             isLoading={isPending}

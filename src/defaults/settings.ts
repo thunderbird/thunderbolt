@@ -64,6 +64,14 @@ export const defaultSettingExperimentalFeatureVoice: Setting = {
   userId: null,
 }
 
+export const defaultSettingExperimentalFeatureOtari: Setting = {
+  key: 'experimental_feature_otari',
+  value: 'false',
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 export const defaultSettingPreferredName: Setting = {
   key: 'preferred_name',
   value: null,
@@ -256,6 +264,7 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingContentViewWidth,
   defaultSettingIntegrationsDoNotAskAgain,
   defaultSettingLanguage,
+  defaultSettingExperimentalFeatureOtari,
 ] as const
 
 /**
@@ -269,7 +278,7 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * The paired snapshot test in `settings.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSettingsVersion = 7
+export const defaultSettingsVersion = 8
 
 /**
  * Whether the bundle ships no value for a setting, leaving something else to

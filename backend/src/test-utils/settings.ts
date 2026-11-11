@@ -18,6 +18,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   tinfoilApiKey: '',
   tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',
   monitoringToken: '',
+  integrationOAuthAllowPublic: false,
   googleClientId: '',
   googleClientSecret: '',
   googleBaseUrl: 'https://oauth2.googleapis.com',

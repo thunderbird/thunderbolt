@@ -14,7 +14,7 @@ import {
   skillSaveFailedMessage,
   useCreateSkillTracked,
 } from '@/skills/skill-save'
-import { useSkillTelemetry } from '@/skills/telemetry'
+import { trackSkillEvent } from '@/skills/telemetry'
 import { useLibrarySkills } from '@/skills/use-skills'
 import { editSkillTitle } from './context'
 import { CreateItemLoadingPanel, CreateItemPanelShell } from './create-item-panel-shell'
@@ -72,7 +72,6 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
   const { t } = useLingui()
   const createSkillTracked = useCreateSkillTracked()
   const { skills, isLoading, updateSkill } = useLibrarySkills()
-  const trackSkillEvent = useSkillTelemetry()
   const [state, dispatch] = useReducer(createSkillReducer, initialState)
   const activeSkill = skillId ? skills.find((skill) => skill.id === skillId) : undefined
   const isEditing = skillId !== undefined
@@ -106,7 +105,7 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
     try {
       if (activeSkill) {
         await updateSkill({ id: activeSkill.id, patch: values })
-        trackSkillEvent('skill_edited', activeSkill.id, { renamed: values.name !== activeSkill.name })
+        trackSkillEvent('skill_edited', { renamed: values.name !== activeSkill.name })
       } else {
         await createSkillTracked(values)
       }

@@ -3,11 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
-import { useDatabase, useHttpClient } from '@/contexts'
+import { useDatabase } from '@/contexts'
 import { saveIntegrationCredentials, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
 import { startOAuthFlowLoopback } from '@/lib/oauth-loopback'
+import {
+  createIntegrationOAuthClient,
+  getIntegrationRelayUrl,
+  getIntegrationOAuthErrorMessage,
+} from '@/lib/integration-oauth-client'
 import { clearOAuthState, getOAuthState, setOAuthState } from '@/lib/oauth-state'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import type { ReturnContext } from '@/lib/oauth-state'
 import { isMobile, isTauri } from '@/lib/platform'
@@ -72,9 +78,8 @@ const oauthUiReducer = (state: OAuthUiState, action: OAuthUiAction): OAuthUiStat
  * For web: Redirects to OAuth provider and processes callback on return.
  */
 export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthConnectResult => {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const db = useDatabase()
-  const httpClient = useHttpClient()
   const queryClient = useQueryClient()
   const { onSuccess, onError, setPreferredName = false, returnContext = 'integrations', dependencies } = options
   const [state, dispatch] = useReducer(oauthUiReducer, { phase: 'idle' })
@@ -88,6 +93,11 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     getUserInfo: getUser = getUserInfo,
   } = dependencies || {}
 
+  const describeError = (error: unknown) => {
+    const message = getIntegrationOAuthErrorMessage(error)
+    return message ? i18n._(message) : error instanceof Error ? error.message : t`Failed to complete authentication`
+  }
+
   /**
    * Saves OAuth credentials and enables the integration
    */
@@ -95,8 +105,13 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
     provider: OAuthProvider,
     tokens: { access_token: string; refresh_token?: string; expires_in: number },
     userInfo: { email: string; name: string; picture?: string },
+    oauthRelayUrl: string,
+    signal: AbortSignal,
   ) => {
+    signal.throwIfAborted()
     const credentials = {
+      oauthRelayUrl,
+      sessionRevision: crypto.randomUUID(),
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token || '',
       expires_at: Date.now() + tokens.expires_in * 1000,
@@ -107,21 +122,30 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       },
     }
 
-    await saveIntegrationCredentials(db, provider, credentials, true)
+    await db.transaction(async (tx) => {
+      signal.throwIfAborted()
+      await saveIntegrationCredentials(tx, provider, credentials, true)
+      signal.throwIfAborted()
+    })
     await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
+    signal.throwIfAborted()
 
     if (setPreferredName && userInfo.name) {
-      await updateSettings(db, { preferred_name: userInfo.name })
+      await updateSettings(db, { preferred_name: userInfo.name }, { signal })
     }
   }
 
   const connect = async (provider: OAuthProvider) => {
+    const identitySignal = getIdentitySignal()
     const attempt = operation.begin()
     if (!attempt) {
       return
     }
 
     dispatch({ type: 'START' })
+    const oauthRelayUrl = getIntegrationRelayUrl()
+    const httpClient = createIntegrationOAuthClient(oauthRelayUrl)
+    clearOAuthState()
 
     try {
       if (isTauri()) {
@@ -132,7 +156,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
           const state = uuidv4()
           const codeVerifier = generateCodeVerifier()
           const codeChallenge = await generateCodeChallenge(codeVerifier)
-          if (!attempt.isCurrent()) {
+          if (!attempt.isCurrent() || identitySignal.aborted) {
             return
           }
 
@@ -142,10 +166,11 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
             provider,
             verifier: codeVerifier,
             returnContext,
+            oauthRelayUrl,
           })
 
           const authUrl = await buildAuthUrl(httpClient, provider, state, codeChallenge)
-          if (!attempt.isCurrent()) {
+          if (!attempt.isCurrent() || identitySignal.aborted) {
             return
           }
 
@@ -160,7 +185,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
         } else {
           // For desktop: Use system browser + loopback server flow.
           const result = await startLoopback(httpClient, provider)
-          if (!attempt.isCurrent()) {
+          if (!attempt.isCurrent() || identitySignal.aborted) {
             return
           }
 
@@ -171,8 +196,8 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
           const { tokens, userInfo } = result
 
-          await saveCredentials(provider, tokens, userInfo)
-          if (!attempt.isCurrent()) {
+          await saveCredentials(provider, tokens, userInfo, oauthRelayUrl, identitySignal)
+          if (!attempt.isCurrent() || identitySignal.aborted) {
             return
           }
 
@@ -182,10 +207,10 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       } else {
         // For web: Use redirect flow
         setOAuthState({ returnContext })
-        await redirect(httpClient, provider)
+        await redirect(httpClient, provider, oauthRelayUrl)
       }
     } catch (e: unknown) {
-      if (!attempt.isCurrent()) {
+      if (!attempt.isCurrent() || identitySignal.aborted) {
         return
       }
       // "Redirecting for OAuth" is thrown intentionally by redirectOAuthFlow to satisfy TypeScript's never return type
@@ -193,9 +218,9 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       if (e instanceof Error && e.message === 'Redirecting for OAuth') {
         return
       }
-      const message = e instanceof Error ? e.message : t`Failed to complete authentication`
+      const message = describeError(e)
       dispatch({ type: 'ERROR', message })
-      onError?.(e instanceof Error ? e : new Error(message))
+      onError?.(new Error(message, { cause: e }))
     } finally {
       attempt.finish()
     }
@@ -206,13 +231,15 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
    * Returns true if successful, false otherwise.
    */
   const processCallback = async (callbackData: OAuthCallbackData): Promise<boolean> => {
+    const identitySignal = getIdentitySignal()
     const attempt = operation.begin()
     if (!attempt) {
       return false
     }
     try {
       const { code, state: returnedState, error: oauthError } = callbackData
-      const { state: storedState, provider, verifier: codeVerifier } = getOAuthState()
+      const oauthState = getOAuthState()
+      const { state: storedState, provider, verifier: codeVerifier } = oauthState
 
       // Unrelated or stale callbacks must not settle the current authorization,
       // including provider-denial callbacks that do not carry an authorization code.
@@ -234,17 +261,18 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
       clearOAuthState()
       dispatch({ type: 'START' })
       try {
-        const tokens = await exchangeTokens(httpClient, provider, code, codeVerifier)
-        if (!attempt.isCurrent()) {
+        const oauthRelayUrl = oauthState.oauthRelayUrl ?? getIntegrationRelayUrl()
+        const tokens = await exchangeTokens(createIntegrationOAuthClient(oauthRelayUrl), provider, code, codeVerifier)
+        if (!attempt.isCurrent() || identitySignal.aborted) {
           return false
         }
         const userInfo = await getUser(provider, tokens.access_token)
-        if (!attempt.isCurrent()) {
+        if (!attempt.isCurrent() || identitySignal.aborted) {
           return false
         }
 
-        await saveCredentials(provider, tokens, userInfo)
-        if (!attempt.isCurrent()) {
+        await saveCredentials(provider, tokens, userInfo, oauthRelayUrl, identitySignal)
+        if (!attempt.isCurrent() || identitySignal.aborted) {
           return false
         }
 
@@ -252,12 +280,12 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
         onSuccess?.()
         return true
       } catch (e: unknown) {
-        if (!attempt.isCurrent()) {
+        if (!attempt.isCurrent() || identitySignal.aborted) {
           return false
         }
-        const message = e instanceof Error ? e.message : t`Failed to complete authentication`
+        const message = describeError(e)
         dispatch({ type: 'ERROR', message })
-        onError?.(e instanceof Error ? e : new Error(message))
+        onError?.(new Error(message, { cause: e }))
         return false
       }
     } finally {

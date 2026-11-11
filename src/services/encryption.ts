@@ -36,6 +36,7 @@ import {
   openBindNonce,
   storeAK,
   getAK,
+  getAKKeyVersion,
   storeDEK,
   getDEK,
   getLegacyCK,
@@ -98,6 +99,7 @@ import {
 import { getDb } from '@/db/database'
 import {
   encPrefix,
+  dropCachedPrimary,
   encV2Prefix,
   invalidateAdoptedKeyring,
   invalidateKeyringCache,
@@ -293,12 +295,18 @@ export class MissingRecoverySlotError extends Error {
  *   nor a local DEK `"0"` to mint one from. Unreachable honestly; it is what a
  *   server withholding `key_id "0"` produces, and refusing is what stops that
  *   from being a silent bypass.
+ * - `stale-epoch` — the envelope seals an older `key_version` than the one this
+ *   device's AK came from (or none, after the device has held a versioned one),
+ *   or a lower primary pointer than the one in force. Honest servers never serve
+ *   that; a replay of an older epoch does, and it passes the witness by
+ *   construction because DEK `"0"` never changes.
  */
-export type AKRefusalReason = 'unopenable' | 'material-mismatch' | 'no-witness'
+export type AKRefusalReason = 'unopenable' | 'material-mismatch' | 'no-witness' | 'stale-epoch'
 
 /**
  * Thrown when a server-supplied Account Key cannot be tied back to this
- * device's local witness of DEK `"0"` (THU-869). The AK envelope is anonymous —
+ * device's local witness of DEK `"0"` (THU-869), or seals an older epoch or a
+ * lower primary pointer than the AK this device already holds. The AK envelope is anonymous —
  * `wrapAK` needs only public keys the server itself stores — so a well-formed
  * envelope proves nothing about who minted the key inside it.
  *
@@ -311,11 +319,7 @@ export class AKAnchorError extends Error {
   readonly reason: AKRefusalReason
 
   constructor(reason: AKRefusalReason, options?: ErrorOptions) {
-    super(
-      `Refusing the account key the server supplied (${reason}) — it does not match this device's ` +
-        `witness of DEK '${initialKeyId}'. This may indicate tampering.`,
-      options,
-    )
+    super(`Refusing the account key the server supplied (${reason}). This may indicate tampering.`, options)
     this.name = 'AKAnchorError'
     this.reason = reason
   }
@@ -489,6 +493,7 @@ const buildRecoverySlot = async (
   kdfSalt: string,
   canaryKey: CryptoKey,
   primaryKeyId: KeyId,
+  keyVersion: number,
 ): Promise<RecoverySlotRequest> => {
   const recoveryEcdhPublicKey = await exportPublicKey(recovery.ecdhPublicKey)
   const recoveryMlkemPublicKey = exportMlKemPublicKey(recovery.mlkemPublicKey)
@@ -496,7 +501,7 @@ const buildRecoverySlot = async (
   return {
     recoveryEcdhPublicKey,
     recoveryMlkemPublicKey,
-    recoveryWrappedAK: await wrapAK(ak, recovery.ecdhPublicKey, recovery.mlkemPublicKey, primaryKeyId),
+    recoveryWrappedAK: await wrapAK(ak, recovery.ecdhPublicKey, recovery.mlkemPublicKey, primaryKeyId, keyVersion),
     recoveryAttestation: await signRecoveryAttestation(canaryKey, {
       userId: getUserId(),
       kdfSalt,
@@ -589,6 +594,7 @@ const buildPasskeySlot = async (
   plan: PasskeyPlan,
   canaryKey: CryptoKey,
   primaryKeyId: KeyId,
+  keyVersion: number,
 ): Promise<Partial<PasskeySlotRequest>> => {
   if (plan.mode === 'none') {
     return {}
@@ -600,7 +606,13 @@ const buildPasskeySlot = async (
     passkeyCredentialId: plan.credentialId,
     passkeyEcdhPublicKey,
     passkeyMlkemPublicKey,
-    passkeyWrappedAK: await wrapAK(ak, plan.publicKeys.ecdhPublicKey, plan.publicKeys.mlkemPublicKey, primaryKeyId),
+    passkeyWrappedAK: await wrapAK(
+      ak,
+      plan.publicKeys.ecdhPublicKey,
+      plan.publicKeys.mlkemPublicKey,
+      primaryKeyId,
+      keyVersion,
+    ),
     passkeyAttestation: await signPasskeyAttestation(canaryKey, {
       userId: getUserId(),
       credentialId: plan.credentialId,
@@ -847,6 +859,48 @@ const reconcileKeyringAnchor = async (): Promise<void> => {
 }
 
 /**
+ * Store an AK with the epoch and pointer its envelope sealed, then drop every
+ * codec cache, the in-memory primary included, in every context. A warmed
+ * encoder would otherwise keep encrypting under the old primary; until the new
+ * DEKs are staged, encoding fails closed instead.
+ *
+ * Pending key requests are NOT settled here: the DEKs they wait for are staged
+ * after this, and a decode retried now would find no key and keep the raw
+ * ciphertext. The staging that follows settles them.
+ */
+const publishAK = async (ak: CryptoKey, sealed: Pick<OpenedAkEnvelope, 'keyVersion' | 'primaryKeyId'>) => {
+  await storeAK(ak, sealed)
+  dropCachedPrimary()
+}
+
+/**
+ * Refuse an envelope older than the state this device already holds. Both values
+ * ride inside the envelope's auth tag, so a replay carries its own old ones,
+ * whatever the served metadata says.
+ *
+ * - The epoch: an envelope must not seal an older `key_version` than the one the
+ *   held AK came from. Once the device holds a versioned AK, an unversioned
+ *   (0x02) envelope is refused too: it is either a replay from before the epoch
+ *   was sealed or a writer that has not been updated.
+ * - The primary pointer: minted key_ids only grow, because a mint takes the
+ *   smallest unused id and keyring rows are never deleted. A lower sealed pointer
+ *   is a return to a DEK a revocation retired. Every envelope format seals the
+ *   pointer, so this also covers installations still on unversioned envelopes.
+ *
+ * A device with neither (new, or no pointer yet) accepts any envelope: its first
+ * adoption is trust-on-first-use.
+ */
+const assertNotOlderEpoch = async (envelope: OpenedAkEnvelope): Promise<void> => {
+  const floor = (await getAKKeyVersion()) ?? 0
+  const primaryKeyId = await getPrimaryKeyId()
+  const olderEpoch = floor > 0 && (envelope.keyVersion ?? 0) < floor
+  const olderPrimary = primaryKeyId !== null && Number(envelope.primaryKeyId) < Number(primaryKeyId)
+  if (olderEpoch || olderPrimary) {
+    throw new AKAnchorError('stale-epoch')
+  }
+}
+
+/**
  * Refuse a candidate AK unless it proves it belongs to this account.
  *
  * The proof: unwrap the SERVED DEK `"0"` row under the candidate, then open
@@ -866,8 +920,13 @@ const reconcileKeyringAnchor = async (): Promise<void> => {
  * FAILS CLOSED, unlike `runContinuityCheck` below, which has the same shape and
  * skips-and-swallows. That one is defence-in-depth behind a server-side proof;
  * this one is the only thing between a malicious server and every future write.
+ *
+ * The witness cannot tell epochs apart, since every epoch re-wraps the same
+ * DEK `"0"`; `assertNotOlderEpoch` catches an older epoch.
  */
-const assertCandidateAKIsOurs = async (candidate: CryptoKey, keyring: FetchedKeyring): Promise<void> => {
+const assertCandidateAKIsOurs = async (envelope: OpenedAkEnvelope, keyring: FetchedKeyring): Promise<void> => {
+  await assertNotOlderEpoch(envelope)
+  const candidate = envelope.ak
   const anchor = await getKeyringAnchor()
   if (!anchor) {
     if (await getAK()) {
@@ -900,7 +959,7 @@ const assertCandidateAKIsOurs = async (candidate: CryptoKey, keyring: FetchedKey
  * Nothing is written on refusal: the device keeps the AK, keyring and pointer it
  * already had and carries on using them.
  */
-const acceptCandidateAK = async (httpClient: HttpClient, candidate: CryptoKey): Promise<FetchedKeyring> => {
+const acceptCandidateAK = async (httpClient: HttpClient, candidate: OpenedAkEnvelope): Promise<FetchedKeyring> => {
   const assertCurrent = captureEncryptionOperation()
   await reconcileKeyringAnchor()
   const keyring = await fetchKeyring(httpClient)
@@ -914,7 +973,7 @@ const acceptCandidateAK = async (httpClient: HttpClient, candidate: CryptoKey): 
     throw err
   }
   assertCurrent()
-  await storeAK(candidate)
+  await publishAK(candidate.ak, candidate)
   return keyring
 }
 
@@ -944,7 +1003,7 @@ const adoptEnvelopeAK = async (httpClient: HttpClient): Promise<{ keyring: Fetch
   const envelope = await unwrapEnvelopeAK(wrappedCK)
   await assertFirstEnvelopeRecipient(httpClient, envelope.ak, attestation)
   assertCurrent()
-  const keyring = await acceptCandidateAK(httpClient, envelope.ak)
+  const keyring = await acceptCandidateAK(httpClient, envelope)
   return { keyring, primaryKeyId: envelope.primaryKeyId }
 }
 
@@ -1203,13 +1262,15 @@ const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<string>
   const { canaryIv, canaryCtext, canaryKey } = await mintCanary(extractableAK, getUserId())
   const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
 
-  const wrappedCK = await wrapAK(extractableAK, keyPair.ecdhPublicKey, keyPair.mlkemPublicKey, initialKeyId)
+  // A new account starts at key_version 1, the server's column default.
+  const wrappedCK = await wrapAK(extractableAK, keyPair.ecdhPublicKey, keyPair.mlkemPublicKey, initialKeyId, 1)
   const recoverySlot = await buildRecoverySlot(
     extractableAK,
     recovery.publicKeys,
     recovery.kdfSalt,
     canaryKey,
     initialKeyId,
+    1,
   )
   const ak = await reimportAsNonExtractable(extractableAK)
 
@@ -1260,11 +1321,9 @@ const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<string>
   assertCurrent()
   await storeDEK(initialKeyId, wrappedKey)
   assertCurrent()
-  await storePrimaryKeyId(initialKeyId)
-  assertCurrent()
   await storeKeyVersion(1)
   assertCurrent()
-  await storeAK(ak)
+  await publishAK(ak, { keyVersion: 1, primaryKeyId: initialKeyId })
   // Witness DEK "0" now, from an AK this device generated itself — the most
   // trustworthy moment that will ever exist on this account. Waiting for the
   // first `stageKeyring` would leave a window in which an adoption could be
@@ -1371,7 +1430,7 @@ const approveDevice = async (
   assertCurrent()
   await reconcileKeyringAnchor()
   const candidate = await unwrapAK(myWrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
-  await assertCandidateAKIsOurs(candidate.ak, await fetchKeyring(httpClient))
+  await assertCandidateAKIsOurs(candidate, await fetchKeyring(httpClient))
   const wrappedCK = await rewrapAK(
     myWrappedCK,
     keyPair.ecdhPrivateKey,
@@ -1483,7 +1542,7 @@ const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<boolean> 
   const opened = await unwrapEnvelopeAK(envelope.wrappedCK)
   await assertFirstEnvelopeRecipient(httpClient, opened.ak, envelope.attestation)
   assertCurrent()
-  const keyring = await acceptCandidateAK(httpClient, opened.ak)
+  const keyring = await acceptCandidateAK(httpClient, opened)
   assertCurrent()
   await applyKeyring(keyring, opened.primaryKeyId)
   return true
@@ -1605,11 +1664,11 @@ const selfApproveWithVirtualDevice = async (
   }: { wrappedAK: string; keyPair: StoredKeyPair; canaryIv: string; canaryCtext: string; invalidMessage: string },
 ): Promise<void> => {
   const assertCurrent = captureEncryptionOperation()
-  const { ak, primaryKeyId: sealedPrimaryKeyId } = await unwrapAK(
-    wrappedAK,
-    virtualKeyPair.ecdhPrivateKey,
-    virtualKeyPair.mlkemSecretKey,
-  )
+  const opened = await unwrapAK(wrappedAK, virtualKeyPair.ecdhPrivateKey, virtualKeyPair.mlkemSecretKey)
+  const { ak } = opened
+  // Not gated by the witness (see below), but an established device still never
+  // moves back to an older epoch: a replayed slot opens with the same phrase.
+  await assertNotOlderEpoch(opened)
 
   // Register first: the keys/challenge endpoints require a registered
   // (pending is fine) caller device.
@@ -1687,17 +1746,14 @@ const selfApproveWithVirtualDevice = async (
   // wipes the store outright.
   const hadLocalAK = (await getAK()) !== null
   assertCurrent()
-  await storeAK(ak)
+  // Stores the pointer sealed into the slot, its only trusted source, before
+  // `stageKeyring`, whose fast path never writes one.
+  await publishAK(ak, opened)
   if (!hadLocalAK) {
     const mintedAnchor = await mintKeyringAnchor(dek0)
     assertCurrent()
     await storeKeyringAnchor(mintedAnchor)
   }
-  // The pointer sealed into the recovery envelope is this device's only trusted
-  // source for it (THU-890) — stored BEFORE `stageKeyring`, whose fast path
-  // deliberately never writes a pointer.
-  assertCurrent()
-  await storePrimaryKeyId(sealedPrimaryKeyId)
   assertCurrent()
   await stageKeyring(httpClient)
 }
@@ -1749,6 +1805,7 @@ const buildDeviceEnvelopes = async (
   ak: CryptoKey,
   trustedDevices: TrustedDevicePublicKeys[],
   primaryKeyId: KeyId,
+  keyVersion: number,
   /**
    * The canary key of THIS write. Every envelope ships an attestation over its
    * recipient's id and public keys, signed with the key the NEXT rotation will
@@ -1771,7 +1828,7 @@ const buildDeviceEnvelopes = async (
     const mlkemPub = importMlKemPublicKey(device.mlkemPublicKey)
     envelopes.push({
       deviceId: device.id,
-      wrappedCK: await wrapAK(ak, ecdhPub, mlkemPub, primaryKeyId),
+      wrappedCK: await wrapAK(ak, ecdhPub, mlkemPub, primaryKeyId, keyVersion),
       attestation: await signDeviceAttestation(signWith, {
         userId,
         deviceId: device.id,
@@ -1994,6 +2051,10 @@ const runAKRotation = async (
   if (!sealedPrimaryKeyId) {
     throw new Error('No local primary key_id — cannot seal envelopes for this rotation')
   }
+  // The epoch sealed next to it: one above the epoch of this device's AK; a
+  // rotation requires that AK to be current. Only local state feeds it: a served
+  // `key_version` could push it to 2^32-1, after which `wrapAK` refuses every rotation.
+  const sealedKeyVersion = ((await getAKKeyVersion()) ?? 0) + 1
 
   // Who the new AK goes to. THE LIST IS SERVER-SUPPLIED, so every recipient is
   // checked against the OLD epoch's attestation before anything is wrapped —
@@ -2020,6 +2081,7 @@ const runAKRotation = async (
     newAK,
     trustedDevices,
     sealedPrimaryKeyId,
+    sealedKeyVersion,
     canaryKey,
     opts.excludeDeviceIds,
   )
@@ -2030,8 +2092,9 @@ const runAKRotation = async (
     recovery.kdfSalt,
     canaryKey,
     sealedPrimaryKeyId,
+    sealedKeyVersion,
   )
-  const passkeySlot = await buildPasskeySlot(newAK, passkey, canaryKey, sealedPrimaryKeyId)
+  const passkeySlot = await buildPasskeySlot(newAK, passkey, canaryKey, sealedPrimaryKeyId, sealedKeyVersion)
 
   // Built OUTSIDE the try below: a malformed escrow pin is a build
   // misconfiguration and must surface as-is, not masquerade as a stale-rotation 4xx.
@@ -2104,26 +2167,24 @@ const runAKRotation = async (
   try {
     const nonExtractableAK = await reimportAsNonExtractable(newAK)
     assertCurrent()
-    await storeAK(nonExtractableAK)
+    // The AK, its epoch and the pointer land in one transaction, and the codec
+    // drops its cached primary, so neither a crash nor a failed staging below
+    // leaves the new epoch encrypting under the old primary.
+    await publishAK(nonExtractableAK, { keyVersion: sealedKeyVersion, primaryKeyId: sealedPrimaryKeyId })
     assertCurrent()
     await stageWrappedDEKs(newPrimaryKey ? [...wrappedKeys, newPrimaryKey] : wrappedKeys)
     assertCurrent()
     invalidateKeyringCache()
     if (newPrimaryKey) {
-      assertCurrent()
-      await storePrimaryKeyId(newPrimaryKey.keyId)
       // `invalidateKeyringCache` deliberately KEEPS the in-memory primary
       // pointer, so without this the codec would keep encrypting under the old
       // primary for the rest of the session even though the server moved on.
       assertCurrent()
       resetCodecState()
     }
-    // Store the committed epoch LAST, so it means "every local write above
-    // landed". `ensureV2Encryption` reads it at boot to tell a current AK from a
-    // stale one; writing it before the pointer meant a failed pointer write left
-    // the device self-consistently on the OLD primary with the epoch already
-    // current — the "re-adopt me" signal consumed, the repair skipped, and new
-    // writes sealed under the DEK the just-revoked device holds.
+    // Store the committed server version LAST, so it means "every local write
+    // above landed". `ensureV2Encryption` reads it at boot to tell a current AK
+    // from a stale one and re-adopt.
     assertCurrent()
     await storeKeyVersion(committedKeyVersion)
   } catch (err) {
@@ -2581,8 +2642,18 @@ const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Options = {}
     attestation: null,
   }
   // Siblings must re-enter fingerprint-verified approval; no server-selected key receives this AK.
-  const envelopes = await buildDeviceEnvelopes(newAK, [self], initialKeyId, canaryKey)
-  const recoverySlot = await buildRecoverySlot(newAK, recovery.publicKeys, recovery.kdfSalt, canaryKey, initialKeyId)
+  // The first v2 epoch. Never derived from the served v1 `key_version`, which
+  // the server controls.
+  const sealedKeyVersion = 1
+  const envelopes = await buildDeviceEnvelopes(newAK, [self], initialKeyId, sealedKeyVersion, canaryKey)
+  const recoverySlot = await buildRecoverySlot(
+    newAK,
+    recovery.publicKeys,
+    recovery.kdfSalt,
+    canaryKey,
+    initialKeyId,
+    sealedKeyVersion,
+  )
 
   const { nonce } = await fetchChallenge(httpClient, 'upgrade')
 
@@ -2642,9 +2713,10 @@ const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Options = {}
   // not propagated: device access self-heals on the next boot (`ensureV2Encryption`
   // sees scheme 2 + no local AK and follows), while the phrase is returned now.
   //
-  // Write the keyring + primary + version BEFORE the AK, so a persisted AK always
-  // implies a complete keyring (a crash mid-write leaves no AK → the device
-  // re-runs migration/follow rather than an AK-without-primary state).
+  // Write the keyring and the committed server version BEFORE the AK, which lands
+  // with its sealed epoch and primary, so a
+  // persisted AK always implies a complete keyring (a crash mid-write leaves no
+  // AK → the device re-runs migration/follow rather than an AK-without-primary state).
   try {
     assertCurrent()
     await stageWrappedDEKs([
@@ -2652,12 +2724,10 @@ const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Options = {}
       { keyId: legacyKeyId, wrappedKey: wrappedV1 },
     ])
     assertCurrent()
-    await storePrimaryKeyId(initialKeyId)
-    assertCurrent()
     await storeKeyVersion(keyVersion)
     const nonExtractableAK = await reimportAsNonExtractable(newAK)
     assertCurrent()
-    await storeAK(nonExtractableAK)
+    await publishAK(nonExtractableAK, { keyVersion: sealedKeyVersion, primaryKeyId: initialKeyId })
     // Same reasoning as first-device setup: witness DEK "0" from the AK this
     // device just minted, not from whatever a later keyring fetch returns.
     assertCurrent()
@@ -2835,11 +2905,8 @@ const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options = {}):
     return { outcome: 'awaiting-approval' }
   }
 
-  const { ak, primaryKeyId: sealedPrimaryKeyId } = await unwrapAK(
-    envelope.wrappedCK,
-    keyPair.ecdhPrivateKey,
-    keyPair.mlkemSecretKey,
-  )
+  const opened = await unwrapAK(envelope.wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
+  const { ak, primaryKeyId: sealedPrimaryKeyId } = opened
 
   const fetched = await fetchKeyring(httpClient)
   await assertFirstEnvelopeRecipient(httpClient, ak, envelope.attestation)
@@ -2847,7 +2914,7 @@ const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options = {}):
   await runContinuityCheck(ak, keyring, opts.getLegacyV1Sample ?? defaultGetLegacyV1Sample)
 
   assertCurrent()
-  await storeAK(ak)
+  await publishAK(ak, opened)
   // Persist the keyring the continuity check just VERIFIED. This used to call
   // `stageKeyring`, which re-fetched — so the checked keyring and the stored one
   // were different reads, and that call could itself adopt a fresh envelope AK,

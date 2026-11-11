@@ -6,26 +6,43 @@ import { renderHtmlTool } from '@/artifacts/render-html-tool'
 import type { HttpClient } from '@/contexts'
 import { getIntegrationStatus, getSettings } from '@/dal'
 import { getDb } from '@/db/database'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import * as tasksTools from '@/extensions/tasks/tools'
 import { createConfigs as createGoogleConfigs } from '@/integrations/google/tools'
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
-import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
+import { createConfigs as createWebSearchTools } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
+import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
+import { getSearchConnectionApi } from '@/integrations/standalone-search/connection'
+import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
+import { hasServerAuthentication } from '@/lib/provider-mode'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toolCallKey } from '@/lib/stable-stringify'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { tool, type Tool } from 'ai'
 
-/** Settings + integration status that gate which tools are exposed. */
+/** Construction-time snapshot of the settings and connection that gate exposed tools. */
 export type ToolAvailabilityContext = {
+  searchConnectionId?: string
+  searchApi?: WebToolApi
   settings: { experimentalFeatureTasks: boolean; integrationsProIsEnabled: boolean }
   integrationStatus: Awaited<ReturnType<typeof getIntegrationStatus>>
 }
 
-/** Read the settings + integration status that gate tool availability. The hot
- *  send path (`aiFetchStreamingResponse`) already fetches both, so it injects
- *  them to avoid duplicate DB round-trips; other callers let this self-fetch. */
+/** Discover capabilities only for the explicitly selected connection. */
+export const loadConnectedSearchApis = async (
+  db: AnyDrizzleDatabase,
+): Promise<Pick<ToolAvailabilityContext, 'searchConnectionId' | 'searchApi'>> => {
+  const { selection, connectionId } = useSearchProviderStore.getState()
+  if (selection !== 'connection' || !connectionId) {
+    return {}
+  }
+  return { searchConnectionId: connectionId, searchApi: await getSearchConnectionApi(db, connectionId) }
+}
+
+/** The hot send path injects its already-loaded settings and integration status. */
 const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> => {
   const db = getDb()
   const settings = await getSettings(db, {
@@ -33,7 +50,7 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
     integrations_pro_is_enabled: false,
   })
   const integrationStatus = await getIntegrationStatus(db)
-  return { settings, integrationStatus }
+  return { settings, integrationStatus, ...(await loadConnectedSearchApis(db)) }
 }
 
 export const getAvailableTools = async (
@@ -45,25 +62,52 @@ export const getAvailableTools = async (
   const {
     settings: { experimentalFeatureTasks, integrationsProIsEnabled },
     integrationStatus,
+    searchApi,
+    searchConnectionId,
   } = context ?? (await loadToolAvailabilityContext())
-
-  // render_html is a core capability, always available regardless of integrations.
   const baseTools: ToolConfig[] = [renderHtmlTool, ...(experimentalFeatureTasks ? Object.values(tasksTools) : [])]
-
-  const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
-
-  if (shouldIncludeProTools) {
-    baseTools.push(...createProConfigs(httpClient, sourceCollector))
+  const { selection, connectionId } = useSearchProviderStore.getState()
+  const hasServer = hasServerAuthentication()
+  const selected = resolveSearchSelection(selection, {
+    connection: Boolean(searchApi && connectionId === searchConnectionId),
+    cloud: hasServer && proEnabled && integrationsProIsEnabled,
+  })
+  if (selected) {
+    const webTools = createWebSearchTools(
+      httpClient,
+      sourceCollector,
+      selected === 'connection' ? searchApi : undefined,
+    )
+    baseTools.push(
+      ...webTools.map((config) => ({
+        ...config,
+        execute: async (params: unknown) => {
+          const cloudEnabled =
+            selected === 'cloud'
+              ? (await getSettings(getDb(), { integrations_pro_is_enabled: false })).integrationsProIsEnabled
+              : false
+          const current = useSearchProviderStore.getState()
+          const currentSelection = resolveSearchSelection(current.selection, {
+            connection: Boolean(searchApi && current.connectionId === searchConnectionId),
+            cloud: hasServerAuthentication() && proEnabled && cloudEnabled,
+          })
+          if (currentSelection !== selected) {
+            throw new Error(
+              'Search provider changed or was disconnected. Start a new turn to use the current provider.',
+            )
+          }
+          // Connection adapters resolve credentials on every call, enforcing disable, disconnect and rotation.
+          return config.execute(params)
+        },
+      })),
+    )
   }
-
   if (integrationStatus.googleEnabled) {
     baseTools.push(...createGoogleConfigs(httpClient))
   }
-
   if (integrationStatus.microsoftEnabled) {
     baseTools.push(...createMicrosoftConfigs(httpClient))
   }
-
   return baseTools
 }
 

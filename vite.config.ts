@@ -16,6 +16,12 @@ import pkg from './package.json' with { type: 'json' }
 import { exaRelayPlugin, exaRelayProxies } from './scripts/exa-relay'
 import { tinfoilSearchRelayPlugin, tinfoilSearchProxy } from './scripts/tinfoil-search-relay'
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
+import {
+  addWebKitCompatToAsset,
+  webkitCompatAssetFileNames,
+  webkitCompatPlugin,
+  webkitCompatScript,
+} from './scripts/webkit-compat'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
@@ -80,6 +86,7 @@ export default defineConfig({
         ],
       },
       output: {
+        assetFileNames: webkitCompatAssetFileNames,
         // Distinct prefix for the entry chunk so size-limit can track the
         // FCP-blocking bytes separately from on-demand route chunks.
         entryFileNames: (chunk) => (chunk.name === 'recovery' ? 'assets/recovery-[hash].js' : 'assets/entry-[hash].js'),
@@ -87,6 +94,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    webkitCompatPlugin(),
     tinfoilSearchRelayPlugin(),
     exaRelayPlugin(),
     {
@@ -99,6 +107,7 @@ export default defineConfig({
           path.resolve(__dirname, 'node_modules/@powersync/web/dist/worker'),
           path.join(publicDir, '@powersync'),
           cacheDir,
+          addWebKitCompatToAsset,
         )
       },
     },
@@ -267,6 +276,8 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
+    // Workers have their own intrinsics; a page polyfill does not protect them.
+    rolldownOptions: { output: { banner: webkitCompatScript } },
   },
   test: {
     projects: [

@@ -59,6 +59,8 @@ export {
   getKeyPair,
   storeAK,
   getAK,
+  markAKUnverified,
+  isAKUnverified,
   getAKKeyVersion,
   storeDEK,
   getDEK,

@@ -58,6 +58,7 @@ import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupp
 import { useMigrationRecoveryKey } from './hooks/use-migration-recovery-key'
 import { RecoveryKeyDialog } from './components/recovery-key-dialog'
 import { UnsavedRecoveryPhrasePrompt } from './components/unsaved-recovery-phrase-prompt'
+import { RecoveryContinuityProvider } from './components/recovery-continuity'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
 import { loadSearchPalette } from '@/search/palette/search-palette-loader'
@@ -396,8 +397,9 @@ export const App = () => {
                         <HapticsProvider>
                           <ContentViewProvider>
                             <ExternalLinkDialogProvider>
-                              <AppContent initData={initData} />
-                              {/* Catches every phrase that was minted but never
+                              <RecoveryContinuityProvider>
+                                <AppContent initData={initData} />
+                                {/* Catches every phrase that was minted but never
                                     confirmed — reload, crash, or a dialog that
                                     never got the chance to render. Must live
                                     INSIDE HttpClientProvider: it rotates the key
@@ -416,7 +418,8 @@ export const App = () => {
                                     dialog displaying it. The prompt's own
                                     mount-time snapshot cannot see this — only
                                     the parent holding both can. */}
-                              {migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
+                                {migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
+                              </RecoveryContinuityProvider>
                             </ExternalLinkDialogProvider>
                           </ContentViewProvider>
                         </HapticsProvider>

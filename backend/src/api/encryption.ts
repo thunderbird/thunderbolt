@@ -395,7 +395,33 @@ const servedPasskeySlot = (
     passkey_mlkem_public_key: enabled ? metadata.passkeyMlkemPublicKey : null,
     passkey_wrapped_ak: enabled ? metadata.passkeyWrappedAk : null,
     passkey_attestation: enabled ? metadata.passkeyAttestation : null,
+    passkey_continuity: enabled ? metadata.passkeyContinuity : null,
   }
+}
+
+/**
+ * The passkey seal a rotation writes: none without a slot, the sent one (or none)
+ * for a slot whose credential or keys changed, and `undefined` to keep the stored
+ * one when the slot keys are unchanged. Unchanged keys mean neither DEK `"0"` nor
+ * the PRF output changed, and a re-anchoring client cannot make a seal anyway.
+ */
+const passkeyContinuityToWrite = (
+  stored: {
+    passkeyCredentialId: string | null
+    passkeyEcdhPublicKey: string | null
+    passkeyMlkemPublicKey: string | null
+  },
+  slot: PasskeySlot | null,
+  sent: string | undefined,
+): string | null | undefined => {
+  if (!slot) {
+    return null
+  }
+  const unchanged =
+    slot.passkeyCredentialId === stored.passkeyCredentialId &&
+    slot.passkeyEcdhPublicKey === stored.passkeyEcdhPublicKey &&
+    slot.passkeyMlkemPublicKey === stored.passkeyMlkemPublicKey
+  return unchanged ? undefined : (sent ?? null)
 }
 
 /**
@@ -719,6 +745,7 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey,
           recoveryWrappedAK,
           recoveryAttestation,
+          recoveryContinuity,
           orgEnvelope,
         } = body
 
@@ -813,6 +840,7 @@ export const createEncryptionRoutes = (
                 recoveryMlkemPublicKey,
                 recoveryWrappedAk: recoveryWrappedAK,
                 recoveryAttestation,
+                recoveryContinuity,
               })
               for (const entry of wrappedKeys) {
                 const inserted = await insertWrappedKey(txDb, {
@@ -951,6 +979,7 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
           recoveryWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
           recoveryAttestation: t.Optional(t.String({ maxLength: 200 })),
+          recoveryContinuity: t.Optional(t.String({ maxLength: 300 })),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
@@ -1029,6 +1058,7 @@ export const createEncryptionRoutes = (
           kdf_salt: metadata.kdfSalt,
           signing_public_key: metadata.signingPublicKey,
           recovery_attestation: metadata.recoveryAttestation,
+          recovery_continuity: metadata.recoveryContinuity,
           recovery_ecdh_public_key: metadata.recoveryEcdhPublicKey,
           recovery_mlkem_public_key: metadata.recoveryMlkemPublicKey,
           recovery_wrapped_ak: metadata.recoveryWrappedAk,
@@ -1312,7 +1342,13 @@ export const createEncryptionRoutes = (
               recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
               recoveryWrappedAk: body.recoveryWrappedAK,
               recoveryAttestation: body.recoveryAttestation,
+              // A same-key rotation keeps the stored seal: DEK "0" and the phrase
+              // are unchanged, and the client cannot make a seal without the phrase.
+              recoveryContinuity: recoveryChanged ? (body.recoveryContinuity ?? null) : undefined,
               passkeySlot,
+              passkeyContinuity: metadata
+                ? passkeyContinuityToWrite(metadata, passkeySlot, body.passkeyContinuity)
+                : null,
             })
             const newVersion = await bumpKeyVersion(txDb, userId)
             if (newVersion == null) {
@@ -1360,12 +1396,14 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
           recoveryAttestation: t.String({ maxLength: 200 }),
+          recoveryContinuity: t.Optional(t.String({ maxLength: 300 })),
           // WebAuthn caps credential ids at 1023 bytes: ~1364 base64url characters.
           passkeyCredentialId: t.Optional(t.String({ maxLength: 1400 })),
           passkeyEcdhPublicKey: t.Optional(t.String({ maxLength: 200 })),
           passkeyMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
           passkeyWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
           passkeyAttestation: t.Optional(t.String({ maxLength: 200 })),
+          passkeyContinuity: t.Optional(t.String({ maxLength: 300 })),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
@@ -1463,6 +1501,7 @@ export const createEncryptionRoutes = (
               recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
               recoveryWrappedAk: body.recoveryWrappedAK,
               recoveryAttestation: body.recoveryAttestation,
+              recoveryContinuity: body.recoveryContinuity,
             })
             if (!flipped) {
               throw new SchemeConflictError('Account already migrated to scheme v2')
@@ -1503,6 +1542,7 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
           recoveryAttestation: t.String({ maxLength: 200 }),
+          recoveryContinuity: t.Optional(t.String({ maxLength: 300 })),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },

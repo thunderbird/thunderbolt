@@ -281,6 +281,10 @@ msgstr "Kontomenü"
 msgid "Action"
 msgstr "Aktion"
 
+#: src/components/recovery-continuity/recovery-continuity-nav-dot.tsx
+msgid "Action needed"
+msgstr ""
+
 #: src/search/palette/search-palette.tsx
 msgid "Actions"
 msgstr "Aktionen"
@@ -626,6 +630,10 @@ msgstr "Dieses Gerät genehmigen"
 msgid "Approve this device?"
 msgstr "Dieses Gerät genehmigen?"
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Approved"
+msgstr ""
+
 #: src/mini-apps/mini-app-approval-prompt.tsx
 msgid "Approving sends this request, with the details shown, to {appName}."
 msgstr ""
@@ -794,6 +802,7 @@ msgstr "Kalender"
 #: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/components/chat/external-link-dialog.tsx
 #: src/components/provider-connection-button.tsx
+#: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
@@ -811,7 +820,6 @@ msgstr "Kalender"
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/connections/provider-connection-form.tsx
-#: src/settings/encryption/change-recovery-key-section.tsx
 #: src/settings/encryption/passkey-section.tsx
 #: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
@@ -1991,6 +1999,10 @@ msgstr "Die Synchronisierung konnte nicht mit Ihrem Passkey entsperrt werden. Bi
 msgid "Couldn't unpin {name}."
 msgstr "{name} konnte nicht losgelöst werden."
 
+#: src/settings/encryption/use-passkey-continuity-migration.ts
+msgid "Couldn't update the passkey. Try again."
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Couldn't update. Please try again."
 msgstr "Aktualisierung nicht möglich. Bitte versuchen Sie es erneut."
@@ -2443,6 +2455,7 @@ msgstr ""
 
 #: src/components/chat/composer-alert.tsx
 #: src/components/download-app-banner-mobile.tsx
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
 #: src/components/ui/mobile-blur-backdrop.tsx
 #: src/components/update-notification.tsx
 msgid "Dismiss"
@@ -2676,6 +2689,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Encrypted syncing and AI hosted by Thunderbolt"
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Encryption"
 msgstr ""
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
@@ -2954,8 +2971,8 @@ msgstr ""
 msgid "Generate a new phrase"
 msgstr ""
 
+#: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
-#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate new phrase"
 msgstr ""
 
@@ -2964,8 +2981,8 @@ msgid "Generating keys…"
 msgstr "Schlüssel werden erzeugt…"
 
 #: src/components/chat/inline-artifact-card.tsx
+#: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
-#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generating…"
 msgstr "Wird generiert…"
 
@@ -3023,6 +3040,10 @@ msgstr "Guten Abend"
 #: src/components/chat/chat-ui-greeting.ts
 msgid "Good morning"
 msgstr "Guten Morgen"
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Got it"
+msgstr ""
 
 #: src/widgets/ask/display.tsx
 msgid "Got it, working on that next."
@@ -3244,6 +3265,10 @@ msgstr "Ungültiger Bestätigungslink. Bitte fordern Sie einen neuen an."
 #: src/components/settings/agents/validate-agent-url.ts
 msgid "iOS requires a secure URL (wss://)"
 msgstr "iOS erfordert eine sichere URL (wss://)"
+
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+msgid "It was created before a security update. A new phrase lets recovery confirm your keys are yours."
+msgstr ""
 
 #: src/components/onboarding/onboarding-celebration-step.tsx
 msgid "It's optional. You can turn this off now or change it later in Settings."
@@ -3666,6 +3691,10 @@ msgstr "Ein Name ist erforderlich."
 msgid "Navigation"
 msgstr "Navigation"
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Needs update"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Network"
 msgstr "Netzwerk"
@@ -3901,6 +3930,10 @@ msgstr "Keiner stimmt überein"
 msgid "None of your models can be used in this chat. Choose another agent to send."
 msgstr "Keines deiner Modelle kann in diesem Chat verwendet werden. Wähle einen anderen Agenten, um zu senden."
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Not approved yet"
+msgstr ""
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Not available in private chats."
 msgstr "In privaten Chats nicht verfügbar."
@@ -3995,6 +4028,7 @@ msgid "Offline. Changes will sync when back online."
 msgstr "Offline. Änderungen werden synchronisiert, sobald Sie wieder online sind."
 
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "On"
 msgstr ""
 
@@ -4239,6 +4273,7 @@ msgstr "Kopplungsidentität"
 msgid "Partly cloudy"
 msgstr "Teilweise bewölkt"
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 #: src/settings/encryption/passkey-section.tsx
 msgid "Passkey"
 msgstr "Passkey"
@@ -4247,10 +4282,22 @@ msgstr "Passkey"
 #~ msgid "Passkey added — you're all set."
 #~ msgstr ""
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Passkey needs an update"
+msgstr ""
+
 #: src/components/sign-in/use-sign-in-form-state.ts
 #: src/waitlist/use-waitlist-state.ts
 #~ msgid "Passkey sign-in failed. Please try again or use your email."
 #~ msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Passkey updated"
+msgstr ""
+
+#: src/settings/encryption/use-passkey-continuity-migration.ts
+msgid "Passkey updates aren't available yet. Try again later."
+msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -4405,6 +4452,10 @@ msgstr ""
 msgid "Projects"
 msgstr "Projekte"
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Protected"
+msgstr ""
+
 #: src/settings/search/index.tsx
 #~ msgid "Provided by your server"
 #~ msgstr ""
@@ -4500,12 +4551,25 @@ msgstr ""
 msgid "Recovery failed"
 msgstr "Wiederherstellung fehlgeschlagen"
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Recovery phrase"
 msgstr "Wiederherstellungsphrase"
 
 #: src/hooks/use-sync-setup.ts
 msgid "Recovery phrase must be 24 words (you entered {wordCount})."
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Recovery phrase needs an update"
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Recovery phrase updated"
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+msgid "Recovery phrase updated."
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -4705,6 +4769,11 @@ msgstr "Neuer Versuch…"
 msgid "Return to Thunderbolt"
 msgstr ""
 
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Review devices"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
 msgstr ""
@@ -4782,8 +4851,8 @@ msgstr "Speichern fehlgeschlagen"
 #~ msgstr ""
 
 #: src/app.tsx
+#: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
-#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Save your new recovery phrase"
 msgstr ""
 
@@ -4951,6 +5020,10 @@ msgstr "Wird gesucht…"
 msgid "Securing…"
 msgstr ""
 
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+msgid "Security notice"
+msgstr ""
+
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr "Sehen Sie sich das Dokument auf dem Bildschirm an."
@@ -4994,9 +5067,9 @@ msgstr "Auswählen…"
 msgid "Selected server"
 msgstr ""
 
+#: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sync-setup/confirm-identity-step.tsx
 #: src/settings/account/delete-account-section.tsx
-#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Send code"
 msgstr ""
 
@@ -5016,9 +5089,9 @@ msgstr "Diesen privaten Chat an {agentName} senden?"
 msgid "Send to the {recipient} team"
 msgstr ""
 
+#: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sync-setup/confirm-identity-step.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
-#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Sending code…"
 msgstr ""
 
@@ -5110,6 +5183,10 @@ msgstr "Wird eingerichtet…"
 #: src/layout/sidebar/settings-sidebar.tsx
 msgid "Settings"
 msgstr "Einstellungen"
+
+#: src/layout/sidebar/nav-toggle.tsx
+msgid "Settings, action needed"
+msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-button.tsx
 msgid "Share debug transcript"
@@ -5706,6 +5783,10 @@ msgstr ""
 msgid "The new device isn't showing a code"
 msgstr ""
 
+#: src/settings/encryption/use-passkey-continuity-migration.ts
+msgid "The passkey check was cancelled. Try again when you're ready."
+msgstr ""
+
 #: src/components/local-data-switch-screen.tsx
 msgid "The previous account's data on this device could not be secured. Reload to try again."
 msgstr "Die Daten des vorherigen Kontos auf diesem Gerät konnten nicht geschützt werden. Laden Sie neu, um es erneut zu versuchen."
@@ -5814,9 +5895,34 @@ msgstr "Diese Unterhaltung ist zu groß für das Kontextfenster des Modells. Sta
 msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
 msgstr "Diese Unterhaltung wird unverschlüsselt an {agentName} gesendet und ist danach nicht mehr privat."
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 #: src/settings/devices.tsx
 msgid "This device"
 msgstr "Dieses Gerät"
+
+#: src/settings/encryption/passkey-section.tsx
+#: src/settings/encryption/use-passkey-continuity-migration.ts
+msgid "This device can't add or update a passkey because its encryption keys couldn't be verified. Do it from a device that was trusted before."
+msgstr ""
+
+#: src/components/pending-device-modal.tsx
+#: src/settings/devices.tsx
+msgid "This device can't approve other devices because its encryption keys couldn't be verified. Approve from a device that was trusted before."
+msgstr ""
+
+#: src/components/device-approval.tsx
+#: src/lib/device-grant.ts
+msgid "This device can't approve sign-ins because its encryption keys couldn't be verified. Approve from a device that was trusted before."
+msgstr ""
+
+#: src/settings/encryption/change-recovery-key-section.tsx
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "This device can't change the recovery phrase because its encryption keys couldn't be verified. Change it from a device that was trusted before."
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "This device couldn't be verified"
+msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This device has been approved and sync is now enabled across your devices."
@@ -5910,6 +6016,10 @@ msgstr ""
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."
 msgstr "Mit diesem Passkey können Sie sich anmelden, aber nicht die Synchronisierung entsperren. Sie können neue Geräte weiterhin genehmigen oder Ihre Wiederherstellungsphrase verwenden."
 
+#: src/settings/encryption/use-passkey-continuity-migration.ts
+msgid "This passkey can't unlock encrypted data. Remove it and add another passkey."
+msgstr ""
+
 #: src/hooks/use-sync-setup.ts
 msgid "This passkey can't unlock sync for this account."
 msgstr "Dieser Passkey kann die Synchronisierung für dieses Konto nicht entsperren."
@@ -5917,6 +6027,14 @@ msgstr "Dieser Passkey kann die Synchronisierung für dieses Konto nicht entsper
 #: src/hooks/use-sync-setup.ts
 msgid "This passkey can't unlock sync on this device."
 msgstr "Dieser Passkey kann die Synchronisierung auf diesem Gerät nicht entsperren."
+
+#: src/settings/encryption/use-passkey-continuity-migration.ts
+msgid "This passkey doesn't match the one saved for sync. Remove it and add it again."
+msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+msgid "This passkey unlocked keys that don't belong to your account, so nothing was changed on this device."
+msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
@@ -5936,6 +6054,10 @@ msgstr "Dieser private Chat wird nicht mit {agentName} ausgeführt. Wechseln Sie
 #: src/projects/project-form.tsx
 msgid "this project"
 msgstr "dieses Projekt"
+
+#: src/components/sync-setup/recovery-key-entry-step.tsx
+msgid "This recovery phrase was created before a security update, so Thunderbolt can't confirm that the encryption keys it unlocks are yours. Continue only if you have no approved device left."
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from {appName} only. Nothing on the remote server is changed."
@@ -6052,6 +6174,10 @@ msgstr "Thunderbolt CLI"
 
 #: src/webview-recovery/index.ts
 msgid "Thunderbolt couldn't keep running"
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Thunderbolt couldn't verify this device's encryption keys, so it can't update your recovery phrase or passkey. To verify it, sign out with \"Delete data from device\", sign in again, and approve it from a device that was trusted before."
 msgstr ""
 
 #: src/components/sign-in/sign-in-email-step.tsx
@@ -6216,10 +6342,10 @@ msgstr "Vertrauenswürdige Geräte"
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
-#: src/settings/encryption/change-recovery-key-section.tsx
 #: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "Erneut versuchen"
@@ -6296,6 +6422,10 @@ msgstr "Synchronisierung mit einem Passkey entsperren"
 msgid "Unlock with passkey"
 msgstr "Mit Passkey entsperren"
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Unlocking with this passkey now confirms your encryption keys."
+msgstr ""
+
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/skills/suggestion-chip.tsx
@@ -6316,9 +6446,17 @@ msgstr "Nicht erreichbar {relative}"
 msgid "Untitled chat"
 msgstr "Chat ohne Titel"
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Unverified"
+msgstr ""
+
 #: src/components/chat/chat-ui-greeting.ts
 msgid "Up late?"
 msgstr "Noch wach?"
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Up to date"
+msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
 #~ msgid "Update credentials"
@@ -6332,6 +6470,10 @@ msgstr "Standardwerte aktualisieren?"
 msgid "Update failed"
 msgstr "Update fehlgeschlagen"
 
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+msgid "Update now"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Update pairing"
 msgstr "Kopplung aktualisieren"
@@ -6340,6 +6482,10 @@ msgstr "Kopplung aktualisieren"
 msgid "Update pairing for {deviceName}"
 msgstr "Kopplung für {deviceName} aktualisieren"
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Update passkey"
+msgstr ""
+
 #: src/components/update-notification.tsx
 msgid "Update ready! Restart to apply."
 msgstr "Update bereit! Zum Anwenden neu starten."
@@ -6347,6 +6493,10 @@ msgstr "Update bereit! Zum Anwenden neu starten."
 #: src/settings/app-version-section.tsx
 msgid "Update ready. Restart to apply."
 msgstr "Update bereit. Zum Anwenden neu starten."
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Update recovery phrase"
+msgstr ""
 
 #: src/components/upgrade-required.tsx
 msgid "Update required"
@@ -6363,6 +6513,18 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Update Units"
 msgstr "Einheiten aktualisieren"
+
+#: src/components/recovery-continuity/recovery-continuity-provider.tsx
+msgid "Update your recovery phrase?"
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+msgid "Update your recovery phrase."
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Updated on another device"
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "Updates"
@@ -6470,6 +6632,10 @@ msgstr "System verwenden"
 msgid "Use the connection prompt on screen to continue."
 msgstr "Nutzen Sie die Verbindungsaufforderung auf dem Bildschirm, um fortzufahren."
 
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+msgid "Use the new phrase you saved there; the old one no longer works. Not you? Review your devices."
+msgstr ""
+
 #: src/components/otari-connection/otari-connection.tsx
 msgid "Use the official Otari server"
 msgstr ""
@@ -6572,6 +6738,10 @@ msgstr "Beim Tippen vibrieren"
 msgid "View and manage your schedule; create + reschedule events."
 msgstr "Ihren Kalender ansehen und verwalten; Termine erstellen und verschieben."
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "View devices"
+msgstr ""
+
 #: src/components/chat/markdown-utils.tsx
 msgid "View image"
 msgstr ""
@@ -6664,8 +6834,8 @@ msgstr "Wir konnten Ihren Browser nicht verifizieren. Prüfen Sie Ihre Verbindun
 msgid "We sent a code to <0>{email}</0>"
 msgstr "Wir haben einen Code an <0>{email}</0> gesendet"
 
+#: src/components/recovery-phrase-change-dialogs.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
-#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
 msgstr ""
 
@@ -6859,6 +7029,10 @@ msgstr ""
 msgid "You won't be able to sign in or unlock sync with this passkey anymore. Devices that are already set up keep working."
 msgstr "Sie können sich mit diesem Passkey nicht mehr anmelden oder die Synchronisierung entsperren. Bereits eingerichtete Geräte funktionieren weiterhin."
 
+#: src/components/recovery-continuity/recovery-continuity-provider.tsx
+msgid "You'll get a new 24-word recovery phrase, shown once. It lets recovery confirm that your encryption keys are really yours. Your current phrase stops working as soon as the new one is created, and your synced data is unaffected. To continue, we'll email you a verification code."
+msgstr ""
+
 #: src/skills/discard-create-dialog.tsx
 #: src/skills/skills-view.tsx
 msgid "You'll lose what you've added so far."
@@ -6876,6 +7050,11 @@ msgstr "Alles bereit! 🎉"
 #: src/components/sign-in/sign-in-success-step.tsx
 msgid "You're now signed in."
 msgstr "Sie sind jetzt angemeldet."
+
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "You're offline. You can update it once you reconnect."
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "You're on the latest version."
@@ -7018,8 +7197,17 @@ msgstr "Ihr Name"
 #~ msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
 #~ msgstr "An Ihrem neuen Standort wird überwiegend {suggestedLanguageLabel} gesprochen. Möchten Sie Thunderbolt auf {suggestedLanguageLabel} verwenden?"
 
-#: src/settings/encryption/change-recovery-key-section.tsx
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Your new phrase is the only one that works now. Keep it somewhere safe."
+msgstr ""
+
+#: src/components/recovery-phrase-change-dialogs.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Your passkey was added before a security update. Check it once so unlocking with it can confirm your encryption keys are yours."
 msgstr ""
 
 #: src/settings/encryption/use-change-recovery-key.ts
@@ -7034,6 +7222,14 @@ msgstr ""
 msgid "Your passkey's sync keys couldn't be verified. Remove the passkey in Settings → Preferences on the web, then try again."
 msgstr "Die Synchronisierungsschlüssel Ihres Passkeys konnten nicht überprüft werden. Entfernen Sie den Passkey in der Web-App unter Einstellungen → Einstellungen und versuchen Sie es dann erneut."
 
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Your phrase was created before a security update. Replace it so recovery can confirm your encryption keys are yours. Your current phrase keeps working until you do."
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Your phrase was created before a security update. This device isn't approved yet, so it can't create a new one. Open Thunderbolt on an approved device and update it there."
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 #~ msgid "Your private AI assistant"
 #~ msgstr "Ihr privater KI-Assistent"
@@ -7044,6 +7240,14 @@ msgstr "Die Synchronisierungsschlüssel Ihres Passkeys konnten nicht überprüft
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Your recovery phrase was never saved"
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-status-card.tsx
+msgid "Your recovery phrase was replaced on another of your devices. Use the new phrase you saved there; the old one no longer works. If this wasn't you, review your devices."
+msgstr ""
+
+#: src/components/recovery-continuity/recovery-continuity-banner.tsx
+msgid "Your recovery phrase was updated on another device."
 msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx

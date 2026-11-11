@@ -21,6 +21,7 @@ import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
 import { useResolvedTheme } from '@/lib/theme-provider'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
+import { RecoveryContinuityNavDot } from '@/components/recovery-continuity'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
@@ -363,13 +364,14 @@ export const Header = () => {
           <Button
             variant="ghost"
             size="icon"
-            className={cn(mutedIconButtonClass, mobileHeaderControlFillClass)}
+            className={cn(mutedIconButtonClass, mobileHeaderControlFillClass, 'relative')}
             onClick={toggleSidebar}
           >
             <PanelLeftRounded className="size-[var(--icon-size-default)]" />
             <span className="sr-only">
               <Trans>Toggle Sidebar</Trans>
             </span>
+            <RecoveryContinuityNavDot placement="corner" />
           </Button>
         </div>
 

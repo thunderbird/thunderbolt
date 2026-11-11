@@ -12,7 +12,8 @@ import {
   useAccountPasskey,
 } from '@/lib/passkey'
 import { getDeviceDisplayName } from '@/lib/platform'
-import { enrollPasskey, ensureSessionBound } from '@/services/encryption'
+import { isAKUnverified } from '@/crypto'
+import { enrollPasskey, ensureSessionBound, UnverifiedAccountKeyError } from '@/services/encryption'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useAsyncAttempt } from '@/hooks/use-async-attempt'
@@ -83,6 +84,11 @@ export const usePasskeyEnrollState = ({
     setStatus('working')
     onBusyChange(true)
     try {
+      // Refused before any prompt or request, sign-in passkeys included: an
+      // unverified device adds no passkey of any kind.
+      if (await isAKUnverified()) {
+        throw new UnverifiedAccountKeyError()
+      }
       if (!unlocksSync) {
         if (!accountPasskey) {
           await createPasskey()

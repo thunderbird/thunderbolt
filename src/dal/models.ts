@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { deletePromptsForModel } from './model-prompt-deletion'
+
 import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import {
@@ -278,8 +280,6 @@ export const resetModelToDefault = async (
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
 export const deleteModel = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
-  // Dynamic import to avoid circular dependency: models -> prompts -> models (via getModel)
-  const { deletePromptsForModel } = await import('./prompts')
   await db.transaction(async (tx) => {
     await deleteModelProfileForModel(tx, id)
     await deletePromptsForModel(tx, id)

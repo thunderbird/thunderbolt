@@ -3,27 +3,36 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Save a generated file to the user's Downloads folder, as text or bytes.
- *
- * Text goes through `writeTextFile` and bytes through `writeFile`, each with its
- * own `$DOWNLOAD` grant. Text keeps its own call rather than being encoded to
- * bytes, so the existing text saves are unchanged. `pdf-sidebar-viewer.tsx`
- * still clicks its own anchor at a blob URL, so it still carries the desktop
- * bug described below until it moves here.
+ * Save a generated file where the user can find it, as text or bytes.
  *
  * The browser trick — an `<a download>` pointed at a blob URL, clicked
  * programmatically — is the only mechanism available on the web, and it does
  * **not** work in the Tauri webview: there is no download manager behind it, so
  * the click resolves to nothing at all. No error, no file, no console output,
  * which is exactly how the artifact download button came to look broken on
- * desktop while working in every browser.
+ * desktop while working in every browser. `pdf-sidebar-viewer.tsx` still clicks
+ * its own anchor at a blob URL, so it still carries that bug until it moves here.
  *
- * So the two platforms need two mechanisms, and the difference is not a
- * refinement: on desktop we write the bytes ourselves through `plugin-fs`,
- * which needs a matching grant in `src-tauri/capabilities/default.json`
- * (`$DOWNLOAD/*` for write-text-file and write-file). Capabilities are compiled
- * into the binary, so a desktop build older than that grant denies the write no
- * matter what this file does.
+ * So each platform saves its own way:
+ *
+ * - **Web**: the anchor trick, into the browser's Downloads.
+ * - **Desktop**: we write the file ourselves through `plugin-fs` into
+ *   `BaseDirectory.Download`, under the `$DOWNLOAD/*` grants for write-text-file
+ *   and write-file in `src-tauri/capabilities/default.json`. Text still goes
+ *   through `writeTextFile`, so existing text saves behave as before.
+ * - **iOS**: the same `plugin-fs` writes into `BaseDirectory.Document`. Tauri
+ *   resolves `Download` to a `~/Downloads` the app sandbox does not have, and the
+ *   Files app shows only the app's `Documents` (`UIFileSharingEnabled` in
+ *   `Info.plist`). The `$DOCUMENT/*` grants live in
+ *   `src-tauri/capabilities/ios-documents.json`, scoped to iOS.
+ * - **Android**: `plugin-fs`'s `Download` is the app-private
+ *   `getExternalFilesDir`, which the Files app does not show, so `saveToDownloads` in
+ *   the Kotlin `PlatformUtilsPlugin` inserts into the public Downloads folder
+ *   through MediaStore. It needs Android 10 (API 29) and refuses with a message
+ *   below that.
+ *
+ * Capabilities and the Kotlin plugin are compiled into the binary, so an app
+ * build older than them refuses the save no matter what this file does.
  *
  * Every save goes through here (`downloadJson` in `export-download.ts` and Mini
  * App downloads included) except the PDF viewer noted above. Anything that
@@ -31,7 +40,10 @@
  * bug above wearing a different filename.
  */
 
-import { isTauri } from './platform'
+import { invoke } from '@tauri-apps/api/core'
+import { BaseDirectory } from '@tauri-apps/api/path'
+import { uint8ArrayToBase64 } from '@/crypto/primitives'
+import { getPlatform, isTauri } from './platform'
 
 export type DownloadRequest = {
   /** Filename including extension. Collisions get a numeric suffix. */
@@ -54,16 +66,34 @@ export const withSuffix = (name: string, attempt: number): string => {
 export type DownloadFs = {
   writeTextFile: (path: string, contents: string, options: { baseDir: number; createNew?: boolean }) => Promise<void>
   writeFile: (path: string, data: Uint8Array, options: { baseDir: number; createNew?: boolean }) => Promise<void>
-  downloadBaseDir: number
 }
 
-const loadTauriFs = async (): Promise<DownloadFs> => {
-  const { writeTextFile, writeFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
-  return { writeTextFile, writeFile, downloadBaseDir: BaseDirectory.Download }
+/** `saveToDownloads` in `PlatformUtilsPlugin.kt`; `data` is the file's bytes in base64, as IPC args are JSON. */
+export type AndroidSaveArgs = { name: string; mimeType: string; data: string }
+
+/** What a save inside Tauri needs. None of it means anything outside the webview, so tests supply it. */
+export type DownloadNative = {
+  platform: ReturnType<typeof getPlatform>
+  fs: DownloadFs
+  /** `invoke` from `@tauri-apps/api/core`, narrowed to what the Android save resolves with. */
+  invoke: (command: string, args: AndroidSaveArgs) => Promise<{ name: string }>
 }
+
+const loadNative = async (): Promise<DownloadNative> => {
+  const { writeTextFile, writeFile } = await import('@tauri-apps/plugin-fs')
+  return { platform: getPlatform(), fs: { writeTextFile, writeFile }, invoke }
+}
+
+type FsFolder = { baseDir: BaseDirectory; label: string }
+
+/** iOS has no Downloads folder in its sandbox; `Documents` is the one the Files app shows. */
+const fsFolder = (platform: DownloadNative['platform']): FsFolder =>
+  platform === 'ios'
+    ? { baseDir: BaseDirectory.Document, label: 'Documents' }
+    : { baseDir: BaseDirectory.Download, label: 'Downloads' }
 
 /**
- * Write to Downloads, without overwriting anything already there.
+ * Write into `folder` (Downloads, or Documents on iOS), without overwriting anything already there.
  *
  * `createNew` rather than asking `exists()` first: two calls are two moments,
  * and anything that lands in between — a second download of the same artifact,
@@ -81,11 +111,11 @@ const loadTauriFs = async (): Promise<DownloadFs> => {
  * The caller shows that text, and it is the only thing that distinguishes a
  * missing permission from a crowded folder.
  */
-const saveViaTauri = async (request: DownloadRequest, fs: DownloadFs): Promise<string> => {
+const saveViaFs = async (request: DownloadRequest, fs: DownloadFs, folder: FsFolder): Promise<string> => {
   let lastError: unknown
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const name = withSuffix(request.name, attempt)
-    const options = { baseDir: fs.downloadBaseDir, createNew: true }
+    const options = { baseDir: folder.baseDir, createNew: true }
     try {
       await (typeof request.contents === 'string'
         ? fs.writeTextFile(name, request.contents, options)
@@ -97,8 +127,34 @@ const saveViaTauri = async (request: DownloadRequest, fs: DownloadFs): Promise<s
   }
   throw lastError instanceof Error
     ? lastError
-    : new Error(`Could not save ${request.name} to Downloads: ${String(lastError)}`)
+    : new Error(`Could not save ${request.name} to ${folder.label}: ${String(lastError)}`)
 }
+
+/**
+ * Hand the file to MediaStore, which owns the public Downloads folder. It
+ * suffixes a taken name itself, so the name it reports is the one to show.
+ * Text goes in as UTF-8 bytes, so one command covers both kinds: a `Blob`
+ * encodes it exactly as `saveViaBrowser`'s does.
+ */
+const saveViaMediaStore = async (request: DownloadRequest, invoke: DownloadNative['invoke']): Promise<string> => {
+  const bytes = new Uint8Array(await new Blob([request.contents]).arrayBuffer())
+  try {
+    const saved = await invoke('plugin:platform-utils|save_to_downloads', {
+      name: request.name,
+      mimeType: request.mimeType,
+      data: uint8ArrayToBase64(bytes),
+    })
+    return saved.name
+  } catch (error) {
+    // Kotlin rejects with a plain `{ message }`, which callers' `String(error)` shows as "[object Object]".
+    throw new Error(error instanceof Object && 'message' in error ? String(error.message) : String(error), {
+      cause: error,
+    })
+  }
+}
+
+const saveNatively = (request: DownloadRequest, { platform, fs, invoke }: DownloadNative): Promise<string> =>
+  platform === 'android' ? saveViaMediaStore(request, invoke) : saveViaFs(request, fs, fsFolder(platform))
 
 const saveViaBrowser = (request: DownloadRequest): string => {
   const url = URL.createObjectURL(new Blob([request.contents], { type: request.mimeType }))
@@ -120,13 +176,13 @@ const saveViaBrowser = (request: DownloadRequest): string => {
  * Throws on failure rather than reporting it, so the caller decides what the
  * user sees. Silence is the one thing this must not do.
  *
- * `fs` exists for the desktop branch's own tests: `@tauri-apps/plugin-fs` has
- * no meaning outside the webview, so without an injection point that branch —
- * the one carrying the reported bug — could only be covered by not covering it.
+ * `native` lets tests run the Tauri branches, which are the ones that had the
+ * bugs: `plugin-fs`, the platform and the Kotlin command mean nothing outside
+ * the webview.
  */
-export const downloadFile = async (request: DownloadRequest, fs?: DownloadFs): Promise<string> => {
-  if (fs) {
-    return saveViaTauri(request, fs)
+export const downloadFile = async (request: DownloadRequest, native?: DownloadNative): Promise<string> => {
+  if (native) {
+    return saveNatively(request, native)
   }
-  return isTauri() ? saveViaTauri(request, await loadTauriFs()) : saveViaBrowser(request)
+  return isTauri() ? saveNatively(request, await loadNative()) : saveViaBrowser(request)
 }

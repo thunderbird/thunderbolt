@@ -19,6 +19,8 @@ export type SourceMetadata = {
   image?: string | null
   /** Favicon URL if available */
   favicon?: string | null
+  /** False when passive images would bypass the search provider's privacy boundary. */
+  allowRemoteImages?: boolean
   /** Display name of the website (derived from hostname) */
   siteName?: string
   /** Author of the source content */

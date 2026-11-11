@@ -4,7 +4,7 @@ A reference map of Thunderbolt: the components, how they talk, and where state l
 
 ## Key Architecture Decisions
 
-- **Offline-first.** Local SQLite is the source of truth. The app works without network.
+- **Offline-first.** Local SQLite is the source of truth. The app works without network. [Standalone mode](standalone-mode.md) starts without a backend and lets users configure their own models and search provider.
 - **Cross-platform.** One React codebase runs in Tauri on desktop (macOS, Linux, Windows) and mobile (iOS, Android).
 - **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). BYOK calls through `createProxyFetch` go device-direct via native HTTP on Tauri desktop and mobile by default; `proxy_enabled` opts into the backend universal proxy at `/v1/proxy` for non-loopback targets. Loopback always stays direct on Tauri. Web always proxies. Custom loopback models connect directly through `src/lib/fetch.ts`: browser fetch by default, or native HTTP on Tauri when Use Native Fetch is on. Tinfoil keeps its attested client ([tauri-shell.md](tauri-shell.md#native-http)). Managed models use `/v1/chat/*` instead.
 - **Self-hostable.** The whole server stack (backend, PostgreSQL, PowerSync, Keycloak) runs via Docker Compose, Kubernetes, or Pulumi.

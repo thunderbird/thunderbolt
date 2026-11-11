@@ -418,7 +418,14 @@ describe('effort selector state', () => {
     renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
     await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
     const getModelQuery = modelsDal.getModelQuery
-    const saved = [(await modelsDal.getModel(getDb(), other.id))!]
+    const saved = [
+      {
+        ...(await modelsDal.getModel(getDb(), other.id))!,
+        oauthProvider: null,
+        providerDefault: null,
+        hasLocalCredentialRecord: true,
+      },
+    ]
     const loaded = Promise.withResolvers<typeof saved>()
     const read = spyOn(modelsDal, 'getModelQuery').mockImplementation((db, id) => {
       const query = getModelQuery(db, id)
@@ -459,7 +466,7 @@ describe('effort selector state', () => {
       tables: ['settings', 'models'],
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: `API key not configured ${model.name}` }))
+      fireEvent.click(screen.getByRole('button', { name: model.name }))
     })
     await act(async () => {
       fireEvent.change(screen.getByRole('slider'), { target: { value: '1' } })
@@ -518,14 +525,11 @@ describe('effort selector state', () => {
       tables: ['settings', 'models'],
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: `API key not configured ${model.name}` }))
+      fireEvent.click(screen.getByRole('button', { name: model.name }))
     })
     expect(screen.getByRole('button', { name: 'Choose model' })).toBeDefined()
     expect(screen.queryByRole('slider')).toBeNull()
-    expect(screen.getByRole('button', { name: `API key not configured ${model.name}` })).toHaveAttribute(
-      'aria-description',
-      `Model: ${model.name}`,
-    )
+    expect(screen.getByRole('button', { name: model.name })).toHaveAttribute('aria-description', `Model: ${model.name}`)
   })
 
   it('starts with a supported default, then previews and commits real effort levels', async () => {

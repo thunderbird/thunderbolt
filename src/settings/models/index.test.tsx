@@ -19,6 +19,8 @@ import ModelsPage from './index'
 import { systemModelMenuMessage } from './model-detail'
 import { useModelsPageState } from './use-models-page-state'
 import { http } from '@/lib/http'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { clearAuthToken, setAuthToken } from '@/lib/auth-token'
 
 // The page consumes router state (the composer's "Add models" deep link), so
 // it must render inside a router.
@@ -45,6 +47,60 @@ describe('ModelsPage reactivity', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('shows only user models locally and restores hosted models after cloud sign-in', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
+    const db = getDb()
+    await createModel(db, {
+      id: 'hosted',
+      name: 'Thunderbolt hosted model',
+      provider: 'thunderbolt',
+      model: 'hosted',
+      isSystem: 1,
+      enabled: 1,
+    })
+    await createModel(db, {
+      id: 'managed-tinfoil',
+      name: 'Thunderbolt private model',
+      provider: 'tinfoil',
+      model: 'managed',
+      isSystem: 1,
+      enabled: 1,
+    })
+    await createModel(db, {
+      id: 'own-router',
+      name: 'My OpenRouter model',
+      provider: 'openrouter',
+      model: 'own',
+      apiKey: 'key',
+      isSystem: 0,
+      enabled: 1,
+    })
+    await createModel(db, {
+      id: 'own-tinfoil',
+      name: 'My disabled Tinfoil model',
+      provider: 'tinfoil',
+      model: 'own',
+      apiKey: 'key',
+      isSystem: 0,
+      enabled: 0,
+    })
+    renderModelsPage()
+    await waitForElement(() => screen.queryByText('My OpenRouter model'))
+    expect(screen.queryByText('Thunderbolt hosted model')).not.toBeInTheDocument()
+    expect(screen.queryByText('Thunderbolt private model')).not.toBeInTheDocument()
+    expect(screen.getByText('My disabled Tinfoil model')).toBeInTheDocument()
+    act(() => useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1' }))
+    expect(screen.queryByText('Thunderbolt hosted model')).not.toBeInTheDocument()
+    act(() => setAuthToken('cloud-session'))
+    expect(screen.getByText('Thunderbolt hosted model')).toBeInTheDocument()
+    expect(screen.getByText('Thunderbolt private model')).toBeInTheDocument()
+    act(() => clearAuthToken())
+    expect(screen.queryByText('Thunderbolt hosted model')).not.toBeInTheDocument()
+    expect(screen.queryByText('Thunderbolt private model')).not.toBeInTheDocument()
+    expect(screen.getByText('My OpenRouter model')).toBeInTheDocument()
+    expect((await getModel(db, 'hosted'))?.deletedAt).toBeNull()
   })
 
   it('updates when models table changes', async () => {

@@ -604,10 +604,6 @@ describe('Inference Routes', () => {
         status: 400,
         model: 'opus-5-5',
         errorKind: 'context_length',
-        errorType: 'invalid_request_error',
-        errorCode: 'context_length_exceeded',
-        requestId: 'provider-request-123',
-        distinctId: 'test-user',
       })
       expect(await response.json()).toEqual({ success: false, data: null, error: 'Bad Request' })
       expect(consoleSpies.error).not.toHaveBeenCalled()
@@ -644,10 +640,6 @@ describe('Inference Routes', () => {
         status: 500,
         model: 'opus-5-5',
         errorKind: 'unknown',
-        errorType: undefined,
-        errorCode: undefined,
-        requestId: undefined,
-        distinctId: 'test-user',
       })
       expect(JSON.stringify(consoleSpies.error.mock.calls)).toContain(faultMessage)
       expect(JSON.stringify(logs)).not.toContain(faultMessage)
@@ -700,10 +692,6 @@ describe('Inference Routes', () => {
         status: 529,
         model: 'opus-5-5',
         errorKind: 'upstream_error',
-        errorType: 'overloaded_error',
-        errorCode: undefined,
-        requestId: 'provider-stream-request-123',
-        distinctId: 'test-user',
         phase: 'stream',
       })
     })
@@ -786,10 +774,6 @@ describe('Inference Routes', () => {
         status: 500,
         model: 'opus-5-5',
         errorKind: 'connection',
-        errorType: undefined,
-        errorCode: undefined,
-        requestId: undefined,
-        distinctId: 'test-user',
       })
       expect(logs).toContainEqual({
         context: {
@@ -840,10 +824,6 @@ describe('Inference Routes', () => {
         status: 500,
         model: 'opus-5-5',
         errorKind: 'connection',
-        errorType: undefined,
-        errorCode: undefined,
-        requestId: undefined,
-        distinctId: 'test-user',
       })
       expect(logs).toContainEqual({
         context: {
@@ -1502,7 +1482,6 @@ describe('Inference Routes', () => {
         if (postHogConfigured) {
           expect(mockCreateCompletion).toHaveBeenCalledWith(
             expect.objectContaining({
-              posthogDistinctId: 'test-user',
               posthogProperties: expect.objectContaining({
                 model_provider: 'anthropic',
                 model: 'claude-opus-5-5',

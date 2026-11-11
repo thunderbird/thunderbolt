@@ -23,6 +23,7 @@ import type { ReactNode } from 'react'
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { createAuthenticatedClient, type HttpClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { registryTimeoutMs, resetMiniAppsForTesting, useMiniApps } from './use-mini-apps'
 
 const app = {
@@ -81,6 +82,29 @@ beforeEach(resetMiniAppsForTesting)
 afterEach(resetMiniAppsForTesting)
 
 describe('useMiniApps', () => {
+  it('settles without a request in standalone mode and loads when a server is configured', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const requests: string[] = []
+    const { result } = setup(
+      clientWith((request) => {
+        requests.push(request.url)
+        return Response.json({ apps: [app] })
+      }),
+    )
+    expect(result.current).toEqual({ loading: false, failed: false, apps: [] })
+    await settle()
+    expect(requests).toHaveLength(0)
+    act(() => useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1' }))
+    await settle()
+    expect(requests).toHaveLength(1)
+    expect(result.current.apps.map((entry) => entry.id)).toEqual(['finance-model'])
+    act(() => useLocalSettingsStore.setState({ cloudUrl: '' }))
+    expect(result.current).toEqual({ loading: false, failed: false, apps: [] })
+    act(() => useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1' }))
+    await settle()
+    expect(requests).toHaveLength(2)
+  })
+
   it('starts loading, with nothing to show yet', () => {
     const { result } = setup(clientWith(() => Response.json({ apps: [] })))
 

@@ -129,7 +129,7 @@ export const fetchModelsForProvider = async (
   }
 
   const response = await http
-    .get(`${connection.baseURL}/models`, {
+    .get(`${connection.baseURL}/${provider === 'openrouter' ? 'models/user' : 'models'}`, {
       headers: connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {},
       fetch: connection.fetch,
     })

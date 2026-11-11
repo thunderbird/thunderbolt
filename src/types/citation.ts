@@ -16,6 +16,8 @@ export type CitationSource = {
   siteName?: string
   /** URL to the source's favicon */
   favicon?: string
+  /** Preserve a private source's restriction on passive network requests. */
+  allowRemoteImages?: boolean
   /** Whether this is the primary source (first/most relevant) */
   isPrimary?: boolean
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { startMcpOAuthLoopback, type LoopbackDeps } from './mcp-oauth-loopback'
 
@@ -13,7 +13,7 @@ const port = 17421
  * given callback URL as soon as the browser is opened, so the happy path runs
  * without real Tauri or a real timer.
  */
-const depsResolvingWith = (callbackUrl: string): LoopbackDeps & { openedWith: () => string | undefined } => {
+const depsResolvingWith = (callbackUrl: string | string[]): LoopbackDeps & { openedWith: () => string | undefined } => {
   let onCallback: ((event: { payload: { url: string } }) => void) | undefined
   let openedWith: string | undefined
   return {
@@ -25,7 +25,9 @@ const depsResolvingWith = (callbackUrl: string): LoopbackDeps & { openedWith: ()
     openUrl: (async (url: string) => {
       openedWith = url
       // Deliver the callback synchronously after the browser opens.
-      onCallback?.({ payload: { url: callbackUrl } })
+      for (const url of typeof callbackUrl === 'string' ? [callbackUrl] : callbackUrl) {
+        onCallback?.({ payload: { url } })
+      }
     }) as never,
     openedWith: () => openedWith,
   }
@@ -73,9 +75,24 @@ describe('startMcpOAuthLoopback', () => {
     expect(result).toEqual({ code: null, state: null, error: 'User declined', iss: null })
   })
 
+  it('ignores callbacks belonging to another provider or loopback listener', async () => {
+    const result = await startMcpOAuthLoopback({
+      buildAuthorizationUrl: async () => new URL('https://auth.example.com/authorize'),
+      deps: depsResolvingWith([
+        'http://localhost:17422/?error=other-provider',
+        'https://evil.example/?code=forged&state=nonce',
+        'http://localhost:17421/other?error=unrelated-path',
+        'invalid-url',
+        'http://localhost:17421/?code=real&state=nonce',
+      ]),
+    })
+    expect(result).toEqual({ code: 'real', state: 'nonce', error: null, iss: null })
+  })
+
   it('returns null when the user never completes auth (timeout)', async () => {
+    const invoke = mock(async (_command: string, _args?: unknown) => port)
     const deps: LoopbackDeps = {
-      invoke: (async () => port) as never,
+      invoke: invoke as never,
       // Never delivers a callback.
       listen: (async () => () => {}) as never,
       openUrl: (async () => {}) as never,
@@ -90,5 +107,7 @@ describe('startMcpOAuthLoopback', () => {
     await getClock().tickAsync(1000)
 
     expect(await promise).toBeNull()
+    expect(invoke.mock.calls[0][0]).toBe('start_oauth_server')
+    expect(invoke).toHaveBeenCalledWith('stop_oauth_server', invoke.mock.calls[0][1])
   })
 })

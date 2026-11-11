@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { generateCodeVerifier } from '@/lib/pkce'
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { listen as tauriListen } from '@tauri-apps/api/event'
 import { openUrl as tauriOpenUrl } from '@tauri-apps/plugin-opener'
@@ -61,7 +62,8 @@ export const startMcpOAuthLoopback = async ({
   const listen = deps.listen ?? tauriListen
   const openUrl = deps.openUrl ?? tauriOpenUrl
 
-  const port = await invoke<number>('start_oauth_server')
+  const flowId = generateCodeVerifier()
+  const port = await invoke<number>('start_oauth_server', { flowId })
   const redirectUri = `http://localhost:${port}`
 
   let unlisten: (() => void) | undefined
@@ -75,7 +77,10 @@ export const startMcpOAuthLoopback = async ({
     // Register the listener BEFORE opening the browser to avoid a race where the
     // callback arrives before we are listening for it.
     unlisten = await listen<{ url: string }>('oauth-callback', (event) => {
-      resolveUrl(event.payload.url)
+      const url = URL.canParse(event.payload.url) ? new URL(event.payload.url) : null
+      if (url?.origin === redirectUri && url.pathname === '/') {
+        resolveUrl(url.href)
+      }
     })
 
     const authorizationUrl = await buildAuthorizationUrl(redirectUri)
@@ -103,6 +108,6 @@ export const startMcpOAuthLoopback = async ({
   } finally {
     clearTimeout(timeoutId)
     unlisten?.()
-    // The native listener closes after an accepted callback or its bounded deadline.
+    void invoke<void>('stop_oauth_server', { flowId }).catch(console.error)
   }
 }

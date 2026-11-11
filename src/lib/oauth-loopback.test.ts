@@ -21,7 +21,9 @@ describe('startOAuthFlowLoopback', () => {
   beforeEach(() => {
     unlistenFn = mock()
 
-    spyOn(tauriCore, 'invoke').mockImplementation(async () => 17421 as never)
+    spyOn(tauriCore, 'invoke')
+      .mockClear()
+      .mockImplementation(async () => 17421 as never)
     listenSpy = spyOn(tauriEvent, 'listen').mockImplementation(async () => () => {})
     spyOn(opener, 'openUrl').mockImplementation(async () => {})
     spyOn(auth, 'buildAuthUrl').mockImplementation(
@@ -107,6 +109,27 @@ describe('startOAuthFlowLoopback', () => {
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
+  it('ignores other loopback flows, remote origins, paths, and malformed callback events', async () => {
+    listenSpy.mockImplementation(async (_event: string, cb: (event: { payload: { url: string } }) => void) => {
+      queueMicrotask(() => {
+        for (const url of [
+          'http://localhost:17422/?error=unrelated-provider',
+          'https://localhost:17421/?token=foreign-token',
+          'https://evil.example/?token=foreign-token',
+          'http://localhost:17421/unrelated?error=wrong-path',
+          'not-a-url',
+          'http://localhost:17421/?code=auth_code&state=mock-state-uuid',
+        ]) {
+          cb({ payload: { url } })
+        }
+      })
+      return unlistenFn
+    })
+    const result = await startOAuthFlowLoopback(mockHttpClient, 'google')
+    expect(result?.tokens.access_token).toBe('access_token')
+    expect(unlistenFn).toHaveBeenCalledTimes(1)
+  })
+
   it('timeout: returns null when browser is not redirected within timeout', async () => {
     listenSpy.mockImplementation(async () => unlistenFn)
 
@@ -117,6 +140,11 @@ describe('startOAuthFlowLoopback', () => {
 
     const result = await promise
     expect(result).toBeNull()
+    const start = (tauriCore.invoke as ReturnType<typeof mock>).mock.calls.find(
+      ([command]) => command === 'start_oauth_server',
+    )
+    expect(start).toBeDefined()
+    expect(tauriCore.invoke).toHaveBeenCalledWith('stop_oauth_server', start?.[1])
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 

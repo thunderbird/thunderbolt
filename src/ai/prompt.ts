@@ -105,7 +105,7 @@ export const createPromptParts = (
   const contextSection = [
     preferredName ? `User name: ${preferredName}` : '',
     location.name
-      ? `User location: ${location.name}${location.lat && location.lng ? ` (${location.lat}, ${location.lng})` : ''}`
+      ? `User location: ${location.name}${location.lat != null && location.lng != null ? ` (${location.lat}, ${location.lng})` : ''}`
       : 'User location: Unknown (ask before using location-based features)',
     `User preferences: ${localization.distanceUnit}, ${localization.temperatureUnit}, ${localization.timeFormat}, ${localization.currency}`,
     `Integration status: ${integrationStatus}`,

@@ -68,11 +68,13 @@ afterAll(teardownTestDatabase)
 
 /** Open a chat on `agent`, counting the connections it opens and the prompts it dispatches. */
 const openChat = (agent: Agent, onConnect: () => Promise<void> = async () => {}) => {
+  const model = createMockModel()
   hydrateStore({
     id: threadId,
     chatInstance: createMockChatInstance(),
     chatThread: null,
-    selectedModel: createMockModel(),
+    models: [model],
+    selectedModel: model,
     triggerData: null,
   })
   useChatStore.getState().updateSession(threadId, { selectedAgent: agent })
@@ -86,6 +88,7 @@ const openChat = (agent: Agent, onConnect: () => Promise<void> = async () => {})
   const route = createAgentRoutingFetch(threadId, saveMessages, {} as HttpClient, () => proxyFetch, {
     connectToAgent,
     getChatReasoningEffort: async () => undefined,
+    getAvailableModels: async () => useChatStore.getState().models,
   })
   let turn = 0
   const send = () => {

@@ -137,7 +137,7 @@ describe('createPrompt', () => {
 
   test('shows unknown location fallback', () => {
     const result = createPrompt({ ...baseParams, location: {} })
-    expect(result).toContain('User location: Unknown')
+    expect(result).toContain('User location: Unknown (ask before using location-based features)')
   })
 
   test('does not include overrides when profile is null', () => {
@@ -382,4 +382,10 @@ describe('createPrompt', () => {
 
     expect(result.fullPrompt).not.toContain(appHarnessEnvironmentPrompt)
   })
+})
+
+test('includes coordinates on the equator and prime meridian', () => {
+  expect(createPrompt({ ...baseParams, location: { name: 'Null Island', lat: 0, lng: 0 } })).toContain(
+    'User location: Null Island (0, 0)',
+  )
 })

@@ -198,9 +198,9 @@ and `instruction` for a `/target` reference, with a `(?![a-z0-9-])` lookahead so
 match `/foo-bar`. Skills compose by naming each other's tokens, so the dialog names the referrers
 rather than breaking them silently.
 
-[`src/skills/telemetry.ts`](../../../src/skills/telemetry.ts): every `skill_*` event carries
-`sha256(user_id + ':' + skill.id)` truncated to 16 hex characters, never authored content. The
-user-id salt stops analytics correlating a skill across accounts.
+[`src/skills/telemetry.ts`](../../../src/skills/telemetry.ts) records interaction counts and
+coarse metadata (entry point, instruction length, reorder positions). It sends no account
+IDs, skill IDs, account-derived hashes, or authored content.
 
 ## Invariants worth knowing
 

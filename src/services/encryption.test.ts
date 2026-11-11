@@ -1955,7 +1955,10 @@ describe('encryption service (v2)', () => {
       })
 
       await expect(
-        approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, fingerprint),
+        approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, {
+          kind: 'fingerprint',
+          fingerprint,
+        }),
       ).rejects.toThrow(AKAnchorError)
       expect(server.envelopes.has('pending-dev')).toBe(false)
     })

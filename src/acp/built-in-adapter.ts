@@ -59,6 +59,8 @@ import {
   supersededAppContextOutput,
 } from '@/mini-apps/mini-app-context-note'
 import { webToolNames } from '@/lib/tools'
+import { tinfoilSession } from '@/lib/tinfoil-session'
+import { createLiveProxyFetch } from '@/lib/proxy-fetch'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
@@ -300,7 +302,8 @@ export const resolvePiModel = async (
         tinfoilClient: client,
       }
     }
-    if (!model.apiKey) {
+    const apiKey = model.oauthProvider === 'tinfoil' ? await tinfoilSession.getAccessToken() : model.apiKey
+    if (!apiKey) {
       throw new Error('No API key provided for Tinfoil provider')
     }
     const acquireUserClient = options.getTinfoilClient ?? getTinfoilClient
@@ -315,14 +318,23 @@ export const resolvePiModel = async (
       context.telemetry,
     )
     const evictClient = options.evictUserTinfoilClient ?? evictUserTinfoilClient
-    const fetch: PiModelDescriptor['fetch'] = (input, init) => fetchTinfoil(client, input, init, evictClient)
+    const fetch: PiModelDescriptor['fetch'] = async (input, init) => {
+      // Long-running agent turns can outlive an access token. Refresh before each
+      // encrypted request, not just when building the harness at turn start.
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+      if (model.oauthProvider === 'tinfoil') {
+        headers.set('Authorization', `Bearer ${await tinfoilSession.getAccessToken()}`)
+      }
+      const request = { ...init, headers }
+      return fetchTinfoil(client, input, request, evictClient)
+    }
     return {
       descriptor: {
         kind: 'openai-compat',
         providerId: 'tinfoil',
         modelId: model.model,
         baseURL: client.getBaseURL()!,
-        apiKey: model.apiKey,
+        apiKey,
         fetch,
         reasoning: hasExplicitReasoning(profile),
         contextWindow: model.contextWindow ?? undefined,
@@ -342,7 +354,7 @@ export const resolvePiModel = async (
         modelId: model.model,
         apiKey: model.apiKey ?? '',
         contextWindow: model.contextWindow ?? undefined,
-        fetch: context.getProxyFetch(),
+        fetch: createLiveProxyFetch(context.getProxyFetch),
       },
       thinkingLevel,
     }

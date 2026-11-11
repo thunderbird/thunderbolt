@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useState, useTransition } from 'react'
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { selectMinimalMode } from '@/api/config-store'
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { useChatStore } from '@/chats/chat-store'
 import { useProjects } from '@/dal/projects'
 import type { Project } from '@/types'
@@ -15,7 +16,7 @@ type ProjectBadgeDialog = { type: 'create' } | { type: 'edit' | 'move'; project:
 export const useProjectBadgeState = (chatThreadId: string | null) => {
   const projectId = useChatStore((state) => (chatThreadId ? state.sessions.get(chatThreadId)?.projectId : undefined))
   const projects = useProjects()
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   const moveChat = useMoveChatToProject()
   const [dialog, setDialog] = useState<ProjectBadgeDialog | null>(null)
   const [isPending, startTransition] = useTransition()

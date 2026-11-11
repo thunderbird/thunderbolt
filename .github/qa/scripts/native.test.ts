@@ -21,6 +21,19 @@ const noPorts = {
   QA_GOOGLE_PORT: '',
 }
 
+test.each(['', '8105'])('native Cloud sign-in uses the QA backend port %s', (port) => {
+  // Execute the native script's real shared environment setup without starting a build or simulator.
+  const setup = readFileSync(native, 'utf8').split('\nfixtures=')[0]
+  const proc = Bun.spawnSync(['bash', '-e', '-c', `${setup}\nprintf '%s\\n' "\${frontend_env[@]}"`, native], {
+    env: { ...process.env, ...noPorts, QA_BACKEND_PORT: port },
+  })
+  expect(proc.exitCode).toBe(0)
+  const values = proc.stdout.toString().trim().split('\n')
+  const backend = `http://localhost:${port || '8005'}/v1`
+  expect(values).toContain(`VITE_THUNDERBOLT_CLOUD_URL=${backend}`)
+  expect(values).toContain(`VITE_THUNDERBOLT_CLOUD_SERVICE_URL=${backend}`)
+})
+
 /** `/sdcard` resolves only from the second check on, and Android 16 refuses the push of sample.png. */
 const fakeAdb = ({ ignoresSettings = false, refusesBroadcast = false } = {}) => {
   const bin = mkdtempSync(join(work, 'bin-'))
@@ -365,6 +378,38 @@ exec /bin/sleep 30
 /** A zombie of a stream that was killed counts as gone. */
 const running = (pid: string) =>
   !['', 'Z'].includes(Bun.spawnSync(['ps', '-o', 'stat=', '-p', pid]).stdout.toString().trim()[0] ?? '')
+
+test('logs ios creates the replacement log before its background stream is scheduled', () => {
+  const bin = mkdtempSync(join(work, 'bin-'))
+  const file = join(bin, 'webview.log')
+  const gate = join(bin, 'start-stream')
+  writeFileSync(file, 'Filtering the log data from an old stream\n')
+  writeFileSync(join(bin, 'xcrun'), "#!/bin/bash\nprintf 'Filtering the log data from the new stream\\n'\n", {
+    mode: 0o755,
+  })
+  expect(Bun.spawnSync(['mkfifo', gate]).exitCode).toBe(0)
+  const setup = readFileSync(native, 'utf8').split('\nusage=')[0]
+  const stream = setup.match(/^  xcrun simctl spawn .* &$/m)?.[0]
+  expect(stream).toBeDefined()
+  // Hold the child before its real redirection, reproducing a scheduler that runs the parent first.
+  const paused = setup.replace(stream!, `  ( read -r releaseStream < "$3";\n${stream!.slice(0, -2)}\n  ) &`)
+  const proc = Bun.spawnSync(
+    [
+      'bash',
+      '-e',
+      '-c',
+      `${paused}\nstart_ios_stream UDID-1 "$1" "$2"\nstatus=0\n[[ -f "$1" && ! -s "$1" ]] || status=1\nprintf 'go\\n' > "$2"\nwait "$(cat "$1.pid")"\nexit "$status"\n`,
+      native,
+      file,
+      gate,
+    ],
+    { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } },
+  )
+  expect(proc.stderr.toString()).toBe('')
+  expect(proc.exitCode).toBe(0)
+  expect(readFileSync(file, 'utf8')).toBe('Filtering the log data from the new stream\n')
+  expect(running(readFileSync(`${file}.pid`, 'utf8').trim())).toBe(false)
+})
 
 test('logs ios returns at once, before the header shows, and leaves the stream running', () => {
   const { run, file, pids, sleeps } = fakeLogStream(0)

@@ -8,7 +8,7 @@ import { builtInAgent } from '@/defaults/agents'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
+import { createMockChatInstance, createMockModel, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useChatStore } from './chat-store'
@@ -37,7 +37,8 @@ const hydrate = () => {
     chatInstance: createMockChatInstance(),
     chatThread: null,
     id: sessionId,
-    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    models: [createMockModel({ id: 'm1' })],
+    selectedModel: createMockModel({ id: 'm1' }),
     triggerData: null,
   })
 }
@@ -107,6 +108,7 @@ describe('requestPermission bridge', () => {
     }
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getAvailableModels: async () => useChatStore.getState().models,
       isAgentActive,
       getChatReasoningEffort: async () => undefined,
       connectToAgent: mock(async () => adapter) as never,

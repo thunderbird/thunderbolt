@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 
 import { testAcpConnection } from '@/acp'
-import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { selectAllowCustomAgents } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { AgentDetail } from '@/components/settings/agents/agent-detail'
@@ -45,7 +46,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   const authClient = useAuth()
   const { data: session } = authClient.useSession()
   const currentUserId = session?.user?.id ?? null
-  const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const allowCustomAgents = useConfigCapability(selectAllowCustomAgents)
 
   // The add form, the CLI install card, and the agent rows all share the one
   // slide-in panel slot, so the selection is a single union — the panels are
@@ -122,9 +123,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
             panel edge). */}
         <SettingsListPane className="gap-6">
           <PageHeader title={t`Agents`}>
-            {allowCustomAgents && (
-              <PageCreateAction label={t`New Agent`} onClick={openAddPanel} disabled={!currentUserId} />
-            )}
+            {allowCustomAgents && <PageCreateAction label={t`New Agent`} onClick={openAddPanel} />}
           </PageHeader>
 
           {/* Clicking the already-open row closes the panel — the rows carry

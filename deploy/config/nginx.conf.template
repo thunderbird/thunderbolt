@@ -27,7 +27,7 @@ server {
     location ^~ /v1/ {
         include /etc/nginx/snippets/security-headers.conf;
 
-        resolver 127.0.0.11 valid=10s;
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
         set $backend "${THUNDERBOLT_BACKEND_HOST}";
         # No URI suffix on proxy_pass: when the host contains a variable, nginx does not
         # do prefix substitution and instead sends only the directive URI to upstream
@@ -46,6 +46,44 @@ server {
         # upstream TCP connections, helps SSE streams. Upgrade header intentionally omitted —
         # backend uses SSE, not WebSocket. If WebSocket is added later, scope proxy_set_header
         # Upgrade tightly to expected protocols.
+    }
+
+    # Fixed-target relay for browser search. Bodies remain EHBP-encrypted to the
+    # verified enclave; provider authorization is forwarded, never app cookies.
+    location = /_tinfoil/search {
+        include /etc/nginx/snippets/security-headers.conf;
+        if ($http_sec_fetch_site = cross-site) { return 403; }
+        if ($request_method !~ ^(POST|GET|DELETE)$) { return 405; }
+        if ($http_authorization = "") { return 401; }
+        set $search_envelope "$request_method:$http_ehbp_encapsulated_key";
+        if ($search_envelope = "POST:") { return 400; }
+        client_max_body_size 1m;
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=60s;
+        set $search_host "websearch.tinfoil.sh";
+        proxy_pass https://$search_host/mcp;
+        proxy_ssl_server_name on;
+        proxy_ssl_name websearch.tinfoil.sh;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_pass_request_headers off;
+        proxy_set_header Host websearch.tinfoil.sh;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Accept $http_accept;
+        proxy_set_header Content-Type $http_content_type;
+        proxy_set_header Ehbp-Encapsulated-Key $http_ehbp_encapsulated_key;
+        proxy_set_header Mcp-Session-Id $http_mcp_session_id;
+        proxy_set_header Mcp-Protocol-Version $http_mcp_protocol_version;
+        proxy_set_header X-Tinfoil-Tool-PII-Check $http_x_tinfoil_tool_pii_check;
+        proxy_set_header X-Tinfoil-Tool-Injection-Check $http_x_tinfoil_tool_injection_check;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 30s;
+        proxy_hide_header Set-Cookie;
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "no-store" always;
+        access_log off;
     }
 
     # Cache static assets aggressively

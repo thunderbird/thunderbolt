@@ -7,6 +7,7 @@ import { createModel as insertModel } from '@/dal/models'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createClient } from '@/lib/http'
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -811,9 +812,11 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
     'http://host.docker.internal:1234',
     'http://mymac.local:1234',
     'http://10.evil.com/v1', // attacker-crafted hostname that starts with a private range
-  ])('dispatches non-loopback URL %s through the proxy fetch', (url) => {
-    const conn = resolveOpenAiCompatConnection(customModel(url), () => stubProxyFetch)
-    expect(conn?.fetch).toBe(stubProxyFetch)
+  ])('dispatches non-loopback URL %s through the proxy fetch', async (url) => {
+    const proxy = capturingFetch()
+    const conn = resolveOpenAiCompatConnection(customModel(url), () => proxy.fn)
+    await conn!.fetch(url)
+    expect(proxy.received()?.input).toBe(url)
   })
 
   it('forwards the apiKey as-is (empty string when missing)', () => {
@@ -824,6 +827,62 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
       resolveOpenAiCompatConnection(customModel('http://localhost:1234', 'sk-abc'), () => stubProxyFetch)?.apiKey,
     ).toBe('sk-abc')
   })
+})
+
+describe('provider connection transport', () => {
+  let originalSettings: ReturnType<typeof useLocalSettingsStore.getState>
+  beforeEach(() => {
+    originalSettings = useLocalSettingsStore.getState()
+    useLocalSettingsStore.setState({ cloudUrl: '', localMode: false })
+  })
+  afterEach(() => useLocalSettingsStore.setState(originalSettings))
+  it.each(['openai', 'openrouter', 'custom'] as const)(
+    'keeps a retained %s connection on the current server without forwarding new credentials to an old server',
+    async (provider) => {
+      const calls: Request[] = []
+      const fetchImpl = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          calls.push(new Request(input, init))
+          return new Response('ok')
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const connectionState = { cloudUrl: '', token: '' }
+      const makeTransport = () =>
+        createProxyFetch({
+          cloudUrl: connectionState.cloudUrl,
+          getProxyAuthToken: () => connectionState.token,
+          isStandalone: () => false,
+          fetchImpl,
+        })
+      const transport = { current: makeTransport() }
+      const connection = resolveOpenAiCompatConnection(
+        { provider, apiKey: 'provider-key', url: 'https://custom.example/v1' },
+        () => transport.current,
+      )!
+      const target = `${connection.baseURL}/chat/completions`
+      const options = { method: 'POST', headers: { Authorization: 'Bearer provider-key' }, body: '{}' }
+      await connection.fetch(target, options)
+      for (const server of ['a', 'b']) {
+        connectionState.cloudUrl = `https://server-${server}.example/v1`
+        connectionState.token = `server-${server}-token`
+        useLocalSettingsStore.setState({ cloudUrl: connectionState.cloudUrl })
+        transport.current = makeTransport()
+        await connection.fetch(target, options)
+      }
+      expect(calls.map((request) => request.url)).toEqual([
+        target,
+        'https://server-a.example/v1/proxy',
+        'https://server-b.example/v1/proxy',
+      ])
+      expect(calls.map((request) => request.headers.get('authorization'))).toEqual([
+        'Bearer provider-key',
+        'Bearer server-a-token',
+        'Bearer server-b-token',
+      ])
+      expect(calls[2].headers.get('x-proxy-passthrough-authorization')).toBe('Bearer provider-key')
+    },
+  )
 })
 
 describe('createModel', () => {
@@ -981,6 +1040,7 @@ describe('withAppVersionHeader', () => {
 describe('logical-turn citation registry', () => {
   it('keeps cached source labels and metadata across rebuilt toolsets and starts fresh for a new turn', async () => {
     await setupTestDatabase()
+    setAuthToken('test-session')
     try {
       await insertModel(getDb(), {
         id: 'source-model',
@@ -1037,6 +1097,7 @@ describe('logical-turn citation registry', () => {
       expect(freshResult).toMatchObject([{ sourceIndex: 1 }])
       expect(requests).toEqual(['one', 'two', 'one'])
     } finally {
+      clearAuthToken()
       await teardownTestDatabase()
     }
   })

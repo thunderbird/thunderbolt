@@ -41,6 +41,7 @@ import {
 } from '../db'
 import { expect, test } from '../fixtures'
 import {
+  acknowledgeRecoveryPhrase,
   completeFirstDeviceSetup,
   completeStepUpCode,
   createE2eeEmail,
@@ -49,7 +50,6 @@ import {
   getDeviceId,
   loginViaConsumerOtp,
   overrideEncryptionMetadata,
-  readRecoveryPhrase,
   revokeTrustedDevice,
   serveEnvelope,
   serveWrappedKeys,
@@ -145,9 +145,7 @@ test.describe('C5 — epoch replay after a revocation', () => {
     await confirmation.getByRole('button', { name: 'Send code' }).click()
     await completeStepUpCode(page, email)
     const recoveryDialog = page.getByRole('dialog').filter({ hasText: 'Save your new recovery phrase' })
-    await readRecoveryPhrase(recoveryDialog)
-    await recoveryDialog.getByRole('checkbox').click()
-    await recoveryDialog.getByRole('button', { name: 'Done' }).click()
+    await acknowledgeRecoveryPhrase(recoveryDialog)
     await waitForConsumedChallenge(userId, 'rotate')
     await expect
       .poll(() => getEncryptionServerSnapshot(userId), { timeout: 30_000 })

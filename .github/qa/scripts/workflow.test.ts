@@ -1227,6 +1227,7 @@ describe('native jobs', () => {
 
   /** Runs the fix check's run step with `native.sh` replaced by `script`, the job having started `startedAgo` s ago. */
   const runStepWith = (script: string, startedAgo = 0) => {
+    const now = 1_700_000_000
     const temp = mkdtempSync(join(work, 'verify-run-'))
     mkdirSync(join(temp, '.github/qa/scripts'), { recursive: true })
     // A real run takes minutes, so the deadline is asleep, and dies whole, by the time the run ends.
@@ -1234,6 +1235,11 @@ describe('native jobs', () => {
     // GNU sleep rejects a negative duration, where macOS treats it as zero.
     mkdirSync(join(temp, 'bin'))
     writeFileSync(join(temp, 'bin/sleep'), '#!/bin/bash\n[[ $1 == -* ]] && exit 1\nexec /bin/sleep "$@"\n', {
+      mode: 0o755,
+    })
+    // The test's Date.now is frozen; the shell must use the same clock when calculating its remaining budget.
+    // Keep sleep and process-group termination real so the descendant cleanup assertion still exercises the workflow.
+    writeFileSync(join(temp, 'bin/date'), `#!/bin/bash\n[[ "$*" == '+%s' ]] || exit 2\nprintf '%s\\n' '${now}'\n`, {
       mode: 0o755,
     })
     const output = join(temp, 'output')
@@ -1247,7 +1253,7 @@ describe('native jobs', () => {
           RUNNER_TEMP: temp,
           GITHUB_OUTPUT: output,
           QA_FP: 'fp1',
-          QA_LEG_START: String(Math.floor(Date.now() / 1000) - startedAgo),
+          QA_LEG_START: String(now - startedAgo),
         },
       },
     )

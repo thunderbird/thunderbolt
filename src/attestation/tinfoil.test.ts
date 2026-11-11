@@ -4,10 +4,14 @@
 
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { SecureClient, type VerificationDocument } from 'tinfoil'
-import { KeyConfigMismatchError } from 'ehbp'
 import { getClock } from '@/testing-library'
 import { createAttestationStore } from './store'
 import { AttestedTinfoilClient, readTinfoilEvidence } from './tinfoil'
+
+// SDK retries use instanceof, so inject its EHBP version when search uses a newer copy.
+const { KeyConfigMismatchError } = (await import(
+  import.meta.resolve('ehbp', import.meta.resolve('tinfoil'))
+)) as typeof import('ehbp')
 
 /** A successful SDK document, independent of UI state. */
 const verificationDocument = (enclaveHost = 'router.tinfoil.sh'): VerificationDocument => ({

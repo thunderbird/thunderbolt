@@ -164,7 +164,7 @@ export const summarizeExportEnvelope = (
 const sanitizeRowForImport = (
   row: Record<string, unknown>,
   hasUserId: boolean,
-  currentUserId: string,
+  currentUserId: string | null,
 ): Record<string, unknown> => {
   const { userId: _ignored, ...rest } = row
   return hasUserId ? { ...rest, userId: currentUserId } : rest
@@ -183,8 +183,8 @@ const sanitizeRowForImport = (
  *   tables and PowerSync views.
  * - **`userId` re-stamped.** Tables with a `user_id` column have their
  *   row's `userId` overwritten with `currentUser.id`; the value in the file
- *   is never trusted. Tables without `user_id` (the secret tables) are
- *   unaffected.
+ *   is never trusted. A signed-out import uses `null`, preserving local
+ *   ownership. Tables without `user_id` (the secret tables) are unaffected.
  * - **Soft-deleted rows preserved.** `deletedAt` is written verbatim, so a
  *   row exported in the trash stays in the trash after import.
  * - **Atomic.** Wrapped in a single `db.transaction`; any per-row failure
@@ -200,7 +200,7 @@ const sanitizeRowForImport = (
 export const importUserData = async (
   db: AnyDrizzleDatabase,
   payload: unknown,
-  currentUser: { id: string },
+  currentUser: { id: string | null },
 ): Promise<ImportResult> => {
   if (!isRecord(payload)) {
     throw new ImportFormatError('Import file is not a JSON object.')

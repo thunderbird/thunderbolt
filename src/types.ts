@@ -127,7 +127,7 @@ export type ProjectRow = InferSelectModel<typeof projectsTable>
 // Application types - Row types with previously-required fields made non-null
 export type ChatMessage = WithRequired<ChatMessageRow, 'content' | 'role' | 'chatThreadId'>
 export type ChatThread = WithRequired<ChatThreadRow, 'isEncrypted' | 'wasTriggeredByAutomation'>
-/** apiKey comes from LEFT JOIN with models_secrets in DAL queries, not from the models table. */
+/** Credentials and OAuth references come from the device-only models_secrets join, never the synced row. */
 export type Model = WithRequired<
   ModelRow,
   | 'provider'
@@ -138,7 +138,12 @@ export type Model = WithRequired<
   | 'isConfidential'
   | 'startWithReasoning'
   | 'supportsParallelToolCalls'
-> & { apiKey: string | null }
+> & {
+  apiKey: string | null
+  oauthProvider?: 'tinfoil' | null
+  providerDefault?: number | null
+  hasLocalCredentialRecord?: boolean
+}
 
 /**
  * Compile-time invariant: every shipped `SharedModel` default (see

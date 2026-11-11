@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, mock, spyOn } from 'bun:test'
+import { http } from '@/lib/http'
+import { stubJsonResponse } from '@/test-utils/http'
 import { defaultModels } from '@shared/defaults/models'
 import {
   canFetchCatalog,
@@ -92,7 +94,7 @@ describe('model catalog policy', () => {
         'https://api.otari.ai/api/v1/models',
       ],
       [{ provider: 'openai', apiKey: 'sk-test' }, 'https://api.openai.com/v1/models'],
-      [{ provider: 'openrouter', apiKey: 'sk-test' }, 'https://openrouter.ai/api/v1/models'],
+      [{ provider: 'openrouter', apiKey: 'sk-test' }, 'https://openrouter.ai/api/v1/models/user'],
     ])('routes the %o catalog through the supplied transport', async (request, endpoint) => {
       const proxyFetch = stubProxyFetch()
       await fetchModelsForProvider(request, () => proxyFetch)
@@ -139,5 +141,64 @@ describe('model catalog policy', () => {
         directFetch.mockRestore()
       }
     })
+  })
+})
+
+describe('fetchModelsForProvider', () => {
+  it('loads the OpenRouter account catalog with its key and preserves model capabilities', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(
+      stubJsonResponse({
+        data: [
+          {
+            id: 'vendor/vision',
+            name: 'Vision',
+            supported_parameters: ['tools'],
+            architecture: { input_modalities: ['text', 'image'] },
+          },
+          { id: 'vendor/chat', name: 'Chat', supported_parameters: [], architecture: { input_modalities: ['text'] } },
+        ],
+      }),
+    )
+    try {
+      const models = await fetchModelsForProvider({ provider: 'openrouter', apiKey: 'user-key' }, stubProxyFetch)
+
+      expect(getSpy).toHaveBeenCalledWith(
+        'https://openrouter.ai/api/v1/models/user',
+        expect.objectContaining({ headers: { Authorization: 'Bearer user-key' } }),
+      )
+      expect(
+        models.map(({ id, name, supports_tools, supports_images }) => ({ id, name, supports_tools, supports_images })),
+      ).toEqual([
+        { id: 'vendor/chat', name: 'Chat', supports_tools: undefined, supports_images: false },
+        { id: 'vendor/vision', name: 'Vision', supports_tools: undefined, supports_images: true },
+      ])
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it('does not fall back to the unfiltered OpenRouter catalog without a key', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+    try {
+      expect(await fetchModelsForProvider({ provider: 'openrouter' }, stubProxyFetch)).toEqual([])
+      expect(getSpy).not.toHaveBeenCalled()
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it.each([
+    { provider: 'openai' as const, apiKey: 'openai-key', endpoint: 'https://api.openai.com/v1/models' },
+    { provider: 'custom' as const, url: 'http://localhost:11434', endpoint: 'http://localhost:11434/v1/models' },
+  ])('keeps the standard models endpoint for $provider', async ({ endpoint, ...request }) => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [{ id: 'chat-model' }] }))
+    try {
+      expect(await fetchModelsForProvider(request, stubProxyFetch)).toEqual([
+        { id: 'chat-model', supports_images: undefined },
+      ])
+      expect(getSpy).toHaveBeenCalledWith(endpoint, expect.any(Object))
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 })

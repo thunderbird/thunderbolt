@@ -211,8 +211,6 @@ describe('POST /chat/v1/messages', () => {
         status: 429,
         model: 'opus-5-5',
         errorKind: 'rate_limit',
-        errorType: 'rate_limit_error',
-        requestId: 'req_123',
       }),
     )
   })
@@ -262,8 +260,6 @@ describe('POST /chat/v1/messages', () => {
         phase: 'stream',
         status: 529,
         errorKind: 'upstream_error',
-        errorType: 'overloaded_error',
-        requestId: 'req_456',
       }),
     )
   })

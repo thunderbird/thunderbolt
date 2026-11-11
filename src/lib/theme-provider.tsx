@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getCurrentWindow, Effect, EffectState } from '@tauri-apps/api/window'
 import { useConfigStore } from '@/api/config-store'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { invoke } from '@tauri-apps/api/core'
@@ -35,7 +36,6 @@ const syncMacWindowTheme = async (theme: Theme) => {
     return
   }
   try {
-    const { getCurrentWindow } = await import('@tauri-apps/api/window')
     await getCurrentWindow().setTheme(theme === 'system' ? null : theme)
   } catch (error) {
     console.error(error)
@@ -55,7 +55,6 @@ const syncMacWindowEffects = async (resolvedTheme: 'dark' | 'light') => {
     return
   }
   try {
-    const { getCurrentWindow, Effect, EffectState } = await import('@tauri-apps/api/window')
     await getCurrentWindow().setEffects({
       effects: [resolvedTheme === 'dark' ? Effect.HudWindow : Effect.Sheet],
       state: EffectState.FollowsWindowActiveState,

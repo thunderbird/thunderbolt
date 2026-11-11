@@ -411,6 +411,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         open={menuOpen}
         onOpenChange={handleMenuOpenChange}
         title={t`Account menu`}
+        mobileMenu={{ forceBackdrop: true }}
         desktopMenu={{
           side: 'top',
           sideOffset: 5,

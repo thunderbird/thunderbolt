@@ -156,16 +156,15 @@ describe('downloadFile errors from the native command', () => {
     )
   })
 
-  /** Rust rejects with a bare string, such as the one that says the unmarkable file was deleted. */
+  /** Rust rejects with a bare string, such as the one that says a file could not be marked. */
   it('surfaces the desktop message as an Error', async () => {
     const { native } = fakeNative('windows')
+    const message = 'Could not mark q3.html as downloaded from the internet, so it was not saved (Access is denied.).'
     const invoke = async () => {
-      throw 'Could not save q3.html to Downloads, so it was deleted: Access is denied.'
+      throw message
     }
 
-    await expect(downloadFile(request, { ...native, invoke })).rejects.toThrow(
-      new Error('Could not save q3.html to Downloads, so it was deleted: Access is denied.'),
-    )
+    await expect(downloadFile(request, { ...native, invoke })).rejects.toThrow(new Error(message))
   })
 })
 

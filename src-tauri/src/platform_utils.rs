@@ -94,19 +94,27 @@ fn save_into(
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(format!("Could not save {candidate} to Downloads: {error}")),
         };
-        let filled = mark(&path).and_then(|()| file.write_all(bytes));
+        // The app shows this text, so a failed mark says why the save was refused and what to change.
+        let filled = mark(&path)
+            .map_err(|error| {
+                format!(
+                    "Could not mark {candidate} as downloaded from the internet, so it was not saved ({error}). \
+                     Downloads must be writable and on a drive that keeps that mark, such as an NTFS drive on Windows."
+                )
+            })
+            .and_then(|()| {
+                file.write_all(bytes)
+                    .map_err(|error| format!("Could not save {candidate} to Downloads: {error}"))
+            });
         drop(file);
-        return match filled {
-            Ok(()) => Ok(SavedDownload { name: candidate }),
-            Err(error) => Err(match std::fs::remove_file(&path) {
-                Ok(()) => {
-                    format!("Could not save {candidate} to Downloads, so it was deleted: {error}")
+        return filled
+            .map(|()| SavedDownload { name: candidate })
+            .map_err(|reason| match std::fs::remove_file(&path) {
+                Ok(()) => reason,
+                Err(removing) => {
+                    format!("{reason} The unfinished file could not be deleted either: {removing}")
                 }
-                Err(removing) => format!(
-                    "Could not save {candidate} to Downloads ({error}), nor delete it: {removing}"
-                ),
-            }),
-        };
+            });
     }
     Err(format!(
         "Could not save {name} to Downloads: it and the next 19 numbered names are taken"
@@ -273,9 +281,12 @@ mod tests {
         .unwrap_err();
 
         assert!(
-            error.contains("so it was deleted: no marks here"),
+            error.starts_with(
+                "Could not mark report.docx as downloaded from the internet, so it was not saved (no marks here)."
+            ),
             "{error}"
         );
+        assert!(error.contains("on a drive that keeps that mark"), "{error}");
         assert!(names_in(&folder).is_empty());
         std::fs::remove_dir_all(&folder).unwrap();
     }

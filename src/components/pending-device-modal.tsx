@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { useApproveDevice } from '@/hooks/use-approve-device'
+import { useDeviceKeyTrust } from '@/hooks/use-e2ee-ready'
 import { useDenyDevice } from '@/hooks/use-deny-device'
 import { usePendingDeviceNotification } from '@/hooks/use-pending-device-notification'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -31,8 +32,12 @@ const SyncedPendingDeviceModal = () => {
 
   const approveMutation = useApproveDevice()
   const denyMutation = useDenyDevice()
+  const { unverified } = useDeviceKeyTrust()
+  // A device that can't approve may set the prompt aside for that pending
+  // device; Settings → Devices still lists it, with Deny.
+  const [dismissedId, setDismissedId] = useState<string | null>(null)
 
-  const isOpen = pendingDeviceToNotify !== null
+  const isOpen = pendingDeviceToNotify !== null && !(unverified && dismissedId === pendingDeviceToNotify.id)
 
   const confirmApprove = async (confirmation: DeviceApprovalConfirmation) => {
     if (!approvalTarget) {
@@ -60,11 +65,11 @@ const SyncedPendingDeviceModal = () => {
     <>
       <ResponsiveModal
         open={isOpen}
-        onOpenChange={() => {}}
+        onOpenChange={(open) => !open && unverified && setDismissedId(pendingDeviceToNotify?.id ?? null)}
         className="sm:min-h-0 sm:h-auto"
-        showCloseButton={false}
+        showCloseButton={unverified}
         onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => !unverified && e.preventDefault()}
       >
         <ResponsiveModalContent>
           <div className="w-full flex flex-col">
@@ -93,8 +98,18 @@ const SyncedPendingDeviceModal = () => {
             </div>
 
             <div className="pt-5 flex flex-col gap-2">
+              {unverified && (
+                <p id="pending-device-approve-blocked" className="text-sm text-muted-foreground">
+                  <Trans>
+                    This device can't approve other devices because its encryption keys couldn't be verified. Approve
+                    from a device that was trusted before.
+                  </Trans>
+                </p>
+              )}
               <Button
                 className="w-full"
+                disabled={unverified}
+                aria-describedby={unverified ? 'pending-device-approve-blocked' : undefined}
                 onClick={() => pendingDeviceToNotify && setApprovalTarget({ ...pendingDeviceToNotify })}
               >
                 <Trans>Approve</Trans>
@@ -111,10 +126,10 @@ const SyncedPendingDeviceModal = () => {
 
       {/*
         Both dialogs render their own failure (THU-887). This surface needs it
-        more than the settings page does: the modal behind them cannot be
-        dismissed at all — no close button, escape and outside-click both
-        prevented — so a silent no-op here leaves the user with nothing to do
-        and nothing to read. `useApproveDevice` throws a real error on a device
+        more than the settings page does: on a device that can approve, the
+        modal behind them cannot be dismissed at all — no close button, escape
+        and outside-click both prevented — so a silent no-op here leaves the user
+        with nothing to do and nothing to read. `useApproveDevice` throws a real error on a device
         with missing public keys.
       */}
       <ApproveDeviceDialog

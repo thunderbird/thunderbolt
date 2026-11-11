@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { RecoveryContinuityNavDot, useRecoveryContinuityAttention } from '@/components/recovery-continuity'
 import { SidebarFooter } from '@/components/sidebar-footer'
 import {
   SidebarContent,
@@ -37,6 +38,8 @@ type NavItem = {
 
 /** `id` carries the React key, since the label is now a descriptor rather than
  *  a string the reconciler can compare. */
+const preferencesPath = '/settings/preferences'
+
 const navGroups: { id: string; label: MessageDescriptor; items: NavItem[] }[] = [
   {
     id: 'agents',
@@ -58,7 +61,7 @@ const navGroups: { id: string; label: MessageDescriptor; items: NavItem[] }[] = 
     id: 'settings',
     label: msg`Settings`,
     items: [
-      { path: '/settings/preferences', label: msg`Preferences`, icon: SlidersHorizontal },
+      { path: preferencesPath, label: msg`Preferences`, icon: SlidersHorizontal },
       { path: '/settings/devices', label: msg`Devices`, icon: Smartphone },
     ],
   },
@@ -81,6 +84,7 @@ export const SettingsSidebarContent = ({
   const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
   const { experimentalFeatureVoice } = useSettings({ experimental_feature_voice: false })
+  const attention = useRecoveryContinuityAttention()
 
   const isItemActive = ({ path, matchPrefix }: NavItem) =>
     matchPrefix ? location.pathname.startsWith(path) : location.pathname === path
@@ -136,13 +140,20 @@ export const SettingsSidebarContent = ({
                 {group.items.map((item) => (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
-                      onClick={() => onSettingsNavigate(item.path)}
+                      onClick={() =>
+                        onSettingsNavigate(
+                          attention && item.path === preferencesPath
+                            ? `${preferencesPath}#recovery-phrase-status`
+                            : item.path,
+                        )
+                      }
                       tooltip={i18n._(item.label)}
                       className="cursor-pointer"
                       isActive={isItemActive(item)}
                     >
                       <item.icon className="size-4" />
                       <span>{i18n._(item.label)}</span>
+                      {item.path === preferencesPath && <RecoveryContinuityNavDot placement="trailing" />}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}

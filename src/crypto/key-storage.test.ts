@@ -21,6 +21,8 @@ import {
   storeKeyVersion,
   getKeyVersion,
   clearAllKeys,
+  isAKUnverified,
+  markAKUnverified,
 } from './key-storage'
 import { generateAK, generateDEK, generateKeyPair, generateMlKemKeyPair, wrapDEK } from './primitives'
 import { withKeyStoreLock } from './key-store-lock'
@@ -298,6 +300,22 @@ describe('primary key_id + key_version pointers', () => {
     expect(await getKeyVersion()).toBe(3)
     await storeKeyVersion(4)
     expect(await getKeyVersion()).toBe(4)
+  })
+})
+
+describe('unverified account-key marker', () => {
+  it('reports an unmarked account key as verified', async () => {
+    await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
+    expect(await isAKUnverified()).toBe(false)
+  })
+
+  it('remembers the marker until the key store is cleared', async () => {
+    await storeAK(await generateAK(), { keyVersion: null, primaryKeyId: '0' })
+    await markAKUnverified()
+    expect(await isAKUnverified()).toBe(true)
+
+    await clearAllKeys()
+    expect(await isAKUnverified()).toBe(false)
   })
 })
 

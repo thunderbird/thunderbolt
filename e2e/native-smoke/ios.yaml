@@ -44,6 +44,8 @@ env:
 - extendedWaitUntil:
     visible: ${DEFAULT_MODEL}
     timeout: 120000
+# A new account has no recovery phrase to update, so the banner must stay away.
+- assertNotVisible: Security notice
 - retry:
     maxRetries: 2
     commands:

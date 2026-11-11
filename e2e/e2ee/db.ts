@@ -12,11 +12,12 @@
 import postgres from 'postgres'
 
 const postgresPort = process.env.E2E_POSTGRES_PORT ?? '5434'
+const servicesHost = process.env.E2E_SERVICES_HOST ?? 'localhost'
 /**
  * Shared connection. Exported so `oracles.ts` can query the server's view of the
  * data without opening a second pool (`max: 1`, so a second one would contend).
  */
-export const sql = postgres(`postgresql://postgres:postgres@localhost:${postgresPort}/postgres`, {
+export const sql = postgres(`postgresql://postgres:postgres@${servicesHost}:${postgresPort}/postgres`, {
   max: 1,
   onnotice: () => {},
 })
@@ -745,4 +746,65 @@ export const countDeviceSessions = async (userId: string, deviceId: string): Pro
     WHERE user_id = ${userId} AND device_id = ${deviceId}
   `
   return rows[0]?.count ?? 0
+}
+
+// =============================================================================
+// Recovery and passkey continuity
+// =============================================================================
+
+/** The phrase's continuity seal as stored, or null when the account has none. */
+export const getRecoveryContinuity = async (userId: string): Promise<string | null> => {
+  const rows = await sql<{ recovery_continuity: string | null }[]>`
+    SELECT recovery_continuity FROM encryption_metadata WHERE user_id = ${userId}
+  `
+  return rows[0]?.recovery_continuity ?? null
+}
+
+/**
+ * Overwrite the phrase's continuity seal. `null` returns the account to the
+ * state a pre-seal client left it in, so the migration UI shows.
+ */
+export const setRecoveryContinuity = async (userId: string, seal: string | null): Promise<void> => {
+  await sql`UPDATE encryption_metadata SET recovery_continuity = ${seal} WHERE user_id = ${userId}`
+}
+
+/** The passkey slot's continuity seal as stored, or null when there is none. */
+export const getPasskeyContinuity = async (userId: string): Promise<string | null> => {
+  const rows = await sql<{ passkey_continuity: string | null }[]>`
+    SELECT passkey_continuity FROM encryption_metadata WHERE user_id = ${userId}
+  `
+  return rows[0]?.passkey_continuity ?? null
+}
+
+export type SeedV2MetadataInput = {
+  canaryIv: string
+  canaryCtext: string
+  signingPublicKey: string
+  kdfSalt: string
+  recoveryEcdhPublicKey: string
+  recoveryMlkemPublicKey: string
+  recoveryWrappedAk: string
+  recoveryAttestation: string
+  wrappedDek0: string
+}
+
+/**
+ * Insert a scheme-2 account with no continuity seal and no device: what a
+ * pre-seal client wrote at first-device setup, minus the device itself.
+ */
+export const seedV2Metadata = async (userId: string, input: SeedV2MetadataInput): Promise<void> => {
+  await sql.begin(async (tx) => {
+    await tx`
+      INSERT INTO encryption_metadata (
+        user_id, canary_iv, canary_ctext, signing_public_key, kdf_salt,
+        recovery_ecdh_public_key, recovery_mlkem_public_key, recovery_wrapped_ak, recovery_attestation,
+        scheme_version
+      ) VALUES (
+        ${userId}, ${input.canaryIv}, ${input.canaryCtext}, ${input.signingPublicKey}, ${input.kdfSalt},
+        ${input.recoveryEcdhPublicKey}, ${input.recoveryMlkemPublicKey}, ${input.recoveryWrappedAk},
+        ${input.recoveryAttestation}, 2
+      )
+    `
+    await tx`INSERT INTO wrapped_keys (key_id, user_id, wrapped_key) VALUES ('0', ${userId}, ${input.wrappedDek0})`
+  })
 }

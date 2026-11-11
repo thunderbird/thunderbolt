@@ -173,6 +173,20 @@ export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
 export const fetchEncryptionMetadata = async (httpClient: HttpClient): Promise<EncryptionMetadataResponse> =>
   httpClient.get('encryption/canary').json<EncryptionMetadataResponse>()
 
+/** Fetch encryption metadata, mapping the 404 "not set up" case to null. */
+export const fetchEncryptionMetadataOrNull = async (
+  httpClient: HttpClient,
+): Promise<EncryptionMetadataResponse | null> => {
+  try {
+    return await fetchEncryptionMetadata(httpClient)
+  } catch (err) {
+    if (err instanceof HttpError && err.response.status === 404) {
+      return null
+    }
+    throw err
+  }
+}
+
 /** Check if the user has encryption set up (metadata exists on server). */
 export const checkCanaryExists = async (httpClient: HttpClient): Promise<boolean> => {
   try {

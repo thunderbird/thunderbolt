@@ -180,6 +180,10 @@ export default defineConfig({
       // Exposes PowerSync's internal lib/ so our sync worker can extend SharedSyncImplementation and
       // import WorkerClient and SharedWorkerConnectionRequest (none is in the public exports map).
       'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib'),
+      // The Office sandbox (`src/office/office-script.worker.ts`) evaluates each library's own browser build,
+      // which sets one global. The packages' `exports` maps don't list those files, so these aliases reach them.
+      'office-sandbox-docx': path.resolve(__dirname, 'node_modules/docx/dist'),
+      'office-sandbox-pptxgenjs': path.resolve(__dirname, 'node_modules/pptxgenjs/dist'),
       // ---- In-browser Pi harness (lazy `@shared/agent-core` chunk) Node shims ----
       // The harness runs `@earendil-works/pi-agent-core` + `pi-ai` + `just-bash` +
       // ZenFS in the browser. The four coding tools are now plain `AgentTool`s over
@@ -258,7 +262,15 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['@journeyapps/wa-sqlite', '@powersync/web'],
+    // The Office sandbox Worker loads these on first use. Pre-bundling found them only then and reloaded the
+    // page mid-run, and it also wrapped the library files' `?url` imports as modules.
+    exclude: [
+      '@journeyapps/wa-sqlite',
+      '@powersync/web',
+      'quickjs-wasi',
+      'office-sandbox-docx',
+      'office-sandbox-pptxgenjs',
+    ],
   },
   worker: {
     format: 'es',

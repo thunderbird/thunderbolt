@@ -109,6 +109,7 @@ own context.
 | Tool(s)                               | Available when                                                          | Source                                                                            |
 | ------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `render_html`                         | Always (a core capability, not an integration)                          | [`src/artifacts/render-html-tool.ts`](../../../src/artifacts/render-html-tool.ts) |
+| `run_office_script`                   | Always, like `render_html`                                              | [`src/office/office-script-tool.ts`](../../../src/office/office-script-tool.ts)   |
 | `addTasks`, `getTasks`, `deleteTasks` | `experimental_feature_tasks` (default `false`)                          | `src/extensions/tasks/tools.ts`                                                   |
 | `search`, `fetch_content`             | `hasProAccess()` **and** `integrations_pro_is_enabled` (default `true`) | `src/integrations/thunderbolt-pro/tools.ts`                                       |
 | `google_*` (5 tools)                  | `integrationStatus.googleEnabled` (connected _and_ not switched off)    | `src/integrations/google/tools.ts:546`                                            |
@@ -120,6 +121,15 @@ own context.
 - A `ToolConfig` (`src/types.ts:226`) carries `name`, `description`, `parameters` (Zod), a UI `verb`
   and an optional `cacheable` flag. `verb` is the loading phrase, `{param}` filled from the call's
   input (`src/lib/tool-metadata.ts:45`): `'searching for {query}'` → `Searching for "…"…`.
+- `run_office_script` builds `.docx` and `.pptx` files. The model writes a JavaScript script, and the app
+  runs it in a QuickJS VM inside a Web Worker (`src/office/office-script.worker.ts`), with no network, no
+  DOM and no app state. The `docx` and `pptxgenjs` browser builds are loaded into the VM first. The Worker,
+  the WASM files and the libraries are files the app serves, fetched on the first run, so the entry chunk
+  and the CSP stay as they are. A run stops at 30 s, 64 MiB of memory or 4 MiB of console output
+  (`src/office/constants.ts`), and the host terminates a Worker that stops answering. Each file the script
+  saves becomes a new entry in the attachment store, and the tool result lists them. The transcript builds
+  one chip per listed file (`src/components/chat/created-file-card.tsx`), and a device without the bytes
+  says so. The harness environment block names this tool as the way to deliver a file.
 - `hasProAccess` resolves a hardcoded `isProUser = true`
   (`src/integrations/thunderbolt-pro/utils.ts:8`), so the settings flag is the only real gate on the
   web tools.
@@ -240,6 +250,7 @@ not in a type error.
 | Project section                            | `src/projects/project-prompt.ts`, `src/projects/project-search-tool.ts`                                                 |
 | Tool availability, dedupe, budget wrapper  | `src/lib/tools.ts`                                                                                                      |
 | Tool display metadata                      | `src/lib/tool-metadata.ts`                                                                                              |
+| Office file tool, sandbox and Worker       | `src/office/`                                                                                                           |
 | Per-send config, MCP merge, volatile notes | `src/ai/fetch.ts`                                                                                                       |
 | Pi harness composition and tool install    | `src/acp/built-in-adapter.ts`, `src/acp/built-in-conversation.ts`                                                       |
 | Web budget                                 | `src/ai/web-tool-budget.ts`, `src/ai/turn-web-budget.ts`                                                                |

@@ -200,7 +200,15 @@ describe('composeAppHarnessSystemPrompt', () => {
       supportsTools,
     })
 
-    for (const text of ['# Environment', '`bash`', '`read`', '`write`', '`edit`', '`render_html`']) {
+    for (const text of [
+      '# Environment',
+      '`bash`',
+      '`read`',
+      '`write`',
+      '`edit`',
+      '`render_html`',
+      '`run_office_script`',
+    ]) {
       expect(composed.includes(text)).toBe(supportsTools)
     }
     expect(composed.startsWith('Stable instructions\n\n')).toBe(true)

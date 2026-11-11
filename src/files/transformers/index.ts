@@ -34,6 +34,9 @@ export const docxMime = 'application/vnd.openxmlformats-officedocument.wordproce
 /** MIME type for `.xlsx` (OOXML spreadsheets). */
 export const xlsxMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
+/** MIME type for `.pptx` (OOXML presentations). */
+export const pptxMime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+
 /**
  * True for files that are already text (CSV, plain text, Markdown, JSON, logs…).
  * These get a passthrough text transformer (so any `text/*` type works without

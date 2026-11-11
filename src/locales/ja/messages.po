@@ -1943,6 +1943,7 @@ msgid "Couldn't save the new order."
 msgstr "新しい並び順を保存できませんでした。"
 
 #: src/components/artifact/artifact-actions.tsx
+#: src/components/chat/created-file-card.tsx
 msgid "Couldn't save: {saveError}"
 msgstr ""
 
@@ -2027,6 +2028,10 @@ msgstr "スキルを作成"
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
 msgstr "最初のスキルを作成"
+
+#: src/components/chat/file-card.tsx
+msgid "Created"
+msgstr ""
 
 #: src/lib/tool-metadata.ts
 #: src/projects/project-create-form.tsx
@@ -2467,6 +2472,10 @@ msgstr "完了"
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "ダウンロード"
+
+#: src/components/chat/created-file-card.tsx
+msgid "Download {filename}"
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Download app"
@@ -3888,6 +3897,10 @@ msgstr "このチャットで使用できるモデルがありません。送信
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Not available in private chats."
 msgstr "プライベートチャットでは利用できません。"
+
+#: src/components/chat/created-file-card.tsx
+msgid "Not available on this device"
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Not configured"

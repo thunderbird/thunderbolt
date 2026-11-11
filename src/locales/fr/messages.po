@@ -1967,6 +1967,7 @@ msgid "Couldn't save the new order."
 msgstr "Impossible d'enregistrer le nouvel ordre."
 
 #: src/components/artifact/artifact-actions.tsx
+#: src/components/chat/created-file-card.tsx
 msgid "Couldn't save: {saveError}"
 msgstr ""
 
@@ -2051,6 +2052,10 @@ msgstr "Créer une compétence"
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
 msgstr "Créez votre première compétence"
+
+#: src/components/chat/file-card.tsx
+msgid "Created"
+msgstr ""
 
 #: src/lib/tool-metadata.ts
 #: src/projects/project-create-form.tsx
@@ -2491,6 +2496,10 @@ msgstr "Terminé"
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "Télécharger"
+
+#: src/components/chat/created-file-card.tsx
+msgid "Download {filename}"
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Download app"
@@ -3912,6 +3921,10 @@ msgstr "Aucun de vos modèles ne peut être utilisé dans cette conversation. Ch
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Not available in private chats."
 msgstr "Non disponible dans les conversations privées."
+
+#: src/components/chat/created-file-card.tsx
+msgid "Not available on this device"
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Not configured"

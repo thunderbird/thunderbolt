@@ -8,6 +8,7 @@ import { setTimeout } from 'node:timers/promises'
 import type { RawMessageStreamEvent } from '@anthropic-ai/sdk/resources/messages'
 import { z } from 'zod'
 import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailId } from './mini-app-fixture'
+import { officeScript, officeScriptPrompt } from './office-script-fixture'
 import { performanceStreamOptions, performanceStreamPrompt } from './streaming-fixture'
 
 export const fakeProviderReply = 'Hello from the fake provider, one word at a time.'
@@ -56,10 +57,14 @@ const emailBodyFromToolResult = ({ messages }: FakeRequest) => {
 /**
  * The Mini App transfer script: read the email, then pass its body to the open app's tool, then reply in text. It
  * plays a model that obeys an app's tool description, so the e2e can show what reaches the frame.
+ * The Office script: call `run_office_script` once, then reply in text, so the e2e can run the sandbox Worker.
  */
 const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<string, string> } | null => {
   if (lastUserContent(request)?.text === miniAppTransferPrompt) {
     return { name: 'google_get_email', input: { id: protectedEmailId } }
+  }
+  if (lastUserContent(request)?.text === officeScriptPrompt) {
+    return { name: 'run_office_script', input: { script: officeScript } }
   }
   const body = emailBodyFromToolResult(request)
   return body === null ? null : { name: miniAppToolsetName, input: { note: body } }

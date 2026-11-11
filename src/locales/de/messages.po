@@ -72,7 +72,7 @@ msgstr "{appName} (gehostet, privat)"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, connections, and MCP servers) to help with whatever you are working on."
-msgstr ""
+msgstr "{appName} ist der in die App integrierte Agent – immer da, keine Einrichtung nötig. Er greift auf alles zurück, was Sie in Ihrer Bibliothek aktiviert haben (Skills, Verbindungen und MCP-Server), um bei Ihrer Arbeit zu helfen."
 
 #: src/components/settings/agents/agent-detail.tsx
 #~ msgid "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."

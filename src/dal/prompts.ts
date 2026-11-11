@@ -112,8 +112,6 @@ export const deleteAutomation = async (db: AnyDrizzleDatabase, id: string): Prom
   })
 }
 
-export { deletePromptsForModel } from './model-prompt-deletion'
-
 export const getPrompt = async (db: AnyDrizzleDatabase, id: string): Promise<Prompt | null> => {
   const prompt = await db
     .select()

@@ -12,7 +12,7 @@ import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { legacyKeyId } from '@shared/e2ee-types'
 import * as syncTracker from './sync-tracker'
-import { providerConnectionMigrationMetadata } from './crud-metadata'
+import { modelConnectionMigrationMetadataPrefix, providerConnectionMigrationMetadata } from './crud-metadata'
 import {
   handleCredentialsInvalidIfNeeded,
   isCreateOnlyWrite,
@@ -1032,11 +1032,17 @@ describe('isCreateOnlyWrite', () => {
 describe('ThunderboltConnector.uploadData', () => {
   let savedAuthMode: string | undefined
 
-  const crudEntry = (op: string, id: string, table = 'settings', metadata?: string) => ({
+  const crudEntry = (
+    op: string,
+    id: string,
+    table = 'settings',
+    metadata?: string,
+    opData: Record<string, unknown> = { value: 'false' },
+  ) => ({
     op,
     table,
     id,
-    opData: { value: 'false' },
+    opData,
     metadata,
   })
 
@@ -1133,13 +1139,46 @@ describe('ThunderboltConnector.uploadData', () => {
     },
   )
 
+  it.each([
+    { op: 'PATCH', table: 'models', metadata: `${modelConnectionMigrationMetadataPrefix}otari`, provider: 'otari' },
+    { op: 'PATCH', table: 'models', metadata: undefined, provider: undefined },
+    { op: 'PATCH', table: 'models', metadata: providerConnectionMigrationMetadata, provider: undefined },
+    { op: 'PATCH', table: 'models', metadata: modelConnectionMigrationMetadataPrefix, provider: undefined },
+    { op: 'PUT', table: 'models', metadata: `${modelConnectionMigrationMetadataPrefix}otari`, provider: undefined },
+    { op: 'DELETE', table: 'models', metadata: `${modelConnectionMigrationMetadataPrefix}otari`, provider: undefined },
+    {
+      op: 'PATCH',
+      table: 'provider_connections',
+      metadata: `${modelConnectionMigrationMetadataPrefix}otari`,
+      provider: undefined,
+    },
+  ])(
+    'conditions only migration model links on the original provider ($op/$table/$metadata)',
+    async ({ op, table, metadata, provider }) => {
+      const fetchSpy = uploadFetchSpy()
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+      const data = { provider_connection_id: 'legacy-model:one' }
+      await connector.uploadData(stubDatabase(true, [crudEntry(op, 'one', table, metadata, data)]))
+      const [uploaded] = uploadedOperations(fetchSpy)
+      expect(uploaded.ifProviderConnectionUnset).toEqual(provider ? { provider } : undefined)
+      expect(uploaded).not.toHaveProperty('ifAbsent')
+      expect(uploaded).not.toHaveProperty('metadata')
+      expect(uploaded.data).toEqual(data)
+    },
+  )
+
   it('retains migration create-only intent when a failed upload retries after the device has synced', async () => {
     const attempts: { operations: Record<string, unknown>[] }[] = []
     const complete = mock(async () => {})
-    const source = crudEntry('PUT', 'oauth:tinfoil', 'provider_connections', providerConnectionMigrationMetadata)
+    const source = [
+      crudEntry('PUT', 'oauth:tinfoil', 'provider_connections', providerConnectionMigrationMetadata),
+      crudEntry('PATCH', 'one', 'models', `${modelConnectionMigrationMetadataPrefix}tinfoil`, {
+        provider_connection_id: 'oauth:tinfoil',
+      }),
+    ]
     const database = {
       currentStatus: { hasSynced: true },
-      getNextCrudTransaction: async () => ({ crud: [structuredClone(source)], complete }),
+      getNextCrudTransaction: async () => ({ crud: structuredClone(source), complete }),
     } as unknown as CommonPowerSyncDatabase
     const fetchSpy = mock(async (url: string, init?: RequestInit) => {
       if (url.includes('/encryption/canary')) {
@@ -1156,6 +1195,10 @@ describe('ThunderboltConnector.uploadData', () => {
     expect(attempts).toHaveLength(2)
     expect(attempts[0]).toEqual(attempts[1])
     expect(attempts.every(({ operations }) => operations[0].ifAbsent === true)).toBe(true)
+    expect(attempts.map(({ operations }) => operations[1].ifProviderConnectionUnset)).toEqual([
+      { provider: 'tinfoil' },
+      { provider: 'tinfoil' },
+    ])
   })
 
   it('never tags a PATCH, so an edit made before the first sync still wins', async () => {

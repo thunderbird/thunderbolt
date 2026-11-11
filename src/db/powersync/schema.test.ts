@@ -6,7 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import { powersyncTableNames } from '@shared/powersync-tables'
 import { AppSchema, drizzleSchema } from './schema'
 import { getTableColumns } from 'drizzle-orm'
-import { providerConnectionsTable } from '@/db/tables'
+import { modelsTable, providerConnectionsTable } from '@/db/tables'
 
 /**
  * MCP server config and its credentials are per-device local-only: syncing the server
@@ -30,11 +30,17 @@ describe('MCP tables are local-only (not synced)', () => {
 })
 
 it('tracks provider migration metadata without adding it to synced or exported row columns', () => {
-  const table = AppSchema.tables.find(({ name }) => name === 'provider_connections')!
-  expect(table.trackMetadata).toBe(true)
-  expect(table.columns.map(({ name }) => name)).not.toContain('_metadata')
-  expect(Object.values(getTableColumns(providerConnectionsTable)).map(({ name }) => name)).not.toContain('_metadata')
+  for (const [name, definition] of [
+    ['provider_connections', providerConnectionsTable],
+    ['models', modelsTable],
+  ] as const) {
+    const table = AppSchema.tables.find((table) => table.name === name)!
+    expect(table.trackMetadata).toBe(true)
+    expect(table.columns.map(({ name }) => name)).not.toContain('_metadata')
+    expect(Object.values(getTableColumns(definition)).map(({ name }) => name)).not.toContain('_metadata')
+  }
   expect(AppSchema.tables.filter(({ trackMetadata }) => trackMetadata).map(({ name }) => name)).toEqual([
+    'models',
     'provider_connections',
   ])
 })

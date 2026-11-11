@@ -4,3 +4,6 @@
 
 /** Tags migration inserts in PowerSync's durable upload queue, never in synced row data. */
 export const providerConnectionMigrationMetadata = 'provider-connections-migration:v1'
+
+/** The provider suffix binds a migration-only model link to its original provider. */
+export const modelConnectionMigrationMetadataPrefix = 'model-provider-connection-migration:v1:'

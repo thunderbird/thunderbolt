@@ -18,7 +18,7 @@ import { encodeForUpload, postKeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
 import { initialKeyId } from '@shared/e2ee-types'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
-import { providerConnectionMigrationMetadata } from './crud-metadata'
+import { modelConnectionMigrationMetadataPrefix, providerConnectionMigrationMetadata } from './crud-metadata'
 
 /**
  * Dispatched when the backend rejects credentials. The detail.reason discriminates handling:
@@ -383,6 +383,12 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       const operations = await Promise.all(
         transaction.crud.map((op) => {
           const opName = op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE'
+          const migrationProvider =
+            opName === 'PATCH' &&
+            op.table === 'models' &&
+            op.metadata?.startsWith(modelConnectionMigrationMetadataPrefix)
+              ? op.metadata.slice(modelConnectionMigrationMetadataPrefix.length)
+              : undefined
           return encodeForUpload({
             op: opName,
             type: op.table,
@@ -396,6 +402,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
             // backend before this client. Elysia drops body fields it does not
             // declare, so an older backend silently ignores the flag.
             ...(isCreateOnlyWrite(opName, hasSynced, op) && { ifAbsent: true }),
+            ...(migrationProvider && { ifProviderConnectionUnset: { provider: migrationProvider } }),
           })
         }),
       )

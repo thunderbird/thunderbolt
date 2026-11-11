@@ -132,6 +132,23 @@ describe('encodeForUpload', () => {
     expect(operation.data.name).toBe('Private work')
   })
 
+  it('preserves the conditional model link while encrypting its connection identity', async () => {
+    const operation = {
+      op: 'PATCH' as const,
+      type: 'models',
+      id: 'legacy',
+      data: { provider_connection_id: 'legacy-model:legacy' },
+      ifProviderConnectionUnset: { provider: 'otari' },
+    }
+    const encoded = await encodeForUpload(operation)
+    expect(encoded.ifProviderConnectionUnset).toEqual({ provider: 'otari' })
+    const value = encoded.data?.provider_connection_id as string
+    expect(isV2EncryptedValue(value)).toBe(true)
+    expect(await codec.decode(value, { table: 'models', column: 'provider_connection_id', rowId: 'legacy' })).toBe(
+      'legacy-model:legacy',
+    )
+  })
+
   it('passes through DELETE operations', async () => {
     const op = { op: 'DELETE' as const, type: 'tasks', id: 'row-1' }
     expect(await encodeForUpload(op)).toEqual(op)

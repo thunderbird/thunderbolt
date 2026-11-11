@@ -29,7 +29,10 @@ import {
 } from '@/dal/provider-connections'
 import { credentialBinding } from '@/providers/credentials'
 import * as credentials from '@/providers/credentials'
-import { providerConnectionMigrationMetadata } from '@/db/powersync/crud-metadata'
+import {
+  modelConnectionMigrationMetadataPrefix,
+  providerConnectionMigrationMetadata,
+} from '@/db/powersync/crud-metadata'
 import * as providerConnections from '@/dal/provider-connections'
 import { migrateProviderConnections } from './provider-connections'
 
@@ -608,6 +611,9 @@ it('marks only migration inserts while preserving validated names, endpoints and
   expect((await getProviderCredentials(db, 'legacy-model:marked'))?.apiKey).toBe('migrated-key')
   expect((await getProviderCredentials(db, 'oauth:tinfoil'))?.access_token).toBe('oauth-key')
   expect((await getProviderConnections(db)).every((row) => !('_metadata' in row))).toBe(true)
+  expect(await db.select({ metadata: sql<string>`_metadata` }).from(modelsTable)).toEqual([
+    { metadata: `${modelConnectionMigrationMetadataPrefix}otari` },
+  ])
 })
 
 it('rolls back the marked insert and retains the legacy key if its local credential write fails', async () => {

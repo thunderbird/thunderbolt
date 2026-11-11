@@ -3,7 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AnyDrizzleDatabase } from '../src/db/database-interface'
-import { providerConnectionMigrationMetadata } from '../src/db/powersync/crud-metadata'
+import {
+  modelConnectionMigrationMetadataPrefix,
+  providerConnectionMigrationMetadata,
+} from '../src/db/powersync/crud-metadata'
 import { expect, test } from './test'
 
 test('preserves migration-only metadata in the durable PowerSync queue without exporting it', async ({ page }) => {
@@ -17,6 +20,7 @@ test('preserves migration-only metadata in the durable PowerSync queue without e
     const migrationPath = '/src/lib/data-migrations/provider-connections.ts'
     const connectionsPath = '/src/dal/provider-connections.ts'
     const exportPath = '/src/dal/export.ts'
+    const modelsPath = '/src/dal/models.ts'
     const { AppSchema, drizzleSchema } = (await import(
       /* @vite-ignore */ schemaPath
     )) as typeof import('../src/db/powersync/schema')
@@ -33,6 +37,7 @@ test('preserves migration-only metadata in the durable PowerSync queue without e
       /* @vite-ignore */ connectionsPath
     )) as typeof import('../src/dal/provider-connections')
     const { exportUserData } = (await import(/* @vite-ignore */ exportPath)) as typeof import('../src/dal/export')
+    const { updateModel } = (await import(/* @vite-ignore */ modelsPath)) as typeof import('../src/dal/models')
     const options = {
       schema: AppSchema,
       database: {
@@ -83,6 +88,7 @@ test('preserves migration-only metadata in the durable PowerSync queue without e
         credentials: { apiKey: 'explicit-key' },
       })
       await updateProviderConnection(db, 'legacy-model:legacy', { name: 'Renamed' })
+      await updateModel(db, 'legacy', { providerConnectionId: null })
       const ordinary = (await reopened.getCrudBatch())!
       const backup = await exportUserData(db, { id: 'fixture', email: null })
       return {
@@ -90,7 +96,7 @@ test('preserves migration-only metadata in the durable PowerSync queue without e
         afterReopen,
         ordinary: ordinary.crud.map(({ table, op, id, metadata, opData }) => ({ table, op, id, metadata, opData })),
         hiddenMetadata: await reopened.getAll<{ _metadata: null }>('SELECT _metadata FROM provider_connections'),
-        exported: backup.tables.provider_connections,
+        exported: [...backup.tables.provider_connections, ...backup.tables.models],
         credential: (await getProviderCredentials(db, 'legacy-model:legacy'))?.apiKey,
       }
     } finally {
@@ -101,6 +107,14 @@ test('preserves migration-only metadata in the durable PowerSync queue without e
   expect(result.afterReopen.filter(({ table }) => table === 'provider_connections')).toEqual([
     expect.objectContaining({ id: 'legacy-model:legacy', op: 'PUT', metadata: providerConnectionMigrationMetadata }),
   ])
+  expect(result.afterReopen.filter(({ table }) => table === 'models')).toEqual([
+    expect.objectContaining({
+      id: 'legacy',
+      op: 'PATCH',
+      metadata: `${modelConnectionMigrationMetadataPrefix}otari`,
+      opData: { provider_connection_id: 'legacy-model:legacy' },
+    }),
+  ])
   expect(result.ordinary).toEqual([
     expect.objectContaining({ id: 'explicit', table: 'provider_connections', op: 'PUT', metadata: undefined }),
     expect.objectContaining({
@@ -109,12 +123,19 @@ test('preserves migration-only metadata in the durable PowerSync queue without e
       op: 'PATCH',
       metadata: undefined,
     }),
+    expect.objectContaining({
+      id: 'legacy',
+      table: 'models',
+      op: 'PATCH',
+      metadata: undefined,
+      opData: { provider_connection_id: null },
+    }),
   ])
   for (const { opData } of [...result.afterReopen, ...result.ordinary]) {
     expect(opData).not.toHaveProperty('_metadata')
   }
   expect(result.hiddenMetadata).toEqual([{ _metadata: null }, { _metadata: null }])
-  expect(result.exported).toHaveLength(2)
+  expect(result.exported).toHaveLength(3)
   for (const row of result.exported) {
     expect(row).not.toHaveProperty('_metadata')
   }

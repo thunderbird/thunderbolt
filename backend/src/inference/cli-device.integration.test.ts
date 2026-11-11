@@ -104,13 +104,19 @@ const issueCliBearer = async (harness: TestAppHandle): Promise<string> => {
 }
 
 /** Send one managed direct-inference request with the supplied bearer. */
-const requestDirectInference = (harness: TestAppHandle, bearer: string, content: string) =>
+const requestDirectInference = (
+  harness: TestAppHandle,
+  bearer: string,
+  content: string,
+  headers: Record<string, string> = {},
+) =>
   harness.app.handle(
     new Request('http://localhost/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${bearer}`,
         'Content-Type': 'application/json',
+        ...headers,
       },
       body: JSON.stringify({
         model: 'opus-5-5',
@@ -138,6 +144,51 @@ afterEach(() => {
 })
 
 describe('CLI device cross-stack acceptance', () => {
+  it('rejects pending CLI inference regardless of an untrusted API-key header', async () => {
+    process.env.ANTHROPIC_API_KEY = 'cli-device-provider-key'
+    process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'true'
+    delete process.env.POSTHOG_API_KEY
+    clearSettingsCache()
+
+    const providerRequests: Request[] = []
+    const harness = await createTestApp({
+      fetchFn: Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+          providerRequests.push(input instanceof Request ? input.clone() : new Request(input, init))
+          return successfulCompletion()
+        },
+        { preconnect: () => undefined },
+      ),
+    })
+
+    try {
+      const cliBearer = await issueCliBearer(harness)
+      const emptyApiKeyHeaders: Record<string, string>[] = [
+        { 'x-api-key': '' },
+        { 'X-API-Key': '' },
+        { 'x-api-key': '   ' },
+      ]
+      for (const headers of emptyApiKeyHeaders) {
+        const response = await requestDirectInference(harness, cliBearer, 'pending request', headers)
+        expect(response.status).toBe(409)
+        expect(await response.json()).toEqual({ code: 'CLI_DEVICE_NOT_BOUND' })
+        expect(providerRequests).toHaveLength(0)
+      }
+
+      for (const [bearer, headers] of [
+        [cliBearer, { 'X-API-Key': 'invalid-synthetic-api-key' }],
+        ['invalid.synthetic', { 'x-api-key': '' }],
+      ] as const) {
+        const response = await requestDirectInference(harness, bearer, 'invalid credential', headers)
+        expect(response.status).toBe(401)
+        expect(await response.json()).toEqual({ code: 'UNAUTHENTICATED' })
+        expect(providerRequests).toHaveLength(0)
+      }
+    } finally {
+      await harness.cleanup()
+    }
+  })
+
   it('revokes a registered device-grant CLI before a second direct provider request', async () => {
     process.env.ANTHROPIC_API_KEY = 'cli-device-provider-key'
     process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'true'
@@ -296,8 +347,15 @@ describe('CLI device cross-stack acceptance', () => {
       )
       expect(revoke.status).toBe(204)
 
-      const revokedInference = await directRequest(cliBearer)
-      expect(revokedInference.status).toBe(401)
+      const revokedRequestHeaders: Record<string, string>[] = [
+        {},
+        { 'x-api-key': '' },
+        { 'X-API-Key': 'invalid-synthetic-api-key' },
+      ]
+      for (const headers of revokedRequestHeaders) {
+        const revokedInference = await requestDirectInference(harness, cliBearer, 'revoked request', headers)
+        expect(revokedInference.status).toBe(401)
+      }
       expect(providerRequests).toHaveLength(1)
     } finally {
       await harness.cleanup()

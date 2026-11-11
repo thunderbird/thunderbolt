@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useAppName, useBrandingLinks } from '@/lib/branding-selectors'
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
@@ -195,15 +196,17 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
   const isAuthenticated = !!session?.user
   const isAnonymous = session?.user?.isAnonymous === true
   const isFullUser = isAuthenticated && !isAnonymous
+  const backendAuthenticated = useServerAuthentication()
   const { openSignInModal } = useSignInModal()
   const runningInTauri = isStandalone()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const [tooltipOpen, setTooltipOpen] = useState(false)
   const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
   const effectiveProxyEnabled = computeEffectiveProxyEnabled(
     () => runningInTauri,
     () => proxyEnabledStr,
   )
-  const proxyDisabled = !runningInTauri || (!isAuthenticated && !effectiveProxyEnabled)
+  const proxyDisabled = !!cloudUrl && (!runningInTauri || (!isAuthenticated && !effectiveProxyEnabled))
   const proxyTooltipReason = !runningInTauri
     ? t`Proxying is required in the web app to bypass browser CORS restrictions.`
     : t`Sign in to enable cloud proxy.`
@@ -453,11 +456,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
     if (!pendingImport) {
       return
     }
-    const userId = session?.user?.id
-    if (!userId) {
-      dispatch({ type: 'SET_IMPORT_ERROR', payload: t`You must be signed in to import data.` })
-      return
-    }
+    const userId = session?.user?.id ?? null
     dispatch({ type: 'SET_IS_IMPORTING', payload: true })
     dispatch({ type: 'SET_IMPORT_ERROR', payload: null })
     try {
@@ -491,16 +490,13 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
   }
 
   const handleExportData = async () => {
-    const userId = session?.user?.id
-    if (!userId) {
-      return
-    }
+    const userId = session?.user?.id ?? ''
     dispatch({ type: 'SET_EXPORT_ERROR', payload: null })
     dispatch({ type: 'SET_IS_EXPORTING', payload: true })
     try {
       const payload = await exportUserData(db, {
         id: userId,
-        email: session.user.email ?? null,
+        email: session?.user?.email ?? null,
       })
       await downloadJson(exportFilenameFor(new Date()), payload)
       trackEvent('settings_data_export')
@@ -733,12 +729,32 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
             >
               <Trans>Location</Trans>
             </ModificationIndicator>
-            <LocationSearchCombobox
-              value={localizedLocationName}
-              onSelect={handleSelectLocation}
-              id="localization-location-trigger"
-              aria-labelledby="localization-location-label localization-location-trigger"
-            />
+            {backendAuthenticated ? (
+              <LocationSearchCombobox
+                value={localizedLocationName}
+                onSelect={handleSelectLocation}
+                id="localization-location-trigger"
+                aria-labelledby="localization-location-label localization-location-trigger"
+              />
+            ) : (
+              <Input
+                key={locationName.value}
+                defaultValue={locationName.value}
+                placeholder={t`City or region`}
+                aria-labelledby="localization-location-label"
+                onBlur={async (event) => {
+                  await updateSettings(db, {
+                    location_name: event.target.value.trim(),
+                    location_name_display: '',
+                    location_id: '',
+                    location_lat: '',
+                    location_lng: '',
+                    location_country_code: '',
+                  })
+                  trackEvent('settings_location_update')
+                }}
+              />
+            )}
             <p className="text-sm text-muted-foreground">
               <Trans>Enables location-based responses</Trans>
             </p>
@@ -1028,8 +1044,14 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
                 aria-label={proxyDisabled ? proxyTooltipReason : undefined}
               >
                 <Switch
-                  checked={effectiveProxyEnabled}
-                  onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+                  checked={!!cloudUrl && effectiveProxyEnabled}
+                  onCheckedChange={(checked) => {
+                    if (!cloudUrl) {
+                      openSignInModal()
+                      return
+                    }
+                    setProxyEnabledStr(checked ? 'true' : 'false')
+                  }}
                   disabled={proxyDisabled}
                   aria-label={t`Use Cloud Proxy`}
                   className={proxyDisabled ? 'pointer-events-none' : undefined}
@@ -1078,81 +1100,75 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
 
           {isFullUser && syncEnabled && <ChangeRecoveryKeySection />}
 
-          {isAuthenticated && (
-            <>
-              <div className="h-px bg-border -mx-6" />
+          <>
+            <div className="h-px bg-border -mx-6" />
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="export-data-button" className="text-sm font-medium">
-                  <Trans>Export Your Data</Trans>
-                </label>
-                <p id="export-data-description" className="text-sm text-muted-foreground">
-                  <Trans>Export all of your data as JSON.</Trans>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="export-data-button" className="text-sm font-medium">
+                <Trans>Export Your Data</Trans>
+              </label>
+              <p id="export-data-description" className="text-sm text-muted-foreground">
+                <Trans>Export all of your data as JSON.</Trans>
+              </p>
+              {exportError && (
+                <p id="export-data-error" className="text-sm text-destructive" role="alert">
+                  {exportError}
                 </p>
-                {exportError && (
-                  <p id="export-data-error" className="text-sm text-destructive" role="alert">
-                    {exportError}
-                  </p>
-                )}
-                <Button
-                  id="export-data-button"
-                  variant="secondary"
-                  disabled={isExporting}
-                  aria-busy={isExporting}
-                  aria-describedby={exportError ? 'export-data-error' : 'export-data-description'}
-                  onClick={handleExportData}
-                >
-                  {isExporting ? t`Exporting…` : t`Export My Data`}
-                </Button>
-              </div>
+              )}
+              <Button
+                id="export-data-button"
+                variant="secondary"
+                disabled={isExporting}
+                aria-busy={isExporting}
+                aria-describedby={exportError ? 'export-data-error' : 'export-data-description'}
+                onClick={handleExportData}
+              >
+                {isExporting ? t`Exporting…` : t`Export My Data`}
+              </Button>
+            </div>
 
-              <div className="h-px bg-border -mx-6" />
+            <div className="h-px bg-border -mx-6" />
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="import-data-button" className="text-sm font-medium">
-                  <Trans>Import Your Data</Trans>
-                </label>
-                <p id="import-data-description" className="text-sm text-muted-foreground">
-                  <Trans>Import your data from previously exported JSON.</Trans>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="import-data-button" className="text-sm font-medium">
+                <Trans>Import Your Data</Trans>
+              </label>
+              <p id="import-data-description" className="text-sm text-muted-foreground">
+                <Trans>Import your data from previously exported JSON.</Trans>
+              </p>
+              {importError && (
+                <p id="import-data-error" className="text-sm text-destructive" role="alert">
+                  {importError}
                 </p>
-                {importError && (
-                  <p id="import-data-error" className="text-sm text-destructive" role="alert">
-                    {importError}
-                  </p>
-                )}
-                {importSuccess && (
-                  <p id="import-data-success" className="text-sm text-muted-foreground" role="status">
-                    {importSuccess}
-                  </p>
-                )}
-                <input
-                  ref={importFileInputRef}
-                  type="file"
-                  accept="application/json,.json"
-                  className="hidden"
-                  onChange={handleImportFileSelected}
-                />
-                <Button
-                  id="import-data-button"
-                  variant="secondary"
-                  disabled={isImporting}
-                  aria-busy={isImporting}
-                  aria-describedby={
-                    importError
-                      ? 'import-data-error'
-                      : importSuccess
-                        ? 'import-data-success'
-                        : 'import-data-description'
-                  }
-                  onClick={handleImportClick}
-                >
-                  {isImporting ? t`Importing…` : t`Import Data`}
-                </Button>
-              </div>
-            </>
-          )}
+              )}
+              {importSuccess && (
+                <p id="import-data-success" className="text-sm text-muted-foreground" role="status">
+                  {importSuccess}
+                </p>
+              )}
+              <input
+                ref={importFileInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={handleImportFileSelected}
+              />
+              <Button
+                id="import-data-button"
+                variant="secondary"
+                disabled={isImporting}
+                aria-busy={isImporting}
+                aria-describedby={
+                  importError ? 'import-data-error' : importSuccess ? 'import-data-success' : 'import-data-description'
+                }
+                onClick={handleImportClick}
+              >
+                {isImporting ? t`Importing…` : t`Import Data`}
+              </Button>
+            </div>
+          </>
 
-          {isAnonymous && (
+          {!isFullUser && (
             <>
               <div className="h-px bg-border -mx-6" />
 

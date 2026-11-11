@@ -19,6 +19,7 @@ export const createMockModel = (overrides?: Partial<Model>): Model =>
     provider: 'openai',
     name: 'Test Model',
     model: 'gpt-4',
+    apiKey: 'test-api-key',
     isSystem: 0,
     enabled: 1,
     isConfidential: 0,

@@ -23,6 +23,22 @@ import type { Session } from '@/contexts/auth-context'
  */
 
 const sessionCacheKey = 'thunderbolt_session_cache'
+const sessionCacheListeners = new Set<() => void>()
+
+/** Subscribes to cached-session changes in this window and other tabs. */
+export const subscribeCachedSession = (listener: () => void): (() => void) => {
+  sessionCacheListeners.add(listener)
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === sessionCacheKey || event.key === null) {
+      listener()
+    }
+  }
+  window.addEventListener('storage', onStorage)
+  return () => {
+    sessionCacheListeners.delete(listener)
+    window.removeEventListener('storage', onStorage)
+  }
+}
 
 /**
  * Shape of the payload as it exists in localStorage — a JSON-serialized subset
@@ -58,6 +74,7 @@ export const getCachedSession = (): CachedSessionData | null => {
 export const setCachedSession = (data: CachedSessionData): void => {
   try {
     localStorage.setItem(sessionCacheKey, JSON.stringify(data))
+    sessionCacheListeners.forEach((listener) => listener())
   } catch {
     // Quota exceeded or storage unavailable — caching is best-effort.
   }
@@ -66,6 +83,7 @@ export const setCachedSession = (data: CachedSessionData): void => {
 /** Remove any cached session (used on logout, 401, and full wipe). */
 export const clearCachedSession = (): void => {
   localStorage.removeItem(sessionCacheKey)
+  sessionCacheListeners.forEach((listener) => listener())
 }
 
 /**

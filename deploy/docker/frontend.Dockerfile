@@ -25,8 +25,8 @@ COPY index.html ./
 # lingui.config.ts is load-bearing: @lingui/vite-plugin resolves it at build
 # time to locate and compile the .po catalogs (THU-806).
 COPY vite.config.ts lingui.config.ts tsconfig.json tsconfig.node.json ./
-# vite.config.ts imports it to copy the PowerSync worker assets into public/.
-COPY scripts/copy-powersync-assets.ts ./scripts/
+# Helpers imported by vite.config.ts must be present even when only used in dev.
+COPY scripts/copy-powersync-assets.ts scripts/tinfoil-search-relay.ts ./scripts/
 COPY components.json ./
 COPY .storybook ./.storybook
 
@@ -64,6 +64,9 @@ RUN apk upgrade --no-cache
 # any `BACKEND_PORT=8000` default we set here and break envsubst.
 ENV THUNDERBOLT_BACKEND_HOST=backend
 ENV THUNDERBOLT_BACKEND_PORT=8000
+# The nginx entrypoint reads /etc/resolv.conf before rendering templates, covering
+# Docker's embedded DNS, Kubernetes cluster DNS, and other container runtimes.
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
 COPY deploy/config/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY deploy/config/security-headers.conf /etc/nginx/snippets/security-headers.conf

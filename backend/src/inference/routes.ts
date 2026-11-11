@@ -128,16 +128,6 @@ const createLatencyRecorder = ({
   }
 }
 
-const getApiErrorMetadata = (error: unknown) => {
-  const openAiError = error instanceof APIError ? error : undefined
-  const anthropicError = error instanceof AnthropicAPIError ? error : undefined
-  return {
-    errorType: openAiError?.type ?? anthropicError?.type ?? undefined,
-    errorCode: openAiError?.code ?? undefined,
-    requestId: openAiError?.requestID ?? anthropicError?.requestID ?? undefined,
-  }
-}
-
 /** Merge middleware headers into a raw streaming response. */
 export const streamingResponseHeaders = (headers: object): Record<string, string> => {
   const responseHeaders: Record<string, string> = {
@@ -245,7 +235,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
             stream: true,
             ...(supportsStreamUsage && { stream_options: { include_usage: true } }),
             ...(isPostHogConfiguredFn() && {
-              posthogDistinctId: ctx.user.id,
               posthogProperties: {
                 model_provider: provider,
                 model: internalName,
@@ -280,8 +269,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
               status: getErrorStatus(error),
               model: body.model,
               errorKind: classifyInferenceError(error),
-              ...getApiErrorMetadata(error),
-              distinctId: ctx.user.id,
               phase: 'stream',
             })
           },
@@ -300,8 +287,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           status,
           model: body.model,
           errorKind: classifyInferenceError(error),
-          ...getApiErrorMetadata(error),
-          distinctId: ctx.user.id,
         })
         if (!(error instanceof APIError)) {
           throw error
@@ -376,14 +361,12 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         }
         invokeObserverSafely(() =>
           (options.posthogClient ?? getPostHogClient()).capture({
-            distinctId: ctx.user.id,
             event: '$ai_generation',
             properties: {
               model_provider: provider,
               model: internalName,
               endpoint: '/chat/v1/messages',
               has_tools: !!body.tools,
-              $ai_trace_id: usageEventId,
               $ai_provider: provider,
               $ai_model: internalName,
               $ai_latency: elapsedMs(handlerStartedAt, nowFn()) / 1000,
@@ -445,8 +428,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
               status: getErrorStatus(error),
               model: body.model,
               errorKind: classifyInferenceError(error),
-              ...getApiErrorMetadata(error),
-              distinctId: ctx.user.id,
               phase: 'stream',
             })
           },
@@ -461,8 +442,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           status,
           model: body.model,
           errorKind: classifyInferenceError(error),
-          ...getApiErrorMetadata(error),
-          distinctId: ctx.user.id,
         })
         if (!(error instanceof AnthropicAPIError)) {
           throw error

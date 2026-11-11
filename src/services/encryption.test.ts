@@ -15,6 +15,7 @@ import {
   generateDEK,
   mintDEK,
   wrapAK,
+  wrapUnversionedAK,
   wrapDEK,
   unwrapDEK,
   unwrapAK,
@@ -48,6 +49,13 @@ import {
 } from '@/crypto/recovery-key'
 import { derivePasskeyKeyPair } from '@/crypto/passkey-key'
 import { createDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
+import {
+  createApprovalCodeContext,
+  createApprovalCommitment,
+  createApprovalNonce,
+  createApprovalSessionId,
+  deriveApprovalCode,
+} from '@/crypto/device-approval-code'
 import { clearRecoveryPhrasePending, isRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { type KeyId, deviceBindHkdfInfo, ecdhKeyAlgorithm, initialKeyId, isMintableKeyId } from '@shared/e2ee-types'
 
@@ -61,11 +69,14 @@ const storedDEKs = new Map<KeyId, string>()
 let storedPrimaryKeyId: KeyId | null = null
 let storedKeyVersion: number | null = null
 let storedKeyringAnchor: KeyringAnchor | null = null
+let storedAKKeyVersion: number | null = null
 const keyWrites = { ak: 0, dek: 0, primary: 0, version: 0, witness: 0 }
 /** Simulates a persistent IndexedDB write failure inside `storeAK` (post-commit staging). */
 let failStoreAK = false
 /** Simulates a TRANSIENT storeAK failure: the next call throws, the one after succeeds. */
 let failStoreAKOnce = false
+/** Simulates a persistent failure staging wrapped DEKs (a crash right after the AK write). */
+let failStageDEKs = false
 /** The v1 CK a formerly-v1 device kept through the non-destructive db bump (THU-877). */
 let storedLegacyCK: CryptoKey | null = null
 
@@ -88,7 +99,8 @@ mock.module('@/crypto/key-storage', () => ({
     }
   },
   getKeyPair: async () => storedKeyPair,
-  storeAK: async (ak: CryptoKey) => {
+  // One transaction in the real store: the AK, its sealed epoch and its pointer land together.
+  storeAK: async (ak: CryptoKey, sealed: { keyVersion: number | null; primaryKeyId: KeyId }) => {
     keyWrites.ak += 1
     if (failStoreAK) {
       throw new Error('IndexedDB unavailable')
@@ -98,8 +110,13 @@ mock.module('@/crypto/key-storage', () => ({
       throw new Error('IndexedDB unavailable')
     }
     storedAK = ak
+    storedAKKeyVersion = sealed.keyVersion ?? 0
+    if (isMintableKeyId(sealed.primaryKeyId)) {
+      storedPrimaryKeyId = sealed.primaryKeyId
+    }
   },
   getAK: async () => storedAK,
+  getAKKeyVersion: async () => storedAKKeyVersion,
   getLegacyCK: async () => storedLegacyCK,
   storeDEK: async (keyId: KeyId, wrapped: string) => {
     keyWrites.dek += 1
@@ -108,6 +125,9 @@ mock.module('@/crypto/key-storage', () => ({
   getDEK: async (keyId: KeyId) => storedDEKs.get(keyId) ?? null,
   stageWrappedDEKs: async (entries: Array<{ keyId: KeyId; wrappedKey: string }>) => {
     keyWrites.dek += 1
+    if (failStageDEKs) {
+      throw new Error('IndexedDB unavailable')
+    }
     for (const entry of entries) {
       storedDEKs.set(entry.keyId, entry.wrappedKey)
     }
@@ -149,6 +169,7 @@ mock.module('@/crypto/key-storage', () => ({
     storedPrimaryKeyId = null
     storedKeyVersion = null
     storedKeyringAnchor = null
+    storedAKKeyVersion = null
   },
 }))
 
@@ -181,6 +202,7 @@ const {
   ensureV2Encryption,
   handleFullWipe,
 } = await import('./encryption')
+const { codec, parseWireValue, resetCodecState } = await import('@/db/encryption')
 
 // ---------------------------------------------------------------------------
 // Stateful fake backend
@@ -516,17 +538,19 @@ const createFakeServer = (): FakeServer => {
         server.envelopes.set(env.deviceId, env.wrappedCK)
         seededDeviceAttestations.set(env.deviceId, env.attestation)
       }
+      // Like `flipSchemeToV2`, the flip bumps the v1 key_version.
+      const keyVersion = (server.metadata?.keyVersion ?? 0) + 1
       server.metadata = {
         canaryIv: body!.canaryIv as string,
         canaryCtext: body!.canaryCtext as string,
         kdfSalt: body!.kdfSalt as string,
         signingPublicKey: body!.signingPublicKey as string,
         ...recoverySlotFrom(body!),
-        keyVersion: 1,
+        keyVersion,
         primaryKeyId: body!.primaryKeyId as KeyId,
         schemeVersion: 2,
       }
-      return jsonResponse({ key_version: 1, scheme_version: 2 })
+      return jsonResponse({ key_version: keyVersion, scheme_version: 2 })
     }
     return jsonResponse({})
   }
@@ -609,7 +633,7 @@ const seedV2Account = async (
   }
   const { canaryIv, canaryCtext, canaryKey } = await mintCanary(ak, testUserId)
   const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
-  server.envelopes.set('test-device-id', await wrapAK(ak, kp.ecdhPublicKey, kp.mlkemPublicKey, '0'))
+  server.envelopes.set('test-device-id', await wrapAK(ak, kp.ecdhPublicKey, kp.mlkemPublicKey, '0', 1))
   server.deviceTrusted.set('test-device-id', true)
   server.devicePublicKeys.set('test-device-id', {
     publicKey: await exportPublicKey(kp.ecdhPublicKey),
@@ -642,6 +666,7 @@ const seedV2Account = async (
       fixtureRecoveryKeyPair.ecdhPublicKey,
       fixtureRecoveryKeyPair.mlkemPublicKey,
       '0',
+      1,
     ),
     recoveryAttestation: await signRecoveryAttestation(canaryKey, {
       userId: testUserId,
@@ -703,12 +728,15 @@ describe('encryption service (v2)', () => {
     storedPrimaryKeyId = null
     storedKeyVersion = null
     storedKeyringAnchor = null
+    storedAKKeyVersion = null
+    failStageDEKs = false
     failStoreAK = false
     failStoreAKOnce = false
     clearRecoveryPhrasePending()
   })
 
   afterEach(() => {
+    failStageDEKs = false
     failStoreAK = false
     failStoreAKOnce = false
     clearRecoveryPhrasePending()
@@ -1038,6 +1066,8 @@ describe('encryption service (v2)', () => {
       expect(storedAK).not.toBeNull()
       expect(storedDEKs.has('0')).toBe(true)
       expect(storedPrimaryKeyId).toBe('0')
+      // The first epoch is sealed and stored, so the epoch floor holds from setup on.
+      expect(storedAKKeyVersion).toBe(1)
       expect(server.metadata?.schemeVersion).toBe(2)
       // The staged DEK 0 unwraps under the stored AK.
       const dek0 = await unwrapDEK(storedDEKs.get('0')!, storedAK!, '0')
@@ -1198,7 +1228,7 @@ describe('encryption service (v2)', () => {
       expect(await keyringAnchorOpens(storedKeyringAnchor!, dek0)).toBe(true)
       server.envelopes.set(
         'test-device-id',
-        await wrapAK(await generateAK(true), kp.ecdhPublicKey, kp.mlkemPublicKey, '0'),
+        await wrapAK(await generateAK(true), kp.ecdhPublicKey, kp.mlkemPublicKey, '0', 1),
       )
       const pending = await generateFullKeyPair()
       const ecdhPublicKey = await exportPublicKey(pending.ecdhPublicKey)
@@ -1211,7 +1241,10 @@ describe('encryption service (v2)', () => {
       })
 
       await expect(
-        approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, fingerprint),
+        approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, {
+          kind: 'fingerprint',
+          fingerprint,
+        }),
       ).rejects.toBeInstanceOf(AKAnchorError)
       expect(server.requests).not.toContain('POST /devices/pending-dev/envelope')
       expect(server.envelopes.has('pending-dev')).toBe(false)
@@ -1235,18 +1268,18 @@ describe('encryption service (v2)', () => {
       })
       for (const fingerprint of ['', '0000-0000-0000-0000-0000-0000-0000-0000', correct.replace(/[0-9A-F]/, 'Z')]) {
         await expect(
-          approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, fingerprint),
+          approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, {
+            kind: 'fingerprint',
+            fingerprint,
+          }),
         ).rejects.toMatchObject({ reason: 'fingerprint-mismatch' })
       }
       const other = await generateFullKeyPair()
       await expect(
-        approveDevice(
-          clientFor(server),
-          'pending-dev',
-          await exportPublicKey(other.ecdhPublicKey),
-          mlkemPublicKey,
-          correct,
-        ),
+        approveDevice(clientFor(server), 'pending-dev', await exportPublicKey(other.ecdhPublicKey), mlkemPublicKey, {
+          kind: 'fingerprint',
+          fingerprint: correct,
+        }),
       ).rejects.toThrow('fingerprint')
       expect(server.requests).toEqual([])
       expect(server.envelopes.size).toBe(0)
@@ -1279,12 +1312,15 @@ describe('encryption service (v2)', () => {
         'pending-dev',
         await exportPublicKey(pending.ecdhPublicKey),
         exportMlKemPublicKey(pending.mlkemPublicKey),
-        await createDeviceApprovalFingerprint({
-          userId: testUserId,
-          deviceId: 'pending-dev',
-          ecdhPublicKey: await exportPublicKey(pending.ecdhPublicKey),
-          mlkemPublicKey: exportMlKemPublicKey(pending.mlkemPublicKey),
-        }),
+        {
+          kind: 'fingerprint',
+          fingerprint: await createDeviceApprovalFingerprint({
+            userId: testUserId,
+            deviceId: 'pending-dev',
+            ecdhPublicKey: await exportPublicKey(pending.ecdhPublicKey),
+            mlkemPublicKey: exportMlKemPublicKey(pending.mlkemPublicKey),
+          }),
+        },
       )
 
       // The pending device now has an envelope it can unwrap.
@@ -1299,6 +1335,74 @@ describe('encryption service (v2)', () => {
       await expect(
         unwrapAK(server.envelopes.get('pending-dev')!, other.ecdhPrivateKey, other.mlkemSecretKey),
       ).rejects.toThrow()
+    })
+  })
+
+  describe('approveDevice with an approval code', () => {
+    /** The trusted device's view of an honest attempt: the new device's commitment, our challenge, its reveal. */
+    const codeConfirmationFor = async (ecdhPublicKey: string, mlkemPublicKey: string) => {
+      const sessionId = createApprovalSessionId()
+      const challenge = createApprovalNonce()
+      const reveal = createApprovalNonce()
+      const context = await createApprovalCodeContext(
+        { userId: testUserId, deviceId: 'pending-dev', ecdhPublicKey, mlkemPublicKey },
+        sessionId,
+      )
+      return {
+        kind: 'code' as const,
+        sessionId,
+        challenge,
+        reveal,
+        commitment: await createApprovalCommitment(context, reveal),
+        code: await deriveApprovalCode(context, 'test-device-id', challenge, reveal),
+      }
+    }
+
+    it('rewraps the AK for the pending device when the code matches', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      storedAK = await unwrapDeviceAK(server)
+      storedDEKs.set('0', server.wrappedKeys.get('0')!)
+      const pending = await generateFullKeyPair()
+      const ecdhPublicKey = await exportPublicKey(pending.ecdhPublicKey)
+      const mlkemPublicKey = exportMlKemPublicKey(pending.mlkemPublicKey)
+
+      await approveDevice(
+        clientFor(server),
+        'pending-dev',
+        ecdhPublicKey,
+        mlkemPublicKey,
+        await codeConfirmationFor(ecdhPublicKey, mlkemPublicKey),
+      )
+
+      const opened = await unwrapAK(
+        server.envelopes.get('pending-dev')!,
+        pending.ecdhPrivateKey,
+        pending.mlkemSecretKey,
+      )
+      expect(await unwrapDEK(server.wrappedKeys.get('0')!, opened.ak, '0')).toBeInstanceOf(CryptoKey)
+    })
+
+    it('refuses a wrong code, a forged commitment, or substituted keys before any request', async () => {
+      const server = createFakeServer()
+      const pending = await generateFullKeyPair()
+      const ecdhPublicKey = await exportPublicKey(pending.ecdhPublicKey)
+      const mlkemPublicKey = exportMlKemPublicKey(pending.mlkemPublicKey)
+      const honest = await codeConfirmationFor(ecdhPublicKey, mlkemPublicKey)
+      const substitutedEcdh = await exportPublicKey((await generateFullKeyPair()).ecdhPublicKey)
+      const attempts = [
+        { ecdh: ecdhPublicKey, confirmation: { ...honest, code: honest.code === '01' ? '02' : '01' } },
+        { ecdh: ecdhPublicKey, confirmation: { ...honest, commitment: 'f'.repeat(64) } },
+        { ecdh: substitutedEcdh, confirmation: honest },
+      ]
+      for (const attempt of attempts) {
+        await expect(
+          approveDevice(clientFor(server), 'pending-dev', attempt.ecdh, mlkemPublicKey, attempt.confirmation),
+        ).rejects.toMatchObject({ reason: 'code-mismatch' })
+      }
+      expect(server.requests).toEqual([])
     })
   })
 
@@ -1393,7 +1497,13 @@ describe('encryption service (v2)', () => {
       }
       server.envelopes.set(
         'test-device-id',
-        await wrapAK(newAK, kp.ecdhPublicKey, kp.mlkemPublicKey, server.metadata!.primaryKeyId),
+        await wrapAK(
+          newAK,
+          kp.ecdhPublicKey,
+          kp.mlkemPublicKey,
+          server.metadata!.primaryKeyId,
+          server.metadata!.keyVersion + 1,
+        ),
       )
       server.metadata!.keyVersion += 1
       return newAK
@@ -1497,7 +1607,7 @@ describe('encryption service (v2)', () => {
       // rotation, keeps the witness and the staged keyring valid).
       server.metadata!.primaryKeyId = '1'
       server.wrappedKeys.set('1', (await mintDEK(seededAK, '1')).wrappedKey)
-      server.envelopes.set('test-device-id', await wrapAK(seededAK, kp.ecdhPublicKey, kp.mlkemPublicKey, '1'))
+      server.envelopes.set('test-device-id', await wrapAK(seededAK, kp.ecdhPublicKey, kp.mlkemPublicKey, '1', 1))
       await refreshAK(clientFor(server))
       expect(storedPrimaryKeyId).toBe('1')
 
@@ -1546,7 +1656,11 @@ describe('encryption service (v2)', () => {
         void wrapped
         server.wrappedKeys.set(keyId, await wrapDEK(await generateDEK(true), attackerAK, keyId))
       }
-      server.envelopes.set('test-device-id', await wrapAK(attackerAK, kp.ecdhPublicKey, kp.mlkemPublicKey, '0'))
+      // A newer epoch, so the witness rather than the epoch floor is what refuses it.
+      server.envelopes.set(
+        'test-device-id',
+        await wrapAK(attackerAK, kp.ecdhPublicKey, kp.mlkemPublicKey, '0', server.metadata!.keyVersion + 1),
+      )
       server.metadata!.keyVersion += 1
       return attackerAK
     }
@@ -1613,7 +1727,13 @@ describe('encryption service (v2)', () => {
       }
       server.envelopes.set(
         'test-device-id',
-        await wrapAK(newAK, kp.ecdhPublicKey, kp.mlkemPublicKey, server.metadata!.primaryKeyId),
+        await wrapAK(
+          newAK,
+          kp.ecdhPublicKey,
+          kp.mlkemPublicKey,
+          server.metadata!.primaryKeyId,
+          server.metadata!.keyVersion + 1,
+        ),
       )
       server.metadata!.keyVersion += 1
 
@@ -1703,6 +1823,406 @@ describe('encryption service (v2)', () => {
       server.envelopes.delete('test-device-id')
 
       expect(await checkApprovalAndUnwrap(clientFor(server))).toBe(false)
+    })
+  })
+
+  /**
+   * Epoch replay. DEK "0" is the same in every epoch, so an older envelope served
+   * with its own keyring passes the witness. Without a sealed epoch, a server
+   * could hand a device the epoch before a revocation and put new writes back
+   * under a DEK the revoked device still holds.
+   */
+  describe('epoch replay', () => {
+    type ServedEpoch = { envelope: string; wrappedKeys: Map<KeyId, string>; metadata: MetaState }
+
+    const captureEpoch = (server: FakeServer): ServedEpoch => ({
+      envelope: server.envelopes.get('test-device-id')!,
+      wrappedKeys: new Map(server.wrappedKeys),
+      metadata: { ...server.metadata! },
+    })
+
+    const replayEpoch = (server: FakeServer, epoch: ServedEpoch, metadata: Partial<MetaState> = {}): void => {
+      server.envelopes.set('test-device-id', epoch.envelope)
+      server.wrappedKeys = new Map(epoch.wrappedKeys)
+      server.metadata = { ...epoch.metadata, ...metadata }
+    }
+
+    /** Establish this device at epoch 1, then revoke another device: epoch 2, primary "1". */
+    const revokedAccount = async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const seededAK = await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const beforeRevocation = captureEpoch(server)
+      await revokeDeviceAndRotate(clientFor(server), 'revoked-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+      expect(storedPrimaryKeyId).toBe('1')
+      expect(storedKeyVersion).toBe(2)
+      const current = { ak: storedAK, keys: [...storedDEKs], primary: storedPrimaryKeyId, version: storedKeyVersion }
+      return { server, kp, seededAK, beforeRevocation, current }
+    }
+
+    const expectStateKept = (current: Awaited<ReturnType<typeof revokedAccount>>['current']): void => {
+      expect(storedAK).toBe(current.ak)
+      expect([...storedDEKs]).toEqual(current.keys)
+      expect(storedPrimaryKeyId).toBe(current.primary)
+      expect(storedKeyVersion).toBe(current.version)
+    }
+
+    // A function, so TypeScript does not narrow the module-level pointer to null afterwards.
+    const losePointer = (): void => {
+      storedPrimaryKeyId = null
+    }
+
+    const silenceErrors = async (run: () => Promise<void>): Promise<string[]> => {
+      const errors: string[] = []
+      const consoleError = spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        errors.push(args.map(String).join(' '))
+      })
+      try {
+        await run()
+      } finally {
+        consoleError.mockRestore()
+      }
+      return errors
+    }
+
+    it('seals the next local epoch into every envelope a rotation writes', async () => {
+      const { server, kp } = await revokedAccount()
+
+      const own = await unwrapAK(server.envelopes.get('test-device-id')!, kp.ecdhPrivateKey, kp.mlkemSecretKey)
+      const recovery = await unwrapAK(
+        server.metadata!.recoveryWrappedAk!,
+        fixtureRecoveryKeyPair.ecdhPrivateKey,
+        fixtureRecoveryKeyPair.mlkemSecretKey,
+      )
+      expect(own).toMatchObject({ keyVersion: 2, primaryKeyId: '1' })
+      expect(recovery).toMatchObject({ keyVersion: 2, primaryKeyId: '1' })
+      expect(storedAKKeyVersion).toBe(2)
+    })
+
+    it('refuses a complete replay of the epoch before a revocation and keeps the new primary', async () => {
+      const { server, beforeRevocation, current } = await revokedAccount()
+      replayEpoch(server, beforeRevocation)
+
+      const errors = await silenceErrors(async () => {
+        await expect(stageKeyring(clientFor(server))).rejects.toThrow(AKAnchorError)
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(AKAnchorError)
+      })
+
+      expectStateKept(current)
+      expect(errors.some((line) => line.includes('refused an inbound account key (stale-epoch)'))).toBe(true)
+    })
+
+    it('refuses an old envelope served with a forged newer key_version', async () => {
+      const { server, beforeRevocation, current } = await revokedAccount()
+      // The responder calls refreshAK when the served key_version rises.
+      replayEpoch(server, beforeRevocation, { keyVersion: 3 })
+
+      await silenceErrors(async () => {
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(AKAnchorError)
+        await expect(ensureV2Encryption(clientFor(server))).rejects.toThrow(AKAnchorError)
+      })
+
+      expectStateKept(current)
+    })
+
+    it('refuses an unversioned envelope once the device holds a versioned AK', async () => {
+      const { server, kp, seededAK, beforeRevocation, current } = await revokedAccount()
+      const envelope = await wrapUnversionedAK(seededAK, kp.ecdhPublicKey, kp.mlkemPublicKey, '0')
+      replayEpoch(server, { ...beforeRevocation, envelope }, { keyVersion: 3 })
+
+      await silenceErrors(async () => {
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(AKAnchorError)
+      })
+
+      expectStateKept(current)
+    })
+
+    it('does not let an approver rewrap a replayed older envelope for a new device', async () => {
+      const { server, beforeRevocation } = await revokedAccount()
+      replayEpoch(server, beforeRevocation)
+      const pending = await generateFullKeyPair()
+      const ecdhPublicKey = await exportPublicKey(pending.ecdhPublicKey)
+      const mlkemPublicKey = exportMlKemPublicKey(pending.mlkemPublicKey)
+      const fingerprint = await createDeviceApprovalFingerprint({
+        userId: testUserId,
+        deviceId: 'pending-dev',
+        ecdhPublicKey,
+        mlkemPublicKey,
+      })
+
+      await expect(
+        approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, {
+          kind: 'fingerprint',
+          fingerprint,
+        }),
+      ).rejects.toThrow(AKAnchorError)
+      expect(server.envelopes.has('pending-dev')).toBe(false)
+    })
+
+    it('refuses a replayed older recovery slot on a device that holds a newer AK', async () => {
+      const { server, beforeRevocation, current } = await revokedAccount()
+      replayEpoch(server, beforeRevocation)
+
+      await expect(recoverWithKey(clientFor(server), encodeRecoverySeed(new Uint8Array(32).fill(7)))).rejects.toThrow(
+        AKAnchorError,
+      )
+
+      expectStateKept(current)
+      expect(server.requests).not.toContain('POST /devices')
+    })
+
+    it('still adopts a newer epoch and re-adopts the current one to restore a lost pointer', async () => {
+      const { server, kp, current } = await revokedAccount()
+      const currentAK = storedAK!
+      // A rotation elsewhere: same DEKs under a new AK, sealed for epoch 3.
+      const newAK = await generateAK(true)
+      for (const [keyId, wrapped] of [...server.wrappedKeys]) {
+        server.wrappedKeys.set(keyId, await wrapDEK(await unwrapDEK(wrapped, currentAK, keyId, true), newAK, keyId))
+      }
+      server.envelopes.set('test-device-id', await wrapAK(newAK, kp.ecdhPublicKey, kp.mlkemPublicKey, '1', 3))
+      server.metadata!.keyVersion = 3
+
+      await refreshAK(clientFor(server))
+      expect(storedAKKeyVersion).toBe(3)
+      expect(storedKeyVersion).toBe(3)
+      expect(await unwrapDEK(storedDEKs.get('1')!, storedAK!, '1').then(() => true)).toBe(true)
+
+      // Same epoch, same AK: a device that lost its pointer re-adopts it.
+      losePointer()
+      await stageKeyring(clientFor(server))
+      expect(storedPrimaryKeyId).toBe(current.primary)
+    })
+
+    it('keeps adopting unversioned rotations until the first versioned one, then refuses unversioned', async () => {
+      // An installation from before the epoch was sealed: its AK came from a 0x02
+      // envelope, so it has no floor and behaves as it always did.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const ak1 = await seedV2Account(server, kp, await generateDEK(true))
+      server.envelopes.set('test-device-id', await wrapUnversionedAK(ak1, kp.ecdhPublicKey, kp.mlkemPublicKey, '0'))
+      await checkApprovalAndUnwrap(clientFor(server))
+      expect(storedAKKeyVersion).toBe(0)
+
+      const rotate = async (from: CryptoKey, envelopeFor: (ak: CryptoKey) => Promise<string>) => {
+        const to = await generateAK(true)
+        for (const [keyId, wrapped] of [...server.wrappedKeys]) {
+          server.wrappedKeys.set(keyId, await wrapDEK(await unwrapDEK(wrapped, from, keyId, true), to, keyId))
+        }
+        server.envelopes.set('test-device-id', await envelopeFor(to))
+        server.metadata!.keyVersion += 1
+        return to
+      }
+
+      const ak2 = await rotate(ak1, (ak) => wrapUnversionedAK(ak, kp.ecdhPublicKey, kp.mlkemPublicKey, '0'))
+      const beforeVersioned = captureEpoch(server)
+      await refreshAK(clientFor(server))
+      expect(storedAKKeyVersion).toBe(0)
+      expect(storedKeyVersion).toBe(2)
+
+      await rotate(ak2, (ak) => wrapAK(ak, kp.ecdhPublicKey, kp.mlkemPublicKey, '0', 3))
+      await refreshAK(clientFor(server))
+      expect(storedAKKeyVersion).toBe(3)
+      const current = { ak: storedAK, keys: [...storedDEKs], primary: storedPrimaryKeyId, version: storedKeyVersion }
+
+      replayEpoch(server, beforeVersioned, { keyVersion: 4 })
+      await silenceErrors(async () => {
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(AKAnchorError)
+      })
+      expectStateKept(current)
+    })
+
+    it('refuses an installation-era replay across a revocation, before any versioned envelope', async () => {
+      // A device installed before the epoch was sealed: every envelope is 0x02,
+      // so there is no epoch floor. The sealed primary pointer still acts as a floor.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const ak1 = await seedV2Account(server, kp, await generateDEK(true))
+      server.envelopes.set('test-device-id', await wrapUnversionedAK(ak1, kp.ecdhPublicKey, kp.mlkemPublicKey, '0'))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const beforeRevocation = captureEpoch(server)
+
+      // An older client revokes another device: new AK, primary "1", still 0x02.
+      const ak2 = await generateAK(true)
+      for (const [keyId, wrapped] of [...server.wrappedKeys]) {
+        server.wrappedKeys.set(keyId, await wrapDEK(await unwrapDEK(wrapped, ak1, keyId, true), ak2, keyId))
+      }
+      server.wrappedKeys.set('1', (await mintDEK(ak2, '1')).wrappedKey)
+      server.envelopes.set('test-device-id', await wrapUnversionedAK(ak2, kp.ecdhPublicKey, kp.mlkemPublicKey, '1'))
+      server.metadata = { ...server.metadata!, keyVersion: 2, primaryKeyId: '1' }
+      await refreshAK(clientFor(server))
+      expect(storedPrimaryKeyId).toBe('1')
+      expect(storedAKKeyVersion).toBe(0)
+      const current = { ak: storedAK, keys: [...storedDEKs], primary: storedPrimaryKeyId, version: storedKeyVersion }
+
+      replayEpoch(server, beforeRevocation, { keyVersion: 3 })
+      await silenceErrors(async () => {
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(AKAnchorError)
+        await expect(stageKeyring(clientFor(server))).rejects.toThrow(AKAnchorError)
+      })
+      expectStateKept(current)
+    })
+
+    it('refuses an authentic fork at the same epoch that keeps the retired primary', async () => {
+      // Another device, kept on the pre-revocation epoch by the server, rotates
+      // its AK without minting: an authentic epoch-2 envelope with primary "0".
+      const { server, kp, seededAK, beforeRevocation, current } = await revokedAccount()
+      const forkAK = await generateAK(true)
+      replayEpoch(server, {
+        envelope: await wrapAK(forkAK, kp.ecdhPublicKey, kp.mlkemPublicKey, '0', 2),
+        wrappedKeys: new Map(
+          await Promise.all(
+            [...beforeRevocation.wrappedKeys].map(
+              async ([keyId, wrapped]) =>
+                [keyId, await wrapDEK(await unwrapDEK(wrapped, seededAK, keyId, true), forkAK, keyId)] as const,
+            ),
+          ),
+        ),
+        metadata: { ...beforeRevocation.metadata, keyVersion: 2 },
+      })
+
+      await silenceErrors(async () => {
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(AKAnchorError)
+      })
+      expectStateKept(current)
+    })
+
+    it('seals the next epoch from local state, so inflated metadata cannot exhaust it', async () => {
+      const { server, kp } = await revokedAccount()
+      const trusted = async () => [await deviceKeysFor(kp, 'test-device-id')]
+      // The served key_version reaches local polling state through the fast path.
+      server.metadata!.keyVersion = 2 ** 32 - 2
+      await stageKeyring(clientFor(server))
+      expect(storedKeyVersion).toBe(2 ** 32 - 2)
+
+      await rotateAccountKey(clientFor(server), { listTrustedDevices: trusted })
+      const sealed = await unwrapAK(server.envelopes.get('test-device-id')!, kp.ecdhPrivateKey, kp.mlkemSecretKey)
+      expect(sealed.keyVersion).toBe(3)
+      expect(storedAKKeyVersion).toBe(3)
+
+      // Honest again: the next rotation still fits.
+      server.metadata!.keyVersion = 4
+      await rotateAccountKey(clientFor(server), { listTrustedDevices: trusted })
+      expect(storedAKKeyVersion).toBe(4)
+    })
+
+    it('refuses an older versioned epoch that sealed the same primary', async () => {
+      // An AK-only rotation (a phrase change, a passkey enrollment) keeps the
+      // primary, so only the epoch floor tells the two epochs apart.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const before = captureEpoch(server)
+      await rotateAccountKey(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+      expect(storedPrimaryKeyId).toBe('0')
+      expect(storedAKKeyVersion).toBe(2)
+      const current = { ak: storedAK, keys: [...storedDEKs], primary: storedPrimaryKeyId, version: storedKeyVersion }
+
+      replayEpoch(server, before)
+      await silenceErrors(async () => {
+        await expect(stageKeyring(clientFor(server))).rejects.toThrow(AKAnchorError)
+      })
+      expectStateKept(current)
+    })
+
+    const encodedKeyId = async (): Promise<string | undefined> =>
+      parseWireValue(await codec.encode('a note', { table: 'tasks', column: 'item', rowId: 'row-1' }))?.keyId
+
+    it('a warmed encoder stops using the retired primary when recovery adopts a newer epoch', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      // A sibling's local state, left on epoch 1 while the account moves on.
+      const sibling = {
+        ak: storedAK,
+        deks: new Map(storedDEKs),
+        primary: storedPrimaryKeyId,
+        akVersion: storedAKKeyVersion,
+        version: storedKeyVersion,
+      }
+      await revokeDeviceAndRotate(clientFor(server), 'revoked-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+      storedAK = sibling.ak
+      storedDEKs.clear()
+      sibling.deks.forEach((wrapped, keyId) => storedDEKs.set(keyId, wrapped))
+      storedPrimaryKeyId = sibling.primary
+      storedAKKeyVersion = sibling.akVersion
+      storedKeyVersion = sibling.version
+      resetCodecState()
+      expect(await encodedKeyId()).toBe('0')
+
+      await recoverWithKey(clientFor(server), encodeRecoverySeed(new Uint8Array(32).fill(7)))
+
+      expect(storedAKKeyVersion).toBe(2)
+      expect(await encodedKeyId()).toBe('1')
+    })
+
+    it('a warmed encoder fails closed rather than using the retired primary when staging fails', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      resetCodecState()
+      expect(await encodedKeyId()).toBe('0')
+
+      failStageDEKs = true
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        await revokeDeviceAndRotate(clientFor(server), 'revoked-device', {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        })
+      } finally {
+        consoleError.mockRestore()
+      }
+      await expect(encodedKeyId()).rejects.toThrow('Encryption keys unavailable')
+
+      failStageDEKs = false
+      await stageKeyring(clientFor(server))
+      expect(await encodedKeyId()).toBe('1')
+    })
+
+    it('keeps the AK, epoch and new primary together when staging fails after a revocation commits', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      failStageDEKs = true
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        await revokeDeviceAndRotate(clientFor(server), 'revoked-device', {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        })
+      } finally {
+        consoleError.mockRestore()
+      }
+      failStageDEKs = false
+
+      // The staging never landed, but the new AK never sits next to the old pointer.
+      expect(storedPrimaryKeyId).toBe('1')
+      expect(storedAKKeyVersion).toBe(2)
+      expect(storedKeyVersion).toBe(1)
+
+      // A server lowering key_version cannot make the fast path keep "0".
+      server.metadata!.keyVersion = 1
+      await ensureV2Encryption(clientFor(server))
+      await stageKeyring(clientFor(server))
+      expect(storedPrimaryKeyId).toBe('1')
+      expect(await unwrapDEK(storedDEKs.get('1')!, storedAK!, '1').then(() => true)).toBe(true)
     })
   })
 
@@ -2411,7 +2931,8 @@ describe('encryption service (v2)', () => {
       expect([...server.envelopes.keys()]).toEqual(['test-device-id'])
       await expect(
         unwrapAK(server.envelopes.get('test-device-id')!, local.ecdhPrivateKey, local.mlkemSecretKey),
-      ).resolves.toHaveProperty('primaryKeyId', '0')
+      ).resolves.toMatchObject({ primaryKeyId: '0', keyVersion: 1 })
+      expect(storedAKKeyVersion).toBe(1)
       await expect(
         unwrapAK(server.envelopes.get('test-device-id')!, substituted.ecdhPrivateKey, substituted.mlkemSecretKey),
       ).rejects.toThrow()
@@ -2760,6 +3281,8 @@ describe('encryption service (v2)', () => {
       expect(result.outcome).toBe('followed')
       expect(storedAK).not.toBeNull()
       expect(storedDEKs.has('v1')).toBe(true)
+      // The epoch sealed in the followed envelope becomes this device's floor.
+      expect(storedAKKeyVersion).toBe(1)
     })
 
     it('rejects a keyring whose "v1" slot cannot decrypt legacy data (continuity failure)', async () => {

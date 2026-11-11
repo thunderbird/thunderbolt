@@ -9,6 +9,7 @@ import {
   selectBuiltInAgentEnabled,
   selectConfigSettled,
   selectDebugTranscriptsEnabled,
+  selectMinimalMode,
   useConfigStore,
 } from './config-store'
 
@@ -99,6 +100,22 @@ describe('selectAllowCustomAgents', () => {
 
   it('is forbidden only when explicitly false', () => {
     expect(selectAllowCustomAgents({ allowCustomAgents: false })).toBe(false)
+  })
+})
+
+describe('optional server capabilities', () => {
+  const restricted = { builtInAgentEnabled: false, allowCustomAgents: false, minimalMode: true }
+
+  it('keeps the local agent and settings available until an optional server is authenticated', () => {
+    expect(selectBuiltInAgentEnabled(restricted, true)).toBe(true)
+    expect(selectAllowCustomAgents(restricted, true)).toBe(true)
+    expect(selectMinimalMode(restricted, true)).toBe(false)
+  })
+
+  it('preserves deployment restrictions for authenticated and managed installations', () => {
+    expect(selectBuiltInAgentEnabled(restricted, false)).toBe(false)
+    expect(selectAllowCustomAgents(restricted, false)).toBe(false)
+    expect(selectMinimalMode(restricted, false)).toBe(true)
   })
 })
 

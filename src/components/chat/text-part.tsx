@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { usePrivateSources } from './private-sources-context'
 import { type ContentPart, type ContentPartsState, parseContentPartsIncremental } from '@/ai/widget-parser'
 import { useSmoothText } from '@/hooks/use-smooth-text'
 import { sourceToCitation } from '@/lib/source-utils'
@@ -17,7 +18,12 @@ import { widgetSkeletons, type WidgetName } from '@/widgets'
 import { type TextUIPart } from 'ai'
 import { memo, useMemo, useRef } from 'react'
 import { CitationPopoverProvider } from './citation-popover'
-import { CitationContext, citationMarkdownComponents } from './markdown-utils'
+import {
+  CitationContext,
+  citationMarkdownComponents,
+  privateSourceMarkdownComponents,
+  privateSourceCitationMarkdownComponents,
+} from './markdown-utils'
 import { MemoizedMarkdown } from './memoized-markdown'
 import { WidgetRenderer } from './widget-renderer'
 
@@ -165,6 +171,7 @@ export const TextPart = memo(
     const revealedText = useSmoothText(part.text, isPartStreaming)
     // The parser strips complete native citations; withhold their unfinished suffix to avoid syntax flashes.
     const text = isPartStreaming ? revealedText.replace(/【(?:\d+(?:†[^】]*)?)?$/, '') : revealedText
+    const privateSources = usePrivateSources(sources)
     const hasNewSources = !!sources && sources.length > 0
     const hasDocumentRefs = !!haystackReferences && haystackReferences.length > 0
 
@@ -245,7 +252,7 @@ export const TextPart = memo(
                       key={`${messageId}-text-${index}`}
                       id={`${messageId}-${index}`}
                       content={part.content}
-                      components={citationMarkdownComponents}
+                      components={privateSources ? privateSourceCitationMarkdownComponents : citationMarkdownComponents}
                     />
                   </div>
                 )
@@ -285,7 +292,12 @@ export const TextPart = memo(
           if (contentPart.type === 'text') {
             return (
               <div key={`text-${index}`} className="p-4 my-2">
-                <MemoizedMarkdown key={`${messageId}-text`} id={messageId} content={contentPart.content} />
+                <MemoizedMarkdown
+                  key={`${messageId}-text`}
+                  id={messageId}
+                  content={contentPart.content}
+                  components={privateSources ? privateSourceMarkdownComponents : undefined}
+                />
               </div>
             )
           }

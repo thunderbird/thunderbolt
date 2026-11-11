@@ -12,7 +12,13 @@ import { getClock } from '@/testing-library'
 import { useQueryClient } from '@tanstack/react-query'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { selectOnboardingNavigation, useOnboardingState, type OnboardingState } from './use-onboarding-state'
+import {
+  selectOnboardingNavigation,
+  useOnboardingState,
+  getOnboardingSteps,
+  resolveOnboardingStep,
+  type OnboardingState,
+} from './use-onboarding-state'
 
 beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
@@ -97,7 +103,7 @@ describe('onboarding drafts', () => {
     expect(result.current.state.canGoNext).toBe(false)
   })
 
-  it.each(['0', '8', '2.5', '3invalid', ''])('rejects invalid saved step %s', async (step) => {
+  it.each(['0', '11', '2.5', '3invalid', ''])('rejects invalid saved step %s', async (step) => {
     await dal.updateSettings(getDb(), { onboarding_current_step: step })
     const { result } = mount()
     await flush()
@@ -374,5 +380,45 @@ describe('navigation selector', () => {
     [{ currentStep: 7 }, false],
   ] satisfies Array<[Partial<OnboardingState>, boolean]>)('evaluates the current step %j', (patch, expected) => {
     expect(selectOnboardingNavigation({ ...base, ...patch }).canGoNext).toBe(expected)
+  })
+})
+
+describe('standalone flow', () => {
+  it('keeps connected step identities and excludes server-only setup from the standalone path', () => {
+    expect(getOnboardingSteps(false)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    expect(getOnboardingSteps(true)).toEqual([1, 8, 9, 10, 3, 5, 7])
+    expect(getOnboardingSteps(true, true)).toEqual([1, 8, 9, 3, 5, 7])
+    expect(getOnboardingSteps(false, true)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    expect(resolveOnboardingStep(10, true, true)).toBe(3)
+    expect(resolveOnboardingStep(8, false)).toBe(2)
+    expect(resolveOnboardingStep(4, true)).toBe(8)
+  })
+
+  it('offers server selection and permits skipping AI and search setup', async () => {
+    const { result } = renderHook(() => useOnboardingState({ isStandalone: true }), {
+      wrapper: createTestProvider(),
+    })
+    await act(async () => {
+      await result.current.actions.nextStep()
+    })
+    expect(result.current.state.currentStep).toBe(8)
+    await act(async () => {
+      await result.current.actions.skipStep()
+    })
+    expect(result.current.state.currentStep).toBe(9)
+    expect(result.current.state.canSkip).toBe(true)
+    await act(async () => {
+      await result.current.actions.skipStep()
+    })
+    expect(result.current.state.currentStep).toBe(10)
+    expect(result.current.state.canSkip).toBe(true)
+    await act(async () => {
+      await result.current.actions.skipStep()
+    })
+    expect(result.current.state.currentStep).toBe(3)
+    await act(async () => {
+      await result.current.actions.prevStep()
+    })
+    expect(result.current.state.currentStep).toBe(10)
   })
 })

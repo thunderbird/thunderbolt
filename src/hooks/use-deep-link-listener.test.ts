@@ -4,12 +4,18 @@
 
 import { act, renderHook } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
-import { BrowserRouter } from 'react-router'
-import { afterEach, afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { BrowserRouter, MemoryRouter, useLocation, useNavigate } from 'react-router'
+import { afterEach, afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { clearMcpOAuthState, setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { clearOAuthState, setOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { getClock } from '@/testing-library'
+import {
+  cancelTinfoilMobileConnection,
+  clearTinfoilMobileReturn,
+  startTinfoilMobileConnection,
+} from '@/lib/tinfoil-mobile-auth'
+import { mobileOAuthRedirectUri } from '@/lib/oauth-redirect'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import {
   determineNavigationTarget,
@@ -31,6 +37,7 @@ afterAll(async () => {
 afterEach(() => {
   clearMcpOAuthState()
   clearOAuthState()
+  cancelTinfoilMobileConnection()
 })
 
 const wrapper = ({ children }: { children: ReactNode }) => {
@@ -460,6 +467,109 @@ describe('parseOAuthCallback + determineNavigationTarget integration', () => {
 })
 
 describe('useDeepLinkListener hook', () => {
+  it('handles an integration callback once when startup and the native event deliver the same state', async () => {
+    const url = `${mobileOAuthRedirectUri}?code=private-code&state=integration-state`
+    let deliver!: (urls: string[]) => void
+    const { unmount, result } = renderHook(
+      () => {
+        useDeepLinkListener(undefined, {
+          isTauri: () => true,
+          onOpenUrl: async (listener) => {
+            deliver = listener
+            listener([url])
+            return () => {}
+          },
+          getCurrent: async () => [url],
+        })
+        return { location: useLocation(), navigate: useNavigate() }
+      },
+      { wrapper: ({ children }: { children: ReactNode }) => createElement(MemoryRouter, null, children) },
+    )
+    await act(async () => getClock().runAllAsync())
+    expect(result.current.location.pathname).toBe('/settings/connections')
+    act(() => result.current.navigate('/chats/new'))
+    await act(async () => deliver([url]))
+    expect(result.current.location.pathname).toBe('/chats/new')
+    unmount()
+  })
+
+  it('routes Tinfoil before integrations and ignores duplicate native delivery after setup consumes the handoff', async () => {
+    const nonce = 'n'.repeat(43)
+    await startTinfoilMobileConnection(
+      'connections',
+      { provider: 'tinfoil', revision: 'initial' },
+      new AbortController().signal,
+      {
+        verifier: () => nonce,
+        challenge: async () => 'challenge',
+        openUrl: async () => {},
+      },
+    )
+    const url = `${mobileOAuthRedirectUri}?code=private-code&state=${nonce}`
+    let deliver!: (urls: string[]) => void
+    const { unmount, result } = renderHook(
+      () => {
+        useDeepLinkListener(undefined, {
+          isTauri: () => true,
+          onOpenUrl: async (listener) => {
+            deliver = listener
+            return () => {}
+          },
+          getCurrent: async () => [url],
+        })
+        return { location: useLocation(), navigate: useNavigate() }
+      },
+      { wrapper: ({ children }: { children: ReactNode }) => createElement(MemoryRouter, null, children) },
+    )
+    await act(async () => getClock().runAllAsync())
+    expect(result.current.location.pathname).toBe('/oauth/tinfoil')
+    clearTinfoilMobileReturn(nonce)
+    act(() => result.current.navigate('/settings/connections'))
+    await act(async () => deliver([url]))
+    expect(result.current.location.pathname).toBe('/settings/connections')
+    unmount()
+  })
+
+  it('cleans up a listener that finishes registering after unmount', async () => {
+    const registration = Promise.withResolvers<() => void>()
+    const remove = mock(() => {})
+    const getCurrent = mock(async () => null)
+    const { unmount } = renderHook(
+      () =>
+        useDeepLinkListener(undefined, {
+          isTauri: () => true,
+          onOpenUrl: () => registration.promise,
+          getCurrent,
+        }),
+      { wrapper },
+    )
+    unmount()
+    await act(async () => registration.resolve(remove))
+    expect(remove).toHaveBeenCalledTimes(1)
+    expect(getCurrent).not.toHaveBeenCalled()
+  })
+
+  it('never logs callback URLs or authorization codes on failure', async () => {
+    const log = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { unmount } = renderHook(
+        () =>
+          useDeepLinkListener(undefined, {
+            isTauri: () => true,
+            onOpenUrl: async () => () => {},
+            getCurrent: async () => ['invalid?code=private-code&state=private-state'],
+          }),
+        { wrapper },
+      )
+      await act(async () => getClock().runAllAsync())
+      expect(log).toHaveBeenCalledWith('Failed to handle deep link')
+      expect(JSON.stringify(log.mock.calls)).not.toContain('private-')
+      unmount()
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   it('does not set up listeners when not running in Tauri', () => {
     const getCurrent = () => Promise.resolve(null)
     const onOpenUrl = () => Promise.resolve(() => {})

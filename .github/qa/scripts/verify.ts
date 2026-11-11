@@ -368,7 +368,7 @@ const awaitedText = z.union([
 ])
 
 const chatLanding = 'Ask me anything…'
-const landingOf = (session: string) => (session.startsWith('c1-first-run-') ? 'Welcome to Thunderbolt!' : chatLanding)
+const landingOf = (session: string) => (session.startsWith('c1-first-run-') ? 'Connect Google' : chatLanding)
 
 /** `getGreeting`'s texts, read from its source: the app's macros do not run outside its build. */
 const greetings = [
@@ -490,8 +490,8 @@ const reliedOnText = (commands: unknown[], at: number, oracle: Oracle | undefine
 }
 
 /**
- * Splits a c1 flow after its wait for the welcome screen (or after the code) so the sign-in step ends with
- * `control/consent.yaml`, which runs only while the privacy checkbox shows and the text the flow relies on next
+ * Splits a c1 flow after its wait for the Google connection screen (or after the code) so the sign-in step ends with
+ * `control/consent.yaml`, which runs only while Connect Google shows and the text the flow relies on next
  * does not.
  */
 const consentSplit = async (flow: unknown[], session: string, oracle: Oracle | undefined) => {
@@ -512,7 +512,7 @@ const consentSplit = async (flow: unknown[], session: string, oracle: Oracle | u
 /**
  * Splits a checked native flow into a sign-in and the finding's own steps, so a failed sign-in is the harness's and
  * never the finding's. The harness signs in (`control/sign-in.yaml`) when the flow waits for the first screen without
- * typing the code, as an iOS flow can; any other flow runs as written. A c1 flow past the privacy step gets the
+ * typing the code, as an iOS flow can; any other flow runs as written. A c1 flow past the Google step gets the
  * harness's way through it too (`consentSplit`). Where a failed flow is the bug, every step before its last command
  * that is not a settle joins the sign-in, so only that command can prove the bug. Every wait and assertion goes
  * through `steadyCommands` first.

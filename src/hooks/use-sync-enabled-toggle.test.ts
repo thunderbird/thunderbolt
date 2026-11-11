@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mockSetSyncEnabled = mock(() => Promise.resolve())
+const mockSetSyncEnabled = mock(async (enabled: boolean) => {
+  useLocalSettingsStore.setState({ syncEnabled: enabled })
+})
 const mockTrackEvent = mock(() => {})
 
 // Partial mock: spread the REAL module so every other export (incl. reconnectSync,
@@ -170,6 +172,8 @@ describe('useSyncEnabledToggle', () => {
     expect(mockSetSyncEnabled).toHaveBeenCalledTimes(2)
   })
 })
+
+afterEach(() => useLocalSettingsStore.setState({ syncEnabled: false }))
 
 it('reads the authoritative sync preference without a duplicate change event', () => {
   useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)

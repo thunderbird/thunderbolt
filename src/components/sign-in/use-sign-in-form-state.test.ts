@@ -427,7 +427,7 @@ describe('sign-in attempt lifetime', () => {
       })
     }
     const analytics = spyOn(promotionAnalytics, 'useAnonymousPromotionAnalytics').mockReturnValue({
-      captureAnonId: async () => {},
+      captureAnonymousSession: async () => {},
       persistForSso: () => {},
       onPromotionSuccess,
     })

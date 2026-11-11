@@ -7,9 +7,11 @@ import { createModel as insertModel } from '@/dal/models'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createClient } from '@/lib/http'
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { getClock } from '@/testing-library'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
@@ -366,7 +368,7 @@ describe('mergeMcpTools', () => {
     new TypeError('Failed to fetch'),
     new TypeError('Load failed'),
     new TypeError('NetworkError when attempting to fetch resource.'),
-  ])('skips discovery failure %p, preserves other tools, and recovers for the next send', async (error) => {
+  ])('recovers from discovery failure %p within the same send by reconnecting and retrying once', async (error) => {
     const dropped = named('render', async () => {
       throw error
     })
@@ -377,15 +379,182 @@ describe('mergeMcpTools', () => {
 
     const result = await mergeMcpTools({ app: builtIn }, [dropped, healthy], reconnect)
 
-    expect(result.toolset).toEqual({ app: builtIn, github_beta: tool('b') })
-    expect(result.summary).toBe('- github (1 tool)')
-    expect(Object.keys(result.mcpTools!)).toEqual(['github_beta'])
+    expect(result.toolset).toEqual({ app: builtIn, render_alpha: tool('fresh'), github_beta: tool('b') })
+    expect(result.summary).toBe('- render (1 tool)\n- github (1 tool)')
+    expect(Object.keys(result.mcpTools!)).toEqual(['render_alpha', 'github_beta'])
+    expect(result.mcpTools!.render_alpha).toEqual({
+      name: 'render',
+      url: 'https://render.example.com',
+      toolName: 'alpha',
+    })
     expect(reconnect).toHaveBeenCalledTimes(1)
     expect(reconnect).toHaveBeenCalledWith(dropped.client, error)
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render'), error)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('reconnecting and retrying once'), error)
+  })
 
-    const next = await mergeMcpTools({}, [fresh, healthy], reconnect)
-    expect(next.toolset).toEqual({ render_alpha: tool('fresh'), github_beta: tool('b') })
+  it('skips the server when discovery fails again on the fresh client', async () => {
+    const first = closedError()
+    const second = new StreamableHTTPError(503, 'Error POSTing to endpoint: still down')
+    const dropped = named('render', async () => {
+      throw first
+    })
+    const stillDown = named('render', async () => {
+      throw second
+    })
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+    const reconnect = mock(async () => stillDown.client)
+
+    const result = await mergeMcpTools({ app: tool('app') }, [dropped, healthy], reconnect)
+
+    expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+    expect(result.summary).toBe('- github (1 tool)')
+    expect(reconnect).toHaveBeenCalledTimes(1)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('skipping its tools for this send'), second)
+  })
+
+  it('propagates a programming error thrown by the retried discovery', async () => {
+    const boom = new Error('boom — capability missing')
+    const dropped = named('render', async () => {
+      throw closedError()
+    })
+    const broken = named('render', async () => {
+      throw boom
+    })
+    const reconnect = mock(async () => broken.client)
+
+    await expect(mergeMcpTools({}, [dropped], reconnect)).rejects.toBe(boom)
+  })
+
+  it('skips the server when the reconnect exceeds the bound, leaving it to finish for the next send', async () => {
+    const error = closedError()
+    const dropped = named('render', async () => {
+      throw error
+    })
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+    const slow = Promise.withResolvers<MCPClient | null>()
+    const reconnect = mock(() => slow.promise)
+
+    const merging = mergeMcpTools({}, [dropped, healthy], reconnect, { reconnectTimeoutMs: 20 })
+    await getClock().tickAsync(20)
+    const result = await merging
+
+    expect(result.toolset).toEqual({ github_beta: tool('b') })
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('"MCP connect and discovery for render" timed out after 20ms'),
+    )
+    // The reconnect is still running, so only the timeout is reported.
+    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('did not connect'))
+    slow.resolve(null)
+  })
+
+  it('waits on a server already mid-reconnect and merges the fresh client tools', async () => {
+    const fresh = named('render', async () => ({ alpha: tool('fresh') })).client
+    const reconnecting: NamedMCPClient = {
+      ...named('render', async () => ({})),
+      client: null,
+      connecting: Promise.resolve(fresh),
+    }
+    const reconnect = mock(async () => null)
+
+    const result = await mergeMcpTools({}, [reconnecting], reconnect)
+
+    expect(result.toolset).toEqual({ render_alpha: tool('fresh') })
+    expect(result.summary).toBe('- render (1 tool)')
+    expect(reconnect).not.toHaveBeenCalled()
+  })
+
+  it('skips a mid-reconnect server whose reconnect fails', async () => {
+    const reconnecting: NamedMCPClient = {
+      ...named('render', async () => ({})),
+      client: null,
+      connecting: Promise.resolve(null),
+    }
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+
+    const result = await mergeMcpTools(
+      {},
+      [reconnecting, healthy],
+      mock(async () => null),
+    )
+
+    expect(result.toolset).toEqual({ github_beta: tool('b') })
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render" did not connect'))
+    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('timed out'))
+  })
+
+  it('skips a mid-reconnect server whose reconnect outlasts the bound', async () => {
+    const slow = Promise.withResolvers<MCPClient | null>()
+    const reconnecting: NamedMCPClient = {
+      ...named('render', async () => ({})),
+      client: null,
+      connecting: slow.promise,
+    }
+
+    const merging = mergeMcpTools(
+      {},
+      [reconnecting],
+      mock(async () => null),
+      { reconnectTimeoutMs: 20 },
+    )
+    await getClock().tickAsync(20)
+
+    expect((await merging).toolset).toEqual({})
+    slow.resolve(null)
+  })
+
+  it('bounds the retried discovery together with the reconnect, skipping a server that never answers', async () => {
+    const dropped = named('render', async () => {
+      throw closedError()
+    })
+    const hung = named('render', () => new Promise<Record<string, Tool>>(() => {})).client
+    const healthy = named('github', async () => ({ beta: tool('b') }))
+
+    const merging = mergeMcpTools(
+      {},
+      [dropped, healthy],
+      mock(async () => hung),
+      { reconnectTimeoutMs: 20 },
+    )
+    await getClock().tickAsync(20)
+
+    expect(await Promise.race([merging, Promise.resolve('pending')])).toMatchObject({
+      toolset: { github_beta: tool('b') },
+    })
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('"MCP connect and discovery for render" timed out after 20ms'),
+    )
+  })
+
+  it('discovers servers in parallel, so the send waits for the slowest rather than the sum', async () => {
+    const slowTools = (tag: string) => () =>
+      new Promise<Record<string, Tool>>((resolve) => setTimeout(() => resolve({ alpha: tool(tag) }), 20))
+    const merging = mergeMcpTools(
+      {},
+      [named('render', slowTools('r')), named('github', slowTools('g'))],
+      mock(async () => null),
+    )
+
+    await getClock().tickAsync(20)
+
+    expect(await Promise.race([merging, Promise.resolve('pending')])).toMatchObject({
+      toolset: { render_alpha: tool('r'), github_alpha: tool('g') },
+    })
+  })
+
+  it('merges in server order even when a later server answers first', async () => {
+    const after = (ms: number, tag: string) => () =>
+      new Promise<Record<string, Tool>>((resolve) => setTimeout(() => resolve({ alpha: tool(tag) }), ms))
+    const merging = mergeMcpTools(
+      {},
+      [named('render', after(20, 'r')), named('github', after(5, 'g'))],
+      mock(async () => null),
+    )
+
+    await getClock().tickAsync(20)
+    const result = await merging
+
+    expect(result.summary).toBe('- render (1 tool)\n- github (1 tool)')
+    expect(Object.keys(result.mcpTools!)).toEqual(['render_alpha', 'github_alpha'])
   })
 
   it.each([
@@ -455,7 +624,7 @@ describe('mergeMcpTools', () => {
     const reconnect = mock(() => settledRecovery)
     try {
       await accepted.promise
-      const result = await mergeMcpTools(
+      const merging = mergeMcpTools(
         { app: tool('app') },
         [
           named('render', async () => {
@@ -464,7 +633,10 @@ describe('mergeMcpTools', () => {
           named('github', async () => ({ beta: tool('b') })),
         ],
         reconnect,
+        { reconnectTimeoutMs: 20 },
       )
+      await getClock().tickAsync(20)
+      const result = await merging
       expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
       expect(reconnect).toHaveBeenCalledTimes(1)
     } finally {
@@ -640,9 +812,11 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
     'http://host.docker.internal:1234',
     'http://mymac.local:1234',
     'http://10.evil.com/v1', // attacker-crafted hostname that starts with a private range
-  ])('dispatches non-loopback URL %s through the proxy fetch', (url) => {
-    const conn = resolveOpenAiCompatConnection(customModel(url), () => stubProxyFetch)
-    expect(conn?.fetch).toBe(stubProxyFetch)
+  ])('dispatches non-loopback URL %s through the proxy fetch', async (url) => {
+    const proxy = capturingFetch()
+    const conn = resolveOpenAiCompatConnection(customModel(url), () => proxy.fn)
+    await conn!.fetch(url)
+    expect(proxy.received()?.input).toBe(url)
   })
 
   it('forwards the apiKey as-is (empty string when missing)', () => {
@@ -653,6 +827,62 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
       resolveOpenAiCompatConnection(customModel('http://localhost:1234', 'sk-abc'), () => stubProxyFetch)?.apiKey,
     ).toBe('sk-abc')
   })
+})
+
+describe('provider connection transport', () => {
+  let originalSettings: ReturnType<typeof useLocalSettingsStore.getState>
+  beforeEach(() => {
+    originalSettings = useLocalSettingsStore.getState()
+    useLocalSettingsStore.setState({ cloudUrl: '', localMode: false })
+  })
+  afterEach(() => useLocalSettingsStore.setState(originalSettings))
+  it.each(['openai', 'openrouter', 'custom'] as const)(
+    'keeps a retained %s connection on the current server without forwarding new credentials to an old server',
+    async (provider) => {
+      const calls: Request[] = []
+      const fetchImpl = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          calls.push(new Request(input, init))
+          return new Response('ok')
+        },
+        { preconnect: fetch.preconnect },
+      )
+      const connectionState = { cloudUrl: '', token: '' }
+      const makeTransport = () =>
+        createProxyFetch({
+          cloudUrl: connectionState.cloudUrl,
+          getProxyAuthToken: () => connectionState.token,
+          isStandalone: () => false,
+          fetchImpl,
+        })
+      const transport = { current: makeTransport() }
+      const connection = resolveOpenAiCompatConnection(
+        { provider, apiKey: 'provider-key', url: 'https://custom.example/v1' },
+        () => transport.current,
+      )!
+      const target = `${connection.baseURL}/chat/completions`
+      const options = { method: 'POST', headers: { Authorization: 'Bearer provider-key' }, body: '{}' }
+      await connection.fetch(target, options)
+      for (const server of ['a', 'b']) {
+        connectionState.cloudUrl = `https://server-${server}.example/v1`
+        connectionState.token = `server-${server}-token`
+        useLocalSettingsStore.setState({ cloudUrl: connectionState.cloudUrl })
+        transport.current = makeTransport()
+        await connection.fetch(target, options)
+      }
+      expect(calls.map((request) => request.url)).toEqual([
+        target,
+        'https://server-a.example/v1/proxy',
+        'https://server-b.example/v1/proxy',
+      ])
+      expect(calls.map((request) => request.headers.get('authorization'))).toEqual([
+        'Bearer provider-key',
+        'Bearer server-a-token',
+        'Bearer server-b-token',
+      ])
+      expect(calls[2].headers.get('x-proxy-passthrough-authorization')).toBe('Bearer provider-key')
+    },
+  )
 })
 
 describe('createModel', () => {
@@ -810,6 +1040,7 @@ describe('withAppVersionHeader', () => {
 describe('logical-turn citation registry', () => {
   it('keeps cached source labels and metadata across rebuilt toolsets and starts fresh for a new turn', async () => {
     await setupTestDatabase()
+    setAuthToken('test-session')
     try {
       await insertModel(getDb(), {
         id: 'source-model',
@@ -866,6 +1097,7 @@ describe('logical-turn citation registry', () => {
       expect(freshResult).toMatchObject([{ sourceIndex: 1 }])
       expect(requests).toEqual(['one', 'two', 'one'])
     } finally {
+      clearAuthToken()
       await teardownTestDatabase()
     }
   })

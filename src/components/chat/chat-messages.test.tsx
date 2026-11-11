@@ -24,6 +24,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { useConfigStore } from '@/api/config-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { createMessageMetadata } from '@/ai/message-metadata'
 import { ChatMessages } from './chat-messages'
 import { ExternalLinkDialogProvider } from './markdown-utils'
 import { builtInAgent } from '@/defaults/agents'
@@ -190,6 +191,125 @@ describe('ChatMessages', () => {
       expect(container.textContent).toContain('Hello')
       expect(container.textContent).toContain('Hi there')
     })
+  })
+
+  it.each([false, true])(
+    'inherits private-source protection across later replies without merging citation indices (hidden source turn: %s)',
+    async (hidden) => {
+      const privateSource = {
+        index: 1,
+        url: 'https://private.example/source',
+        title: 'Private source',
+        toolName: 'search' as const,
+        allowRemoteImages: false,
+      }
+      const messages: ThunderboltUIMessage[] = [
+        createTestMessage({
+          id: 'before',
+          role: 'assistant',
+          parts: [{ type: 'text', text: '![Before](https://images.example/before.png)' }],
+        }),
+        createTestMessage({
+          id: 'private',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Private evidence' }],
+          metadata: { sources: [privateSource], ...(hidden ? { oauthRetry: true } : {}) },
+        }),
+        createTestMessage({ id: 'follow-up', role: 'user', parts: [{ type: 'text', text: 'Tell me more' }] }),
+        createTestMessage({
+          id: 'follow-up-reply',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'text',
+              text: '![Follow-up image](https://images.example/private.png)\n\n<widget:link-preview url="https://private.example/source" />',
+            },
+          ],
+        }),
+        createTestMessage({
+          id: 'new-provider',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'text',
+              text: 'New evidence [1]\n\n<widget:link-preview source="1" url="https://public.example/new" />',
+            },
+          ],
+          metadata: {
+            sources: [
+              {
+                index: 1,
+                url: 'https://public.example/new',
+                title: 'New source',
+                siteName: 'Public site',
+                toolName: 'search',
+                image: 'https://public.example/preview.png',
+              },
+            ],
+          },
+        }),
+      ]
+      const mockChatInstance = createMockChatInstance(messages)
+      const mockUseChat = createMockUseChat(mockChatInstance)
+      hydrateStore({
+        chatInstance: mockChatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        mcpClients: [],
+        models: [],
+        selectedModel: null,
+        triggerData: null,
+      })
+      const { container, getByRole } = render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      await act(async () => {
+        await Bun.sleep(20)
+      })
+      expect(Array.from(container.querySelectorAll('img')).map((image) => image.getAttribute('src'))).toEqual([
+        'https://images.example/before.png',
+      ])
+      expect(container.textContent).toContain('Follow-up image')
+      expect(container.textContent).toContain('private.example')
+      expect(container.textContent).toContain('New source')
+      // The new turn's [1] still refers to its own source, and a portal inherits the policy.
+      fireEvent.click(getByRole('button', { name: 'View source: Public site' }))
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain('New source')
+      expect(document.querySelector('[role="dialog"] img')).toBeNull()
+      expect(messages[4].metadata?.sources).toHaveLength(1)
+      expect(messages[4].metadata?.sources?.[0].allowRemoteImages).toBeUndefined()
+    },
+  )
+
+  it('applies a streamed private source marker before rendering the following answer', () => {
+    const message = createTestMessage({ id: 'stream', role: 'assistant', parts: [{ type: 'text', text: 'Searching' }] })
+    const chatInstance = createMockChatInstance([message], 'streaming')
+    hydrateStore({
+      chatInstance,
+      chatThread: createMockChatThread(),
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+    const view = render(<ChatMessages useChat={createMockUseChat(chatInstance)} />, { wrapper: createTestWrapper() })
+    const metadata = createMessageMetadata('model', [
+      {
+        index: 1,
+        url: 'https://private.example/source',
+        title: 'Private source',
+        toolName: 'search',
+        allowRemoteImages: false,
+      },
+    ])
+    const withEvidence = { ...message, metadata: metadata({ part: { type: 'tool-result', toolCallId: 'search' } }) }
+    view.rerender(<ChatMessages useChat={createMockUseChat(createMockChatInstance([withEvidence], 'streaming'))} />)
+    const answer: ThunderboltUIMessage = {
+      ...withEvidence,
+      parts: [...message.parts, { type: 'text', text: '![Streamed image](https://private.example/image.png)' }],
+    }
+    view.rerender(<ChatMessages useChat={createMockUseChat(createMockChatInstance([answer], 'streaming'))} />)
+    expect(view.container.querySelector('img')).toBeNull()
+    expect(view.container.textContent).toContain('Streamed image')
   })
 
   describe('compaction history', () => {

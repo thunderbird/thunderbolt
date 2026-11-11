@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { generateCodeVerifier } from './pkce'
 
 /** Timeout for the user to complete SSO auth in the system browser (5 minutes) */
@@ -31,12 +34,8 @@ export class SsoCallbackError extends Error {
  * @throws On server start failure, network error, or `SsoCallbackError` for an IdP error
  */
 export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeoutMs): Promise<string | null> => {
-  const { invoke } = await import('@tauri-apps/api/core')
-  const { listen } = await import('@tauri-apps/api/event')
-  const { openUrl } = await import('@tauri-apps/plugin-opener')
-
   const clientState = generateCodeVerifier()
-  const port = await invoke<number>('start_oauth_server', { clientState })
+  const port = await invoke<number>('start_oauth_server', { flowId: clientState, clientState })
   const callbackOrigin = `http://localhost:${port}`
 
   let unlisten: (() => void) | undefined
@@ -100,5 +99,6 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
   } finally {
     clearTimeout(timeoutId)
     unlisten?.()
+    void invoke<void>('stop_oauth_server', { flowId: clientState }).catch(console.error)
   }
 }

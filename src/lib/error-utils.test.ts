@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   type ChatErrorKind,
   classifyErrorKind,
+  createAgentUnavailableError,
   createHandleError,
   getChatErrorKind,
   getErrorName,
@@ -115,6 +116,13 @@ describe('getChatErrorKind', () => {
     const error = new Error(JSON.stringify({ error: 'Bad Gateway', status: 502, kind: 'timeout' }))
 
     expect(getChatErrorKind(error)).toBe('timeout')
+  })
+
+  it('marks a send to a disabled or deleted agent as its own kind that is not retried', () => {
+    const error = createAgentUnavailableError('agent-1')
+
+    expect(getChatErrorKind(error)).toBe('agent-unavailable')
+    expect(getErrorRetryable(error)).toBe(false)
   })
 
   it('preserves a serialized ACP connection-lost kind', () => {
@@ -558,6 +566,12 @@ describe('isContentRejectionError', () => {
 })
 
 describe('getErrorRetryable', () => {
+  it('preserves an in-process deterministic failure verdict', () => {
+    expect(getErrorRetryable(Object.assign(new Error('Model is no longer enabled'), { isRetryable: false }))).toBe(
+      false,
+    )
+  })
+
   it('reads the SDK isRetryable verdict from the serialized envelope', () => {
     expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 400, isRetryable: false })))).toBe(false)
     expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 408, isRetryable: true })))).toBe(true)

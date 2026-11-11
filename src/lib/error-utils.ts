@@ -14,6 +14,7 @@ const chatErrorKinds = [
   'network',
   'connection-lost',
   'tools-unsupported',
+  'agent-unavailable',
 ] as const
 export type ChatErrorKind = (typeof chatErrorKinds)[number]
 const inferenceQuotaWindowSchema = z.enum(['5h', '7d'])
@@ -128,6 +129,16 @@ export const createChatErrorResponse = (
     status: status ?? 500,
     headers: { 'Content-Type': 'application/json' },
   })
+
+/**
+ * The error a send or connection gets when its agent was disabled or deleted
+ * after the chat picked it. Serialized like {@link createChatErrorResponse};
+ * the 4xx status keeps the chat from retrying it on its own.
+ */
+export const createAgentUnavailableError = (agentId: string): Error =>
+  new Error(
+    JSON.stringify({ error: `Agent ${agentId} is disabled or deleted`, status: 410, kind: 'agent-unavailable' }),
+  )
 
 /**
  * Classify a raw pipeline error into a stable user-facing chat error kind.
@@ -300,6 +311,9 @@ const getAgentErrorCode = (error: Error | null | undefined, status: number): str
  * 408s with deterministic 400s.
  */
 export const getErrorRetryable = (error?: Error | null): boolean | undefined => {
+  if (error && 'isRetryable' in error && typeof error.isRetryable === 'boolean') {
+    return error.isRetryable
+  }
   if (!error?.message) {
     return undefined
   }

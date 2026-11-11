@@ -5,7 +5,10 @@
 import type { McpServer } from '@/types'
 import type { AddServerMode } from './mcp-server-form'
 
-export type ConnectionSelection = { kind: 'integration' | 'server'; id: string } | null
+export type ConnectionSelection =
+  | { kind: 'integration' | 'server'; id: string }
+  | { kind: 'provider'; id: 'openrouter' | 'tinfoil' }
+  | null
 
 export type ConnectionsPageState = {
   selected: ConnectionSelection

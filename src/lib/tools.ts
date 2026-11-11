@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { t } from '@lingui/core/macro'
 import { renderHtmlTool } from '@/artifacts/render-html-tool'
 import type { HttpClient } from '@/contexts'
 import { getIntegrationStatus, getSettings } from '@/dal'
@@ -9,16 +10,24 @@ import { getDb } from '@/db/database'
 import * as tasksTools from '@/extensions/tasks/tools'
 import { createConfigs as createGoogleConfigs } from '@/integrations/google/tools'
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
-import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
+import { createConfigs as createWebSearchTools } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
+import { getTinfoilSearchAvailability, getTinfoilSearchConnection } from '@/integrations/tinfoil-search/connection'
+import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
+import { createStandaloneWebApi } from '@/integrations/standalone-search/api'
+import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
+import { hasServerAuthentication } from '@/lib/provider-mode'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toolCallKey } from '@/lib/stable-stringify'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { tool, type Tool } from 'ai'
 
-/** Settings + integration status that gate which tools are exposed. */
+/** Construction-time snapshot of the settings and connections that gate which tools are exposed. */
 export type ToolAvailabilityContext = {
+  tinfoilSearchApi?: WebToolApi
+  tinfoilConfigured?: boolean
   settings: { experimentalFeatureTasks: boolean; integrationsProIsEnabled: boolean }
   integrationStatus: Awaited<ReturnType<typeof getIntegrationStatus>>
 }
@@ -33,34 +42,82 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
     integrations_pro_is_enabled: false,
   })
   const integrationStatus = await getIntegrationStatus(db)
-  return { settings, integrationStatus }
+  return { settings, integrationStatus, ...(await getTinfoilSearchConnection(db)) }
 }
+
+type ReadTinfoilSearchAvailability = () => ReturnType<typeof getTinfoilSearchAvailability>
 
 export const getAvailableTools = async (
   httpClient: HttpClient,
   sourceCollector?: SourceMetadata[],
   context?: ToolAvailabilityContext,
+  readTinfoilSearchAvailability: ReadTinfoilSearchAvailability = () => getTinfoilSearchAvailability(getDb()),
 ): Promise<ToolConfig[]> => {
   const proEnabled = await hasProAccess()
   const {
     settings: { experimentalFeatureTasks, integrationsProIsEnabled },
     integrationStatus,
+    tinfoilSearchApi,
+    tinfoilConfigured,
   } = context ?? (await loadToolAvailabilityContext())
 
   // render_html is a core capability, always available regardless of integrations.
   const baseTools: ToolConfig[] = [renderHtmlTool, ...(experimentalFeatureTasks ? Object.values(tasksTools) : [])]
 
-  const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
+  const { provider, apiKey, selection } = useSearchProviderStore.getState()
+  const hasServer = hasServerAuthentication()
+  const shouldIncludeProTools = hasServer && proEnabled && integrationsProIsEnabled
 
-  if (shouldIncludeProTools) {
-    baseTools.push(...createProConfigs(httpClient, sourceCollector))
+  const selected = resolveSearchSelection(selection, {
+    custom: Boolean(provider && apiKey),
+    tinfoil: Boolean(tinfoilSearchApi),
+    tinfoilConfigured,
+    cloud: shouldIncludeProTools,
+  })
+
+  const webApi =
+    selected === 'custom' && provider
+      ? createStandaloneWebApi(apiKey, undefined, provider)
+      : selected === 'tinfoil'
+        ? tinfoilSearchApi
+        : undefined
+  if (selected) {
+    const webTools = createWebSearchTools(httpClient, sourceCollector, webApi)
+    baseTools.push(
+      ...webTools.map((config) => ({
+        ...config,
+        execute: async (params: unknown) => {
+          // Construction fixes this turn's API and source registry; execution must still honor live provider changes.
+          const tinfoilAvailability = await readTinfoilSearchAvailability()
+          const cloudEnabled =
+            selected === 'cloud'
+              ? (await getSettings(getDb(), { integrations_pro_is_enabled: false })).integrationsProIsEnabled
+              : shouldIncludeProTools
+          const current = useSearchProviderStore.getState()
+          const currentSelection = resolveSearchSelection(current.selection, {
+            custom: Boolean(current.provider && current.apiKey),
+            ...tinfoilAvailability,
+            cloud: hasServerAuthentication() && proEnabled && cloudEnabled,
+          })
+          if (
+            currentSelection !== selected ||
+            (selected === 'custom' && (current.provider !== provider || current.apiKey !== apiKey))
+          ) {
+            throw new Error(
+              t`Search provider changed or was disconnected. Start a new turn to use the current provider.`,
+            )
+          }
+          return config.execute(params)
+        },
+      })),
+    )
   }
 
-  if (integrationStatus.googleEnabled) {
+  if (hasServer && integrationStatus.googleEnabled) {
     baseTools.push(...createGoogleConfigs(httpClient))
   }
 
-  if (integrationStatus.microsoftEnabled) {
+  if (hasServer && integrationStatus.microsoftEnabled) {
     baseTools.push(...createMicrosoftConfigs(httpClient))
   }
 

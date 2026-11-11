@@ -6,45 +6,81 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { ApproveDeviceDialog } from './approve-device-dialog'
+import { HttpClientProvider } from '@/contexts/http-client-context'
 import { DeviceApprovalError } from '@/crypto/errors'
 import { HttpError } from '@/lib/http'
+import { createMockHttpClient } from '@/test-utils/http-client'
+import type { ComponentProps, ReactNode } from 'react'
+import { approvalCodeAttemptsKey, startApprovalCodeAttempt } from './approval-code-attempts'
 
 const device = { id: 'pending-1', publicKey: 'ecdh-1', mlkemPublicKey: 'mlkem-1' }
 const fingerprint = 'FEDC-44EB-4612-7C84-EADF-4C47-B0A8-4680-CD9B-98EE-0A09-C5B4-A48D-212E-295B-CA2C'
 const enterFingerprint = () =>
   fireEvent.change(screen.getByLabelText('Device fingerprint'), { target: { value: fingerprint } })
+const openFingerprint = () => fireEvent.click(screen.getByRole('button', { name: 'Use fingerprint instead' }))
+
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <HttpClientProvider httpClient={createMockHttpClient()}>{children}</HttpClientProvider>
+)
+type DialogProps = ComponentProps<typeof ApproveDeviceDialog>
+const defaults: DialogProps = {
+  device,
+  open: true,
+  onOpenChange: () => {},
+  onConfirm: () => {},
+  onDeny: () => {},
+  isPending: false,
+}
+const renderDialog = (props: Partial<DialogProps> = {}) =>
+  render(<ApproveDeviceDialog {...defaults} {...props} />, { wrapper })
 
 describe('ApproveDeviceDialog', () => {
   let errorLog: ReturnType<typeof spyOn>
   beforeEach(() => {
+    localStorage.removeItem(approvalCodeAttemptsKey)
     errorLog = spyOn(console, 'error').mockImplementation(() => {})
   })
   afterEach(() => {
     cleanup()
     errorLog.mockRestore()
+    localStorage.removeItem(approvalCodeAttemptsKey)
+  })
+
+  it('opens straight on the codes, with the fingerprint one tap away', () => {
+    renderDialog()
+    expect(screen.getByText('Which code is on the new device?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'None of these match' })).toBeDisabled()
+    openFingerprint()
+    expect(screen.getByLabelText('Device fingerprint')).toBeInTheDocument()
+  })
+
+  it('opens on the fingerprint once too many codes failed today', async () => {
+    await startApprovalCodeAttempt()
+    await startApprovalCodeAttempt()
+    await startApprovalCodeAttempt()
+    renderDialog()
+    expect(screen.queryByText('Which code is on the new device?')).toBeNull()
+    expect(
+      screen.getByText("Too many codes didn't match on this device today, so approve with the fingerprint instead."),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Device fingerprint')).toBeInTheDocument()
   })
 
   it('logs unexpected failure locally without the thrown message, keys or response body', async () => {
     const onConfirm = async () => {
       throw new Error('private response body', { cause: { key: 'private-key-marker' } })
     }
-    render(<ApproveDeviceDialog device={device} open onOpenChange={() => {}} onConfirm={onConfirm} isPending={false} />)
+    renderDialog({ onConfirm })
+    openFingerprint()
     enterFingerprint()
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     expect(errorLog.mock.calls).toEqual([['Failed to approve device.']])
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't approve this device. Please try again.")
   })
 
-  it('renders title and description when open', () => {
-    render(
-      <ApproveDeviceDialog
-        device={device}
-        open={true}
-        onOpenChange={() => {}}
-        onConfirm={() => {}}
-        isPending={false}
-      />,
-    )
+  it('renders the fingerprint title and description', () => {
+    renderDialog()
+    openFingerprint()
 
     expect(screen.getByText('Approve this device?')).toBeInTheDocument()
     expect(
@@ -55,57 +91,42 @@ describe('ApproveDeviceDialog', () => {
   })
 
   it('does not render content when closed', () => {
-    render(
-      <ApproveDeviceDialog
-        device={device}
-        open={false}
-        onOpenChange={() => {}}
-        onConfirm={() => {}}
-        isPending={false}
-      />,
-    )
+    renderDialog({ open: false })
 
-    expect(screen.queryByText('Approve this device?')).not.toBeInTheDocument()
+    expect(screen.queryByText('Which code is on the new device?')).not.toBeInTheDocument()
   })
 
   it('calls onConfirm when Approve is clicked', async () => {
     const onConfirm = mock()
-    render(
-      <ApproveDeviceDialog
-        device={device}
-        open={true}
-        onOpenChange={() => {}}
-        onConfirm={onConfirm}
-        isPending={false}
-      />,
-    )
+    renderDialog({ onConfirm })
+    openFingerprint()
 
     enterFingerprint()
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
-    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(onConfirm).toHaveBeenCalledWith({ kind: 'fingerprint', fingerprint })
   })
 
   it('shows loading state when isPending', () => {
-    render(
-      <ApproveDeviceDialog device={device} open={true} onOpenChange={() => {}} onConfirm={() => {}} isPending={true} />,
-    )
+    const view = renderDialog()
+    openFingerprint()
+    view.rerender(<ApproveDeviceDialog {...defaults} isPending />)
 
     expect(screen.getByText('Approving…')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
   })
 
   it('disables buttons when isPending', () => {
-    render(
-      <ApproveDeviceDialog device={device} open={true} onOpenChange={() => {}} onConfirm={() => {}} isPending={true} />,
-    )
+    const view = renderDialog()
+    openFingerprint()
+    view.rerender(<ApproveDeviceDialog {...defaults} isPending />)
 
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Approving…' })).toBeDisabled()
   })
 
   it('requires a complete fingerprint and resets it when the recipient keys change', () => {
-    const props = { open: true, onOpenChange: () => {}, onConfirm: () => {}, isPending: false }
-    const view = render(<ApproveDeviceDialog {...props} device={device} />)
+    const view = renderDialog()
+    openFingerprint()
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Device fingerprint'), {
       target: { value: 'FEDC-44EB-4612-7C84-EADF-4C47-B0A8-4680' },
@@ -113,7 +134,9 @@ describe('ApproveDeviceDialog', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
     enterFingerprint()
     expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
-    view.rerender(<ApproveDeviceDialog {...props} device={{ ...device, publicKey: 'replaced' }} />)
+    view.rerender(<ApproveDeviceDialog {...defaults} device={{ ...device, publicKey: 'replaced' }} />)
+    expect(screen.getByText('Which code is on the new device?')).toBeInTheDocument()
+    openFingerprint()
     expect(screen.getByLabelText('Device fingerprint')).toHaveValue('')
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
   })
@@ -126,13 +149,14 @@ describe('ApproveDeviceDialog', () => {
           finish = resolve
         }),
     )
-    render(<ApproveDeviceDialog device={device} open onOpenChange={() => {}} onConfirm={onConfirm} isPending={false} />)
+    renderDialog({ onConfirm })
+    openFingerprint()
     enterFingerprint()
     const button = screen.getByRole('button', { name: 'Approve' })
     fireEvent.click(button)
     fireEvent.click(button)
     expect(onConfirm).toHaveBeenCalledTimes(1)
-    expect(onConfirm).toHaveBeenCalledWith(fingerprint)
+    expect(onConfirm).toHaveBeenCalledWith({ kind: 'fingerprint', fingerprint })
     await act(async () => finish?.())
   })
 
@@ -151,9 +175,8 @@ describe('ApproveDeviceDialog', () => {
       throw failure
     })
     const onOpenChange = mock(() => {})
-    render(
-      <ApproveDeviceDialog device={device} open onOpenChange={onOpenChange} onConfirm={onConfirm} isPending={false} />,
-    )
+    renderDialog({ onOpenChange, onConfirm })
+    openFingerprint()
     enterFingerprint()
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     expect(screen.getByRole('alert')).toHaveTextContent(message)

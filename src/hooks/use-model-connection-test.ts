@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { tinfoilSession } from '@/lib/tinfoil-session'
 import { useLingui } from '@lingui/react/macro'
 import { createModel } from '@/ai/fetch'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
@@ -22,6 +23,7 @@ export type ModelConnectionConfig = {
   provider: Model['provider']
   model: string
   url?: string | null
+  oauthProvider?: Model['oauthProvider']
   apiKey?: string | null
 }
 
@@ -30,6 +32,7 @@ type NormalizedConfig = {
   model: string
   url: string | null
   apiKey: string | null
+  oauthProvider?: Model['oauthProvider']
 }
 
 type ConnectionTestState = {
@@ -78,13 +81,15 @@ const normalize = (config: ModelConnectionConfig): NormalizedConfig => ({
   model: config.model,
   url: config.url || null,
   apiKey: config.apiKey || null,
+  oauthProvider: config.oauthProvider ?? null,
 })
 
 const sameConfig = (left: NormalizedConfig, right: NormalizedConfig): boolean =>
   left.provider === right.provider &&
   left.model === right.model &&
   left.url === right.url &&
-  left.apiKey === right.apiKey
+  left.apiKey === right.apiKey &&
+  left.oauthProvider === right.oauthProvider
 
 /**
  * Probe that issues a real `generateText` round-trip against the configured
@@ -170,9 +175,11 @@ export const createDefaultProbe =
     generateText: runGenerateText = generateText,
   }: DefaultProbeDependencies = {}): ConnectionTestProbe =>
   async (config, getProxyFetch, signal) => {
+    const resolved =
+      config.oauthProvider === 'tinfoil' ? { ...config, apiKey: await tinfoilSession.getAccessToken() } : config
     const aiModel =
       config.provider === 'tinfoil'
-        ? await createTinfoilProbeModel(config, acquireTinfoilClient)
+        ? await createTinfoilProbeModel(resolved, acquireTinfoilClient)
         : await createAiModel(connectionTestModel(config), getProxyFetch)
     const request = {
       model: aiModel,

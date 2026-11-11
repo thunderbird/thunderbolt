@@ -24,7 +24,9 @@ describe('OnboardingCelebrationStep', () => {
   })
 
   const renderComponent = () => {
-    return render(<OnboardingCelebrationStep />, { wrapper: createQueryTestWrapper() })
+    return render(<OnboardingCelebrationStep donateUsageData onDonationChange={() => {}} donationDisabled={false} />, {
+      wrapper: createQueryTestWrapper(),
+    })
   }
 
   describe('UI rendering', () => {

@@ -7,10 +7,17 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { integrationsSecretsTable } from '../db/tables'
 import type { OAuthProvider } from '../lib/auth'
 
+type CredentialProvider = OAuthProvider | 'tinfoil' | 'openrouter'
+
 type IntegrationCredentials = {
   access_token: string
   refresh_token?: string
   expires_at?: number
+  reauth_required?: boolean
+  /** Stable OAuth grant identity, retained across refreshes and connection toggles. */
+  authorizationId?: string
+  /** Local generation invalidates OAuth attempts started before a connection change. */
+  sessionRevision?: string
   profile?: {
     email: string
     name: string
@@ -26,7 +33,7 @@ type IntegrationRow = {
 /** Get credentials and enabled flag for a provider. Returns null if no row exists. */
 export const getIntegrationCredentials = async (
   db: AnyDrizzleDatabase,
-  provider: OAuthProvider,
+  provider: CredentialProvider,
 ): Promise<IntegrationRow | null> => {
   const row = await db
     .select()
@@ -54,7 +61,7 @@ export const getIntegrationCredentials = async (
  */
 export const saveIntegrationCredentials = async (
   db: AnyDrizzleDatabase,
-  provider: OAuthProvider,
+  provider: CredentialProvider,
   credentials: IntegrationCredentials,
   enabled: boolean,
 ): Promise<void> => {
@@ -85,7 +92,7 @@ export const saveIntegrationCredentials = async (
  */
 export const updateIntegrationCredentials = async (
   db: AnyDrizzleDatabase,
-  provider: OAuthProvider,
+  provider: CredentialProvider,
   credentials: IntegrationCredentials,
 ): Promise<void> => {
   await db
@@ -97,7 +104,7 @@ export const updateIntegrationCredentials = async (
 /** Toggle the enabled flag for a provider without changing credentials. */
 export const setIntegrationEnabled = async (
   db: AnyDrizzleDatabase,
-  provider: OAuthProvider,
+  provider: CredentialProvider,
   enabled: boolean,
 ): Promise<void> => {
   await db
@@ -107,7 +114,10 @@ export const setIntegrationEnabled = async (
 }
 
 /** Delete credentials for a provider (disconnect). */
-export const deleteIntegrationCredentials = async (db: AnyDrizzleDatabase, provider: OAuthProvider): Promise<void> => {
+export const deleteIntegrationCredentials = async (
+  db: AnyDrizzleDatabase,
+  provider: CredentialProvider,
+): Promise<void> => {
   await db.delete(integrationsSecretsTable).where(eq(integrationsSecretsTable.provider, provider))
 }
 

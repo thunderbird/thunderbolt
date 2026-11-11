@@ -128,6 +128,7 @@ export default defineConfig({
         VITE_AUTH_ENABLE_ANONYMOUS: 'false',
         VITE_BYPASS_WAITLIST: 'false',
         VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${consumerBackendPort}/v1`,
+        VITE_THUNDERBOLT_CLOUD_SERVICE_URL: `http://localhost:${consumerBackendPort}/v1`,
       },
     },
     // --- Consumer backend ---

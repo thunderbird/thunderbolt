@@ -33,7 +33,7 @@ helm unittest deploy/k8s
 
 **Never run `bun test` from the project root.** [`bunfig.toml`](../../../bunfig.toml)'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suite and the Playwright specs, but is a silent no-op on Bun below 1.3.11, and a root run has no per-test timeout, no `--randomize`, and walks `shared/agent-core/` (own runner).
 
-`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/preview-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
 
 ### Browser security updates
 
@@ -344,6 +344,8 @@ On Linux, start and migrate PostgreSQL first, then start PowerSync using [`night
 ### Native app smoke
 
 The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
+
+Fresh consumer native installs start locally even when `VITE_THUNDERBOLT_CLOUD_URL` is set. The smoke flows open **Sign in → Cloud → Continue**, then dismiss optional sync setup after signing in. Build with `VITE_THUNDERBOLT_CLOUD_SERVICE_URL=http://localhost:8000/v1` so the Cloud choice reaches the smoke backend rather than the public service; this setting does not connect the app automatically.
 
 Pull requests never run these jobs. To run them on a branch, dispatch the workflow with `gh workflow run nightly.yml --ref <branch>`: off `main` only `native-ios` and `native-linux` run, and no failure notification goes out. Maestro matches what the iOS accessibility tree exposes, and there an `aria-label` replaces the element's text, so a control whose label differs from the text it shows can be found only by the label.
 

@@ -168,7 +168,7 @@ type CallerSession = { deviceId?: string | null }
  * The match is checked BEFORE the device lookup, so a session cannot probe which
  * device ids exist on its own account either.
  */
-const getCallerDevice = async (
+export const getCallerDevice = async (
   database: typeof DbType,
   userId: string,
   request: Request,

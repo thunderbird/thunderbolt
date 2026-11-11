@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { useConfigCapability } from '@/hooks/use-config-capability'
+import { selectMinimalMode } from '@/api/config-store'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
@@ -98,7 +99,7 @@ export const SearchPalette = ({
 
   const { experimentalFeatureTasks } = useSettings({ experimental_feature_tasks: false })
 
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
 
   // Settings and Projects results are left out of the query in minimal mode:
   // those routes redirect away, and filtering after the query's LIMIT would let

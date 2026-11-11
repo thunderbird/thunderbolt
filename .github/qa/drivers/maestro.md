@@ -76,14 +76,39 @@ missing.
   fresh address for each replay; the rules for `run` hold for everything else.
 - A fresh app is slower than the one you explored, so before each step the flow waits for a text of the screen that
   step needs, then acts on it, and taps a label rather than a point wherever the element has a text.
-- Unless the bug is on the sign-in screen itself, start the flow with this sign-in, copied as it is:
+- Unless the bug is on privacy, local setup or sign-in itself, start the flow with this sign-in, copied as it is:
 
   ```yaml
   - launchApp
   - extendedWaitUntil:
+      visible: Connect your AI|Welcome to Thunderbolt!
+      timeout: 120000
+  - waitForAnimationToEnd
+  - runFlow:
+      when:
+        visible: I agree to the Privacy Policy.*
+      commands:
+        - tapOn: I agree to the Privacy Policy.*
+        - tapOn: Continue
+        - extendedWaitUntil:
+            visible: Choose your setup
+            timeout: 120000
+  - runFlow:
+      when:
+        visible: Connect your AI
+      commands:
+        - tapOn: Toggle Sidebar
+        - tapOn: Sign in
+  - extendedWaitUntil:
+      visible: Cloud \(Waitlist\)
+      timeout: 120000
+  - tapOn: Cloud \(Waitlist\)
+  - tapOn: Continue
+  - extendedWaitUntil:
       visible: Want early access?
       timeout: 120000
   - waitForAnimationToEnd
+  # The simulator can drop a focus tap, and inputText types anyway; eraseText stops a partial try doubling up.
   - retry:
       maxRetries: 2
       commands:
@@ -98,17 +123,28 @@ missing.
       visible: Check your email
       timeout: 120000
   - inputText: '12345678'
+  - extendedWaitUntil:
+      visible: Set up sync|Connect Google
+      timeout: 120000
+  - runFlow:
+      when:
+        visible: Set up sync
+      commands:
+        - tapOn: Close
+        - tapOn:
+            point: 95%,50%
   ```
 
   Then wait for the first screen after sign-in, which depends on your session's build:
-  - a `c1-first-run` session (onboarding on): `- extendedWaitUntil: {visible: Welcome to Thunderbolt!, timeout: 120000}`
+  - a `c1-first-run` session (onboarding on): `- extendedWaitUntil: {visible: Connect Google, timeout: 120000}`
   - any other session: `- extendedWaitUntil: {visible: Ask me anything…, timeout: 120000}`
 
   Never wait for the chat's greeting ("Good evening" and the like): it changes with the hour.
 
-  On a fresh install the c1 build opens onboarding on the privacy step. When your flow next waits for a text that
-  screen does not show, or ends there for a layout finding about an element it does not show, the replay ticks the
-  privacy checkbox and skips Connect Google for it.
+  On a fresh install the c1 build accepts privacy before choosing Cloud and reaches Connect Google after sign-in.
+  When your flow next waits for a text that screen does not show, or ends there for a layout finding about an
+  element it does not show, the replay skips Connect Google for it. For a finding on privacy or local setup,
+  keep the flow on that screen instead of using the sign-in block.
 
 - In a `layout` finding the flow only reaches the screen and stops, with no assertion (replay drops one that ends
   on `assertVisible` or `assertNotVisible`): the harness measures the

@@ -41,6 +41,7 @@ const fixture = (
     { id: 'user', role: 'user', parts: [{ type: 'text', text: 'Question' }] },
     { id: 'assistant', role: 'assistant', parts: [{ type: 'text', text: 'Answer' }] },
   ]
+  const model = createMockModel()
   const saved = mock(save)
   const adapterCompact = mock(compact)
   const adapter: AgentAdapter = {
@@ -59,6 +60,7 @@ const fixture = (
     createClient({ prefixUrl: 'https://backend.test' }),
     () => Object.assign(async () => new Response(), { preconnect: async () => false }),
     {
+      getAvailableModels: async () => [model],
       getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => adapter,
       createChat: (init) => {
@@ -72,7 +74,8 @@ const fixture = (
     id: 'chat',
     chatInstance: instance,
     chatThread: createMockChatThread(),
-    selectedModel: createMockModel(),
+    models: [model],
+    selectedModel: model,
     triggerData: null,
   })
   const finish = (message = messages[1], isAbort = false) =>

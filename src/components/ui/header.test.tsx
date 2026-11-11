@@ -144,6 +144,7 @@ describe('Header', () => {
   })
 
   beforeEach(() => {
+    resetStore()
     forceMobileViewport()
     useConfigStore.setState({ config: {}, configLoaded: true })
   })
@@ -282,6 +283,20 @@ describe('Header', () => {
       useConfigStore.setState({ config: {}, configLoaded: true })
     })
     expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
+  })
+
+  it('leaves a disabled custom agent out of the picker', async () => {
+    const custom = { type: 'remote-acp', transport: 'websocket', url: 'wss://example.com', userId: 'user-1' } as const
+    await createAgent(getDb(), { ...custom, id: 'on-agent', name: 'Enabled Agent' })
+    await createAgent(getDb(), { ...custom, id: 'off-agent', name: 'Disabled Agent', enabled: 0 })
+    setupWithAgent(builtInAgent)
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+
+    expect(await screen.findByText('Enabled Agent')).toBeInTheDocument()
+    expect(screen.queryByText('Disabled Agent')).toBeNull()
   })
 
   it('opens agent creation over the current chat route', async () => {

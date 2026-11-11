@@ -4,7 +4,7 @@
 
 import { BaseDirectory } from '@tauri-apps/api/path'
 import { describe, expect, it, mock } from 'bun:test'
-import { downloadFile, withSuffix, type AndroidSaveArgs, type DownloadNative } from './download'
+import { downloadFile, withSuffix, type DownloadNative, type SaveToDownloadsArgs } from './download'
 
 const request = { name: 'q3.html', contents: '<p>x</p>', mimeType: 'text/html' }
 
@@ -19,7 +19,7 @@ const request = { name: 'q3.html', contents: '<p>x</p>', mimeType: 'text/html' }
 const fakeNative = (platform: DownloadNative['platform'], taken: string[] = []) => {
   const written: { name: string; contents: string | Uint8Array; baseDir: number; createNew?: boolean; via: string }[] =
     []
-  const invoked: { command: string; args: AndroidSaveArgs }[] = []
+  const invoked: { command: string; args: SaveToDownloadsArgs }[] = []
   const write =
     (via: string) =>
     async (name: string, contents: string | Uint8Array, options: { baseDir: number; createNew?: boolean }) => {
@@ -31,7 +31,7 @@ const fakeNative = (platform: DownloadNative['platform'], taken: string[] = []) 
   const native: DownloadNative = {
     platform,
     fs: { writeTextFile: mock(write('writeTextFile')), writeFile: mock(write('writeFile')) },
-    // MediaStore suffixes a taken name itself and reports what it used.
+    // The native command suffixes a taken name itself and reports what it used.
     invoke: async (command, args) => {
       invoked.push({ command, args })
       return { name: taken.includes(args.name) ? withSuffix(args.name, 1) : args.name }
@@ -110,80 +110,62 @@ describe('downloadFile on the web', () => {
   })
 })
 
-describe('downloadFile on the desktop', () => {
-  it('writes the bytes itself, into the Downloads directory', async () => {
-    const { native, written, invoked } = fakeNative('macos')
+/**
+ * Desktop and Android both save through `save_to_downloads`: Rust on desktop,
+ * which marks the file as downloaded from the internet, and MediaStore on
+ * Android, since `plugin-fs`'s `Download` there is app-private.
+ */
+describe.each(['macos', 'windows', 'linux', 'android'] as const)('downloadFile on %s', (platform) => {
+  it('sends the bytes as base64 and returns the name the command used', async () => {
+    const { native, written, invoked } = fakeNative(platform, ['report.pdf'])
 
-    expect(await downloadFile(request, native)).toBe('q3.html')
-    expect(written).toEqual([
-      { name: 'q3.html', contents: '<p>x</p>', baseDir: BaseDirectory.Download, createNew: true, via: 'writeTextFile' },
+    const saved = await downloadFile(
+      { name: 'report.pdf', contents: new Uint8Array([37, 80, 68, 70]), mimeType: 'application/pdf' },
+      native,
+    )
+
+    expect(saved).toBe('report (1).pdf')
+    expect(invoked).toEqual([
+      {
+        command: 'plugin:platform-utils|save_to_downloads',
+        args: { name: 'report.pdf', mimeType: 'application/pdf', data: 'JVBERg==' },
+      },
     ])
-    expect(invoked).toEqual([])
+    expect(written).toEqual([])
   })
 
-  /** Bytes need `writeFile` and its own grant; text keeps the `writeTextFile` it always used. */
-  it('writes bytes with writeFile and text with writeTextFile', async () => {
-    const { native, written } = fakeNative('windows')
-    const bytes = new Uint8Array([37, 80, 68, 70])
-    await downloadFile({ name: 'report.pdf', contents: bytes, mimeType: 'application/pdf' }, native)
-    await downloadFile(request, native)
+  it('encodes text as UTF-8', async () => {
+    const { native, invoked } = fakeNative(platform)
 
-    expect(written.map(({ name, via }) => [name, via])).toEqual([
-      ['report.pdf', 'writeFile'],
-      ['q3.html', 'writeTextFile'],
-    ])
-    expect(written[0]?.contents).toBe(bytes)
+    await downloadFile({ name: 'note.txt', contents: 'olá', mimeType: 'text/plain' }, native)
+
+    expect(invoked[0]?.args.data).toBe('b2zDoQ==')
+  })
+})
+
+describe('downloadFile errors from the native command', () => {
+  /** Kotlin rejects with `{ message }`; the caller shows `String(error)`, which would read "[object Object]". */
+  it("surfaces the Android plugin's message as an Error", async () => {
+    const { native } = fakeNative('android')
+    const invoke = async () => {
+      throw { message: 'Saving files needs Android 10 or later' }
+    }
+
+    await expect(downloadFile(request, { ...native, invoke })).rejects.toThrow(
+      new Error('Saving files needs Android 10 or later'),
+    )
   })
 
-  it('suffixes a taken name for bytes too', async () => {
-    const { native } = fakeNative('linux', ['report.pdf'])
+  /** Rust rejects with a bare string, such as the one that says the unmarkable file was deleted. */
+  it('surfaces the desktop message as an Error', async () => {
+    const { native } = fakeNative('windows')
+    const invoke = async () => {
+      throw 'Could not save q3.html to Downloads, so it was deleted: Access is denied.'
+    }
 
-    expect(
-      await downloadFile({ name: 'report.pdf', contents: new Uint8Array([1]), mimeType: 'application/pdf' }, native),
-    ).toBe('report (1).pdf')
-  })
-
-  /**
-   * `createNew` is the whole guarantee. An `exists()` check followed by a write
-   * is two moments, and whatever lands in between — a second download of the
-   * same artifact, a file the user saved by hand — was overwritten by a check
-   * that had already passed.
-   */
-  it('always asks the filesystem to refuse an existing name', async () => {
-    const { native, written } = fakeNative('macos')
-    await downloadFile(request, native)
-
-    expect(written[0]?.createNew).toBe(true)
-  })
-
-  it('suffixes past the names already taken, as a browser does', async () => {
-    const { native } = fakeNative('macos', ['q3.html', 'q3 (1).html'])
-
-    expect(await downloadFile(request, native)).toBe('q3 (2).html')
-  })
-
-  /**
-   * A refusal that isn't a collision looks identical from here, so it costs the
-   * attempts and then surfaces *its own* message. That text is the only thing
-   * that tells a missing `$DOWNLOAD` grant apart from a crowded folder — and
-   * the button now shows it, which is what the second "still not working"
-   * report needed.
-   */
-  it('rethrows the platform error rather than a synthesized one', async () => {
-    const { native } = fakeNative('macos')
-
-    await expect(
-      downloadFile(request, { ...native, fs: rejectingFs('forbidden path: $DOWNLOAD/q3.html') }),
-    ).rejects.toThrow('forbidden path: $DOWNLOAD/q3.html')
-  })
-
-  /** Bounded: an unbounded loop over a filesystem call is a hang waiting for an
-   *  unusual disk. */
-  it('gives up after twenty names', async () => {
-    const taken = Array.from({ length: 20 }, (_, attempt) => withSuffix('q3.html', attempt))
-    const { native } = fakeNative('macos', taken)
-
-    await expect(downloadFile(request, native)).rejects.toThrow('File exists')
+    await expect(downloadFile(request, { ...native, invoke })).rejects.toThrow(
+      new Error('Could not save q3.html to Downloads, so it was deleted: Access is denied.'),
+    )
   })
 })
 
@@ -202,7 +184,27 @@ describe('downloadFile on iOS', () => {
     expect(invoked).toEqual([])
   })
 
-  it('suffixes past the names already taken in Documents', async () => {
+  /** Bytes need `writeFile` and its own grant; text keeps the `writeTextFile` it always used. */
+  it('writes bytes with writeFile and text with writeTextFile', async () => {
+    const { native, written } = fakeNative('ios')
+    const bytes = new Uint8Array([37, 80, 68, 70])
+    await downloadFile({ name: 'report.pdf', contents: bytes, mimeType: 'application/pdf' }, native)
+    await downloadFile(request, native)
+
+    expect(written.map(({ name, via }) => [name, via])).toEqual([
+      ['report.pdf', 'writeFile'],
+      ['q3.html', 'writeTextFile'],
+    ])
+    expect(written[0]?.contents).toBe(bytes)
+  })
+
+  /**
+   * `createNew` is the whole guarantee. An `exists()` check followed by a write
+   * is two moments, and whatever lands in between (a second download of the
+   * same artifact, a file the user saved by hand) was overwritten by a check
+   * that had already passed.
+   */
+  it('suffixes past the names already taken in Documents, as a browser does', async () => {
     const { native, written } = fakeNative('ios', ['report.docx', 'report (1).docx'])
     const bytes = new Uint8Array([80, 75, 3, 4])
 
@@ -212,6 +214,19 @@ describe('downloadFile on iOS', () => {
     expect(written).toEqual([
       { name: 'report (2).docx', contents: bytes, baseDir: BaseDirectory.Document, createNew: true, via: 'writeFile' },
     ])
+  })
+
+  /**
+   * A refusal that isn't a collision looks identical from here, so it costs the
+   * attempts and then surfaces *its own* message. That text is the only thing
+   * that tells a missing grant apart from a crowded folder.
+   */
+  it('rethrows the platform error rather than a synthesized one', async () => {
+    const { native } = fakeNative('ios')
+
+    await expect(
+      downloadFile(request, { ...native, fs: rejectingFs('forbidden path: $DOCUMENT/q3.html') }),
+    ).rejects.toThrow('forbidden path: $DOCUMENT/q3.html')
   })
 
   /** Tauri rejects with a bare string; the wrapper must name the folder actually used. */
@@ -225,49 +240,14 @@ describe('downloadFile on iOS', () => {
       downloadFile(request, { ...native, fs: { writeTextFile: refuse, writeFile: refuse } }),
     ).rejects.toThrow('Could not save q3.html to Documents: forbidden path')
   })
-})
 
-/**
- * `Download` on Android is the app-private `getExternalFilesDir`, which no file
- * browser shows, so the save goes through MediaStore in the Kotlin plugin.
- */
-describe('downloadFile on Android', () => {
-  it('sends the bytes as base64 and returns the name MediaStore used', async () => {
-    const { native, written, invoked } = fakeNative('android', ['report.pdf'])
+  /** Bounded: an unbounded loop over a filesystem call is a hang waiting for an
+   *  unusual disk. */
+  it('gives up after twenty names', async () => {
+    const taken = Array.from({ length: 20 }, (_, attempt) => withSuffix('q3.html', attempt))
+    const { native } = fakeNative('ios', taken)
 
-    const saved = await downloadFile(
-      { name: 'report.pdf', contents: new Uint8Array([37, 80, 68, 70]), mimeType: 'application/pdf' },
-      native,
-    )
-
-    expect(saved).toBe('report (1).pdf')
-    expect(invoked).toEqual([
-      {
-        command: 'plugin:platform-utils|save_to_downloads',
-        args: { name: 'report.pdf', mimeType: 'application/pdf', data: 'JVBERg==' },
-      },
-    ])
-    expect(written).toEqual([])
-  })
-
-  it('encodes text as UTF-8', async () => {
-    const { native, invoked } = fakeNative('android')
-
-    await downloadFile({ name: 'note.txt', contents: 'olá', mimeType: 'text/plain' }, native)
-
-    expect(invoked[0]?.args.data).toBe('b2zDoQ==')
-  })
-
-  /** Kotlin rejects with `{ message }`; the caller shows `String(error)`, which would read "[object Object]". */
-  it("surfaces the plugin's message as an Error", async () => {
-    const { native } = fakeNative('android')
-    const invoke = async () => {
-      throw { message: 'Saving files needs Android 10 or later' }
-    }
-
-    await expect(downloadFile(request, { ...native, invoke })).rejects.toThrow(
-      new Error('Saving files needs Android 10 or later'),
-    )
+    await expect(downloadFile(request, native)).rejects.toThrow('File exists')
   })
 })
 

@@ -66,6 +66,12 @@ rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] 
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
+# Decodes the bytes platform_utils::save_to_downloads receives. Already in the lock via tauri.
+base64 = "0.22.1"
+
+# Sets com.apple.quarantine on downloads (platform_utils::save_to_downloads). Already in the lock via tar.
+[target.'cfg(target_os = "macos")'.dependencies]
+xattr = "1.6.1"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2-ui-kit = { version = "0.3.2", features = ["UIApplication", "UIWindow", "UIView", "UIInterface", "UIScene", "UIWindowScene"] }

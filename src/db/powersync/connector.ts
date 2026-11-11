@@ -18,6 +18,7 @@ import { encodeForUpload, postKeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
 import { initialKeyId } from '@shared/e2ee-types'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
+import { modelConnectionMigrationMetadataPrefix, providerConnectionMigrationMetadata } from './crud-metadata'
 
 /**
  * Dispatched when the backend rejects credentials. The detail.reason discriminates handling:
@@ -82,7 +83,8 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
 
 /**
  * Whether a queued write may create a row but must never overwrite one: a PUT
- * uploaded before this device has ever seen the account's state (GH #1299).
+ * uploaded before this device has ever seen the account's state (GH #1299), or
+ * a provider migration insert explicitly marked when it was queued.
  *
  * Scoped to PUT because PowerSync emits PUT from INSERT and PATCH from UPDATE,
  * so a PUT is a row the device invented while a PATCH is a deliberate edit.
@@ -90,8 +92,13 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
  * Full rationale, the safety properties, and the known gaps:
  * docs/internals/architecture/powersync-account-devices.md — "Create-only writes".
  */
-export const isCreateOnlyWrite = (op: 'PUT' | 'PATCH' | 'DELETE', hasSynced: boolean): boolean =>
-  op === 'PUT' && !hasSynced
+export const isCreateOnlyWrite = (
+  op: 'PUT' | 'PATCH' | 'DELETE',
+  hasSynced: boolean,
+  source?: { table: string; metadata?: string },
+): boolean =>
+  op === 'PUT' &&
+  (!hasSynced || (source?.table === 'provider_connections' && source.metadata === providerConnectionMigrationMetadata))
 
 /**
  * PowerSync connector that handles authentication and data upload.
@@ -376,19 +383,26 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       const operations = await Promise.all(
         transaction.crud.map((op) => {
           const opName = op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE'
+          const migrationProvider =
+            opName === 'PATCH' &&
+            op.table === 'models' &&
+            op.metadata?.startsWith(modelConnectionMigrationMetadataPrefix)
+              ? op.metadata.slice(modelConnectionMigrationMetadataPrefix.length)
+              : undefined
           return encodeForUpload({
             op: opName,
             type: op.table,
             id: op.id,
             data: op.opData,
-            // Omitted rather than sent as `false` so post-first-sync uploads —
-            // every write by an established device — stay byte-identical to
-            // what previous builds sent.
+            // Migration metadata belongs to the queued operation, so retries remain
+            // create-only even if this device completed a sync before uploading it.
+            // Ordinary writes after first sync retain their existing semantics.
             //
             // Operational trap, kept here rather than in the doc: deploy the
             // backend before this client. Elysia drops body fields it does not
             // declare, so an older backend silently ignores the flag.
-            ...(isCreateOnlyWrite(opName, hasSynced) && { ifAbsent: true }),
+            ...(isCreateOnlyWrite(opName, hasSynced, op) && { ifAbsent: true }),
+            ...(migrationProvider && { ifProviderConnectionUnset: { provider: migrationProvider } }),
           })
         }),
       )

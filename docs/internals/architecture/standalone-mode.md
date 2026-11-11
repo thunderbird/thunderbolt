@@ -72,71 +72,48 @@ SSO and MCP desktop flows also isolate callbacks by listener origin and path. Th
 native listener rejects unrelated methods, paths and Host/Origin headers, keeps
 waiting for a valid callback, and checks cancellation while reading partial requests.
 Its completion page clears callback credentials from browser history. Web authorization
-returns to `/oauth/openrouter/:flowId` and relays through a nonce-scoped
-`BroadcastChannel`, because the app's COOP headers sever a cross-origin popup's
-opener. The PKCE verifier remains in memory, callback query parameters are cleared,
-and analytics strip the callback nonce from URL properties.
+navigates the same tab and returns to `/oauth/openrouter/:flowId`. Tab-scoped
+session storage retains the PKCE verifier, nonce, and initiating surface during
+the redirect. The callback consumes that handoff, clears query parameters, and
+resumes setup; analytics strip the callback nonce from URL properties.
 
 Tinfoil uses OAuth 2.1 PKCE with the public Thunderbolt client ID (override with
-`VITE_TINFOIL_CLIENT_ID`). Authorization and paid subscription checkout run at
-`https://dash.tinfoil.sh/oauth/authorize`; token exchange, refresh and revocation
+`VITE_TINFOIL_CLIENT_ID`). Authorization and subscription checkout run at
+`https://dash.tinfoil.sh/oauth/authorize`; token exchange, refresh, and revocation
 call `https://api.tinfoil.sh/oauth/{token,revoke}` directly. No backend or client
-secret is required. The registered redirects must include desktop loopbacks
-`http://localhost:17421/`, `:17422/`, `:17423/` and each web deployment's
-`/oauth/tinfoil` URL. Web callbacks use the random state to address the same-origin
-BroadcastChannel. Native mobile uses the verified app link
-`https://app.thunderbolt.io/oauth/callback`, which must also be registered with
-Tinfoil. The pending PKCE verifier and return context survive an app restart;
-callbacks validate the exact app-link origin/path, unique nonce and code, and a
-ten-minute lifetime before resuming setup. API keys remain an alternative.
+secret is required. Register desktop loopbacks `http://localhost:17421/`, `:17422/`,
+and `:17423/`, each web deployment's `/oauth/tinfoil` URL, and the native mobile app
+link `https://app.thunderbolt.io/oauth/callback`. Mobile PKCE state survives an app
+restart; callbacks validate the exact origin/path, unique state and code, and a
+ten-minute lifetime. API keys remain an alternative.
 
-Provider setup captures a local connection revision before authorization or model
-verification and checks it again inside the model-save transaction. Disconnecting,
-toggling, or replacing a connection advances that revision, so an older attempt in
-another window cannot restore access. Revisions remain in `integrations_secrets`;
-OpenRouter's row contains only this lifecycle metadata, while its API keys stay in
-`models_secrets`. Tinfoil token refresh preserves the revision. Cancellation stops
-setup and rolls back saves that have not committed. Once a Tinfoil token exchange
-has been sent, it finishes within its thirty-second deadline so an issued grant
-can still be returned to the cancelled flow and revoked.
+Provider setup captures a connection revision before authorization and checks it
+again when saving. Disconnecting, toggling, or replacing a connection advances
+that revision, so an older attempt cannot restore access. Reusable connection
+metadata syncs; credentials and lifecycle state stay in
+`provider_connection_secrets`. Models reference the connection by ID. Refresh,
+replacement, enable/disable, and disconnect share a Web Lock and re-read the
+current credentials inside it. Rotated tokens are saved before releasing the lock.
 
-OAuth sessions live in the existing local-only `integrations_secrets` table;
-`models_secrets.oauth_provider` links a user model to that session. Neither tokens
-nor the link sync to other devices. Refresh, reconnect persistence, enable/disable and disconnect
-share a Web Lock; refresh re-reads credentials inside the lock and persists rotated
-refresh tokens before releasing it. A rejected grant requires reconnecting; it
-never falls back to Mozilla billing. Each encrypted inference request resolves a
-fresh token, including requests within long agent turns. BYOK and backend-managed
-models retain their existing paths. Settings → Connections offers enable/disable
-and reconnect/disconnect controls. Billing remains on Tinfoil's dashboard. Disconnecting access does
-not cancel the subscription. Disabling or disconnecting the subscription does not
-change individual model toggles: availability is derived from both the model
-preference and current connection access. A failed remote revocation keeps the
-local connection intact so disconnect can be retried.
+Reconnecting revokes the previous Tinfoil grant before saving its replacement.
+Failed revocation leaves the previous session available for retry. Cancellation
+after revocation marks it for reauthorization. Once token exchange has started,
+it completes within its thirty-second deadline independently of caller or identity
+cancellation, so cleanup can still revoke an issued
+grant. Leaving setup discards unused grants on a best-effort basis. A stable local
+`authorizationId` survives refresh and toggles, preventing delayed cleanup from
+revoking a grant another window now owns. Cleanup failures emit a fixed warning
+without credentials; users can also revoke access from the provider dashboard.
+Revocation has its own thirty-second deadline and survives identity teardown;
+ordinary refresh remains identity-bound. Local grant ownership follows the
+device-approved OAuth binding even if synced connection metadata is changed or removed.
 
-Reconnecting revokes the previous grant before saving its replacement. A failed
-revocation preserves the old session for retry; cancellation after a successful
-revocation leaves that old session marked for reauthorization. Failed model
-verification retains the new grant for a retry while setup remains open.
-Leaving or cancelling setup releases unused grants on a best-effort basis, under
-the same session lock. A local `authorizationId` survives token refresh and
-connection toggles so delayed cleanup cannot revoke a grant another window now
-owns. Cleanup failures emit a fixed warning without credentials; the user can
-still revoke the app from Tinfoil's dashboard.
-
-Open chats watch model and connection changes from the database, including other
-windows. Every new send independently checks availability again. These checks do
-not recall requests already sent: an already-running BYOK agent turn can finish
-using its prepared provider, while subsequent turns use the updated selection.
-
-Automatic provider setup marks its model in the local-only
-`models_secrets.provider_default` column. Reconnecting reuses that provider/model
-and credential-kind row, restoring credentials without changing individual model
-preferences or overwriting manually added models. Clearing credentials preserves
-the marker. Existing Tinfoil OAuth rows also qualify for reuse; older OpenRouter
-and BYOK rows cannot be distinguished from manual entries, so their first
-reconnection after this change can create one new marked default. Local-only
-schema changes are applied by PowerSync and require no server migration.
+Each inference request resolves current credentials, including requests within
+long agent turns. A rejected grant requires reconnecting and never falls back to
+Thunderbolt billing. Disabling or disconnecting a connection preserves model
+preferences; availability depends on both the model and its connection. These
+checks do not recall a request already sent. Billing and subscription cancellation
+remain on Tinfoil's dashboard.
 
 Protocol references: [draft integration](https://github.com/tanyav2/thunderbolt/pull/1)
 and [authorization server metadata](https://api.tinfoil.sh/.well-known/oauth-authorization-server).
@@ -153,8 +130,9 @@ capabilities to remote localhost pages; Tauri automatically treats the configure
 `devUrl` as local during development, so no production localhost exception is
 needed. Browser-only standalone installs remain subject to the provider's CORS policy.
 
-The optional search key is device-local and excluded from synced settings. Existing
-Brave configurations remain compatible. Exa and Tavily retrieve page text through
+Search selects a reusable provider connection by ID. Connection metadata syncs; its
+credentials live only in the device-local `provider_connection_secrets` table. Search
+selection contains no keys. Existing Brave configurations remain compatible. Exa and Tavily retrieve page text through
 `/contents` and `/extract` respectively; Brave exposes search only. There is no
 arbitrary device-side page downloader. Extraction responses are capped at 1 MiB
 before JSON parsing, with a 30-second deadline covering headers and body reads.
@@ -175,25 +153,28 @@ Local attachment paths remain usable. This restriction covers citation and previ
 media, not every widget: maps still contact their map tile provider. Older source
 records without this marker retain their prior behavior.
 
-Automatic selection does not fall back to Thunderbolt Cloud after a configured
-Tinfoil connection is disabled, disconnected, or needs reauthentication. Choosing
-Cloud or a custom provider explicitly still switches providers. Each web-tool
-call rechecks local connection availability. If connecting Tinfoil changes the
-automatic selection mid-turn, the old Cloud tool rejects further calls; a new
-turn creates tools for the current provider without mixing citation registries.
+An explicitly selected connection never falls back to another connection or to
+Thunderbolt Cloud when disabled, disconnected, or unavailable. Cloud remains the
+default when no local connection was selected. Every web-tool call checks both the
+current selection and the connection's authorization generation. A turn rejects
+calls after a switch or credential replacement; ordinary OAuth refresh retains
+that generation and the turn's citation registry.
 
-An enabled Tinfoil subscription supplies search independently of whether a model
-is enabled or even configured. An enabled BYOK Tinfoil model can also supply its
-key. This skips the search onboarding step in either direction, and remains
-available after signing into a Thunderbolt server. Each Tinfoil search or page
+Tinfoil OAuth and API-key connections supply search independently of models.
+Onboarding selects Tinfoil search automatically after connecting; Otari is selected
+only after its gateway advertises direct search. Unavailable Otari search shows an
+explanation and keeps the optional search step. Existing named search connections
+can be reused without re-entering credentials. Each Tinfoil search or page
 retrieval opens and closes a short-lived MCP transport using the existing OAuth
-session or API key. On desktop, the attestation SDK verifies the enclave key and
-the public `ehbp` primitives encrypt/decrypt envelopes over native HTTP;
-plaintext result payloads are rejected. The optional GET event stream is disabled
-because a bodyless request cannot establish EHBP response keys. Tool results use
-encrypted POST responses, including streamed responses; only empty notification
-acknowledgments and payload-free session termination can bypass decryption. This
-avoids global-fetch overrides and the MCP endpoint's browser fetch-metadata restriction.
+session or API key. Tinfoil SDK 2's injected `fetch` sends encrypted envelopes
+through Thunderbolt's HTTP client. The SDK owns attestation, encryption, response
+decryption, and re-verification on key rotation; Thunderbolt does not implement
+EHBP. Desktop and mobile use native HTTP. The optional GET event stream is
+disabled because a bodyless request cannot establish EHBP response keys. Tool
+results use encrypted POST responses, including streamed responses. A small MCP
+adapter discards notification/termination response bodies and passes their empty
+acknowledgments around the SDK's requirement for a nonce on every successful
+response. Plaintext tool results are rejected by the SDK.
 
 Browsers send those encrypted envelopes through the fixed same-origin
 `/_tinfoil/search` relay (Vite dev/preview and the deployed frontend nginx
@@ -205,12 +186,125 @@ required. Static-only hosts must provide this relay; desktop connects directly.
 PII and prompt-injection filtering are enabled. Results are sent to the selected
 model provider. No model-side `web_search_options` are injected.
 
-Settings → Search follows the Models list/detail layout. Existing Exa/Brave/Tavily
-settings take precedence in automatic selection; otherwise Tinfoil is eligible.
-Explicit selection and disabling search persist device-locally, and choosing
-Tinfoil preserves a separately saved search key. Disconnecting a provider does
-not silently fall back to another provider. Tool instances recheck selection and
-credentials before use, so a running turn cannot keep using a disconnected key.
+Settings → Search lists named, search-capable connections and links to Connections
+to add or edit credentials. Multiple Exa, Brave, Tavily, Tinfoil, and Otari API-key
+connections can coexist. Selecting one never replaces another connection's key.
+Models reference the same connections, but enabling or removing an individual
+model does not change search access.
+
+### Migrating provider credentials
+
+The migration creates one stable `legacy-model:<model-id>` connection per legacy
+API-key model. It deliberately does not deduplicate by key: two devices can have
+different local keys for the same models, so grouping on one device would silently
+change another device's account mapping. Newly added models reuse an explicit
+connection. Tinfoil OAuth retains its single `oauth:tinfoil` connection.
+
+A device migrates its local key even if another device has already synced the
+model's connection reference. The legacy model URL is retained for this handoff:
+it is the routing identity that this device approved for that key. Existing local
+credentials and disconnect tombstones win over retries. A synced provider, auth
+method, or URL mismatch is never granted the legacy key; the old key remains local
+for recovery. If devices used different authentication methods for the same model,
+the migration preserves the local key or OAuth reference for an explicit reconnect
+without overwriting the synced connection. An API key cannot claim an `oauth:` ID,
+even when that model reference arrives before the connection metadata. Model IDs,
+profiles, enabled flags, and chat history are retained.
+
+Legacy standalone search keys move from `thunderbolt-search-provider` into stable
+`legacy-search:<provider>` connections before the old storage entry is removed.
+The ID-only selection lives under `thunderbolt-search-selection`. An interrupted
+migration can retry without duplicating connections or restoring a disconnected
+credential, and explicit None/Cloud or a newer selection remains intact.
+
+### Additional provider sign-ins
+
+Exa and Tavily use their official MCP OAuth endpoints. The existing MCP discovery,
+PKCE, browser redirect, desktop loopback, and mobile callback flow saves tokens to
+provider connections rather than creating a duplicate MCP server. Search tools use
+`web_search_advanced_exa` / `web_fetch_exa` or `tavily_search` / `tavily_extract`.
+API-key connections continue to use each provider's REST API.
+
+Exa does not allow browser CORS on its OAuth endpoints. Browser discovery,
+registration, token exchange/refresh, and MCP tool calls use the frontend's
+`/_exa/` relay (Vite locally, nginx in production). The relay only accepts fixed
+Exa endpoints and methods, validates upstream TLS, strips browser cookies and app
+headers, and disables caching. OAuth issuer and resource identities remain the
+original Exa URLs. Unlike Tinfoil's encrypted search, this is a TLS relay: the
+frontend host can see Exa tokens and search requests. Native apps connect directly.
+
+OpenAI offers **Continue with ChatGPT** in the desktop app using the public OSS
+client-registration flow. Browser and mobile users can still add an OpenAI API key.
+ChatGPT sessions validate the signed identity separately from permission to use the
+account's plan. Declining plan permission keeps the account signed in but blocks
+model discovery and inference; the connection offers an explicit consent retry or
+an API-key connection. Issued client IDs survive failed token exchanges so retries
+reuse the registration instead of registering the app repeatedly.
+
+Account registrations are local metadata records in `provider_connection_secrets`
+under `chatgpt-registration:<clientId>`. They contain validated account labels and
+subjects, never access, refresh, or ID tokens. The single active `oauth:openai`
+connection holds the token set. Its account picker can reauthorize a saved
+registration or register another account; account identities are never mixed even
+when their email addresses match. Switching validates the selected identity and
+revokes the previous renewable session before replacing the active token set.
+Disconnect clears device tokens while retaining registration metadata.
+Started code exchanges and unused-grant revocation finish under independent
+thirty-second deadlines after cancellation or identity teardown. Ordinary discovery,
+identity verification, and refresh remain bound to the initiating identity.
+
+The active account's model catalog supplies display names. Requests use the public
+Responses API with streaming enabled and storage disabled, through native HTTP
+directly to OpenAI. Refresh is serialized across windows; late responses cannot
+restore a disabled or disconnected session. Plan scope removed during refresh also
+blocks further inference. These behaviors follow OpenAI's [registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+and [accounts and sessions](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)
+contracts.
+
+The connection picker pins MCP and OpenAI-compatible first, alphabetizes the rest,
+and combines text search with Models, Search, and Productivity checkboxes. Google
+and Microsoft are Productivity connections. Chat's empty-state Add connection
+button uses the shared create-item host to open this picker without navigating away.
+OAuth handshakes retain the initiating app route (including its query and fragment).
+Callbacks reopen the connection surface over that route and clear callback parameters
+after completion; onboarding keeps its own return flow. Settings rows share an
+Edit/Remove context menu. Search edits the underlying connection in the same aside,
+and removal reuses the connection's confirmation and soft-delete operation.
+
+### Otari
+
+Otari connects through a registered public OAuth client with S256 PKCE. The
+official server is the default; Custom URL supports another HTTPS deployment or
+HTTP loopback for local development. Browser authorization redirects in the same
+tab. Desktop uses the existing native loopback listener, while native mobile
+uses the same verified HTTPS app link as Google and Microsoft. Pending mobile
+authorization survives an app restart. None of these flows requires a
+Thunderbolt backend.
+
+The Otari deployment must register the `thunderbolt` client, the web deployment's
+`/oauth/otari` redirect, desktop `http://localhost/` loopback redirect, and mobile
+`https://app.thunderbolt.io/oauth/callback` redirect. Browser deployments also
+need their origin in Otari's CORS configuration. The app uses Otari's standard
+`/api/v1/oauth/apps/authorize` and `/api/v1/oauth/apps/token` endpoints.
+
+After workspace approval, the user chooses a searchable catalog model and
+Thunderbolt verifies its tool support before saving it. The model keeps the
+first-class `otari` provider identity and the catalog's display name, with a
+generic readable fallback when the server supplies only an identifier. The
+opaque delegated key stays in the device-local provider connection secret store.
+Reconnecting the same model on the same server preserves its identity and user
+preferences; manually configured models and other servers stay separate.
+Connections controls only the models created by this connection flow.
+
+Otari model, catalog, search, and page-fetch requests go directly to the chosen
+server, without cookies or redirect following. Otari supplies ordinary HTTPS
+transport, not Tinfoil's encrypted enclave transport. Search is selected and its
+onboarding step skipped only when the workspace advertises available search.
+Otherwise setup explains the missing capability and keeps the search step.
+Refresh Models rechecks workspace capabilities; each search turn also rechecks
+the selected server before exposing its search and page-fetch tools. Missing or
+disconnected Otari access never silently changes an explicitly selected search
+provider. Remote result images remain links, as with other local search providers.
 
 ### Provider connection research
 
@@ -317,3 +411,42 @@ tracking; it is not a release or notarization identity. See Apple's
 Do not delete the WebCrypto master key to suppress a prompt: existing persisted
 CryptoKeys may depend on it. Signing an updated app can still require a one-time
 user approval to access the key created by the previous unsigned build.
+
+## Google and Microsoft without cloud sign-in
+
+Google and Microsoft account connections are available in standalone mode. They
+use the selected server's integration OAuth relay, or `thunderboltCloudUrl` when
+no server is selected. This does not select a sync server, create a Thunderbolt
+account, or enable cloud tools. The Thunderbolt connection still requires a
+cloud session. Provider API requests use the user's Google/Microsoft token;
+standalone requests go directly to the provider rather than the general proxy.
+
+The relay operator must deploy the backend and explicitly set
+`INTEGRATION_OAUTH_ALLOW_PUBLIC=true`, alongside the existing Google/Microsoft
+OAuth client configuration and approved browser origins/redirects. The default
+is false, retaining the session requirement for existing deployments. Use
+integration-specific OAuth registrations; do not reuse an unrelated privileged
+application's credentials. Provider consent, API permissions, quotas and any
+provider verification requirements still apply.
+
+Public access covers only `/v1/auth/{google,microsoft}/{config,exchange,refresh}`.
+It never authorizes other API routes. Both providers share a 30-request/minute
+IP budget, enforced even when optional API rate limits are disabled. Configure
+`TRUSTED_PROXY` correctly behind a reverse proxy; unknown clients share a bounded
+bucket. The relay accepts JSON, limits grant sizes, checks redirect and browser
+origin allowlists, forwards the PKCE verifier to the provider, rejects upstream
+redirects, times out token requests, and returns `Cache-Control: no-store`.
+Provider error bodies and validation inputs are not echoed or logged.
+
+The client generates S256 PKCE and validates callback state. The provider checks
+the code/verifier binding; a public relay is not a substitute for PKCE or user
+consent. Refresh tokens remain bearer credentials: stealing one can permit
+refresh without a Thunderbolt login, so device credential protection matters.
+Neither CORS nor an app version header authenticates a native client.
+
+OAuth state and device-local `integrations_secrets` retain the issuing relay URL.
+Exchanges and refreshes bypass the general proxy and never send another server's
+Thunderbolt bearer token. Provider configuration is cached per relay client.
+Rotated refresh tokens replace old ones; a conditional write prevents a late
+refresh from overwriting a reconnect, disconnect, or disable. Existing credentials
+without relay metadata retain their previous transport until the next reconnect.

@@ -4,10 +4,57 @@
 
 import { importBackup } from './import-backup'
 import { expect, test } from './test'
-import { collectPageErrors, loginViaEmailCode } from './helpers'
+import { collectPageErrors, loginViaEmailCode, openSidebarOnMobile } from './helpers'
 import { defaultModelOpus55 } from '../shared/defaults/models'
 import { prepare } from '../scripts/performance/scenarios'
 import { openLongChat } from '../scripts/performance/journeys'
+
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test.describe(`quick-create navigation at ${viewport.width}px`, () => {
+    test.use({ viewport })
+
+    test('leaving chat dismisses its model aside before Settings opens another', async ({ page }) => {
+      const errors = collectPageErrors(page)
+      await loginViaEmailCode(page)
+
+      // Establish a forward-history destination for mobile, where the create
+      // panel covers the sidebar but browser navigation remains available.
+      await openSidebarOnMobile(page)
+      await page.getByRole('button', { name: 'Settings', exact: true }).click()
+      await page.getByRole('button', { name: 'Models', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'Models', exact: true })).toBeVisible()
+      await page.goBack()
+      await expect(page).toHaveURL(/\/chats\/new$/)
+
+      await page.getByTestId('model-selector-trigger').click()
+      await page.getByRole('button', { name: 'Add Model', exact: true }).click()
+      const addModelHeading = page.getByRole('heading', { name: 'Add Model', exact: true })
+      await expect(addModelHeading).toHaveCount(1)
+      await expect(addModelHeading).toBeVisible()
+
+      if (viewport.width < 768) {
+        await page.goForward()
+      } else {
+        await page.getByRole('button', { name: 'Settings', exact: true }).click()
+        await page.getByRole('button', { name: 'Models', exact: true }).click()
+      }
+      await expect(page).toHaveURL(/\/settings\/models$/)
+      await expect(addModelHeading).toHaveCount(0)
+      await page.getByRole('button', { name: 'New Model', exact: true }).click()
+      await expect(addModelHeading).toHaveCount(1)
+      await expect(addModelHeading).toBeVisible()
+
+      await page.goBack()
+      await expect(page).toHaveURL(/\/chats\/new$/)
+      await expect(page.locator('textarea')).toBeEditable()
+      await expect(addModelHeading).toHaveCount(0)
+      expect(errors).toEqual([])
+    })
+  })
+}
 
 test('a saved compaction summary loads on first open and can be reopened', async ({ page }) => {
   const errors = collectPageErrors(page)

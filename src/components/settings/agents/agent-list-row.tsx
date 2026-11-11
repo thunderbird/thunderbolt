@@ -9,6 +9,7 @@ import { IconTile } from '@/components/settings/icon-tile'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 
 type AgentListRowProps = {
+  contextMenu?: { onEdit?: () => void; onRemove?: () => void }
   icon: ReactNode
   title: ReactNode
   subtitle: ReactNode
@@ -32,6 +33,7 @@ type AgentListRowProps = {
  * `AgentRow` and the Thunderbolt CLI row so the two cannot drift.
  */
 export const AgentListRow = ({
+  contextMenu,
   icon,
   title,
   subtitle,
@@ -45,6 +47,7 @@ export const AgentListRow = ({
 }: AgentListRowProps) => (
   <div data-testid={testId}>
     <SettingsSelectableRow
+      contextMenu={contextMenu}
       title={title}
       subtitle={<span data-testid={subtitleTestId}>{subtitle}</span>}
       leading={<IconTile>{icon}</IconTile>}

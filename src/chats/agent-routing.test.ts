@@ -134,8 +134,8 @@ describe('createAgentRoutingFetch', () => {
       httpClient,
       getProxyFetch,
       {
-        getAvailableModels: async () => useChatStore.getState().models,
         getChatReasoningEffort: async () => undefined,
+        getAvailableModels: async () => useChatStore.getState().models,
         isAgentActive,
         connectToAgent: mock(async () => adapter) as never,
       },
@@ -166,8 +166,8 @@ describe('createAgentRoutingFetch', () => {
       httpClient,
       getProxyFetch,
       {
-        getAvailableModels: async () => useChatStore.getState().models,
         getChatReasoningEffort: async () => undefined,
+        getAvailableModels: async () => useChatStore.getState().models,
         isAgentActive,
         connectToAgent: connectToAgent as never,
       },
@@ -238,8 +238,8 @@ describe('createAgentRoutingFetch', () => {
       httpClient,
       getProxyFetch,
       {
-        getAvailableModels: async () => useChatStore.getState().models,
         getChatReasoningEffort: async () => undefined,
+        getAvailableModels: async () => useChatStore.getState().models,
         isAgentActive,
         connectToAgent: connectToAgent as never,
       },

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { prewarmSystemModel } from '@/ai/prewarm-system-model'
+import { prewarmTinfoilModel } from '@/ai/prewarm-tinfoil-model'
 import { updateSettings } from '@/dal'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
@@ -187,7 +187,7 @@ type ChatStoreActions = {
 }
 
 type SetSelectedModelDeps = {
-  prewarmSystemModel?: typeof prewarmSystemModel
+  prewarmTinfoilModel?: typeof prewarmTinfoilModel
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions
@@ -488,9 +488,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     set({ sessions: nextSessions })
 
-    // Fire-and-forget: the wrapper no-ops (before any dynamic import) unless
-    // this is a Tinfoil system model, so the first send finds a warm client.
-    void (deps.prewarmSystemModel ?? prewarmSystemModel)(model)
+    // Remote agents own their inference; only local Tinfoil transports can be warmed here.
+    if (session.selectedAgent.type === 'built-in') {
+      void (deps.prewarmTinfoilModel ?? prewarmTinfoilModel)(model)
+    }
 
     const db = getDb()
     await updateSettings(db, { selected_model: model.id })

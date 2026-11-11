@@ -12,16 +12,15 @@ import {
   type SearchableMenuItem,
 } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { GradientLock } from '@/components/ui/gradient-lock'
-import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useLocalProviders } from '@/hooks/use-local-providers'
 import { cn } from '@/lib/utils'
 import { isModelAvailable, matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
+import { ModelProviderIcon, ModelProviderMark } from '@/settings/models/model-presentation'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, Check, ChevronDown, Lock, Plus } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, Plus } from 'lucide-react'
 import { useCallback } from 'react'
 import { flushSync } from 'react-dom'
 
@@ -56,7 +55,6 @@ const toMenuItem = (
   label: model.name,
   description: model.description || model.model,
   searchTerms: [model.model, model.vendor].filter(Boolean).join(' '),
-  icon: model.isConfidential === 1 ? <PrivateBadge /> : undefined,
   disabled: isDisabled,
   data: { model, disabledByEncryption },
 })
@@ -159,11 +157,10 @@ export const ModelSelector = ({
             ),
       )}
     >
-      {selected?.data?.model && needsApiKey(selected.data.model) ? (
+      {selected?.data?.model && <ModelProviderIcon model={selected.data.model} className="size-3.5" />}
+      {selected?.data?.model && needsApiKey(selected.data.model) && (
         <AlertTriangle className="size-3.5 shrink-0 text-warning" />
-      ) : selected?.data?.model.isConfidential === 1 ? (
-        <GradientLock className="size-3.5 shrink-0" />
-      ) : null}
+      )}
       {/* Muted in both variants — trigger labels are chrome, not content.
           Truncates instead of wrapping when the composer gets narrow. */}
       <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? t`Select model`}</span>
@@ -191,15 +188,10 @@ export const ModelSelector = ({
       >
         <span className="truncate font-normal">{item.label}</span>
         {embedded && isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0 text-brand" />}
-        {/* ml-auto pushes the trailing indicator (missing-key warning or the
-            confidential "Private" badge) to the row's right edge. */}
-        {showMissingKeyHint ? (
-          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-warning" />
-        ) : item.icon ? (
-          <span className="ml-auto flex-shrink-0">
-            {embedded ? <Lock aria-label={t`Private`} className="size-3.5 text-muted-foreground" /> : item.icon}
-          </span>
-        ) : null}
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {model && <ModelProviderMark model={model} />}
+          {showMissingKeyHint && <AlertTriangle className="size-3.5 shrink-0 text-warning" />}
+        </span>
       </div>
     )
 

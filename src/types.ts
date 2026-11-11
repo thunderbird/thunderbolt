@@ -128,17 +128,23 @@ export type ProjectRow = InferSelectModel<typeof projectsTable>
 export type ChatMessage = WithRequired<ChatMessageRow, 'content' | 'role' | 'chatThreadId'>
 export type ChatThread = WithRequired<ChatThreadRow, 'isEncrypted' | 'wasTriggeredByAutomation'>
 /** Credentials and OAuth references come from the device-only models_secrets join, never the synced row. */
-export type Model = WithRequired<
-  ModelRow,
-  | 'provider'
-  | 'name'
-  | 'model'
-  | 'enabled'
-  | 'toolUsage'
-  | 'isConfidential'
-  | 'startWithReasoning'
-  | 'supportsParallelToolCalls'
+export type Model = Omit<
+  WithRequired<
+    ModelRow,
+    | 'provider'
+    | 'name'
+    | 'model'
+    | 'enabled'
+    | 'toolUsage'
+    | 'isConfidential'
+    | 'startWithReasoning'
+    | 'supportsParallelToolCalls'
+  >,
+  'providerConnectionId'
 > & {
+  providerConnectionId?: string | null
+  connectionName?: string | null
+  connectionReady?: boolean
   apiKey: string | null
   oauthProvider?: 'tinfoil' | null
   providerDefault?: number | null

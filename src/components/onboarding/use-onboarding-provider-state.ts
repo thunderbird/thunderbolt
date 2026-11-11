@@ -12,8 +12,9 @@ import {
   startOpenRouterConnection,
   type OpenRouterManualConnection,
 } from '@/lib/openrouter-auth'
-import { tinfoilAuth, TinfoilConnectionError } from '@/lib/tinfoil-auth'
+import { tinfoilAuth, getTinfoilErrorMessage } from '@/lib/tinfoil-auth'
 import { tinfoilSession } from '@/lib/tinfoil-session'
+import { createIdentityController, getIdentitySignal } from '@/lib/identity-lifetime'
 import {
   startTinfoilMobileConnection,
   cancelTinfoilMobileConnection,
@@ -28,14 +29,22 @@ import {
   type ProviderConnectionAttempt,
 } from '@/lib/provider-connection-attempt'
 import { useDatabase } from '@/contexts'
+import {
+  cancelProviderBrowserConnection,
+  startProviderBrowserConnection,
+  getProviderBrowserReturn,
+  clearProviderBrowserReturn,
+} from '@/lib/provider-browser-auth'
 import { isMobile, isTauri } from '@/lib/platform'
+import { getModel } from '@/dal/models'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { useAddModelForm } from '@/settings/models/use-add-model-form'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import { prepareProviderDefaultModel, type OnboardingProvider } from './provider-default-model'
 
-type SetupView = 'choices' | 'openrouter' | 'tinfoil' | 'other' | 'manual'
+type SetupView = 'choices' | 'openrouter' | 'tinfoil' | 'otari' | 'other' | 'manual'
 type ProviderState = {
-  selection: OnboardingProvider | 'custom'
+  selection: OnboardingProvider | 'otari' | 'custom'
   view: SetupView
   isConnecting: boolean
   isDisconnecting: boolean
@@ -89,6 +98,8 @@ const connectionDependencies = {
   start: startOpenRouterConnection,
   prepareManual: prepareOpenRouterManualConnection,
   exchange: exchangeOpenRouterCode,
+  browser: () => !isTauri(),
+  startBrowser: startProviderBrowserConnection,
   needsManual: () => isTauri() && isMobile(),
   openUrl,
   prepareModel: prepareProviderDefaultModel,
@@ -104,6 +115,7 @@ export const useOnboardingProviderState = (
   onConnected?: () => void,
   options: {
     initialProvider?: ProviderState['selection']
+    initialView?: SetupView
     onSaved?: () => void
     returnContext?: TinfoilReturnContext
   } = {},
@@ -111,10 +123,16 @@ export const useOnboardingProviderState = (
   const { t, i18n } = useLingui()
   const db = useDatabase()
   const getProxyFetch = useProxyFetchGetter()
-  const [returned] = useState(() => getTinfoilMobileReturn(options.returnContext ?? 'onboarding'))
+  const [returned] = useState(
+    () =>
+      getProviderBrowserReturn(options.returnContext ?? 'onboarding') ??
+      getTinfoilMobileReturn(options.returnContext ?? 'onboarding'),
+  )
   const [state, dispatch] = useReducer(onboardingProviderReducer, {
-    selection: returned ? 'tinfoil' : (options.initialProvider ?? connectedProviders[0] ?? 'openrouter'),
-    view: returned ? 'tinfoil' : 'choices',
+    selection: returned
+      ? returned.attempt.provider
+      : (options.initialProvider ?? connectedProviders[0] ?? 'openrouter'),
+    view: returned ? returned.attempt.provider : (options.initialView ?? 'choices'),
     isConnecting: false,
     isDisconnecting: false,
     showApiKey: false,
@@ -122,7 +140,11 @@ export const useOnboardingProviderState = (
     manual: null,
     code: '',
   })
-  const authorizedSession = useRef<{ key: string; authorization: ProviderAuthorization } | null>(null)
+  const authorizedSession = useRef<{
+    key: string
+    authorization: ProviderAuthorization
+    detachIdentity: () => void
+  } | null>(null)
   const pending = useRef<AbortController | null>(null)
   const returnedOwner = useRef<{ id: string; controller: AbortController } | null>(null)
   const isFormOpen = state.view === 'other'
@@ -139,23 +161,28 @@ export const useOnboardingProviderState = (
     },
   })
 
-  const discardAuthorization = (authorization: ProviderAuthorization | undefined) => {
-    if (authorization?.tinfoilCredentials) {
-      void dependencies.discardTinfoil(authorization.tinfoilCredentials).catch(() => {
-        console.warn('Could not revoke an unused Tinfoil authorization.')
-      })
+  /** Release unused grants without letting network failures interrupt leaving setup. */
+  const discardAuthorization = async (authorization: ProviderAuthorization | undefined) => {
+    if (!authorization?.tinfoilCredentials) {
+      return
+    }
+    try {
+      await dependencies.discardTinfoil(authorization.tinfoilCredentials)
+    } catch {
+      console.warn('Could not revoke an unused Tinfoil authorization.')
     }
   }
   const discardPendingAuthorization = () => {
     const previous = authorizedSession.current
     authorizedSession.current = null
-    discardAuthorization(previous?.authorization)
+    previous?.detachIdentity()
+    return discardAuthorization(previous?.authorization)
   }
   const disposeAuthorization = useEffectEvent(() => {
     pending.current?.abort()
     discardPendingAuthorization()
   })
-  // Stop authorization and release unused grants when setup leaves the screen.
+  // Authorization owns listeners, requests and unused grants until setup leaves the screen.
   useEffect(() => () => disposeAuthorization(), [])
 
   const saveProvider = async (
@@ -164,6 +191,7 @@ export const useOnboardingProviderState = (
     controller: AbortController,
     authorization?: ProviderAuthorization,
   ) => {
+    const searchSelection = useSearchProviderStore.getState()
     try {
       const currentAuthorization = authorization ?? { attempt: await getProviderConnectionAttempt(db, provider) }
       await runProviderSetupStage('save', () =>
@@ -172,14 +200,24 @@ export const useOnboardingProviderState = (
       controller.signal.throwIfAborted()
       const values = await dependencies.prepareModel(provider, key, getProxyFetch, controller.signal)
       if (!controller.signal.aborted) {
-        await runProviderSetupStage('save', () =>
+        const saved = await runProviderSetupStage('save', () =>
           addForm.saveModel({
             ...values,
             signal: controller.signal,
-            providerAuthorization: currentAuthorization,
+            providerAuthorization: authorization,
             ...(currentAuthorization.tinfoilCredentials ? { oauthProvider: 'tinfoil' } : {}),
           }),
         )
+        const model = await getModel(db, saved.id)
+        controller.signal.throwIfAborted()
+        if (provider === 'tinfoil' && model?.providerConnectionId && model.connectionReady) {
+          const currentSearch = useSearchProviderStore.getState()
+          currentSearch.configureProviderSearch(model.providerConnectionId, 'available', {
+            select:
+              currentSearch.selection === searchSelection.selection &&
+              currentSearch.connectionId === searchSelection.connectionId,
+          })
+        }
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -197,7 +235,20 @@ export const useOnboardingProviderState = (
     controller: AbortController,
     authorization: ProviderAuthorization,
   ) => {
-    authorizedSession.current = { key, authorization }
+    authorizedSession.current?.detachIdentity()
+    const identity = getIdentitySignal()
+    const retireIdentity = () => {
+      if (authorizedSession.current === session) {
+        discardPendingAuthorization()
+      }
+    }
+    const session = {
+      key,
+      authorization,
+      detachIdentity: () => identity.removeEventListener('abort', retireIdentity),
+    }
+    authorizedSession.current = session
+    identity.addEventListener('abort', retireIdentity, { once: true })
     addForm.onProviderChange(provider)
     addForm.form.setValue('apiKey', key, { shouldValidate: true })
     dispatch({ type: 'view', view: provider })
@@ -208,13 +259,22 @@ export const useOnboardingProviderState = (
   const connectProvider = async (provider: OnboardingProvider) => {
     dispatch({ type: 'select', selection: provider })
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     dispatch({ type: 'connecting' })
     try {
       const attempt = await getProviderConnectionAttempt(db, provider)
       controller.signal.throwIfAborted()
+      if (dependencies.browser()) {
+        // A full-document redirect does not run React's unmount cleanup.
+        await discardPendingAuthorization()
+        controller.signal.throwIfAborted()
+        await dependencies.startBrowser(provider, options.returnContext ?? 'onboarding', attempt, controller.signal)
+        return
+      }
       if (provider === 'tinfoil' && dependencies.needsManual()) {
+        await discardPendingAuthorization()
+        controller.signal.throwIfAborted()
         await dependencies.startTinfoilMobile(options.returnContext ?? 'onboarding', attempt, controller.signal)
         return
       }
@@ -239,11 +299,11 @@ export const useOnboardingProviderState = (
             ? { tinfoilCredentials: cached.tinfoilCredentials, attempt: cached.attempt }
             : { tinfoilCredentials: await dependencies.startTinfoil({ signal: controller.signal }), attempt }
         if (controller.signal.aborted) {
-          discardAuthorization(authorization)
+          await discardAuthorization(authorization)
           return
         }
         if (cached && cached.tinfoilCredentials !== authorization.tinfoilCredentials) {
-          discardAuthorization(cached)
+          void discardAuthorization(cached)
         }
         await connectKey(provider, authorization.tinfoilCredentials.access_token, controller, authorization)
       } else {
@@ -257,17 +317,15 @@ export const useOnboardingProviderState = (
         dispatch({
           type: 'error',
           error:
-            error instanceof TinfoilConnectionError
-              ? error.message
-              : provider === 'tinfoil'
-                ? t`Could not connect to Tinfoil. Try again, or use an API key.`
-                : t`Could not connect to OpenRouter. Try again, or use an API key.`,
+            provider === 'tinfoil'
+              ? i18n._(getTinfoilErrorMessage(error))
+              : t`Could not connect to OpenRouter. Try again, or use an API key.`,
         })
       }
     }
   }
 
-  const resumeMobile = useEffectEvent(async (controller: AbortController) => {
+  const resumeAuthorization = useEffectEvent(async (controller: AbortController) => {
     if (!returned) {
       return
     }
@@ -276,41 +334,50 @@ export const useOnboardingProviderState = (
       await assertProviderConnectionAttemptCurrent(db, returned.attempt)
       controller.signal.throwIfAborted()
       const credentials = await returned.complete()
+      const authorization = {
+        attempt: returned.attempt,
+        ...(returned.attempt.provider === 'tinfoil' && 'expires_at' in credentials
+          ? { tinfoilCredentials: credentials }
+          : {}),
+      }
       if (controller.signal.aborted) {
         // StrictMode's replacement effect owns the same completion until it too stops.
         const owner = returnedOwner.current
         if (owner?.id !== returned.id || owner.controller === controller || owner.controller.signal.aborted) {
-          discardAuthorization({ attempt: returned.attempt, tinfoilCredentials: credentials })
+          await discardAuthorization(authorization)
         }
         return
       }
-      await connectKey('tinfoil', credentials.access_token, controller, {
-        attempt: returned.attempt,
-        tinfoilCredentials: credentials,
-      })
+      await connectKey(
+        returned.attempt.provider === 'openrouter' ? 'openrouter' : 'tinfoil',
+        credentials.access_token!,
+        controller,
+        authorization,
+      )
     } catch (error) {
       if (!controller.signal.aborted) {
         dispatch({
           type: 'error',
           error:
-            error instanceof TinfoilConnectionError
-              ? error.message
-              : t`Could not connect to Tinfoil. Try again, or use an API key.`,
+            returned.attempt.provider === 'tinfoil'
+              ? i18n._(getTinfoilErrorMessage(error))
+              : t`Could not connect to OpenRouter. Try again, or use an API key.`,
         })
       }
     }
   })
 
-  // Native returns remount setup. A shared exchange survives StrictMode's effect replay.
+  // Authorization returns remount setup. A shared exchange survives StrictMode's effect replay.
   useEffect(() => {
     if (!returned) {
       return
     }
+    clearProviderBrowserReturn(returned.id)
     clearTinfoilMobileReturn(returned.id)
-    const controller = new AbortController()
+    const controller = createIdentityController()
     returnedOwner.current = { id: returned.id, controller }
     pending.current = controller
-    void resumeMobile(controller)
+    void resumeAuthorization(controller)
     return () => controller.abort()
   }, [returned])
 
@@ -319,7 +386,7 @@ export const useOnboardingProviderState = (
       return
     }
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     dispatch({ type: 'connecting' })
     try {
@@ -338,6 +405,7 @@ export const useOnboardingProviderState = (
 
   const cancelAuthorization = () => {
     cancelTinfoilMobileConnection()
+    cancelProviderBrowserConnection()
     returned?.cancel()
     pending.current?.abort()
   }
@@ -349,7 +417,7 @@ export const useOnboardingProviderState = (
     dispatch({ type: 'view', view: 'choices' })
   }
 
-  const chooseProvider = (provider: 'tinfoil' | 'custom' | 'openrouter') => {
+  const chooseProvider = (provider: ProviderState['selection']) => {
     cancelAuthorization()
     discardPendingAuthorization()
     addForm.onProviderChange(provider)
@@ -362,11 +430,11 @@ export const useOnboardingProviderState = (
       return
     }
     const key = addForm.form.getValues('apiKey')?.trim()
-    if (!key || state.selection === 'custom') {
+    if (!key || state.selection === 'custom' || state.selection === 'otari') {
       return
     }
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     dispatch({ type: 'connecting' })
     await saveProvider(
@@ -390,7 +458,7 @@ export const useOnboardingProviderState = (
     dispatch({ type: 'disconnecting' })
     try {
       await disconnect()
-      authorizedSession.current = null
+      discardPendingAuthorization()
       addForm.resetForm()
       dispatch({ type: 'view', view: provider })
     } catch {

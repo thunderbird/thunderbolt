@@ -60,8 +60,8 @@ const fixture = (
     createClient({ prefixUrl: 'https://backend.test' }),
     () => Object.assign(async () => new Response(), { preconnect: async () => false }),
     {
-      getAvailableModels: async () => [model],
       getChatReasoningEffort: async () => undefined,
+      getAvailableModels: async () => useChatStore.getState().models,
       getOrConnectAdapter: async () => adapter,
       createChat: (init) => {
         callbacks.current = init

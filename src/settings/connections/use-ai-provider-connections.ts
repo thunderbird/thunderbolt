@@ -2,123 +2,95 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useState } from 'react'
+import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { useLingui } from '@lingui/react/macro'
-import { useChatStore } from '@/chats/chat-store'
-import { updateModelInTransaction } from '@/dal/models'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
+import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { useChatStore } from '@/chats/chat-store'
 import { useDatabase } from '@/contexts'
-import { getAllModels, getAvailableModels } from '@/dal'
-import { setTinfoilSessionEnabledInTransaction, withTinfoilSessionLock } from '@/lib/tinfoil-session'
-import { getIntegrationCredentials } from '@/dal/integrations'
-import { invalidateProviderConnectionAttempts } from '@/lib/provider-connection-attempt'
-import { useTinfoilConnection } from '@/hooks/use-tinfoil-connection'
-import type { Model } from '@/types'
-import type { AiProviderConnection } from './types'
+import { getAvailableModels } from '@/dal'
+import {
+  disconnectProviderConnection,
+  deleteProviderConnection,
+  getProviderConnections,
+  getModelProviderConnectionIds,
+  updateProviderConnection,
+} from '@/dal/provider-connections'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 
-/** Matches the saved models controlled by an account connection, excluding managed and manually added API-key models. */
-const belongsToConnection = (
-  model: Pick<Model, 'deletedAt' | 'apiKey' | 'oauthProvider' | 'providerDefault'> & {
-    provider: Model['provider'] | null
-    isSystem: number | null
-  },
-  provider: AiProviderConnection['id'],
-) =>
-  model.isSystem !== 1 &&
-  !model.deletedAt &&
-  model.provider === provider &&
-  !model.oauthProvider &&
-  model.providerDefault === 1 &&
-  Boolean(model.apiKey)
+type ConnectionChange = { kind: 'update'; id: string; enabled: boolean } | { kind: 'disconnect' | 'remove'; id: string }
 
-/** Reads device-local provider access independently of individual model toggles. */
+/** Owns provider metadata controls independently of model and search preferences. */
 export const useAiProviderConnections = () => {
   const { t } = useLingui()
-  const [confirmDisable, setConfirmDisable] = useState(false)
-  const queryClient = useQueryClient()
   const db = useDatabase()
-  const { data: models = [], isLoading: modelsLoading } = usePowerSyncQuery({
-    queryKey: ['models', 'provider-connections'],
-    query: toCompilableQuery(getAllModels(db)),
+  const { isProviderVisible } = useProviderVisibility()
+  const queryClient = useQueryClient()
+  const { data: allProviders = [], isSuccess: providersReady } = useQuery({
+    queryKey: ['provider-connections'],
+    query: toCompilableQuery(getProviderConnections(db)),
   })
-  const { data: session, isLoading: sessionLoading } = useTinfoilConnection()
-  const toggleMutation = useMutation({
-    mutationFn: async ({ provider, enabled }: { provider: AiProviderConnection['id']; enabled: boolean }) => {
-      // Session and model access change together under the provider's session lock.
-      const updateModels = () =>
-        db.transaction(async (tx) => {
-          const ownedModels = (await getAllModels(tx)).filter((model) => belongsToConnection(model, provider))
-          if (provider === 'tinfoil') {
-            const current = await getIntegrationCredentials(tx, provider)
-            if (
-              current?.credentials.access_token &&
-              (!enabled || !current.credentials.reauth_required || ownedModels.length === 0)
-            ) {
-              await setTinfoilSessionEnabledInTransaction(tx, enabled)
-            }
-          }
-          for (const model of ownedModels) {
-            await updateModelInTransaction(tx, model.id, { enabled: enabled ? 1 : 0 })
-          }
-          await invalidateProviderConnectionAttempts(tx, provider)
-        })
-      if (provider === 'tinfoil') {
-        await withTinfoilSessionLock(updateModels)
+  const providers = allProviders.filter((connection) => isProviderVisible(connection.provider))
+  const { data: modelConnections = [], isSuccess: modelsReady } = useQuery({
+    queryKey: ['model-provider-connections'],
+    query: toCompilableQuery(getModelProviderConnectionIds(db)),
+  })
+  const searchConnectionId = useSearchProviderStore((state) =>
+    state.selection === 'connection' ? state.connectionId : null,
+  )
+  const [disableId, setDisableId] = useState<string | null>(null)
+  const ready = providersReady && modelsReady
+  const mutation = useMutation({
+    mutationFn: async (change: ConnectionChange) => {
+      if (change.kind === 'update') {
+        await updateProviderConnection(db, change.id, { enabled: change.enabled })
+      } else if (change.kind === 'remove') {
+        await deleteProviderConnection(db, change.id)
       } else {
-        await updateModels()
+        await disconnectProviderConnection(db, change.id)
       }
-      useChatStore.getState().setModels(await getAvailableModels(db))
-      await queryClient.invalidateQueries({ queryKey: ['models'] })
+      const [models] = await Promise.all([
+        getAvailableModels(db),
+        queryClient.invalidateQueries({ queryKey: ['provider-connections'] }),
+        queryClient.invalidateQueries({ queryKey: ['chatgpt-accounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['models'] }),
+      ])
+      useChatStore.getState().setModels(models)
     },
   })
-  const providers: AiProviderConnection[] = [
-    {
-      id: 'openrouter',
-      name: t`OpenRouter`,
-      enabled: models.some((model) => belongsToConnection(model, 'openrouter') && model.enabled === 1),
-      needsReauth: false,
-      connected: models.some((model) => belongsToConnection(model, 'openrouter')),
-    },
-    {
-      id: 'tinfoil',
-      name: t`Tinfoil`,
-      enabled:
-        Boolean(session?.enabled) ||
-        models.some((model) => belongsToConnection(model, 'tinfoil') && model.enabled === 1),
-      connected: Boolean(session?.connected) || models.some((model) => belongsToConnection(model, 'tinfoil')),
-      oauthConnected: Boolean(session?.connected),
-      needsReauth: Boolean(session?.needsReauth),
-    },
-  ]
+  const pendingChange = mutation.isPending ? mutation.variables : undefined
+  const visibleProviders = providers.map((provider) =>
+    pendingChange?.kind === 'update' && pendingChange.enabled !== undefined && pendingChange.id === provider.id
+      ? { ...provider, enabled: pendingChange.enabled ? 1 : 0 }
+      : provider,
+  )
   return {
-    providers,
-    ready: !modelsLoading && !sessionLoading,
-    confirmDisable,
-    cancelDisable: () => {
-      if (toggleMutation.isPending) {
+    providers: visibleProviders,
+    ready,
+    pending: mutation.isPending,
+    error: mutation.isError ? t`Could not update the connection. Try again.` : null,
+    toggle: (id: string, enabled: boolean) => {
+      if (!ready || mutation.isPending) {
         return
       }
-      setConfirmDisable(false)
-      toggleMutation.reset()
-    },
-    disableConfirmed: () =>
-      toggleMutation.mutate(
-        { provider: 'tinfoil', enabled: false },
-        {
-          onSuccess: () => setConfirmDisable(false),
-        },
-      ),
-    toggle: (provider: AiProviderConnection['id'], enabled: boolean) => {
-      if (provider === 'tinfoil' && !enabled) {
-        toggleMutation.reset()
-        setConfirmDisable(true)
+      if (!enabled && (searchConnectionId === id || modelConnections.some(({ connectionId }) => connectionId === id))) {
+        setDisableId(id)
         return
       }
-      toggleMutation.mutate({ provider, enabled })
+      mutation.mutate({ kind: 'update', id, enabled })
     },
-    pending: toggleMutation.isPending,
-    error: toggleMutation.isError ? t`Could not update the provider connection. Try again.` : null,
+    pendingDisable: providers.find((provider) => provider.id === disableId),
+    cancelDisable: () => setDisableId(null),
+    confirmDisable: () => {
+      if (!disableId || mutation.isPending) {
+        return
+      }
+      mutation.mutate({ kind: 'update', id: disableId, enabled: false })
+      setDisableId(null)
+    },
+    remove: (id: string, onSuccess: () => void) => mutation.mutate({ kind: 'remove', id }, { onSuccess }),
+    disconnect: (id: string) => mutation.mutate({ kind: 'disconnect', id }),
   }
 }

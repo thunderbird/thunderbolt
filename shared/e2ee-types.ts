@@ -161,7 +161,10 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
   chat_threads: ['title'],
   chat_messages: ['content', 'parts', 'cache', 'metadata'],
   tasks: ['item'],
-  models: ['name', 'model', 'url', 'vendor', 'description'],
+  models: ['name', 'model', 'url', 'provider_connection_id', 'vendor', 'description'],
+  // Credentials are local-only. Encrypt user labels and endpoint URLs just as
+  // models do; routing enums/flags stay plaintext and require local validation.
+  provider_connections: ['name', 'url'],
   prompts: ['title', 'prompt'],
   triggers: ['trigger_time'],
   model_profiles: [

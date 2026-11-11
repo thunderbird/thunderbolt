@@ -26,15 +26,21 @@ import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
-import { useSearchProviderStore } from '@/stores/search-provider-store'
-import { useOnboardingModelState } from './use-onboarding-model-state'
+import { useSearchProviderAvailability } from '@/integrations/standalone-search/use-search-provider-availability'
 import { OnboardingServerStep } from './onboarding-server-step'
 import { useOnboardingServerState } from './use-onboarding-server-state'
-import { OnboardingSearchStep } from './onboarding-search-step'
 import { useNeedsOwnModel } from '@/hooks/use-needs-own-model'
+import { preloadInBackground } from '@/lib/after-paint'
 
-// The provider catalog and connection probe load only when this step is opened.
-const OnboardingModelStep = lazy(() => import('./onboarding-model-step'))
+/** Share the AI setup bundle between lazy rendering and background preloading. */
+const loadOnboardingModelStep = () => import('./onboarding-model-step')
+const OnboardingModelStep = lazy(loadOnboardingModelStep)
+/** Keep provider forms and OAuth SDKs off the initial sign-in and returning-chat paths. */
+const loadOnboardingSearchStep = async () => {
+  const { OnboardingSearchStep } = await import('./onboarding-search-step')
+  return { default: OnboardingSearchStep }
+}
+const OnboardingSearchStep = lazy(loadOnboardingSearchStep)
 
 /** Wizard position of the passkey step. */
 const passkeyStep = 6
@@ -65,14 +71,22 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
   const isStandalone = useNeedsOwnModel()
   const { openSignInModal } = useSignInModal()
   const serverState = useOnboardingServerState()
-  const hasSearchProvider = useSearchProviderStore((state) => Boolean(state.provider && state.apiKey))
-  const { hasBuiltInSearch } = useOnboardingModelState()
+  const { hasBuiltInSearch } = useSearchProviderAvailability()
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { dataCollection } = useSettings({ data_collection: true })
   const { state, actions, stepIndex, totalSteps } = useOnboardingState({ isStandalone, hasBuiltInSearch })
   const accountPasskey = useAccountPasskey()
   const shouldOfferPasskeyStep = accountPasskey.isSettled && !accountPasskey.isUnavailable && !accountPasskey.passkey
+
+  useEffect(() => {
+    if (isOpen && state.currentStep === 8) {
+      return preloadInBackground([loadOnboardingModelStep])
+    }
+    if (isOpen && state.currentStep === 9) {
+      return preloadInBackground([loadOnboardingSearchStep])
+    }
+  }, [isOpen, state.currentStep])
 
   // Skip the step when it isn't offered (no passkey support, or the account
   // already has one), but only once that's known: the skip is persisted, so
@@ -93,7 +107,6 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
   }
 
   const [isNavigating, startNavigation] = useTransition()
-  const [isSearchReady, setIsSearchReady] = useState(hasSearchProvider)
   const [completionError, setCompletionError] = useState<string | null>(null)
   const donationMutation = useMutation({ mutationFn: (enabled: boolean) => dataCollection.setValue(enabled) })
   const isCelebration = state.currentStep === onboardingStepCount
@@ -101,7 +114,6 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
   const continueDisabled =
     isBusy ||
     (!isCelebration && !state.canGoNext) ||
-    (state.currentStep === 10 && (!hasSearchProvider || !isSearchReady)) ||
     (state.currentStep === passkeyStep && !accountPasskey.isSettled) ||
     (isCelebration && (dataCollection.isLoading || donationMutation.isPending || donationMutation.isError))
 
@@ -134,9 +146,6 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
     if (isBusy || (state.currentStep === 8 && serverState.goBack())) {
       return
     }
-    if (state.currentStep === 10) {
-      setIsSearchReady(hasSearchProvider)
-    }
     if (state.canGoBack) {
       runAction(actions.prevStep)
     }
@@ -144,9 +153,6 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
 
   const handleSkipAction = () => {
     if (!isBusy && state.canSkip) {
-      if (state.currentStep === 10) {
-        setIsSearchReady(hasSearchProvider)
-      }
       runAction(actions.skipStep)
     }
   }
@@ -166,9 +172,13 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
         <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
           <StepIndicators currentStep={stepIndex + 1} totalSteps={totalSteps} />
         </div>
-        {state.currentStep === 9 ? (
+        {state.currentStep === 9 || state.currentStep === 10 ? (
           <Suspense fallback={<Loader2 className="size-6 animate-spin self-center text-muted-foreground" />}>
-            <OnboardingModelStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
+            {state.currentStep === 9 ? (
+              <OnboardingModelStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
+            ) : (
+              <OnboardingSearchStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
+            )}
           </Suspense>
         ) : (
           <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
@@ -180,7 +190,6 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
                 onContinueLocal={actions.nextStep}
               />
             )}
-            {state.currentStep === 10 && <OnboardingSearchStep onReadyChange={setIsSearchReady} />}
 
             {state.currentStep === 2 && (
               <OnboardingAuthStep
@@ -222,7 +231,7 @@ const OnboardingWizard = ({ isOpen, isMobile }: { isOpen: boolean; isMobile: boo
             )}
           </div>
         )}
-        {state.currentStep !== 9 && (
+        {state.currentStep !== 9 && state.currentStep !== 10 && (
           <div className="relative flex w-full shrink-0 px-5 pt-2">
             <OnboardingActionButtons
               onBack={isCelebration ? undefined : state.canGoBack ? handleBackAction : undefined}

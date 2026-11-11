@@ -57,6 +57,7 @@ const LinkPreviewImage = ({ src, alt }: { src: string; alt: string }) => {
 
 export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps) => {
   const openExternalLink = useOpenExternalLink()
+  const safeImage = publicWebMediaUrl(image)
 
   const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
@@ -72,7 +73,7 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
   return (
     <div className="my-4">
       <a href={isSafeUrl(url) ? url : '#'} target="_blank" rel="noopener noreferrer" onClick={handleClick}>
-        <LinkPreviewCard description={description} image={publicWebMediaUrl(image)} title={title} url={url} />
+        <LinkPreviewCard description={description} image={safeImage} title={title} url={url} />
       </a>
     </div>
   )

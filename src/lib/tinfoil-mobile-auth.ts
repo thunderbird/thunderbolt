@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { msg } from '@lingui/core/macro'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { z } from 'zod'
-import { i18n } from '@/i18n'
+import { currentOAuthReturnPath, oauthReturnPath } from './oauth-return-route'
 import { mobileOAuthRedirectUri } from './oauth-redirect'
 import { generateCodeChallenge, generateCodeVerifier } from './pkce'
+import { getIdentitySignal } from './identity-lifetime'
 import type { ProviderConnectionAttempt } from './provider-connection-attempt'
 import {
   getTinfoilAuthorizationUrl,
@@ -24,6 +24,7 @@ const flowSchema = z.object({
   state: nonce,
   verifier: nonce,
   context: z.enum(['onboarding', 'connections']),
+  returnTo: z.string().optional(),
   attempt: z.object({ provider: z.literal('tinfoil'), revision: z.string() }),
   createdAt: z.number().finite(),
 })
@@ -51,6 +52,7 @@ export const clearTinfoilMobileReturn = (id: string): void => {
 
 const defaultDependencies = {
   storage: () => localStorage,
+  currentPath: currentOAuthReturnPath,
   openUrl,
   verifier: generateCodeVerifier,
   challenge: generateCodeChallenge,
@@ -62,17 +64,26 @@ const defaultDependencies = {
 export const startTinfoilMobileConnection = async (
   context: TinfoilReturnContext,
   attempt: ProviderConnectionAttempt,
-  signal: AbortSignal,
+  callerSignal: AbortSignal,
   dependencies: Partial<typeof defaultDependencies> = {},
 ): Promise<void> => {
+  const signal = AbortSignal.any([callerSignal, getIdentitySignal()])
   const deps = { ...defaultDependencies, ...dependencies }
   signal.throwIfAborted()
+  const returnTo = deps.currentPath()
   const verifier = deps.verifier()
   const state = deps.verifier()
   const challenge = await deps.challenge(verifier)
   signal.throwIfAborted()
   const storage = deps.storage()
-  const storedFlow = JSON.stringify({ state, verifier, context, attempt, createdAt: deps.now() })
+  const storedFlow = JSON.stringify({
+    state,
+    verifier,
+    context,
+    returnTo,
+    attempt,
+    createdAt: deps.now(),
+  })
   storage.setItem(storageKey, storedFlow)
   try {
     await deps.openUrl(getTinfoilAuthorizationUrl({ challenge, state, redirectUri: mobileOAuthRedirectUri }))
@@ -86,10 +97,12 @@ export const startTinfoilMobileConnection = async (
 
 /** Explicit cancellation forgets pending PKCE; unmount alone must survive a mobile app restart. */
 export const cancelTinfoilMobileConnection = (): void => {
-  localStorage.removeItem(storageKey)
   mobileReturn?.cancel()
-  if (mobileReturn) {
-    clearTinfoilMobileReturn(mobileReturn.id)
+  mobileReturn = null
+  try {
+    localStorage.removeItem(storageKey)
+  } catch {
+    // Storage cleanup is best-effort; the in-memory exchange must always be cancelled.
   }
 }
 
@@ -130,23 +143,21 @@ export const captureTinfoilMobileReturn = (
     url.searchParams.getAll('code').length !== 1 ||
     url.searchParams.has('error')
   const controller = new AbortController()
+  const signal = AbortSignal.any([controller.signal, getIdentitySignal()])
   let completion: Promise<TinfoilCredentials> | undefined
   mobileReturn = {
     id: flow.data.state,
     context: flow.data.context,
-    returnTo: flow.data.context === 'onboarding' ? '/chats/new' : '/settings/connections',
+    returnTo: flow.data.context === 'onboarding' ? '/chats/new' : oauthReturnPath(flow.data.returnTo),
     attempt: flow.data.attempt,
     cancel: () => controller.abort(),
     complete: () => {
       completion ??= (async () => {
-        controller.signal.throwIfAborted()
+        signal.throwIfAborted()
         if (invalid) {
-          throw new TinfoilConnectionError(i18n._(msg`Could not connect to Tinfoil. Try again, or use an API key.`))
+          throw new TinfoilConnectionError()
         }
-        return deps.exchange(
-          { code: code!, verifier: flow.data.verifier, redirectUri: mobileOAuthRedirectUri },
-          controller.signal,
-        )
+        return deps.exchange({ code: code!, verifier: flow.data.verifier, redirectUri: mobileOAuthRedirectUri }, signal)
       })()
       return completion
     },

@@ -78,7 +78,9 @@ const measureStartup = async (page: Page, run: number, phase: 'cold-signed-out' 
   cdp.on('Network.loadingFailed', transfers.failed)
   await cdp.send('Network.enable')
   // Playwright routing disables the HTTP cache globally; blocking one background service preserves cache behavior.
-  await cdp.send('Network.setBlockedURLs', { urls: ['*://atc.tinfoil.sh/*'] })
+  await cdp.send('Network.setBlockedURLs', {
+    urls: ['*://atc.tinfoil.sh/*', '*://*.tinfoil.sh/.well-known/tinfoil-attestation*'],
+  })
   if (values.cache === 'cold') {
     await cdp.send('Network.clearBrowserCache')
     await cdp.send('Network.setCacheDisabled', { cacheDisabled: true })

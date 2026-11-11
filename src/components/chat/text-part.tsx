@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { usePrivateSources } from './private-sources-context'
 import { type ContentPart, type ContentPartsState, parseContentPartsIncremental } from '@/ai/widget-parser'
 import { useSmoothText } from '@/hooks/use-smooth-text'
 import { sourceToCitation } from '@/lib/source-utils'
@@ -24,6 +23,7 @@ import {
   privateSourceMarkdownComponents,
   privateSourceCitationMarkdownComponents,
 } from './markdown-utils'
+import { usePrivateSources } from './private-sources-context'
 import { MemoizedMarkdown } from './memoized-markdown'
 import { WidgetRenderer } from './widget-renderer'
 

@@ -2,11 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isMcpOAuthCallback, type OAuthCallbackParams } from '@/lib/mcp-auth/mcp-oauth-state'
+import { getMcpOAuthState, isMcpOAuthCallback, type OAuthCallbackParams } from '@/lib/mcp-auth/mcp-oauth-state'
+import { oauthReturnPath } from '@/lib/oauth-return-route'
+import { isOnboardingSearchAuthorization } from '@/providers/authorization-draft'
 import { getOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { isSafeRelativePath } from '@/lib/safe-relative-path'
 import { isTauri } from '@/lib/platform'
 import { captureTinfoilMobileReturn } from '@/lib/tinfoil-mobile-auth'
+import { captureOtariMobileReturn } from '@/lib/otari-browser-auth'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
@@ -51,11 +54,11 @@ export const determineNavigationTarget = (
   isMcpCallback: (callback: OAuthCallbackParams) => boolean = isMcpOAuthCallback,
 ): NavigateTarget => {
   if (isMcpCallback(oauth)) {
-    return { path: '/settings/connections', oauth }
+    return { path: oauthReturnPath(getMcpOAuthState().returnTo), oauth }
   }
 
   if (isSafeRelativePath(oauthReturnContext)) {
-    return { path: oauthReturnContext, oauth }
+    return { path: oauthReturnPath(oauthReturnContext), oauth }
   }
 
   if (oauthReturnContext === 'onboarding') {
@@ -177,6 +180,14 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
             continue
           }
 
+          const otariReturn = captureOtariMobileReturn(url)
+          if (otariReturn) {
+            handledOAuthStates.add(otariReturn.id)
+            // A short callback route remounts the owning setup screen even when it is already open.
+            navigate('/oauth/otari', { replace: true })
+            continue
+          }
+
           // Handle OAuth callback deep links
           const oauthData = parseOAuthCallback(url)
           if (oauthData) {
@@ -186,9 +197,15 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
             // Get the return context from oauth-state (where mobile flow stores it)
             const oauthState = getOAuthState()
             const target = determineNavigationTarget(oauthState.returnContext, oauthData)
+            const returnsToOnboarding = isMcpOAuthCallback(oauthData)
+              ? isOnboardingSearchAuthorization()
+              : oauthState.returnContext === 'onboarding'
 
             navigate(target.path, {
-              state: { oauth: target.oauth },
+              state: {
+                oauth: target.oauth,
+                connectionOAuthReturn: returnsToOnboarding ? undefined : oauthData.state || 'oauth-return',
+              },
               replace: true,
             })
             continue
@@ -212,6 +229,7 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
           // Collect unhandled URLs for custom handler
           unhandledUrls.push(urlString)
         } catch {
+          // Authorization codes and provider error details must not reach logs.
           console.error('Failed to handle deep link')
         }
       }

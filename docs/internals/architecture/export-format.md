@@ -49,7 +49,7 @@ Rows are whatever Drizzle's `select()` returns: no renaming, no nesting. JSON-mo
 
 ## Scoping (why there's no per-user filter)
 
-The local SQLite file is already single-user: PowerSync syncs down only rows the JWT allows, anonymous and standalone DBs never see anyone else's data, and sign-out wipes the file. The exporter selects rows verbatim, with no `userId` predicate and no joins. The envelope's `user` field is informational.
+The local SQLite file is already single-user: PowerSync syncs down only rows the JWT allows, anonymous and standalone DBs never see anyone else's data, and sign-out wipes the file. The exporter selects user rows without a `userId` predicate. Provider credentials are filtered to API-key connections with a matching local binding; OAuth tokens are never exported. The envelope's `user` field is informational.
 
 ## How the included table list is derived
 
@@ -59,7 +59,7 @@ The exporter walks the same name → Drizzle table map PowerSync uses (`syncedTa
 
 **Synced (PowerSync) tables.** Soft-deleted rows are included; the importer decides how to restore them.
 
-- `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `model_profiles`, `prompts`, `skills`, `triggers`, `agents`, `projects`.
+- `settings`, `chat_threads`, `chat_messages`, `tasks`, `models`, `model_profiles`, `prompts`, `skills`, `triggers`, `agents`, `projects`, `provider_connections`.
 
 **Local-only tables.** User-typed credentials and config that don't sync.
 
@@ -109,3 +109,7 @@ Once every user-content table carries a `workspaceId`, workspace handling stays 
 - **In-memory payload.** The whole export is built in memory before download; heavy users (~tens of thousands of messages) see slower exports. A streaming variant is a follow-up if files cross ~100 MB in practice.
 - **Plaintext at rest.** No encryption-at-rest on the file; users should treat it like their account password.
 - **No backup of E2E key material.** The Content Key lives in the device's keyring (see [`e2e-encryption.md`](e2e-encryption.md)). Importing on a different device requires the standard device-approval flow.
+
+### Provider connections
+
+`provider_connections` includes metadata for every connection. `provider_connection_secrets` exports only the user-entered `apiKey` and its routing binding for API-key connections. OAuth access/refresh tokens and authorization generations are excluded. Import restores provider metadata before validating API-key bindings, generates a fresh local credential generation, and ignores OAuth secret rows even when a file supplies them. OAuth connections must be signed in again on the importing device.

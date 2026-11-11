@@ -6,17 +6,28 @@ import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { http } from '@/lib/http'
 import { stubJsonResponse } from '@/test-utils/http'
 import { defaultModels } from '@shared/defaults/models'
+import { i18n } from '@/i18n'
 import {
   canFetchCatalog,
   catalogRequestKey,
   isFetchableCatalogUrl,
   catalogRowSupportsImages,
   fetchModelsForProvider,
+  describeModelFetchError,
   thunderboltModelCatalog,
   type CatalogRequest,
 } from './model-catalog'
 
 const catalogResponse = () => Response.json({ data: [] })
+
+it('does not expose provider error text or reflected secrets in catalog errors', () => {
+  expect(describeModelFetchError(i18n, new Error('Authorization: Bearer private-key'))).toBe('Failed to load models')
+  expect(
+    describeModelFetchError(i18n, {
+      response: new Response(null, { status: 401, statusText: 'private-key rejected' }),
+    }),
+  ).toBe('Server responded with status 401.')
+})
 
 const stubProxyFetch = () =>
   Object.assign(
@@ -89,10 +100,6 @@ describe('model catalog policy', () => {
 
   describe('fetchModelsForProvider', () => {
     it.each<[CatalogRequest, string]>([
-      [
-        { provider: 'custom', url: 'https://api.otari.ai/api/v1', apiKey: 'sk-test' },
-        'https://api.otari.ai/api/v1/models',
-      ],
       [{ provider: 'openai', apiKey: 'sk-test' }, 'https://api.openai.com/v1/models'],
       [{ provider: 'openrouter', apiKey: 'sk-test' }, 'https://openrouter.ai/api/v1/models/user'],
     ])('routes the %o catalog through the supplied transport', async (request, endpoint) => {
@@ -141,6 +148,84 @@ describe('model catalog policy', () => {
         directFetch.mockRestore()
       }
     })
+
+    it('keeps Otari catalog credentials direct and blocks redirects, like chat does', async () => {
+      const proxyFetch = stubProxyFetch()
+      const directFetch = spyOn(globalThis, 'fetch').mockResolvedValue(catalogResponse())
+      try {
+        await fetchModelsForProvider(
+          { provider: 'otari', url: 'https://api.otari.ai/api/v1', apiKey: 'delegated-key' },
+          () => proxyFetch,
+        )
+        const request = new Request(...directFetch.mock.calls[0])
+        expect(request.url).toBe('https://api.otari.ai/api/v1/models')
+        expect(request.headers.get('Authorization')).toBe('Bearer delegated-key')
+        expect(request.credentials).toBe('omit')
+        expect(request.redirect).toBe('error')
+        expect(proxyFetch).not.toHaveBeenCalled()
+      } finally {
+        directFetch.mockRestore()
+      }
+    })
+  })
+})
+
+describe('fetchModelsForProvider', () => {
+  it('loads the OpenRouter account catalog with its key and preserves model capabilities', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(
+      stubJsonResponse({
+        data: [
+          {
+            id: 'vendor/vision',
+            name: 'Vision',
+            supported_parameters: ['tools'],
+            architecture: { input_modalities: ['text', 'image'] },
+          },
+          { id: 'vendor/chat', name: 'Chat', supported_parameters: [], architecture: { input_modalities: ['text'] } },
+        ],
+      }),
+    )
+    try {
+      const models = await fetchModelsForProvider({ provider: 'openrouter', apiKey: 'user-key' }, stubProxyFetch)
+
+      expect(getSpy).toHaveBeenCalledWith(
+        'https://openrouter.ai/api/v1/models/user',
+        expect.objectContaining({ headers: { Authorization: 'Bearer user-key' } }),
+      )
+      expect(
+        models.map(({ id, name, supports_tools, supports_images }) => ({ id, name, supports_tools, supports_images })),
+      ).toEqual([
+        { id: 'vendor/chat', name: 'Chat', supports_tools: undefined, supports_images: false },
+        { id: 'vendor/vision', name: 'Vision', supports_tools: undefined, supports_images: true },
+      ])
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it('does not fall back to the unfiltered OpenRouter catalog without a key', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+    try {
+      expect(await fetchModelsForProvider({ provider: 'openrouter' }, stubProxyFetch)).toEqual([])
+      expect(getSpy).not.toHaveBeenCalled()
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it.each([
+    { provider: 'openai' as const, apiKey: 'openai-key', endpoint: 'https://api.openai.com/v1/models' },
+    { provider: 'custom' as const, url: 'http://localhost:11434', endpoint: 'http://localhost:11434/v1/models' },
+  ])('keeps the standard models endpoint for $provider', async ({ endpoint, ...request }) => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [{ id: 'chat-model' }] }))
+    try {
+      expect(await fetchModelsForProvider(request, stubProxyFetch)).toEqual([
+        { id: 'chat-model', supports_images: undefined },
+      ])
+      expect(getSpy).toHaveBeenCalledWith(endpoint, expect.any(Object))
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 })
 

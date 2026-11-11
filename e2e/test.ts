@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isTinfoilAttestationRequest } from './tinfoil-isolation'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -150,7 +151,7 @@ export const isolateProviderRequests = async (context: BrowserContext, projectNa
     return
   }
   // WebKit reports native CORS failures as pageerrors even when prewarm catches them.
-  await context.route('https://atc.tinfoil.sh/attestation', (route) =>
+  await context.route(isTinfoilAttestationRequest, (route) =>
     route.fulfill({ status: 503, json: { error: 'Attestation is disabled in this test project' } }),
   )
 }

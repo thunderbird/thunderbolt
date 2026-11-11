@@ -38,7 +38,7 @@ const clientGenerationOf = (client: MCPClient): number => {
 
 /** Loads persisted MCP rows, credential summaries, and live tool names. */
 export const useMcpServersData = (db: AnyDrizzleDatabase, connections: MCPServerConnection[]) => {
-  const { data: servers = [] } = useQuery({
+  const { data: servers = [], isSuccess: areServersReady } = useQuery({
     queryKey: ['mcp-servers'],
     query: toCompilableQuery(getRemoteMcpServers(db)),
   })
@@ -83,5 +83,5 @@ export const useMcpServersData = (db: AnyDrizzleDatabase, connections: MCPServer
     },
   })
 
-  return { servers, credentialsById, serverTools }
+  return { servers, areServersReady, credentialsById, serverTools }
 }

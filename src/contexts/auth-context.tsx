@@ -21,6 +21,7 @@ import {
   setAuthToken,
 } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
+import { clearIdentityScopedMemory } from '@/lib/identity-memory'
 import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSession } from '@/lib/session-cache'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
@@ -339,17 +340,22 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   //     (sign-in modal + sync teardown) takes over. Event name kept in sync with
   //     `src/db/powersync/connector.ts`.
   useEffect(() => {
-    const unsubscribeServer = onServerChangedInOtherTab(() => window.location.reload())
+    const unsubscribeServer = onServerChangedInOtherTab(() => {
+      clearIdentityScopedMemory()
+      window.location.reload()
+    })
     const unsubscribeToken = onAuthTokenChangedInOtherTab((next, prev) => {
       if (next && next !== prev) {
         // Cross-tab rotation may swap in a different user identity; wipe the
         // cache so the reloaded tab doesn't seed the previous user's session
         // under the new token before /get-session lands.
+        clearIdentityScopedMemory()
         clearCachedSession()
         window.location.reload()
         return
       }
       if (!next && prev) {
+        clearIdentityScopedMemory()
         window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
       }
     })

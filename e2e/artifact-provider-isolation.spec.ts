@@ -2,20 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isTinfoilAttestationRequest } from './tinfoil-isolation'
 import { collectPageErrors } from './helpers'
 import { expect, isolateProviderRequests, test } from './test'
 
 for (const { projectName, attestationStatus, paths } of [
-  { projectName: 'consumer', attestationStatus: 503, paths: ['/routers'] },
-  { projectName: 'extended-sync-chromium-desktop', attestationStatus: 503, paths: ['/routers'] },
-  { projectName: 'extended-real-chromium-desktop', attestationStatus: 200, paths: ['/attestation', '/routers'] },
+  { projectName: 'consumer', attestationStatus: 503, paths: [] },
+  { projectName: 'extended-sync-chromium-desktop', attestationStatus: 503, paths: [] },
+  {
+    projectName: 'extended-real-chromium-desktop',
+    attestationStatus: 200,
+    paths: ['/attestation', '/routers', '/.well-known/tinfoil-attestation'],
+  },
 ]) {
   test(`provider policy for a secondary context in ${projectName}`, async ({ browser }) => {
     const context = await browser.newContext()
     try {
       const upstreamPaths: string[] = []
       // Register the fake upstream first: a missing policy reaches this route, never the internet.
-      await context.route('https://atc.tinfoil.sh/**', async (route) => {
+      await context.route(isTinfoilAttestationRequest, async (route) => {
         upstreamPaths.push(new URL(route.request().url()).pathname)
         await route.fulfill({ json: { upstream: true } })
       })
@@ -25,9 +30,14 @@ for (const { projectName, attestationStatus, paths } of [
       const responses = await page.evaluate(async () => {
         const attestation = await fetch('https://atc.tinfoil.sh/attestation')
         const routers = await fetch('https://atc.tinfoil.sh/routers')
-        return { attestationStatus: attestation.status, routers: await routers.json() }
+        const enclave = await fetch('https://inference.tinfoil.sh/.well-known/tinfoil-attestation?nonce=test')
+        return { attestation: attestation.status, routers: routers.status, enclave: enclave.status }
       })
-      expect(responses).toEqual({ attestationStatus, routers: { upstream: true } })
+      expect(responses).toEqual({
+        attestation: attestationStatus,
+        routers: attestationStatus,
+        enclave: attestationStatus,
+      })
       expect(upstreamPaths).toEqual(paths)
       expect(errors).toEqual([])
 

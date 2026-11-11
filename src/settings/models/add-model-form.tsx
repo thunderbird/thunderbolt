@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Loader2, X } from 'lucide-react'
 import type { UseFormReturn } from 'react-hook-form'
@@ -17,9 +18,10 @@ import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import type { ToolSupport } from '@/hooks/use-model-connection-test'
 import { useAppName } from '@/lib/branding-selectors'
+import { defaultOtariOrigin, getOtariEndpoints } from '@/lib/otari-auth'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
-import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
+import { providerAutoFetchesCatalog, providerRequiresUrl, shouldDisableAddModel } from './model-policy'
 import { getProviderLabel, providerPickerOrder } from './model-presentation'
 import { SupportsToolsSwitch } from './supports-tools-switch'
 import type { AddModelFormValues } from './use-add-model-form'
@@ -72,6 +74,7 @@ export const AddModelForm = ({
   showProvider = true,
   showApiKey = true,
 }: AddModelFormProps) => {
+  const { isProviderVisible } = useProviderVisibility()
   const { i18n, t } = useLingui()
   const appName = useAppName()
   const provider = form.watch('provider')
@@ -113,6 +116,7 @@ export const AddModelForm = ({
                   </FormControl>
                   <SelectContent>
                     {providerPickerOrder
+                      .filter(isProviderVisible)
                       .filter((provider) => allowServerModels || provider !== 'thunderbolt')
                       .map((provider) => (
                         <SelectItem key={provider} value={provider}>
@@ -126,7 +130,7 @@ export const AddModelForm = ({
             )}
           />
         )}
-        {provider === 'custom' && (
+        {providerRequiresUrl(provider) && (
           <FormField
             control={form.control}
             name="url"
@@ -139,7 +143,11 @@ export const AddModelForm = ({
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="http://localhost:11434/v1"
+                      placeholder={
+                        provider === 'otari'
+                          ? getOtariEndpoints(defaultOtariOrigin).inference
+                          : 'http://localhost:11434/v1'
+                      }
                       className="rounded-lg pr-10"
                       onChange={(event) => {
                         field.onChange(event)
@@ -178,7 +186,7 @@ export const AddModelForm = ({
                     }}
                   />
                 </FormControl>
-                {catalogError && provider !== 'custom' && (
+                {catalogError && !providerRequiresUrl(provider) && (
                   <p className="mt-1 whitespace-pre-line text-sm text-destructive">{catalogError}</p>
                 )}
                 <FormMessage />

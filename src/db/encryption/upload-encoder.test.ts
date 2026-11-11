@@ -111,6 +111,44 @@ describe('encodeForUpload', () => {
     expect(result.data).toEqual({ order: 2 })
   })
 
+  it('preserves create-only intent while encrypting provider connection metadata', async () => {
+    const operation = {
+      op: 'PUT' as const,
+      type: 'provider_connections',
+      id: 'legacy-model:private',
+      data: { name: 'Private work', url: 'https://private.example/v1', provider: 'custom' },
+      ifAbsent: true,
+    }
+    const encoded = await encodeForUpload(operation)
+    expect(encoded.ifAbsent).toBe(true)
+    expect(encoded.data?.provider).toBe('custom')
+    for (const column of ['name', 'url'] as const) {
+      const value = encoded.data?.[column] as string
+      expect(isV2EncryptedValue(value)).toBe(true)
+      expect(await codec.decode(value, { table: operation.type, column, rowId: operation.id })).toBe(
+        operation.data[column],
+      )
+    }
+    expect(operation.data.name).toBe('Private work')
+  })
+
+  it('preserves the conditional model link while encrypting its connection identity', async () => {
+    const operation = {
+      op: 'PATCH' as const,
+      type: 'models',
+      id: 'legacy',
+      data: { provider_connection_id: 'legacy-model:legacy' },
+      ifProviderConnectionUnset: { provider: 'otari' },
+    }
+    const encoded = await encodeForUpload(operation)
+    expect(encoded.ifProviderConnectionUnset).toEqual({ provider: 'otari' })
+    const value = encoded.data?.provider_connection_id as string
+    expect(isV2EncryptedValue(value)).toBe(true)
+    expect(await codec.decode(value, { table: 'models', column: 'provider_connection_id', rowId: 'legacy' })).toBe(
+      'legacy-model:legacy',
+    )
+  })
+
   it('passes through DELETE operations', async () => {
     const op = { op: 'DELETE' as const, type: 'tasks', id: 'row-1' }
     expect(await encodeForUpload(op)).toEqual(op)

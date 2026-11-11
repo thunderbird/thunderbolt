@@ -73,7 +73,9 @@ try {
   await browser.waitUntil(async () => (await invokeNative('plugin:window|is_visible', { label: 'main' })) === true)
 
   await (await browser.$('[data-testid="model-selector-trigger"]')).click()
-  await (await browser.$('//button[normalize-space()="Opus 5.5"]')).click()
+  const standardModel = await browser.$('//button[normalize-space()="Opus 5.5"]')
+  await (await standardModel.$('[role="img"][aria-label="Thunderbolt"]')).waitForDisplayed()
+  await standardModel.click()
   await browser.keys(Key.Escape)
   await composer.setValue('Please greet me briefly.')
   await (await browser.$('button[aria-label="Send message"]')).click()

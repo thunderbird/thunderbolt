@@ -40,6 +40,10 @@ export const hasModelConnectionChanges = (model: Pick<Model, 'model' | 'url'>, d
  *  are server-authenticated and preconfigured, so there is nothing to verify. */
 export const providerRequiresConnectionTest = (provider: Model['provider']): boolean => provider !== 'thunderbolt'
 
+/** Providers that connect through a user-selected OpenAI-compatible endpoint. */
+export const providerRequiresUrl = (provider: Model['provider']): boolean =>
+  provider === 'custom' || provider === 'otari'
+
 /** Whether chatting through the provider needs a user-supplied API key.
  *  Thunderbolt is server-authenticated; custom (OpenAI-compatible) endpoints
  *  treat the key as optional. */
@@ -73,11 +77,12 @@ export const isModelAvailable = (
 
 /** Whether a model has the local configuration needed to run on this device. */
 export const isModelReady = (model: Model, cloudUrl = getLocalSetting('cloudUrl')): boolean =>
+  (!model.providerConnectionId || model.connectionReady === true) &&
   model.enabled === 1 &&
   !model.deletedAt &&
   isModelAvailable(model, cloudUrl) &&
   !needsApiKey(model) &&
-  (model.provider !== 'custom' || Boolean(model.url?.trim()))
+  (!providerRequiresUrl(model.provider) || Boolean(model.url?.trim()))
 
 /** A model that can finish standalone onboarding without relying on server credentials. */
 export const isStandaloneModelReady = (model: Model): boolean => isModelReady(model, '')
@@ -100,7 +105,7 @@ export const matchesThreadConfidentiality = (
  * catalog loads without one.
  */
 export const catalogRequiresApiKey = (provider: Model['provider']): boolean =>
-  provider === 'openai' || provider === 'openrouter' || provider === 'anthropic'
+  provider === 'openai' || provider === 'openrouter' || provider === 'anthropic' || provider === 'otari'
 
 /** Providers whose catalog loads without credentials, so forms fetch it eagerly. */
 export const providerAutoFetchesCatalog = (provider: Model['provider']): boolean =>

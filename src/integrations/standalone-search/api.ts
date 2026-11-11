@@ -12,6 +12,7 @@ import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import type { SearchProvider } from './providers'
 import { fetchProviderContent } from './content'
 import { isPublicWebUrl, publicWebMediaUrl } from './url-policy'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 
 const searchResult = z.object({ title: z.string().nullish(), url: z.string() })
 const braveResponse = z.object({
@@ -152,14 +153,23 @@ export const testSearchProvider = async (
 
 /** Exposes only capabilities supported by the selected provider; no arbitrary page downloads run on the device. */
 export const createStandaloneWebApi = (
-  apiKey: string,
+  apiKey: string | (() => Promise<string>),
   client: HttpClient = createSearchHttpClient(),
   provider: SearchProvider = 'brave',
-): WebToolApi => ({
-  search: (params) => searchWeb(provider, apiKey, params, client),
-  ...(provider === 'brave'
-    ? {}
-    : {
-        fetchContent: (params) => fetchProviderContent(provider, apiKey, params, client),
-      }),
-})
+): WebToolApi => {
+  const signal = getIdentitySignal()
+  const getApiKey = async () => {
+    signal.throwIfAborted()
+    const key = typeof apiKey === 'string' ? apiKey : await apiKey()
+    signal.throwIfAborted()
+    return key
+  }
+  return {
+    search: async (params) => searchWeb(provider, await getApiKey(), params, client, signal),
+    ...(provider === 'brave'
+      ? {}
+      : {
+          fetchContent: async (params) => fetchProviderContent(provider, await getApiKey(), params, client, signal),
+        }),
+  }
+}

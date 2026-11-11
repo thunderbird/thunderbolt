@@ -5,7 +5,8 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { I18nProvider } from '@lingui/react'
 import { useLingui } from '@lingui/react/macro'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from '@/lib/query-client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
 
@@ -15,6 +16,7 @@ import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import TinfoilCallback from '@/components/tinfoil-callback'
+import { OtariCallback } from '@/components/otari-connection/otari-callback'
 import OpenRouterCallback from '@/components/openrouter-callback'
 import { AccountDeleted } from '@/components/account-deleted'
 import { DeviceRevoked } from '@/components/device-revoked'
@@ -143,8 +145,6 @@ const preloadAllRouteChunks = () => {
   return preloadInBackground(Object.values(routeChunkLoaders))
 }
 
-const queryClient = new QueryClient()
-
 const AppContent = ({ initData }: { initData: InitData }) => {
   useDeviceSessionBinding()
   useMcpSync()
@@ -210,6 +210,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
       <Routes>
         {/* Auth flow routes - NO guards (must work during auth) */}
         <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <Route path="/oauth/otari" element={<OtariCallback />} />
         <Route path="/oauth/openrouter/:flowId" element={<OpenRouterCallback />} />
         <Route path="/oauth/tinfoil" element={<TinfoilCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />

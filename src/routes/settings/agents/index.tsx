@@ -53,7 +53,7 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   // mutually exclusive by construction (a string sentinel could collide with
   // a server-chosen agent id).
   const [activePanel, setActivePanel] = useState<
-    { kind: 'add' } | { kind: 'agent'; id: string } | { kind: 'cli' } | null
+    { kind: 'add' } | { kind: 'agent'; id: string; action?: 'edit' | 'remove' } | { kind: 'cli' } | null
   >(null)
   const cliOpen = activePanel?.kind === 'cli'
   const addOpen = activePanel?.kind === 'add'
@@ -75,8 +75,8 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
   // route into the page's existing handlers (THU-768). "Edit" opens the
   // agent's detail panel — the same read-only-or-editable surface a row click
   // opens — so built-in/system agents (and ids no longer present) degrade to a
-  // read-only view or no-op rather than forcing an edit. There is no inline
-  // remove: deletion stays behind the detail panel's ownership-gated ⋯ menu.
+  // read-only view or no-op rather than forcing an edit. Context-menu removal
+  // opens the same ownership-gated confirmation as the detail panel.
   useEntityActionIntent('agent', {
     onCreate: openAddPanel,
     onEdit: openAgentPanel,
@@ -90,7 +90,8 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
       return (
         <AgentDetail
           // Keyed by id so inline-edit drafts reset when switching agents.
-          key={activeAgent.id}
+          key={`${activeAgent.id}:${activePanel?.kind === 'agent' ? activePanel.action : ''}`}
+          initialAction={activePanel?.kind === 'agent' ? activePanel.action : undefined}
           agent={activeAgent}
           currentUserId={currentUserId}
           onClose={closePanel}
@@ -133,6 +134,9 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
           <SettingsListBody className={settingsListBodyRowsClass}>
             <AgentList
               agents={agents}
+              currentUserId={currentUserId}
+              onEditAgent={(id) => setActivePanel({ kind: 'agent', id, action: 'edit' })}
+              onRemoveAgent={(id) => setActivePanel({ kind: 'agent', id, action: 'remove' })}
               selectedId={activeAgent?.id ?? null}
               onOpenAgent={(agent) => toggleAgentPanel(agent.id)}
             />

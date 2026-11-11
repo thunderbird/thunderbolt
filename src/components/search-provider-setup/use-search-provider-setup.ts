@@ -1,21 +1,36 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useReducer, useRef } from 'react'
 import { useLingui } from '@lingui/react/macro'
+import { useQueryClient } from '@tanstack/react-query'
+import { useDatabase } from '@/contexts'
+import {
+  saveProviderConnectionInTransaction,
+  disconnectProviderConnection,
+  getProviderConnectionRevision,
+} from '@/dal/provider-connections'
 import { testSearchProvider } from '@/integrations/standalone-search/api'
-import type { SearchProvider } from '@/integrations/standalone-search/providers'
-import { useSearchProviderStore } from '@/stores/search-provider-store'
+import { searchProviders, type SearchProvider } from '@/integrations/standalone-search/providers'
+import { useSearchProviderStore, type SearchSelection } from '@/stores/search-provider-store'
+import { createIdentityController } from '@/lib/identity-lifetime'
 
 type State = {
   provider: SearchProvider | null
   apiKey: string
+  connectionId: string | null
   status: 'idle' | 'testing' | 'success' | 'error'
   error: string
 }
 
-/** Saves only verified credentials and cancels stale tests when inputs or screens change. */
+/** Capability refreshes do not supersede the user's selected search route. */
+const isCurrentSearchSelection = (expected: { selection: SearchSelection; connectionId: string | null }) => {
+  const current = useSearchProviderStore.getState()
+  return current.selection === expected.selection && current.connectionId === expected.connectionId
+}
+
+/** Verifies onboarding credentials, then saves a reusable connection and selects it for search. */
 export const useSearchProviderSetup = (
   onReadyChange?: (ready: boolean) => void,
   onSaved?: () => void,
@@ -23,18 +38,26 @@ export const useSearchProviderSetup = (
   initialProvider?: SearchProvider,
 ) => {
   const { t } = useLingui()
+  const db = useDatabase()
+  const queryClient = useQueryClient()
   const stored = useSearchProviderStore()
   const [state, update] = useReducer((state: State, patch: Partial<State>) => ({ ...state, ...patch }), {
-    provider: initialProvider ?? stored.provider,
-    apiKey: !initialProvider || initialProvider === stored.provider ? stored.apiKey : '',
-    status: stored.apiKey && (!initialProvider || initialProvider === stored.provider) ? 'success' : 'idle',
+    provider: initialProvider ?? null,
+    apiKey: '',
+    connectionId: null,
+    status: 'idle',
     error: '',
   })
-  const pending = useRef<AbortController | null>(null)
+  const pending = useRef<ReturnType<typeof createIdentityController> | null>(null)
   useEffect(() => () => pending.current?.abort(), [])
   const change = (patch: Partial<State>) => {
     pending.current?.abort()
-    update({ ...patch, status: 'idle', error: '' })
+    update({
+      ...patch,
+      ...(patch.provider && patch.provider !== state.provider ? { connectionId: null } : {}),
+      status: 'idle',
+      error: '',
+    })
     onReadyChange?.(false)
   }
   const test = async () => {
@@ -42,46 +65,88 @@ export const useSearchProviderSetup = (
       return
     }
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     const configuration = useSearchProviderStore.getState()
     update({ status: 'testing', error: '' })
     onReadyChange?.(false)
     try {
-      await testConnection(state.provider, state.apiKey.trim(), controller.signal)
+      const provider = state.provider
+      const expectedRevision = state.connectionId
+        ? await getProviderConnectionRevision(db, state.connectionId)
+        : undefined
+      await testConnection(provider, state.apiKey.trim(), controller.signal)
       if (controller.signal.aborted) {
         return
       }
-      // A disconnect, reset, or selection in another window supersedes this test.
-      if (useSearchProviderStore.getState() !== configuration) {
+      if (!isCurrentSearchSelection(configuration)) {
         update({ status: 'idle' })
         return
       }
-      stored.configureSearchProvider(state.apiKey, state.provider)
-      update({ status: 'success' })
+      const connectionId = await db.transaction(async (tx) => {
+        const id = await saveProviderConnectionInTransaction(tx, {
+          id: state.connectionId ?? undefined,
+          provider,
+          name: searchProviders[provider].name,
+          authMethod: 'api_key',
+          expectedRevision,
+          signal: controller.signal,
+          credentials: { apiKey: state.apiKey.trim() },
+        })
+        if (controller.signal.aborted || !isCurrentSearchSelection(configuration)) {
+          throw new DOMException('Search setup canceled', 'AbortError')
+        }
+        return id
+      })
+      controller.signal.throwIfAborted()
+      stored.selectSearchConnection(connectionId)
+      const savedConfiguration = useSearchProviderStore.getState()
+      update({ status: 'success', connectionId, apiKey: '' })
+      await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
+      if (controller.signal.aborted || !isCurrentSearchSelection(savedConfiguration)) {
+        return
+      }
       onReadyChange?.(true)
       onSaved?.()
     } catch {
       if (controller.signal.aborted) {
         return
       }
+      if (!isCurrentSearchSelection(configuration)) {
+        update({ status: 'idle' })
+        return
+      }
       update({ status: 'error', error: t`Could not connect. Check your API key and connection, then try again.` })
     }
   }
-  const disconnect = () => {
-    stored.disconnectSearchProvider()
-    change({ apiKey: '' })
+  const disconnect = async () => {
+    pending.current?.abort()
+    const controller = createIdentityController()
+    pending.current = controller
+    try {
+      if (state.connectionId) {
+        await disconnectProviderConnection(db, state.connectionId)
+      }
+      if (!controller.signal.aborted) {
+        const current = useSearchProviderStore.getState()
+        if (state.connectionId && current.connectionId === state.connectionId) {
+          current.selectSearchProvider('none')
+        }
+        change({ apiKey: '', connectionId: null })
+      }
+      await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
+    } catch {
+      if (!controller.signal.aborted) {
+        update({ status: 'error', error: t`Could not disconnect this search provider. Please try again.` })
+      }
+    }
   }
   return {
     ...state,
-    // Another window may disconnect or replace credentials after a successful test.
-    status:
-      state.status === 'success' && (stored.provider !== state.provider || stored.apiKey !== state.apiKey.trim())
-        ? 'idle'
-        : state.status,
     change,
     test,
     disconnect,
-    hasSavedKey: Boolean(stored.apiKey && stored.provider === state.provider),
+    status: state.status === 'success' && stored.connectionId !== state.connectionId ? 'idle' : state.status,
+    hasSavedKey: state.connectionId !== null,
   }
 }

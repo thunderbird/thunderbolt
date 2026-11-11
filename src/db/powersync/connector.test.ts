@@ -12,6 +12,7 @@ import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { legacyKeyId } from '@shared/e2ee-types'
 import * as syncTracker from './sync-tracker'
+import { modelConnectionMigrationMetadataPrefix, providerConnectionMigrationMetadata } from './crud-metadata'
 import {
   handleCredentialsInvalidIfNeeded,
   isCreateOnlyWrite,
@@ -1031,7 +1032,19 @@ describe('isCreateOnlyWrite', () => {
 describe('ThunderboltConnector.uploadData', () => {
   let savedAuthMode: string | undefined
 
-  const crudEntry = (op: string, id: string) => ({ op, table: 'settings', id, opData: { value: 'false' } })
+  const crudEntry = (
+    op: string,
+    id: string,
+    table = 'settings',
+    metadata?: string,
+    opData: Record<string, unknown> = { value: 'false' },
+  ) => ({
+    op,
+    table,
+    id,
+    opData,
+    metadata,
+  })
 
   const stubDatabase = (hasSynced: boolean, crud: ReturnType<typeof crudEntry>[]) =>
     ({
@@ -1104,6 +1117,88 @@ describe('ThunderboltConnector.uploadData', () => {
     // previous builds sent, so the new field only appears in the window it is
     // needed for.
     expect(uploadedOperations(fetchSpy)[0]).not.toHaveProperty('ifAbsent')
+  })
+
+  it.each([
+    { op: 'PUT', table: 'provider_connections', metadata: providerConnectionMigrationMetadata, createOnly: true },
+    { op: 'PUT', table: 'provider_connections', metadata: undefined, createOnly: false },
+    { op: 'PUT', table: 'provider_connections', metadata: 'other-write', createOnly: false },
+    { op: 'PATCH', table: 'provider_connections', metadata: providerConnectionMigrationMetadata, createOnly: false },
+    { op: 'DELETE', table: 'provider_connections', metadata: providerConnectionMigrationMetadata, createOnly: false },
+    { op: 'PUT', table: 'models', metadata: providerConnectionMigrationMetadata, createOnly: false },
+  ])(
+    'applies migration create-only intent after prior sync ($op/$table/$metadata)',
+    async ({ op, table, metadata, createOnly }) => {
+      const fetchSpy = uploadFetchSpy()
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+      await connector.uploadData(stubDatabase(true, [crudEntry(op, 'legacy-model:one', table, metadata)]))
+      const [uploaded] = uploadedOperations(fetchSpy)
+      expect(uploaded.ifAbsent).toBe(createOnly ? true : undefined)
+      expect(uploaded).not.toHaveProperty('metadata')
+      expect(uploaded.data).not.toHaveProperty('_metadata')
+    },
+  )
+
+  it.each([
+    { op: 'PATCH', table: 'models', metadata: `${modelConnectionMigrationMetadataPrefix}otari`, provider: 'otari' },
+    { op: 'PATCH', table: 'models', metadata: undefined, provider: undefined },
+    { op: 'PATCH', table: 'models', metadata: providerConnectionMigrationMetadata, provider: undefined },
+    { op: 'PATCH', table: 'models', metadata: modelConnectionMigrationMetadataPrefix, provider: undefined },
+    { op: 'PUT', table: 'models', metadata: `${modelConnectionMigrationMetadataPrefix}otari`, provider: undefined },
+    { op: 'DELETE', table: 'models', metadata: `${modelConnectionMigrationMetadataPrefix}otari`, provider: undefined },
+    {
+      op: 'PATCH',
+      table: 'provider_connections',
+      metadata: `${modelConnectionMigrationMetadataPrefix}otari`,
+      provider: undefined,
+    },
+  ])(
+    'conditions only migration model links on the original provider ($op/$table/$metadata)',
+    async ({ op, table, metadata, provider }) => {
+      const fetchSpy = uploadFetchSpy()
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+      const data = { provider_connection_id: 'legacy-model:one' }
+      await connector.uploadData(stubDatabase(true, [crudEntry(op, 'one', table, metadata, data)]))
+      const [uploaded] = uploadedOperations(fetchSpy)
+      expect(uploaded.ifProviderConnectionUnset).toEqual(provider ? { provider } : undefined)
+      expect(uploaded).not.toHaveProperty('ifAbsent')
+      expect(uploaded).not.toHaveProperty('metadata')
+      expect(uploaded.data).toEqual(data)
+    },
+  )
+
+  it('retains migration create-only intent when a failed upload retries after the device has synced', async () => {
+    const attempts: { operations: Record<string, unknown>[] }[] = []
+    const complete = mock(async () => {})
+    const source = [
+      crudEntry('PUT', 'oauth:tinfoil', 'provider_connections', providerConnectionMigrationMetadata),
+      crudEntry('PATCH', 'one', 'models', `${modelConnectionMigrationMetadataPrefix}tinfoil`, {
+        provider_connection_id: 'oauth:tinfoil',
+      }),
+    ]
+    const database = {
+      currentStatus: { hasSynced: true },
+      getNextCrudTransaction: async () => ({ crud: structuredClone(source), complete }),
+    } as unknown as CommonPowerSyncDatabase
+    const fetchSpy = mock(async (url: string, init?: RequestInit) => {
+      if (url.includes('/encryption/canary')) {
+        return Response.json({ error: 'Encryption not set up' }, { status: 404 })
+      }
+      attempts.push(JSON.parse(init!.body as string))
+      return Response.json({ success: attempts.length > 1 }, { status: attempts.length === 1 ? 503 : 200 })
+    })
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+    await expect(connector.uploadData(database)).rejects.toThrow('Upload failed: 503')
+    expect(complete).not.toHaveBeenCalled()
+    await connector.uploadData(database)
+    expect(complete).toHaveBeenCalledTimes(1)
+    expect(attempts).toHaveLength(2)
+    expect(attempts[0]).toEqual(attempts[1])
+    expect(attempts.every(({ operations }) => operations[0].ifAbsent === true)).toBe(true)
+    expect(attempts.map(({ operations }) => operations[1].ifProviderConnectionUnset)).toEqual([
+      { provider: 'tinfoil' },
+      { provider: 'tinfoil' },
+    ])
   })
 
   it('never tags a PATCH, so an edit made before the first sync still wins', async () => {

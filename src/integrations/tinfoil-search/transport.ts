@@ -6,19 +6,39 @@ import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import { isTauri } from '@/lib/platform'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { createTinfoilClientLifecycle, isTinfoilTransportWedgedError } from '@/ai/tinfoil-client'
+import {
+  createTinfoilClientLifecycle,
+  isTinfoilAttestationFailure,
+  tinfoilAttestationTimeoutMs,
+} from '@/ai/tinfoil-client'
 import { getUserCacheSecret } from '@/lib/auth-token'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
+import { createAttestationStore } from '@/attestation/store'
+import {
+  createBrowserSearchClient,
+  createSearchNetworkFetch,
+  nativeSearchClient,
+  SearchAcknowledgment,
+} from './http-client'
 
 const lifecycle = createTinfoilClientLifecycle({
-  createClient: async () => {
-    // Keep the attestation SDK cold until an agent actually invokes a web tool.
-    const { SecureClient } = await import('tinfoil')
-    return new SecureClient({
-      enclaveURL: 'https://websearch.tinfoil.sh',
-      configRepo: 'tinfoilsh/confidential-websearch',
-      userCacheSecret: getUserCacheSecret(),
-    })
+  createClient: async (_type, _cloudUrl, reporter, signal) => {
+    const { AttestedTinfoilClient } = await import('@/attestation/tinfoil')
+    return AttestedTinfoilClient.create(
+      {
+        enclave: { host: 'websearch.tinfoil.sh', repo: 'tinfoilsh/confidential-websearch' },
+        userCacheSecret: getUserCacheSecret(),
+        fetch: createSearchNetworkFetch(
+          isTauri() ? nativeSearchClient : createBrowserSearchClient(window.location.origin),
+        ),
+        signal,
+      },
+      reporter,
+      tinfoilAttestationTimeoutMs,
+    )
   },
+  // Search has a separate enclave; its evidence must never replace the inference badge.
+  attestations: createAttestationStore(),
   getCloudUrl: () => '',
 })
 
@@ -32,53 +52,65 @@ export type TinfoilToolCaller = (name: 'search' | 'fetch', args: Record<string, 
 type TransportDependencies = {
   acquire: () => Promise<{
     fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
-    getBaseURL: () => string | undefined
-    evict: () => void
+    baseURL: string
   }>
+  evict: (client: object) => void
 }
 const transportDependencies: TransportDependencies = {
-  acquire: async () => {
-    const secure = await lifecycle.getTinfoilClient()
-    const [{ createAttestedSearchFetch }, { nativeSearchClient, createBrowserSearchClient }] = await Promise.all([
-      import('./attested-fetch'),
-      import('./http-client'),
-    ])
-    const client = isTauri() ? nativeSearchClient : createBrowserSearchClient(window.location.origin)
-    return {
-      fetch: await createAttestedSearchFetch(secure.getVerificationDocument(), client),
-      getBaseURL: () => secure.getBaseURL(),
-      evict: () => lifecycle.evictUserTinfoilClient(secure),
-    }
-  },
+  acquire: lifecycle.getTinfoilClient,
+  evict: lifecycle.evictUserTinfoilClient,
 }
 
 /** Uses MCP framing over an attested encrypted transport, refreshing authorization per request. */
-export const createTinfoilToolCaller =
-  (getApiKey: () => Promise<string>, deps = transportDependencies): TinfoilToolCaller =>
-  async (name, args) => {
+export const createTinfoilToolCaller = (
+  getApiKey: () => Promise<string>,
+  deps = transportDependencies,
+): TinfoilToolCaller => {
+  const identity = getIdentitySignal()
+  return async (name, args) => {
+    identity.throwIfAborted()
     const secure = await deps.acquire()
-    const endpoint = new URL('/mcp', secure.getBaseURL())
+    identity.throwIfAborted()
+    const endpoint = new URL('/mcp', secure.baseURL)
     const client = new Client({ name: 'thunderbolt-web-search', version: '1.0.0' })
     const transport = new StreamableHTTPClientTransport(endpoint, {
       fetch: async (input, init) => {
+        identity.throwIfAborted()
+        // A bodyless GET cannot authenticate an EHBP response. MCP permits disabling
+        // this optional event stream; results arrive on the encrypted POST instead.
+        if ((init?.method ?? (input instanceof Request ? input.method : 'GET')) === 'GET') {
+          return new Response(null, { status: 405 })
+        }
         const headers = new Headers(init?.headers)
         headers.set('Authorization', `Bearer ${await getApiKey()}`)
+        identity.throwIfAborted()
         headers.set('X-Tinfoil-Tool-PII-Check', 'true')
         headers.set('X-Tinfoil-Tool-Injection-Check', 'true')
-        return secure.fetch(input, { ...init, headers, credentials: 'omit' })
+        try {
+          const signal = AbortSignal.any([identity, ...(init?.signal ? [init.signal] : [])])
+          return await secure.fetch(input, { ...init, headers, signal, credentials: 'omit', redirect: 'error' })
+        } catch (error) {
+          const acknowledgement =
+            error instanceof Error && error.cause instanceof SearchAcknowledgment ? error.cause : error
+          if (acknowledgement instanceof SearchAcknowledgment) {
+            return acknowledgement.response
+          }
+          throw error
+        }
       },
     })
     try {
-      await client.connect(transport, { timeout: 30_000 })
+      await client.connect(transport, { timeout: 30_000, signal: identity })
       return CallToolResultSchema.parse(
-        await client.callTool({ name, arguments: args }, CallToolResultSchema, { timeout: 30_000 }),
+        await client.callTool({ name, arguments: args }, CallToolResultSchema, { timeout: 30_000, signal: identity }),
       )
     } catch (error) {
-      if (isTinfoilTransportWedgedError(error)) {
-        secure.evict()
+      if (isTinfoilAttestationFailure(error)) {
+        deps.evict(secure)
       }
       throw error
     } finally {
       await client.close()
     }
   }
+}

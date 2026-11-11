@@ -20,7 +20,7 @@ test('debug sharing previews redacted content, requires consent, and cancels wit
   })
   await loginViaEmailCode(page)
   await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
   await page.keyboard.press('Escape')
   const secret = crypto.randomUUID()
   await page.locator('textarea').fill(`Diagnostic context Client Secret: ${secret} AWS Secret Access Key: ${secret}`)

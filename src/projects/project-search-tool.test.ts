@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { sql } from 'drizzle-orm'
 import { BunSQLiteDatabase } from '@/db/bun-sqlite-database'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { buildCreateSql } from '@/search/fts-setup'
 import { formatProjectChatHits, searchProjectChats, type ProjectChatHit } from './project-search-tool'
 
@@ -14,10 +15,7 @@ const hit = (chatTitle: string, excerpt: string): ProjectChatHit => ({
   excerpt,
 })
 
-// Runs against a real SQLite database through the same drizzle `sqlite-proxy`
-// driver the app uses, because the row shape is the whole risk here: raw
-// `db.all()` results come back positional, so reading them by column name
-// compiles, type-checks, and silently returns nothing.
+// The Bun proxy returns positional rows; PowerSync returns keyed row objects.
 describe('searchProjectChats', () => {
   let database: BunSQLiteDatabase
 
@@ -45,6 +43,22 @@ describe('searchProjectChats', () => {
     expect(hits[0].chatThreadId).toBe('t1')
     expect(hits[0].chatTitle).toBe('Pricing call')
     expect(hits[0].excerpt).toContain('price')
+  })
+
+  it('handles keyed rows from the PowerSync driver', async () => {
+    const objectRowDb = {
+      all: async () => [{ parent_id: 't1', snippet: 'LangChain sandbox research' }],
+    } as unknown as AnyDrizzleDatabase
+
+    const hits = await searchProjectChats(objectRowDb, ['t1'], 'LangChain', new Map([['t1', 'Sandbox research']]))
+
+    expect(hits).toEqual([
+      {
+        chatThreadId: 't1',
+        chatTitle: 'Sandbox research',
+        excerpt: 'LangChain sandbox research',
+      },
+    ])
   })
 
   it('falls back to a placeholder title for an untitled thread', async () => {

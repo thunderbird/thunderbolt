@@ -96,6 +96,19 @@ it.each(['exa', 'tavily'] as const)('rejects %s per-page failure in an HTTP 200 
   )
 })
 
+it.each(['exa', 'tavily'] as const)(
+  'reports an empty %s response to the model without adding a source',
+  async (provider) => {
+    const client = createClient({ fetch: async () => new Response(null) })
+    const sources: SourceMetadata[] = []
+    const tools = createConfigs(client, sources, createStandaloneWebApi('key', client, provider))
+    await expect(tools[1].execute({ url: 'https://example.com/' })).rejects.toThrow(
+      'The search provider could not retrieve this page.',
+    )
+    expect(sources).toEqual([])
+  },
+)
+
 it.each(['exa', 'tavily'] as const)('rejects %s malformed content and authorization failures', async (provider) => {
   const client = createClient({ fetch: async () => Response.json({ results: [{ url: 'https://example.com/' }] }) })
   await expect(fetchProviderContent(provider, 'key', { url: 'https://example.com/' }, client)).rejects.toThrow()

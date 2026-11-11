@@ -5105,12 +5105,12 @@ msgid "The request was denied. You can safely close this page."
 msgstr "The request was denied. You can safely close this page."
 
 #: src/integrations/standalone-search/content.ts
-msgid "The search provider could not retrieve this page."
-msgstr "The search provider could not retrieve this page."
+#~ msgid "The search provider could not retrieve this page."
+#~ msgstr "The search provider could not retrieve this page."
 
 #: src/integrations/standalone-search/content.ts
-msgid "The search provider returned too much content. Try another page."
-msgstr "The search provider returned too much content. Try another page."
+#~ msgid "The search provider returned too much content. Try another page."
+#~ msgstr "The search provider returned too much content. Try another page."
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "The server rejected the credential. Check your bearer token or API key."

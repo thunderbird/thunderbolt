@@ -30,7 +30,6 @@ export const CreatedFileCard = ({ file }: { file: CreatedFile }) => {
       localFileId={file.id}
       filename={file.filename}
       mimeType={file.mimeType}
-      created
       note={note}
       action={
         status === 'ready' && (

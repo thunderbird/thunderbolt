@@ -29,7 +29,6 @@ test('the agent builds a Word document in the sandbox Worker and the user downlo
 
   const download = page.getByRole('button', { name: `Download ${officeScriptFilename}` })
   await expect(download).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('Created', { exact: true })).toBeVisible()
   await expect(page.locator('[data-quotable-message-id]').last()).toContainText(fakeProviderReply)
   expect(workerUrls.some((url) => url.includes('office-script.worker'))).toBe(true)
 

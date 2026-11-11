@@ -55,12 +55,11 @@ describe('the chip for a file the agent created', () => {
     downloadFile.mockRestore()
   })
 
-  it('shows the file name, its type and a "Created" label, and downloads the stored bytes', async () => {
+  it('shows the file name and its type, and downloads the stored bytes', async () => {
     await renderMessage(finishedCall({ ok: true, files: [report], logs: '' }))
 
     expect(screen.getByText('report.docx')).toBeDefined()
     expect(screen.getByText('DOCX')).toBeDefined()
-    expect(screen.getByText('Created')).toBeDefined()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Download report.docx' }))
       await getClock().runAllAsync()
@@ -73,7 +72,7 @@ describe('the chip for a file the agent created', () => {
     const { container } = await renderMessage(finishedCall({ ok: true, files: [report, deck], logs: '' }))
 
     expect(screen.getByText('deck.pptx')).toBeDefined()
-    expect(screen.getAllByText('Created')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /^Download / })).toHaveLength(2)
     expect(container.querySelectorAll('.lucide-presentation')).toHaveLength(1)
   })
 
@@ -101,7 +100,7 @@ describe('the chip for a file the agent created', () => {
     const result = { ok: true, files: [report], logs: '' }
     await renderMessage(finishedCall({ content: [{ type: 'text', text: JSON.stringify(result) }], details: result }))
 
-    expect(screen.getByText('Created')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Download report.docx' })).toBeDefined()
   })
 
   it('shows the chips for a call that arrives as a dynamic tool part', async () => {
@@ -114,15 +113,15 @@ describe('the chip for a file the agent created', () => {
       output: { ok: true, files: [report], logs: '' },
     })
 
-    expect(screen.getByText('Created')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Download report.docx' })).toBeDefined()
   })
 
   it('shows no chip while the script runs or when it failed', async () => {
     await renderMessage({ type: 'tool-run_office_script', toolCallId: 'call-2', state: 'input-available', input: {} })
-    expect(screen.queryByText('Created')).toBeNull()
+    expect(screen.queryByText('report.docx')).toBeNull()
     cleanup()
 
     await renderMessage(finishedCall({ ok: false, error: 'Error: boom', logs: '' }))
-    expect(screen.queryByText('Created')).toBeNull()
+    expect(screen.queryByText('report.docx')).toBeNull()
   })
 })

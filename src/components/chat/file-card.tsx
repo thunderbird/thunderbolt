@@ -28,8 +28,6 @@ type FileCardProps = {
   resendTargets?: readonly ('text' | 'images')[]
   /** Re-deliver this file as the chosen mode and re-run the turn. */
   onResend?: (target: 'text' | 'images') => void
-  /** The agent made this file: shows a "Created" badge. */
-  created?: boolean
   /** A control in the top-right corner, such as a download button. */
   action?: ReactNode
   /** A short line under the card, such as why the file can't be opened here. */
@@ -41,8 +39,6 @@ const deliverAsLabel: Record<'text' | 'images', MessageDescriptor> = {
   text: msg`Sent as text`,
   images: msg`Sent as images`,
 }
-
-const createdLabel = msg`Created`
 
 /** Label for a resend control option. A whole message per mode rather than the
  *  mode name interpolated into "Resend as …" — a bare noun dropped into a
@@ -76,13 +72,11 @@ export const FileCard = ({
   deliverAs,
   resendTargets,
   onResend,
-  created,
   action,
   note,
 }: FileCardProps) => {
   const { i18n } = useLingui()
   const ext = filename.split('.').pop()?.toLowerCase()
-  const badge = deliverAs ? deliverAsLabel[deliverAs] : created ? createdLabel : undefined
   const PlaceholderIcon = mimeType === pptxMime ? Presentation : FileText
   const isPdf = mimeType === 'application/pdf'
   const isImage = mimeType.startsWith('image/')
@@ -100,9 +94,9 @@ export const FileCard = ({
       {isMarkdown && <MarkdownThumbnail localFileId={localFileId} />}
       {isDocx && <DocxThumbnail localFileId={localFileId} title={filename} />}
       {isPlainText && <TextSnippet localFileId={localFileId} mimeType={mimeType} />}
-      {badge && (
+      {deliverAs && (
         <span className="absolute left-1.5 top-1.5 rounded bg-black/65 px-1.5 py-px text-[length:var(--font-size-xs)] font-medium text-white">
-          {i18n._(badge)}
+          {i18n._(deliverAsLabel[deliverAs])}
         </span>
       )}
       <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-5">

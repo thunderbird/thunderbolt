@@ -2041,10 +2041,6 @@ msgstr "Create Skill"
 msgid "Create your first skill"
 msgstr "Create your first skill"
 
-#: src/components/chat/file-card.tsx
-msgid "Created"
-msgstr "Created"
-
 #: src/lib/tool-metadata.ts
 #: src/projects/project-create-form.tsx
 #: src/skills/skill-form.tsx

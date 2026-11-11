@@ -316,6 +316,20 @@
       "when": 1794410877777,
       "tag": "0044_inference-usage-holds",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794431147123,
+      "tag": "0045_recovery-continuity",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1794431147484,
+      "tag": "0046_passkey-continuity",
+      "breakpoints": true
     }
   ]
 }

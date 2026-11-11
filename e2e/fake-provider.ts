@@ -7,32 +7,62 @@ import { json } from 'node:stream/consumers'
 import { setTimeout } from 'node:timers/promises'
 import type { RawMessageStreamEvent } from '@anthropic-ai/sdk/resources/messages'
 import { z } from 'zod'
+import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailId } from './mini-app-fixture'
 import { performanceStreamOptions, performanceStreamPrompt } from './streaming-fixture'
 
 export const fakeProviderReply = 'Hello from the fake provider, one word at a time.'
 
 type FakeProviderOptions = { delayMs?: number }
 
-const requestSchema = z.object({
-  messages: z.array(
-    z.object({
-      role: z.string(),
-      content: z.union([z.string(), z.array(z.object({ type: z.string(), text: z.string().optional() }))]),
-    }),
-  ),
-})
+const textPartSchema = z.object({ type: z.string(), text: z.string().optional() })
+type TextPart = z.infer<typeof textPartSchema>
+const joinText = (parts: TextPart[]) =>
+  parts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text ?? '')
+    .join('\n')
+const textSchema = z.union([z.string(), z.array(textPartSchema).transform(joinText)])
+// Each message is reduced to its text, the tool it calls, and, for a `tool_result` turn, the result's text.
+const contentSchema = z.union([
+  z.string().transform((text) => ({ text, toolCall: undefined, toolResult: undefined })),
+  z
+    .array(textPartSchema.extend({ name: z.string().optional(), content: textSchema.optional() }))
+    .transform((parts) => ({
+      text: joinText(parts),
+      toolCall: parts.find((part) => part.type === 'tool_use')?.name,
+      toolResult: parts.find((part) => part.type === 'tool_result')?.content,
+    })),
+])
+const requestSchema = z.object({ messages: z.array(z.object({ role: z.string(), content: contentSchema })) })
+
+type FakeRequest = z.infer<typeof requestSchema>
+
+const lastUserContent = (request: FakeRequest) =>
+  request.messages.findLast((message) => message.role === 'user')?.content
 
 /** Only the last user turn can opt into the expensive fixture; ordinary replies retain their original timing. */
-const requestsPerformanceStream = (request: z.infer<typeof requestSchema>) => {
-  const content = request.messages.findLast((message) => message.role === 'user')?.content
-  const text =
-    typeof content === 'string'
-      ? content
-      : content
-          ?.filter((part) => part.type === 'text')
-          .map((part) => part.text ?? '')
-          .join('\n')
-  return text === performanceStreamPrompt
+const requestsPerformanceStream = (request: FakeRequest) => lastUserContent(request)?.text === performanceStreamPrompt
+
+const emailResultSchema = z.object({ body_text: z.string() })
+
+/** The email body, when the last turn answers the `google_get_email` call this script made. */
+const emailBodyFromToolResult = ({ messages }: FakeRequest) => {
+  const [call, result] = messages.slice(-2)
+  return call?.content.toolCall === 'google_get_email' && result?.content.toolResult !== undefined
+    ? emailResultSchema.parse(JSON.parse(result.content.toolResult)).body_text
+    : null
+}
+
+/**
+ * The Mini App transfer script: read the email, then pass its body to the open app's tool, then reply in text. It
+ * plays a model that obeys an app's tool description, so the e2e can show what reaches the frame.
+ */
+const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<string, string> } | null => {
+  if (lastUserContent(request)?.text === miniAppTransferPrompt) {
+    return { name: 'google_get_email', input: { id: protectedEmailId } }
+  }
+  const body = emailBodyFromToolResult(request)
+  return body === null ? null : { name: miniAppToolsetName, input: { note: body } }
 }
 
 /** Start a local Anthropic Messages provider with a deterministic streamed reply. */
@@ -93,6 +123,34 @@ export const createFakeProvider = async (port: number, options: FakeProviderOpti
         usage,
       },
     })
+    const toolCall = scriptedToolCall(request)
+    if (toolCall) {
+      writeEvent({
+        type: 'content_block_start',
+        index: 0,
+        content_block: {
+          type: 'tool_use',
+          id: `toolu_${crypto.randomUUID()}`,
+          name: toolCall.name,
+          input: {},
+          caller: { type: 'direct' },
+        },
+      })
+      writeEvent({
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: JSON.stringify(toolCall.input) },
+      })
+      writeEvent({ type: 'content_block_stop', index: 0 })
+      writeEvent({
+        type: 'message_delta',
+        delta: { stop_reason: 'tool_use', stop_sequence: null, stop_details: null, container: null },
+        usage: { ...usage, output_tokens: 8 },
+      })
+      writeEvent({ type: 'message_stop' })
+      res.end()
+      return
+    }
     writeEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: [] } })
     for (const text of chunks) {
       await setTimeout(options.delayMs ?? selected.delayMs)

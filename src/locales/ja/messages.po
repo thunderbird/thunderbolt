@@ -503,6 +503,10 @@ msgstr "すべてのコマンド実行操作を常に許可"
 msgid "Always allow everything from this agent"
 msgstr "このエージェントからのすべてを常に許可"
 
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Always approve this action"
+msgstr ""
+
 #: src/components/external-link-toggle-group.tsx
 msgid "Always ask"
 msgstr "常に確認する"
@@ -609,6 +613,10 @@ msgstr "このデバイスを承認"
 #: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Approve this device?"
 msgstr "このデバイスを承認しますか？"
+
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Approving sends this request, with the details shown, to {appName}."
+msgstr ""
 
 #: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/settings/devices.tsx
@@ -3284,6 +3292,10 @@ msgstr "最終アクセス {lastSeen}"
 #: src/components/update-notification.tsx
 msgid "Later"
 msgstr "後で"
+
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Later calls run without asking, with whatever details the model sends, until Thunderbolt reloads."
+msgstr ""
 
 #: src/components/logout-modal.tsx
 msgid "Leave data on device"

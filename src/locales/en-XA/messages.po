@@ -515,6 +515,10 @@ msgstr ""
 msgid "Always allow everything from this agent"
 msgstr ""
 
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Always approve this action"
+msgstr ""
+
 #: src/components/external-link-toggle-group.tsx
 msgid "Always ask"
 msgstr ""
@@ -620,6 +624,10 @@ msgstr ""
 
 #: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Approve this device?"
+msgstr ""
+
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Approving sends this request, with the details shown, to {appName}."
 msgstr ""
 
 #: src/components/approve-device/fingerprint-confirmation.tsx
@@ -3295,6 +3303,10 @@ msgstr ""
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 #: src/components/update-notification.tsx
 msgid "Later"
+msgstr ""
+
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Later calls run without asking, with whatever details the model sends, until Thunderbolt reloads."
 msgstr ""
 
 #: src/components/logout-modal.tsx

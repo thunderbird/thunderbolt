@@ -515,6 +515,10 @@ msgstr "Alle Aktionen zum Ausführen von Befehlen immer zulassen"
 msgid "Always allow everything from this agent"
 msgstr "Immer alles von diesem Agenten zulassen"
 
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Always approve this action"
+msgstr ""
+
 #: src/components/external-link-toggle-group.tsx
 msgid "Always ask"
 msgstr "Immer fragen"
@@ -621,6 +625,10 @@ msgstr "Dieses Gerät genehmigen"
 #: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Approve this device?"
 msgstr "Dieses Gerät genehmigen?"
+
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Approving sends this request, with the details shown, to {appName}."
+msgstr ""
 
 #: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/settings/devices.tsx
@@ -3296,6 +3304,10 @@ msgstr "Zuletzt gesehen {lastSeen}"
 #: src/components/update-notification.tsx
 msgid "Later"
 msgstr "Später"
+
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Later calls run without asking, with whatever details the model sends, until Thunderbolt reloads."
+msgstr ""
 
 #: src/components/logout-modal.tsx
 msgid "Leave data on device"

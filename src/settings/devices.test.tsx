@@ -32,6 +32,7 @@ const removalErrors = [
 ] as const
 
 import DevicesSettingsPage from './devices'
+import { approvalCodeAttemptsKey } from '@/components/approve-device/approval-code-attempts'
 
 /** Renders Devices settings with an injected HTTP boundary. */
 const renderDevicesPage = (httpClient: HttpClient = createMockHttpClient()) => {
@@ -118,6 +119,8 @@ describe('DevicesSettingsPage reactivity', () => {
   })
 
   afterEach(async () => {
+    // Opening the approval dialog records a code attempt on this device.
+    localStorage.removeItem(approvalCodeAttemptsKey)
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
     await clearAllKeys()
@@ -172,6 +175,7 @@ describe('DevicesSettingsPage reactivity', () => {
       await waitForElement(() => screen.queryByText('Pending Phone'))
       fireEvent.click(screen.getByRole('button', { name: 'Approve Pending Phone' }))
       const dialog = screen.getByRole('alertdialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Use fingerprint instead' }))
       fireEvent.change(within(dialog).getByLabelText('Device fingerprint'), {
         target: { value: Array(16).fill('0000').join('-') },
       })

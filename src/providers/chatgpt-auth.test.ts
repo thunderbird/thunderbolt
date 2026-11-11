@@ -522,6 +522,36 @@ test('rejects an unknown selected account without opening a browser', async () =
   expect(open).not.toHaveBeenCalled()
 })
 
+test('finishes a started token response on cancellation and revokes the unused grant', async () => {
+  const post = mockEndpoints()
+  const controller = new AbortController()
+  await expect(
+    connectChatGPT(
+      getDb(),
+      controller.signal,
+      loopbackPlatform(async (url, callback) => {
+        const tokens = await tokenResponse(url)
+        post.mockImplementation((endpoint, options) => {
+          if (endpoint !== metadata.token_endpoint) {
+            return stubJsonResponse({})
+          }
+          const response = stubJsonResponse(tokens)
+          response.json = async <T>() => {
+            controller.abort()
+            expect(options?.signal?.aborted).toBe(false)
+            return tokens as T
+          }
+          return response
+        })
+        callback(callbackUrl(url, 'issued-client'))
+      }),
+    ),
+  ).rejects.toHaveProperty('name', 'AbortError')
+  expect(post.mock.calls.map(([url]) => url)).toEqual([metadata.token_endpoint, metadata.revocation_endpoint])
+  expect((post.mock.calls[1]?.[1]?.body as URLSearchParams).get('token')).toBe('refresh')
+  expect(await getProviderCredentials(getDb(), 'oauth:openai')).toBeNull()
+})
+
 test('revokes a newly issued grant when cancellation prevents validating its identity', async () => {
   const post = mockEndpoints()
   const controller = new AbortController()

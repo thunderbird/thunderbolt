@@ -61,12 +61,13 @@ export const OtariConnection = ({ onSaved, onboarding = false, onBack, onSkip, c
           <>
             <ProviderConnectionButton
               isConnected
-              isProcessing={false}
+              isProcessing={state.operation === 'disconnect'}
               disabled={state.busy}
               onConnect={state.connect}
               onDisconnect={state.reconnect}
               connectLabel={t`Connect Otari`}
               connectedLabel={t`Connected to Otari`}
+              connectingLabel={t`Disconnecting…`}
               className="w-full bg-secondary text-muted-foreground"
             />
             {state.models.length > 0 ? (

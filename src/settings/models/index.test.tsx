@@ -446,12 +446,18 @@ describe('model card action menu', () => {
 
   it('keeps credentials out of the model editor and offers a model selector', async () => {
     const db = getDb()
+    const providerConnectionId = await saveProviderConnection(db, {
+      provider: 'openai',
+      name: 'Work',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'sk-secret-123' },
+    })
     await createModel(db, {
       id: uuidv7(),
       provider: 'openai',
       name: 'Keyed Model',
       model: 'gpt-4',
-      apiKey: 'sk-secret-123',
+      providerConnectionId,
       isSystem: 0,
       enabled: 1,
     })
@@ -463,6 +469,7 @@ describe('model card action menu', () => {
     fireEvent.click(await screen.findByText('Edit'))
     await waitForElement(() => screen.queryByRole('heading', { name: 'Edit Model' }))
 
+    expect(screen.getByRole('link', { name: 'Manage provider connection' })).toBeInTheDocument()
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('URL')).not.toBeInTheDocument()
 
@@ -470,6 +477,33 @@ describe('model card action menu', () => {
     const modelTrigger = screen.getByRole('combobox')
     expect(modelTrigger).toHaveTextContent('gpt-4')
     expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument()
+  })
+
+  it('offers credential repair for a legacy custom model without revealing its saved key', async () => {
+    await createModel(getDb(), {
+      id: 'legacy-custom',
+      provider: 'custom',
+      name: 'Legacy endpoint',
+      model: 'old',
+      url: 'https://old.example/v1',
+      apiKey: 'saved-secret',
+      enabled: 1,
+      isSystem: 0,
+    })
+    renderModelsPage()
+    await waitForElement(() => screen.queryByText('Legacy endpoint'))
+    await openMenuForModel('Legacy endpoint')
+    fireEvent.click(await screen.findByText('Edit'))
+    await waitForElement(() => screen.queryByRole('heading', { name: 'Edit Model' }))
+    expect(screen.getByLabelText('URL')).toHaveValue('https://old.example/v1')
+    expect(screen.getByLabelText('API Key')).toHaveValue('')
+    expect(screen.queryByRole('link', { name: 'Manage provider connection' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear saved API key' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await getClock().runAllAsync()
+    })
+    expect((await getModel(getDb(), 'legacy-custom'))?.apiKey).toBeNull()
   })
 
   it('does not request a provider catalog merely by opening edit', async () => {

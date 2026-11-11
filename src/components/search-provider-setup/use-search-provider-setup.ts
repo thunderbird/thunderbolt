@@ -14,6 +14,7 @@ import {
 import { testSearchProvider } from '@/integrations/standalone-search/api'
 import { searchProviders, type SearchProvider } from '@/integrations/standalone-search/providers'
 import { useSearchProviderStore, type SearchSelection } from '@/stores/search-provider-store'
+import { createIdentityController } from '@/lib/identity-lifetime'
 
 type State = {
   provider: SearchProvider | null
@@ -47,7 +48,7 @@ export const useSearchProviderSetup = (
     status: 'idle',
     error: '',
   })
-  const pending = useRef<AbortController | null>(null)
+  const pending = useRef<ReturnType<typeof createIdentityController> | null>(null)
   useEffect(() => () => pending.current?.abort(), [])
   const change = (patch: Partial<State>) => {
     pending.current?.abort()
@@ -64,7 +65,7 @@ export const useSearchProviderSetup = (
       return
     }
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     const configuration = useSearchProviderStore.getState()
     update({ status: 'testing', error: '' })
@@ -97,6 +98,7 @@ export const useSearchProviderSetup = (
         }
         return id
       })
+      controller.signal.throwIfAborted()
       stored.selectSearchConnection(connectionId)
       const savedConfiguration = useSearchProviderStore.getState()
       update({ status: 'success', connectionId, apiKey: '' })
@@ -119,7 +121,7 @@ export const useSearchProviderSetup = (
   }
   const disconnect = async () => {
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     try {
       if (state.connectionId) {

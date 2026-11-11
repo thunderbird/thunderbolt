@@ -16,6 +16,7 @@ import { getIdentitySignal } from './identity-lifetime'
 
 export const tinfoilClientId =
   import.meta.env.VITE_TINFOIL_CLIENT_ID || 'oauthc_SDVdLmN2tIicRCMaqNGijBTNKZceSmEjwolKnycjrypWSCvN'
+export const tinfoilManageSubscriptionUrl = 'https://dash.tinfoil.sh/?tab=billing'
 const failed = msg`Could not connect to Tinfoil. Try again, or use an API key.`
 const reconnect = msg`Your Tinfoil connection has expired. Reconnect Tinfoil in Settings → Connections.`
 
@@ -47,6 +48,7 @@ export type TinfoilCredentials = {
   refresh_token?: string
   expires_at: number
   reauth_required?: boolean
+  authorizationId?: string
 }
 
 /** Builds the same PKCE request for browser, desktop, and verified mobile app links. */
@@ -108,10 +110,20 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
     }
   }
 
-  const exchangeCode = (
+  const exchangeCode = async (
     { code, verifier, redirectUri }: { code: string; verifier: string; redirectUri: string },
     signal?: AbortSignal,
-  ) => grant({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri }, signal)
+  ): Promise<TinfoilCredentials> => {
+    signal?.throwIfAborted()
+    // Once sent, finish the bounded exchange so the owner can revoke a cancelled grant.
+    const credentials = await grant({
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: verifier,
+      redirect_uri: redirectUri,
+    })
+    return { ...credentials, authorizationId: crypto.randomUUID() }
+  }
 
   return {
     exchangeCode,
@@ -120,9 +132,7 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
       try {
         const result = await authorization.startConnection({ signal })
         signal.throwIfAborted()
-        const credentials = await exchangeCode(result, signal)
-        signal.throwIfAborted()
-        return credentials
+        return await exchangeCode(result, signal)
       } catch (error) {
         signal.throwIfAborted()
         if (error instanceof TinfoilConnectionError) {

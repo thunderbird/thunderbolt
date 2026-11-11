@@ -58,7 +58,7 @@ Two PRs, to avoid sync rule mismatches.
 
 **PR 2: frontend** (`src/db/tables.ts`, step 3, plus DAL, defaults, reconciliation, UI). Merge only after PR 1's image is live. Frontend-first fails silently: the table works locally but never replicates.
 
-The provider-connections preparation follows this sequence: apply the generated backend migration and deploy all three sync-rule configurations before releasing the frontend that creates connections. The older frontend's `syncedTables` can be a subset of the shared backend registry during this rollout; it does not create or use the new local table yet. Existing model rows retain a null connection reference until the frontend migrates them.
+Provider connections are an explicitly approved exception to the two-PR procedure: schema, sync rules, and frontend ship together in PR #1511, with brief rollout downtime accepted. Apply backend migration `0043_provider-connections`, then deploy the PowerSync configuration before releasing the new frontend. Deployments updating these services together can temporarily fail connection sync until both backend and PowerSync are ready. Existing model rows retain a null connection reference until the frontend migrates them. Future synced tables still follow the two-PR procedure above.
 
 ### Adding Columns to an Existing Synced Table
 

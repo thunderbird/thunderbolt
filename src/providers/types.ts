@@ -24,6 +24,7 @@ export type ProviderCredentials = {
   refresh_token?: string
   expires_at?: number
   reauth_required?: boolean
+  authorizationId?: string
   oauth?: {
     clientId: string
     issuer: string
@@ -44,9 +45,9 @@ export type ProviderConnection = {
   name: string
   url: string | null
   authMethod: ProviderAuthMethod
-  enabled: number
-  createdAt: string
-  updatedAt: string
+  enabled: number | null
+  createdAt: string | null
+  updatedAt: string | null
   deletedAt: string | null
   userId: string | null
   connected: boolean

@@ -193,3 +193,22 @@ export const challengeNoncesTable = pgTable(
   },
   (table) => [index('idx_challenge_nonces_user_id').on(table.userId)],
 )
+
+/**
+ * Relay for the short-code approval (commit-then-reveal): the pending device posts a commitment,
+ * a trusted device answers with a challenge, the pending device reveals. Both devices check the
+ * values themselves, so the server only enforces ordering and ownership here. One row per pending
+ * device, overwritten by each new attempt; the row goes with the device (cascade).
+ */
+export const deviceApprovalSessionsTable = pgTable('device_approval_sessions', {
+  deviceId: text('device_id')
+    .primaryKey()
+    .references(() => devicesTable.id, { onDelete: 'cascade' }),
+  sessionId: text('session_id').notNull(),
+  commitment: text('commitment').notNull(),
+  challenge: text('challenge'),
+  challengerDeviceId: text('challenger_device_id'),
+  reveal: text('reveal'),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})

@@ -15,44 +15,85 @@ import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import { fetchProviderModels } from '@/providers/models'
 import type { Model } from '@/types'
-import { catalogToComboboxItems, customModelItem } from './use-model-catalog'
+import { canFetchCatalog } from './model-catalog'
+import {
+  apiKeyEditValue,
+  hasModelConnectionChanges,
+  modelApiKeyForConnection,
+  providerRequiresConnectionTest,
+  providerRequiresUrl,
+  type ApiKeyEdit,
+} from './model-policy'
+import { catalogToComboboxItems, customModelItem, useModelCatalog } from './use-model-catalog'
 
 const nameRequired = msg`Name is required.`
 const modelNameRequired = msg`Model name is required.`
+const urlRequired = msg`URL is required for Custom providers`
 
-const editModelFormSchema = (i18n: I18n) =>
-  z.object({
-    name: z
-      .string()
-      .trim()
-      .min(1, { message: i18n._(nameRequired) }),
-    model: z
-      .string()
-      .trim()
-      .min(1, { message: i18n._(modelNameRequired) }),
-    supportsTools: z.boolean(),
-  })
+const editModelFormSchema = (i18n: I18n, model: Model) =>
+  z
+    .object({
+      name: z
+        .string()
+        .trim()
+        .min(1, { message: i18n._(nameRequired) }),
+      model: z
+        .string()
+        .trim()
+        .min(1, { message: i18n._(modelNameRequired) }),
+      url: z.string().trim(),
+      apiKey: z.string(),
+      supportsTools: z.boolean(),
+    })
+    .refine(
+      (values) => Boolean(model.providerConnectionId) || !providerRequiresUrl(model.provider) || Boolean(values.url),
+      {
+        message: i18n._(urlRequired),
+        path: ['url'],
+      },
+    )
 type EditModelFormValues = z.infer<ReturnType<typeof editModelFormSchema>>
-export type EditModelSubmission = { id: string; name: string; model: string; toolUsage: number }
+export type EditModelSubmission = {
+  id: string
+  name: string
+  model: string
+  toolUsage: number
+  url?: string
+  apiKey?: string | null
+}
 
-/** Edits model preferences while connection credentials remain in Connections. */
+/** Edits model preferences and retains credential repair for models without a reusable connection. */
 export const useEditModelFormState = (model: Model) => {
   const { i18n, t } = useLingui()
   const db = useDatabase()
   const getProxyFetch = useProxyFetchGetter()
   const form = useForm<EditModelFormValues>({
-    resolver: zodResolver(editModelFormSchema(i18n)),
-    defaultValues: { name: model.name || '', model: model.model, supportsTools: model.toolUsage !== 0 },
+    resolver: zodResolver(editModelFormSchema(i18n, model)),
+    defaultValues: {
+      name: model.name || '',
+      model: model.model,
+      url: model.url ?? '',
+      apiKey: '',
+      supportsTools: model.toolUsage !== 0,
+    },
   })
   const watchedModel = form.watch('model')
+  const watchedUrl = form.watch('url')
+  const watchedApiKey = form.watch('apiKey')
   const [isCustomModel, setIsCustomModel] = useState(false)
+  const [apiKeyEdit, setApiKeyEdit] = useState<ApiKeyEdit>({ kind: 'keep' })
+  const liveApiKeyEdit: ApiKeyEdit =
+    apiKeyEdit.kind === 'replace' ? { kind: 'replace', value: watchedApiKey } : apiKeyEdit
+  const effectiveApiKey = modelApiKeyForConnection(model.apiKey, liveApiKeyEdit)
+  const legacyCatalog = useModelCatalog()
+  const legacyCatalogRequest = { provider: model.provider, apiKey: effectiveApiKey, url: watchedUrl }
   const catalog = useQuery({
     queryKey: ['provider-models', 'edit', model.providerConnectionId],
     queryFn: () => fetchProviderModels(db, model.providerConnectionId!, getProxyFetch),
     enabled: false,
     retry: false,
   })
-  const modelItems = catalogToComboboxItems(catalog.data ?? [])
+  const modelItems = catalogToComboboxItems(model.providerConnectionId ? (catalog.data ?? []) : legacyCatalog.models)
   if (!modelItems.some((item) => item.id === model.model)) {
     modelItems.unshift({ id: model.model, label: model.model })
   }
@@ -61,11 +102,18 @@ export const useEditModelFormState = (model: Model) => {
     provider: model.provider,
     model: watchedModel,
     providerConnectionId: model.providerConnectionId,
-    apiKey: model.apiKey,
-    url: model.url,
-    oauthProvider: model.oauthProvider,
+    apiKey: model.providerConnectionId ? model.apiKey : effectiveApiKey,
+    url: model.providerConnectionId ? model.url : watchedUrl,
+    oauthProvider: liveApiKeyEdit.kind === 'keep' ? model.oauthProvider : null,
   }
   const connection = useModelConnectionTest(config)
+  const hasConnectionEdits = hasModelConnectionChanges(model, {
+    model: watchedModel,
+    url: config.url,
+    apiKeyEdit: liveApiKeyEdit,
+  })
+  const needsSuccessfulTest =
+    hasConnectionEdits && apiKeyEdit.kind !== 'clear' && providerRequiresConnectionTest(model.provider)
   const selectModel = (id: string) => {
     setIsCustomModel(id === 'custom')
     if (id !== 'custom') {
@@ -83,22 +131,47 @@ export const useEditModelFormState = (model: Model) => {
     watchedModel,
     modelItems,
     isCustomModel,
-    isLoadingCatalog: catalog.isFetching,
-    catalogError: catalog.isError ? t`Could not load this connection's models. Try again.` : null,
+    apiKeyEdit,
+    effectiveApiKey,
+    isLoadingCatalog: model.providerConnectionId ? catalog.isFetching : legacyCatalog.isLoading,
+    catalogError: model.providerConnectionId
+      ? catalog.isError
+        ? t`Could not load this connection's models. Try again.`
+        : null
+      : legacyCatalog.error,
     connection,
-    isSaveDisabled: !form.formState.isDirty,
+    isSaveDisabled:
+      (!form.formState.isDirty && apiKeyEdit.kind === 'keep') ||
+      (needsSuccessfulTest && connection.status !== 'success'),
     loadCatalog: () => {
       if (model.providerConnectionId) {
         void catalog.refetch()
+      } else if (!legacyCatalog.isLoading && canFetchCatalog(legacyCatalogRequest)) {
+        void legacyCatalog.fetchCatalog(legacyCatalogRequest)
       }
     },
     selectModel,
+    changeUrl: (value: string) => {
+      form.setValue('url', value, { shouldValidate: true, shouldDirty: true })
+      legacyCatalog.invalidateCatalog()
+    },
+    changeApiKey: (value: string) => {
+      form.setValue('apiKey', value, { shouldDirty: true })
+      setApiKeyEdit(value ? { kind: 'replace', value } : { kind: 'keep' })
+      legacyCatalog.invalidateCatalog()
+    },
+    toggleClearApiKey: () => {
+      form.setValue('apiKey', '', { shouldDirty: true })
+      setApiKeyEdit(apiKeyEdit.kind === 'clear' ? { kind: 'keep' } : { kind: 'clear' })
+      legacyCatalog.invalidateCatalog()
+    },
     testConnection,
     changeSupportsTools: (checked: boolean) => form.setValue('supportsTools', checked, { shouldDirty: true }),
-    submissionFor: ({ supportsTools, ...values }: EditModelFormValues): EditModelSubmission => ({
+    submissionFor: ({ supportsTools, apiKey, url, ...values }: EditModelFormValues): EditModelSubmission => ({
       ...values,
       id: model.id,
       toolUsage: supportsTools ? 1 : 0,
+      ...(!model.providerConnectionId ? { url, apiKey: apiKeyEditValue(liveApiKeyEdit) } : {}),
     }),
   }
 }

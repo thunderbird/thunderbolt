@@ -4,7 +4,8 @@
 
 import { beforeEach, afterEach, afterAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as otariAuth from '@/lib/otari-auth'
-import { eq } from 'drizzle-orm'
+import { tinfoilAuth } from '@/lib/tinfoil-auth'
+import { eq, sql } from 'drizzle-orm'
 import * as oauthSession from '@/providers/oauth-session'
 import * as chatGPTSession from '@/providers/chatgpt-session'
 import type { ProviderCredentials } from '@/providers/types'
@@ -76,6 +77,51 @@ const connect = (name = 'Work', authMethod: 'oauth' | 'api_key' = 'api_key') =>
   })
 
 describe('provider connections', () => {
+  it('waits for partial synced metadata and exposes it once hydrated without requiring timestamps', async () => {
+    const db = getDb()
+    const id = 'synced-connection'
+    const query = getProviderConnections(db)
+    await db.insert(providerConnectionsTable).values({ id })
+    expect(await query).toEqual([])
+    expect(await getProviderConnection(db, id)).toBeNull()
+
+    await db
+      .update(providerConnectionsTable)
+      .set({ provider: 'openai', name: 'Synced', authMethod: 'api_key', enabled: null })
+      .where(eq(providerConnectionsTable.id, id))
+    expect(await query).toMatchObject([{ id, name: 'Synced', enabled: null, createdAt: null, updatedAt: null }])
+    expect(await getProviderConnection(db, id)).toMatchObject({ id, connected: false })
+    expect(await getProviderCredentials(db, id)).toBeNull()
+    await expect(resolveProviderConnection(db, id)).rejects.toThrow('Connect this provider')
+    expect(await db.select().from(providerConnectionsTable)).toHaveLength(1)
+  })
+
+  it.each([
+    { field: 'unknown provider', update: { provider: sql`'future-provider'` } },
+    { field: 'missing provider', update: { provider: null } },
+    { field: 'unknown authentication method', update: { authMethod: sql`'future-auth'` } },
+    { field: 'missing authentication method', update: { authMethod: null } },
+    { field: 'missing name', update: { name: null } },
+    { field: 'blank name', update: { name: '  ' } },
+  ])('withholds a connection with $field until valid metadata arrives', async ({ update }) => {
+    const db = getDb()
+    const id = await connect()
+    await db.update(providerConnectionsTable).set(update).where(eq(providerConnectionsTable.id, id))
+    expect(await getProviderConnections(db)).toEqual([])
+    expect(await getProviderConnection(db, id)).toBeNull()
+    expect(await getProviderCredentials(db, id)).toBeNull()
+    await expect(resolveProviderConnection(db, id)).rejects.toThrow('Connect this provider')
+
+    await db
+      .update(providerConnectionsTable)
+      .set({ provider: 'otari', authMethod: 'api_key', name: 'Work' })
+      .where(eq(providerConnectionsTable.id, id))
+    expect(await getProviderConnections(db)).toMatchObject([{ id, connected: true }])
+    expect(await getProviderConnection(db, id)).toMatchObject({ id, connected: true })
+    expect(await getProviderCredentials(db, id)).toMatchObject({ apiKey: 'test-key' })
+    expect(await resolveProviderConnection(db, id)).toMatchObject({ connection: { id }, apiKey: 'test-key' })
+  })
+
   it('looks up only the requested active connection without exposing its credentials', async () => {
     const target = await connect('Work')
     const other = await connect('Personal')
@@ -325,12 +371,12 @@ it('invalidates stale catalog and API-key verification even when the clock has n
   const id = await connect()
   const before = (await getProviderConnections(getDb()))[0]
   const revision = await getProviderConnectionRevision(getDb(), id)
-  const clock = spyOn(Date, 'now').mockReturnValue(Date.parse(before.updatedAt))
+  const clock = spyOn(Date, 'now').mockReturnValue(Date.parse(before.updatedAt!))
   try {
     await updateProviderConnection(getDb(), id, { enabled: false })
     await updateProviderConnection(getDb(), id, { enabled: true })
     const after = (await getProviderConnections(getDb()))[0]
-    expect(Date.parse(after.updatedAt)).toBeGreaterThan(Date.parse(before.updatedAt))
+    expect(Date.parse(after.updatedAt!)).toBeGreaterThan(Date.parse(before.updatedAt!))
     expect(await getProviderConnectionRevision(getDb(), id)).not.toBe(revision)
     await expect(
       addProviderModels(getDb(), id, [{ id: 'stale' }], { expectedUpdatedAt: before.updatedAt }),
@@ -653,4 +699,104 @@ describe('ChatGPT account switching', () => {
     expect(mocks.revoke).toHaveBeenCalledTimes(1)
     expect(mocks.revoke.mock.calls[0][0].refresh_token).toBe('refresh:first')
   })
+})
+
+describe('Tinfoil connection replacement', () => {
+  const input = (token: string) => ({
+    provider: 'tinfoil' as const,
+    name: 'Tinfoil',
+    authMethod: 'oauth' as const,
+    credentials: { access_token: `access:${token}`, refresh_token: `refresh:${token}`, authorizationId: token },
+  })
+
+  it('revokes a replaced grant before saving the new credential', async () => {
+    await saveProviderConnection(getDb(), input('first'))
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
+      expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:first' })
+    })
+    await saveProviderConnection(getDb(), {
+      ...input('second'),
+      attempt: await getProviderConnectionAttempt(getDb(), 'tinfoil'),
+    })
+    expect(revoke).toHaveBeenCalledWith('refresh:first')
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:second' })
+  })
+
+  it('keeps the existing grant usable when revocation fails', async () => {
+    await saveProviderConnection(getDb(), input('first'))
+    spyOn(tinfoilAuth, 'revoke').mockRejectedValue(new Error('Provider unavailable'))
+    await expect(saveProviderConnection(getDb(), input('second'))).rejects.toThrow('Provider unavailable')
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:first' })
+  })
+
+  it('does not revoke the same grant after its token rotates', async () => {
+    await saveProviderConnection(getDb(), input('first'))
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
+    await saveProviderConnection(getDb(), {
+      ...input('rotated'),
+      credentials: { ...input('rotated').credentials, authorizationId: 'first' },
+    })
+    expect(revoke).not.toHaveBeenCalled()
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:rotated' })
+  })
+
+  it.each(['invalid name', 'stale revision', 'aborted'] as const)(
+    'validates %s before revoking an active grant',
+    async (condition) => {
+      await saveProviderConnection(getDb(), input('first'))
+      const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
+      const invalid = {
+        ...input('second'),
+        ...(condition === 'invalid name' ? { name: ' ' } : {}),
+        ...(condition === 'stale revision' ? { expectedRevision: 'old' } : {}),
+        ...(condition === 'aborted' ? { signal: AbortSignal.abort() } : {}),
+      }
+      await expect(saveProviderConnection(getDb(), invalid)).rejects.toThrow()
+      expect(revoke).not.toHaveBeenCalled()
+      expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:first' })
+    },
+  )
+
+  it('retires a revoked grant when replacement is cancelled', async () => {
+    await saveProviderConnection(getDb(), input('first'))
+    const controller = new AbortController()
+    spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
+      controller.abort()
+    })
+    await expect(saveProviderConnection(getDb(), { ...input('second'), signal: controller.signal })).rejects.toThrow()
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
+    expect(await getProviderConnection(getDb(), 'oauth:tinfoil')).toMatchObject({ connected: false })
+  })
+
+  it('preserves concurrent connection edits after revoking the replaced grant', async () => {
+    await saveProviderConnection(getDb(), input('first'))
+    spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
+      await getDb()
+        .update(providerConnectionsTable)
+        .set({ name: 'Renamed', updatedAt: '2030-01-01T00:00:00Z' })
+        .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+    })
+    await expect(saveProviderConnection(getDb(), input('second'))).rejects.toThrow('connection changed')
+    expect(await getProviderConnection(getDb(), 'oauth:tinfoil')).toMatchObject({ name: 'Renamed', connected: false })
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
+  })
+})
+
+it('does not project a connection credential into a model for a different provider', async () => {
+  const id = await saveProviderConnection(getDb(), {
+    provider: 'openai',
+    name: 'Private',
+    authMethod: 'api_key',
+    credentials: { apiKey: 'private-openai-key' },
+  })
+  await getDb().insert(modelsTable).values({
+    id: 'mismatched',
+    provider: 'anthropic',
+    name: 'Mismatched',
+    model: 'test',
+    providerConnectionId: id,
+    enabled: 1,
+  })
+  expect(await getModel(getDb(), 'mismatched')).toMatchObject({ connectionReady: false, apiKey: null })
+  expect((await getAvailableModels(getDb())).some(({ id }) => id === 'mismatched')).toBe(false)
 })

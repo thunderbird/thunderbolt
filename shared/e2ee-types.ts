@@ -840,3 +840,31 @@ export type UpgradeResponse = {
   key_version: number
   scheme_version: SchemeVersion
 }
+
+// =============================================================================
+// Short-code device approval (commit-then-reveal relay)
+// =============================================================================
+
+/** How long a pending device's approval session accepts a challenge and a reveal. */
+export const approvalSessionTtlMs = 10 * 60 * 1000
+
+/** `sessionId` is 32 lowercase hex chars; `commitment`, `challenge` and `reveal` are 64. */
+export type StartApprovalSessionRequest = { sessionId: string; commitment: string }
+
+export type MyApprovalSessionResponse = {
+  sessionId: string
+  challenge: string | null
+  challengerDeviceId: string | null
+  expired: boolean
+}
+
+export type RevealApprovalSessionRequest = { sessionId: string; reveal: string }
+
+export type PendingApprovalSessionResponse = {
+  sessionId: string
+  commitment: string
+  reveal: string | null
+  expired: boolean
+}
+
+export type ChallengeApprovalSessionRequest = { sessionId: string; challenge: string }

@@ -563,6 +563,7 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
 msgid "API Key"
 msgstr ""
 
@@ -593,7 +594,11 @@ msgstr ""
 #~ msgid "Applied to every chat in this project."
 #~ msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Approval code"
+msgstr ""
+
+#: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/mini-apps/mini-app-approval-prompt.tsx
@@ -613,11 +618,11 @@ msgstr ""
 msgid "Approve this device"
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Approve this device?"
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/settings/devices.tsx
 msgid "Approving…"
 msgstr ""
@@ -777,7 +782,8 @@ msgid "Calendar"
 msgstr ""
 
 #: src/components/app-error-screen.tsx
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/components/chat/external-link-dialog.tsx
 #: src/components/provider-connection-button.tsx
 #: src/components/remove-bridge-dialog.tsx
@@ -897,8 +903,8 @@ msgid "Check your email"
 msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
-msgid "Checking automatically…"
-msgstr ""
+#~ msgid "Checking automatically…"
+#~ msgstr ""
 
 #: src/components/update-notification.tsx
 #: src/settings/app-version-section.tsx
@@ -1046,8 +1052,8 @@ msgid "Clear Local Database?"
 msgstr ""
 
 #: src/settings/models/edit-model-form.tsx
-#~ msgid "Clear saved API key"
-#~ msgstr ""
+msgid "Clear saved API key"
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Clear saved credential"
@@ -1127,6 +1133,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Code you can inspect and improve."
+msgstr ""
+
+#: src/components/approve-device/approval-code-options.tsx
+msgid "Codes to choose from"
 msgstr ""
 
 #: src/layout/sidebar/sidebar-header.tsx
@@ -1429,6 +1439,10 @@ msgstr ""
 msgid "Connecting to {agentName}…"
 msgstr ""
 
+#: src/components/approve-device/approval-code-options.tsx
+msgid "Connecting to the new device…"
+msgstr ""
+
 #: src/components/connect-provider-button.tsx
 #: src/components/onboarding/onboarding-dialog.tsx
 #: src/components/onboarding/onboarding-model-step.tsx
@@ -1524,6 +1538,10 @@ msgstr ""
 
 #: src/components/app-error-screen.tsx
 msgid "Contact Support"
+msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Content to send"
 msgstr ""
 
 #: src/components/context-usage/retained-context-message.tsx
@@ -1657,6 +1675,10 @@ msgstr ""
 #~ msgid "Could not compact context. Your chat history is safe. Please try again."
 #~ msgstr ""
 
+#: src/components/logout-modal.tsx
+msgid "Could not confirm sign-out. Please try again."
+msgstr ""
+
 #: src/providers/use-provider-authorization.ts
 msgid "Could not connect this provider. Please try again."
 msgstr ""
@@ -1711,6 +1733,10 @@ msgstr ""
 
 #: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the projects. Please try again."
+msgstr ""
+
+#: src/components/otari-connection/use-otari-connection-state.ts
+msgid "Could not disconnect Otari. Please try again."
 msgstr ""
 
 #: src/components/onboarding/use-onboarding-provider-state.ts
@@ -1818,7 +1844,8 @@ msgstr ""
 msgid "Couldn't add the agent. Please try again."
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Couldn't approve this device. Please try again."
 msgstr ""
 
@@ -1842,7 +1869,8 @@ msgstr ""
 msgid "Couldn’t check whether this Otari workspace has web search."
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Couldn't complete approval. Close this dialog and check the device list before trying again."
 msgstr ""
 
@@ -1864,6 +1892,10 @@ msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "Couldn't download the update."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Couldn't get a code."
 msgstr ""
 
 #: src/components/embedded/surface-status.tsx
@@ -2230,6 +2262,10 @@ msgstr ""
 msgid "Deny {deviceName}"
 msgstr ""
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "Deny device"
+msgstr ""
+
 #: src/components/revoke-device-dialog.tsx
 msgid "Deny this device?"
 msgstr ""
@@ -2263,7 +2299,7 @@ msgstr ""
 msgid "Device access revoked"
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Device fingerprint"
 msgstr ""
@@ -2385,6 +2421,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/components/otari-connection/otari-connection.tsx
 msgid "Disconnecting…"
 msgstr ""
 
@@ -2673,7 +2710,7 @@ msgstr ""
 msgid "Enter the code shown in your terminal to continue."
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "Enter the fingerprint from the new device's screen or a separate channel you trust."
 msgstr ""
 
@@ -2759,8 +2796,8 @@ msgid "Failed to change the recovery phrase"
 msgstr ""
 
 #: src/hooks/use-sync-setup.ts
-msgid "Failed to check approval"
-msgstr ""
+#~ msgid "Failed to check approval"
+#~ msgstr ""
 
 #: src/hooks/use-oauth-connect.ts
 msgid "Failed to complete authentication"
@@ -3225,11 +3262,15 @@ msgid "Keep editing"
 msgstr ""
 
 #: src/settings/models/edit-model-form.tsx
-#~ msgid "Keep saved API key"
-#~ msgstr ""
+msgid "Keep saved API key"
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Keep saved credential"
+msgstr ""
+
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "Keep the new device on its approval screen, or tap New code there, then try again."
 msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -3638,6 +3679,10 @@ msgstr ""
 #~ msgid "New chat in this project"
 #~ msgstr ""
 
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "New code"
+msgstr ""
+
 #: src/components/create-item/context.tsx
 #: src/settings/connections/connections-list.tsx
 #: src/settings/connections/index.tsx
@@ -3828,6 +3873,10 @@ msgstr ""
 msgid "No tasks yet"
 msgstr ""
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "None of these match"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "None of your models can be used in this chat. Choose another agent to send."
 msgstr ""
@@ -3958,8 +4007,12 @@ msgid "Open {0}"
 msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
-msgid "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
+msgid "Open {appName} on a trusted device and approve this one in Settings → Devices."
 msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+#~ msgid "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
+#~ msgstr ""
 
 #: src/settings/models/models-list.tsx
 msgid "Open {modelName}"
@@ -4215,6 +4268,10 @@ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Personalization"
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Pick this code on your other device."
 msgstr ""
 
 #: src/projects/project-action-menu-items.tsx
@@ -4625,6 +4682,10 @@ msgstr ""
 
 #: src/components/provider-authorization-result.tsx
 msgid "Return to Thunderbolt"
+msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Review the transcript and note below. Automatic redaction may miss sensitive information."
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
@@ -5429,6 +5490,10 @@ msgstr ""
 msgid "Take a look at the weather forecast on screen."
 msgstr ""
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "Tap the code the new device shows. If none match, don't approve it."
+msgstr ""
+
 #: src/settings/app-version-section.tsx
 msgid "Tap to check for updates."
 msgstr ""
@@ -5547,6 +5612,14 @@ msgstr ""
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr ""
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "The codes didn't match"
+msgstr ""
+
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "The codes didn't match, so the device was not approved."
+msgstr ""
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "The connection could not be verified. A verified connection is required before sending to this provider."
 msgstr ""
@@ -5583,7 +5656,7 @@ msgstr ""
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
 msgstr ""
 
@@ -5603,6 +5676,10 @@ msgstr ""
 msgid "The model verification request failed. Please try again."
 msgstr ""
 
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "The new device isn't showing a code"
+msgstr ""
+
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The provider rejected the model request (HTTP {status}). Check model access and your subscription."
 msgstr ""
@@ -5612,12 +5689,12 @@ msgid "The request was denied. You can safely close this page."
 msgstr ""
 
 #: src/integrations/standalone-search/content.ts
-msgid "The search provider could not retrieve this page."
-msgstr ""
+#~ msgid "The search provider could not retrieve this page."
+#~ msgstr ""
 
 #: src/integrations/standalone-search/content.ts
-msgid "The search provider returned too much content. Try another page."
-msgstr ""
+#~ msgid "The search provider returned too much content. Try another page."
+#~ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "The server rejected the credential. Check your bearer token or API key."
@@ -5663,6 +5740,10 @@ msgstr ""
 msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
 msgstr ""
 
+#: src/components/chat/error-message.tsx
+msgid "This agent was disabled or deleted. Choose another agent to continue."
+msgstr ""
+
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr ""
@@ -5677,6 +5758,10 @@ msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "This chat uses {agentName}, which is not available on this platform."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "This code expired."
 msgstr ""
 
 #: src/lib/otp-error-messages.ts
@@ -5717,6 +5802,10 @@ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr ""
+
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "This device was not approved. If you aren't adding a device, deny it. To try again, tap New code on the new device first."
 msgstr ""
 
 #: src/components/device-revoked.tsx
@@ -5919,7 +6008,7 @@ msgstr ""
 msgid "This will share the current chat with the {recipient} team so that they can debug the problem."
 msgstr ""
 
-#: src/components/approve-device-dialog.tsx
+#: src/components/approve-device/fingerprint-confirmation.tsx
 msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."
 msgstr ""
 
@@ -6053,6 +6142,10 @@ msgstr ""
 msgid "Too many attempts. Please request a new code."
 msgstr ""
 
+#: src/components/approve-device/fingerprint-confirmation.tsx
+msgid "Too many codes didn't match on this device today, so approve with the fingerprint instead."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "Too many requests. Please try again in a moment."
 msgstr ""
@@ -6085,6 +6178,7 @@ msgstr ""
 msgid "Trusted devices"
 msgstr ""
 
+#: src/components/approve-device/approve-device-dialog.tsx
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
 #: src/components/embedded/surface-status.tsx
@@ -6240,14 +6334,14 @@ msgid "Upload file"
 msgstr ""
 
 #: src/settings/models/add-model-form.tsx
+#: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
 msgid "URL"
 msgstr ""
 
-#: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
-#~ msgid "URL is required for Custom providers"
-#~ msgstr ""
+msgid "URL is required for Custom providers"
+msgstr ""
 
 #: src/settings/models/use-add-model-form.ts
 msgid "URL is required for this provider"
@@ -6289,6 +6383,15 @@ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Use Cloud Proxy"
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Use code instead"
+msgstr ""
+
+#: src/components/approve-device/approve-device-dialog.tsx
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Use fingerprint instead"
 msgstr ""
 
 #: src/lib/mcp-url-validation.ts
@@ -6482,6 +6585,10 @@ msgstr ""
 #~ msgid "Waiting for your approval in the app"
 #~ msgstr ""
 
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Waiting for your other device…"
+msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Waitlist"
 msgstr ""
@@ -6615,6 +6722,10 @@ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Where links in chats open"
+msgstr ""
+
+#: src/components/approve-device/approve-device-dialog.tsx
+msgid "Which code is on the new device?"
 msgstr ""
 
 #: src/components/onboarding/onboarding-language-step.tsx

@@ -81,7 +81,11 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    `setSelectedAgent` itself does not check.
 3. **Transport.** One `DefaultChatTransport({ fetch: customFetch })`, where
    `customFetch` is `createAgentRoutingFetch`. Every send, every agent type.
-4. **Persist the user turn first.** `customFetch` awaits `saveMessages` before
+4. **Check the agent, then persist the user turn.** `customFetch` first
+   rereads the agent's row and refuses an agent disabled or deleted since the
+   chat picked it
+   ([acp-agents.md](acp-agents.md#a-disabled-or-deleted-agent-gets-no-new-prompt)),
+   so a refused send saves nothing. It then awaits `saveMessages` before
    the adapter runs: creates the row, lets `updateThreadTitle` replace the
    placeholder title from the first user message (ACP agents emit assistant
    messages only from `onFinish`, too late), navigates `/chats/new` →
@@ -96,8 +100,11 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    on `session.projectId`. The hosted agent (`managed-http`) sends both in the
    request's `instructions` field, which the endpoint appends to its system
    prompt.
-7. **Spend a request.** `turnBudget.tryConsumeRequest()` gates the call; denial
-   throws the sentinel from `createTurnBudgetExhaustedError`, named
+7. **Check the agent again, then spend a request.** The agent's row is read
+   once more, since the agent may have been disabled or deleted while it
+   connected (the ACP adapter reads it again right before `session/prompt`).
+   `turnBudget.tryConsumeRequest()` then gates the call; denial throws the
+   sentinel from `createTurnBudgetExhaustedError`, named
    `TurnBudgetExhaustedError` so both consuming layers classify it alike.
 8. **Stream.** `adapter.fetch(init, ctx)` returns a `Response` carrying an AI SDK
    v5 UI message stream. `wrapResponseForFirstContent` enqueues chunks unchanged
@@ -122,7 +129,7 @@ on each `adapter.fetch` call, so one connection multiplexes many threads without
 cross-thread bleed.
 
 Switching threads never tears a connection down. Only `disposeAdapter` (agent
-delete, wire-identity change), `disposeAllAdapters` (sign-out) and a terminated
+disable or delete, wire-identity change), `disposeAllAdapters` (sign-out) and a terminated
 generation's rebuild do. That rebuild is whole, a new transport plus a new
 handshake, never a swap under live JSON-RPC state
 ([acp-agents.md](acp-agents.md#the-generation-invariant)). It is scheduled by

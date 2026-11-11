@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, eq, getTableColumns, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, eq, getTableColumns, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import {
   modelsTable,
@@ -24,6 +24,7 @@ import {
   writeProviderCredentials,
 } from '@/providers/credentials'
 import { getProviderDefinition } from '@/providers/registry'
+import { providerTypes } from '@/providers/types'
 import {
   assertProviderConnectionAttemptCurrent,
   type ProviderConnectionAttempt,
@@ -32,11 +33,19 @@ import { revokeChatGPTSession } from '@/providers/chatgpt-session'
 import { writeChatGPTRegistration } from '@/providers/chatgpt-registration'
 import { resolveOAuthAccessToken, withProviderOAuthLock } from '@/providers/oauth-session'
 import { getIdentitySignal } from '@/lib/identity-lifetime'
-import { tinfoilSession, withTinfoilSessionLock } from '@/lib/tinfoil-session'
+import { revokeReplacedTinfoilAuthorization, tinfoilSession, withTinfoilSessionLock } from '@/lib/tinfoil-session'
 import { getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
 import { isCurrentOtariAuthorization, revokeStoredOtariAuthorization } from '@/providers/otari-session'
 import { getProviderConnectionRevision } from '@/providers/revision'
 export { getProviderConnectionRevision } from '@/providers/revision'
+
+// Sync can deliver partial rows or providers introduced by newer clients. Keep them stored
+// until their metadata is usable by this client, including reactive query subscribers.
+const supportedConnectionMetadata = and(
+  inArray(connections.provider, providerTypes),
+  inArray(connections.authMethod, ['oauth', 'api_key']),
+  sql`trim(${connections.name}) != ''`,
+)
 
 /** Share the metadata projection without exposing credentials to callers. */
 const selectProviderConnections = (db: AnyDrizzleDatabase) =>
@@ -51,7 +60,9 @@ const selectProviderConnections = (db: AnyDrizzleDatabase) =>
 
 /** Reactive metadata query; credentials never enter connection list components. */
 export const getProviderConnections = (db: AnyDrizzleDatabase) => {
-  const query = selectProviderConnections(db).where(isNull(connections.deletedAt)).orderBy(connections.name)
+  const query = selectProviderConnections(db)
+    .where(and(isNull(connections.deletedAt), supportedConnectionMetadata))
+    .orderBy(connections.name)
   return query as DrizzleQueryWithPromise<ProviderConnection>
 }
 
@@ -66,7 +77,7 @@ export const getModelProviderConnectionIds = (db: AnyDrizzleDatabase) =>
 /** Return active connection metadata, including whether this device is authenticated. */
 export const getProviderConnection = async (db: AnyDrizzleDatabase, id: string): Promise<ProviderConnection | null> => {
   const row = await selectProviderConnections(db)
-    .where(and(eq(connections.id, id), isNull(connections.deletedAt)))
+    .where(and(eq(connections.id, id), isNull(connections.deletedAt), supportedConnectionMetadata))
     .get()
   return (row as ProviderConnection | undefined) ?? null
 }
@@ -80,12 +91,14 @@ export const getProviderCredentials = async (
     .select({ credentials: secrets.credentials })
     .from(connections)
     .innerJoin(secrets, eq(connections.id, secrets.id))
-    .where(and(eq(connections.id, id), eq(connections.enabled, 1), providerCredentialConnected))
+    .where(
+      and(eq(connections.id, id), eq(connections.enabled, 1), supportedConnectionMetadata, providerCredentialConnected),
+    )
     .get()
   return row?.credentials ? (JSON.parse(row.credentials) as ProviderCredentials) : null
 }
 
-type SaveProviderConnection = {
+export type SaveProviderConnection = {
   id?: string
   provider: ProviderType
   name: string
@@ -118,7 +131,22 @@ export const saveProviderConnectionWithRevision = (
     return save()
   }
   if (input.provider === 'tinfoil') {
-    return withTinfoilSessionLock(save)
+    return withTinfoilSessionLock(async () => {
+      const guarded = {
+        ...input,
+        expectedRevision:
+          input.expectedRevision === undefined
+            ? await getProviderConnectionRevision(db, 'oauth:tinfoil')
+            : input.expectedRevision,
+      }
+      await prepareProviderConnectionSave(db, guarded)
+      await revokeReplacedTinfoilAuthorization(
+        db,
+        { ...input.credentials, access_token: input.credentials.access_token ?? input.credentials.apiKey! },
+        input.signal,
+      )
+      return save(guarded)
+    })
   }
   if (input.provider === 'otari') {
     return withProviderOAuthLock('oauth:otari', async () => {
@@ -171,7 +199,7 @@ export const saveProviderConnectionWithRevision = (
 }
 
 /** Validate a save before external revocation and again inside the final write transaction. */
-const prepareProviderConnectionSave = async (db: AnyDrizzleDatabase, input: SaveProviderConnection) => {
+export const prepareProviderConnectionSave = async (db: AnyDrizzleDatabase, input: SaveProviderConnection) => {
   input.signal?.throwIfAborted()
   const definition = getProviderDefinition(input.provider)
   if (!input.name.trim()) {
@@ -400,7 +428,9 @@ export const resolveProviderConnection = async (
     .select({ ...getTableColumns(connections), credentials: secrets.credentials })
     .from(connections)
     .innerJoin(secrets, eq(secrets.id, connections.id))
-    .where(and(eq(connections.id, id), eq(connections.enabled, 1), providerCredentialConnected))
+    .where(
+      and(eq(connections.id, id), eq(connections.enabled, 1), supportedConnectionMetadata, providerCredentialConnected),
+    )
     .get()
   signal.throwIfAborted()
   if (!row?.credentials) {

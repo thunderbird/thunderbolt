@@ -58,6 +58,58 @@ describe('provider connection sync', () => {
     }
   })
 
+  it('accepts partial metadata and hydrates it without blocking later uploads', async () => {
+    expect(
+      await applyOperation(db, { op: 'PUT', type: 'provider_connections', id: connectionId, data: {} }, 'owner'),
+    ).toBe(true)
+    const [partial] = await db.select().from(providerConnectionsTable)
+    expect(partial).toMatchObject({ provider: null, name: null, authMethod: null, enabled: 1 })
+
+    expect(
+      await applyOperation(
+        db,
+        { op: 'PATCH', type: 'provider_connections', id: connectionId, data: metadata },
+        'owner',
+      ),
+    ).toBe(true)
+    const [hydrated] = await db.select().from(providerConnectionsTable)
+    expect(hydrated).toMatchObject({ provider: 'otari', name: 'Work Otari', authMethod: 'oauth' })
+  })
+
+  it.each(['PUT', 'PATCH'] as const)('accepts explicit null metadata in %s operations', async (op) => {
+    await applyOperation(db, { op: 'PUT', type: 'provider_connections', id: connectionId, data: metadata }, 'owner')
+    expect(
+      await applyOperation(
+        db,
+        {
+          op,
+          type: 'provider_connections',
+          id: connectionId,
+          data: {
+            provider: null,
+            name: null,
+            url: null,
+            auth_method: null,
+            enabled: null,
+            created_at: null,
+            updated_at: null,
+          },
+        },
+        'owner',
+      ),
+    ).toBe(true)
+    const [saved] = await db.select().from(providerConnectionsTable)
+    expect(saved).toMatchObject({
+      provider: null,
+      name: null,
+      url: null,
+      authMethod: null,
+      enabled: null,
+      createdAt: null,
+      updatedAt: null,
+    })
+  })
+
   it('scopes updates, soft deletion, and deletes to the owning account', async () => {
     for (const userId of ['owner', 'other']) {
       await applyOperation(db, { op: 'PUT', type: 'provider_connections', id: connectionId, data: metadata }, userId)

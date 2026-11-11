@@ -4,6 +4,8 @@
 
 import { type HttpClient } from '@/contexts'
 import { HttpError } from '@/lib/http'
+import { withDeadline } from '@/lib/timeout'
+import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 import type {
   BindChallengeResponse,
   ChallengeOperation,
@@ -21,6 +23,11 @@ import type {
   WrappedKeysListResponse,
   EnvelopeTargetsResponse,
   LockoutPendingResponse,
+  StartApprovalSessionRequest,
+  MyApprovalSessionResponse,
+  RevealApprovalSessionRequest,
+  PendingApprovalSessionResponse,
+  ChallengeApprovalSessionRequest,
 } from '@shared/e2ee-types'
 
 // The authenticated HttpClient (`createAuthenticatedClient`) already attaches
@@ -277,4 +284,68 @@ export const setDeviceNodeId = async (
   proof: ChallengeProof,
 ): Promise<void> => {
   await httpClient.post(`devices/${encodeURIComponent(deviceId)}/node-id`, { json: { nodeId, proof } })
+}
+
+// =============================================================================
+// Short-code approval relay (commit-then-reveal; the server only orders the steps)
+// =============================================================================
+
+const approvalRequestTimeoutMs = 10_000
+
+/**
+ * Both screens poll these routes and wait on each answer, so every call, body included, gets a
+ * deadline: a request the server holds open must not freeze the screen or its local expiry. At the
+ * deadline the request is aborted too, so it cannot land late (it may still have reached the server).
+ */
+const withApprovalDeadline = <Value>(send: (signal: AbortSignal) => Promise<Value>): Promise<Value> => {
+  const controller = new AbortController()
+  return withDeadline(send(controller.signal), approvalRequestTimeoutMs, () => {
+    const error = new EncryptionRequestTimeoutError()
+    controller.abort(error)
+    return error
+  })
+}
+
+/** New device: commit to this attempt's reveal. Re-posting the same session is a no-op. */
+export const startApprovalSession = async (
+  httpClient: HttpClient,
+  body: StartApprovalSessionRequest,
+): Promise<void> => {
+  await withApprovalDeadline((signal) => httpClient.post('devices/me/approval-session', { json: body, signal }))
+}
+
+/** New device: poll for the trusted device's challenge. */
+export const fetchMyApprovalSession = async (httpClient: HttpClient): Promise<MyApprovalSessionResponse> =>
+  withApprovalDeadline((signal) =>
+    httpClient.get('devices/me/approval-session', { signal }).json<MyApprovalSessionResponse>(),
+  )
+
+/** New device: reveal once, after the challenge is recorded locally. */
+export const revealApprovalSession = async (
+  httpClient: HttpClient,
+  body: RevealApprovalSessionRequest,
+): Promise<void> => {
+  await withApprovalDeadline((signal) => httpClient.post('devices/me/approval-session/reveal', { json: body, signal }))
+}
+
+/** Trusted device: read a pending device's commitment, then poll for its reveal. */
+export const fetchPendingApprovalSession = async (
+  httpClient: HttpClient,
+  deviceId: string,
+): Promise<PendingApprovalSessionResponse> =>
+  withApprovalDeadline((signal) =>
+    httpClient
+      .get(`devices/${encodeURIComponent(deviceId)}/approval-session`, { signal })
+      .json<PendingApprovalSessionResponse>(),
+  )
+
+/** Trusted device: send this attempt's challenge. The first challenge wins (409 after). */
+export const challengeApprovalSession = async (
+  httpClient: HttpClient,
+  deviceId: string,
+  body: ChallengeApprovalSessionRequest,
+): Promise<void> => {
+  await withApprovalDeadline((signal) =>
+    httpClient.post(`devices/${encodeURIComponent(deviceId)}/approval-session/challenge`, { json: body, signal }),
+  )
 }

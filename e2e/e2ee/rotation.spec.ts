@@ -70,6 +70,7 @@ test.describe('PowerSync E2EE key rotation', () => {
     await expect(doneButton).toBeDisabled()
     await recoveryDialog.getByRole('checkbox').click()
     await doneButton.click()
+    await expect(recoveryDialog).toBeHidden()
 
     await waitForConsumedChallenge(userId, 'rotate')
     await expect

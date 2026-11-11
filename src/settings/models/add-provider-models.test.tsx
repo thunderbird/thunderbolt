@@ -11,6 +11,7 @@ import { saveProviderConnection, updateProviderConnection } from '@/dal/provider
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import * as providerModels from '@/providers/models'
 import { getClock } from '@/testing-library'
+import { clearIdentityScopedMemory } from '@/lib/identity-memory'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { AddProviderModels } from './add-provider-models'
@@ -177,46 +178,51 @@ describe('connection model picker', () => {
     })
   })
 
-  it.each(['cancel', 'unmount', 'switch'] as const)('does not save queued selections after %s', async (action) => {
-    const id = await saveProviderConnection(getDb(), {
-      provider: 'openai',
-      name: 'Account',
-      authMethod: 'api_key',
-      credentials: { apiKey: 'key' },
-    })
-    spyOn(providerModels, 'fetchProviderModels').mockResolvedValue([{ id: 'model' }])
-    const started = Promise.withResolvers<void>()
-    const proceed = Promise.withResolvers<void>()
-    const addModels = providerModels.addProviderModels
-    spyOn(providerModels, 'addProviderModels').mockImplementationOnce(async (...args) => {
-      started.resolve()
-      await proceed.promise
-      return addModels(...args)
-    })
-    const { result, unmount } = renderHook(() => useAddProviderModels({ isOpen: true, onClose: saved }), {
-      wrapper: createTestProvider(),
-    })
-    await settle()
-    act(() => result.current.changeConnection(id))
-    await settle()
-    act(() => result.current.toggleModel('model'))
-    act(() => result.current.submit())
-    await started.promise
-    if (action === 'unmount') {
-      unmount()
-    } else if (action === 'cancel') {
-      act(() => result.current.onCancel())
-    } else {
-      act(() => result.current.changeConnection('another-account'))
-    }
-    proceed.resolve()
-    await settle()
-    expect(await getAllModels(getDb())).toEqual([])
-    expect(saved).toHaveBeenCalledTimes(action === 'cancel' ? 1 : 0)
-    if (action === 'switch') {
-      expect(result.current.connectionId).toBe('another-account')
-    }
-  })
+  it.each(['cancel', 'unmount', 'switch', 'identity change'] as const)(
+    'does not save queued selections after %s',
+    async (action) => {
+      const id = await saveProviderConnection(getDb(), {
+        provider: 'openai',
+        name: 'Account',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'key' },
+      })
+      spyOn(providerModels, 'fetchProviderModels').mockResolvedValue([{ id: 'model' }])
+      const started = Promise.withResolvers<void>()
+      const proceed = Promise.withResolvers<void>()
+      const addModels = providerModels.addProviderModels
+      spyOn(providerModels, 'addProviderModels').mockImplementationOnce(async (...args) => {
+        started.resolve()
+        await proceed.promise
+        return addModels(...args)
+      })
+      const { result, unmount } = renderHook(() => useAddProviderModels({ isOpen: true, onClose: saved }), {
+        wrapper: createTestProvider(),
+      })
+      await settle()
+      act(() => result.current.changeConnection(id))
+      await settle()
+      act(() => result.current.toggleModel('model'))
+      act(() => result.current.submit())
+      await started.promise
+      if (action === 'unmount') {
+        unmount()
+      } else if (action === 'identity change') {
+        act(() => clearIdentityScopedMemory())
+      } else if (action === 'cancel') {
+        act(() => result.current.onCancel())
+      } else {
+        act(() => result.current.changeConnection('another-account'))
+      }
+      proceed.resolve()
+      await settle()
+      expect(await getAllModels(getDb())).toEqual([])
+      expect(saved).toHaveBeenCalledTimes(action === 'cancel' ? 1 : 0)
+      if (action === 'switch') {
+        expect(result.current.connectionId).toBe('another-account')
+      }
+    },
+  )
 
   it('blocks adding a hidden stale selection while refreshing or after a failed refresh', async () => {
     const id = await saveProviderConnection(getDb(), {

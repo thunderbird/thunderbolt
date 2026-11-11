@@ -46,7 +46,7 @@ type ConnectionController = ReturnType<typeof createIdentityController> & { retu
 type State = {
   origin: string
   isCustomUrl: boolean
-  operation: 'connect' | 'models' | 'save' | null
+  operation: 'connect' | 'models' | 'save' | 'disconnect' | null
   key: string
   connectionId: string | null
   connectionUpdatedAt: string | null
@@ -361,10 +361,29 @@ export const useOtariConnectionState = (
       update({ operation: null })
     },
     reconnect: async () => {
-      if (state.connectionId) {
-        await disconnectProviderConnection(db, state.connectionId)
+      if (pending.current) {
+        return
       }
-      resetConnection()
+      const controller = createIdentityController()
+      pending.current = controller
+      update({ operation: 'disconnect', error: '' })
+      try {
+        if (state.connectionId) {
+          await disconnectProviderConnection(db, state.connectionId)
+        }
+        controller.signal.throwIfAborted()
+        resetConnection()
+      } catch {
+        if (!controller.signal.aborted) {
+          update({ error: t`Could not disconnect Otari. Please try again.` })
+        }
+      } finally {
+        if (pending.current === controller) {
+          pending.current = null
+          update({ operation: null })
+        }
+        controller.abort()
+      }
     },
     useCustomUrl: () => resetConnection({ isCustomUrl: true, origin: '' }),
     useHosted: () => resetConnection({ isCustomUrl: false, origin: defaultOtariOrigin }),

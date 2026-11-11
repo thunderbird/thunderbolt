@@ -130,6 +130,32 @@ export const useAllAgents = (): Agent[] => {
   return composeAllAgents(useSystemAgents(), useAgents(), { includeBuiltIn })
 }
 
+/**
+ * Whether the client may still connect to `agent` or send it a prompt. An open
+ * chat keeps the agent object it picked, so disabling or deleting the agent,
+ * here or on another device, never reaches that object: this rereads the row
+ * instead. A custom agent must be enabled and not soft-deleted, and a system
+ * agent must still be listed by discovery. The built-in agent has no row.
+ */
+export const isAgentActive = async (db: AnyDrizzleDatabase, agent: Agent): Promise<boolean> => {
+  if (agent.type === 'built-in') {
+    return true
+  }
+  const row =
+    agent.isSystem === 1
+      ? await db
+          .select({ id: agentsSystemTable.id })
+          .from(agentsSystemTable)
+          .where(eq(agentsSystemTable.id, agent.id))
+          .get()
+      : await db
+          .select({ id: agentsTable.id })
+          .from(agentsTable)
+          .where(and(eq(agentsTable.id, agent.id), eq(agentsTable.enabled, 1), isNull(agentsTable.deletedAt)))
+          .get()
+  return row !== undefined
+}
+
 /** Wire transports a user-creatable custom agent can use: a `ws(s)://` endpoint,
  *  or an iroh P2P bridge dialed by the NodeId/ticket held in `url`. */
 export type CustomAgentTransport = 'websocket' | 'iroh'
@@ -181,7 +207,8 @@ const connectionInvalidatingFields = ['url', 'transport', 'type'] as const satis
  *  `agents_system` table which `updateAgent` never touches.
  *
  *  Editing the wire identity (url/transport/type) disposes the agent's warm ACP
- *  connection so the next chat reconnects against the new endpoint.
+ *  connection so the next chat reconnects against the new endpoint. Disabling
+ *  the agent disposes it too, ending any reply still streaming from it.
  *
  *  Returns whether the persisted wire identity changed so callers can refresh
  *  any active in-memory chat sessions for the agent. */
@@ -198,6 +225,9 @@ export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: Upd
       .update(agentsTable)
       .set(patch)
       .where(and(eq(agentsTable.id, id), isNull(agentsTable.deletedAt)))
+    if (patch.enabled === 0) {
+      await disposeAdapter(id)
+    }
     return false
   }
 
@@ -223,7 +253,7 @@ export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: Upd
     return wireIdentityChanged
   })
 
-  if (invalidatesConnection) {
+  if (invalidatesConnection || patch.enabled === 0) {
     await disposeAdapter(id)
   }
 

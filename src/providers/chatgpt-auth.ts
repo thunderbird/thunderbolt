@@ -105,13 +105,15 @@ export const connectChatGPT = async (
     throw new Error('Invalid ChatGPT client registration')
   }
   await retainChatGPTRegistration(db, { clientId }, attempt, signal)
+  signal.throwIfAborted()
+  // Finish a started grant exchange so cancellation can revoke the returned refresh token.
   const tokens = oauthTokensSchema.extend({ id_token: z.string().min(1), expires_in: z.number().positive() }).parse(
     await http
       .post(metadata.token_endpoint, {
         fetch: nativeFetch,
         redirect: 'error',
         credentials: 'omit',
-        signal: createOAuthRequestSignal(signal),
+        signal: createOAuthRequestSignal(),
         body: new URLSearchParams({
           grant_type: 'authorization_code',
           client_id: clientId,
@@ -138,6 +140,7 @@ export const connectChatGPT = async (
     },
   }
   try {
+    signal.throwIfAborted()
     const jwks = await http
       .get(metadata.jwks_uri, {
         fetch: nativeFetch,

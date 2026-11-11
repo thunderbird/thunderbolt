@@ -169,7 +169,7 @@ describe('SidebarFooter', () => {
       if (mobile) {
         forceMobileViewport()
       }
-      const signOut = mock(async () => {})
+      const signOut = mock(async () => ({ data: { success: true }, error: null }))
       const authClient = createMockAuthClient({ session, signOut })
       renderWithProviders(authClient)
       const trigger = screen.getByRole('button', { name: 'Account menu' })
@@ -373,7 +373,7 @@ describe('sync retry flow', () => {
   // exists — or crashes outright when no earlier test file installed indexedDB.
   beforeEach(async () => {
     const ak = await generateAK()
-    await storeAK(ak)
+    await storeAK(ak, { keyVersion: null, primaryKeyId: '0' })
     await storeDEK('0', (await mintDEK(ak, '0')).wrappedKey)
     useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
   })

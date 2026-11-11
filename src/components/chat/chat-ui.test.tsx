@@ -54,9 +54,9 @@ const renderChat = (access: 'cloud session' | 'provider connection') => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter>
       <CreateItemProvider>
-        <ContentViewProvider>
-          <QueryWrapper>{children}</QueryWrapper>
-        </ContentViewProvider>
+        <QueryWrapper>
+          <ContentViewProvider>{children}</ContentViewProvider>
+        </QueryWrapper>
       </CreateItemProvider>
     </MemoryRouter>
   )

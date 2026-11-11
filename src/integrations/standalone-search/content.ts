@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { t } from '@lingui/core/macro'
 import { z } from 'zod'
 import type { HttpClient } from '@/lib/http'
 import type { FetchContentData, FetchContentParams } from '@/integrations/thunderbolt-pro/schemas'
@@ -37,13 +36,13 @@ const maxContentResponseBytes = 1024 * 1024
 
 /** Enforces the response budget before JSON parsing, including chunked or decompressed bodies. */
 const readContentResponse = async (response: Response, signal: AbortSignal): Promise<unknown> => {
-  const tooLarge = () => new Error(t`The search provider returned too much content. Try another page.`)
+  const tooLarge = () => new Error('The search provider returned too much content. Try another page.')
   if (Number(response.headers.get('content-length')) > maxContentResponseBytes) {
     void response.body?.cancel().catch(() => {})
     throw tooLarge()
   }
   if (!response.body) {
-    throw new Error(t`The search provider could not retrieve this page.`)
+    throw new Error('The search provider could not retrieve this page.')
   }
   const reader = response.body.getReader()
   // Cancelling the reader also settles a pending read if a transport doesn't propagate the request signal to its body.
@@ -109,7 +108,7 @@ export const fetchProviderContent = async (
     if (provider === 'exa') {
       const page = exaContents.parse(data).results[0]
       if (!page?.text.trim()) {
-        throw new Error(t`The search provider could not retrieve this page.`)
+        throw new Error('The search provider could not retrieve this page.')
       }
       return {
         url: page.url,
@@ -124,7 +123,7 @@ export const fetchProviderContent = async (
     }
     const page = tavilyContents.parse(data).results[0]
     if (!page?.raw_content.trim()) {
-      throw new Error(t`The search provider could not retrieve this page.`)
+      throw new Error('The search provider could not retrieve this page.')
     }
     return {
       url: page.url,

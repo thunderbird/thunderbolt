@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, test } from './test'
+import { importBackup } from './import-backup'
 
 for (const viewport of [
   { width: 1280, height: 900 },
@@ -10,6 +11,43 @@ for (const viewport of [
 ]) {
   test.describe(`standalone agents at ${viewport.width}px`, () => {
     test.use({ viewport })
+
+    test('edits and removes an imported agent without signing in', async ({ page }) => {
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          'thunderbolt-local-settings',
+          JSON.stringify({ state: { cloudUrl: '', localMode: true, serverHasAuthenticated: false }, version: 0 }),
+        )
+      })
+      await importBackup(page, {
+        format: 'thunderbolt-export',
+        schemaVersion: 1,
+        tables: {
+          agents: [
+            {
+              id: 'imported-local-agent',
+              name: 'Imported local agent',
+              type: 'remote-acp',
+              transport: 'websocket',
+              url: 'wss://local-agent.example/ws',
+              userId: 'original-owner',
+            },
+          ],
+        },
+      })
+      await page.goto('/settings/agents')
+      await page.getByRole('button', { name: 'Open Imported local agent', exact: true }).click()
+      await page.getByLabel('Name', { exact: true }).fill('Renamed imported agent')
+      await page.getByRole('button', { name: 'Save', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'Renamed imported agent', exact: true })).toBeVisible()
+
+      await page.reload()
+      await page.getByRole('button', { name: 'Open Renamed imported agent', exact: true }).click()
+      await page.getByRole('button', { name: 'More', exact: true }).click()
+      await page.getByRole('menuitem', { name: 'Delete agent', exact: true }).click()
+      await page.getByRole('button', { name: 'Delete agent', exact: true }).click()
+      await expect(page.getByRole('button', { name: 'Open Renamed imported agent', exact: true })).toHaveCount(0)
+    })
 
     test('adds, edits, and removes a custom agent without signing in', async ({ page }) => {
       await page.addInitScript(() => {

@@ -9,6 +9,8 @@ import type { Model } from '@/types'
 import { getDb } from '@/db/database'
 import { saveProviderConnection } from '@/dal/provider-connections'
 import * as providerModels from '@/providers/models'
+import * as modelCatalog from './model-catalog'
+import { createModel, getModel, updateModel } from '@/dal/models'
 import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -143,5 +145,72 @@ describe('useEditModelFormState tool support', () => {
       model: 'replacement',
       toolUsage: 1,
     })
+  })
+
+  it('repairs a legacy endpoint and missing API key on the same model after a successful test', async () => {
+    await createModel(getDb(), savedModel)
+    const { result } = renderEditState(savedModel, providerFetch({ acceptsTools: true }))
+    act(() => {
+      result.current.changeUrl('https://repaired.example/v1')
+      result.current.changeApiKey('replacement-key')
+    })
+    expect(result.current.isSaveDisabled).toBe(true)
+    await act(async () => {
+      await result.current.testConnection()
+    })
+    expect(result.current.isSaveDisabled).toBe(false)
+    const { id, ...updates } = result.current.submissionFor(result.current.form.getValues())
+    await updateModel(getDb(), id, updates)
+    expect(await getModel(getDb(), id)).toMatchObject({
+      id: savedModel.id,
+      url: 'https://repaired.example/v1',
+      apiKey: 'replacement-key',
+    })
+    expect((await getModel(getDb(), id))?.providerConnectionId).toBeNull()
+    act(() => result.current.changeApiKey('newer-key'))
+    expect(result.current.isSaveDisabled).toBe(true)
+  })
+
+  it('keeps, replaces, and explicitly clears legacy keys without populating the password field', () => {
+    const { result } = renderEditState({ ...savedModel, apiKey: 'stored-key' }, providerFetch({ acceptsTools: true }))
+    expect(result.current.form.getValues('apiKey')).toBe('')
+    expect(result.current.effectiveApiKey).toBe('stored-key')
+    expect(result.current.submissionFor(result.current.form.getValues()).apiKey).toBeUndefined()
+    act(() => result.current.changeApiKey('replacement'))
+    expect(result.current.submissionFor(result.current.form.getValues()).apiKey).toBe('replacement')
+    act(() => result.current.changeApiKey(''))
+    expect(result.current.effectiveApiKey).toBe('stored-key')
+    act(() => result.current.toggleClearApiKey())
+    expect(result.current.submissionFor(result.current.form.getValues()).apiKey).toBeNull()
+    expect(result.current.effectiveApiKey).toBeUndefined()
+    expect(result.current.isSaveDisabled).toBe(false)
+    act(() => result.current.toggleClearApiKey())
+    expect(result.current.submissionFor(result.current.form.getValues()).apiKey).toBeUndefined()
+    expect(result.current.isSaveDisabled).toBe(true)
+  })
+
+  it('loads a legacy catalog only on request and uses the latest explicitly entered credentials', async () => {
+    const fetch = spyOn(modelCatalog, 'fetchModelsForProvider').mockResolvedValue([{ id: 'available' }])
+    const { result } = renderEditState({ ...savedModel, apiKey: 'stored-key' }, providerFetch({ acceptsTools: true }))
+    expect(fetch).not.toHaveBeenCalled()
+    act(() => {
+      result.current.changeUrl('https://repaired.example/v1')
+      result.current.changeApiKey('replacement-key')
+    })
+    expect(fetch).not.toHaveBeenCalled()
+    await act(async () => {
+      result.current.loadCatalog()
+      await getClock().runAllAsync()
+    })
+    expect(fetch).toHaveBeenCalledWith(
+      { provider: 'custom', apiKey: 'replacement-key', url: 'https://repaired.example/v1' },
+      expect.any(Function),
+    )
+    expect(result.current.modelItems.some(({ id }) => id === 'available')).toBe(true)
+    act(() => result.current.changeUrl(''))
+    expect(result.current.modelItems.some(({ id }) => id === 'available')).toBe(false)
+    await act(async () => result.current.loadCatalog())
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(await result.current.form.trigger()).toBe(false)
   })
 })

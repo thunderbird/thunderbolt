@@ -19,6 +19,7 @@ import {
   seedV1Setting,
   seedV1Task,
   trustDevice,
+  waitForApprovalSession,
   waitForConsumedChallenge,
   waitForDeviceState,
   waitForOtp,
@@ -671,17 +672,40 @@ export const completeStepUpCode = async (page: Page, email: string): Promise<voi
 // =============================================================================
 
 /**
- * Approve the pending-device prompt on an already-trusted device. Two dialogs:
- * the notification, then a confirmation. Extracted from multi-device.spec.ts so
- * attack specs can reach full trust without restating the sequence.
+ * Open the approval on an already-trusted device: the notification's Approve, which starts the
+ * code attempt right away. Waits for the pending device's approval session first, so the trusted
+ * side never races its creation. Returns the approval dialog.
  */
-export const approvePendingDevice = async (adminPage: Page, pendingPage: Page): Promise<void> => {
-  const fingerprint = pendingPage.getByLabel('Device fingerprint', { exact: true })
-  await expect(fingerprint).toHaveText(/^(?:[A-F0-9]{4}-){15}[A-F0-9]{4}$/)
+export const openPendingApproval = async (adminPage: Page, pendingPage: Page): Promise<Locator> => {
+  await waitForApprovalSession(await getDeviceId(pendingPage))
   const notification = adminPage.getByRole('dialog').filter({ hasText: 'New device waiting' })
   await expect(notification).toBeVisible({ timeout: 30_000 })
   await notification.getByRole('button', { name: 'Approve' }).click()
   const confirmation = adminPage.getByRole('alertdialog')
+  await expect(confirmation.getByText('Which code is on the new device?')).toBeVisible()
+  return confirmation
+}
+
+/**
+ * Approve the pending-device prompt on an already-trusted device the normal way: open it, read
+ * the code the pending device shows, tap the same code among the six. Extracted so attack specs
+ * can reach full trust without restating the sequence.
+ */
+export const approvePendingDevice = async (adminPage: Page, pendingPage: Page): Promise<void> => {
+  const confirmation = await openPendingApproval(adminPage, pendingPage)
+  const code = pendingPage.getByLabel('Approval code', { exact: true })
+  await expect(code).toHaveText(/^\d{2}$/, { timeout: 30_000 })
+  const options = confirmation.getByRole('group', { name: 'Codes to choose from' })
+  await options.getByRole('button', { name: (await code.textContent())!, exact: true }).click()
+}
+
+/** The fallback path: type the pending device's 64-hex fingerprint instead of picking a code. */
+export const approvePendingDeviceWithFingerprint = async (adminPage: Page, pendingPage: Page): Promise<void> => {
+  await pendingPage.getByRole('button', { name: 'Use fingerprint instead' }).click()
+  const fingerprint = pendingPage.getByLabel('Device fingerprint', { exact: true })
+  await expect(fingerprint).toHaveText(/^(?:[A-F0-9]{4}-){15}[A-F0-9]{4}$/)
+  const confirmation = await openPendingApproval(adminPage, pendingPage)
+  await confirmation.getByRole('button', { name: 'Use fingerprint instead' }).click()
   await expect(confirmation.getByText('Approve this device?')).toBeVisible()
   await confirmation.getByLabel('Device fingerprint', { exact: true }).fill((await fingerprint.textContent())!)
   await confirmation.getByRole('button', { name: 'Approve' }).click()

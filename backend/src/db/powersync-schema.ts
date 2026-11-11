@@ -136,13 +136,13 @@ export const providerConnectionsTable = powersyncSchema.table(
     id: text('id').notNull(),
     provider: text('provider', {
       enum: ['openai', 'anthropic', 'custom', 'openrouter', 'tinfoil', 'otari', 'exa', 'brave', 'tavily'],
-    }).notNull(),
-    name: text('name').notNull(),
+    }),
+    name: text('name'),
     url: text('url'),
-    authMethod: text('auth_method', { enum: ['oauth', 'api_key'] }).notNull(),
-    enabled: integer('enabled').notNull().default(1),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    authMethod: text('auth_method', { enum: ['oauth', 'api_key'] }),
+    enabled: integer('enabled').default(1),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
     deletedAt: timestamp('deleted_at'),
     userId: text('user_id')
       .notNull()

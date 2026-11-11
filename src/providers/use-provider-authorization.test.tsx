@@ -62,6 +62,7 @@ describe('provider authorization without a model', () => {
     spyOn(platform, 'isMobile').mockReturnValue(false)
     spyOn(otariBrowser, 'getOtariBrowserReturn').mockReturnValue(null)
     spyOn(otari, 'revokeOtariToken').mockResolvedValue()
+    spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
     spyOn(tinfoilMobile, 'getTinfoilMobileReturn').mockReturnValue(null)
     spyOn(capabilities, 'loadOtariSearchStatus').mockResolvedValue('available')
     spyOn(tinfoilSession, 'withTinfoilSessionLock').mockImplementation(async (operation) => operation())
@@ -249,6 +250,9 @@ describe('provider authorization without a model', () => {
       expect(await getProviderConnections(getDb())).toEqual([])
       expect(onConnected).not.toHaveBeenCalled()
       expect(useSearchProviderStore.getState().connectionStatus).toBeNull()
+      if (provider === 'tinfoil') {
+        expect(tinfoilAuth.revoke).toHaveBeenCalledWith('retired-token')
+      }
       if (provider === 'otari') {
         expect(otari.revokeOtariToken).toHaveBeenCalledWith('https://otari.ai', 'retired-token')
       }
@@ -565,6 +569,30 @@ describe('provider authorization without a model', () => {
     }
     expect(start.mock.calls[0][0]?.signal?.aborted).toBe(true)
     await act(async () => grant.resolve('must-not-save'))
+    expect(await getProviderConnections(getDb())).toEqual([])
+    expect(onConnected).not.toHaveBeenCalled()
+  })
+
+  it.each(['cancel', 'unmount'] as const)('revokes a Tinfoil grant issued after %s', async (action) => {
+    const grant = Promise.withResolvers<{ access_token: string; refresh_token: string; expires_at: number }>()
+    spyOn(tinfoilAuth, 'startConnection').mockImplementation(() => grant.promise)
+    const { result, onConnected, unmount } = setup()
+    const authorization = result.current.authorize({ provider: 'tinfoil', name: 'Tinfoil' })
+    await act(async () => {})
+    if (action === 'cancel') {
+      act(() => result.current.cancel())
+    } else {
+      unmount()
+    }
+    await act(async () => {
+      grant.resolve({
+        access_token: 'unused-access',
+        refresh_token: 'unused-refresh',
+        expires_at: Date.now() + 900_000,
+      })
+      await authorization
+    })
+    expect(tinfoilAuth.revoke).toHaveBeenCalledWith('unused-refresh')
     expect(await getProviderConnections(getDb())).toEqual([])
     expect(onConnected).not.toHaveBeenCalled()
   })

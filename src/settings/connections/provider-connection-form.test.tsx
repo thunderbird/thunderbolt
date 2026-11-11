@@ -20,6 +20,7 @@ import {
 } from '@/dal/provider-connections'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getClock } from '@/testing-library'
+import { clearIdentityScopedMemory } from '@/lib/identity-memory'
 import { http } from '@/lib/http'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { stubJsonResponse } from '@/test-utils/http'
@@ -385,39 +386,46 @@ describe('provider connection form', () => {
     },
   )
 
-  it('aborts Otari discovery on unmount and ignores a late response', async () => {
-    useSearchProviderStore.getState().selectSearchProvider('none')
-    const discoveryStarted = Promise.withResolvers<void>()
-    const discoveryResponse = Promise.withResolvers<unknown>()
-    const response = stubJsonResponse(null)
-    response.json = <T,>() => discoveryResponse.promise as Promise<T>
-    const get = spyOn(http, 'get').mockImplementation(() => {
-      discoveryStarted.resolve()
-      return response
-    })
-    const view = renderWithReactivity(
-      <ProviderConnectionForm provider="otari" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
-    fireEvent.change(screen.getByLabelText('API key', { selector: 'input[type="password"]' }), {
-      target: { value: 'local-key' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
-    await act(async () => {
-      await discoveryStarted.promise
-    })
-    view.unmount()
-    expect(get.mock.calls[0][1]?.signal?.aborted).toBe(true)
-    discoveryResponse.resolve({ data: [{ id: 'otari_web_search', direct_available: true }] })
-    await settle()
+  it.each(['unmount', 'identity change'] as const)(
+    'aborts Otari discovery on %s and ignores a late response',
+    async (action) => {
+      useSearchProviderStore.getState().selectSearchProvider('none')
+      const discoveryStarted = Promise.withResolvers<void>()
+      const discoveryResponse = Promise.withResolvers<unknown>()
+      const response = stubJsonResponse(null)
+      response.json = <T,>() => discoveryResponse.promise as Promise<T>
+      const get = spyOn(http, 'get').mockImplementation(() => {
+        discoveryStarted.resolve()
+        return response
+      })
+      const view = renderWithReactivity(
+        <ProviderConnectionForm provider="otari" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Use API Key instead' }))
+      fireEvent.change(screen.getByLabelText('API key', { selector: 'input[type="password"]' }), {
+        target: { value: 'local-key' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+      await act(async () => {
+        await discoveryStarted.promise
+      })
+      if (action === 'unmount') {
+        view.unmount()
+      } else {
+        act(() => clearIdentityScopedMemory())
+      }
+      expect(get.mock.calls[0][1]?.signal?.aborted).toBe(true)
+      discoveryResponse.resolve({ data: [{ id: 'otari_web_search', direct_available: true }] })
+      await settle()
 
-    expect(onSaved).not.toHaveBeenCalled()
-    expect(useSearchProviderStore.getState()).toMatchObject({
-      selection: 'none',
-      connectionId: null,
-      connectionStatus: null,
-    })
-  })
+      expect(onSaved).not.toHaveBeenCalled()
+      expect(useSearchProviderStore.getState()).toMatchObject({
+        selection: 'none',
+        connectionId: null,
+        connectionStatus: null,
+      })
+    },
+  )
 
   it('never sends a saved key to a server URL changed by sync before discovery', async () => {
     const save = providerConnections.saveProviderConnectionWithRevision
@@ -540,6 +548,28 @@ describe('provider connection form', () => {
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'cancelled-key' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
     view.unmount()
+    await settle()
+    expect(await getProviderConnections(getDb())).toEqual([])
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('does not persist an API-key submission from an identity that ended while the form remained mounted', async () => {
+    const started = Promise.withResolvers<void>()
+    const proceed = Promise.withResolvers<void>()
+    const save = providerConnections.saveProviderConnectionWithRevision
+    spyOn(providerConnections, 'saveProviderConnectionWithRevision').mockImplementationOnce(async (...args) => {
+      started.resolve()
+      await proceed.promise
+      return save(...args)
+    })
+    renderWithReactivity(
+      <ProviderConnectionForm provider="openai" authorization={authorization} onSaved={onSaved} onCancel={onCancel} />,
+    )
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'previous-identity-key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save connection' }))
+    await act(async () => started.promise)
+    act(() => clearIdentityScopedMemory())
+    proceed.resolve()
     await settle()
     expect(await getProviderConnections(getDb())).toEqual([])
     expect(onSaved).not.toHaveBeenCalled()

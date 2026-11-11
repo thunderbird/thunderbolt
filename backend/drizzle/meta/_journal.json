@@ -299,8 +299,15 @@
     {
       "idx": 42,
       "version": "7",
-      "when": 1794270800766,
-      "tag": "0042_provider-connections",
+      "when": 1794317415569,
+      "tag": "0042_device_approval_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794359699498,
+      "tag": "0043_provider-connections",
       "breakpoints": true
     }
   ]

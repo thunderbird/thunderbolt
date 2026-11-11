@@ -8,7 +8,7 @@ import { createModel, getModel } from '@/dal/models'
 import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
 import { getDb } from '@/db/database'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
-import { createTinfoilSession } from './tinfoil-session'
+import { createTinfoilSession, revokeReplacedTinfoilAuthorization } from './tinfoil-session'
 import { getProviderConnectionAttempt, saveProviderAuthorization } from './provider-connection-attempt'
 import { invalidateProviderConnectionAttempts } from './provider-connection-attempt'
 import { saveProviderConnectionInTransaction } from '@/dal/provider-connections'
@@ -248,6 +248,125 @@ describe('Tinfoil session lifecycle', () => {
     await expect(session.disconnect()).rejects.toThrow('unavailable')
     expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(renewed)
   })
+  it('revokes a replaced grant and preserves the guarded revision of a legacy session', async () => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    const { auth } = harness()
+    await revokeReplacedTinfoilAuthorization(getDb(), renewed, undefined, auth)
+    expect(auth.revoke).toHaveBeenCalledWith(expired.refresh_token)
+    expect(await getProviderConnectionAttempt(getDb(), 'tinfoil')).toEqual(attempt)
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.reauth_required).toBe(true)
+    await getDb().transaction((tx) => saveProviderAuthorization(tx, { attempt, tinfoilCredentials: renewed }))
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe(renewed.access_token)
+  })
+  it('keeps the old grant intact when replacement revocation fails', async () => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)
+    const { auth } = harness()
+    auth.revoke.mockRejectedValue(new TinfoilConnectionError('unavailable'))
+    await expect(revokeReplacedTinfoilAuthorization(getDb(), renewed, undefined, auth)).rejects.toThrow('unavailable')
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(expired)
+  })
+  it('does not revoke the saved grant during a same-authorization retry', async () => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', renewed, true)
+    const { auth } = harness()
+    await revokeReplacedTinfoilAuthorization(getDb(), renewed, undefined, auth)
+    expect(auth.revoke).not.toHaveBeenCalled()
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(renewed)
+  })
+  it.each(['replace', 'disconnect'] as const)(
+    'retires the same grant after its tokens and enabled state change during %s',
+    async (operation) => {
+      await saveIntegrationCredentials(getDb(), 'tinfoil', { ...expired, authorizationId: 'original-grant' }, true)
+      const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+      const current = { ...renewed, authorizationId: 'original-grant', sessionRevision: 'changed-revision' }
+      const { auth, session } = harness()
+      auth.revoke.mockImplementation(async () => {
+        await saveIntegrationCredentials(getDb(), 'tinfoil', current, false)
+      })
+
+      if (operation === 'replace') {
+        await revokeReplacedTinfoilAuthorization(
+          getDb(),
+          { ...renewed, authorizationId: 'incoming-grant' },
+          undefined,
+          auth,
+        )
+        expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual({
+          enabled: false,
+          credentials: { ...current, reauth_required: true },
+        })
+        await expect(saveProviderAuthorization(getDb(), { attempt, tinfoilCredentials: renewed })).rejects.toThrow(
+          'connection changed',
+        )
+        await expect(session.setEnabled(true)).rejects.toBeInstanceOf(TinfoilReauthorizationError)
+      } else {
+        await session.disconnect()
+        expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual({
+          enabled: false,
+          credentials: { access_token: '', sessionRevision: expect.any(String) },
+        })
+      }
+      expect(auth.revoke).toHaveBeenCalledTimes(1)
+      expect(auth.revoke).toHaveBeenCalledWith(expired.refresh_token)
+      await expect(session.getAccessToken()).rejects.toBeInstanceOf(TinfoilReauthorizationError)
+    },
+  )
+  it.each(['replace', 'disconnect'] as const)('preserves an unrelated grant installed during %s', async (operation) => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', { ...expired, authorizationId: 'original-grant' }, true)
+    const current = { ...renewed, authorizationId: 'another-grant', sessionRevision: 'changed-revision' }
+    const { auth, session } = harness()
+    auth.revoke.mockImplementation(async () => {
+      await saveIntegrationCredentials(getDb(), 'tinfoil', current, true)
+    })
+
+    const changed =
+      operation === 'replace'
+        ? revokeReplacedTinfoilAuthorization(
+            getDb(),
+            {
+              ...expired,
+              access_token: 'incoming-access',
+              refresh_token: 'incoming-refresh',
+              authorizationId: 'incoming-grant',
+            },
+            undefined,
+            auth,
+          )
+        : session.disconnect()
+    await expect(changed).rejects.toThrow('connection changed during revocation')
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual({ enabled: true, credentials: current })
+    expect(auth.revoke).toHaveBeenCalledTimes(1)
+    expect(auth.revoke).toHaveBeenCalledWith(expired.refresh_token)
+    expect(await session.getAccessToken()).toBe(current.access_token)
+  })
+  it('revokes only unused authorization credentials', async () => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', expired, true)
+    const { auth, session } = harness()
+    await session.discardAuthorization(renewed)
+    expect(auth.revoke).toHaveBeenCalledWith(renewed.refresh_token)
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(expired)
+  })
+  it('retains grant ownership after refresh so late cleanup cannot revoke the current session', async () => {
+    const original = { ...expired, authorizationId: 'owned-grant' }
+    await saveIntegrationCredentials(getDb(), 'tinfoil', original, true)
+    const { auth, session } = harness()
+    const started = Promise.withResolvers<void>()
+    const refreshed = Promise.withResolvers<typeof renewed>()
+    auth.refresh.mockImplementation(() => {
+      started.resolve()
+      return refreshed.promise
+    })
+    const refresh = session.getAccessToken()
+    await started.promise
+    const discard = session.discardAuthorization(original)
+    expect(auth.revoke).not.toHaveBeenCalled()
+    refreshed.resolve(renewed)
+    await refresh
+    await discard
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.authorizationId).toBe('owned-grant')
+    expect(auth.revoke).not.toHaveBeenCalled()
+    expect(await session.getAccessToken()).toBe(renewed.access_token)
+  })
   it('rolls back both owned BYOK and OAuth state if the disconnect transaction fails', async () => {
     const db = getDb()
     await saveIntegrationCredentials(db, 'tinfoil', renewed, true)
@@ -371,6 +490,39 @@ describe('Tinfoil session lifecycle', () => {
     await expect(session.setEnabled(true)).rejects.toBeInstanceOf(TinfoilReauthorizationError)
     await saveIntegrationCredentials(getDb(), 'tinfoil', { ...renewed, reauth_required: true }, false)
     await expect(session.setEnabled(true)).rejects.toBeInstanceOf(TinfoilReauthorizationError)
+  })
+
+  it.each(['redirected', 'deleted'] as const)(
+    'revokes stored canonical grants even when metadata is %s',
+    async (state) => {
+      await saveCanonicalSession()
+      const db = getDb()
+      await db
+        .update(providerConnectionsTable)
+        .set(state === 'redirected' ? { url: 'https://other.example' } : { deletedAt: new Date().toISOString() })
+        .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+      expect((await getIntegrationCredentials(db, 'tinfoil'))?.credentials.access_token).toBe('')
+      const { auth, session } = harness()
+      await session.disconnect()
+      expect(auth.revoke).toHaveBeenCalledWith(expired.refresh_token)
+      expect(JSON.parse((await canonicalSecret())!.credentials!)).toEqual({ sessionRevision: expect.any(String) })
+    },
+  )
+
+  it('retires a replaced canonical grant whose metadata no longer matches its local binding', async () => {
+    await saveCanonicalSession()
+    const db = getDb()
+    const before = await canonicalSecret()
+    await db
+      .update(providerConnectionsTable)
+      .set({ url: 'https://other.example' })
+      .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+    const { auth } = harness()
+    await revokeReplacedTinfoilAuthorization(db, renewed, undefined, auth)
+    expect(auth.revoke).toHaveBeenCalledWith(expired.refresh_token)
+    const after = await canonicalSecret()
+    expect(after?.binding).toBe(before?.binding)
+    expect(JSON.parse(after!.credentials!)).toMatchObject({ ...expired, reauth_required: true })
   })
 
   it('rotates canonical credentials without changing the binding or authorization generation', async () => {

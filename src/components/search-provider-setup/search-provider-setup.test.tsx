@@ -14,6 +14,7 @@ import {
 } from '@/dal/provider-connections'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { searchSelectionStorageKey, useSearchProviderStore } from '@/stores/search-provider-store'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 import { SearchProviderSetup } from './search-provider-setup'
 import { useSearchProviderSetup } from './use-search-provider-setup'
 
@@ -100,6 +101,34 @@ it.each(['unmount', 'provider', 'selection'] as const)(
     expect(await getProviderConnections(getDb())).toHaveLength(0)
   },
 )
+
+it('aborts verification and rejects late credentials after the identity changes', async () => {
+  const pending = Promise.withResolvers<void>()
+  const ready = mock(() => {})
+  const saved = mock(() => {})
+  const verify = mock(async (_provider: string, _key: string, _signal: AbortSignal) => pending.promise)
+  const { result } = renderHook(() => useSearchProviderSetup(ready, saved, verify), {
+    wrapper: createTestProvider(),
+  })
+  act(() => result.current.change({ provider: 'exa', apiKey: 'previous-identity-key' }))
+  let running!: Promise<void>
+  act(() => {
+    running = result.current.test()
+  })
+  act(() => {
+    invalidateIdentityLifetime()
+    useSearchProviderStore.getState().selectSearchConnection('new-identity-connection')
+  })
+  expect(verify.mock.calls[0][2].aborted).toBe(true)
+  await act(async () => {
+    pending.resolve()
+    await running
+  })
+  expect(await getProviderConnections(getDb())).toHaveLength(0)
+  expect(useSearchProviderStore.getState().connectionId).toBe('new-identity-connection')
+  expect(ready).not.toHaveBeenCalledWith(true)
+  expect(saved).not.toHaveBeenCalled()
+})
 
 it('does not restore an existing connection disconnected during key verification', async () => {
   const test = mock(async () => {})

@@ -15,6 +15,7 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { StatusCard } from '@/components/ui/status-card'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
+import { providerRequiresUrl } from './model-policy'
 import { SupportsToolsSwitch } from './supports-tools-switch'
 import { useEditModelFormState, type EditModelSubmission } from './use-edit-model-form-state'
 
@@ -92,10 +93,59 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
             <Trans>Manage provider connection</Trans>
           </Link>
         )}
+        {!model.providerConnectionId && providerRequiresUrl(model.provider) && (
+          <FormField
+            control={state.form.control}
+            name="url"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  <Trans>URL</Trans>
+                </FormLabel>
+                <FormControl>
+                  <Input {...field} className="rounded-lg" onChange={(event) => state.changeUrl(event.target.value)} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+        {!model.providerConnectionId && model.provider !== 'thunderbolt' && !model.oauthProvider && (
+          <FormField
+            control={state.form.control}
+            name="apiKey"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  <Trans>API Key</Trans>
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    type="password"
+                    {...field}
+                    onChange={(event) => state.changeApiKey(event.target.value)}
+                    placeholder={model.apiKey ? '••••••••••••••••' : 'sk-...'}
+                    className="rounded-lg"
+                  />
+                </FormControl>
+                {model.apiKey && (
+                  <Button type="button" variant="ghost" className="mt-1" onClick={state.toggleClearApiKey}>
+                    {state.apiKeyEdit.kind === 'clear' ? (
+                      <Trans>Keep saved API key</Trans>
+                    ) : (
+                      <Trans>Clear saved API key</Trans>
+                    )}
+                  </Button>
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
         <ConnectionTestSection
           provider={model.provider}
           model={state.watchedModel}
-          apiKey={undefined}
+          apiKey={state.effectiveApiKey}
           hasOAuth={Boolean(model.providerConnectionId || model.oauthProvider)}
           isTesting={state.connection.isTesting}
           onTest={state.testConnection}

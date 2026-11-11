@@ -38,6 +38,7 @@ import {
   type OpenRouterManualConnection,
 } from '@/lib/openrouter-auth'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
+import { tinfoilSession } from '@/lib/tinfoil-session'
 import {
   getTinfoilMobileReturn,
   clearTinfoilMobileReturn,
@@ -193,6 +194,12 @@ export const useProviderAuthorization = ({
         pending.current !== controller &&
         pending.current?.returnId === returned.id &&
         !pending.current.signal.aborted
+      if (input.provider === 'tinfoil' && credentials.access_token && !transferred) {
+        await tinfoilSession.discardAuthorization({
+          ...credentials,
+          access_token: credentials.access_token,
+        })
+      }
       if (input.provider === 'otari' && credentials.access_token && !transferred) {
         await discardOtariAuthorization(db, getOtariAuthorizationOrigin(input.url), credentials.access_token)
       }

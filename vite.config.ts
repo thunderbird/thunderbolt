@@ -61,6 +61,10 @@ export default defineConfig({
   build: {
     sourcemap,
     rolldownOptions: {
+      input: {
+        app: path.resolve(dirname, 'index.html'),
+        recovery: path.resolve(dirname, 'webview-recovery.html'),
+      },
       external: ['bun:sqlite'],
       treeshake: {
         moduleSideEffects: [
@@ -78,7 +82,7 @@ export default defineConfig({
       output: {
         // Distinct prefix for the entry chunk so size-limit can track the
         // FCP-blocking bytes separately from on-demand route chunks.
-        entryFileNames: 'assets/entry-[hash].js',
+        entryFileNames: (chunk) => (chunk.name === 'recovery' ? 'assets/recovery-[hash].js' : 'assets/entry-[hash].js'),
       },
     },
   },
@@ -254,6 +258,7 @@ export default defineConfig({
         path.resolve(__dirname, '.storybook'),
         // Vite's HTML middleware checks checkLoadingAccess() for index.html
         path.resolve(__dirname, 'index.html'),
+        path.resolve(__dirname, 'webview-recovery.html'),
       ],
     },
   },

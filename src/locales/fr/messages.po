@@ -1804,6 +1804,10 @@ msgstr "Impossible de lire le fichier d'importation."
 msgid "Could not render pairing code."
 msgstr "Impossible d'afficher le code d'association."
 
+#: src/webview-recovery/index.ts
+msgid "Could not restart the app. Quit Thunderbolt and open it again."
+msgstr ""
+
 #: src/settings/connections/use-provider-connection-form.ts
 msgid "Could not save the connection. Try again."
 msgstr ""
@@ -5626,6 +5630,10 @@ msgstr "Le fournisseur d'IA rencontre actuellement des difficultés. Réessayez 
 msgid "The AI provider took too long to respond. Try again."
 msgstr "Le fournisseur d'IA a mis trop de temps à répondre. Réessayez."
 
+#: src/webview-recovery/index.ts
+msgid "The app's web content stopped unexpectedly more than once. Automatic reloads have been paused."
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "The chat will be retained by the {recipient} team."
 msgstr ""
@@ -6054,6 +6062,10 @@ msgstr "Réflexion pendant {duration}"
 msgid "Thunderbolt CLI"
 msgstr "CLI Thunderbolt"
 
+#: src/webview-recovery/index.ts
+msgid "Thunderbolt couldn't keep running"
+msgstr ""
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Thunderbolt is open-source"
 msgstr "Thunderbolt est open source"
@@ -6220,8 +6232,13 @@ msgstr "Appareils de confiance"
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
+#: src/webview-recovery/index.ts
 msgid "Try again"
 msgstr "Réessayer"
+
+#: src/webview-recovery/index.ts
+msgid "Try again, or install available system updates and reopen Thunderbolt if the problem continues."
+msgstr ""
 
 #: src/components/chat/image-support-notice.tsx
 msgid "Try anyway"

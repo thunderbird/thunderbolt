@@ -349,6 +349,10 @@ Fresh consumer native installs start locally even when `VITE_THUNDERBOLT_CLOUD_U
 
 Pull requests never run these jobs. To run them on a branch, dispatch the workflow with `gh workflow run nightly.yml --ref <branch>`: off `main` only `native-ios` and `native-linux` run, and no failure notification goes out. Maestro matches what the iOS accessibility tree exposes, and there an `aria-label` replaces the element's text, so a control whose label differs from the text it shows can be found only by the label.
 
+On macOS and iOS, the main webview retries a terminated WebKit content process once. A second termination within 60 seconds opens `webview-recovery.html`, a separate entry that does not initialize React or PowerSync. The retry budget lives in Rust, survives page loads, and resets on **Try again**. A termination of the recovery page stops automatic navigation entirely. No local data is cleared. The policy tests run with `cargo test --workspace` in `src-tauri/`; `e2e/consumer-webview-recovery.spec.ts` covers the page and its retry command boundary.
+
+To exercise the native callback on macOS, build a test app with a separate bundle identifier (for example `net.thunderbird.thunderbolt.fresh-install-repro`) so it uses separate WebKit storage. Identify its `com.apple.WebKit.WebContent` PID by open files under that identifier's `~/Library/WebKit/` directory. Terminate only that PID, verify onboarding returns, then identify and terminate the replacement PID within 60 seconds. The recovery page should appear and **Try again** should return to onboarding. Killing a renderer tests recovery; it does not reproduce the engine defect that originally terminated it. Playwright's bundled WebKit and the iOS simulator also do not establish compatibility with a different macOS/hardware combination.
+
 The fake provider binds to IPv4 loopback (`127.0.0.1`). Binding to `localhost`
 can select `::1` on Linux while the Bun backend connects over IPv4. The scoped
 `fake-provider.test.ts` opens a real socket and consumes the complete Messages

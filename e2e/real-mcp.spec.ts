@@ -25,6 +25,7 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   await loginViaOidc(page)
   await page.goto('/settings/connections')
   await page.getByRole('button', { name: 'New Connection' }).click()
+  await page.getByRole('button', { name: 'MCP server' }).click()
   await page.getByPlaceholder('Server name (used to prefix tools)').fill('Test Echo')
   await page.getByPlaceholder('http://localhost:8000/mcp/').fill(mcpUrl)
   await page.getByRole('button', { name: 'Test connection' }).click()

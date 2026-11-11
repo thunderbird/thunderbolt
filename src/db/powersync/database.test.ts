@@ -60,6 +60,16 @@ describe('getPowerSyncOptions', () => {
       expect(options.database).toEqual({ dbFilename: 'thunderbolt-sync.db', vfs: WASQLiteVFS.IDBBatchAtomicVFS })
     })
 
+    it.each([
+      ['default', WASQLiteVFS.IDBBatchAtomicVFS],
+      ['safari-tauri', WASQLiteVFS.InMemoryVfs],
+    ] as const)('without OPFS (%s), keeps each slot under its own name in %s (THU-963)', (config, vfs) => {
+      const a = getPowerSyncOptions('thunderbolt-sync-a.db', config, false).database
+      const b = getPowerSyncOptions('thunderbolt-sync-b.db', config, false).database
+      expect(a).toMatchObject({ dbFilename: 'thunderbolt-sync-a.db', vfs })
+      expect(b).toMatchObject({ dbFilename: 'thunderbolt-sync-b.db', vfs })
+    })
+
     it('extracts dbFilename from path with slashes', () => {
       const options = getPowerSyncOptions('foo/bar/baz.db', 'default', true)
       expect(options.database.dbFilename).toBe('baz.db')
@@ -113,10 +123,11 @@ describe('getPowerSyncOptions', () => {
       expect(databaseOf(options).dbFilename).toBe('thunderbolt-sync.db')
     })
 
-    it('falls back to IDBBatchAtomicVFS, syncing in the tab, when OPFS is unavailable', () => {
-      // With multi-tab on, PowerSync would open IndexedDB in a SharedWorker.
+    it('keeps the database in memory, syncing in the tab, when OPFS is unavailable', () => {
+      // Without OPFS `getDatabasePath` gives the bare filename. With multi-tab on, PowerSync would
+      // open the in-memory database in a SharedWorker.
       const database = databaseOf(getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri', false))
-      expect(database.vfs).toBe(WASQLiteVFS.IDBBatchAtomicVFS)
+      expect(database.vfs).toBe(WASQLiteVFS.InMemoryVfs)
       expect(database.enableMultiTabs).toBe(false)
       expect(database.worker).toBe('/@powersync/worker.js')
     })

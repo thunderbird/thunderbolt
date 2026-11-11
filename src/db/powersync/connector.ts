@@ -12,12 +12,16 @@ import {
   isCurrentAuthRequest,
 } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
+import { isLocalDataOwnedBy } from '@/lib/local-data-owner'
+import { getCachedSession } from '@/lib/session-cache'
 import { normalizeBackendUrl } from '@/lib/url-utils'
 import type { CommonPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload, postKeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
 import { initialKeyId } from '@shared/e2ee-types'
+import { decodeBase64Url } from '@shared/base64url'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
+import { z } from 'zod'
 import { modelConnectionMigrationMetadataPrefix, providerConnectionMigrationMetadata } from './crud-metadata'
 
 /**
@@ -70,6 +74,21 @@ const getCredentialsInvalidReason = (status: number, body: ErrorBody): Credentia
     return 'session_expired'
   }
   return null
+}
+
+const powerSyncTokenPayloadSchema = z.object({ sub: z.string() })
+
+/**
+ * The account a PowerSync token names, or undefined (logged) for a malformed token. The claim is
+ * read without verification; the sync service verifies it.
+ */
+const powerSyncTokenSubject = (token: string): string | undefined => {
+  try {
+    return powerSyncTokenPayloadSchema.parse(JSON.parse(decodeBase64Url(token.split('.')[1] ?? '') ?? '')).sub
+  } catch (error) {
+    console.error('[PowerSync] The sync token names no account:', error)
+    return undefined
+  }
 }
 
 export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody): boolean => {
@@ -199,6 +218,11 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       const data: TokenResponse = (await response.json()) as TokenResponse
       if (!isCurrentSyncRequest(auth)) {
+        return null
+      }
+      // The local database, its queued uploads included, syncs only as the account that owns it.
+      if (!isLocalDataOwnedBy(powerSyncTokenSubject(data.token))) {
+        console.warn('[PowerSync] Not syncing: the local database is not open for the account the credentials name')
         return null
       }
       const expiresAt = new Date(data.expiresAt)
@@ -363,6 +387,13 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * This is called by PowerSync when there are pending changes in the upload queue.
    */
   async uploadData(database: CommonPowerSyncDatabase): Promise<void> {
+    // PowerSync uploads on connect, before any credentials check. This reads the account from the
+    // cached session while the request carries the current token or cookie, so the two can briefly
+    // disagree. The server refuses a queue sent from a device the session is not bound to
+    // (`DEVICE_NOT_BOUND`). This check only holds the queue back once another tab signs in another account.
+    if (!isLocalDataOwnedBy(getCachedSession()?.user?.id)) {
+      throw new Error('Local data belongs to another account — deferring upload')
+    }
     const auth = this.getRequestAuth()
     // Get the next batch of changes from the upload queue
     const transaction = await database.getNextCrudTransaction()

@@ -2,14 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createAuthClient } from 'better-auth/react'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
-import { buildFetchOptions } from '@/contexts/auth-context'
+import { buildFetchOptions, createAuthClientInstance } from '@/contexts/auth-context'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import * as onboarding from '@/lib/returning-user-onboarding'
 import { getClock } from '@/testing-library'
+import { getLocalDataStatus, isLocalDataOwnedBy, openLocalData, resetLocalDataOwnerForTests } from './local-data-owner'
+import * as platform from './platform'
 import { signInWithOtp } from './sign-in-with-otp'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 const accepted = { user: { id: 'accepted-user', isNew: false }, session: { token: 'accepted' } }
 
@@ -97,5 +100,66 @@ describe('OTP authentication cancellation', () => {
     expect(markOnboarded).toHaveBeenCalledWith(accepted.user)
     housekeeping.resolve()
     expect((await pending).data?.user.id).toBe('accepted-user')
+  })
+})
+
+describe('OTP promotion of an anonymous session (THU-963)', () => {
+  let previousLocalSettings: ReturnType<typeof useLocalSettingsStore.getState>
+
+  beforeEach(() => {
+    previousLocalSettings = useLocalSettingsStore.getState()
+  })
+
+  /**
+   * Signs in from `previous` with the app's own client, whose session subscriber binds the sessions
+   * it hears of. Only the sign-in's own bind passes the anonymous slot to the new account, so it must
+   * come first.
+   */
+  const signIn = async (previous: { id: string; isAnonymous: boolean }) => {
+    localStorage.clear()
+    useLocalSettingsStore.setState({ cloudUrl: 'https://auth.test/v1' })
+    spyOn(platform, 'isOpfsAvailable').mockResolvedValue(false)
+    spyOn(platform, 'hasIndexedDbDatabase').mockResolvedValue(false)
+    spyOn(onboarding, 'markOnboardedForReturningUser').mockResolvedValue()
+    const previousSession = { user: previous, session: { token: 'previous' } }
+    const server = { isSignedIn: false }
+    const respond = async (input: RequestInfo | URL) => {
+      if (!String(input).endsWith('/sign-in/email-otp')) {
+        return Response.json(server.isSignedIn ? accepted : previousSession)
+      }
+      server.isSignedIn = true
+      return Response.json(accepted, { headers: { 'set-auth-token': 'accepted.signature' } })
+    }
+    spyOn(globalThis, 'fetch').mockImplementation(Object.assign(respond, { preconnect: globalThis.fetch.preconnect }))
+    resetLocalDataOwnerForTests()
+    await openLocalData()
+    // Boot has finished; any later switch stops here, waiting on the switch lock.
+    spyOn(navigator.locks, 'request').mockReturnValue(new Promise(() => {}))
+    const client = createAuthClientInstance('https://auth.test/v1')
+    const atom = client.$store.atoms.session
+    atom.set({ ...atom.get(), data: previousSession, isPending: false })
+    expect(isLocalDataOwnedBy(previous.id)).toBe(true)
+    await signInWithOtp(client, { email: 'test@example.com', otp: '12345678' })
+    // Better Auth tells its session listeners on a timer, after a `/get-session` refetch.
+    await getClock().tickAsync(20)
+    expect(atom.get().data?.user.id).toBe('accepted-user')
+  }
+
+  afterEach(() => {
+    resetLocalDataOwnerForTests()
+    localStorage.clear()
+    useLocalSettingsStore.setState(previousLocalSettings)
+  })
+
+  it('hands the anonymous account’s local data to the account it became, before the session listeners hear of it', async () => {
+    await signIn({ id: 'anon-1', isAnonymous: true })
+    expect(isLocalDataOwnedBy('accepted-user')).toBe(true)
+    expect(getLocalDataStatus()).toBe('ready')
+  })
+
+  it('never hands a named account’s local data to the next sign-in, and switches instead', async () => {
+    await signIn({ id: 'user-a', isAnonymous: false })
+    expect(isLocalDataOwnedBy('accepted-user')).toBe(false)
+    expect(getLocalDataStatus()).toBe('switching')
   })
 })

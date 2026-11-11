@@ -196,7 +196,9 @@ The handshake lives in `localStorage` under `mcp_oauth_flow_state`
 ([src/lib/mcp-auth/mcp-oauth-state.ts](../../../src/lib/mcp-auth/mcp-oauth-state.ts)), not
 `sessionStorage`: the web leg is a full-page `window.location.assign`, and iOS/Android may terminate
 the app mid-browser. It is single-use, read-then-cleared before the exchange, so a replayed callback
-cannot double-exchange the code.
+cannot double-exchange the code. An account switch and a full wipe clear it too
+([`clearLocalData`](../../../src/lib/cleanup.ts)), so a callback that arrives later can never store the
+previous account's tokens in the next account's database.
 
 One slot, so one authorization in flight. Two guards, both needed:
 

@@ -1983,6 +1983,10 @@ msgstr "No se pudo configurar la llave de acceso. Inténtalo de nuevo."
 msgid "Couldn't sign in with your passkey. Please try again or use your email."
 msgstr "No se pudo iniciar sesión con tu llave de acceso. Inténtalo de nuevo o usa tu correo electrónico."
 
+#: src/components/local-data-switch-screen.tsx
+msgid "Couldn't switch accounts"
+msgstr "No se pudo cambiar de cuenta"
+
 #: src/hooks/use-sync-setup.ts
 #~ msgid "Couldn't unlock sync with your passkey."
 #~ msgstr ""
@@ -4533,6 +4537,7 @@ msgstr "Registrando este dispositivo y detectando el estado de tu cuenta."
 msgid "Release digest"
 msgstr ""
 
+#: src/components/local-data-switch-screen.tsx
 #: src/components/storage-unavailable-screen.tsx
 #: src/components/upgrade-required.tsx
 msgid "Reload"
@@ -5278,6 +5283,7 @@ msgstr ""
 msgid "Sign in with your fingerprint, face, or device PIN."
 msgstr ""
 
+#: src/components/local-data-switch-screen.tsx
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
 msgstr "Cerrar sesión"
@@ -5703,6 +5709,10 @@ msgstr ""
 #: src/components/approve-device/approve-device-dialog.tsx
 msgid "The new device isn't showing a code"
 msgstr ""
+
+#: src/components/local-data-switch-screen.tsx
+msgid "The previous account's data on this device could not be secured. Reload to try again."
+msgstr "No se pudieron proteger los datos de la cuenta anterior en este dispositivo. Recarga para intentarlo de nuevo."
 
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The provider rejected the model request (HTTP {status}). Check model access and your subscription."
@@ -6600,6 +6610,10 @@ msgstr "Modo de voz: {status}"
 msgid "Wait for the current response to finish before compacting."
 msgstr ""
 
+#: src/components/local-data-switch-screen.tsx
+msgid "Waiting for a spark… Thunderbolt opens on its own."
+msgstr "Esperando una chispa… Thunderbolt se abre solo."
+
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
 msgid "Waiting for approval"
@@ -6946,6 +6960,10 @@ msgstr "Tus chats y ajustes seguirán en este dispositivo para la próxima vez."
 #: src/settings/connections/ai-provider-detail.tsx
 #~ msgid "Your connection has expired. Reconnect to continue."
 #~ msgstr ""
+
+#: src/components/local-data-switch-screen.tsx
+#~ msgid "Your connection seems to be down. Waiting for it to come back."
+#~ msgstr "Parece que tu conexión se ha caído. Esperando a que vuelva."
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"

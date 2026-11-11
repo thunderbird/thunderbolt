@@ -14,6 +14,13 @@ import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { buildFetchOptions } from '@/contexts/auth-context'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import * as onboarding from '@/lib/returning-user-onboarding'
+import {
+  bindLocalData,
+  getLocalDataStatus,
+  isLocalDataOwnedBy,
+  openLocalData,
+  resetLocalDataOwnerForTests,
+} from '@/lib/local-data-owner'
 import { getClock } from '@/testing-library'
 
 // Mock the browser ceremony primitives so tests never touch a real authenticator.
@@ -182,6 +189,40 @@ describe('signInWithPasskey', () => {
       expect.objectContaining({ data: acceptedSession, isPending: false }),
     )
     expect(result).toEqual({ userId: 'user-1' })
+  })
+})
+
+describe('signInWithPasskey — anonymous promotion (THU-963)', () => {
+  /** `previous` owns the open slot and holds the session when the passkey signs in user-1. */
+  const signInAfter = async (previous: { id: string; isAnonymous: boolean }) => {
+    localStorage.clear()
+    spyOn(platformModule, 'isOpfsAvailable').mockResolvedValue(false)
+    spyOn(platformModule, 'hasIndexedDbDatabase').mockResolvedValue(false)
+    spyOn(onboarding, 'markOnboardedForReturningUser').mockResolvedValue()
+    await openLocalData()
+    // Boot takes the lock too; only a later account switch should wait here.
+    spyOn(navigator.locks, 'request').mockReturnValue(new Promise(() => {}))
+    bindLocalData(previous.id)
+    const authClient = makeAuthClient([{ data: { challenge: 'xyz' } }, { data: acceptedSession }])
+    const atom = authClient.$store.atoms.session
+    spyOn(atom, 'get').mockReturnValue({ ...atom.get(), data: { user: previous } })
+    await signInWithPasskey(authClient)
+  }
+
+  afterEach(() => {
+    resetLocalDataOwnerForTests()
+    localStorage.clear()
+  })
+
+  it('hands the anonymous account’s local data to the account it became', async () => {
+    await signInAfter({ id: 'anon-1', isAnonymous: true })
+    expect(isLocalDataOwnedBy('user-1')).toBe(true)
+  })
+
+  it('never hands a named account’s local data to the next sign-in, and switches instead', async () => {
+    await signInAfter({ id: 'user-a', isAnonymous: false })
+    expect(isLocalDataOwnedBy('user-1')).toBe(false)
+    expect(getLocalDataStatus()).toBe('switching')
   })
 })
 

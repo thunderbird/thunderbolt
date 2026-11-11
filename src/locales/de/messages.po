@@ -1971,6 +1971,10 @@ msgstr "Der Passkey konnte nicht eingerichtet werden. Bitte versuchen Sie es ern
 msgid "Couldn't sign in with your passkey. Please try again or use your email."
 msgstr "Die Anmeldung mit Ihrem Passkey ist fehlgeschlagen. Bitte versuchen Sie es erneut oder verwenden Sie Ihre E-Mail-Adresse."
 
+#: src/components/local-data-switch-screen.tsx
+msgid "Couldn't switch accounts"
+msgstr "Konto konnte nicht gewechselt werden"
+
 #: src/hooks/use-sync-setup.ts
 #~ msgid "Couldn't unlock sync with your passkey."
 #~ msgstr ""
@@ -4521,6 +4525,7 @@ msgstr "Dieses Gerät wird registriert und Ihr Kontostatus ermittelt."
 msgid "Release digest"
 msgstr ""
 
+#: src/components/local-data-switch-screen.tsx
 #: src/components/storage-unavailable-screen.tsx
 #: src/components/upgrade-required.tsx
 msgid "Reload"
@@ -5266,6 +5271,7 @@ msgstr ""
 msgid "Sign in with your fingerprint, face, or device PIN."
 msgstr ""
 
+#: src/components/local-data-switch-screen.tsx
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
 msgstr "Abmelden"
@@ -5691,6 +5697,10 @@ msgstr ""
 #: src/components/approve-device/approve-device-dialog.tsx
 msgid "The new device isn't showing a code"
 msgstr ""
+
+#: src/components/local-data-switch-screen.tsx
+msgid "The previous account's data on this device could not be secured. Reload to try again."
+msgstr "Die Daten des vorherigen Kontos auf diesem Gerät konnten nicht geschützt werden. Laden Sie neu, um es erneut zu versuchen."
 
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The provider rejected the model request (HTTP {status}). Check model access and your subscription."
@@ -6588,6 +6598,10 @@ msgstr "Sprachmodus: {status}"
 msgid "Wait for the current response to finish before compacting."
 msgstr ""
 
+#: src/components/local-data-switch-screen.tsx
+msgid "Waiting for a spark… Thunderbolt opens on its own."
+msgstr "Warten auf den Funken… Thunderbolt öffnet sich von selbst."
+
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
 msgid "Waiting for approval"
@@ -6934,6 +6948,10 @@ msgstr "Ihre Chats und Einstellungen bleiben für das nächste Mal auf diesem Ge
 #: src/settings/connections/ai-provider-detail.tsx
 #~ msgid "Your connection has expired. Reconnect to continue."
 #~ msgstr ""
+
+#: src/components/local-data-switch-screen.tsx
+#~ msgid "Your connection seems to be down. Waiting for it to come back."
+#~ msgstr "Ihre Verbindung scheint unterbrochen zu sein. Warten, bis sie wieder da ist."
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"

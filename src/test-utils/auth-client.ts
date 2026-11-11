@@ -70,6 +70,8 @@ export const createMockAuthClient = (options: MockAuthClientOptions = {}): AuthC
     },
     signOut,
     $fetch: fetch,
+    // Sign-in reads the session it may replace (anonymous promotion keeps its local data).
+    $store: { atoms: { session: { get: () => ({ data: session, isPending }), subscribe: () => () => {} } } },
     $Infer: {} as AuthClient['$Infer'],
   } as unknown as AuthClient
 }

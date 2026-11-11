@@ -74,7 +74,7 @@ Single sign-on adds its own required sets, and a missing member of either one st
 
 ### When the app itself is broken
 
-Serve the app over HTTPS anywhere other than `localhost`. Browsers grant the local-database and isolation capabilities Thunderbolt depends on only to secure origins, so on a plain-HTTP hostname the local database falls back to memory and every reload loses the user's data.
+Serve the app over HTTPS anywhere other than `localhost`. Browsers grant the local-database and isolation capabilities Thunderbolt depends on only to secure origins. On a plain-HTTP hostname the app cannot open its local database at all, so it does not start.
 
 ## Single sign-on fails
 

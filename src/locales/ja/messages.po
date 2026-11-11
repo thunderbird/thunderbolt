@@ -1959,6 +1959,10 @@ msgstr "パスキーを設定できませんでした。もう一度お試しく
 msgid "Couldn't sign in with your passkey. Please try again or use your email."
 msgstr "パスキーでサインインできませんでした。もう一度お試しいただくか、メールアドレスをご利用ください。"
 
+#: src/components/local-data-switch-screen.tsx
+msgid "Couldn't switch accounts"
+msgstr "アカウントを切り替えられませんでした"
+
 #: src/hooks/use-sync-setup.ts
 #~ msgid "Couldn't unlock sync with your passkey."
 #~ msgstr ""
@@ -4509,6 +4513,7 @@ msgstr "このデバイスを登録し、アカウントの状態を確認して
 msgid "Release digest"
 msgstr ""
 
+#: src/components/local-data-switch-screen.tsx
 #: src/components/storage-unavailable-screen.tsx
 #: src/components/upgrade-required.tsx
 msgid "Reload"
@@ -5254,6 +5259,7 @@ msgstr ""
 msgid "Sign in with your fingerprint, face, or device PIN."
 msgstr ""
 
+#: src/components/local-data-switch-screen.tsx
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
 msgstr "サインアウト"
@@ -5679,6 +5685,10 @@ msgstr ""
 #: src/components/approve-device/approve-device-dialog.tsx
 msgid "The new device isn't showing a code"
 msgstr ""
+
+#: src/components/local-data-switch-screen.tsx
+msgid "The previous account's data on this device could not be secured. Reload to try again."
+msgstr "このデバイス上の以前のアカウントのデータを保護できませんでした。再読み込みしてもう一度お試しください。"
 
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The provider rejected the model request (HTTP {status}). Check model access and your subscription."
@@ -6576,6 +6586,10 @@ msgstr "音声モード: {status}"
 msgid "Wait for the current response to finish before compacting."
 msgstr ""
 
+#: src/components/local-data-switch-screen.tsx
+msgid "Waiting for a spark… Thunderbolt opens on its own."
+msgstr "接続を待っています… Thunderbolt は自動で開きます。"
+
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
 msgid "Waiting for approval"
@@ -6922,6 +6936,10 @@ msgstr "チャットと設定は次回のためにこのデバイスに残りま
 #: src/settings/connections/ai-provider-detail.tsx
 #~ msgid "Your connection has expired. Reconnect to continue."
 #~ msgstr ""
+
+#: src/components/local-data-switch-screen.tsx
+#~ msgid "Your connection seems to be down. Waiting for it to come back."
+#~ msgstr "接続が切れているようです。再接続を待っています。"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"

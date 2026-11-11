@@ -10,7 +10,14 @@ import { resetCodecState } from '@/db/encryption'
 import type { CommonPowerSyncDatabase } from '@powersync/web'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as adapterCache from '@/acp/adapter-cache'
+import { bindLocalData, openLocalData, resetLocalDataOwnerForTests } from '@/lib/local-data-owner'
+import { clearCachedSession, setCachedSession } from '@/lib/session-cache'
+import * as platform from '@/lib/platform'
+import { closeTestLocalData, openTestLocalData } from '@/test-utils/local-data'
+import * as encryption from '@/services/encryption'
 import { legacyKeyId } from '@shared/e2ee-types'
+import { z } from 'zod'
 import * as syncTracker from './sync-tracker'
 import { modelConnectionMigrationMetadataPrefix, providerConnectionMigrationMetadata } from './crud-metadata'
 import {
@@ -26,6 +33,21 @@ const storeAKWithoutPointer = async () => storeAK(await generateAK(), { keyVersi
 const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test/v1'
 const env: { VITE_AUTH_MODE?: string } = import.meta.env
+
+/** A PowerSync JWT naming `sub`; the connector reads the claim without verifying it. */
+const syncTokenFor = (sub: string) => `header.${btoa(JSON.stringify({ sub })).replace(/=+$/, '')}.signature`
+const ownerSyncToken = syncTokenFor('user-a')
+
+// The connector syncs only as the open slot's owner, so every test runs with user-a's slot open.
+beforeEach(async () => {
+  await openTestLocalData('user-a')
+  setCachedSession({ user: { id: 'user-a' } })
+})
+
+afterEach(() => {
+  closeTestLocalData()
+  clearCachedSession()
+})
 
 const createFetchStub = (fetchMock: ReturnType<typeof mock>): typeof fetch =>
   Object.assign((input: RequestInfo | URL, init?: RequestInit) => fetchMock(input, init), {
@@ -290,7 +312,7 @@ describe('ThunderboltConnector', () => {
       }
       if (url.endsWith('/powersync/token')) {
         return Response.json({
-          token: 'sync-token',
+          token: ownerSyncToken,
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
           powerSyncUrl: 'https://sync.test',
         })
@@ -300,7 +322,7 @@ describe('ThunderboltConnector', () => {
     try {
       Object.defineProperty(navigator, 'locks', { configurable: true, value: {} })
       const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
-      expect((await connector.fetchCredentials())?.token).toBe('sync-token')
+      expect((await connector.fetchCredentials())?.token).toBe(ownerSyncToken)
       await connector.uploadData(database)
       expect(complete).toHaveBeenCalledTimes(1)
     } finally {
@@ -321,7 +343,7 @@ describe('ThunderboltConnector', () => {
   it('fetchCredentials returns credentials when backend returns 200', async () => {
     setAuthToken(authToken)
     const tokenData = {
-      token: 'ps-token',
+      token: ownerSyncToken,
       expiresAt: '2025-12-31T00:00:00Z',
       powerSyncUrl: 'wss://ps.test/sync',
     }
@@ -356,7 +378,7 @@ describe('ThunderboltConnector', () => {
       setAuthToken(authToken)
       fetchMock.mockResolvedValue(
         Response.json({
-          token: 'ps-token',
+          token: ownerSyncToken,
           expiresAt: '2025-12-31T00:00:00Z',
           powerSyncUrl: 'wss://ps.test/sync',
         }),
@@ -861,7 +883,7 @@ describe('ThunderboltConnector download encryption gate', () => {
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
   const tokenResponse = () =>
-    jsonResponse({ token: 'ps-token', expiresAt: '2099-12-31T00:00:00Z', powerSyncUrl: 'wss://ps.test/sync' })
+    jsonResponse({ token: ownerSyncToken, expiresAt: '2099-12-31T00:00:00Z', powerSyncUrl: 'wss://ps.test/sync' })
 
   /** Route `/encryption/canary` to `canary`; the token endpoint always succeeds. */
   const routeCanary = (canary: () => Response | Promise<Response>) =>
@@ -919,7 +941,7 @@ describe('ThunderboltConnector download encryption gate', () => {
 
     const credentials = await connector.fetchCredentials()
 
-    expect(credentials?.token).toBe('ps-token')
+    expect(credentials?.token).toBe(ownerSyncToken)
     expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
   })
 
@@ -929,7 +951,7 @@ describe('ThunderboltConnector download encryption gate', () => {
 
     const credentials = await connector.fetchCredentials()
 
-    expect(credentials?.token).toBe('ps-token')
+    expect(credentials?.token).toBe(ownerSyncToken)
     expect(canaryRequested()).toBe(true)
     expect(invalidReasons()).toEqual([])
   })
@@ -998,7 +1020,7 @@ describe('ThunderboltConnector download encryption gate', () => {
 
     const credentials = await connector.fetchCredentials()
 
-    expect(credentials?.token).toBe('ps-token')
+    expect(credentials?.token).toBe(ownerSyncToken)
     expect(canaryRequested()).toBe(false)
     expect(invalidReasons()).toEqual([])
   })
@@ -1032,12 +1054,22 @@ describe('isCreateOnlyWrite', () => {
 describe('ThunderboltConnector.uploadData', () => {
   let savedAuthMode: string | undefined
 
+  const uploadOperationSchema = z.strictObject({
+    op: z.enum(['PUT', 'PATCH', 'DELETE']),
+    type: z.string(),
+    id: z.string(),
+    data: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+    ifAbsent: z.boolean().optional(),
+    ifProviderConnectionUnset: z.strictObject({ provider: z.string() }).optional(),
+  })
+  const uploadPayloadSchema = z.strictObject({ operations: z.array(uploadOperationSchema) })
+
   const crudEntry = (
     op: string,
     id: string,
     table = 'settings',
     metadata?: string,
-    opData: Record<string, unknown> = { value: 'false' },
+    opData: z.infer<typeof uploadOperationSchema>['data'] = { value: 'false' },
   ) => ({
     op,
     table,
@@ -1046,10 +1078,14 @@ describe('ThunderboltConnector.uploadData', () => {
     metadata,
   })
 
-  const stubDatabase = (hasSynced: boolean, crud: ReturnType<typeof crudEntry>[]) =>
+  const stubDatabase = (
+    hasSynced: boolean,
+    crud: ReturnType<typeof crudEntry>[],
+    complete: () => Promise<void> = async () => {},
+  ) =>
     ({
       currentStatus: { hasSynced },
-      getNextCrudTransaction: async () => ({ crud, complete: async () => {} }),
+      getNextCrudTransaction: async () => ({ crud: structuredClone(crud), complete }),
     }) as unknown as CommonPowerSyncDatabase
 
   /**
@@ -1075,7 +1111,7 @@ describe('ThunderboltConnector.uploadData', () => {
       throw new Error('no upload request was made')
     }
     const [, init] = call as [string, RequestInit]
-    return (JSON.parse(init.body as string) as { operations: Record<string, unknown>[] }).operations
+    return uploadPayloadSchema.parse(JSON.parse(init.body as string)).operations
   }
 
   beforeEach(async () => {
@@ -1168,7 +1204,7 @@ describe('ThunderboltConnector.uploadData', () => {
   )
 
   it('retains migration create-only intent when a failed upload retries after the device has synced', async () => {
-    const attempts: { operations: Record<string, unknown>[] }[] = []
+    const attempts: z.infer<typeof uploadPayloadSchema>[] = []
     const complete = mock(async () => {})
     const source = [
       crudEntry('PUT', 'oauth:tinfoil', 'provider_connections', providerConnectionMigrationMetadata),
@@ -1176,15 +1212,12 @@ describe('ThunderboltConnector.uploadData', () => {
         provider_connection_id: 'oauth:tinfoil',
       }),
     ]
-    const database = {
-      currentStatus: { hasSynced: true },
-      getNextCrudTransaction: async () => ({ crud: structuredClone(source), complete }),
-    } as unknown as CommonPowerSyncDatabase
+    const database = stubDatabase(true, source, complete)
     const fetchSpy = mock(async (url: string, init?: RequestInit) => {
       if (url.includes('/encryption/canary')) {
         return Response.json({ error: 'Encryption not set up' }, { status: 404 })
       }
-      attempts.push(JSON.parse(init!.body as string))
+      attempts.push(uploadPayloadSchema.parse(JSON.parse(init!.body as string)))
       return Response.json({ success: attempts.length > 1 }, { status: attempts.length === 1 ? 503 : 200 })
     })
     const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
@@ -1208,5 +1241,129 @@ describe('ThunderboltConnector.uploadData', () => {
     await connector.uploadData(stubDatabase(false, [crudEntry('PATCH', 'currency')]))
 
     expect(uploadedOperations(fetchSpy)[0]).not.toHaveProperty('ifAbsent')
+  })
+})
+
+describe('ThunderboltConnector local data ownership (THU-963)', () => {
+  const tokenResponse = (sub: string) =>
+    Response.json({
+      token: syncTokenFor(sub),
+      powerSyncUrl: 'wss://ps.test/sync',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    })
+
+  /** Upload probe says "never enabled E2EE", so a permitted batch goes through as plaintext. */
+  const uploadFetch = () =>
+    mock(async (url: string) =>
+      url.includes('/encryption/canary')
+        ? Response.json({ error: 'Encryption not set up' }, { status: 404 })
+        : Response.json({ success: true }),
+    )
+
+  beforeEach(async () => {
+    localStorage.clear()
+    spyOn(platform, 'isOpfsAvailable').mockResolvedValue(false)
+    spyOn(platform, 'hasIndexedDbDatabase').mockResolvedValue(false)
+    spyOn(adapterCache, 'disposeAllAdapters').mockResolvedValue()
+    spyOn(encryption, 'handleFullWipe').mockResolvedValue()
+    spyOn(window, 'dispatchEvent').mockImplementation(() => true)
+    resetLocalDataOwnerForTests()
+    await openLocalData()
+    bindLocalData('user-a')
+    setAuthToken(authToken)
+    setCachedSession({ user: { id: 'user-a' } })
+    await clearAllKeys()
+    await storeAKWithoutPointer()
+    resetCodecState()
+  })
+
+  afterEach(async () => {
+    resetLocalDataOwnerForTests()
+    mock.restore()
+    clearAuthToken()
+    clearDeviceId()
+    await clearAllKeys()
+    resetCodecState()
+  })
+
+  it('accepts the owner’s credentials and queue on a reload, before the session provider mounts', async () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString()
+    setCachedSession({ user: { id: 'user-a' }, session: { token: authToken, expiresAt } })
+    const warn = spyOn(console, 'warn')
+    resetLocalDataOwnerForTests()
+    await openLocalData()
+
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(mock(async () => tokenResponse('user-a'))))
+    expect(await connector.fetchCredentials()).toMatchObject({ token: syncTokenFor('user-a') })
+    expect(warn).not.toHaveBeenCalled()
+    const { database, complete } = createQueuedUpload()
+    await new ThunderboltConnector(backendUrl, createFetchStub(uploadFetch())).uploadData(database)
+    expect(complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('syncs the local database only with credentials for its owner', async () => {
+    const forA = new ThunderboltConnector(backendUrl, createFetchStub(mock(async () => tokenResponse('user-a'))))
+    expect(await forA.fetchCredentials()).toMatchObject({ token: syncTokenFor('user-a') })
+
+    const forB = new ThunderboltConnector(backendUrl, createFetchStub(mock(async () => tokenResponse('user-b'))))
+    expect(await forB.fetchCredentials()).toBeNull()
+  })
+
+  it('logs a sync token that names no account, and does not sync with it', async () => {
+    const error = spyOn(console, 'error').mockImplementation(() => {})
+    spyOn(console, 'warn').mockImplementation(() => {})
+    for (const token of ['no-dots', 'header.%%%.signature', `header.${btoa('[1]')}.signature`]) {
+      const response = { token, powerSyncUrl: 'wss://ps.test/sync', expiresAt: new Date().toISOString() }
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(mock(async () => Response.json(response))))
+      expect(await connector.fetchCredentials()).toBeNull()
+    }
+    expect(error).toHaveBeenCalledTimes(3)
+    expect(String(error.mock.calls[0][0])).toContain('names no account')
+  })
+
+  it('never uploads A’s queue under a session another tab signed in', async () => {
+    // SSO-style: no token event reached this tab, so its local data status is still `ready`.
+    setCachedSession({ user: { id: 'user-b' } })
+    const fetchSpy = uploadFetch()
+    const { database, complete } = createQueuedUpload()
+    await expect(new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy)).uploadData(database)).rejects.toThrow(
+      'belongs to another account',
+    )
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('never uploads A’s queue once B signs in, and still uploads it for A later', async () => {
+    const reloads = spyOn(window.location, 'reload')
+    /** Sign `userId` in on the open slot, and boot again once that reloads the page. */
+    const switchTo = async (userId: string) => {
+      const reloaded = Promise.withResolvers<void>()
+      reloads.mockImplementation(() => reloaded.resolve())
+      expect(bindLocalData(userId)).toBe(false)
+      await reloaded.promise
+      resetLocalDataOwnerForTests()
+      return openLocalData()
+    }
+    const fetchSpy = uploadFetch()
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+    const { database, complete } = createQueuedUpload()
+    resetLocalDataOwnerForTests()
+    const filenameOfA = await openLocalData()
+
+    const reloaded = Promise.withResolvers<void>()
+    reloads.mockImplementation(() => reloaded.resolve())
+    expect(bindLocalData('user-b')).toBe(false)
+    await expect(connector.uploadData(database)).rejects.toThrow('belongs to another account')
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(complete).not.toHaveBeenCalled()
+    await reloaded.promise
+
+    // B boots into its own slot; A's queue waits untouched in A's slot until A signs in again.
+    resetLocalDataOwnerForTests()
+    expect(await openLocalData()).not.toBe(filenameOfA)
+    expect(await switchTo('user-a')).toBe(filenameOfA)
+    expect(bindLocalData('user-a')).toBe(true)
+    await connector.uploadData(database)
+    expect(complete).toHaveBeenCalledTimes(1)
   })
 })

@@ -12,9 +12,11 @@ import { nativeFetch } from '@/lib/native-fetch'
 import {
   createProviderAuthorization,
   createOAuthRequestSignal,
+  oauthRequestTimeoutMs,
   type OpenRouterAuthDependencies,
 } from '@/lib/openrouter-auth'
 import { generateCodeVerifier } from '@/lib/pkce'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 import { isTauri, isMobile } from '@/lib/platform'
 import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import { readChatGPTRegistration, retainChatGPTRegistration } from './chatgpt-registration'
@@ -59,10 +61,11 @@ export const validateChatGPTIdentity = async (
 /** Signs in using OpenAI's public OSS client registration, without borrowing another application's client ID. */
 export const connectChatGPT = async (
   db: AnyDrizzleDatabase,
-  signal: AbortSignal,
+  callerSignal: AbortSignal,
   platform?: Partial<OpenRouterAuthDependencies>,
   accountClientId?: string | null,
 ): Promise<ProviderCredentials> => {
+  const signal = AbortSignal.any([callerSignal, getIdentitySignal()])
   if (!platform && !canConnectChatGPT()) {
     throw new Error('ChatGPT sign-in requires the desktop app')
   }
@@ -113,7 +116,7 @@ export const connectChatGPT = async (
         fetch: nativeFetch,
         redirect: 'error',
         credentials: 'omit',
-        signal: createOAuthRequestSignal(),
+        signal: AbortSignal.timeout(oauthRequestTimeoutMs),
         body: new URLSearchParams({
           grant_type: 'authorization_code',
           client_id: clientId,

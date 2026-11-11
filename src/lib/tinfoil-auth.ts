@@ -7,6 +7,7 @@ import { z } from 'zod'
 import {
   createProviderAuthorization,
   createOAuthRequestSignal,
+  oauthRequestTimeoutMs,
   type OpenRouterAuthDependencies,
   type OpenRouterConnectionOptions,
 } from './openrouter-auth'
@@ -45,10 +46,11 @@ const tokenSchema = z.object({
 })
 export type TinfoilCredentials = {
   access_token: string
+  /** Stable local grant identity, retained across refresh-token rotation. */
+  authorizationId?: string
   refresh_token?: string
   expires_at: number
   reauth_required?: boolean
-  authorizationId?: string
 }
 
 /** Builds the same PKCE request for browser, desktop, and verified mobile app links. */
@@ -80,7 +82,10 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
     overrides,
   )
 
-  const grant = async (params: Record<string, string>, signal?: AbortSignal): Promise<TinfoilCredentials> => {
+  const grant = async (
+    params: Record<string, string>,
+    signal = createOAuthRequestSignal(),
+  ): Promise<TinfoilCredentials> => {
     try {
       const response = await http
         .post('https://api.tinfoil.sh/oauth/token', {
@@ -89,7 +94,7 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
           credentials: 'omit',
           redirect: 'error',
           fetch: overrides.fetch ?? nativeFetch,
-          signal: createOAuthRequestSignal(signal),
+          signal,
         })
         .json<unknown>()
       const tokens = tokenSchema.parse(response)
@@ -99,7 +104,6 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
         expires_at: Date.now() + tokens.expires_in * 1000,
       }
     } catch (error) {
-      signal?.throwIfAborted()
       if (error instanceof HttpError && error.response.status === 400) {
         const body: unknown = await error.response.json().catch(() => null)
         if (typeof body === 'object' && body !== null && 'error' in body && body.error === 'invalid_grant') {
@@ -115,13 +119,11 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
     signal?: AbortSignal,
   ): Promise<TinfoilCredentials> => {
     signal?.throwIfAborted()
-    // Once sent, finish the bounded exchange so the owner can revoke a cancelled grant.
-    const credentials = await grant({
-      grant_type: 'authorization_code',
-      code,
-      code_verifier: verifier,
-      redirect_uri: redirectUri,
-    })
+    // Once sent, finish this bounded exchange so cancellation cannot discard an issued grant.
+    const credentials = await grant(
+      { grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri },
+      AbortSignal.timeout(oauthRequestTimeoutMs),
+    )
     return { ...credentials, authorizationId: crypto.randomUUID() }
   }
 
@@ -132,6 +134,7 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
       try {
         const result = await authorization.startConnection({ signal })
         signal.throwIfAborted()
+        // Return issued credentials even if cancelled so the caller can revoke the unused grant.
         return await exchangeCode(result, signal)
       } catch (error) {
         signal.throwIfAborted()
@@ -153,7 +156,7 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
           credentials: 'omit',
           redirect: 'error',
           fetch: overrides.fetch ?? nativeFetch,
-          signal: createOAuthRequestSignal(),
+          signal: AbortSignal.timeout(oauthRequestTimeoutMs),
         })
       } catch {
         throw new TinfoilConnectionError()

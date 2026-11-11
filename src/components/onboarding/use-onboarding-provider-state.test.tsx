@@ -37,6 +37,7 @@ import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
 import { getClock } from '@/testing-library'
 import * as tinfoilSession from '@/lib/tinfoil-session'
 import * as browserAuth from '@/lib/provider-browser-auth'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 
 type Dependencies = NonNullable<Parameters<typeof useOnboardingProviderState>[1]>
 
@@ -413,24 +414,27 @@ describe('useOnboardingProviderState', () => {
     expect((await getAvailableModels(getDb()))[0].apiKey).toBe('openrouter-key')
   })
 
-  it('revokes a late Tinfoil grant after cancellation without saving it', async () => {
-    const granted = Promise.withResolvers<Awaited<ReturnType<typeof tinfoilAuth.startConnection>>>()
-    const deps = makeDependencies({ startTinfoil: () => granted.promise })
-    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
-    let connection!: Promise<void>
-    await act(async () => {
-      connection = result.current.connectTinfoil()
-    })
-    act(() => result.current.cancelConnection())
-    const credentials = { access_token: 'unused', refresh_token: 'unused-refresh', expires_at: Date.now() + 900_000 }
-    await act(async () => {
-      granted.resolve(credentials)
-      await connection
-    })
-    expect(deps.discardTinfoil).toHaveBeenCalledWith(credentials)
-    expect(deps.prepareModel).not.toHaveBeenCalled()
-    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
-  })
+  it.each(['cancellation', 'identity teardown'] as const)(
+    'revokes a late Tinfoil grant after %s without saving it',
+    async (reason) => {
+      const granted = Promise.withResolvers<Awaited<ReturnType<typeof tinfoilAuth.startConnection>>>()
+      const deps = makeDependencies({ startTinfoil: () => granted.promise })
+      const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+      let connection!: Promise<void>
+      await act(async () => {
+        connection = result.current.connectTinfoil()
+      })
+      act(() => (reason === 'cancellation' ? result.current.cancelConnection() : invalidateIdentityLifetime()))
+      const credentials = { access_token: 'unused', refresh_token: 'unused-refresh', expires_at: Date.now() + 900_000 }
+      await act(async () => {
+        granted.resolve(credentials)
+        await connection
+      })
+      expect(deps.discardTinfoil).toHaveBeenCalledWith(credentials)
+      expect(deps.prepareModel).not.toHaveBeenCalled()
+      expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+    },
+  )
 
   it.each(['headers', 'body'] as const)(
     'revokes a Tinfoil grant when cancellation arrives during token %s',
@@ -506,19 +510,24 @@ describe('useOnboardingProviderState', () => {
     },
   )
 
-  it('retains a failed Tinfoil setup for retry, then releases its unused grant when leaving', async () => {
-    const deps = makeDependencies({
-      prepareModel: async () => {
-        throw new Error('verification failed')
-      },
-    })
-    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
-    await act(async () => result.current.connectTinfoil())
-    expect(deps.discardTinfoil).not.toHaveBeenCalled()
-    act(() => result.current.showChoices())
-    expect(deps.discardTinfoil).toHaveBeenCalledWith(expect.objectContaining({ access_token: 'tinfoil-oauth-key' }))
-    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
-  })
+  it.each(['back', 'disconnect'] as const)(
+    'retains a failed Tinfoil setup for retry, then releases its unused grant through %s',
+    async (leave) => {
+      const deps = makeDependencies({
+        prepareModel: async () => {
+          throw new Error('verification failed')
+        },
+      })
+      const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+      await act(async () => result.current.connectTinfoil())
+      expect(deps.discardTinfoil).not.toHaveBeenCalled()
+      await act(async () =>
+        leave === 'back' ? result.current.showChoices() : result.current.disconnectProvider(async () => {}),
+      )
+      expect(deps.discardTinfoil).toHaveBeenCalledWith(expect.objectContaining({ access_token: 'tinfoil-oauth-key' }))
+      expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+    },
+  )
 
   it('replaces a saved Tinfoil grant only after revoking it, and preserves the old session on failure', async () => {
     const original = { access_token: 'previous', refresh_token: 'previous-refresh', expires_at: Date.now() + 900_000 }
@@ -537,6 +546,106 @@ describe('useOnboardingProviderState', () => {
     expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe('tinfoil-oauth-key')
     expect(await getAvailableModels(getDb())).toHaveLength(1)
   })
+
+  it('does not reuse a failed setup grant after its identity is retired', async () => {
+    const startTinfoil = mock<Dependencies['startTinfoil']>(makeDependencies().startTinfoil)
+    const deps = makeDependencies({
+      startTinfoil,
+      prepareModel: async () => {
+        throw new Error('verification failed')
+      },
+    })
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+    await act(async () => result.current.connectTinfoil())
+    act(() => invalidateIdentityLifetime())
+    expect(deps.discardTinfoil).toHaveBeenCalledTimes(1)
+    deps.prepareModel = makeDependencies().prepareModel
+    startTinfoil.mockResolvedValue({
+      access_token: 'new-identity-token',
+      refresh_token: 'new-identity-refresh',
+      expires_at: Date.now() + 900_000,
+    })
+    await act(async () => result.current.connectTinfoil())
+    expect(deps.startTinfoil).toHaveBeenCalledTimes(2)
+    expect(deps.discardTinfoil).toHaveBeenCalledTimes(1)
+    expect(deps.discardTinfoil).toHaveBeenCalledWith(expect.objectContaining({ access_token: 'tinfoil-oauth-key' }))
+    expect((await getAvailableModels(getDb()))[0].apiKey).toBe('new-identity-token')
+  })
+
+  it('releases a failed setup grant only once when identity teardown is followed by unmount', async () => {
+    const deps = makeDependencies({
+      prepareModel: async () => {
+        throw new Error('verification failed')
+      },
+    })
+    const { result, unmount } = renderHook(() => useOnboardingProviderState([], deps), {
+      wrapper: createTestProvider(),
+    })
+    await act(async () => result.current.connectTinfoil())
+    act(() => invalidateIdentityLifetime())
+    unmount()
+    expect(deps.discardTinfoil).toHaveBeenCalledTimes(1)
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+  })
+
+  it.each([
+    ['browser', false],
+    ['browser', true],
+    ['mobile', false],
+    ['mobile', true],
+  ] as const)(
+    'releases a failed callback grant before new %s authorization (cancelled while revoking: %s)',
+    async (platform, cancelled) => {
+      const credentials = {
+        access_token: 'unused-return',
+        refresh_token: 'unused-refresh',
+        expires_at: Date.now() + 900_000,
+      }
+      spyOn(browserAuth, 'getProviderBrowserReturn').mockReturnValue({
+        id: 'failed-return',
+        context: 'onboarding',
+        returnTo: '/chats/new',
+        callbackUrl: 'https://localhost/oauth/tinfoil',
+        attempt: await getProviderConnectionAttempt(getDb(), 'tinfoil'),
+        complete: async () => credentials,
+        cancel: () => {},
+      })
+      const revoked = Promise.withResolvers<void>()
+      const deps = makeDependencies({
+        browser: () => platform === 'browser',
+        needsManual: () => platform === 'mobile',
+        startBrowser: mock<Dependencies['startBrowser']>(async () => {}),
+        discardTinfoil: mock(() => revoked.promise),
+        prepareModel: async () => {
+          throw new Error('verification failed')
+        },
+      })
+      const redirect = platform === 'browser' ? deps.startBrowser : deps.startTinfoilMobile
+      const { result, unmount } = renderHook(() => useOnboardingProviderState([], deps), {
+        wrapper: createTestProvider(),
+      })
+      await act(async () => {})
+      expect(result.current.error).toBeTruthy()
+      expect(deps.discardTinfoil).not.toHaveBeenCalled()
+      let retry!: Promise<void>
+      await act(async () => {
+        retry = result.current.connectTinfoil()
+      })
+      expect(deps.discardTinfoil).toHaveBeenCalledWith(credentials)
+      expect(redirect).not.toHaveBeenCalled()
+      if (cancelled) {
+        act(() => result.current.cancelConnection())
+      }
+      await act(async () => {
+        revoked.resolve()
+        await retry
+      })
+      expect(redirect).toHaveBeenCalledTimes(cancelled ? 0 : 1)
+      unmount()
+      expect(deps.discardTinfoil).toHaveBeenCalledTimes(1)
+      expect(await getAvailableModels(getDb())).toEqual([])
+    },
+  )
 
   it('does not save a late default-model verification after cancellation', async () => {
     const preparation = Promise.withResolvers<Awaited<ReturnType<Dependencies['prepareModel']>>>()
@@ -870,7 +979,7 @@ describe('useOnboardingProviderState', () => {
     expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe('mobile-access')
   })
 
-  it.each(['back', 'unmount'] as const)(
+  it.each(['back', 'unmount', 'identity teardown'] as const)(
     'releases a late browser grant after leaving setup through %s in StrictMode',
     async (leave) => {
       const nonce = 'b'.repeat(43)
@@ -904,7 +1013,15 @@ describe('useOnboardingProviderState', () => {
       })
       await act(async () => {})
       expect(exchange).toHaveBeenCalledTimes(1)
-      act(() => (leave === 'back' ? result.current.showChoices() : unmount()))
+      act(() => {
+        if (leave === 'back') {
+          result.current.showChoices()
+        } else if (leave === 'unmount') {
+          unmount()
+        } else {
+          invalidateIdentityLifetime()
+        }
+      })
       const credentials = {
         access_token: 'unused-browser-token',
         refresh_token: 'unused-browser-refresh',

@@ -174,21 +174,55 @@ describe('provider connection sync', () => {
     expect(rows.find((row) => row.id === 'connected')?.providerConnectionId).toBe(connectionId)
   })
 
-  it('preserves existing metadata when an offline migration uses create-only upload', async () => {
-    await applyOperation(db, { op: 'PUT', type: 'provider_connections', id: connectionId, data: metadata }, 'owner')
-    await applyOperation(
-      db,
-      {
-        op: 'PUT',
-        type: 'provider_connections',
-        id: connectionId,
-        data: { ...metadata, name: 'Old name' },
-        ifAbsent: true,
-      },
-      'owner',
-    )
+  it.each([null, '2026-11-10T12:00:00.000Z'])(
+    'preserves remote edits and deletion (%s) when an offline migration retries',
+    async (deletedAt) => {
+      await applyOperation(
+        db,
+        {
+          op: 'PUT',
+          type: 'provider_connections',
+          id: connectionId,
+          data: { ...metadata, url: 'https://new.example/api/v1', enabled: 0, deleted_at: deletedAt },
+        },
+        'owner',
+      )
+      const before = await db.select().from(providerConnectionsTable)
+      for (const _attempt of [1, 2]) {
+        expect(
+          await applyOperation(
+            db,
+            {
+              op: 'PUT',
+              type: 'provider_connections',
+              id: connectionId,
+              data: { ...metadata, name: 'Old name', url: 'https://old.example/api/v1', enabled: 1, deleted_at: null },
+              ifAbsent: true,
+            },
+            'owner',
+          ),
+        ).toBe(true)
+      }
+      expect(await db.select().from(providerConnectionsTable)).toEqual(before)
+    },
+  )
+
+  it('creates a missing connection when an offline migration uses create-only upload', async () => {
+    expect(
+      await applyOperation(
+        db,
+        {
+          op: 'PUT',
+          type: 'provider_connections',
+          id: connectionId,
+          data: metadata,
+          ifAbsent: true,
+        },
+        'owner',
+      ),
+    ).toBe(true)
     const [saved] = await db.select().from(providerConnectionsTable)
-    expect(saved.name).toBe(metadata.name)
+    expect(saved).toMatchObject({ id: connectionId, name: metadata.name, userId: 'owner', deletedAt: null })
   })
 
   it('removes metadata on account deletion without touching another account', async () => {

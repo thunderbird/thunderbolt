@@ -14,6 +14,7 @@ import {
 } from '@/lib/openrouter-auth'
 import { tinfoilAuth, getTinfoilErrorMessage } from '@/lib/tinfoil-auth'
 import { tinfoilSession } from '@/lib/tinfoil-session'
+import { createIdentityController, getIdentitySignal } from '@/lib/identity-lifetime'
 import {
   startTinfoilMobileConnection,
   cancelTinfoilMobileConnection,
@@ -139,7 +140,11 @@ export const useOnboardingProviderState = (
     manual: null,
     code: '',
   })
-  const authorizedSession = useRef<{ key: string; authorization: ProviderAuthorization } | null>(null)
+  const authorizedSession = useRef<{
+    key: string
+    authorization: ProviderAuthorization
+    detachIdentity: () => void
+  } | null>(null)
   const pending = useRef<AbortController | null>(null)
   const returnedOwner = useRef<{ id: string; controller: AbortController } | null>(null)
   const isFormOpen = state.view === 'other'
@@ -170,7 +175,8 @@ export const useOnboardingProviderState = (
   const discardPendingAuthorization = () => {
     const previous = authorizedSession.current
     authorizedSession.current = null
-    void discardAuthorization(previous?.authorization)
+    previous?.detachIdentity()
+    return discardAuthorization(previous?.authorization)
   }
   const disposeAuthorization = useEffectEvent(() => {
     pending.current?.abort()
@@ -229,7 +235,20 @@ export const useOnboardingProviderState = (
     controller: AbortController,
     authorization: ProviderAuthorization,
   ) => {
-    authorizedSession.current = { key, authorization }
+    authorizedSession.current?.detachIdentity()
+    const identity = getIdentitySignal()
+    const retireIdentity = () => {
+      if (authorizedSession.current === session) {
+        discardPendingAuthorization()
+      }
+    }
+    const session = {
+      key,
+      authorization,
+      detachIdentity: () => identity.removeEventListener('abort', retireIdentity),
+    }
+    authorizedSession.current = session
+    identity.addEventListener('abort', retireIdentity, { once: true })
     addForm.onProviderChange(provider)
     addForm.form.setValue('apiKey', key, { shouldValidate: true })
     dispatch({ type: 'view', view: provider })
@@ -240,17 +259,22 @@ export const useOnboardingProviderState = (
   const connectProvider = async (provider: OnboardingProvider) => {
     dispatch({ type: 'select', selection: provider })
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     dispatch({ type: 'connecting' })
     try {
       const attempt = await getProviderConnectionAttempt(db, provider)
       controller.signal.throwIfAborted()
       if (dependencies.browser()) {
+        // A full-document redirect does not run React's unmount cleanup.
+        await discardPendingAuthorization()
+        controller.signal.throwIfAborted()
         await dependencies.startBrowser(provider, options.returnContext ?? 'onboarding', attempt, controller.signal)
         return
       }
       if (provider === 'tinfoil' && dependencies.needsManual()) {
+        await discardPendingAuthorization()
+        controller.signal.throwIfAborted()
         await dependencies.startTinfoilMobile(options.returnContext ?? 'onboarding', attempt, controller.signal)
         return
       }
@@ -350,7 +374,7 @@ export const useOnboardingProviderState = (
     }
     clearProviderBrowserReturn(returned.id)
     clearTinfoilMobileReturn(returned.id)
-    const controller = new AbortController()
+    const controller = createIdentityController()
     returnedOwner.current = { id: returned.id, controller }
     pending.current = controller
     void resumeAuthorization(controller)
@@ -362,7 +386,7 @@ export const useOnboardingProviderState = (
       return
     }
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     dispatch({ type: 'connecting' })
     try {
@@ -410,7 +434,7 @@ export const useOnboardingProviderState = (
       return
     }
     pending.current?.abort()
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     dispatch({ type: 'connecting' })
     await saveProvider(

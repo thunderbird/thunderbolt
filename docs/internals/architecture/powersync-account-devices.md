@@ -210,6 +210,14 @@ it invented locally: the bundled defaults and the seeded settings keys, all with
 ids that collide with whatever another device already stored. Those writes are guesses, and a
 guess must not beat a stored value.
 
+Legacy provider-connection migrations also use create-only uploads on devices that have
+synced before. An offline upgrade may not have downloaded this newly introduced table, so
+its deterministic connection IDs can collide with remote edits or tombstones. Migration
+inserts attach a local `_metadata` marker through PowerSync's `trackMetadata` support;
+the connector converts marked provider-connection `PUT`s to `ifAbsent: true`. The marker
+stays with the queued operation across retries and is never a synced column. Ordinary
+connection creation and deliberate `PATCH` edits keep their usual semantics.
+
 This is GH #1299: sync is off by default, so a second device seeds
 `user_has_completed_onboarding = false` at boot, and the moment the user enables sync that seed
 uploaded straight over the already-onboarded value on every other device.

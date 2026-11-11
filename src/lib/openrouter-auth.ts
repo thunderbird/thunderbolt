@@ -21,10 +21,11 @@ const openRouterConfig: ProviderAuthorizationConfig = {
   authorizationEndpoint: 'https://openrouter.ai/auth',
 }
 const connectionTimeoutMs = 5 * 60 * 1000
+export const oauthRequestTimeoutMs = 30_000
 
 /** Token deadlines must cover body parsing, since a partial response must not hold a credential lock forever. */
 export const createOAuthRequestSignal = (signal?: AbortSignal): AbortSignal => {
-  const deadline = AbortSignal.timeout(30_000)
+  const deadline = AbortSignal.timeout(oauthRequestTimeoutMs)
   return AbortSignal.any([getIdentitySignal(), deadline, ...(signal ? [signal] : [])])
 }
 

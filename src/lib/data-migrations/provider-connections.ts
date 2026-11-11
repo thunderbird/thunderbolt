@@ -50,7 +50,7 @@ export const migrateLegacyProviderCredential = async (
     .where(eq(providerConnectionsTable.id, input.id))
     .get()
   if (!existing) {
-    await saveProviderConnectionInTransaction(db, input)
+    await saveProviderConnectionInTransaction(db, input, { createOnly: true })
     return true
   }
   const local = await db

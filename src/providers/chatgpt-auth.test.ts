@@ -12,6 +12,8 @@ import { getProviderConnectionRevision } from './revision'
 import { listChatGPTAccounts, writeChatGPTRegistration } from './chatgpt-registration'
 import * as session from './oauth-session'
 import { http } from '@/lib/http'
+import * as nativeTransport from '@/lib/native-fetch'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 import { getDb } from '@/db/database'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { stubJsonResponse } from '@/test-utils/http'
@@ -577,6 +579,57 @@ test('revokes a newly issued grant when cancellation prevents validating its ide
   expect((post.mock.calls[1]?.[1]?.body as URLSearchParams).get('token')).toBe('refresh')
   expect(await getProviderCredentials(getDb(), 'oauth:openai')).toBeNull()
   expect(await readChatGPTRegistration(getDb())).toMatchObject({ clientId: 'issued-client' })
+})
+
+test.each(
+  (['headers', 'body'] as const).flatMap((phase) =>
+    (['cancel', 'identity'] as const).map((action) => ({ phase, action })),
+  ),
+)('finishes and revokes an interrupted ChatGPT grant: %j', async ({ phase, action }) => {
+  const requested = Promise.withResolvers<Request>()
+  const headers = Promise.withResolvers<Response>()
+  const body = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>()
+  const response = new Response(new ReadableStream<Uint8Array>({ start: (controller) => body.resolve(controller) }))
+  const issued = Promise.withResolvers<Awaited<ReturnType<typeof tokenResponse>>>()
+  const requests: Request[] = []
+  spyOn(nativeTransport, 'nativeFetch').mockImplementation(async (input) => {
+    const request = input as Request
+    requests.push(request)
+    if (request.url === metadata.token_endpoint) {
+      requested.resolve(request)
+      return headers.promise
+    }
+    return request.url === metadata.revocation_endpoint ? new Response(null, { status: 204 }) : Response.json(metadata)
+  })
+  const controller = new AbortController()
+  const connecting = connectChatGPT(
+    getDb(),
+    controller.signal,
+    loopbackPlatform(async (url, callback) => {
+      issued.resolve(await tokenResponse(url))
+      callback(callbackUrl(url, 'issued-client'))
+    }),
+  ).catch((error: unknown) => error)
+  const request = await requested.promise
+  if (phase === 'body') {
+    headers.resolve(response)
+  }
+  if (action === 'cancel') {
+    controller.abort()
+  } else {
+    invalidateIdentityLifetime()
+  }
+  const exchangeAborted = request.signal.aborted
+  headers.resolve(response)
+  const stream = await body.promise
+  stream.enqueue(new TextEncoder().encode(JSON.stringify(await issued.promise)))
+  stream.close()
+  expect(await connecting).toHaveProperty('name', 'AbortError')
+  expect(exchangeAborted).toBe(false)
+  const revocations = requests.filter((request) => request.url === metadata.revocation_endpoint)
+  expect(revocations).toHaveLength(1)
+  expect(new URLSearchParams(await revocations[0].text()).get('token')).toBe('refresh')
+  expect(await getProviderCredentials(getDb(), 'oauth:openai')).toBeNull()
 })
 
 test.each(['refresh matches', 'rotated after save'] as const)(

@@ -72,10 +72,10 @@ SSO and MCP desktop flows also isolate callbacks by listener origin and path. Th
 native listener rejects unrelated methods, paths and Host/Origin headers, keeps
 waiting for a valid callback, and checks cancellation while reading partial requests.
 Its completion page clears callback credentials from browser history. Web authorization
-returns to `/oauth/openrouter/:flowId` and relays through a nonce-scoped
-`BroadcastChannel`, because the app's COOP headers sever a cross-origin popup's
-opener. The PKCE verifier remains in memory, callback query parameters are cleared,
-and analytics strip the callback nonce from URL properties.
+navigates the same tab and returns to `/oauth/openrouter/:flowId`. Tab-scoped
+session storage retains the PKCE verifier, nonce, and initiating surface during
+the redirect. The callback consumes that handoff, clears query parameters, and
+resumes setup; analytics strip the callback nonce from URL properties.
 
 Tinfoil uses OAuth 2.1 PKCE with the public Thunderbolt client ID (override with
 `VITE_TINFOIL_CLIENT_ID`). Authorization and subscription checkout run at
@@ -98,11 +98,15 @@ current credentials inside it. Rotated tokens are saved before releasing the loc
 Reconnecting revokes the previous Tinfoil grant before saving its replacement.
 Failed revocation leaves the previous session available for retry. Cancellation
 after revocation marks it for reauthorization. Once token exchange has started,
-it completes within its deadline so cancellation can still revoke an issued
+it completes within its thirty-second deadline independently of caller or identity
+cancellation, so cleanup can still revoke an issued
 grant. Leaving setup discards unused grants on a best-effort basis. A stable local
 `authorizationId` survives refresh and toggles, preventing delayed cleanup from
 revoking a grant another window now owns. Cleanup failures emit a fixed warning
 without credentials; users can also revoke access from the provider dashboard.
+Revocation has its own thirty-second deadline and survives identity teardown;
+ordinary refresh remains identity-bound. Local grant ownership follows the
+device-approved OAuth binding even if synced connection metadata is changed or removed.
 
 Each inference request resolves current credentials, including requests within
 long agent turns. A rejected grant requires reconnecting and never falls back to
@@ -245,6 +249,9 @@ registration or register another account; account identities are never mixed eve
 when their email addresses match. Switching validates the selected identity and
 revokes the previous renewable session before replacing the active token set.
 Disconnect clears device tokens while retaining registration metadata.
+Started code exchanges and unused-grant revocation finish under independent
+thirty-second deadlines after cancellation or identity teardown. Ordinary discovery,
+identity verification, and refresh remain bound to the initiating identity.
 
 The active account's model catalog supplies display names. Requests use the public
 Responses API with streaming enabled and storage disabled, through native HTTP

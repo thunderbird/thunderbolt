@@ -4,7 +4,9 @@
 
 import { describe, expect, it } from 'bun:test'
 import { powersyncTableNames } from '@shared/powersync-tables'
-import { drizzleSchema } from './schema'
+import { AppSchema, drizzleSchema } from './schema'
+import { getTableColumns } from 'drizzle-orm'
+import { providerConnectionsTable } from '@/db/tables'
 
 /**
  * MCP server config and its credentials are per-device local-only: syncing the server
@@ -19,10 +21,20 @@ describe('MCP tables are local-only (not synced)', () => {
 
   it('are registered as local-only in the PowerSync schema', () => {
     // Local-only entries are { tableDefinition, options: { localOnly: true } };
-    // synced entries are bare Drizzle table objects without `options`.
+    // Other entries can also carry options, so check the localOnly flag explicitly.
     const localOnlyOption = (entry: unknown) => (entry as { options?: { localOnly?: boolean } }).options?.localOnly
 
     expect(localOnlyOption(drizzleSchema.mcp_servers)).toBe(true)
     expect(localOnlyOption(drizzleSchema.mcp_secrets)).toBe(true)
   })
+})
+
+it('tracks provider migration metadata without adding it to synced or exported row columns', () => {
+  const table = AppSchema.tables.find(({ name }) => name === 'provider_connections')!
+  expect(table.trackMetadata).toBe(true)
+  expect(table.columns.map(({ name }) => name)).not.toContain('_metadata')
+  expect(Object.values(getTableColumns(providerConnectionsTable)).map(({ name }) => name)).not.toContain('_metadata')
+  expect(AppSchema.tables.filter(({ trackMetadata }) => trackMetadata).map(({ name }) => name)).toEqual([
+    'provider_connections',
+  ])
 })

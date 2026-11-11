@@ -212,14 +212,14 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
           return { id, created: !previous }
         })
       const { id, created } =
-        providerInput?.provider === 'tinfoil' && providerAuthorization?.tinfoilCredentials
+        providerInput?.provider === 'tinfoil' && providerInput.authMethod === 'oauth'
           ? await withTinfoilSessionLock(async () => {
               const guarded = {
                 ...providerInput,
                 expectedRevision: await getProviderConnectionRevision(db, 'oauth:tinfoil'),
               }
               await prepareProviderConnectionSave(db, guarded)
-              await revokeReplacedTinfoilAuthorization(db, providerAuthorization.tinfoilCredentials!, signal)
+              await revokeReplacedTinfoilAuthorization(db, providerInput.credentials, signal)
               return save(guarded)
             })
           : await save()

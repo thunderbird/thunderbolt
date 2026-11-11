@@ -33,6 +33,7 @@ import { revokeChatGPTSession } from '@/providers/chatgpt-session'
 import { writeChatGPTRegistration } from '@/providers/chatgpt-registration'
 import { resolveOAuthAccessToken, withProviderOAuthLock } from '@/providers/oauth-session'
 import { getIdentitySignal } from '@/lib/identity-lifetime'
+import { providerConnectionMigrationMetadata } from '@/db/powersync/crud-metadata'
 import { revokeReplacedTinfoilAuthorization, tinfoilSession, withTinfoilSessionLock } from '@/lib/tinfoil-session'
 import { getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
 import { isCurrentOtariAuthorization, revokeStoredOtariAuthorization } from '@/providers/otari-session'
@@ -242,6 +243,7 @@ export const prepareProviderConnectionSave = async (db: AnyDrizzleDatabase, inpu
 export const saveProviderConnectionInTransaction = async (
   db: AnyDrizzleDatabase,
   input: SaveProviderConnection,
+  { createOnly = false }: { createOnly?: boolean } = {},
 ): Promise<string> => {
   const { id, url, existing } = await prepareProviderConnectionSave(db, input)
   if (input.provider === 'openai' && input.authMethod === 'oauth') {
@@ -266,6 +268,22 @@ export const saveProviderConnectionInTransaction = async (
   }
   if (existing) {
     await db.update(connections).set(values).where(eq(connections.id, id))
+  } else if (createOnly) {
+    const row = { id, ...values, createdAt: now }
+    const columns = getTableColumns(connections)
+    const keys = Object.keys(row) as (keyof typeof row)[]
+    // _metadata is a PowerSync write-only column, deliberately absent from the Drizzle row schema.
+    await db.run(sql`INSERT INTO ${connections} (
+      ${sql.join(
+        keys.map((key) => sql.identifier(columns[key].name)),
+        sql`, `,
+      )}, _metadata
+    ) VALUES (
+      ${sql.join(
+        keys.map((key) => sql`${row[key]}`),
+        sql`, `,
+      )}, ${providerConnectionMigrationMetadata}
+    )`)
   } else {
     await db.insert(connections).values({ id, ...values, createdAt: now })
   }
@@ -361,7 +379,7 @@ export const disconnectProviderConnection = async (db: AnyDrizzleDatabase, id: s
     await withProviderOAuthLock(id, () => revokeStoredOtariAuthorization(db, { disconnect: true }))
     return
   }
-  if (row?.provider === 'tinfoil' && row.authMethod === 'oauth') {
+  if (id === 'oauth:tinfoil') {
     await tinfoilSession.disconnect()
     return
   }

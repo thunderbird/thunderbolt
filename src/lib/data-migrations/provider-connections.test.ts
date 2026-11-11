@@ -28,6 +28,8 @@ import {
   updateProviderConnection,
 } from '@/dal/provider-connections'
 import { credentialBinding } from '@/providers/credentials'
+import * as credentials from '@/providers/credentials'
+import { providerConnectionMigrationMetadata } from '@/db/powersync/crud-metadata'
 import * as providerConnections from '@/dal/provider-connections'
 import { migrateProviderConnections } from './provider-connections'
 
@@ -566,5 +568,58 @@ it('keeps different local keys and selected-model intent when metadata moves bet
     await deviceA.close()
     await deviceB.close()
     await rm(directory, { recursive: true, force: true })
+  }
+})
+
+it('marks only migration inserts while preserving validated names, endpoints and local credentials', async () => {
+  const db = getDb()
+  const name = "Personal's work — 東京"
+  await legacyModel('marked', 'migrated-key')
+  await db.update(modelsTable).set({ name }).where(eq(modelsTable.id, 'marked'))
+  await db.insert(integrationsSecretsTable).values({
+    provider: 'tinfoil',
+    enabled: 1,
+    credentials: JSON.stringify({ access_token: 'oauth-key', expires_at: Date.now() + 900_000 }),
+  })
+  await migrateProviderConnections(db)
+  await migrateProviderConnections(db)
+  await saveProviderConnectionInTransaction(db, {
+    id: 'ordinary',
+    provider: 'openai',
+    name: 'Explicit connection',
+    authMethod: 'api_key',
+    credentials: { apiKey: 'user-key' },
+  })
+
+  // Bun's schema exposes the special write field for inspection; the browser smoke
+  // checks the actual PowerSync queue, where this metadata belongs to each operation.
+  const rows = await db
+    .select({ id: providerConnectionsTable.id, metadata: sql<string | null>`_metadata` })
+    .from(providerConnectionsTable)
+    .orderBy(providerConnectionsTable.id)
+  expect(rows).toEqual([
+    { id: 'legacy-model:marked', metadata: providerConnectionMigrationMetadata },
+    { id: 'oauth:tinfoil', metadata: providerConnectionMigrationMetadata },
+    { id: 'ordinary', metadata: null },
+  ])
+  expect(await getProviderConnections(db)).toContainEqual(
+    expect.objectContaining({ id: 'legacy-model:marked', name: `Otari — ${name}`, url }),
+  )
+  expect((await getProviderCredentials(db, 'legacy-model:marked'))?.apiKey).toBe('migrated-key')
+  expect((await getProviderCredentials(db, 'oauth:tinfoil'))?.access_token).toBe('oauth-key')
+  expect((await getProviderConnections(db)).every((row) => !('_metadata' in row))).toBe(true)
+})
+
+it('rolls back the marked insert and retains the legacy key if its local credential write fails', async () => {
+  await legacyModel('rollback', 'preserved-key')
+  const failed = spyOn(credentials, 'writeProviderCredentials').mockRejectedValueOnce(new Error('Storage failed'))
+  try {
+    await expect(migrateProviderConnections(getDb())).rejects.toThrow('Storage failed')
+    expect(await getDb().select().from(providerConnectionsTable)).toEqual([])
+    expect(await getDb().select().from(providerConnectionSecretsTable)).toEqual([])
+    expect(await getDb().select().from(modelsSecretsTable).get()).toMatchObject({ apiKey: 'preserved-key' })
+    expect(await getDb().select().from(modelsTable).get()).toMatchObject({ providerConnectionId: null, url })
+  } finally {
+    failed.mockRestore()
   }
 })

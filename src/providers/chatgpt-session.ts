@@ -5,7 +5,7 @@
 import { z } from 'zod'
 import { http } from '@/lib/http'
 import { nativeFetch } from '@/lib/native-fetch'
-import { createOAuthRequestSignal } from '@/lib/openrouter-auth'
+import { createOAuthRequestSignal, oauthRequestTimeoutMs } from '@/lib/openrouter-auth'
 import type { ProviderCredentials } from './types'
 
 export const chatGPTIssuer = 'https://auth.openai.com'
@@ -19,14 +19,14 @@ const metadataSchema = z.object({
 })
 
 /** Pins all credential-bearing requests to OpenAI's issuer even if discovery is misconfigured. */
-export const loadChatGPTMetadata = async (signal?: AbortSignal) => {
+const fetchChatGPTMetadata = async (signal: AbortSignal) => {
   const metadata = metadataSchema.parse(
     await http
       .get(`${chatGPTIssuer}/.well-known/openid-configuration`, {
         fetch: nativeFetch,
         redirect: 'error',
         credentials: 'omit',
-        signal: createOAuthRequestSignal(signal),
+        signal,
       })
       .json(),
   )
@@ -44,17 +44,22 @@ export const loadChatGPTMetadata = async (signal?: AbortSignal) => {
   return metadata
 }
 
+/** Ordinary discovery follows the initiating identity and caller, with a bounded body read. */
+export const loadChatGPTMetadata = (signal?: AbortSignal) => fetchChatGPTMetadata(createOAuthRequestSignal(signal))
+
 /** Revokes the renewable session before removing device tokens; failed revocation leaves a retryable connection. */
 export const revokeChatGPTSession = async (credentials: ProviderCredentials) => {
   if (!credentials.refresh_token || !credentials.oauth) {
     return
   }
-  const metadata = await loadChatGPTMetadata()
+  // Cleanup must finish even when the identity that issued this grant has already retired.
+  const signal = AbortSignal.timeout(oauthRequestTimeoutMs)
+  const metadata = await fetchChatGPTMetadata(signal)
   await http.post(metadata.revocation_endpoint, {
     fetch: nativeFetch,
     redirect: 'error',
     credentials: 'omit',
-    signal: createOAuthRequestSignal(),
+    signal,
     body: new URLSearchParams({
       token: credentials.refresh_token,
       token_type_hint: 'refresh_token',

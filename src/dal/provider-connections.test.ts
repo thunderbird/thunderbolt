@@ -5,6 +5,7 @@
 import { beforeEach, afterEach, afterAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as otariAuth from '@/lib/otari-auth'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
+import { getIntegrationCredentials, saveIntegrationCredentials } from './integrations'
 import { eq, sql } from 'drizzle-orm'
 import * as oauthSession from '@/providers/oauth-session'
 import * as chatGPTSession from '@/providers/chatgpt-session'
@@ -701,87 +702,6 @@ describe('ChatGPT account switching', () => {
   })
 })
 
-describe('Tinfoil connection replacement', () => {
-  const input = (token: string) => ({
-    provider: 'tinfoil' as const,
-    name: 'Tinfoil',
-    authMethod: 'oauth' as const,
-    credentials: { access_token: `access:${token}`, refresh_token: `refresh:${token}`, authorizationId: token },
-  })
-
-  it('revokes a replaced grant before saving the new credential', async () => {
-    await saveProviderConnection(getDb(), input('first'))
-    const revoke = spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
-      expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:first' })
-    })
-    await saveProviderConnection(getDb(), {
-      ...input('second'),
-      attempt: await getProviderConnectionAttempt(getDb(), 'tinfoil'),
-    })
-    expect(revoke).toHaveBeenCalledWith('refresh:first')
-    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:second' })
-  })
-
-  it('keeps the existing grant usable when revocation fails', async () => {
-    await saveProviderConnection(getDb(), input('first'))
-    spyOn(tinfoilAuth, 'revoke').mockRejectedValue(new Error('Provider unavailable'))
-    await expect(saveProviderConnection(getDb(), input('second'))).rejects.toThrow('Provider unavailable')
-    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:first' })
-  })
-
-  it('does not revoke the same grant after its token rotates', async () => {
-    await saveProviderConnection(getDb(), input('first'))
-    const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
-    await saveProviderConnection(getDb(), {
-      ...input('rotated'),
-      credentials: { ...input('rotated').credentials, authorizationId: 'first' },
-    })
-    expect(revoke).not.toHaveBeenCalled()
-    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:rotated' })
-  })
-
-  it.each(['invalid name', 'stale revision', 'aborted'] as const)(
-    'validates %s before revoking an active grant',
-    async (condition) => {
-      await saveProviderConnection(getDb(), input('first'))
-      const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
-      const invalid = {
-        ...input('second'),
-        ...(condition === 'invalid name' ? { name: ' ' } : {}),
-        ...(condition === 'stale revision' ? { expectedRevision: 'old' } : {}),
-        ...(condition === 'aborted' ? { signal: AbortSignal.abort() } : {}),
-      }
-      await expect(saveProviderConnection(getDb(), invalid)).rejects.toThrow()
-      expect(revoke).not.toHaveBeenCalled()
-      expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'access:first' })
-    },
-  )
-
-  it('retires a revoked grant when replacement is cancelled', async () => {
-    await saveProviderConnection(getDb(), input('first'))
-    const controller = new AbortController()
-    spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
-      controller.abort()
-    })
-    await expect(saveProviderConnection(getDb(), { ...input('second'), signal: controller.signal })).rejects.toThrow()
-    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
-    expect(await getProviderConnection(getDb(), 'oauth:tinfoil')).toMatchObject({ connected: false })
-  })
-
-  it('preserves concurrent connection edits after revoking the replaced grant', async () => {
-    await saveProviderConnection(getDb(), input('first'))
-    spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
-      await getDb()
-        .update(providerConnectionsTable)
-        .set({ name: 'Renamed', updatedAt: '2030-01-01T00:00:00Z' })
-        .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
-    })
-    await expect(saveProviderConnection(getDb(), input('second'))).rejects.toThrow('connection changed')
-    expect(await getProviderConnection(getDb(), 'oauth:tinfoil')).toMatchObject({ name: 'Renamed', connected: false })
-    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
-  })
-})
-
 it('does not project a connection credential into a model for a different provider', async () => {
   const id = await saveProviderConnection(getDb(), {
     provider: 'openai',
@@ -799,4 +719,247 @@ it('does not project a connection credential into a model for a different provid
   })
   expect(await getModel(getDb(), 'mismatched')).toMatchObject({ connectionReady: false, apiKey: null })
   expect((await getAvailableModels(getDb())).some(({ id }) => id === 'mismatched')).toBe(false)
+})
+
+describe('Tinfoil account replacement', () => {
+  const credentials = (name: string): ProviderCredentials => ({
+    access_token: `${name}-access`,
+    refresh_token: `${name}-refresh`,
+    authorizationId: name,
+    expires_at: Date.now() + 900_000,
+  })
+  const save = (name: string, extra: Partial<Parameters<typeof saveProviderConnection>[1]> = {}) =>
+    saveProviderConnection(getDb(), {
+      provider: 'tinfoil',
+      name: 'Tinfoil',
+      authMethod: 'oauth',
+      credentials: credentials(name),
+      ...extra,
+    })
+
+  it.each(['legacy', 'canonical'] as const)('revokes the previous %s grant before replacing it', async (kind) => {
+    if (kind === 'legacy') {
+      await saveIntegrationCredentials(getDb(), 'tinfoil', { ...credentials('old'), access_token: 'old-access' }, true)
+    } else {
+      await save('old')
+    }
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
+      expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toMatchObject({
+        credentials: { access_token: 'old-access' },
+      })
+    })
+    await save('new', { attempt })
+    expect(revoke).toHaveBeenCalledTimes(1)
+    expect(revoke).toHaveBeenCalledWith('old-refresh')
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({
+      access_token: 'new-access',
+      authorizationId: 'new',
+    })
+  })
+
+  it.each([
+    { metadata: 'tombstoned', action: 'replace' },
+    { metadata: 'tombstoned', action: 'disconnect' },
+    { metadata: 'tombstoned', action: 'remove' },
+    { metadata: 'missing', action: 'replace' },
+    { metadata: 'missing', action: 'disconnect' },
+    { metadata: 'missing', action: 'remove' },
+  ] as const)('revokes a locally retained grant with $metadata metadata on $action', async ({ metadata, action }) => {
+    await save('old')
+    if (metadata === 'missing') {
+      // Simulate the sync engine removing metadata while device-local credentials remain.
+      await getDb().delete(providerConnectionsTable).where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+    } else {
+      await getDb()
+        .update(providerConnectionsTable)
+        .set({ deletedAt: new Date().toISOString() })
+        .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+    }
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
+    if (action === 'replace') {
+      await save('new')
+    } else if (action === 'disconnect') {
+      await disconnectProviderConnection(getDb(), 'oauth:tinfoil')
+    } else {
+      await deleteProviderConnection(getDb(), 'oauth:tinfoil')
+    }
+    expect(revoke).toHaveBeenCalledWith('old-refresh')
+    const stored = await getDb()
+      .select()
+      .from(providerConnectionSecretsTable)
+      .where(eq(providerConnectionSecretsTable.id, 'oauth:tinfoil'))
+      .get()
+    expect(JSON.parse(stored!.credentials!).access_token).toBe(action === 'replace' ? 'new-access' : undefined)
+  })
+
+  it('uses the approved local binding when synced metadata no longer matches', async () => {
+    await save('old')
+    await getDb()
+      .update(providerConnectionsTable)
+      .set({ provider: 'custom', authMethod: 'api_key', url: 'https://other.example' })
+      .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
+    await disconnectProviderConnection(getDb(), 'oauth:tinfoil')
+    expect(revoke).toHaveBeenCalledWith('old-refresh')
+  })
+
+  it('preserves retryable credentials after failed revocation', async () => {
+    await save('old')
+    const previous = await getIntegrationCredentials(getDb(), 'tinfoil')
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockRejectedValue(new Error('offline'))
+    await expect(save('new')).rejects.toThrow('offline')
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual(previous)
+    revoke.mockResolvedValue()
+    await save('new')
+    expect((await getProviderCredentials(getDb(), 'oauth:tinfoil'))?.authorizationId).toBe('new')
+  })
+
+  it('retires a revoked grant even when replacement is cancelled', async () => {
+    await save('old')
+    const controller = new AbortController()
+    spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => controller.abort())
+    await expect(save('new', { signal: controller.signal })).rejects.toHaveProperty('name', 'AbortError')
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toBeNull()
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toMatchObject({
+      credentials: { access_token: 'old-access', reauth_required: true },
+    })
+  })
+
+  it('rejects stale attempts and invalid saves before revoking anything', async () => {
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    await save('old')
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
+    await expect(save('new', { attempt })).rejects.toThrow('changed')
+    await expect(save('new', { name: '  ' })).rejects.toThrow('name')
+    await expect(save('new', { expectedRevision: 'old' })).rejects.toThrow('changed')
+    await expect(save('new', { signal: AbortSignal.abort() })).rejects.toHaveProperty('name', 'AbortError')
+    expect(revoke).not.toHaveBeenCalled()
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'old-access' })
+  })
+
+  it('does not let a replacement overwrite concurrent metadata edits', async () => {
+    await save('old')
+    spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
+      await getDb()
+        .update(providerConnectionsTable)
+        .set({ name: 'Renamed' })
+        .where(eq(providerConnectionsTable.id, 'oauth:tinfoil'))
+    })
+    await expect(save('new')).rejects.toThrow('changed')
+    expect(await getProviderConnection(getDb(), 'oauth:tinfoil')).toMatchObject({ name: 'Renamed', connected: false })
+  })
+
+  it.each(['old', 'unrelated', undefined] as const)(
+    'marks only the revoked grant after a concurrent credential update (%s)',
+    async (authorizationId) => {
+      await save('old')
+      spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
+        await getDb()
+          .update(providerConnectionSecretsTable)
+          .set({
+            credentials: JSON.stringify({
+              access_token: 'rotated-access',
+              refresh_token: 'rotated-refresh',
+              authorizationId,
+              sessionRevision: 'concurrent',
+            }),
+          })
+          .where(eq(providerConnectionSecretsTable.id, 'oauth:tinfoil'))
+      })
+      await expect(save('new')).rejects.toThrow('changed')
+      const secret = await getDb()
+        .select()
+        .from(providerConnectionSecretsTable)
+        .where(eq(providerConnectionSecretsTable.id, 'oauth:tinfoil'))
+        .get()
+      expect(JSON.parse(secret!.credentials!)).toEqual({
+        access_token: 'rotated-access',
+        refresh_token: 'rotated-refresh',
+        authorizationId,
+        sessionRevision: 'concurrent',
+        ...(authorizationId === 'old' ? { reauth_required: true } : {}),
+      })
+    },
+  )
+
+  it('retires a changed legacy grant without accepting its stale replacement attempt', async () => {
+    await saveIntegrationCredentials(
+      getDb(),
+      'tinfoil',
+      {
+        access_token: 'old-access',
+        refresh_token: 'old-refresh',
+        authorizationId: 'old',
+        sessionRevision: 'original',
+      },
+      true,
+    )
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    spyOn(tinfoilAuth, 'revoke').mockImplementation(async () => {
+      await saveIntegrationCredentials(
+        getDb(),
+        'tinfoil',
+        {
+          access_token: 'rotated-access',
+          refresh_token: 'rotated-refresh',
+          authorizationId: 'old',
+          sessionRevision: 'concurrent',
+        },
+        false,
+      )
+    })
+    await expect(save('new', { attempt })).rejects.toThrow('changed')
+    expect(await getProviderConnection(getDb(), 'oauth:tinfoil')).toBeNull()
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual({
+      enabled: false,
+      credentials: {
+        access_token: 'rotated-access',
+        refresh_token: 'rotated-refresh',
+        authorizationId: 'old',
+        sessionRevision: 'concurrent',
+        reauth_required: true,
+      },
+    })
+  })
+
+  it('does not revoke the same grant after its tokens rotate', async () => {
+    await save('old')
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
+    await save('rotated', { credentials: { ...credentials('rotated'), authorizationId: 'old' } })
+    expect(revoke).not.toHaveBeenCalled()
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ access_token: 'rotated-access' })
+  })
+
+  it('recognizes an unchanged OAuth access token supplied through the API-key compatibility field', async () => {
+    await save('old')
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
+    await save('old', { credentials: { apiKey: 'old-access', expires_at: Date.now() + 900_000 } })
+    expect(revoke).not.toHaveBeenCalled()
+    expect(await getProviderCredentials(getDb(), 'oauth:tinfoil')).toMatchObject({ apiKey: 'old-access' })
+  })
+
+  it('keeps manual API keys independent and never revokes the current grant on a same-grant save', async () => {
+    await save('old')
+    const revoke = spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
+    const revision = await getProviderConnectionRevision(getDb(), 'oauth:tinfoil')
+    const id = await saveProviderConnection(getDb(), {
+      provider: 'tinfoil',
+      name: 'API key',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'manual' },
+    })
+    await saveProviderConnection(getDb(), {
+      id,
+      provider: 'tinfoil',
+      name: 'Edited API key',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'changed' },
+    })
+    expect(await getProviderConnectionRevision(getDb(), 'oauth:tinfoil')).toBe(revision)
+    expect((await getProviderCredentials(getDb(), id))?.apiKey).toBe('changed')
+    await save('old')
+    expect(revoke).not.toHaveBeenCalled()
+    expect((await getProviderCredentials(getDb(), 'oauth:tinfoil'))?.authorizationId).toBe('old')
+  })
 })

@@ -64,6 +64,10 @@ export const localOnlyTables = {
 export const drizzleSchema = {
   ...syncedTables,
   ...localOnlyTables,
+  provider_connections: {
+    tableDefinition: tables.providerConnectionsTable,
+    options: { trackMetadata: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
 }
 
 /**

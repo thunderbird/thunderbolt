@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useProviderVisibility } from '@/providers/use-provider-visibility'
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { useCreateItem } from '@/components/create-item/context'
 import { ModelSelector } from '@/components/ui/model-selector'
@@ -17,9 +16,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
  * Standalone usage opens a popover on desktop and a bottom drawer on mobile.
  */
 export const ChatModelPicker = ({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void }) => {
-  const { isProviderVisible } = useProviderVisibility()
-  const allModels = useChatStore((state) => state.models)
-  const models = allModels.filter((model) => isProviderVisible(model.provider))
+  const models = useChatStore((state) => state.models)
   const setSelectedModel = useChatStore((state) => state.setSelectedModel)
   const { openCreateItem } = useCreateItem()
   const { isMobile } = useIsMobile()
@@ -39,7 +36,7 @@ export const ChatModelPicker = ({ embedded = false, onClose }: { embedded?: bool
       onClose={onClose}
       variant="composer"
       models={models}
-      selectedModel={selectedModel && isProviderVisible(selectedModel.provider) ? selectedModel : null}
+      selectedModel={selectedModel ?? null}
       chatThread={chatThread ?? null}
       onModelChange={handleModelChange}
       onAddModels={() => openCreateItem({ kind: 'model' })}

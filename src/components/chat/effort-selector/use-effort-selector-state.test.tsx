@@ -418,21 +418,11 @@ describe('effort selector state', () => {
     await modelsDal.createModel(getDb(), { ...other, reasoningEffort: 'max' })
     renderWithReactivity(<Probe />, { tables: ['settings', 'models'] })
     await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
-    const getModelQuery = modelsDal.getModelQuery
-    const saved = [
-      {
-        ...(await modelsDal.getModel(getDb(), other.id))!,
-        oauthProvider: null,
-        providerDefault: null,
-        hasLocalCredentialRecord: true,
-        providerConnectionId: null,
-        connectionName: null,
-        connectionReady: true,
-      },
-    ]
+    const getModelReasoningEffortQuery = modelsDal.getModelReasoningEffortQuery
+    const saved = await getModelReasoningEffortQuery(getDb(), other.id)
     const loaded = Promise.withResolvers<typeof saved>()
-    const read = spyOn(modelsDal, 'getModelQuery').mockImplementation((db, id) => {
-      const query = getModelQuery(db, id)
+    const read = spyOn(modelsDal, 'getModelReasoningEffortQuery').mockImplementation((db, id) => {
+      const query = getModelReasoningEffortQuery(db, id)
       if (id === other.id) {
         spyOn(query, 'execute').mockImplementation(() => loaded.promise)
       }
@@ -605,6 +595,11 @@ describe('effort selector state', () => {
     })
     await waitForElement(() => screen.queryByText('low', { selector: 'output' }))
     expect(await getChatReasoningEffort('effort-chat', model)).toBe('low')
+    await act(async () => {
+      await modelsDal.updateModel(getDb(), model.id, { deletedAt: new Date().toISOString() })
+      triggerChange(['models'])
+    })
+    await waitForElement(() => screen.queryByText('max', { selector: 'output' }))
   })
 
   it('preselects the profile effort and follows synced changes until the user chooses a model preference', async () => {

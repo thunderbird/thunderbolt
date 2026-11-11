@@ -117,6 +117,13 @@ export const getModelQuery = (db: AnyDrizzleDatabase, id: string) => {
   return query as typeof query & DrizzleQueryWithPromise<Model>
 }
 
+/** Read the live reasoning preference without resolving provider credentials or model availability. */
+export const getModelReasoningEffortQuery = (db: AnyDrizzleDatabase, id: string) =>
+  db
+    .select({ reasoningEffort: modelsTable.reasoningEffort })
+    .from(modelsTable)
+    .where(and(eq(modelsTable.id, id), isNull(modelsTable.deletedAt)))
+
 /**
  * Returns a Drizzle query for the currently selected model, falling back to system model.
  * Use with PowerSync's toCompilableQuery, or await the result to execute.

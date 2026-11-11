@@ -29,6 +29,7 @@ import { builtInAgent } from '@/defaults/agents'
 import { defaultSkillWeather } from '@/defaults/skills'
 import * as skillHooks from '@/skills/use-skills'
 import * as adapterCache from '@/acp/adapter-cache'
+import * as attachmentStorage from '@/lib/file-blob-storage'
 import * as chatMessagesLoader from './chat-messages-loader'
 import type { Agent } from '@/types/acp'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
@@ -38,16 +39,23 @@ import '@/components/context-usage/compaction-summary-content'
 
 // The real blob store uses IndexedDB, which isn't available in the test env.
 // Back it with an in-memory Map so the attach path (put → chip render) works.
-const attachmentStore = new Map<string, unknown>()
-mock.module('@/lib/file-blob-storage', () => ({
-  putAttachment: async (file: { id: string }) => {
-    attachmentStore.set(file.id, file)
-  },
-  getAttachment: async (id: string) => attachmentStore.get(id) ?? null,
-  deleteAttachment: async (id: string) => {
-    attachmentStore.delete(id)
-  },
-}))
+// Spies rather than a module mock, so other test files still get the real store.
+const attachmentStore = new Map<string, attachmentStorage.StoredFile>()
+const attachmentSpies: { mockRestore: () => void }[] = []
+beforeEach(() => {
+  attachmentSpies.push(
+    spyOn(attachmentStorage, 'putAttachment').mockImplementation(async (file) => {
+      attachmentStore.set(file.id, file)
+    }),
+    spyOn(attachmentStorage, 'getAttachment').mockImplementation(async (id) => attachmentStore.get(id) ?? null),
+    spyOn(attachmentStorage, 'deleteAttachment').mockImplementation(async (id) => {
+      attachmentStore.delete(id)
+    }),
+  )
+})
+afterEach(() => {
+  attachmentSpies.splice(0).forEach((spy) => spy.mockRestore())
+})
 
 const createMockUseContextTracking =
   (

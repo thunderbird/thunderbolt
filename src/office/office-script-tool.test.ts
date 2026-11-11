@@ -60,8 +60,8 @@ saveFile('deck.pptx', await pres.write({ outputType: 'uint8array' }))
 
 // Stands in for the IndexedDB attachment store, whose Blob values don't survive fake-indexeddb under happy-dom.
 const attachmentStore = new Map<string, StoredFile>()
-const storeFile = async (file: StoredFile) => {
-  attachmentStore.set(file.id, file)
+const storeFiles = async (files: StoredFile[]) => {
+  files.forEach((file) => attachmentStore.set(file.id, file))
 }
 
 const stored = (id: string): StoredFile => {
@@ -75,7 +75,7 @@ describe.each([
   ['without Symbol.dispose', withoutSymbolDispose],
 ] as const)('run_office_script %s', (_, runner) => {
   const run = (script: string, limits: Partial<SandboxLimits> = {}) =>
-    createOfficeScriptTool((source) => runner(source, { ...sandboxLimits, ...limits }), storeFile).execute({
+    createOfficeScriptTool((source) => runner(source, { ...sandboxLimits, ...limits }), storeFiles).execute({
       script,
     }) as Promise<OfficeScriptOutput>
 
@@ -127,6 +127,17 @@ describe.each([
     }
   })
 
+  it('stores, lists and shows each file under a name every filesystem accepts', async () => {
+    const names = ['invoice\u{202E}xcod.docx', 'a:b.docx', 'CON.docx']
+    const { files } = await runOk(
+      names.map((name) => `saveFile(${JSON.stringify(name)}, new Uint8Array([1]))`).join('\n'),
+    )
+
+    const saved = ['invoice xcod.docx', 'a b.docx', '_CON.docx']
+    expect(files.map(({ filename }) => filename)).toEqual(saved)
+    expect(files.map(({ id }) => stored(id).filename)).toEqual(saved)
+  })
+
   it('gives the script no network, no DOM and no app state', async () => {
     const { logs } = await runOk(`
       const names = ['fetch', 'XMLHttpRequest', 'WebSocket', 'document', 'window', 'navigator', 'indexedDB', 'localStorage', 'importScripts', 'postMessage']
@@ -166,7 +177,7 @@ describe.each([
     // File names live outside the VM too.
     expect(
       await errorOf(
-        'for (let i = 0; i < 80; i++) saveFile("x".repeat(1024 * 1024) + i + ".docx", new Uint8Array([1]))',
+        'for (let i = 0; i < 17; i++) saveFile("x".repeat(4 * 1024 * 1024) + i + ".docx", new Uint8Array([1]))',
       ),
     ).toContain('saved more than 64 MiB of files')
   })
@@ -203,9 +214,24 @@ describe.each([
     expect(await errorOf('saveFile("a.docx", new Uint8Array([1])); saveFile("a.docx", new Uint8Array([2]))')).toContain(
       '"a.docx" was saved twice',
     )
-    expect(await errorOf('saveFile("x".repeat(300) + ".docx", new Uint8Array([1]))')).toContain('is too long')
-    expect(await errorOf('for (let i = 0; i < 21; i++) saveFile(i + ".docx", new Uint8Array([1]))')).toContain(
-      'at most 20',
+    expect(await errorOf('saveFile("a:b.docx", new Uint8Array([1])); saveFile("a?b.docx", new Uint8Array([2]))')).toBe(
+      '"a:b.docx" and "a?b.docx" both save as "a b.docx". Give each file its own name.',
     )
+    expect(await errorOf('saveFile("x".repeat(300) + ".docx", new Uint8Array([1]))')).toContain('is too long')
+    expect(await errorOf('for (let i = 0; i < 21; i++) saveFile(i + ".docx", new Uint8Array([1]))')).toBe(
+      'The script saved more than 20 files and was stopped. One run can save at most 20.',
+    )
+  })
+
+  it('stops an endless loop of empty saves at the file limit, not at the time limit', async () => {
+    expect(await errorOf("for (;;) saveFile('', new Uint8Array(0))")).toContain('saved more than 20 files')
+  })
+
+  it('keeps the file limit when a name converts to a string by saving more files', async () => {
+    const name =
+      '{ toString() { for (let i = 0; i < 20; i++) saveFile(i + ".docx", new Uint8Array([1])); return "outer.docx" } }'
+    for (const save of ['saveFile', '__saveFile']) {
+      expect(await errorOf(`${save}(${name}, new Uint8Array([1]))`)).toContain('saved more than 20 files')
+    }
   })
 })

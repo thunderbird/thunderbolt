@@ -13,6 +13,7 @@ export const sandboxLimits = {
   timeoutMs: 30_000,
   memoryBytes: 64 * 1024 * 1024,
   textOutputBytes: 4 * 1024 * 1024,
+  maxFiles: 20,
 }
 
 export type SandboxLimits = typeof sandboxLimits

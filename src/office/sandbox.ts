@@ -110,7 +110,12 @@ export const runSandboxedScript = async (
     })
     // The copies live outside the VM, so its memory limit does not see them; they count against it here.
     define('__saveFile', (filename, bytes) => {
+      // Converted before the count: on anything but a string, `toString()` runs guest code that can save files too.
       const name = filename.toString()
+      if (files.length >= limits.maxFiles) {
+        stopped ??= `The script saved more than ${limits.maxFiles} files and was stopped. One run can save at most ${limits.maxFiles}.`
+        return
+      }
       const copy = new Uint8Array(bytes.toArrayBuffer())
       savedBytes += name.length + copy.byteLength
       if (savedBytes > limits.memoryBytes) {

@@ -3,12 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { docxMime, pptxMime } from '@/files/transformers'
-import { putAttachment, type StoredFile } from '@/lib/file-blob-storage'
+import { putAttachments, type StoredFile } from '@/lib/file-blob-storage'
+import { safeFileName } from '@/lib/safe-file-name'
 import { parseToolOutput } from '@/lib/tool-output'
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
-import { officeScriptToolName } from './constants'
+import { officeScriptToolName, sandboxLimits } from './constants'
 import { runInSandboxWorker } from './run-in-worker'
 import type { SandboxResult, SavedFile } from './sandbox'
 
@@ -35,17 +36,19 @@ export const officeScriptFiles = (part: OfficeScriptPart): CreatedFile[] | undef
   parseToolOutput(createdFilesSchema, part)?.files
 
 const fileTypes = [
-  { extension: '.docx', mimeType: docxMime },
-  { extension: '.pptx', mimeType: pptxMime },
+  { extension: 'docx', mimeType: docxMime },
+  { extension: 'pptx', mimeType: pptxMime },
 ]
 
-// Each file becomes a chip and a line in the result, so a run that saves thousands would flood both.
-const maxFilesPerRun = 20
+// Checked before `safeFileName`, whose trimming backtracks on a long run of dots.
 const maxFilenameLength = 200
 
 type DeliverableFile = SavedFile & { mimeType: string }
 
-/** Pair each saved file with its type, or say (to the model) why the files cannot be delivered. */
+/**
+ * Sanitize each saved file's name and pair it with its type, or say (to the model) why the files cannot be
+ * delivered. The sanitized name is the one stored, listed and shown.
+ */
 const toDeliverableFiles = (
   files: SavedFile[],
 ): { ok: true; files: DeliverableFile[] } | { ok: false; error: string } => {
@@ -55,10 +58,7 @@ const toDeliverableFiles = (
       error: 'The script finished without saving a file. Call saveFile(filename, bytes) for each file.',
     }
   }
-  if (files.length > maxFilesPerRun) {
-    return { ok: false, error: `The script saved ${files.length} files. One run can save at most ${maxFilesPerRun}.` }
-  }
-  const seen = new Set<string>()
+  const seen = new Map<string, string>()
   const deliverable: DeliverableFile[] = []
   for (const file of files) {
     if (file.filename.length > maxFilenameLength) {
@@ -67,18 +67,27 @@ const toDeliverableFiles = (
         error: `A file name starting "${file.filename.slice(0, 40)}" is too long. Keep names under ${maxFilenameLength} characters.`,
       }
     }
-    const type = fileTypes.find(({ extension }) => file.filename.toLowerCase().endsWith(extension))
-    if (!type || file.filename.length <= type.extension.length || /[/\\]/.test(file.filename)) {
+    const { stem, extension } = safeFileName(file.filename)
+    const type = fileTypes.find((candidate) => candidate.extension === extension)
+    if (!type || /[/\\]/.test(file.filename)) {
       return {
         ok: false,
         error: `"${file.filename}" is not a valid file name. Use a name without folders that ends in .docx or .pptx.`,
       }
     }
-    if (seen.has(file.filename)) {
-      return { ok: false, error: `"${file.filename}" was saved twice. Give each file its own name.` }
+    const filename = `${stem}.${extension}`
+    const earlier = seen.get(filename)
+    if (earlier !== undefined) {
+      return {
+        ok: false,
+        error:
+          earlier === file.filename
+            ? `"${filename}" was saved twice. Give each file its own name.`
+            : `"${earlier}" and "${file.filename}" both save as "${filename}". Give each file its own name.`,
+      }
     }
-    seen.add(file.filename)
-    deliverable.push({ ...file, mimeType: type.mimeType })
+    seen.set(filename, file.filename)
+    deliverable.push({ ...file, filename, mimeType: type.mimeType })
   }
   return { ok: true, files: deliverable }
 }
@@ -99,7 +108,7 @@ export type OfficeScriptInput = z.infer<typeof officeScriptParameters>
  */
 export const createOfficeScriptTool = (
   runScript: (script: string, signal?: AbortSignal) => Promise<SandboxResult> = runInSandboxWorker,
-  storeFile: (file: StoredFile) => Promise<void> = putAttachment,
+  storeFiles: (files: StoredFile[]) => Promise<void> = putAttachments,
 ): ToolConfig => ({
   name: officeScriptToolName,
   description: [
@@ -108,7 +117,7 @@ export const createOfficeScriptTool = (
     'Pass each finished file to `saveFile(filename, bytes)`. The name must end in .docx or .pptx. Get the bytes from `await docx.Packer.toArrayBuffer(doc)` or `await pres.write({ outputType: "uint8array" })`; `Packer.toBuffer`, `Packer.toBlob` and `pres.writeFile` do not work here.',
     'The sandbox has no network, no DOM, no fetch, no imports and no access to the chat or its attachments, so write all the content into the script.',
     'Each saved file appears in the chat for the user to download, so do not paste its contents into your reply.',
-    'Limits per run: 30 seconds, 64 MiB of memory and 4 MiB of console output. If the result is { ok: false }, read the error, fix the script and call the tool again.',
+    `Limits per run: ${sandboxLimits.timeoutMs / 1000} seconds, ${sandboxLimits.memoryBytes / 1024 / 1024} MiB of memory, ${sandboxLimits.textOutputBytes / 1024 / 1024} MiB of console output and ${sandboxLimits.maxFiles} files. If the result is { ok: false }, read the error, fix the script and call the tool again.`,
   ].join(' '),
   verb: 'Creating file',
   parameters: officeScriptParameters,
@@ -124,14 +133,16 @@ export const createOfficeScriptTool = (
     if (!deliverable.ok) {
       return { ok: false, error: deliverable.error, logs: result.logs }
     }
-    const files = await Promise.all(
-      deliverable.files.map(async ({ filename, mimeType, bytes }) => {
-        const id = crypto.randomUUID()
-        const blob = new Blob([bytes], { type: mimeType })
-        await storeFile({ id, filename, mimeType, size: bytes.byteLength, createdAt: Date.now(), blob })
-        return { id, filename, mimeType }
-      }),
-    )
+    const records = deliverable.files.map(({ filename, mimeType, bytes }) => ({
+      id: crypto.randomUUID(),
+      filename,
+      mimeType,
+      size: bytes.byteLength,
+      createdAt: Date.now(),
+      blob: new Blob([bytes], { type: mimeType }),
+    }))
+    await storeFiles(records)
+    const files = records.map(({ id, filename, mimeType }) => ({ id, filename, mimeType }))
     return { ok: true, files, logs: result.logs }
   },
 })

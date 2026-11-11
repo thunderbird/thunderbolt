@@ -98,8 +98,7 @@ fn save_into(
         let filled = mark(&path)
             .map_err(|error| {
                 format!(
-                    "Could not mark {candidate} as downloaded from the internet, so it was not saved ({error}). \
-                     Downloads must be writable and on a drive that keeps that mark, such as an NTFS drive on Windows."
+                    "Could not mark {candidate} as downloaded from the internet, so it was not saved ({error}).{MARK_HINT}"
                 )
             })
             .and_then(|()| {
@@ -160,6 +159,12 @@ fn mark_from_internet(path: &Path) -> std::io::Result<()> {
     std::fs::write(zone_identifier_stream(path), ZONE_IDENTIFIER)
 }
 
+/// What to check when the mark fails, added to the error the app shows. Creating
+/// the file does not prove the mark can be written: permissions and the drive
+/// decide that separately.
+#[cfg(windows)]
+const MARK_HINT: &str = " Check the file permissions in Downloads, and that it is on a drive that keeps the mark, such as a local NTFS drive. FAT32 and exFAT drives cannot.";
+
 /// `com.apple.quarantine` as browsers write it: `flags;hex unix time;agent;event id`.
 /// 0001 is `QTN_FLAG_DOWNLOAD` in WebKit's `Source/WebCore/PAL/pal/spi/mac/QuarantineSPI.h`.
 /// The event id stays empty: it only points into a Launch Services history we do not write.
@@ -168,11 +173,12 @@ fn quarantine_value(unix_seconds: u64) -> String {
     format!("0001;{unix_seconds:08x};Thunderbolt;")
 }
 
+/// A clock set before 1970 writes time 0 rather than refusing the save.
 #[cfg(target_os = "macos")]
 fn mark_from_internet(path: &Path) -> std::io::Result<()> {
     let now = std::time::SystemTime::UNIX_EPOCH
         .elapsed()
-        .map_err(std::io::Error::other)?;
+        .unwrap_or_default();
     xattr::set(
         path,
         "com.apple.quarantine",
@@ -180,11 +186,18 @@ fn mark_from_internet(path: &Path) -> std::io::Result<()> {
     )
 }
 
+#[cfg(target_os = "macos")]
+const MARK_HINT: &str = " Check the file permissions in Downloads, and that its location accepts macOS quarantine attributes.";
+
 /// Linux has no mark-of-the-web that file managers or office suites read, so nothing is written.
 #[cfg(all(desktop, not(any(windows, target_os = "macos"))))]
 fn mark_from_internet(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
+
+/// Nothing to check: Linux writes no mark, so it cannot fail.
+#[cfg(all(desktop, not(any(windows, target_os = "macos"))))]
+const MARK_HINT: &str = "";
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     // A command the Rust handler matches never reaches Kotlin, so
@@ -280,13 +293,12 @@ mod tests {
         })
         .unwrap_err();
 
-        assert!(
-            error.starts_with(
-                "Could not mark report.docx as downloaded from the internet, so it was not saved (no marks here)."
-            ),
-            "{error}"
+        assert_eq!(
+            error,
+            format!(
+                "Could not mark report.docx as downloaded from the internet, so it was not saved (no marks here).{MARK_HINT}"
+            )
         );
-        assert!(error.contains("on a drive that keeps that mark"), "{error}");
         assert!(names_in(&folder).is_empty());
         std::fs::remove_dir_all(&folder).unwrap();
     }
@@ -381,5 +393,7 @@ mod tests {
         );
         assert_eq!(&fields[2..], ["Thunderbolt", ""]);
         assert_eq!(quarantine_value(0x6553_f100), "0001;6553f100;Thunderbolt;");
+        // What a clock set before 1970 writes.
+        assert_eq!(quarantine_value(0), "0001;00000000;Thunderbolt;");
     }
 }

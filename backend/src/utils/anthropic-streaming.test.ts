@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import Anthropic from '@anthropic-ai/sdk'
-import type { RawMessageStreamEvent } from '@anthropic-ai/sdk/resources/messages'
+import type { InferenceTokenCounts } from '@/inference/usage-ledger'
 import { describe, expect, it, mock } from 'bun:test'
 import { createAnthropicSSEStream } from './anthropic-streaming'
 
@@ -19,105 +18,49 @@ const eventStream = (events: unknown[], error?: Error) =>
   }) as never
 
 describe('createAnthropicSSEStream', () => {
-  it.each(['start', 'delta', 'buffered', 'throw', 'usage-error', 'during-accounting'] as const)(
-    'records last observed usage once when canceled: %s',
-    async (exit) => {
-      const accounted = Promise.withResolvers<void>()
-      const finishAccounting = Promise.withResolvers<void>()
-      const usageError = new Error('ledger unavailable')
-      const fetchFn: typeof fetch = Object.assign(
-        async (_input: RequestInfo | URL, init?: RequestInit) => {
-          return new Response(
-            new ReadableStream<Uint8Array>({
-              start(controller) {
-                controller.enqueue(
-                  new TextEncoder().encode(
-                    'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n' +
-                      (exit === 'start'
-                        ? ''
-                        : 'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":4}}\n\n'),
-                  ),
-                )
-                if (exit === 'during-accounting') {
-                  controller.close()
-                  return
-                }
-                init?.signal?.addEventListener(
-                  'abort',
-                  () => controller.error(new DOMException('Aborted', 'AbortError')),
-                  { once: true },
-                )
-              },
-            }),
-            { headers: { 'Content-Type': 'text/event-stream' } },
-          )
-        },
-        { preconnect: () => undefined },
-      )
-      const client = new Anthropic({ apiKey: 'test-key', fetch: fetchFn })
-      const upstream = await client.messages.create({
-        model: 'claude-opus-5',
-        max_tokens: 100,
-        messages: [],
-        stream: true,
-      })
-      const source = {
-        controller: upstream.controller,
-        [Symbol.asyncIterator]: async function* () {
-          yield* upstream
-          if (exit === 'buffered') {
-            const buffered: RawMessageStreamEvent = { type: 'message_stop' }
-            yield buffered
+  it.each([
+    ['the provider finishes', undefined],
+    ['the provider stream fails', new Error('connection reset')],
+  ] as const)('keeps reading after the client cancels, until %s, and never aborts the request', async (_, failure) => {
+    const cancelled = Promise.withResolvers<void>()
+    const ended = Promise.withResolvers<void>()
+    const controller = new AbortController()
+    const source = {
+      controller,
+      [Symbol.asyncIterator]: async function* () {
+        try {
+          yield { type: 'message_start', message: { usage: { input_tokens: 100, output_tokens: 1 } } }
+          await cancelled.promise
+          if (failure) {
+            throw failure
           }
-          if (exit === 'throw') {
-            throw new DOMException('Aborted', 'AbortError')
-          }
-        },
-      }
-      const onUsage = mock(async (_usage: unknown) => {
-        if (exit === 'usage-error') {
-          throw usageError
+          yield { type: 'message_delta', usage: { output_tokens: 40 } }
+          yield { type: 'message_stop' }
+        } finally {
+          ended.resolve()
         }
-        accounted.resolve()
-        if (exit === 'during-accounting') {
-          await finishAccounting.promise
-        }
-      })
-      const onUsageError = mock(() => accounted.resolve())
-      const onUsageMissing = mock(() => {})
-      const onError = mock(() => {})
-      const reader = createAnthropicSSEStream(source, { onUsage, onUsageError, onUsageMissing, onError }).getReader()
+      },
+    } as never
+    const onUsage = mock(async (_usage: InferenceTokenCounts) => {})
+    const onUsageMissing = mock(() => {})
+    const onError = mock(() => {})
+    const reader = createAnthropicSSEStream(source, { onUsage, onUsageMissing, onError }).getReader()
 
-      expect(new TextDecoder().decode((await reader.read()).value)).toContain('message_start')
-      if (exit !== 'start') {
-        expect(new TextDecoder().decode((await reader.read()).value)).toContain('message_delta')
-      }
-      if (exit === 'during-accounting') {
-        await accounted.promise
-      }
-      await reader.cancel()
-      finishAccounting.resolve()
-      await accounted.promise
-      await reader.cancel()
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('message_start')
+    await reader.cancel()
+    cancelled.resolve()
+    await ended.promise
+    await Bun.sleep(0)
 
-      expect(upstream.controller.signal.aborted).toBe(true)
-      expect(onUsage).toHaveBeenCalledTimes(1)
-      expect(onUsage).toHaveBeenCalledWith({
-        promptTokens: 100,
-        completionTokens: exit === 'start' ? 1 : 4,
-        totalTokens: exit === 'start' ? 101 : 104,
-        cacheCreationTokens: 0,
-        cacheCreation1hTokens: 0,
-        cacheReadTokens: 0,
-      })
-      expect(onUsageError).toHaveBeenCalledTimes(exit === 'usage-error' ? 1 : 0)
-      if (exit === 'usage-error') {
-        expect(onUsageError).toHaveBeenCalledWith(usageError)
-      }
-      expect(onUsageMissing).not.toHaveBeenCalled()
-      expect(onError).not.toHaveBeenCalled()
-    },
-  )
+    expect(controller.signal.aborted).toBe(false)
+    // A failure after the client left is still reported, as the only record of why the hold stays charged.
+    expect(onError).toHaveBeenCalledTimes(failure ? 1 : 0)
+    // A stream that fails before its final usage records nothing, so the request's hold stays charged.
+    expect(onUsage.mock.calls).toEqual(
+      failure ? [] : [[expect.objectContaining({ promptTokens: 100, completionTokens: 40, totalTokens: 140 })]],
+    )
+    expect(onUsageMissing).not.toHaveBeenCalled()
+  })
 
   it('encodes native events and reports cache usage', async () => {
     const events = [
@@ -177,5 +120,37 @@ describe('createAnthropicSSEStream', () => {
 
     await expect(response.text()).rejects.toThrow('stream failed')
     expect(onError).toHaveBeenCalledWith(error)
+  })
+
+  it('ends the request after its usage is recorded or its stream fails', async () => {
+    const events: string[] = []
+    const onUsage = mock(async () => {
+      events.push('usage')
+    })
+    const onEnd = mock(async () => {
+      events.push('end')
+    })
+    const start = [{ type: 'message_start', message: { usage: { input_tokens: 1, output_tokens: 1 } } }]
+
+    await new Response(createAnthropicSSEStream(eventStream(start), { onUsage, onEnd })).text()
+    await expect(
+      new Response(createAnthropicSSEStream(eventStream([], new Error('stream failed')), { onEnd })).text(),
+    ).rejects.toThrow('stream failed')
+
+    expect(events).toEqual(['usage', 'end', 'end'])
+  })
+
+  it('reports a usage write that throws, and still ends the stream cleanly', async () => {
+    const failure = new Error('ledger down')
+    const events = [{ type: 'message_start', message: { usage: { input_tokens: 1, output_tokens: 1 } } }]
+    const onUsageError = mock(() => {})
+    const onUsage = mock(async () => {
+      throw failure
+    })
+
+    const response = new Response(createAnthropicSSEStream(eventStream(events), { onUsage, onUsageError }))
+
+    expect(await response.text()).toContain('message_start')
+    expect(onUsageError).toHaveBeenCalledTimes(1)
   })
 })

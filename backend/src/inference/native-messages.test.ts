@@ -13,7 +13,10 @@ import { eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import type OpenAI from 'openai'
 import { clearInferenceClientCache, getAnthropicMessagesClient, getInferenceClient } from './client'
+import { managedDirectRuntimes } from './managed-models'
+import { maxTextTokens } from './managed-request'
 import { createInferenceRoutes } from './routes'
+import { calculateMaxInferenceCost, loadInferencePrice } from './usage-ledger'
 
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 
@@ -92,19 +95,22 @@ describe('POST /chat/v1/messages', () => {
 
     expect(response.status).toBe(200)
     expect(await response.text()).toBe(nativeSse)
-    expect(create).toHaveBeenCalledWith({
-      model: 'claude-opus-5-5',
-      max_tokens: 4096,
-      messages: requestBody.messages,
-      stream: true,
-      cache_control: { type: 'ephemeral' },
-      system: requestBody.system,
-      tools: requestBody.tools,
-      thinking: undefined,
-      output_config: undefined,
-      tool_choice: undefined,
-      stop_sequences: undefined,
-    })
+    expect(create).toHaveBeenCalledWith(
+      {
+        model: 'claude-opus-5-5',
+        max_tokens: 4096,
+        messages: requestBody.messages,
+        stream: true,
+        cache_control: { type: 'ephemeral' },
+        system: requestBody.system,
+        tools: requestBody.tools,
+        thinking: undefined,
+        output_config: undefined,
+        tool_choice: undefined,
+        stop_sequences: undefined,
+      },
+      { signal: expect.any(AbortSignal) },
+    )
 
     const rows = await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
     expect(rows).toHaveLength(1)
@@ -213,6 +219,190 @@ describe('POST /chat/v1/messages', () => {
         errorKind: 'rate_limit',
       }),
     )
+    // The provider refused the request, so its hold is released.
+    expect(await database.select().from(inferenceUsage)).toEqual([])
+  })
+
+  it('holds a request carrying a URL document at the model context window', async () => {
+    const upstreamReached = Promise.withResolvers<void>()
+    const upstreamHeld = Promise.withResolvers<void>()
+    const app = new Elysia().use(
+      createInferenceRoutes({
+        auth: mockAuth,
+        database,
+        getMessagesClient: () =>
+          ({
+            messages: {
+              create: async () => {
+                upstreamReached.resolve()
+                await upstreamHeld.promise
+                return createNativeStream()
+              },
+            },
+          }) as never,
+      }),
+    )
+
+    const pending = app.handle(
+      new Request('http://localhost/chat/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'opus-5-5',
+          max_tokens: 1,
+          messages: [
+            { role: 'user', content: [{ type: 'document', source: { type: 'url', url: 'https://x.test/a.pdf' } }] },
+          ],
+          stream: true,
+        }),
+      }),
+    )
+    // Admission commits the hold before the provider is called.
+    await upstreamReached.promise
+
+    // The PDF's pages are not in the body, so its characters cannot bound the prompt.
+    const price = await loadInferencePrice(database, { provider: 'anthropic', model: 'claude-opus-5-5' })
+    expect(await database.select().from(inferenceUsage)).toEqual([
+      expect.objectContaining({
+        settled: false,
+        costNanoUsd: calculateMaxInferenceCost(price!, managedDirectRuntimes['opus-5-5'].contextWindow, 1),
+      }),
+    ])
+    upstreamHeld.resolve()
+    await (await pending).text()
+  })
+
+  it("holds no more output than the model's output limit when max_tokens asks for more", async () => {
+    const upstreamReached = Promise.withResolvers<void>()
+    const upstreamHeld = Promise.withResolvers<void>()
+    const app = new Elysia().use(
+      createInferenceRoutes({
+        auth: mockAuth,
+        database,
+        getMessagesClient: () =>
+          ({
+            messages: {
+              create: async () => {
+                upstreamReached.resolve()
+                await upstreamHeld.promise
+                return createNativeStream()
+              },
+            },
+          }) as never,
+      }),
+    )
+    const body = JSON.stringify({
+      model: 'opus-5-5',
+      max_tokens: 10_000_000,
+      messages: [{ role: 'user', content: 'Hi' }],
+      stream: true,
+    })
+
+    const pending = app.handle(
+      new Request('http://localhost/chat/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }),
+    )
+    await upstreamReached.promise
+
+    const price = await loadInferencePrice(database, { provider: 'anthropic', model: 'claude-opus-5-5' })
+    expect(await database.select().from(inferenceUsage)).toEqual([
+      expect.objectContaining({
+        settled: false,
+        costNanoUsd: calculateMaxInferenceCost(
+          price!,
+          maxTextTokens(body),
+          managedDirectRuntimes['opus-5-5'].maxOutputTokens,
+        ),
+      }),
+    ])
+    upstreamHeld.resolve()
+    await (await pending).text()
+  })
+
+  it('keeps the hold when an attempt went unanswered before the provider refused the request', async () => {
+    const savedKey = process.env.ANTHROPIC_API_KEY
+    process.env.ANTHROPIC_API_KEY = 'test-key'
+    clearSettingsCache()
+    const attempts = { count: 0 }
+    const fetchFn: typeof fetch = Object.assign(
+      async () => {
+        attempts.count += 1
+        if (attempts.count === 1) {
+          throw new TypeError('fetch failed')
+        }
+        return Response.json(
+          { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } },
+          { status: 429, headers: { 'retry-after-ms': '0' } },
+        )
+      },
+      { preconnect: globalThis.fetch.preconnect },
+    )
+    const app = new Elysia().use(
+      createInferenceRoutes({
+        auth: mockAuth,
+        database,
+        captureInferenceErrorFn: () => {},
+        getMessagesClient: () => getAnthropicMessagesClient({ fetchFn }),
+      }),
+    )
+
+    try {
+      const response = await app.handle(
+        new Request('http://localhost/chat/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'opus-5-5',
+            max_tokens: 16,
+            messages: [{ role: 'user', content: 'Hello' }],
+            stream: true,
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(429)
+      expect(attempts.count).toBe(3)
+      // The first attempt may have reached the provider, so the request's hold stays charged.
+      expect(await database.select().from(inferenceUsage)).toEqual([expect.objectContaining({ settled: true })])
+    } finally {
+      if (savedKey === undefined) {
+        delete process.env.ANTHROPIC_API_KEY
+      } else {
+        process.env.ANTHROPIC_API_KEY = savedKey
+      }
+      clearSettingsCache()
+    }
+  })
+
+  it('releases the hold when the client cannot be built, before any provider call', async () => {
+    const app = new Elysia().use(
+      createInferenceRoutes({
+        auth: mockAuth,
+        database,
+        getMessagesClient: () => {
+          throw new Error('Anthropic API key not configured')
+        },
+      }),
+    )
+
+    const response = await app.handle(
+      new Request('http://localhost/chat/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'opus-5-5',
+          max_tokens: 16,
+          messages: [{ role: 'user', content: 'Hello' }],
+          stream: true,
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(500)
+    expect(await database.select().from(inferenceUsage)).toEqual([])
   })
 
   it('keeps structured error telemetry for failures raised mid-stream', async () => {
@@ -240,21 +430,30 @@ describe('POST /chat/v1/messages', () => {
       }),
     )
 
+    const body = JSON.stringify({
+      model: 'opus-5-5',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: 'Hello' }],
+      stream: true,
+    })
     const response = await app.handle(
       new Request('http://localhost/chat/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'opus-5-5',
-          max_tokens: 4096,
-          messages: [{ role: 'user', content: 'Hello' }],
-          stream: true,
-        }),
+        body,
       }),
     )
 
     expect(response.status).toBe(200)
     await expect(response.text()).rejects.toBe(error)
+    // The stream broke before its usage arrived, so the hold stays charged. The request's own max_tokens sized it.
+    const price = await loadInferencePrice(database, { provider: 'anthropic', model: 'claude-opus-5-5' })
+    expect(await database.select().from(inferenceUsage)).toEqual([
+      expect.objectContaining({
+        settled: true,
+        costNanoUsd: calculateMaxInferenceCost(price!, maxTextTokens(body), 4096),
+      }),
+    ])
     expect(captureInferenceErrorFn).toHaveBeenCalledWith(
       expect.objectContaining({
         phase: 'stream',

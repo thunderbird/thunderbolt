@@ -112,12 +112,24 @@ type InferenceFetchOptions = InferenceClientOptions & {
 
 export type InferenceAttemptTracker = {
   attempts: number
+  /** Whether an attempt ended without a response, so the provider may have run it. */
+  hadUnansweredAttempt: boolean
 }
 
 const inferenceAttemptStorage = new AsyncLocalStorage<InferenceAttemptTracker>()
 
 /** Create request-local state used to count OpenAI SDK fetch attempts. */
-export const createInferenceAttemptTracker = (): InferenceAttemptTracker => ({ attempts: 0 })
+export const createInferenceAttemptTracker = (): InferenceAttemptTracker => ({
+  attempts: 0,
+  hadUnansweredAttempt: false,
+})
+
+/**
+ * Whether the provider refused a failed SDK call on every attempt, so nothing ran and the request's hold can be
+ * released. An attempt that got no answer (a connection error or timeout, on any retry) may have run.
+ */
+export const wasRefusedOnEveryAttempt = (error: { status?: number }, tracker: InferenceAttemptTracker): boolean =>
+  error.status !== undefined && !tracker.hadUnansweredAttempt
 
 /** Run an inference SDK call with request-local attempt counting enabled. */
 export const runWithInferenceAttemptTracking = <T>(tracker: InferenceAttemptTracker, callback: () => T): T =>
@@ -197,6 +209,9 @@ export const createInferenceFetch = ({
         logUpstreamAttempt(logger, logContext)
         return response
       } catch (error) {
+        if (tracker) {
+          tracker.hadUnansweredAttempt = true
+        }
         logUpstreamAttempt(logger, {
           ...requestContext,
           status: null,

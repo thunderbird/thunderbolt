@@ -1495,11 +1495,11 @@ describe('Encryption API (v2)', () => {
         await insertPasskeyRow(p('u'), p('cred-1'))
         expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
 
+        // The savepoint keeps the refused delete from aborting the test's transaction.
         await expect(
-          db
-            .delete(passkeyTable)
-            .where(eq(passkeyTable.userId, p('u')))
-            .execute(),
+          db.transaction(async (tx) => {
+            await tx.delete(passkeyTable).where(eq(passkeyTable.userId, p('u')))
+          }),
         ).rejects.toThrow()
         expect((await readMetadata()).passkeyCredentialId).toBe(p('cred-1'))
       })

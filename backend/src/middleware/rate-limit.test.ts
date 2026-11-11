@@ -45,13 +45,13 @@ const requestWithIp = (ip: string) => new Request('http://localhost/v1/test', { 
 describe('Rate Limiting', () => {
   let database: typeof DbType
 
-  // RateLimiterDrizzle issues its own `client.transaction()` calls, which open a
-  // nested raw BEGIN on the connection. On the shared `createTestDb` singleton
-  // (which is mid-BEGIN/ROLLBACK and serializes every test file through one WASM
-  // mutex) that breaks transaction isolation and, under CI CPU starvation, stalls
-  // the setup hook on the shared lock. Reuse the suite-wide isolated connection:
-  // creating a fresh PGlite for every `--rerun-each` pass accumulates WASM runtimes
-  // until initialization stalls. Each test still clears the table in beforeEach.
+  // RateLimiterDrizzle opens its own transactions. On the shared `createTestDb`
+  // singleton they would run as savepoints of the test's transaction, behind the
+  // one WASM mutex that every test file shares. This suite therefore uses the
+  // suite-wide isolated connection. It does not open a connection of its own,
+  // because a fresh PGlite for every `--rerun-each` pass accumulates WASM
+  // runtimes until initialization stalls. Each test still clears the table in
+  // beforeEach.
   beforeAll(async () => {
     const isolatedDb = await getSharedIsolatedTestDb()
     database = isolatedDb.db

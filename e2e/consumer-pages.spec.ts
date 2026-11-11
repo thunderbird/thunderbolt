@@ -463,13 +463,12 @@ test('project creation fixes its environment while standalone chats keep the env
   await dialog.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(page).toHaveURL(/\/chats\/new\?projectId=/)
   await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-  await expect(page.getByText('Set when this project was created', { exact: true })).toBeVisible()
   await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).toHaveAttribute('aria-disabled', 'true')
   await expect(page.getByText('Cloud', { exact: true })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await page.reload()
   await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-  await expect(page.getByText('Set when this project was created', { exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('Escape')
   // A reply/compaction owns its environment until it finishes; the picker explains a rejected move.
   await page.evaluate(async () => {
@@ -491,7 +490,10 @@ test('project creation fixes its environment while standalone chats keep the env
   })
   await page.getByRole('button', { name: 'New Chat', exact: true }).click()
   await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-  await expect(page.getByText('Set when this project was created', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).not.toHaveAttribute(
+    'aria-disabled',
+    'true',
+  )
   await expect(page.getByText('Cloud', { exact: true })).toBeVisible()
 })
 
@@ -517,7 +519,7 @@ test('deleting a project frees open and cached chats to use standalone environme
   await chatRow(names[1]).click()
   await expect(page).toHaveURL(`/chats/${chatIds[1]}`)
   await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-  await expect(page.getByText('Set when this project was created', { exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).toHaveAttribute('aria-disabled', 'true')
   await page.keyboard.press('Escape')
   await page
     .locator('#sidebar-projects')
@@ -535,7 +537,10 @@ test('deleting a project frees open and cached chats to use standalone environme
     await chatRow(name).click()
     await expect(page).toHaveURL(`/chats/${chatIds[index]}`)
     await page.getByRole('button', { name: 'Agent location', exact: true }).click()
-    await expect(page.getByText('Set when this project was created', { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('menuitem').filter({ hasText: 'Local sandbox' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
     await expect(page.getByText('Cloud', { exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
   }

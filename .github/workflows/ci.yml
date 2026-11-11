@@ -45,8 +45,10 @@ jobs:
           filters: |
             rust:
               - 'scripts/check-glib-variantstriter*.sh'
+              - 'scripts/ssh-askpass-smoke.py'
               - '.github/workflows/ci.yml'
               - 'src-tauri/**/*.rs'
+              - 'src-tauri/**/*.py'
               - 'src-tauri/**/Cargo.toml'
               - 'src-tauri/**/Cargo.lock'
               - 'src-tauri/build.rs'
@@ -643,7 +645,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: src-tauri/target/
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ hashFiles('src-tauri/src/**/*.rs') }}
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ hashFiles('src-tauri/src/**/*.rs', 'src-tauri/src/**/*.py') }}
           restore-keys: |
             ${{ runner.os }}-cargo-build-${{ hashFiles('src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-cargo-build-
@@ -660,7 +662,10 @@ jobs:
             libxdo-dev \
             libssl-dev \
             libayatana-appindicator3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            python3 \
+            dbus \
+            gnome-keyring
 
       - name: Build and check Rust code
         env:
@@ -672,6 +677,20 @@ jobs:
           # --workspace also covers the local plugins (default-members is the app only).
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
+
+      - name: Test headless SSH authentication
+        run: python3 scripts/ssh-askpass-smoke.py src-tauri/target/debug/thunderbolt
+
+      - name: Test Linux SSH credential vault
+        working-directory: src-tauri
+        run: |
+          # The fixture uses its own credential namespace and an isolated keyring.
+          export XDG_DATA_HOME="$(mktemp -d)"
+          trap 'rm -rf "$XDG_DATA_HOME"' EXIT
+          dbus-run-session -- bash -euc '
+            gnome-keyring-daemon --components=secrets --daemonize --unlock <<< "ssh-ci-fixture"
+            cargo test --lib --locked system_vault_round_trip -- --ignored
+          '
 
       # The passkey plugin's Windows backend (src/win.rs) only compiles for Windows,
       # so the build above never sees it. clippy doesn't link, so it runs here
@@ -724,13 +743,20 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             src-tauri/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ hashFiles('src-tauri/src/**/*.rs') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ hashFiles('src-tauri/src/**/*.rs', 'src-tauri/src/**/*.py') }}
           restore-keys: |
             ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}-
       - name: Check Windows desktop and plugins
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test Windows process ownership and desktop behavior
         run: cargo test --workspace --locked
+      - name: Test Windows SSH credential vault
+        run: cargo test --lib --locked system_vault_round_trip -- --ignored
+      - name: Test Windows GUI-subsystem SSH authentication
+        run: |
+          # Compile main with the release GUI subsystem while reusing checked dev dependencies.
+          cargo rustc --bin thunderbolt --locked -- -C debug-assertions=off
+          python ../scripts/ssh-askpass-smoke.py target/debug/thunderbolt.exe
 
   backend:
     runs-on: ubuntu-latest

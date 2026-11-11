@@ -5,10 +5,14 @@
 import { useState, useTransition } from 'react'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { invoke } from '@tauri-apps/api/core'
-import { Box, ChevronDown, Cloud, Monitor } from 'lucide-react'
+import { Box, ChevronDown, Cloud, Monitor, Server } from 'lucide-react'
 import type { AgentExecution } from '@/agent-execution/store'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useSshEnvironmentsStore } from '@/agent-execution/ssh-environments'
+import { SshEnvironmentMenuItem, SshEnvironmentStatus, SshFolderInput } from '@/components/ssh-environments'
+import { Link } from 'react-router'
 import { isTauriDesktop } from '@/lib/platform'
 
 /** Environment selection is available only while creating the project. */
@@ -16,15 +20,19 @@ export const ProjectExecutionField = ({
   execution,
   onChange,
   disabled,
+  onManageEnvironments,
 }: {
   execution: AgentExecution
   onChange: (execution: AgentExecution) => void
   disabled: boolean
+  onManageEnvironments?: () => void
 }) => {
   const { t } = useLingui()
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const computer = execution.location === 'computer'
+  const environments = useSshEnvironmentsStore((state) => state.environments)
+  const sshEnvironment = execution.location === 'ssh' ? environments[execution.environmentId] : undefined
   const selectComputer = () =>
     startTransition(async () => {
       setError(null)
@@ -56,8 +64,21 @@ export const ProjectExecutionField = ({
             disabled={disabled || pending}
           >
             <span className="flex items-center gap-2">
-              {computer ? <Monitor className="size-4" /> : <Box className="size-4" />}
-              {computer ? <Trans>This computer</Trans> : <Trans>Local sandbox</Trans>}
+              {execution.location === 'ssh' ? (
+                <Server className="size-4" />
+              ) : computer ? (
+                <Monitor className="size-4" />
+              ) : (
+                <Box className="size-4" />
+              )}
+              {execution.location === 'ssh' ? (
+                (sshEnvironment?.name ?? t`SSH environment unavailable`)
+              ) : computer ? (
+                <Trans>This computer</Trans>
+              ) : (
+                <Trans>Local sandbox</Trans>
+              )}
+              {execution.location === 'ssh' && <SshEnvironmentStatus environmentId={execution.environmentId} />}
             </span>
             <ChevronDown className="size-4" />
           </Button>
@@ -78,6 +99,32 @@ export const ProjectExecutionField = ({
               <Trans>This computer</Trans>
             </DropdownMenuItem>
           )}
+          {isTauriDesktop() &&
+            Object.values(environments)
+              .filter((environment) => !environment.deletedAt)
+              .map((environment) => (
+                <SshEnvironmentMenuItem
+                  key={environment.id}
+                  environment={environment}
+                  onSelect={() => {
+                    setError(null)
+                    onChange({
+                      location: 'ssh',
+                      environmentId: environment.id,
+                      cwd: environment.cwd,
+                      access: execution.access,
+                    })
+                  }}
+                />
+              ))}
+          {isTauriDesktop() && (
+            <DropdownMenuItem asChild>
+              <Link to="/settings/environments" onClick={onManageEnvironments}>
+                <Server />
+                <Trans>Manage SSH environments</Trans>
+              </Link>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem disabled>
             <Cloud />
             <Trans>Cloud — coming soon</Trans>
@@ -85,6 +132,20 @@ export const ProjectExecutionField = ({
         </DropdownMenuContent>
       </DropdownMenu>
       {computer && <p className="break-all text-xs text-muted-foreground">{execution.cwd}</p>}
+      {execution.location === 'ssh' && (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="project-ssh-working-folder">
+            <Trans>Remote working folder</Trans>
+          </Label>
+          <SshFolderInput
+            id="project-ssh-working-folder"
+            environmentId={execution.environmentId}
+            value={execution.cwd}
+            onChange={(cwd) => onChange({ ...execution, cwd })}
+            disabled={disabled || pending}
+          />
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">
         <Trans>Every chat in this project uses this environment. It cannot be changed after creation.</Trans>
       </p>

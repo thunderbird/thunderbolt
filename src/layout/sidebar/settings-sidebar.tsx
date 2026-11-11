@@ -18,7 +18,18 @@ import { cn } from '@/lib/utils'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { AudioLines, Bot, Cpu, Globe, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import {
+  AudioLines,
+  Bot,
+  Cpu,
+  Globe,
+  Plug,
+  Server,
+  SlidersHorizontal,
+  Smartphone,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
@@ -49,6 +60,7 @@ const navGroups: { id: string; label: MessageDescriptor; items: NavItem[] }[] = 
     items: [
       { path: '/settings/skills', label: msg`Skills`, icon: Zap },
       { path: '/settings/connections', label: msg`Connections`, icon: Plug },
+      { path: '/settings/environments', label: msg`Environments`, icon: Server },
       { path: '/settings/models', label: msg`Models`, icon: Cpu, matchPrefix: true },
       { path: '/settings/search', label: msg`Search`, icon: Globe },
       { path: '/settings/voice', label: msg`Voice`, icon: AudioLines },

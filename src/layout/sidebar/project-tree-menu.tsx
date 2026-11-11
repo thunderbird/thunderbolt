@@ -20,6 +20,7 @@ import {
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { ProjectActionMenuItems, type ProjectActionHandlers } from '@/projects/project-action-menu-items'
 import { ProjectIcon } from '@/projects/project-icon'
+import { ProjectSshStatus } from '@/projects/project-ssh-status'
 import type { Project } from '@/types'
 import { ChatMenuItems } from './chat-menu-items'
 import type { ChatListProps } from './types'
@@ -81,6 +82,7 @@ export const ProjectTreeMenu = ({
                   <DropdownMenuSubTrigger className="gap-2">
                     <ProjectIcon icon={project.icon} className="size-4 shrink-0" />
                     <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                    <ProjectSshStatus projectId={project.id} />
                   </DropdownMenuSubTrigger>
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent className="flex w-72 max-h-(--radix-dropdown-menu-content-available-height) flex-col gap-0.5 overflow-y-auto">

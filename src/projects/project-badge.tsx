@@ -10,6 +10,7 @@ import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { SearchableMenu, searchableMenuRowClass } from '@/components/ui/searchable-menu'
 import { cn } from '@/lib/utils'
 import { ProjectIcon } from './project-icon'
+import { ProjectSshStatus } from './project-ssh-status'
 import { ProjectMoveErrorDialog } from './project-move-error-dialog'
 import { useProjectBadgeState } from './use-project-badge-state'
 
@@ -100,13 +101,14 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
           <div className={cn(searchableMenuRowClass, isPending && 'cursor-wait opacity-60')}>
             {item.icon}
             <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+            <ProjectSshStatus projectId={item.id} />
           </div>
         )}
         trigger={(_selected, open) => (
           <div
             title={label}
             className={cn(
-              'flex shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors',
+              'relative flex shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors',
               compact
                 ? cn(
                     'size-[var(--touch-height-sm)] max-md:size-[var(--touch-height-lg)] hover:bg-accent md:dark:hover:bg-secondary/50 active:bg-muted-foreground/20',
@@ -122,10 +124,18 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
               className={iconOnly ? 'size-[var(--icon-size-default)] text-[1.05rem]' : 'size-4 text-[0.9rem]'}
             />
             {compact ? (
-              <span className="sr-only">{label}</span>
+              <>
+                <span className="sr-only">{label}</span>
+                {project && (
+                  <span className="absolute right-1 bottom-1 flex">
+                    <ProjectSshStatus projectId={project.id} />
+                  </span>
+                )}
+              </>
             ) : (
               <>
                 <span className="truncate">{project?.name}</span>
+                {project && <ProjectSshStatus projectId={project.id} />}
                 <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
               </>
             )}

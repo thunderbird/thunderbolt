@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Box, Cloud, Monitor, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { Box, Cloud, Monitor, Server, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,6 +15,9 @@ import {
 import { useAgentExecutionControlsState } from './use-agent-execution-controls-state'
 import { useProjectExecutionControlsState } from './use-project-execution-controls-state'
 import { cn } from '@/lib/utils'
+import { useSshEnvironmentsStore } from '@/agent-execution/ssh-environments'
+import { SshEnvironmentMenuItem, SshEnvironmentStatus } from '@/components/ssh-environments'
+import { Link } from 'react-router'
 
 type AgentExecutionControlsProps = { threadId: string; projectId?: string | null; disabled: boolean }
 
@@ -46,6 +49,18 @@ const AgentExecutionControlsView = ({
   const { t } = useLingui()
   const { execution, setExecution } = state
   const isComputer = execution.location === 'computer'
+  const environments = useSshEnvironmentsStore((store) => store.environments)
+  const sshEnvironment = execution.location === 'ssh' ? environments[execution.environmentId] : undefined
+  const locationLabel =
+    execution.location === 'ssh'
+      ? (sshEnvironment?.name ?? t`SSH environment unavailable`)
+      : isComputer
+        ? t`This computer`
+        : execution.location === 'cloud'
+          ? t`Cloud`
+          : t`Local sandbox`
+  const LocationIcon =
+    execution.location === 'ssh' ? Server : isComputer ? Monitor : execution.location === 'cloud' ? Cloud : Box
   const hasFullAccess = execution.access === 'full'
   return (
     <>
@@ -57,34 +72,26 @@ const AgentExecutionControlsView = ({
             size="icon"
             disabled={disabled || state.pending}
             aria-label={t`Agent location`}
-            title={isComputer ? t`This computer` : execution.location === 'cloud' ? t`Cloud` : t`Local sandbox`}
+            title={locationLabel}
             className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
           >
-            {isComputer ? (
-              <Monitor className="size-[var(--icon-size-default)]" />
-            ) : (
-              <Box className="size-[var(--icon-size-default)]" />
-            )}
+            <span className="relative">
+              <LocationIcon className="size-[var(--icon-size-default)]" />
+              {execution.location === 'ssh' && (
+                <span className="absolute -bottom-1 -right-1">
+                  <SshEnvironmentStatus environmentId={execution.environmentId} />
+                </span>
+              )}
+            </span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="top" className="w-72">
           {state.locationLocked && (
             <DropdownMenuItem disabled>
-              {isComputer ? <Monitor /> : execution.location === 'cloud' ? <Cloud /> : <Box />}
+              <LocationIcon />
               <div>
-                <div>
-                  {isComputer ? (
-                    <Trans>This computer</Trans>
-                  ) : execution.location === 'cloud' ? (
-                    <Trans>Cloud</Trans>
-                  ) : (
-                    <Trans>Local sandbox</Trans>
-                  )}
-                </div>
-                <p className="text-muted-foreground text-xs">
-                  <Trans>Set when this project was created</Trans>
-                </p>
-                {isComputer && execution.cwd && (
+                <div>{locationLabel}</div>
+                {(isComputer || execution.location === 'ssh') && execution.cwd && (
                   <p className="break-all text-muted-foreground text-xs">{execution.cwd}</p>
                 )}
               </div>
@@ -123,6 +130,32 @@ const AgentExecutionControlsView = ({
                   <Trans>Private workspace inside Thunderbolt</Trans>
                 </p>
               </div>
+            </DropdownMenuItem>
+          )}
+          {!state.locationLocked &&
+            state.desktop &&
+            Object.values(environments)
+              .filter((environment) => !environment.deletedAt)
+              .map((environment) => (
+                <SshEnvironmentMenuItem
+                  key={environment.id}
+                  environment={environment}
+                  onSelect={() =>
+                    setExecution({
+                      location: 'ssh',
+                      environmentId: environment.id,
+                      cwd: environment.cwd,
+                      access: execution.access,
+                    })
+                  }
+                />
+              ))}
+          {state.desktop && (
+            <DropdownMenuItem asChild>
+              <Link to="/settings/environments">
+                <Server />
+                <Trans>Manage SSH environments</Trans>
+              </Link>
             </DropdownMenuItem>
           )}
           {!state.locationLocked && <DropdownMenuSeparator />}

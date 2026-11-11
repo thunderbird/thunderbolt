@@ -32,6 +32,7 @@ env:
     timeout: 120000
 - tapOn: Agent location
 - assertVisible: Cloud
+- assertNotVisible: Manage SSH environments
 - tapOn: Agent access
 - assertVisible: Full access
 - assertNotVisible: Cloud

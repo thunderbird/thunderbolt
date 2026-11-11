@@ -73,6 +73,67 @@ const exerciseComposerMenus = async () => {
   assert(await access.isFocused(), 'Escape should restore focus to the menu trigger')
 }
 
+/** A real desktop profile probes SSH, remains bound to its project, and never falls back after removal. */
+const exerciseSshEnvironments = async () => {
+  const openEnvironments = async () => {
+    await (await browser.$('button[aria-label="Settings"]')).click()
+    await (await browser.$('button=Environments')).click()
+    await browser.waitUntil(async () => browser.execute(() => location.pathname === '/settings/environments'))
+  }
+  await openEnvironments()
+  await (await browser.$('button=Add SSH environment')).click()
+  await (await browser.$('button=Add manually')).click()
+  await (await browser.$('#ssh-name')).setValue('Smoke SSH')
+  await (await browser.$('#ssh-host')).setValue('127.0.0.1')
+  // A closed local port exercises native failure reporting without contacting an external machine.
+  await (await browser.$('#ssh-port')).setValue('1')
+  await (await browser.$('button=Save')).click()
+  await (await browser.$('button[aria-label="Edit Smoke SSH"]')).waitForDisplayed()
+  await (await browser.$('[role="status"][aria-label="Disconnected"]')).waitForDisplayed({ timeout: 15_000 })
+  await browser.refresh()
+  await (await browser.$('[role="status"][aria-label="Disconnected"]')).waitForDisplayed({ timeout: 15_000 })
+  await (await browser.$('button[aria-label="Check connection to Smoke SSH"]')).click()
+  await (await browser.$('[role="status"][aria-label="Disconnected"]')).waitForDisplayed({ timeout: 15_000 })
+  await browser.back()
+  await (await browser.$('textarea')).waitForDisplayed()
+  await (await browser.$('button[aria-label="Project options"]')).click()
+  await (await browser.$('[role="menuitem"]=New project')).click()
+  const dialog = await browser.$('[data-slot="dialog-content"]')
+  await (await dialog.$('input[aria-label="Name"]')).setValue('SSH smoke project')
+  await (await dialog.$('button[aria-label="Project environment"]')).click()
+  await (await browser.$('[role="menuitem"]*=Smoke SSH')).click()
+  await (await dialog.$('button[aria-label="Browse remote folders"]')).waitForDisplayed()
+  await (await dialog.$('#project-ssh-working-folder')).setValue('/workspace/ssh-smoke')
+  await (await dialog.$('button=Create')).click()
+  await dialog.waitForDisplayed({ reverse: true })
+  const projectRow = await browser.$('button[aria-controls^="project-chats-"]*=SSH smoke project')
+  const projectSelector = await browser.$('[title="In project: SSH smoke project"]')
+  await (await projectRow.$('[role="status"]')).waitForDisplayed()
+  await (await projectSelector.$('[role="status"]')).waitForDisplayed()
+  await (await browser.$('button[aria-label="Agent location"]')).click()
+  const fixed = await browser.$('[role="menuitem"]*=Smoke SSH')
+  assert.equal(await fixed.getAttribute('aria-disabled'), 'true')
+  assert(!(await fixed.getText()).includes('Set when this project was created'))
+  assert((await fixed.getText()).includes('/workspace/ssh-smoke'))
+  await browser.keys(Key.Escape)
+  await openEnvironments()
+  await (await browser.$('button[aria-label="Edit Smoke SSH"]')).click()
+  await (await browser.$('button[aria-label="More"]')).click()
+  await (await browser.$('[role="menuitem"]=Remove SSH environment')).click()
+  const removeDialog = await browser.$('[role="alertdialog"]')
+  await (await removeDialog.$('button=Remove SSH environment')).click()
+  await (await browser.$('button[aria-label="Edit Smoke SSH"]')).waitForExist({ reverse: true })
+  await browser.back()
+  await browser.waitUntil(async () =>
+    (await (await browser.$('body')).getText()).includes('SSH environment is unavailable'),
+  )
+  assert.equal(await (await browser.$('button[aria-label="Agent access"]')).isEnabled(), false)
+  await (await projectRow.$('[role="status"][aria-label="Disconnected"]')).waitForDisplayed()
+  await (await projectSelector.$('[role="status"][aria-label="Disconnected"]')).waitForDisplayed()
+  await (await browser.$('button=New Chat')).click()
+  await browser.waitUntil(async () => browser.execute(() => location.pathname === '/chats/new' && !location.search))
+}
+
 /** App dialogs and detail asides occupy the chat pane while a native page remains visible. */
 const exerciseBrowserOverlayBoundary = async (activePanel: string) => {
   const originalBrowserBounds = await browser.execute((selector) => {
@@ -952,6 +1013,7 @@ try {
   await browser.waitUntil(async () => (await invokeNative('plugin:window|is_visible', { label: 'main' })) === true)
 
   await exerciseComposerMenus()
+  await exerciseSshEnvironments()
   await (await browser.$('[data-testid="model-selector-trigger"]')).click()
   const standardModel = await browser.$('//button[normalize-space()="Opus 5.5"]')
   await (await standardModel.$('[role="img"][aria-label="Thunderbolt"]')).waitForDisplayed()

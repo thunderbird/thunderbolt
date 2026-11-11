@@ -42,10 +42,12 @@ tauri-plugin-os = "2.3.2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.150"
 anyhow = "1.0.99"
-tokio = { version = "1.52.3", features = ["process", "io-util", "sync", "time", "macros"] }
+tokio = { version = "1.52.3", features = ["process", "io-util", "sync", "time", "macros", "net"] }
 tempfile = "3"
 libc = "0.2"
 base64 = "0.22"
+glob = "0.3.3"
+shlex = "1.3"
 
 # CLI installer: download the prebuilt `thunderbolt` binary + SHA256SUMS and
 # verify the checksum before install. rustls (no OpenSSL) matches the rest of the
@@ -71,8 +73,11 @@ tauri-plugin-pages = { path = "tauri-plugin-pages" }
 # tauri-plugin-devtools' reqwest stack initializes (otherwise iOS dev panics
 # at first HTTPS call: "No provider set"). Already a transitive dep via reqwest.
 rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
+zeroize = "1"
+getrandom = "0.3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+keyring = "4.2.0"
 tauri-plugin-dialog = "~2.7.3"
 tauri-plugin-single-instance = "2"
 
@@ -90,6 +95,7 @@ gtk = "0.18.2"
 cairo-rs = { version = "0.18.5", features = ["png"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+keyring-core = "1.0.1"
 webview2-com = "0.39.1"
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }
 

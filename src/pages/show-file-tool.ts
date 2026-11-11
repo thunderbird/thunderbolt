@@ -13,6 +13,7 @@ export type ShowFileOutput = { ok: true; page: PageDefinition } | { ok: false; e
 export type ShowFileToolOptions = {
   readFile: (path: string, signal?: AbortSignal) => Promise<string>
   onOpen: (page: PageDefinition) => unknown | Promise<unknown>
+  localAppsAvailable?: boolean
 }
 
 const showFileSchema = z.object({
@@ -31,7 +32,8 @@ export const createShowFileTool = (
 ) =>
   tool({
     description:
-      'Show an HTML file created with the coding tools as an inline chat artifact and in the browser panel. Reads from the current project or standalone chat environment and publishes a synced snapshot. The .html file must be at most 2 MiB and self-contained: inline CSS/JS and data-URI images, with no network or external files. Verification errors are returned for you to fix before retrying. Use local_app for projects needing a build, a server, or multiple files.',
+      'Show an HTML file created with the coding tools as an inline chat artifact and in the browser panel. Reads from the current project or standalone chat environment and publishes a synced snapshot. The .html file must be at most 2 MiB and self-contained: inline CSS/JS and data-URI images, with no network or external files. Verification errors are returned for you to fix before retrying.' +
+      (options.localAppsAvailable ? ' Use local_app for projects needing a build, a server, or multiple files.' : ''),
     inputSchema: showFileSchema,
     execute: async (raw, { abortSignal }): Promise<ShowFileOutput> => {
       const input = showFileSchema.parse(raw)

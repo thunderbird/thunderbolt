@@ -298,6 +298,7 @@ msgid "Activity"
 msgstr "Aktivität"
 
 #: src/settings/encryption/passkey-section.tsx
+#: src/settings/environments/ssh-discovery-dialog.tsx
 msgid "Add"
 msgstr ""
 
@@ -343,6 +344,10 @@ msgstr "Skill hinzufügen"
 msgid "Add Agent"
 msgstr "Agent hinzufügen"
 
+#: src/settings/environments/index.tsx
+#~ msgid "Add an SSH host, an OrbStack machine, a Tart VM, or a container with an SSH server."
+#~ msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 #~ msgid "Add and select a model in Settings to start chatting."
 #~ msgstr ""
@@ -365,6 +370,10 @@ msgstr "Hinzufügen fehlgeschlagen"
 #: src/skills/suggestion-chip.tsx
 msgid "Add instructions to chat"
 msgstr "Anweisungen zum Chat hinzufügen"
+
+#: src/settings/environments/ssh-discovery-dialog.tsx
+msgid "Add manually"
+msgstr ""
 
 #: src/settings/connections/index.tsx
 msgid "Add MCP Server"
@@ -393,6 +402,14 @@ msgstr ""
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Server hinzufügen"
+
+#: src/settings/environments/ssh-discovery-dialog.tsx
+msgid "Add SSH connection"
+msgstr ""
+
+#: src/settings/environments/index.tsx
+msgid "Add SSH environment"
+msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Add summary instructions (optional)"
@@ -448,6 +465,7 @@ msgid "Agent access"
 msgstr ""
 
 #: src/projects/project-execution-field.tsx
+#: src/projects/project-execution-summary.tsx
 msgid "Agent environment"
 msgstr ""
 
@@ -553,6 +571,10 @@ msgstr ""
 
 #: src/components/chat/attestation/attestation-panel.tsx
 msgid "An encrypted agent connection alone does not verify the agent or its model provider."
+msgstr ""
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "An existing folder on the remote machine. Use ~ for its home folder."
 msgstr ""
 
 #: src/lib/openrouter-auth.ts
@@ -699,6 +721,10 @@ msgstr ""
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
 msgstr "Synchronisierte Daten sind derzeit nicht verschlüsselt. Wenn Sie die Synchronisierung aktivieren, werden Ihre Daten unverschlüsselt auf unseren Servern gespeichert. Möchten Sie fortfahren?"
 
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Authentication"
+msgstr ""
+
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/settings/connections/provider-connection-form.tsx
 msgid "Authorization code"
@@ -799,6 +825,10 @@ msgstr ""
 msgid "Browse in the desktop app"
 msgstr ""
 
+#: src/components/ssh-environments/ssh-folder-input.tsx
+msgid "Browse remote folders"
+msgstr ""
+
 #: src/pages/desktop-browser-prompt.tsx
 msgid "Browse with your agent"
 msgstr ""
@@ -856,6 +886,7 @@ msgstr "Kalender"
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
+#: src/components/ssh-environments/ssh-folder-picker.tsx
 #: src/components/step-up-code-dialog.tsx
 #: src/components/sync-enable-warning-dialog.tsx
 #: src/components/telemetry-required-modal.tsx
@@ -869,6 +900,7 @@ msgstr "Kalender"
 #: src/settings/connections/provider-connection-form.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 #: src/settings/encryption/passkey-section.tsx
+#: src/settings/environments/ssh-environment-form.tsx
 #: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
 #: src/settings/preferences.tsx
@@ -956,6 +988,14 @@ msgstr "Chats"
 msgid "Chats in a project inherit its instructions."
 msgstr "Chats in einem Projekt übernehmen dessen Anweisungen."
 
+#: src/settings/environments/ssh-environment-row.tsx
+msgid "Check connection to {name}"
+msgstr ""
+
+#: src/settings/environments/index.tsx
+#~ msgid "Check connection to verify this environment. Your SSH agent or system keychain may ask for approval."
+#~ msgstr ""
+
 #: src/hooks/use-desktop-update.ts
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
@@ -977,6 +1017,10 @@ msgstr "Prüfen Sie Ihre E-Mails"
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Checking automatically…"
 msgstr "Wird automatisch geprüft…"
+
+#: src/components/ssh-environments/ssh-environment-status.tsx
+msgid "Checking connection"
+msgstr ""
 
 #: src/components/update-notification.tsx
 #: src/settings/app-version-section.tsx
@@ -1065,8 +1109,16 @@ msgstr ""
 msgid "Choose effort"
 msgstr ""
 
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "Choose folder"
+msgstr ""
+
 #: src/settings/models/add-provider-models.tsx
 msgid "Choose from available models"
+msgstr ""
+
+#: src/settings/environments/ssh-discovery-dialog.tsx
+msgid "Choose from your SSH configuration and local machines."
 msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
@@ -1092,6 +1144,10 @@ msgstr ""
 
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 msgid "Choose project folder on this computer"
+msgstr ""
+
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "Choose remote folder"
 msgstr ""
 
 #: src/components/agent-execution-controls/use-project-execution-controls-state.ts
@@ -1233,6 +1289,7 @@ msgstr ""
 
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 #: src/components/onboarding/onboarding-server-step.tsx
+#: src/projects/project-execution-summary.tsx
 msgid "Cloud"
 msgstr ""
 
@@ -1361,6 +1418,10 @@ msgstr "{0} konfigurieren"
 msgid "Configure and select an available model before sending a message."
 msgstr ""
 
+#: src/settings/environments/index.tsx
+msgid "Configure SSH environments in Thunderbolt for macOS, Windows, or Linux."
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Confirm"
 msgstr "Bestätigen"
@@ -1422,6 +1483,10 @@ msgstr "Microsoft verbinden"
 
 #: src/settings/connections/provider-connection-detail.tsx
 msgid "Connect on this device"
+msgstr ""
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Connect once from your terminal to verify the host key. The remote machine needs Linux or macOS with Python 3 and Bash."
 msgstr ""
 
 #: src/components/onboarding/onboarding-search-step.tsx
@@ -1502,6 +1567,10 @@ msgstr "Verbinden Sie Ihr Konto, um diese Tools für Agenten verfügbar zu mache
 msgid "Connect your account to power your agents."
 msgstr ""
 
+#: src/settings/environments/index.tsx
+#~ msgid "Connect your agent to another machine. SSH environments and credentials stay on this computer."
+#~ msgstr ""
+
 #: src/components/chat/chat-model-setup.tsx
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Connect your AI"
@@ -1514,6 +1583,7 @@ msgstr ""
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/components/sidebar-footer.tsx
+#: src/components/ssh-environments/ssh-environment-status.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected"
@@ -1847,6 +1917,10 @@ msgstr "Verbindung zu diesem Server nicht möglich. Prüfen Sie die URL und ob d
 msgid "Could not connect to Tinfoil. Try again, or use an API key."
 msgstr ""
 
+#: src/settings/environments/ssh-environment-row.tsx
+msgid "Could not connect. Check the address, credentials, trusted host key, and remote working folder."
+msgstr ""
+
 #: src/components/search-provider-setup/use-search-provider-setup.ts
 msgid "Could not connect. Check your API key and connection, then try again."
 msgstr ""
@@ -1871,6 +1945,10 @@ msgstr ""
 msgid "Could not disconnect this search provider. Please try again."
 msgstr ""
 
+#: src/settings/environments/ssh-discovery-dialog.tsx
+msgid "Could not discover SSH connections. Try refreshing or add one manually."
+msgstr ""
+
 #: src/providers/use-provider-authorization.ts
 msgid "Could not finish connecting or revoke the unused session. You can remove Thunderbolt’s access in ChatGPT Settings."
 msgstr ""
@@ -1890,6 +1968,10 @@ msgstr ""
 #: src/settings/models/use-add-provider-models.ts
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Could not load this connection's models. Try again."
+msgstr ""
+
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "Could not load this folder."
 msgstr ""
 
 #: src/pages/page-route.tsx
@@ -1924,6 +2006,10 @@ msgstr "Der QR-Code konnte nicht gelesen werden"
 msgid "Could not read the import file."
 msgstr "Die Importdatei konnte nicht gelesen werden."
 
+#: src/settings/environments/index.tsx
+msgid "Could not remove this SSH environment. Please try again."
+msgstr ""
+
 #: src/pages/rename-saved-page-dialog.tsx
 msgid "Could not rename this page. Please try again."
 msgstr ""
@@ -1946,6 +2032,10 @@ msgstr "Das Projekt konnte nicht gespeichert werden."
 
 #: src/components/onboarding/provider-setup-error.ts
 msgid "Could not save the provider connection on this device."
+msgstr ""
+
+#: src/settings/environments/use-ssh-environment-form-state.ts
+msgid "Could not save the SSH environment. Check the connection fields and try again."
 msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -2565,6 +2655,7 @@ msgstr ""
 #~ msgid "Disconnect Tinfoil?"
 #~ msgstr ""
 
+#: src/components/ssh-environments/ssh-environment-status.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Disconnected"
 msgstr "Getrennt"
@@ -2690,6 +2781,10 @@ msgstr "Anmeldung für den Early Access"
 msgid "Edit"
 msgstr "Bearbeiten"
 
+#: src/settings/environments/ssh-environment-row.tsx
+msgid "Edit {name}"
+msgstr ""
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Edit file"
 msgstr "Datei bearbeiten"
@@ -2714,6 +2809,10 @@ msgstr "Skill bearbeiten"
 #: src/skills/skills-view.tsx
 msgid "Edit Skill"
 msgstr "Skill bearbeiten"
+
+#: src/settings/environments/index.tsx
+msgid "Edit SSH environment"
+msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "Editing {fileName}…"
@@ -2906,6 +3005,15 @@ msgstr ""
 msgid "Enterprise"
 msgstr ""
 
+#: src/projects/project-execution-summary.tsx
+msgid "Environment unavailable"
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/settings/environments/index.tsx
+msgid "Environments"
+msgstr ""
+
 #: src/projects/project-execution-field.tsx
 msgid "Every chat in this project uses this environment. It cannot be changed after creation."
 msgstr ""
@@ -3074,6 +3182,10 @@ msgstr ""
 msgid "Filter by type"
 msgstr ""
 
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "Find a folder"
+msgstr ""
+
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Finish connecting in your browser, then paste the authorization code here."
 msgstr ""
@@ -3106,10 +3218,18 @@ msgstr "Neblig"
 msgid "Food & drink"
 msgstr "Essen & Trinken"
 
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "For example, orb or server.example.com"
+msgstr ""
+
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-chat-badge.tsx
 #~ msgid "From {0}"
 #~ msgstr ""
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "From SSH config"
+msgstr ""
 
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 msgid "Full access"
@@ -3265,6 +3385,14 @@ msgstr ""
 #: src/components/chat/effort-selector/effort-selector.tsx
 #~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
 #~ msgstr ""
+
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "Home folder"
+msgstr ""
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Host or SSH config alias"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
@@ -3470,6 +3598,10 @@ msgstr "Halten Sie Ihre Daten auf allen Geräten synchron. Alles ist Ende-zu-End
 msgid "Keep your data synced across devices."
 msgstr "Halten Sie Ihre Daten geräteübergreifend synchron."
 
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Key passphrase (optional)"
+msgstr ""
+
 #: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
 #: src/waitlist/waitlist-language-picker.tsx
@@ -3485,6 +3617,10 @@ msgstr "Zuletzt gesehen {lastSeen}"
 #: src/components/update-notification.tsx
 msgid "Later"
 msgstr "Später"
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Leave blank to keep the saved credential"
+msgstr ""
 
 #: src/components/logout-modal.tsx
 msgid "Leave data on device"
@@ -3548,6 +3684,10 @@ msgstr "Geräte werden geladen…"
 msgid "Loading emoji…"
 msgstr "Emojis werden geladen…"
 
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "Loading folders…"
+msgstr ""
+
 #: src/components/otari-connection/otari-connection.tsx
 #: src/settings/models/add-provider-models.tsx
 msgid "Loading models…"
@@ -3572,6 +3712,7 @@ msgstr "Kopplungsidentität dieser App wird geladen…"
 #: src/components/chat/chat-ui.tsx
 #: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
+#: src/projects/project-execution-summary.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "Wird geladen…"
@@ -3582,6 +3723,7 @@ msgstr ""
 
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 #: src/projects/project-execution-field.tsx
+#: src/projects/project-execution-summary.tsx
 msgid "Local sandbox"
 msgstr ""
 
@@ -3610,6 +3752,10 @@ msgstr "Abmelden"
 #: src/components/logout-modal.tsx
 msgid "Logging out…"
 msgstr "Abmeldung…"
+
+#: src/settings/environments/ssh-discovery-dialog.tsx
+msgid "Looking for SSH hosts and local machines…"
+msgstr ""
 
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
 msgid "Low"
@@ -3647,6 +3793,11 @@ msgstr ""
 
 #: src/settings/models/edit-model-form.tsx
 msgid "Manage provider connection"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#: src/projects/project-execution-field.tsx
+msgid "Manage SSH environments"
 msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
@@ -3831,6 +3982,7 @@ msgstr "Mein Agent"
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/connections/provider-connection-form.tsx
+#: src/settings/environments/ssh-environment-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Name"
@@ -3953,6 +4105,10 @@ msgstr ""
 msgid "No devices yet. Sign in with sync to see devices here."
 msgstr "Noch keine Geräte. Melden Sie sich mit Synchronisierung an, um hier Geräte zu sehen."
 
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "No folders here."
+msgstr ""
+
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "No items found"
 msgstr "Keine Einträge gefunden"
@@ -3981,6 +4137,10 @@ msgstr "Keine Treffer"
 #: src/settings/search/index.tsx
 msgid "No matching connections."
 msgstr "Keine passenden Verbindungen."
+
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "No matching folders."
+msgstr ""
 
 #: src/settings/models/index.tsx
 msgid "No matching models."
@@ -4034,6 +4194,10 @@ msgstr "Keine Modelle gefunden."
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr "Keine Modelle zurückgegeben (Server nicht erreichbar oder listet keine Modelle auf). Geben Sie Modell- und Stimmen-IDs manuell ein."
 
+#: src/settings/environments/ssh-discovery-dialog.tsx
+msgid "No new SSH connections found. You can add one manually."
+msgstr ""
+
 #: src/settings/passkeys.tsx
 #~ msgid "No passkeys yet"
 #~ msgstr ""
@@ -4066,6 +4230,10 @@ msgstr "Noch keine Skills"
 msgid "No sources available"
 msgstr "Keine Quellen verfügbar"
 
+#: src/settings/environments/index.tsx
+msgid "No SSH environments"
+msgstr ""
+
 #: src/tasks/index.tsx
 msgid "No tasks found matching \"{searchQuery}\""
 msgstr "Keine Aufgaben gefunden, die zu „{searchQuery}“ passen"
@@ -4081,6 +4249,10 @@ msgstr "Keines deiner Modelle kann in diesem Chat verwendet werden. Wähle einen
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Not available in private chats."
 msgstr "In privaten Chats nicht verfügbar."
+
+#: src/components/ssh-environments/ssh-environment-status.tsx
+msgid "Not checked"
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Not configured"
@@ -4454,6 +4626,10 @@ msgstr "{deviceName} koppeln"
 msgid "Pairing identity"
 msgstr "Kopplungsidentität"
 
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "Parent folder"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Partly cloudy"
 msgstr "Teilweise bewölkt"
@@ -4481,6 +4657,10 @@ msgstr "Passkey"
 #~ msgid "Passkeys aren't available on this device."
 #~ msgstr ""
 
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Password"
+msgstr ""
+
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
 msgstr "Fügen Sie einen Kopplungscode ein oder laden Sie dessen QR-Bild hoch, um dieses Gerät an seine Peer-to-Peer-Identität zu binden."
@@ -4488,6 +4668,10 @@ msgstr "Fügen Sie einen Kopplungscode ein oder laden Sie dessen QR-Bild hoch, u
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Paste an <0>mcpServers</0> config. Only remote (http/sse) servers are supported; non-Bearer auth headers are ignored."
 msgstr "Fügen Sie eine <0>mcpServers</0>-Konfiguration ein. Es werden nur Remote-Server (http/sse) unterstützt; Auth-Header ohne Bearer werden ignoriert."
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Path to a private key on this computer"
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Peer-to-peer via iroh — the connection is verified when a chat starts."
@@ -4556,6 +4740,10 @@ msgstr "Bitte warten Sie, während wir Ihren Link überprüfen."
 msgid "Point at any server exposing /v1/audio/transcriptions and /v1/audio/speech. Its CORS must allow this app’s origin."
 msgstr "Verweisen Sie auf einen beliebigen Server mit /v1/audio/transcriptions und /v1/audio/speech. Dessen CORS muss den Ursprung dieser App zulassen."
 
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Port"
+msgstr ""
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/settings/preferences.tsx
@@ -4603,6 +4791,10 @@ msgstr "Privat"
 msgid "Private inference"
 msgstr ""
 
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Private key file"
+msgstr ""
+
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 msgid "Private workspace inside Thunderbolt"
 msgstr ""
@@ -4616,6 +4808,7 @@ msgid "Productivity"
 msgstr ""
 
 #: src/projects/project-execution-field.tsx
+#: src/projects/project-execution-summary.tsx
 msgid "Project environment"
 msgstr ""
 
@@ -4636,6 +4829,14 @@ msgstr ""
 #: src/search/palette/entity-meta.ts
 msgid "Projects"
 msgstr "Projekte"
+
+#: src/settings/environments/index.tsx
+#~ msgid "Projects keep this environment until they are deleted. Removing it prevents those projects from running."
+#~ msgstr ""
+
+#: src/settings/environments/index.tsx
+msgid "Projects using this environment will no longer be able to run. Their files and chat history will be kept."
+msgstr ""
 
 #: src/settings/search/index.tsx
 #~ msgid "Provided by your server"
@@ -4753,6 +4954,10 @@ msgstr ""
 msgid "Refresh models"
 msgstr ""
 
+#: src/settings/environments/ssh-discovery-dialog.tsx
+msgid "Refresh SSH connections"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Refreshing keys…"
 msgstr ""
@@ -4779,6 +4984,10 @@ msgstr ""
 msgid "Remember my choice"
 msgstr ""
 
+#: src/projects/project-execution-field.tsx
+msgid "Remote working folder"
+msgstr ""
+
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
 #: src/settings/connections/integration-detail.tsx
@@ -4788,7 +4997,9 @@ msgid "Remove"
 msgstr "Entfernen"
 
 #. placeholder {0}: connection.name
+#. placeholder {0}: removal.name
 #: src/settings/connections/provider-connection-detail.tsx
+#: src/settings/environments/index.tsx
 msgid "Remove {0}?"
 msgstr ""
 
@@ -4821,6 +5032,14 @@ msgstr "Symbol entfernen"
 #: src/components/chat/quote-chip.tsx
 msgid "Remove quote"
 msgstr "Zitat entfernen"
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Remove saved passphrase"
+msgstr ""
+
+#: src/settings/environments/index.tsx
+msgid "Remove SSH environment"
+msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 msgid "Remove this bridge?"
@@ -5008,6 +5227,7 @@ msgstr "Führen Sie dies auf dem Rechner aus, der die Bridge hostet, und fügen 
 #: src/components/rename-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
+#: src/settings/environments/ssh-environment-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
@@ -5047,6 +5267,10 @@ msgstr ""
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
 msgstr "Speichern Sie Ihre Wiederherstellungsphrase"
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Saved in this computer's secure credential store. Never synced."
+msgstr ""
 
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -5364,8 +5588,8 @@ msgid "Set up sync"
 msgstr "Synchronisierung einrichten"
 
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
-msgid "Set when this project was created"
-msgstr ""
+#~ msgid "Set when this project was created"
+#~ msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Setting up encryption…"
@@ -5682,6 +5906,32 @@ msgstr "Spreche"
 #: src/settings/voice.tsx
 msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
 msgstr "Sprache-zu-Text und Text-zu-Sprache laufen in der Confidential Enclave von Thunderbolt."
+
+#: src/settings/environments/ssh-discovery-dialog.tsx
+msgid "SSH config"
+msgstr ""
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "SSH config and agent"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#: src/projects/project-execution-field.tsx
+#: src/projects/project-execution-summary.tsx
+msgid "SSH environment unavailable"
+msgstr ""
+
+#: src/agent-execution/use-ssh-environment-status.ts
+msgid "SSH environments require the desktop app."
+msgstr ""
+
+#: src/settings/environments/index.tsx
+msgid "SSH requires the desktop app"
+msgstr ""
+
+#: src/settings/environments/ssh-discovery-dialog.tsx
+msgid "Start this machine to connect"
+msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 #~ msgid "Start Using {appName}"
@@ -6069,6 +6319,7 @@ msgstr "Dieser Code ist abgelaufen. Bitte fordern Sie einen neuen an."
 
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 #: src/projects/project-execution-field.tsx
+#: src/projects/project-execution-summary.tsx
 msgid "This computer"
 msgstr ""
 
@@ -6223,6 +6474,10 @@ msgstr "Dieser private Chat wird nicht mit {agentName} ausgeführt. Wechseln Sie
 msgid "this project"
 msgstr "dieses Projekt"
 
+#: src/components/agent-execution-controls/use-project-execution-controls-state.ts
+msgid "This project's SSH environment is unavailable on this computer."
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from {appName} only. Nothing on the remote server is changed."
 msgstr "Damit wird die Verbindung nur aus {appName} entfernt. Auf dem Remote-Server wird nichts geändert."
@@ -6262,6 +6517,12 @@ msgstr ""
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr "Diese Anmeldeanfrage ist abgelaufen. Starten Sie eine neue in Ihrem Terminal."
+
+#: src/agent-execution/use-ssh-environment-status.ts
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+#: src/components/ssh-environments/ssh-folder-picker.tsx
+msgid "This SSH environment is unavailable on this computer."
+msgstr ""
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "This transcript is too large to upload."
@@ -6497,6 +6758,7 @@ msgstr "Vertrauenswürdige Geräte"
 
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/chat/attestation/attestation-panel.tsx
+#: src/components/ssh-environments/ssh-folder-picker.tsx
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -6776,6 +7038,10 @@ msgstr ""
 msgid "User Experience"
 msgstr "Nutzererlebnis"
 
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Username"
+msgstr ""
+
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 msgstr "{usedTokensLabel} von {maxTokensLabel} des Kontextfensters genutzt"
@@ -7050,6 +7316,10 @@ msgstr "wort1 wort2 wort3 ..."
 
 #: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
 msgid "Work on this computer"
+msgstr ""
+
+#: src/settings/environments/ssh-environment-form.tsx
+msgid "Working folder"
 msgstr ""
 
 #: src/settings/preferences.tsx

@@ -5,7 +5,7 @@
 import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import type { AgentAdapterContext } from '@/types/acp'
-import type { AgentExecution } from './store'
+import { useAgentExecutionStore, type AgentExecution } from './store'
 import type { Tool } from 'ai'
 import { toAcpToolKind } from '@shared/agent-tool-permissions'
 
@@ -33,21 +33,42 @@ const readOnlyTools = new Set([
   'microsoft_get_onedrive_file_content',
 ])
 
+/** A grant for another workspace must not authorize this turn's tools. */
+const matchesExecutionTarget = (left: AgentExecution, right: AgentExecution): boolean =>
+  left.location === right.location &&
+  left.cwd === right.cwd &&
+  (left.location !== 'ssh' || (right.location === 'ssh' && left.environmentId === right.environmentId))
+
 /** One turn's approval gate, shared by Pi and the legacy engine. Requests queue per chat. */
 export const createToolAuthorizer = (
   execution: AgentExecution,
-  context: Pick<AgentAdapterContext, 'threadId' | 'requestPermission'>,
+  context: Pick<AgentAdapterContext, 'threadId' | 'projectId' | 'requestPermission'>,
 ): AuthorizeTool => {
+  const getGrant = () => {
+    const state = useAgentExecutionStore.getState()
+    return context.projectId ? state.byProject[context.projectId] : state.byThread[context.threadId]
+  }
+  // Standalone adapter callers (such as evals) can supply an explicit policy without a stored chat.
+  const hadStoredGrant = getGrant() !== undefined
+  const hasFullAccess = () => {
+    const grant = getGrant()
+    return grant
+      ? matchesExecutionTarget(execution, grant) && grant.access === 'full'
+      : !hadStoredGrant && execution.access === 'full'
+  }
   let pending: Promise<void> = Promise.resolve()
   return async ({ name, source }, input, id, signal) => {
     signal?.throwIfAborted()
-    if (execution.access === 'full' || (source === 'built-in' && readOnlyTools.has(name))) {
+    if (hasFullAccess() || (source === 'built-in' && readOnlyTools.has(name))) {
       return
     }
     const previous = pending
     const task = (async () => {
       await previous
       signal?.throwIfAborted()
+      if (hasFullAccess()) {
+        return
+      }
       if (!context.requestPermission) {
         throw new Error('Tool approval is unavailable for this chat')
       }
@@ -58,7 +79,12 @@ export const createToolAuthorizer = (
             toolCallId: id,
             title: name,
             kind: source === 'built-in' ? toAcpToolKind(name) : 'other',
-            rawInput: { location: execution.location, workingDirectory: execution.cwd, arguments: input },
+            rawInput: {
+              location: execution.location,
+              ...(execution.location === 'ssh' ? { environmentId: execution.environmentId } : {}),
+              workingDirectory: execution.cwd,
+              arguments: input,
+            },
           },
           options: [
             { optionId: 'allow', kind: 'allow_once', name: i18n._(msg`Allow once`) },

@@ -10,6 +10,7 @@ import { useDatabase } from '@/contexts'
 import { updateProject } from '@/dal/projects'
 import type { Project } from '@/types'
 import { ProjectForm } from './project-form'
+import { ProjectExecutionSummary } from './project-execution-summary'
 
 type ProjectEditorDialogProps = {
   project: Project
@@ -33,6 +34,7 @@ export const ProjectEditorDialog = ({ project, onClose }: ProjectEditorDialogPro
         <DetailPanel title={title} onClose={onClose} showCloseButton={false}>
           <ProjectForm
             key={project.id}
+            environment={<ProjectExecutionSummary projectId={project.id} />}
             initialValues={{
               name: project.name,
               icon: project.icon,

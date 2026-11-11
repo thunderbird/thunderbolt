@@ -2,11 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { tool } from 'ai'
 import { z } from 'zod'
 import { createToolAuthorizer, withToolApproval } from './approval'
+import { useAgentExecutionStore, type AgentExecution } from './store'
+
+beforeEach(() => useAgentExecutionStore.setState({ byThread: {}, byProject: {} }))
+afterEach(() => useAgentExecutionStore.setState({ byThread: {}, byProject: {} }))
 
 describe('built-in tool approval', () => {
   it('requires approval for an external tool even when its name matches a trusted read', async () => {
@@ -116,5 +120,86 @@ describe('built-in tool approval', () => {
   it('fails closed when the approval bridge is absent', async () => {
     const authorize = createToolAuthorizer({ location: 'sandbox', access: 'ask' }, { threadId: 'chat' })
     await expect(authorize({ name: 'write', source: 'built-in' }, {}, 'id')).rejects.toThrow('approval is unavailable')
+  })
+
+  it.each(['project', 'thread'] as const)(
+    'uses a changed %s grant for tools in an already prepared turn',
+    async (scope) => {
+      const execution: AgentExecution = { location: 'ssh', environmentId: 'remote', cwd: '/workspace', access: 'ask' }
+      const setGrant = (next: AgentExecution) => {
+        const store = useAgentExecutionStore.getState()
+        if (scope === 'project') {
+          store.setProjectExecution('project', next)
+        } else {
+          store.setExecution('chat', next)
+        }
+      }
+      setGrant(execution)
+      const requestPermission = mock(
+        async (): Promise<RequestPermissionResponse> => ({ outcome: { outcome: 'selected', optionId: 'allow' } }),
+      )
+      const authorize = createToolAuthorizer(execution, {
+        threadId: 'chat',
+        projectId: scope === 'project' ? 'project' : undefined,
+        requestPermission,
+      })
+      setGrant({ ...execution, access: 'full' })
+      await authorize({ name: 'bash', source: 'built-in' }, {}, 'first')
+      await authorize({ name: 'write', source: 'built-in' }, {}, 'second')
+      expect(requestPermission).not.toHaveBeenCalled()
+
+      setGrant({ ...execution, access: 'ask' })
+      await authorize({ name: 'bash', source: 'built-in' }, {}, 'revoked')
+      expect(requestPermission).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('checks the current project grant again before displaying the next queued approval', async () => {
+    const execution: AgentExecution = { location: 'ssh', environmentId: 'remote', cwd: '/workspace', access: 'ask' }
+    useAgentExecutionStore.getState().setProjectExecution('project', execution)
+    const first = Promise.withResolvers<RequestPermissionResponse>()
+    const requestPermission = mock(() => first.promise)
+    const authorize = createToolAuthorizer(execution, { threadId: 'chat', projectId: 'project', requestPermission })
+    const a = authorize({ name: 'write', source: 'built-in' }, {}, 'a')
+    const b = authorize({ name: 'edit', source: 'built-in' }, {}, 'b')
+    await Promise.resolve()
+    expect(requestPermission).toHaveBeenCalledTimes(1)
+    useAgentExecutionStore.getState().setProjectExecution('project', { ...execution, access: 'full' })
+    first.resolve({ outcome: { outcome: 'selected', optionId: 'allow' } })
+    await Promise.all([a, b])
+    expect(requestPermission).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    { location: 'ssh', environmentId: 'another-remote', cwd: '/workspace', access: 'full' },
+    { location: 'ssh', environmentId: 'remote', cwd: '/another-folder', access: 'full' },
+    { location: 'computer', cwd: '/workspace', access: 'full' },
+    null,
+  ] satisfies Array<AgentExecution | null>)(
+    'does not retain a full grant after removal or target changes: %j',
+    async (next) => {
+      const execution: AgentExecution = { location: 'ssh', environmentId: 'remote', cwd: '/workspace', access: 'full' }
+      useAgentExecutionStore.getState().setProjectExecution('project', execution)
+      const requestPermission = mock(
+        async (): Promise<RequestPermissionResponse> => ({ outcome: { outcome: 'selected', optionId: 'deny' } }),
+      )
+      const authorize = createToolAuthorizer(execution, { threadId: 'chat', projectId: 'project', requestPermission })
+      useAgentExecutionStore.getState().setProjectExecution('project', next)
+      await expect(authorize({ name: 'bash', source: 'built-in' }, {}, 'old-target')).rejects.toThrow('denied')
+      expect(requestPermission).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('does not use another project or per-chat grant to authorize project tools', async () => {
+    const execution: AgentExecution = { location: 'ssh', environmentId: 'remote', cwd: '/workspace', access: 'ask' }
+    useAgentExecutionStore.getState().setProjectExecution('project', execution)
+    useAgentExecutionStore.getState().setProjectExecution('other-project', { ...execution, access: 'full' })
+    useAgentExecutionStore.getState().setExecution('chat', { ...execution, access: 'full' })
+    const requestPermission = mock(
+      async (): Promise<RequestPermissionResponse> => ({ outcome: { outcome: 'selected', optionId: 'deny' } }),
+    )
+    const authorize = createToolAuthorizer(execution, { threadId: 'chat', projectId: 'project', requestPermission })
+    await expect(authorize({ name: 'bash', source: 'built-in' }, {}, 'same-host')).rejects.toThrow('denied')
+    expect(requestPermission).toHaveBeenCalledTimes(1)
   })
 })

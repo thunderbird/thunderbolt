@@ -8,7 +8,7 @@
  */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useReducer } from 'react'
+import { useReducer, type ReactNode } from 'react'
 import { useAsyncAttempt } from '@/hooks/use-async-attempt'
 
 import { Button } from '@/components/ui/button'
@@ -51,6 +51,7 @@ const projectFormReducer = (state: ProjectFormState, action: ProjectFormAction):
 
 type ProjectFormProps = {
   initialValues: ProjectFormValues
+  environment?: ReactNode
   onCancel: () => void
   /** May reject; the form catches and shows the message rather than letting the
    *  rejection escape a handler React does not await. */
@@ -58,7 +59,7 @@ type ProjectFormProps = {
   onSuccess?: () => void
 }
 
-export const ProjectForm = ({ initialValues, onCancel, onSubmit, onSuccess }: ProjectFormProps) => {
+export const ProjectForm = ({ initialValues, environment, onCancel, onSubmit, onSuccess }: ProjectFormProps) => {
   const { t } = useLingui()
   const [{ icon, name, description, instructions, isPending, submitError }, dispatch] = useReducer(projectFormReducer, {
     ...initialValues,
@@ -116,6 +117,8 @@ export const ProjectForm = ({ initialValues, onCancel, onSubmit, onSuccess }: Pr
           />
         </EmojiPicker>
       </div>
+
+      {environment}
 
       <div className="flex flex-col gap-2">
         <label className="text-[length:var(--font-size-sm)] font-medium" htmlFor={fieldId('description')}>

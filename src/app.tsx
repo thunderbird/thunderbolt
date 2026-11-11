@@ -99,6 +99,7 @@ const routeChunkLoaders = {
   search: () => import('@/settings/search'),
   devices: () => import('@/settings/devices'),
   connections: () => import('@/settings/connections'),
+  environments: () => import('@/settings/environments'),
   skills: () => import('@/settings/skills'),
   agents: () => import('@/routes/settings/agents'),
   // The CLI device-authorization approval page is off the chat/landing
@@ -114,6 +115,7 @@ const ModelsPage = lazy(routeChunkLoaders.models)
 const SearchSettingsPage = lazy(routeChunkLoaders.search)
 const DevicesSettingsPage = lazy(routeChunkLoaders.devices)
 const ConnectionsPage = lazy(routeChunkLoaders.connections)
+const EnvironmentsSettingsPage = lazy(routeChunkLoaders.environments)
 const SkillsPage = lazy(routeChunkLoaders.skills)
 const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
 const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
@@ -253,6 +255,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               {experimentalFeatureVoice.value && <Route path="voice" element={<VoiceSettingsPage />} />}
               <Route path="devices" element={<DevicesSettingsPage />} />
               <Route path="connections" element={<ConnectionsPage />} />
+              <Route path="environments" element={<EnvironmentsSettingsPage />} />
               {/* Legacy routes — MCP servers and integrations merged into Connections. */}
               <Route path="mcp-servers" element={<Navigate to="/settings/connections" replace />} />
               <Route path="integrations" element={<Navigate to="/settings/connections" replace />} />

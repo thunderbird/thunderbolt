@@ -7,6 +7,7 @@ import { persist } from 'zustand/middleware'
 
 export type AgentExecution = { access: 'ask' | 'full' } & (
   | { location: 'computer'; cwd: string }
+  | { location: 'ssh'; environmentId: string; cwd: string }
   | { location: 'sandbox' | 'cloud'; cwd?: string }
 )
 export const defaultAgentExecution: AgentExecution = { location: 'sandbox', access: 'ask' }

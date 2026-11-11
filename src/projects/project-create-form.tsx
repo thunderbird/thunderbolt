@@ -45,7 +45,12 @@ export const ProjectCreateForm = ({
           />
         </EmojiPicker>
       </fieldset>
-      <ProjectExecutionField execution={form.execution} onChange={form.setExecution} disabled={form.isPending} />
+      <ProjectExecutionField
+        execution={form.execution}
+        onChange={form.setExecution}
+        disabled={form.isPending}
+        onManageEnvironments={onCancel}
+      />
       {form.error && (
         <p role="alert" className="text-sm text-destructive">
           {form.error}

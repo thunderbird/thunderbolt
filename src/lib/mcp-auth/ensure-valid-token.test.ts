@@ -187,6 +187,68 @@ describe('ensureValidMcpOAuthToken', () => {
     expect(stored.scope).toBe('read')
   })
 
+  it.each(['client_secret_post', 'client_secret_basic'] as const)(
+    'refreshes with the pinned resource and DCR %s credential',
+    async (method) => {
+      const resource = 'https://mcp.example.com/'
+      const credentials = await seedRefreshSession()
+      await setMcpServerCredentials(getDb(), serverId, {
+        ...credentials,
+        resource,
+        clientSecret: 'fixture-secret',
+        tokenEndpointAuthMethod: method,
+      })
+      const refresh: RefreshFn = async (_issuer, options) => {
+        expect(options.resource?.href).toBe(resource)
+        expect(options.clientInformation).toMatchObject({
+          client_id: 'old-client',
+          client_secret: 'fixture-secret',
+          token_endpoint_auth_method: method,
+        })
+        expect(options.metadata?.token_endpoint_auth_methods_supported).toEqual([method])
+        return { access_token: 'refreshed', token_type: 'Bearer', refresh_token: 'rotated' }
+      }
+      expect(await ensureValidMcpOAuthToken(getDb(), serverId, neverCalledFetch, refresh)).toBe('refreshed')
+      expect(await getMcpServerCredentials(getDb(), serverId)).toMatchObject({
+        resource,
+        clientSecret: 'fixture-secret',
+        tokenEndpointAuthMethod: method,
+        refresh_token: 'rotated',
+      })
+    },
+  )
+
+  it.each(['client_secret_post', 'client_secret_basic'] as const)(
+    'the real SDK sends %s refresh authentication and the pinned audience on the wire',
+    async (method) => {
+      const credentials = await seedRefreshSession()
+      await setMcpServerCredentials(getDb(), serverId, {
+        ...credentials,
+        resource: 'https://mcp.example.com/',
+        clientSecret: 'fixture-secret',
+        tokenEndpointAuthMethod: method,
+      })
+      const requests: Array<{ headers: Headers; body: URLSearchParams }> = []
+      const fetchFn: FetchLike = async (_url, init) => {
+        requests.push({ headers: new Headers(init?.headers), body: new URLSearchParams(String(init?.body)) })
+        return Response.json({ access_token: 'refreshed', token_type: 'Bearer' })
+      }
+      await ensureValidMcpOAuthToken(getDb(), serverId, fetchFn)
+      expect(requests).toHaveLength(1)
+      const request = requests[0]
+      expect(request.body.get('resource')).toBe('https://mcp.example.com/')
+      expect(request.body.get('grant_type')).toBe('refresh_token')
+      if (method === 'client_secret_basic') {
+        expect(request.headers.get('Authorization')).toBe(`Basic ${btoa('old-client:fixture-secret')}`)
+        expect(request.body.has('client_secret')).toBe(false)
+      } else {
+        expect(request.headers.has('Authorization')).toBe(false)
+        expect(request.body.get('client_id')).toBe('old-client')
+        expect(request.body.get('client_secret')).toBe('fixture-secret')
+      }
+    },
+  )
+
   it('stores a refresh response without expires_in as non-expiring (no refresh storm)', async () => {
     await seedServer()
     await setMcpServerCredentials(getDb(), serverId, {

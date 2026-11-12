@@ -37,6 +37,8 @@
     "analyze": "vite analyze",
     "db": "drizzle-kit",
     "eval": "bun --preload ./scripts/lingui-macro-bun-shim.ts src/ai/eval/run.ts",
+    "eval:memory": "bun --preload ./scripts/lingui-macro-bun-shim.ts src/ai/eval/memory-run.ts",
+    "eval:memory:compact": "bun --preload ./scripts/lingui-macro-bun-shim.ts src/ai/eval/memory-compaction-run.ts",
     "eval:baseline": "bun --preload ./scripts/lingui-macro-bun-shim.ts src/ai/eval/baseline-cli.ts generate",
     "eval:compare": "bun --preload ./scripts/lingui-macro-bun-shim.ts src/ai/eval/baseline-cli.ts compare",
     "eval:calibrate": "bun --preload ./scripts/lingui-macro-bun-shim.ts src/ai/eval/calibrate.ts",

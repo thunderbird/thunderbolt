@@ -103,7 +103,7 @@ describe('onboarding drafts', () => {
     expect(result.current.state.canGoNext).toBe(false)
   })
 
-  it.each(['0', '11', '2.5', '3invalid', ''])('rejects invalid saved step %s', async (step) => {
+  it.each(['0', '12', '2.5', '3invalid', ''])('rejects invalid saved step %s', async (step) => {
     await dal.updateSettings(getDb(), { onboarding_current_step: step })
     const { result } = mount()
     await flush()
@@ -385,10 +385,10 @@ describe('navigation selector', () => {
 
 describe('standalone flow', () => {
   it('keeps connected step identities and excludes server-only setup from the standalone path', () => {
-    expect(getOnboardingSteps(false)).toEqual([1, 2, 3, 4, 5, 6, 7])
-    expect(getOnboardingSteps(true)).toEqual([1, 8, 9, 10, 3, 5, 7])
-    expect(getOnboardingSteps(true, true)).toEqual([1, 8, 9, 3, 5, 7])
-    expect(getOnboardingSteps(false, true)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    expect(getOnboardingSteps(false)).toEqual([1, 2, 3, 4, 5, 6, 11, 7])
+    expect(getOnboardingSteps(true)).toEqual([1, 8, 9, 10, 3, 5, 11, 7])
+    expect(getOnboardingSteps(true, true)).toEqual([1, 8, 9, 3, 5, 11, 7])
+    expect(getOnboardingSteps(false, true)).toEqual([1, 2, 3, 4, 5, 6, 11, 7])
     expect(resolveOnboardingStep(10, true, true)).toBe(3)
     expect(resolveOnboardingStep(8, false)).toBe(2)
     expect(resolveOnboardingStep(4, true)).toBe(8)

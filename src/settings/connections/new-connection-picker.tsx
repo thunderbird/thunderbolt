@@ -20,6 +20,8 @@ import { providerDefinitions } from '@/providers/registry'
 import type { Integration } from './types'
 import type { ProviderCapability, ProviderType } from '@/providers/types'
 import { ProviderConnectionIcon } from './provider-connection-icon'
+import { memoryMcpProviders, type MemoryMcpProviderId } from '@/memory/providers'
+import { MemoryProviderLogo } from '@/components/memory-provider-logo'
 
 /** One entry point for AI providers, search providers, and existing MCP setup. */
 export const NewConnectionPicker = ({
@@ -27,6 +29,8 @@ export const NewConnectionPicker = ({
   onMcp,
   integrations = [],
   onIntegration,
+  onMemoryProvider,
+  memoryOnly = false,
   capability,
   otariEnabled = false,
 }: {
@@ -34,6 +38,8 @@ export const NewConnectionPicker = ({
   onMcp?: () => void
   integrations?: Integration[]
   onIntegration?: (id: string) => void
+  onMemoryProvider?: (id: MemoryMcpProviderId) => void
+  memoryOnly?: boolean
   otariEnabled?: boolean
   capability?: ProviderCapability
 }) => {
@@ -46,32 +52,35 @@ export const NewConnectionPicker = ({
     { id: 'models', label: t`Models` },
     { id: 'search', label: t`Search` },
     { id: 'productivity', label: t`Productivity` },
+    { id: 'memory', label: t`Memory` },
   ]
   const query = search.trim().toLowerCase()
   /** Match the visible labels without making case or surrounding spaces significant. */
   const matchesSearch = (label: string) => label.toLowerCase().includes(query)
-  const genericOptions = capability
-    ? []
-    : [
-        {
-          id: 'mcp',
-          description: undefined as string | undefined,
-          label: t`MCP server`,
-          icon: <Plug className="size-5" />,
-          onSelect: onMcp,
-        },
-        {
-          id: 'custom',
-          description: undefined as string | undefined,
-          label: t`OpenAI-compatible model provider`,
-          icon: <ProviderConnectionIcon provider="custom" />,
-          onSelect: () => onProvider('custom'),
-        },
-      ].filter((option) => matchesSearch(option.label) && (option.id === 'mcp' || matchesType(['models'])))
+  const genericOptions =
+    capability || memoryOnly
+      ? []
+      : [
+          {
+            id: 'mcp',
+            description: undefined as string | undefined,
+            label: t`MCP server`,
+            icon: <Plug className="size-5" />,
+            onSelect: onMcp,
+          },
+          {
+            id: 'custom',
+            description: undefined as string | undefined,
+            label: t`OpenAI-compatible model provider`,
+            icon: <ProviderConnectionIcon provider="custom" />,
+            onSelect: () => onProvider('custom'),
+          },
+        ].filter((option) => matchesSearch(option.label) && (option.id === 'mcp' || matchesType(['models'])))
   const providers = providerDefinitions
     .filter(
       (provider) =>
         provider.id !== 'custom' &&
+        !memoryOnly &&
         (provider.id !== 'otari' || otariEnabled) &&
         (!capability || provider.capabilities.includes(capability)) &&
         matchesType(provider.capabilities),
@@ -97,6 +106,7 @@ export const NewConnectionPicker = ({
       .filter((integration) => {
         const category = integration.provider === 'thunderbolt-pro' ? 'search' : 'productivity'
         return (
+          !memoryOnly &&
           matchesType([category]) &&
           matchesSearch(`${integration.name} ${category === 'productivity' ? t`Productivity` : t`Search`}`)
         )
@@ -107,6 +117,15 @@ export const NewConnectionPicker = ({
         description: integration.provider === 'thunderbolt-pro' ? t`Search` : t`Productivity`,
         icon: integration.icon,
         onSelect: () => onIntegration?.(integration.id),
+      })),
+    ...memoryMcpProviders
+      .filter((provider) => !capability && matchesType(['memory']) && matchesSearch(`${provider.name} ${t`Memory`}`))
+      .map((provider) => ({
+        id: `memory:${provider.id}`,
+        label: provider.name,
+        description: t`Memory`,
+        icon: <MemoryProviderLogo provider={provider.id} className="size-5" />,
+        onSelect: () => onMemoryProvider?.(provider.id),
       })),
   ].sort((a, b) => a.label.localeCompare(b.label, i18n.locale, { sensitivity: 'base' }))
 
@@ -122,7 +141,7 @@ export const NewConnectionPicker = ({
           className="min-w-0 flex-1"
           autoFocus
         />
-        {!capability && (
+        {!capability && !memoryOnly && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

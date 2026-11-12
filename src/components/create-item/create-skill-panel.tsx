@@ -4,6 +4,7 @@
 
 import { useLingui } from '@lingui/react/macro'
 import { useReducer } from 'react'
+import { Loader2 } from 'lucide-react'
 
 import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
 import { skillDisplayName } from '@/skills/display'
@@ -17,7 +18,7 @@ import {
 import { trackSkillEvent } from '@/skills/telemetry'
 import { useLibrarySkills } from '@/skills/use-skills'
 import { editSkillTitle } from './context'
-import { CreateItemLoadingPanel, CreateItemPanelShell } from './create-item-panel-shell'
+import { CreateItemPanelShell } from './create-item-panel-shell'
 
 type CreateSkillState = {
   isDirty: boolean
@@ -81,18 +82,6 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
     throw new Error(`CreateSkillPanel could not find skill ${skillId}`)
   }
 
-  if (isEditing && !activeSkill) {
-    return (
-      <CreateItemLoadingPanel
-        kind="skill"
-        title={title}
-        open={open}
-        onClose={onClose}
-        onCloseComplete={onCloseComplete}
-      />
-    )
-  }
-
   const requestClose = () => {
     if (state.isDirty) {
       dispatch({ type: 'DISCARD_OPENED' })
@@ -136,17 +125,23 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
         onClose={requestClose}
         onCloseComplete={onCloseComplete}
       >
-        <SkillForm
-          key={activeSkill ? `edit:${activeSkill.id}` : 'create'}
-          mode={isEditing ? 'edit' : 'create'}
-          initialValues={initialValues}
-          onCancel={requestClose}
-          onSubmit={handleSubmit}
-          onDirtyChange={(dirty) => dispatch({ type: 'DIRTY_CHANGED', dirty })}
-          onSlugChange={() => dispatch({ type: 'SLUG_CHANGED' })}
-          slugError={state.slugError}
-          submitError={state.submitError}
-        />
+        {isEditing && !activeSkill ? (
+          <div className="flex flex-1 items-center justify-center">
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <SkillForm
+            key={activeSkill ? `edit:${activeSkill.id}` : 'create'}
+            mode={isEditing ? 'edit' : 'create'}
+            initialValues={initialValues}
+            onCancel={requestClose}
+            onSubmit={handleSubmit}
+            onDirtyChange={(dirty) => dispatch({ type: 'DIRTY_CHANGED', dirty })}
+            onSlugChange={() => dispatch({ type: 'SLUG_CHANGED' })}
+            slugError={state.slugError}
+            submitError={state.submitError}
+          />
+        )}
       </CreateItemPanelShell>
       <DiscardCreateDialog
         open={state.isDiscardOpen}

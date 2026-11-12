@@ -5,7 +5,7 @@
 import { getAppName } from '@/lib/branding-selectors'
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { OAuthClientInformation, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
-import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secrets'
+import { getMcpServerCredentials, setMcpServerCredentials, type McpOAuthClientAuthMethod } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
 import { getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
@@ -131,12 +131,18 @@ class McpOAuthClientProvider implements OAuthClientProvider {
     }
   }
 
-  async clientInformation(): Promise<OAuthClientInformation | undefined> {
+  async clientInformation(): Promise<
+    (OAuthClientInformation & { token_endpoint_auth_method?: McpOAuthClientAuthMethod }) | undefined
+  > {
     const cred = await getMcpServerCredentials(this.db, this.serverId)
     if (cred?.type !== 'oauth' || !cred.clientId) {
       return undefined
     }
-    return { client_id: cred.clientId }
+    return {
+      client_id: cred.clientId,
+      client_secret: cred.clientSecret,
+      token_endpoint_auth_method: cred.tokenEndpointAuthMethod,
+    }
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
@@ -181,10 +187,16 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   private bindingFromHandshake() {
     const handshake = getMcpOAuthState()
     const metadata = parseJson<{ token_endpoint?: string }>(handshake.metadata)
+    const client = parseJson<OAuthClientInformation & { token_endpoint_auth_method?: McpOAuthClientAuthMethod }>(
+      handshake.clientInfo,
+    )
     return {
       issuer: handshake.issuer ?? undefined,
       tokenEndpoint: metadata?.token_endpoint,
-      clientId: parseJson<{ client_id?: string }>(handshake.clientInfo)?.client_id,
+      clientId: client?.client_id,
+      clientSecret: client?.client_secret,
+      tokenEndpointAuthMethod: client?.token_endpoint_auth_method,
+      resource: handshake.resource,
     }
   }
 

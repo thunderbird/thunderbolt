@@ -1,5 +1,25 @@
 # AI Eval Runner
 
+## Memory and session retrieval
+
+`bun run eval:memory` evaluates the production built-in adapter and Pi harness against invented, isolated memory and chat fixtures. Each attempt receives a fresh SQLite database and harness, so a memory saved in one trial cannot contaminate another. It runs 19 scenarios across all three shipped models, with three samples each by default. The multi-turn case keeps one harness through saving, correcting, and recalling a preference.
+
+```bash
+EVAL_AUTH_TOKEN=... bun run eval:memory
+EVAL_MODELS=flash,glm,opus EVAL_SAMPLES=1 bun run eval:memory
+EVAL_SCENARIOS=memory-update,sessions-retrieved-injection bun run eval:memory
+```
+
+Use `EVAL_CLOUD_URL` to select an isolated backend. If that backend already permits anonymous test sessions, `EVAL_ANONYMOUS_AUTH=1` obtains a bearer through its normal sign-in endpoint without printing it. This does not enable anonymous access or bypass authentication. The default generation timeout is 120 seconds per trajectory; `EVAL_TIMEOUT` overrides it.
+
+The suite checks explicit and implicit durable preferences, document correction while preserving unrelated facts, forgetting one fact, clearing the document, private-chat isolation, recall, disabled settings, transient and quoted text, credential refusal, saved-memory prompt injection, session search/read, unnecessary retrieval, deleted sessions, retrieved prompt injection, and large multilingual outputs. Assertions examine actual tool calls, final fixture facts, UTF-8 output sizes, and the persisted memory document. No judge model is needed for these deterministic fixture outcomes. Provider errors are reported separately from behavioral failures.
+
+Reports are written incrementally to `evals/memory-results.md` and the adjacent JSONL file, including every attempt and its fixture/state snapshot. Current fixtures persist an explicit public or private chat row before harness creation and store memory in the existing `memory_content` setting. `EVAL_OUTPUT` changes the path. The suite exits nonzero for any failure or unresolved provider error. These tests supplement unit and browser tests; successful examples do not prove perfect memory behavior.
+
+`bun run eval:memory:compact` separately calls the actual Settings compaction function through Pi's `models.streamSimple`, using the same model resolver and confidential transports. Three fixtures exercise shortening without losing a negation, a role distinction, or an exception. The JSON report retains every proposal for manual semantic review as well as deterministic checks; use `EVAL_MODELS`, `EVAL_SAMPLES`, and `EVAL_OUTPUT` as above.
+
+When authorized Opus access is through OpenRouter, set `EVAL_OPENROUTER_KEY_FILE` to a protected local file containing the OAuth-issued credential. Only the isolated eval model is changed to the exact `anthropic/claude-opus-5.5` model; shipped defaults and app credentials are unchanged. The journal records this transport explicitly and redacts the credential. This exercises the app's OpenRouter Pi transport rather than the managed Anthropic transport.
+
 Embedded E2E test runner that validates AI response quality across the shipped model and mode matrix. It runs through the production built-in adapter without a browser, Playwright, or MCP server.
 
 ## Quick Start

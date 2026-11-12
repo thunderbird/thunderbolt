@@ -21,6 +21,14 @@ msgstr "「{filename}」はサイズが大きすぎます（最大 {maxMegabytes
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "「{filename}」はサポートされていないファイル形式です。"
 
+#. placeholder {0}: page.usage.characters
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+character%7D+other+%7B%23+characters%7D%7D&pluralize_on=0
+#: src/settings/memory/memory-document-panel.tsx
+msgid "# character"
+msgid_plural "# characters"
+msgstr[0] ""
+msgstr[1] ""
+
 #. placeholder {0}: items.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
 #: src/components/embedded/surface-selection-bar.tsx
@@ -96,6 +104,10 @@ msgstr "{appName} が {providerName} メールとカレンダーへの接続を�
 msgid "{appName} will use it across the app. You can change it later in Preferences."
 msgstr "{appName} はアプリ全体でこの言語を使用します。後で環境設定から変更できます。"
 
+#: src/settings/memory/index.tsx
+#~ msgid "{bytes} / {maxBytes} bytes"
+#~ msgstr ""
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 #~ msgid "# chat"
@@ -113,6 +125,10 @@ msgstr[0] "# 件のスキルがこれを参照しています。削除すると�
 msgid "One skill references this. If you disable it, that skill may no longer resolve."
 msgid_plural "# skills reference this. If you disable it, they may no longer resolve."
 msgstr[0] "# 件のスキルがこれを参照しています。無効にすると、それらのスキルが解決できなくなる可能性があります。"
+
+#: src/settings/memory/index.tsx
+#~ msgid "{count} / {maxCount} memories · {bytes} / {maxBytes} bytes"
+#~ msgstr ""
 
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
@@ -208,6 +224,18 @@ msgstr ""
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "デバイスが Thunderbolt CLI としてアカウントにサインインしようとしています。ご自身がターミナルで開始した場合のみ承認してください。"
 
+#: src/settings/memory/index.tsx
+#~ msgid "A few useful details, carried between chats. Private chats cannot read or change memory."
+#~ msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "A few useful details, carried between chats. Review and edit what your built-in agents remember."
+#~ msgstr ""
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+msgid "A little continuity"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
 msgstr ""
@@ -227,6 +255,10 @@ msgstr "新しいバージョンが利用できます。インストールする
 #: src/projects/index.tsx
 #~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
 #~ msgstr "プロジェクトは指示を 1 か所にまとめるため、その中のすべてのチャットが同じコンテキストで始まります。"
+
+#: src/settings/memory/index.tsx
+#~ msgid "A short text document you control. It syncs with your account and is separate from your connected memory services."
+#~ msgstr ""
 
 #: src/settings/connections/provider-connection-form.tsx
 #~ msgid "A sign-in connection already exists for {name}. Open it to manage this account, or use an API key for another connection."
@@ -305,6 +337,10 @@ msgstr "<0>~/.local/bin</0> を PATH に追加し、シェルを再起動して�
 #~ msgid "Add a connection"
 #~ msgstr ""
 
+#: src/settings/memory/index.tsx
+#~ msgid "Add a detail here, or ask your agent to remember something."
+#~ msgstr ""
+
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Add a model"
 msgstr ""
@@ -346,6 +382,7 @@ msgstr ""
 
 #: src/components/chat/chat-model-setup.tsx
 #: src/settings/connections/connections-list.tsx
+#: src/settings/memory-connections/memory-connections.tsx
 #: src/settings/search/index.tsx
 msgid "Add connection"
 msgstr ""
@@ -388,6 +425,10 @@ msgstr "サーバーを追加"
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Add summary instructions (optional)"
+msgstr ""
+
+#: src/settings/memory/memory-document-panel.tsx
+msgid "Add things you want your agent to remember."
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
@@ -469,6 +510,14 @@ msgstr "すべてのスキルがピン留めされています"
 
 #: src/settings/connections/provider-connection-summary.tsx
 msgid "Allow access to your ChatGPT plan to use its models. You can also add an API-key connection."
+msgstr ""
+
+#: src/settings/memory/index.tsx
+msgid "Allow agents to recall and share info across sessions. Not used by private chats."
+msgstr ""
+
+#: src/settings/memory/index.tsx
+msgid "Allow agents to view previous chat sessions."
 msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
@@ -589,6 +638,10 @@ msgstr "アプリのバージョン"
 #: src/projects/project-form.tsx
 #~ msgid "Applied to every chat in this project."
 #~ msgstr "このプロジェクトのすべてのチャットに適用されます。"
+
+#: src/settings/memory/index.tsx
+msgid "Apply"
+msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Approval code"
@@ -768,6 +821,15 @@ msgstr "代わりにソースからビルドする（Bun が必要）:"
 msgid "Built to protect your data."
 msgstr ""
 
+#: src/settings/memory-connections/built-in-memory-card.tsx
+msgid "Built-in"
+msgstr ""
+
+#: src/components/create-item/context.tsx
+#: src/settings/memory/memory-document-panel.tsx
+msgid "Built-in memory"
+msgstr ""
+
 #: src/settings/models/model-detail.tsx
 msgid "Built-in models can't be edited or removed"
 msgstr "組み込みモデルは編集・削除できません"
@@ -809,6 +871,8 @@ msgstr "カレンダー"
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/connections/provider-connection-form.tsx
 #: src/settings/encryption/passkey-section.tsx
+#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 #: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
 #: src/settings/preferences.tsx
@@ -897,6 +961,14 @@ msgstr "更新を確認"
 msgid "Check now"
 msgstr "今すぐ確認"
 
+#: src/settings/memory/index.tsx
+#~ msgid "Check that every fact is preserved before replacing your memories. Nothing changes until you apply."
+#~ msgstr ""
+
+#: src/settings/memory/index.tsx
+msgid "Check that every fact is preserved. Nothing changes until you apply."
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Check the backend logs"
 msgstr "バックエンドのログを確認してください"
@@ -939,6 +1011,10 @@ msgstr "セッションを確認しています。"
 #: src/hooks/use-desktop-update.ts
 msgid "Checking…"
 msgstr "確認中…"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Choose a confidential model to make private memories concise."
+#~ msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "Choose a connection"
@@ -1004,6 +1080,10 @@ msgstr "1 つ選択"
 #: src/projects/project-badge.tsx
 msgid "Choose project"
 msgstr "プロジェクトを選択"
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+msgid "Choose what your built-in agents can remember. You can change these choices anytime in Settings → Memory."
+msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Choose your agents, models, and tools."
@@ -1159,6 +1239,10 @@ msgstr "コマンドパレット"
 msgid "Command result"
 msgstr ""
 
+#: src/settings/memory-connections/built-in-memory-card.tsx
+msgid "Compact"
+msgstr ""
+
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Compact now"
 msgstr ""
@@ -1167,11 +1251,16 @@ msgstr ""
 msgid "Compacted"
 msgstr ""
 
+#: src/settings/memory/index.tsx
+msgid "Compacted memory"
+msgstr ""
+
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Compacting context…"
 msgstr ""
 
 #: src/components/context-usage/compaction-notice.tsx
+#: src/settings/memory-connections/built-in-memory-card.tsx
 msgid "Compacting…"
 msgstr ""
 
@@ -1248,6 +1337,12 @@ msgstr "このコードがターミナルに表示されているものと一致
 msgid "Connect"
 msgstr ""
 
+#. placeholder {0}: provider.name
+#: src/settings/memory-connections/memory-connection-status.tsx
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Connect {0}"
+msgstr ""
+
 #: src/settings/connections/provider-connection-form.tsx
 msgid "Connect {name}"
 msgstr ""
@@ -1279,6 +1374,10 @@ msgstr "Agent Client Protocol に対応したリモートエージェントを�
 msgid "Connect a search provider to let your agents search the web."
 msgstr ""
 
+#: src/settings/memory-connections/memory-connections.tsx
+msgid "Connect and enable this provider to use memory."
+msgstr ""
+
 #: src/components/otari-connection/otari-connection.tsx
 #~ msgid "Connect another account"
 #~ msgstr ""
@@ -1292,6 +1391,7 @@ msgid "Connect Microsoft"
 msgstr "Microsoft を接続"
 
 #: src/settings/connections/provider-connection-detail.tsx
+#: src/settings/memory-connections/memory-connection-status.tsx
 msgid "Connect on this device"
 msgstr ""
 
@@ -1316,6 +1416,10 @@ msgstr ""
 #: src/settings/connections/connections-list.tsx
 msgid "Connect providers, accounts, or MCP servers to use their models and tools."
 msgstr ""
+
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "Connect Supermemory, Mem0, Hindsight Cloud, or Zep. Provider memories stay with that service and are unavailable in private chats."
+#~ msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "Connect this provider on this device to add models."
@@ -1386,6 +1490,7 @@ msgstr ""
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/components/sidebar-footer.tsx
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/memory-connections/memory-connections.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected"
 msgstr "接続済み"
@@ -1393,6 +1498,11 @@ msgstr "接続済み"
 #: src/voice/engine/openai-compatible-engine.ts
 msgid "Connected — synthesis succeeded."
 msgstr "接続しました — 音声合成に成功しました。"
+
+#. placeholder {0}: provider.name
+#: src/settings/memory-connections/memory-connection-status.tsx
+msgid "Connected to {0}"
+msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected to {connectedProviderName} Calendar"
@@ -1580,6 +1690,7 @@ msgstr "コンテキストウィンドウを超えました"
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/connections/connection-setup-footer.tsx
 #: src/settings/connections/provider-connection-form.tsx
+#: src/settings/memory-connections/memory-provider-form.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Continue"
 msgstr "続行"
@@ -1611,10 +1722,12 @@ msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Copied"
 msgstr "コピーしました"
 
 #: src/components/chat/mobile-user-message.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Copy"
 msgstr "コピー"
 
@@ -1727,6 +1840,10 @@ msgstr ""
 msgid "Could not connect. Check your API key and connection, then try again."
 msgstr ""
 
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "Could not copy memory. Select the text and copy it manually."
+msgstr ""
+
 #: src/projects/use-project-create-state.ts
 msgid "Could not create the project."
 msgstr "プロジェクトを作成できませんでした。"
@@ -1756,8 +1873,8 @@ msgid "Could not finish connecting or revoke the unused session. You can remove 
 msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
-msgid "Could not finish setup. Please try again."
-msgstr ""
+#~ msgid "Could not finish setup. Please try again."
+#~ msgstr ""
 
 #: src/components/onboarding/provider-setup-error.ts
 msgid "Could not load the provider's model list. Please try again."
@@ -1792,6 +1909,10 @@ msgstr "ペアリングコードを表示できませんでした。"
 msgid "Could not restart the app. Quit Thunderbolt and open it again."
 msgstr ""
 
+#: src/components/onboarding/onboarding-dialog.tsx
+msgid "Could not save setup. Please try again."
+msgstr ""
+
 #: src/settings/connections/use-provider-connection-form.ts
 msgid "Could not save the connection. Try again."
 msgstr ""
@@ -1814,6 +1935,14 @@ msgstr ""
 
 #: src/hooks/use-mcp-server-oauth.ts
 msgid "Could not start authorization. Please try again."
+msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+#~ msgid "Could not update memories. They may have changed, or the model could not make them shorter. Please try again."
+#~ msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "Could not update memory. Please try again."
 msgstr ""
 
 #: src/settings/connections/use-ai-provider-connections.ts
@@ -2062,6 +2191,10 @@ msgstr ""
 msgid "Currency"
 msgstr "通貨"
 
+#: src/settings/memory/index.tsx
+msgid "Current memory"
+msgstr ""
+
 #: src/settings/app-version-section.tsx
 msgid "Current version"
 msgstr "現在のバージョン"
@@ -2201,6 +2334,10 @@ msgstr ""
 #: src/components/logout-modal.tsx
 msgid "Delete data from device"
 msgstr "デバイスからデータを削除"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Delete memory"
+#~ msgstr ""
 
 #: src/settings/models/index.tsx
 msgid "Delete Model"
@@ -2393,6 +2530,7 @@ msgstr "テレメトリーを無効にする"
 
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/memory-connections/memory-connections.tsx
 #: src/skills/skills-list.tsx
 msgid "Disabled"
 msgstr "無効"
@@ -2544,6 +2682,8 @@ msgstr "早期アクセスのログイン"
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/settings/connections/provider-connection-detail.tsx
+#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Edit"
 msgstr "編集"
 
@@ -2554,6 +2694,10 @@ msgstr "ファイルを編集"
 #: src/settings/connections/index.tsx
 msgid "Edit MCP Server"
 msgstr "MCP サーバーを編集"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Edit memory"
+#~ msgstr ""
 
 #: src/settings/models/index.tsx
 msgid "Edit Model"
@@ -2620,6 +2764,7 @@ msgid "Enable cloud sync"
 msgstr "クラウド同期を有効にする"
 
 #: src/components/onboarding/onboarding-search-step.tsx
+#: src/settings/memory-connections/memory-connection-status.tsx
 msgid "Enable connection"
 msgstr ""
 
@@ -2759,6 +2904,10 @@ msgstr ""
 msgid "Enterprise"
 msgstr ""
 
+#: src/settings/memory/index.tsx
+#~ msgid "Entries you add here can be used with any model. Memories saved by confidential models stay private. Memories sync when account sync is enabled."
+#~ msgstr ""
+
 #: src/settings/search/search-connection-detail.tsx
 msgid "Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters. No separate Exa API key is needed."
 msgstr ""
@@ -2811,6 +2960,10 @@ msgstr ""
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
 msgstr "華氏"
+
+#: src/settings/connections/index.tsx
+msgid "Failed to add MCP server"
+msgstr ""
 
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Failed to change the recovery phrase"
@@ -2906,6 +3059,7 @@ msgstr "暗号化を設定できませんでした"
 msgid "Failed to update integration"
 msgstr "連携を更新できませんでした"
 
+#: src/settings/connections/index.tsx
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Failed to update MCP server"
 msgstr "MCP サーバーを更新できませんでした"
@@ -2917,6 +3071,10 @@ msgstr ""
 #: src/settings/connections/new-connection-picker.tsx
 msgid "Filter by type"
 msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Find details in earlier chats."
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Finish connecting in your browser, then paste the authorization code here."
@@ -2945,6 +3103,10 @@ msgstr "霧"
 #: src/projects/emoji-catalog.ts
 msgid "Food & drink"
 msgstr "食べ物と飲み物"
+
+#: src/settings/memory/index.tsx
+#~ msgid "For example: I prefer short answers."
+#~ msgstr ""
 
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-chat-badge.tsx
@@ -3298,6 +3460,14 @@ msgstr "保存された API キーを維持"
 msgid "Keep saved credential"
 msgstr "保存された認証情報を維持"
 
+#: src/components/onboarding/onboarding-memory-step.tsx
+msgid "Keep short facts and preferences for future chats. You can review, edit, or clear them. Private chats cannot read or change built-in memory or connected memory services."
+msgstr ""
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+#~ msgid "Keep short facts and preferences for future chats. You can review, edit, or delete them. Memories are shared with the model you use; private memories stay with confidential models."
+#~ msgstr ""
+
 #: src/components/approve-device/approve-device-dialog.tsx
 msgid "Keep the new device on its approval screen, or tap New code there, then try again."
 msgstr "新しいデバイスを承認画面のままにするか、そのデバイスで「新しいコード」をタップしてから、もう一度お試しください。"
@@ -3343,6 +3513,18 @@ msgstr "作成せずに移動しますか？"
 #: src/skills/skills-view.tsx
 msgid "Leave without saving?"
 msgstr "保存せずに移動しますか？"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Let agents save and use lasting facts and preferences. Turning this off keeps your list but stops using it in future requests."
+#~ msgstr ""
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+msgid "Let agents search and read relevant parts of your other chats when useful. Private chats stay with confidential models."
+msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Let agents use built-in memory and connected memory services. Turning this off keeps your memory but stops using it in future requests."
+#~ msgstr ""
 
 #: src/settings/models/supports-tools-switch.tsx
 msgid "Lets the model call tools like web search and integrations. Turn this off if the model rejects tool requests."
@@ -3391,6 +3573,15 @@ msgstr "デバイスを読み込んでいます…"
 #: src/projects/emoji-picker.tsx
 msgid "Loading emoji…"
 msgstr "絵文字を読み込んでいます…"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Loading memories…"
+#~ msgstr ""
+
+#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
+msgid "Loading memory…"
+msgstr ""
 
 #: src/components/otari-connection/otari-connection.tsx
 #: src/settings/models/add-provider-models.tsx
@@ -3453,6 +3644,23 @@ msgstr ""
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr "おおむね晴れ"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Make concise"
+#~ msgstr ""
+
+#: src/settings/memory-connections/memory-provider-option.tsx
+msgid "Manage"
+msgstr ""
+
+#. placeholder {0}: server.name
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "Manage {0}"
+#~ msgstr ""
+
+#: src/settings/memory-connections/memory-provider-option.tsx
+msgid "Manage {name}"
+msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
 msgid "Manage account"
@@ -3520,6 +3728,45 @@ msgstr "MCP サーバー"
 msgid "Medium"
 msgstr ""
 
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/settings/connections/new-connection-picker.tsx
+#: src/settings/memory/index.tsx
+msgid "Memory"
+msgstr ""
+
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Memory bank ID"
+msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "Memory changed while you were editing. Copy your changes, cancel, and edit the latest version."
+msgstr ""
+
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "Memory connections"
+#~ msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+#~ msgid "Memory is too long or full. Keep each entry under 256 characters and the list under 50 entries and 6 KiB."
+#~ msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+#~ msgid "Memory is too long. Keep the document under 6 KiB."
+#~ msgstr ""
+
+#: src/settings/memory/memory-document-panel.tsx
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "Memory is too long. Shorten it before saving."
+msgstr ""
+
+#: src/settings/memory-connections/memory-connections.tsx
+msgid "Memory provider"
+msgstr ""
+
+#: src/settings/memory/memory-document-panel.tsx
+msgid "Memory text"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Message Simulator"
@@ -3567,6 +3814,14 @@ msgstr "モデル"
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Model and reasoning effort"
 msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Model for compaction"
+#~ msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Model for concise rewrite"
+#~ msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "Model ID"
@@ -3785,6 +4040,10 @@ msgstr ""
 msgid "No connections yet"
 msgstr ""
 
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "No connections yet."
+#~ msgstr ""
+
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
 msgstr "まだデバイスはありません。同期を有効にしてサインインすると、ここにデバイスが表示されます。"
@@ -3838,6 +4097,15 @@ msgstr "一致するスキルはありません"
 #: src/skills/skills-list.tsx
 msgid "No matching skills."
 msgstr "一致するスキルはありません。"
+
+#: src/settings/memory/index.tsx
+#~ msgid "No memories yet"
+#~ msgstr ""
+
+#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
+msgid "No memory yet. Click Edit or ask your agent to remember something."
+msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "No model providers connected."
@@ -3929,6 +4197,10 @@ msgstr "プライベートチャットでは利用できません。"
 #: src/settings/devices.tsx
 msgid "Not configured"
 msgstr "未設定"
+
+#: src/settings/memory-connections/memory-connections.tsx
+msgid "Not connected"
+msgstr ""
 
 #: src/components/not-found.tsx
 msgid "Not Found"
@@ -4305,6 +4577,10 @@ msgstr "ペアリングコードを貼り付けるか、その QR 画像をア�
 msgid "Paste an <0>mcpServers</0> config. Only remote (http/sse) servers are supported; non-Bearer auth headers are ignored."
 msgstr "<0>mcpServers</0> の設定を貼り付けてください。対応しているのはリモート（http/sse）サーバーのみで、Bearer 以外の認証ヘッダーは無視されます。"
 
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "Paused"
+#~ msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Peer-to-peer via iroh — the connection is verified when a chat starts."
 msgstr "iroh によるピアツーピア接続 — 接続はチャット開始時に検証されます。"
@@ -4470,6 +4746,7 @@ msgid "Quit"
 msgstr "終了"
 
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/memory-connections/memory-connection-status.tsx
 msgid "Re-authorize"
 msgstr "再認可"
 
@@ -4496,6 +4773,10 @@ msgstr "{fileName} を読み込み中…"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
 msgstr "送信できます"
+
+#: src/settings/memory-connections/memory-connection-status.tsx
+msgid "Ready to use as your memory provider."
+msgstr ""
 
 #: src/content-view/context.tsx
 msgid "Reasoning"
@@ -4560,6 +4841,11 @@ msgstr ""
 msgid "Recovery phrase updated."
 msgstr ""
 
+#: src/components/onboarding/onboarding-memory-step.tsx
+#: src/settings/memory/index.tsx
+msgid "Reference earlier chats"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
 msgstr ""
@@ -4586,6 +4872,10 @@ msgstr ""
 #: src/components/upgrade-required.tsx
 msgid "Reload"
 msgstr "再読み込み"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Remember details outside private chats."
+#~ msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
@@ -4637,6 +4927,10 @@ msgstr "このブリッジを削除しますか？"
 #: src/settings/encryption/passkey-section.tsx
 msgid "Remove your passkey?"
 msgstr "パスキーを削除しますか？"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Removed as a duplicate"
+#~ msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 #: src/lib/tool-metadata.ts
@@ -4742,6 +5036,7 @@ msgid "Retry"
 msgstr "再試行"
 
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/memory-connections/memory-connection-status.tsx
 msgid "Retry connection"
 msgstr "接続を再試行"
 
@@ -4756,6 +5051,14 @@ msgstr "再試行しています…"
 #: src/components/provider-authorization-result.tsx
 msgid "Return to Thunderbolt"
 msgstr ""
+
+#: src/settings/memory/index.tsx
+msgid "Review compacted memory"
+msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Review concise memories"
+#~ msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
@@ -4808,6 +5111,7 @@ msgstr "ブリッジをホストしているマシンでこれを実行してか
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/mini-apps/mini-app-download-prompt.tsx
+#: src/settings/memory/memory-document-panel.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
@@ -4847,6 +5151,15 @@ msgstr ""
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
 msgstr "リカバリーフレーズを保存してください"
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+#: src/settings/memory/index.tsx
+msgid "Saved memories"
+msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Saved memory"
+#~ msgstr ""
 
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -4891,6 +5204,10 @@ msgstr ""
 
 #: src/settings/search/index.tsx
 #~ msgid "Search and page content use your Otari connection and your workspace’s web access settings. Manage your search provider in Otari."
+#~ msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Search and read relevant parts of your other chats when needed. Private chats are available only to confidential models."
 #~ msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
@@ -5051,6 +5368,10 @@ msgstr "プロバイダーを選択"
 msgid "Select…"
 msgstr "選択…"
 
+#: src/settings/memory-connections/memory-connections.tsx
+msgid "Selected provider is unavailable. Choose another provider to resume memory."
+msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Selected server"
 msgstr ""
@@ -5176,6 +5497,11 @@ msgstr "設定"
 msgid "Settings, action needed"
 msgstr ""
 
+#: src/settings/memory-connections/memory-connection-status.tsx
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Setup instructions"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-button.tsx
 msgid "Share debug transcript"
 msgstr ""
@@ -5269,6 +5595,11 @@ msgstr "サインイン"
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Sign in faster next time"
 msgstr "次回からすばやくサインイン"
+
+#. placeholder {0}: provider.name
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Sign in to {0} to let your agent use the memories you authorize there. These memories are stored by the provider."
+msgstr ""
 
 #: src/components/sign-in-modal.tsx
 msgid "Sign in to {appName}"
@@ -5557,6 +5888,14 @@ msgstr "このデバイスをクラウドと同期"
 msgid "Synced {relative}"
 msgstr "{relative}に同期"
 
+#: src/settings/memory-connections/built-in-memory-card.tsx
+msgid "Synced across your devices"
+msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Synced memories exceed the context limit. Remove or compact some entries; only the portion that fits is used in chats."
+#~ msgstr ""
+
 #: src/components/theme-toggle-group.tsx
 msgid "System"
 msgstr "システム"
@@ -5763,6 +6102,10 @@ msgstr "地図を読み込めませんでした。"
 msgid "The model connection test timed out. Please try again."
 msgstr ""
 
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "The model could not make memory shorter. You can edit it directly."
+msgstr ""
+
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The model verification request failed. Please try again."
 msgstr ""
@@ -5823,6 +6166,10 @@ msgstr ""
 msgid "Theme"
 msgstr "テーマ"
 
+#: src/settings/memory/index.tsx
+#~ msgid "There are too many memories to rewrite at once. Remove some entries to make a concise rewrite available."
+#~ msgstr ""
+
 #. placeholder {0}: state.modelsWithoutTools.join(', ')
 #: src/settings/models/add-provider-models.tsx
 msgid "These models do not support tools and cannot use features like web search: {0}."
@@ -5867,8 +6214,20 @@ msgstr "このコードは期限切れです。"
 msgid "This code has expired. Please request a new one."
 msgstr "このコードは有効期限が切れています。新しいコードをリクエストしてください。"
 
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "This connection changed during authorization. Please try again."
+msgstr ""
+
+#: src/settings/connections/index.tsx
+msgid "This connection changed. Please open it again."
+msgstr ""
+
 #: src/lib/otari-browser-auth.ts
 msgid "This connection expired. Please connect to Otari again."
+msgstr ""
+
+#: src/settings/memory-connections/memory-connection-status.tsx
+msgid "This connection is disabled."
 msgstr ""
 
 #: src/components/provider-authorization-result.tsx
@@ -6620,6 +6979,10 @@ msgstr "システム設定を使用"
 #~ msgid "Use the authorization code option to connect to OpenRouter on this device."
 #~ msgstr ""
 
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Use the bank ID from Hindsight Cloud's Connect page. Only that bank will be connected."
+msgstr ""
+
 #: src/voice/speakable.ts
 msgid "Use the connection prompt on screen to continue."
 msgstr "続けるには、画面の接続の案内をご利用ください。"
@@ -6732,6 +7095,10 @@ msgstr "予定の表示と管理、イベントの作成と再スケジュール
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "View devices"
+msgstr ""
+
+#: src/settings/memory-connections/built-in-memory-card.tsx
+msgid "View full memory"
 msgstr ""
 
 #: src/components/chat/markdown-utils.tsx
@@ -7169,6 +7536,10 @@ msgstr ""
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
 msgstr ""
 
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Your Hindsight bank ID"
+msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Your local data stays on this device until you enable sync."
 msgstr ""
@@ -7196,6 +7567,10 @@ msgstr ""
 
 #: src/components/recovery-phrase-change-dialogs.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr ""
+
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Your organization must enable Zep MCP access before you can connect."
 msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx

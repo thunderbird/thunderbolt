@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 
 import { ContentViewProvider, useContentView } from '@/content-view/context'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -309,6 +310,43 @@ describe('SafeLink contact and unsupported links', () => {
     const { container } = renderMarkdown('[click](javascript:alert(1))')
     expect(container.querySelector('a')).toBeNull()
     expect(container.textContent).toContain('click')
+  })
+
+  test('a source-chat link navigates inside the app without the external-link dialog', () => {
+    const path = '/chats/019a79a1-e000-7000-8000-000000000001'
+    const router = createMemoryRouter(
+      [
+        {
+          path: '*',
+          element: (
+            <ExternalLinkDialogProvider>
+              <ReactMarkdown
+                components={markdownComponents}
+                urlTransform={markdownUrlTransform}
+              >{`[Earlier planning](${path})`}</ReactMarkdown>
+            </ExternalLinkDialogProvider>
+          ),
+        },
+      ],
+      { initialEntries: ['/chats/new'] },
+    )
+    const { container } = render(<RouterProvider router={router} />)
+    const link = container.querySelector('a')!
+    expect(link.getAttribute('href')).toBe(path)
+    expect(link.hasAttribute('target')).toBe(false)
+    fireEvent.click(link)
+    expect(router.state.location.pathname).toBe(path)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  test.each([
+    '/settings/account',
+    '//evil.example/chats/019a79a1-e000-7000-8000-000000000001',
+    '/chats/not-an-id',
+    '/chats/019a79a1-e000-7000-8000-000000000001?delete=true',
+  ])('does not enable arbitrary internal navigation for %s', (path) => {
+    const { container } = renderMarkdown(`[untrusted](${path})`)
+    expect(container.querySelector('a')).toBeNull()
   })
 
   test('no anchor carries a node attribute', () => {

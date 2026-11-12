@@ -99,6 +99,7 @@ const routeChunkLoaders = {
   preferences: () => import('@/settings/preferences'),
   models: () => import('@/settings/models'),
   search: () => import('@/settings/search'),
+  memory: () => import('@/settings/memory'),
   devices: () => import('@/settings/devices'),
   connections: () => import('@/settings/connections'),
   skills: () => import('@/settings/skills'),
@@ -114,6 +115,7 @@ const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
 const ModelsPage = lazy(routeChunkLoaders.models)
 const SearchSettingsPage = lazy(routeChunkLoaders.search)
+const MemorySettingsPage = lazy(routeChunkLoaders.memory)
 const DevicesSettingsPage = lazy(routeChunkLoaders.devices)
 const ConnectionsPage = lazy(routeChunkLoaders.connections)
 const SkillsPage = lazy(routeChunkLoaders.skills)
@@ -252,6 +254,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route path="preferences" element={<PreferencesSettingsPage />} />
               <Route path="models" element={<ModelsPage />} />
               <Route path="search" element={<SearchSettingsPage />} />
+              <Route path="memory" element={<MemorySettingsPage />} />
               {experimentalFeatureVoice.value && <Route path="voice" element={<VoiceSettingsPage />} />}
               <Route path="devices" element={<DevicesSettingsPage />} />
               <Route path="connections" element={<ConnectionsPage />} />

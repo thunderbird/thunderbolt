@@ -18,10 +18,62 @@ const makeParsed = (overrides: Partial<ParsedStream> = {}): ParsedStream => ({
   ...overrides,
 })
 
-const call = (toolName: string, input: unknown, toolCallId = crypto.randomUUID()): ToolCallInfo => ({
+const call = (toolName: string, input: unknown, toolCallId: string = crypto.randomUUID()): ToolCallInfo => ({
   toolCallId,
   toolName,
   input,
+})
+
+describe('app tool criteria', () => {
+  test('scores app tool decisions separately from web calls', () => {
+    const scenario = {
+      ...fixtureScenario(),
+      criteria: {
+        mustProduceOutput: true,
+        maxToolCalls: 0,
+        toolCallLimits: { save_memory: { min: 1, max: 1 }, search_sessions: { max: 0 } },
+      },
+    }
+    expect(
+      scoreResult(scenario, makeParsed({ toolCalls: [call('save_memory', { content: 'Prefers Celsius.' })] }), 0)
+        .passed,
+    ).toBe(true)
+    expect(scoreResult(scenario, makeParsed(), 0).failures).toContain('Too few save_memory calls: 0 (min: 1)')
+    expect(
+      scoreResult(scenario, makeParsed({ toolCalls: [call('search_sessions', { query: 'unnecessary' })] }), 0).failures,
+    ).toContain('Too many search_sessions calls: 1 (max: 0)')
+  })
+
+  test('measures UTF-8 outputs and unwraps Pi results before applying per-call and total limits', () => {
+    const scenario = {
+      ...fixtureScenario(),
+      criteria: {
+        mustProduceOutput: true,
+        toolOutputLimits: { names: ['read_session'], perCallBytes: 5, totalBytes: 6 },
+      },
+    }
+    const parsed = makeParsed({
+      toolCalls: [call('read_session', {}, 'one'), call('read_session', {}, 'two')],
+      events: [
+        { type: 'tool-output-available', toolCallId: 'one', output: { details: '語語' } },
+        { type: 'tool-output-available', toolCallId: 'two', output: 'ok' },
+        { type: 'tool-output-available', toolCallId: 'unrelated', output: 'x'.repeat(1000) },
+      ],
+    })
+    expect(scoreResult(scenario, parsed, 0).failures).toEqual([
+      'App tool output exceeded 5 bytes',
+      'App tool outputs exceeded 6 bytes in this turn',
+    ])
+  })
+
+  test('checks retrieval facts and excluded canaries without case sensitivity', () => {
+    const scenario = {
+      ...fixtureScenario(),
+      criteria: { mustProduceOutput: true, responseIncludes: ['quartz-4729'], responseExcludes: ['deleted-canary'] },
+    }
+    expect(scoreResult(scenario, makeParsed({ text: 'QUARTZ-4729' }), 0).passed).toBe(true)
+    expect(scoreResult(scenario, makeParsed({ text: 'DELETED-CANARY' }), 0).failures).toHaveLength(2)
+  })
 })
 
 describe('countDuplicateToolCalls', () => {

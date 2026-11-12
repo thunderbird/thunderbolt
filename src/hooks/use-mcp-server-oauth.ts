@@ -6,11 +6,13 @@ import { i18n } from '@/i18n'
 import { msg } from '@lingui/core/macro'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { deleteMcpServer } from '@/dal'
+import { McpAuthorizationChangedError, saveMcpAuthorizationCredentials } from '@/dal/mcp-secrets'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 import { clearMcpOAuthState, getMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { useReducer } from 'react'
-import { useAsyncAttempt } from './use-async-attempt'
+import { useReducer, useRef } from 'react'
+import { useAuthAttempt } from './use-auth-attempt'
 
 /**
  * Per-server OAuth UI state. `needs-auth` / `authorized` are derived from the
@@ -49,6 +51,7 @@ type OAuthAction =
   | { type: 'set-dialog-error'; message: string }
   | { type: 'clear-dialog-error' }
   | { type: 'set-add-authorize-pending'; pending: boolean }
+  | { type: 'cancel' }
 
 const oauthReducer = (state: OAuthStateShape, action: OAuthAction): OAuthStateShape => {
   switch (action.type) {
@@ -67,6 +70,12 @@ const oauthReducer = (state: OAuthStateShape, action: OAuthAction): OAuthStateSh
       return { ...state, dialogError: null }
     case 'set-add-authorize-pending':
       return { ...state, isAddAuthorizePending: action.pending }
+    case 'cancel':
+      return {
+        ...state,
+        isAddAuthorizePending: false,
+        cards: Object.fromEntries(Object.entries(state.cards).filter(([, card]) => card.phase !== 'authorizing')),
+      }
     default:
       return state
   }
@@ -77,6 +86,7 @@ export type McpOAuthCallbackDeps = {
   completeMcpOAuthFlow: typeof completeMcpOAuthFlow
   reconnectServer: (serverId: string) => Promise<unknown>
   fetchFn: FetchFn
+  signal?: AbortSignal
   /** Sets a server card to authorizing/error, or clears it when passed `null`. */
   setCard: (serverId: string, card: OAuthCardState | null) => void
   /** Clears the navigation state so a refresh can't reprocess the callback. */
@@ -108,7 +118,7 @@ export const handleMcpOAuthCallback = async (
   // routing already keeps foreign (integrations) callbacks off this page; this
   // guard ensures that if one ever slips through we don't clear its nav state
   // (which would silently drop its code) or process it as ours.
-  const { serverId } = getMcpOAuthState()
+  const { serverId, serverUrl } = getMcpOAuthState()
   if (!serverId) {
     return
   }
@@ -136,19 +146,34 @@ export const handleMcpOAuthCallback = async (
       returnedState: oauth.state,
       returnedIss: oauth.iss,
       fetchFn: deps.fetchFn,
+      signal: deps.signal,
+      ...(deps.signal
+        ? {
+            saveCredentials: (credentials) =>
+              saveMcpAuthorizationCredentials(db, serverId, serverUrl ?? '', credentials, deps.signal!),
+          }
+        : {}),
     })
     deps.setCard(serverId, null)
     await deps.reconnectServer(serverId)
   } catch (error) {
+    if (deps.signal?.aborted) {
+      return
+    }
     console.error('Failed to complete MCP OAuth flow:', error)
     deps.setCard(serverId, {
       phase: 'error',
-      message: error instanceof Error ? error.message : i18n._(msg`Authorization failed.`),
+      message: errorMessage(error, i18n._(msg`Authorization failed.`)),
     })
   }
 }
 
-const errorMessage = (error: unknown, fallback: string): string => (error instanceof Error ? error.message : fallback)
+const errorMessage = (error: unknown, fallback: string): string =>
+  error instanceof McpAuthorizationChangedError
+    ? i18n._(msg`This connection changed during authorization. Please try again.`)
+    : error instanceof Error
+      ? error.message
+      : fallback
 
 /** Dependencies for {@link useMcpServerOAuth}. The flow primitives default to the
  *  real implementations and are overridable in tests. */
@@ -168,6 +193,7 @@ export type UseMcpServerOAuthResult = {
   cardStateFor: (serverId: string) => OAuthCardState | null
   dialogError: string | null
   clearDialogError: () => void
+  cancelAuthorization: () => void
   isAddAuthorizePending: boolean
   startAuthorize: (server: { id: string; url?: string | null }) => Promise<void>
   /** Resolves `true` when the flow started/completed cleanly (caller can close the
@@ -205,7 +231,34 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
   const [state, dispatch] = useReducer(oauthReducer, initialState)
   // Discovery yields before the OAuth nonce is persisted. All entry points
   // share one reservation so no second flow can overwrite that handshake.
-  const operation = useAsyncAttempt()
+  const operation = useAuthAttempt()
+  const redirectedNonce = useRef<string | null>(null)
+  const rememberRedirect = (serverId: string) => {
+    const pending = getMcpOAuthState()
+    redirectedNonce.current = pending.serverId === serverId ? pending.stateNonce : null
+    setCard(serverId, { phase: 'authorizing' })
+  }
+  const begin = () => {
+    const attempt = operation.begin()
+    if (!attempt) {
+      return null
+    }
+    const identity = getIdentitySignal()
+    const signal = AbortSignal.any([attempt.signal, identity])
+    const fetch = buildOAuthFetch()
+    const fetchFn: FetchFn = Object.assign(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        signal.throwIfAborted()
+        const requestSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+        return fetch(input, {
+          ...init,
+          signal: AbortSignal.any([signal, ...(requestSignal ? [requestSignal] : [])]),
+        })
+      },
+      { preconnect: fetch.preconnect },
+    )
+    return { ...attempt, signal, identity, fetchFn, isCurrent: () => attempt.isCurrent() && !signal.aborted }
+  }
 
   const setCard = (serverId: string, card: OAuthCardState | null) => {
     if (!card) {
@@ -229,7 +282,7 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
    * guard surfaces, not a generic one.
    */
   const startAuthorize = async (server: { id: string; url?: string | null }) => {
-    const attempt = operation.begin()
+    const attempt = begin()
     if (!attempt) {
       return
     }
@@ -239,14 +292,22 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
         db,
         serverId: server.id,
         serverUrl: server.url ?? '',
-        fetchFn: buildOAuthFetch(),
+        fetchFn: attempt.fetchFn,
+        signal: attempt.signal,
+        saveCredentials: (credentials) =>
+          saveMcpAuthorizationCredentials(db, server.id, server.url ?? '', credentials, attempt.signal),
       })
+      if (attempt.isCurrent() && result.status === 'redirected') {
+        rememberRedirect(server.id)
+      }
       if (attempt.isCurrent() && result.status === 'completed') {
         setCard(server.id, null)
         await reconnectServer(server.id)
       }
     } catch (error) {
-      console.error('Failed to start MCP OAuth flow:', error)
+      if (!attempt.signal.aborted) {
+        console.error('Failed to start MCP OAuth flow:', error)
+      }
       if (attempt.isCurrent()) {
         setCard(server.id, {
           phase: 'error',
@@ -266,22 +327,37 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
    * row and surfaces the failure in the dialog (which stays open).
    */
   const startAddAndAuthorize = async ({ serverId, serverUrl, createRow }: AddAndAuthorizeArgs): Promise<boolean> => {
-    const attempt = operation.begin()
+    const attempt = begin()
     if (!attempt) {
       return false
     }
     dispatch({ type: 'clear-dialog-error' })
     dispatch({ type: 'set-add-authorize-pending', pending: true })
+    const progress = { created: false, authorized: false }
     try {
       await createRow()
+      progress.created = true
+      attempt.signal.throwIfAborted()
+      const result = await startFlow({
+        db,
+        serverId,
+        serverUrl,
+        fetchFn: attempt.fetchFn,
+        signal: attempt.signal,
+        saveCredentials: async (credentials) => {
+          await saveMcpAuthorizationCredentials(db, serverId, serverUrl, credentials, attempt.signal)
+          progress.authorized = true
+        },
+      })
+      attempt.signal.throwIfAborted()
       if (!attempt.isCurrent()) {
         return false
       }
-      const result = await startFlow({ db, serverId, serverUrl, fetchFn: buildOAuthFetch() })
-      if (!attempt.isCurrent()) {
-        return false
+      if (result.status === 'redirected') {
+        rememberRedirect(serverId)
       }
       if (result.status === 'completed') {
+        progress.authorized = true
         // Authorization has committed. A runtime reconnect failure must keep
         // the server and its credentials so the user can retry the connection.
         try {
@@ -298,11 +374,17 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
       }
       return attempt.isCurrent()
     } catch (error) {
-      console.error('Failed to start MCP OAuth flow:', error)
-      try {
-        await deleteMcpServer(db, serverId)
-      } catch (rollbackError) {
-        console.error('Failed to roll back MCP server after authorization error:', rollbackError)
+      if (!attempt.signal.aborted) {
+        console.error('Failed to start MCP OAuth flow:', error)
+      }
+      // Explicit cancellation keeps a retryable row; a stale cancelled flow must not
+      // delete a connection another authorization has already started using.
+      if (progress.created && !progress.authorized && !attempt.signal.aborted) {
+        try {
+          await deleteMcpServer(db, serverId)
+        } catch (rollbackError) {
+          console.error('Failed to roll back MCP server after authorization error:', rollbackError)
+        }
       }
       if (attempt.isCurrent()) {
         dispatch({
@@ -320,7 +402,7 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
   }
 
   const processCallback = async (oauth: McpOAuthCallback | undefined) => {
-    const attempt = operation.begin()
+    const attempt = begin()
     if (!attempt) {
       return
     }
@@ -332,7 +414,8 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
             await reconnectServer(serverId)
           }
         },
-        fetchFn: buildOAuthFetch(),
+        fetchFn: attempt.fetchFn,
+        signal: attempt.signal,
         setCard: (serverId, card) => {
           if (attempt.isCurrent()) {
             setCard(serverId, card)
@@ -349,6 +432,14 @@ export const useMcpServerOAuth = (options: UseMcpServerOAuthOptions): UseMcpServ
     cardStateFor: (serverId) => state.cards[serverId] ?? null,
     dialogError: state.dialogError,
     clearDialogError: () => dispatch({ type: 'clear-dialog-error' }),
+    cancelAuthorization: () => {
+      operation.cancel()
+      if (redirectedNonce.current && getMcpOAuthState().stateNonce === redirectedNonce.current) {
+        clearMcpOAuthState()
+      }
+      redirectedNonce.current = null
+      dispatch({ type: 'cancel' })
+    },
     isAddAuthorizePending: state.isAddAuthorizePending,
     startAuthorize,
     startAddAndAuthorize,

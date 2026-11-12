@@ -15,7 +15,14 @@ type CreateItemRequestInput =
   | SkillPanelRequestInput
   | { kind: 'agent' }
   | { kind: 'model' }
-  | { kind: 'connection'; connectionId?: string; action?: 'edit' | 'remove' }
+  | { kind: 'memory'; initialEditContent?: string }
+  | {
+      kind: 'connection'
+      connectionId?: string
+      mcpServerId?: string
+      memoryOnly?: boolean
+      action?: 'edit' | 'remove'
+    }
 
 // Derived from the input so a new kind is added in exactly one place; the
 // intersection distributes over the union, keeping `kind` narrowing intact.
@@ -28,6 +35,7 @@ export const createItemTitles: Record<CreateItemRequest['kind'], MessageDescript
   agent: msg`Add Agent`,
   model: msg`Add Model`,
   connection: msg`New Connection`,
+  memory: msg`Built-in memory`,
 }
 
 /** Title for the skill panel's edit mode, which the kind map can't express. */

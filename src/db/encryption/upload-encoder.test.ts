@@ -72,6 +72,24 @@ describe('encodeForUpload', () => {
     expect(decodedOnce).toBe('plain')
   })
 
+  it('encrypts the single memory settings document with row-bound authentication', async () => {
+    const op = {
+      op: 'PUT' as const,
+      type: 'settings',
+      id: 'memory_content',
+      data: { value: '# Me\nPrefers TypeScript.' },
+    }
+    const result = await encodeForUpload(op)
+    const encrypted = result.data?.value as string
+    expect(isV2EncryptedValue(encrypted)).toBe(true)
+    expect(await codec.decode(encrypted, { table: 'settings', column: 'value', rowId: 'memory_content' })).toBe(
+      op.data.value,
+    )
+    expect(await codec.decode(encrypted, { table: 'settings', column: 'value', rowId: 'another_setting' })).toBe(
+      encrypted,
+    )
+  })
+
   it('encrypts encrypted columns for PATCH operations', async () => {
     const op = { op: 'PATCH' as const, type: 'tasks', id: 'row-1', data: { item: 'Updated task' } }
     const result = await encodeForUpload(op)

@@ -21,6 +21,14 @@ msgstr "“{filename}” é muito grande (máx. {maxMegabytes} MB)."
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "“{filename}” não é um tipo de arquivo compatível."
 
+#. placeholder {0}: page.usage.characters
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+character%7D+other+%7B%23+characters%7D%7D&pluralize_on=0
+#: src/settings/memory/memory-document-panel.tsx
+msgid "# character"
+msgid_plural "# characters"
+msgstr[0] ""
+msgstr[1] ""
+
 #. placeholder {0}: items.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
 #: src/components/embedded/surface-selection-bar.tsx
@@ -100,6 +108,10 @@ msgstr "O {appName} quer se conectar ao {providerName} E-mail e Agenda"
 msgid "{appName} will use it across the app. You can change it later in Preferences."
 msgstr "O {appName} vai usá-lo em todo o app. Você pode alterá-lo depois em Preferências."
 
+#: src/settings/memory/index.tsx
+#~ msgid "{bytes} / {maxBytes} bytes"
+#~ msgstr ""
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 #~ msgid "# chat"
@@ -123,6 +135,10 @@ msgid_plural "# skills reference this. If you disable it, they may no longer res
 msgstr[0] "Uma habilidade faz referência a isto. Se você desativar, essa habilidade pode não ser mais resolvida."
 msgstr[1] "# habilidades fazem referência a isto. Se você desativar, elas podem não ser mais resolvidas."
 msgstr[2] "# habilidades fazem referência a isto. Se você desativar, elas podem não ser mais resolvidas."
+
+#: src/settings/memory/index.tsx
+#~ msgid "{count} / {maxCount} memories · {bytes} / {maxBytes} bytes"
+#~ msgstr ""
 
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
@@ -232,6 +248,18 @@ msgstr ""
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "Um dispositivo quer entrar na sua conta como a CLI do Thunderbolt. Aprove apenas se você mesmo acabou de iniciar isso no seu terminal."
 
+#: src/settings/memory/index.tsx
+#~ msgid "A few useful details, carried between chats. Private chats cannot read or change memory."
+#~ msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "A few useful details, carried between chats. Review and edit what your built-in agents remember."
+#~ msgstr ""
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+msgid "A little continuity"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
 msgstr ""
@@ -251,6 +279,10 @@ msgstr "Uma nova versão está disponível. Veja o aviso de atualização para i
 #: src/projects/index.tsx
 #~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
 #~ msgstr "Um projeto reúne suas instruções em um só lugar, então cada conversa dentro dele começa com o mesmo contexto."
+
+#: src/settings/memory/index.tsx
+#~ msgid "A short text document you control. It syncs with your account and is separate from your connected memory services."
+#~ msgstr ""
 
 #: src/settings/connections/provider-connection-form.tsx
 #~ msgid "A sign-in connection already exists for {name}. Open it to manage this account, or use an API key for another connection."
@@ -329,6 +361,10 @@ msgstr "Adicione <0>~/.local/bin</0> ao seu PATH e reinicie o shell:"
 #~ msgid "Add a connection"
 #~ msgstr ""
 
+#: src/settings/memory/index.tsx
+#~ msgid "Add a detail here, or ask your agent to remember something."
+#~ msgstr ""
+
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Add a model"
 msgstr ""
@@ -370,6 +406,7 @@ msgstr ""
 
 #: src/components/chat/chat-model-setup.tsx
 #: src/settings/connections/connections-list.tsx
+#: src/settings/memory-connections/memory-connections.tsx
 #: src/settings/search/index.tsx
 msgid "Add connection"
 msgstr ""
@@ -412,6 +449,10 @@ msgstr "Adicionar servidor"
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Add summary instructions (optional)"
+msgstr ""
+
+#: src/settings/memory/memory-document-panel.tsx
+msgid "Add things you want your agent to remember."
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
@@ -493,6 +534,14 @@ msgstr "Todas as habilidades estão fixadas"
 
 #: src/settings/connections/provider-connection-summary.tsx
 msgid "Allow access to your ChatGPT plan to use its models. You can also add an API-key connection."
+msgstr ""
+
+#: src/settings/memory/index.tsx
+msgid "Allow agents to recall and share info across sessions. Not used by private chats."
+msgstr ""
+
+#: src/settings/memory/index.tsx
+msgid "Allow agents to view previous chat sessions."
 msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
@@ -613,6 +662,10 @@ msgstr "Versão do app"
 #: src/projects/project-form.tsx
 #~ msgid "Applied to every chat in this project."
 #~ msgstr "Aplicado a todas as conversas deste projeto."
+
+#: src/settings/memory/index.tsx
+msgid "Apply"
+msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Approval code"
@@ -792,6 +845,15 @@ msgstr "Compilar a partir do código-fonte (requer Bun):"
 msgid "Built to protect your data."
 msgstr ""
 
+#: src/settings/memory-connections/built-in-memory-card.tsx
+msgid "Built-in"
+msgstr ""
+
+#: src/components/create-item/context.tsx
+#: src/settings/memory/memory-document-panel.tsx
+msgid "Built-in memory"
+msgstr ""
+
 #: src/settings/models/model-detail.tsx
 msgid "Built-in models can't be edited or removed"
 msgstr "Modelos integrados não podem ser editados nem removidos"
@@ -833,6 +895,8 @@ msgstr "Agenda"
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/connections/provider-connection-form.tsx
 #: src/settings/encryption/passkey-section.tsx
+#: src/settings/memory/index.tsx
+#: src/settings/memory/memory-document-panel.tsx
 #: src/settings/models/add-provider-models.tsx
 #: src/settings/models/index.tsx
 #: src/settings/preferences.tsx
@@ -921,6 +985,14 @@ msgstr "Verificar atualizações"
 msgid "Check now"
 msgstr "Verificar agora"
 
+#: src/settings/memory/index.tsx
+#~ msgid "Check that every fact is preserved before replacing your memories. Nothing changes until you apply."
+#~ msgstr ""
+
+#: src/settings/memory/index.tsx
+msgid "Check that every fact is preserved. Nothing changes until you apply."
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Check the backend logs"
 msgstr "Confira os logs do backend"
@@ -963,6 +1035,10 @@ msgstr "Verificando sua sessão."
 #: src/hooks/use-desktop-update.ts
 msgid "Checking…"
 msgstr "Verificando…"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Choose a confidential model to make private memories concise."
+#~ msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "Choose a connection"
@@ -1028,6 +1104,10 @@ msgstr "Escolha uma"
 #: src/projects/project-badge.tsx
 msgid "Choose project"
 msgstr "Escolher projeto"
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+msgid "Choose what your built-in agents can remember. You can change these choices anytime in Settings → Memory."
+msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Choose your agents, models, and tools."
@@ -1183,6 +1263,10 @@ msgstr "Paleta de comandos"
 msgid "Command result"
 msgstr ""
 
+#: src/settings/memory-connections/built-in-memory-card.tsx
+msgid "Compact"
+msgstr ""
+
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Compact now"
 msgstr ""
@@ -1191,11 +1275,16 @@ msgstr ""
 msgid "Compacted"
 msgstr ""
 
+#: src/settings/memory/index.tsx
+msgid "Compacted memory"
+msgstr ""
+
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Compacting context…"
 msgstr ""
 
 #: src/components/context-usage/compaction-notice.tsx
+#: src/settings/memory-connections/built-in-memory-card.tsx
 msgid "Compacting…"
 msgstr ""
 
@@ -1272,6 +1361,12 @@ msgstr "Confirme que este código é igual ao do seu terminal."
 msgid "Connect"
 msgstr ""
 
+#. placeholder {0}: provider.name
+#: src/settings/memory-connections/memory-connection-status.tsx
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Connect {0}"
+msgstr ""
+
 #: src/settings/connections/provider-connection-form.tsx
 msgid "Connect {name}"
 msgstr ""
@@ -1303,6 +1398,10 @@ msgstr "Conecte um agente remoto que fale o Agent Client Protocol."
 msgid "Connect a search provider to let your agents search the web."
 msgstr ""
 
+#: src/settings/memory-connections/memory-connections.tsx
+msgid "Connect and enable this provider to use memory."
+msgstr ""
+
 #: src/components/otari-connection/otari-connection.tsx
 #~ msgid "Connect another account"
 #~ msgstr ""
@@ -1316,6 +1415,7 @@ msgid "Connect Microsoft"
 msgstr "Conectar Microsoft"
 
 #: src/settings/connections/provider-connection-detail.tsx
+#: src/settings/memory-connections/memory-connection-status.tsx
 msgid "Connect on this device"
 msgstr ""
 
@@ -1340,6 +1440,10 @@ msgstr ""
 #: src/settings/connections/connections-list.tsx
 msgid "Connect providers, accounts, or MCP servers to use their models and tools."
 msgstr ""
+
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "Connect Supermemory, Mem0, Hindsight Cloud, or Zep. Provider memories stay with that service and are unavailable in private chats."
+#~ msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "Connect this provider on this device to add models."
@@ -1410,6 +1514,7 @@ msgstr ""
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/components/sidebar-footer.tsx
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/memory-connections/memory-connections.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected"
 msgstr "Conectado"
@@ -1417,6 +1522,11 @@ msgstr "Conectado"
 #: src/voice/engine/openai-compatible-engine.ts
 msgid "Connected — synthesis succeeded."
 msgstr "Conectado — a síntese funcionou."
+
+#. placeholder {0}: provider.name
+#: src/settings/memory-connections/memory-connection-status.tsx
+msgid "Connected to {0}"
+msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected to {connectedProviderName} Calendar"
@@ -1604,6 +1714,7 @@ msgstr "Janela de contexto excedida"
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/connections/connection-setup-footer.tsx
 #: src/settings/connections/provider-connection-form.tsx
+#: src/settings/memory-connections/memory-provider-form.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Continue"
 msgstr "Continuar"
@@ -1635,10 +1746,12 @@ msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Copied"
 msgstr "Copiado"
 
 #: src/components/chat/mobile-user-message.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Copy"
 msgstr "Copiar"
 
@@ -1751,6 +1864,10 @@ msgstr ""
 msgid "Could not connect. Check your API key and connection, then try again."
 msgstr ""
 
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "Could not copy memory. Select the text and copy it manually."
+msgstr ""
+
 #: src/projects/use-project-create-state.ts
 msgid "Could not create the project."
 msgstr "Não foi possível criar o projeto."
@@ -1780,8 +1897,8 @@ msgid "Could not finish connecting or revoke the unused session. You can remove 
 msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
-msgid "Could not finish setup. Please try again."
-msgstr ""
+#~ msgid "Could not finish setup. Please try again."
+#~ msgstr ""
 
 #: src/components/onboarding/provider-setup-error.ts
 msgid "Could not load the provider's model list. Please try again."
@@ -1816,6 +1933,10 @@ msgstr "Não foi possível exibir o código de emparelhamento."
 msgid "Could not restart the app. Quit Thunderbolt and open it again."
 msgstr ""
 
+#: src/components/onboarding/onboarding-dialog.tsx
+msgid "Could not save setup. Please try again."
+msgstr ""
+
 #: src/settings/connections/use-provider-connection-form.ts
 msgid "Could not save the connection. Try again."
 msgstr ""
@@ -1838,6 +1959,14 @@ msgstr ""
 
 #: src/hooks/use-mcp-server-oauth.ts
 msgid "Could not start authorization. Please try again."
+msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+#~ msgid "Could not update memories. They may have changed, or the model could not make them shorter. Please try again."
+#~ msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "Could not update memory. Please try again."
 msgstr ""
 
 #: src/settings/connections/use-ai-provider-connections.ts
@@ -2086,6 +2215,10 @@ msgstr ""
 msgid "Currency"
 msgstr "Moeda"
 
+#: src/settings/memory/index.tsx
+msgid "Current memory"
+msgstr ""
+
 #: src/settings/app-version-section.tsx
 msgid "Current version"
 msgstr "Versão atual"
@@ -2225,6 +2358,10 @@ msgstr ""
 #: src/components/logout-modal.tsx
 msgid "Delete data from device"
 msgstr "Excluir os dados do dispositivo"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Delete memory"
+#~ msgstr ""
 
 #: src/settings/models/index.tsx
 msgid "Delete Model"
@@ -2417,6 +2554,7 @@ msgstr "Desativar a telemetria"
 
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/memory-connections/memory-connections.tsx
 #: src/skills/skills-list.tsx
 msgid "Disabled"
 msgstr "Desativado"
@@ -2568,6 +2706,8 @@ msgstr "Login de acesso antecipado"
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/settings/connections/provider-connection-detail.tsx
+#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
 msgid "Edit"
 msgstr "Editar"
 
@@ -2578,6 +2718,10 @@ msgstr "Editar arquivo"
 #: src/settings/connections/index.tsx
 msgid "Edit MCP Server"
 msgstr "Editar servidor MCP"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Edit memory"
+#~ msgstr ""
 
 #: src/settings/models/index.tsx
 msgid "Edit Model"
@@ -2644,6 +2788,7 @@ msgid "Enable cloud sync"
 msgstr "Ativar a sincronização na nuvem"
 
 #: src/components/onboarding/onboarding-search-step.tsx
+#: src/settings/memory-connections/memory-connection-status.tsx
 msgid "Enable connection"
 msgstr ""
 
@@ -2783,6 +2928,10 @@ msgstr ""
 msgid "Enterprise"
 msgstr ""
 
+#: src/settings/memory/index.tsx
+#~ msgid "Entries you add here can be used with any model. Memories saved by confidential models stay private. Memories sync when account sync is enabled."
+#~ msgstr ""
+
 #: src/settings/search/search-connection-detail.tsx
 msgid "Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters. No separate Exa API key is needed."
 msgstr ""
@@ -2835,6 +2984,10 @@ msgstr ""
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
 msgstr "Fahrenheit"
+
+#: src/settings/connections/index.tsx
+msgid "Failed to add MCP server"
+msgstr ""
 
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Failed to change the recovery phrase"
@@ -2930,6 +3083,7 @@ msgstr "Não foi possível configurar a criptografia"
 msgid "Failed to update integration"
 msgstr "Não foi possível atualizar a integração"
 
+#: src/settings/connections/index.tsx
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Failed to update MCP server"
 msgstr "Não foi possível atualizar o servidor MCP"
@@ -2941,6 +3095,10 @@ msgstr ""
 #: src/settings/connections/new-connection-picker.tsx
 msgid "Filter by type"
 msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Find details in earlier chats."
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Finish connecting in your browser, then paste the authorization code here."
@@ -2969,6 +3127,10 @@ msgstr "Nevoeiro"
 #: src/projects/emoji-catalog.ts
 msgid "Food & drink"
 msgstr "Comida e bebida"
+
+#: src/settings/memory/index.tsx
+#~ msgid "For example: I prefer short answers."
+#~ msgstr ""
 
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-chat-badge.tsx
@@ -3322,6 +3484,14 @@ msgstr "Manter a chave de API salva"
 msgid "Keep saved credential"
 msgstr "Manter a credencial salva"
 
+#: src/components/onboarding/onboarding-memory-step.tsx
+msgid "Keep short facts and preferences for future chats. You can review, edit, or clear them. Private chats cannot read or change built-in memory or connected memory services."
+msgstr ""
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+#~ msgid "Keep short facts and preferences for future chats. You can review, edit, or delete them. Memories are shared with the model you use; private memories stay with confidential models."
+#~ msgstr ""
+
 #: src/components/approve-device/approve-device-dialog.tsx
 msgid "Keep the new device on its approval screen, or tap New code there, then try again."
 msgstr "Deixe o novo dispositivo na tela de aprovação, ou toque em Novo código nele, e tente novamente."
@@ -3367,6 +3537,18 @@ msgstr "Sair sem criar?"
 #: src/skills/skills-view.tsx
 msgid "Leave without saving?"
 msgstr "Sair sem salvar?"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Let agents save and use lasting facts and preferences. Turning this off keeps your list but stops using it in future requests."
+#~ msgstr ""
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+msgid "Let agents search and read relevant parts of your other chats when useful. Private chats stay with confidential models."
+msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Let agents use built-in memory and connected memory services. Turning this off keeps your memory but stops using it in future requests."
+#~ msgstr ""
 
 #: src/settings/models/supports-tools-switch.tsx
 msgid "Lets the model call tools like web search and integrations. Turn this off if the model rejects tool requests."
@@ -3415,6 +3597,15 @@ msgstr "Carregando os dispositivos…"
 #: src/projects/emoji-picker.tsx
 msgid "Loading emoji…"
 msgstr "Carregando emojis…"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Loading memories…"
+#~ msgstr ""
+
+#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
+msgid "Loading memory…"
+msgstr ""
 
 #: src/components/otari-connection/otari-connection.tsx
 #: src/settings/models/add-provider-models.tsx
@@ -3477,6 +3668,23 @@ msgstr ""
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr "Predominantemente limpo"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Make concise"
+#~ msgstr ""
+
+#: src/settings/memory-connections/memory-provider-option.tsx
+msgid "Manage"
+msgstr ""
+
+#. placeholder {0}: server.name
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "Manage {0}"
+#~ msgstr ""
+
+#: src/settings/memory-connections/memory-provider-option.tsx
+msgid "Manage {name}"
+msgstr ""
 
 #: src/settings/connections/provider-connection-detail.tsx
 msgid "Manage account"
@@ -3544,6 +3752,45 @@ msgstr "Servidores MCP"
 msgid "Medium"
 msgstr ""
 
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/settings/connections/new-connection-picker.tsx
+#: src/settings/memory/index.tsx
+msgid "Memory"
+msgstr ""
+
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Memory bank ID"
+msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "Memory changed while you were editing. Copy your changes, cancel, and edit the latest version."
+msgstr ""
+
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "Memory connections"
+#~ msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+#~ msgid "Memory is too long or full. Keep each entry under 256 characters and the list under 50 entries and 6 KiB."
+#~ msgstr ""
+
+#: src/settings/memory/use-memory-settings-state.ts
+#~ msgid "Memory is too long. Keep the document under 6 KiB."
+#~ msgstr ""
+
+#: src/settings/memory/memory-document-panel.tsx
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "Memory is too long. Shorten it before saving."
+msgstr ""
+
+#: src/settings/memory-connections/memory-connections.tsx
+msgid "Memory provider"
+msgstr ""
+
+#: src/settings/memory/memory-document-panel.tsx
+msgid "Memory text"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Message Simulator"
@@ -3591,6 +3838,14 @@ msgstr "Modelo"
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Model and reasoning effort"
 msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Model for compaction"
+#~ msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Model for concise rewrite"
+#~ msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "Model ID"
@@ -3809,6 +4064,10 @@ msgstr ""
 msgid "No connections yet"
 msgstr ""
 
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "No connections yet."
+#~ msgstr ""
+
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
 msgstr "Ainda não há dispositivos. Entre com a sincronização para vê-los aqui."
@@ -3862,6 +4121,15 @@ msgstr "Nenhuma habilidade correspondente"
 #: src/skills/skills-list.tsx
 msgid "No matching skills."
 msgstr "Nenhuma habilidade correspondente."
+
+#: src/settings/memory/index.tsx
+#~ msgid "No memories yet"
+#~ msgstr ""
+
+#: src/settings/memory-connections/built-in-memory-card.tsx
+#: src/settings/memory/memory-document-panel.tsx
+msgid "No memory yet. Click Edit or ask your agent to remember something."
+msgstr ""
 
 #: src/settings/models/add-provider-models.tsx
 msgid "No model providers connected."
@@ -3953,6 +4221,10 @@ msgstr "Não disponível em conversas privadas."
 #: src/settings/devices.tsx
 msgid "Not configured"
 msgstr "Não configurado"
+
+#: src/settings/memory-connections/memory-connections.tsx
+msgid "Not connected"
+msgstr ""
 
 #: src/components/not-found.tsx
 msgid "Not Found"
@@ -4329,6 +4601,10 @@ msgstr "Cole um código de emparelhamento ou envie a imagem QR dele para vincula
 msgid "Paste an <0>mcpServers</0> config. Only remote (http/sse) servers are supported; non-Bearer auth headers are ignored."
 msgstr "Cole uma configuração <0>mcpServers</0>. Só há suporte para servidores remotos (http/sse); cabeçalhos de autenticação que não sejam Bearer são ignorados."
 
+#: src/settings/memory-connections/memory-connections.tsx
+#~ msgid "Paused"
+#~ msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Peer-to-peer via iroh — the connection is verified when a chat starts."
 msgstr "Ponto a ponto via iroh — a conexão é verificada quando uma conversa começa."
@@ -4494,6 +4770,7 @@ msgid "Quit"
 msgstr "Sair"
 
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/memory-connections/memory-connection-status.tsx
 msgid "Re-authorize"
 msgstr "Autorizar novamente"
 
@@ -4520,6 +4797,10 @@ msgstr "Lendo {fileName}…"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
 msgstr "Pronto para enviar"
+
+#: src/settings/memory-connections/memory-connection-status.tsx
+msgid "Ready to use as your memory provider."
+msgstr ""
 
 #: src/content-view/context.tsx
 msgid "Reasoning"
@@ -4584,6 +4865,11 @@ msgstr ""
 msgid "Recovery phrase updated."
 msgstr ""
 
+#: src/components/onboarding/onboarding-memory-step.tsx
+#: src/settings/memory/index.tsx
+msgid "Reference earlier chats"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
 msgstr ""
@@ -4610,6 +4896,10 @@ msgstr ""
 #: src/components/upgrade-required.tsx
 msgid "Reload"
 msgstr "Recarregar"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Remember details outside private chats."
+#~ msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
@@ -4661,6 +4951,10 @@ msgstr "Remover este bridge?"
 #: src/settings/encryption/passkey-section.tsx
 msgid "Remove your passkey?"
 msgstr "Remover sua chave de acesso?"
+
+#: src/settings/memory/index.tsx
+#~ msgid "Removed as a duplicate"
+#~ msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 #: src/lib/tool-metadata.ts
@@ -4766,6 +5060,7 @@ msgid "Retry"
 msgstr "Tentar novamente"
 
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/memory-connections/memory-connection-status.tsx
 msgid "Retry connection"
 msgstr "Tentar conectar novamente"
 
@@ -4780,6 +5075,14 @@ msgstr "Tentando novamente…"
 #: src/components/provider-authorization-result.tsx
 msgid "Return to Thunderbolt"
 msgstr ""
+
+#: src/settings/memory/index.tsx
+msgid "Review compacted memory"
+msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Review concise memories"
+#~ msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-banner.tsx
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
@@ -4832,6 +5135,7 @@ msgstr "Execute isto na máquina que hospeda o bridge e depois adicione-o — a 
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/mini-apps/mini-app-download-prompt.tsx
+#: src/settings/memory/memory-document-panel.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
@@ -4871,6 +5175,15 @@ msgstr ""
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
 msgstr "Salve sua frase de recuperação"
+
+#: src/components/onboarding/onboarding-memory-step.tsx
+#: src/settings/memory/index.tsx
+msgid "Saved memories"
+msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Saved memory"
+#~ msgstr ""
 
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -4915,6 +5228,10 @@ msgstr ""
 
 #: src/settings/search/index.tsx
 #~ msgid "Search and page content use your Otari connection and your workspace’s web access settings. Manage your search provider in Otari."
+#~ msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Search and read relevant parts of your other chats when needed. Private chats are available only to confidential models."
 #~ msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
@@ -5075,6 +5392,10 @@ msgstr "Selecione um provedor"
 msgid "Select…"
 msgstr "Selecionar…"
 
+#: src/settings/memory-connections/memory-connections.tsx
+msgid "Selected provider is unavailable. Choose another provider to resume memory."
+msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Selected server"
 msgstr ""
@@ -5200,6 +5521,11 @@ msgstr "Configurações"
 msgid "Settings, action needed"
 msgstr ""
 
+#: src/settings/memory-connections/memory-connection-status.tsx
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Setup instructions"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-button.tsx
 msgid "Share debug transcript"
 msgstr ""
@@ -5293,6 +5619,11 @@ msgstr "Entrar"
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Sign in faster next time"
 msgstr "Entre mais rápido da próxima vez"
+
+#. placeholder {0}: provider.name
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Sign in to {0} to let your agent use the memories you authorize there. These memories are stored by the provider."
+msgstr ""
 
 #: src/components/sign-in-modal.tsx
 msgid "Sign in to {appName}"
@@ -5581,6 +5912,14 @@ msgstr "Sincronizar este dispositivo com a nuvem"
 msgid "Synced {relative}"
 msgstr "Sincronizado {relative}"
 
+#: src/settings/memory-connections/built-in-memory-card.tsx
+msgid "Synced across your devices"
+msgstr ""
+
+#: src/settings/memory/index.tsx
+#~ msgid "Synced memories exceed the context limit. Remove or compact some entries; only the portion that fits is used in chats."
+#~ msgstr ""
+
 #: src/components/theme-toggle-group.tsx
 msgid "System"
 msgstr "Sistema"
@@ -5787,6 +6126,10 @@ msgstr "Não foi possível carregar o mapa."
 msgid "The model connection test timed out. Please try again."
 msgstr ""
 
+#: src/settings/memory/use-memory-settings-state.ts
+msgid "The model could not make memory shorter. You can edit it directly."
+msgstr ""
+
 #: src/components/onboarding/provider-setup-error.ts
 msgid "The model verification request failed. Please try again."
 msgstr ""
@@ -5847,6 +6190,10 @@ msgstr ""
 msgid "Theme"
 msgstr "Tema"
 
+#: src/settings/memory/index.tsx
+#~ msgid "There are too many memories to rewrite at once. Remove some entries to make a concise rewrite available."
+#~ msgstr ""
+
 #. placeholder {0}: state.modelsWithoutTools.join(', ')
 #: src/settings/models/add-provider-models.tsx
 msgid "These models do not support tools and cannot use features like web search: {0}."
@@ -5891,8 +6238,20 @@ msgstr "Este código expirou."
 msgid "This code has expired. Please request a new one."
 msgstr "Este código expirou. Solicite um novo."
 
+#: src/hooks/use-mcp-server-oauth.ts
+msgid "This connection changed during authorization. Please try again."
+msgstr ""
+
+#: src/settings/connections/index.tsx
+msgid "This connection changed. Please open it again."
+msgstr ""
+
 #: src/lib/otari-browser-auth.ts
 msgid "This connection expired. Please connect to Otari again."
+msgstr ""
+
+#: src/settings/memory-connections/memory-connection-status.tsx
+msgid "This connection is disabled."
 msgstr ""
 
 #: src/components/provider-authorization-result.tsx
@@ -6644,6 +7003,10 @@ msgstr "Usar o do sistema"
 #~ msgid "Use the authorization code option to connect to OpenRouter on this device."
 #~ msgstr ""
 
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Use the bank ID from Hindsight Cloud's Connect page. Only that bank will be connected."
+msgstr ""
+
 #: src/voice/speakable.ts
 msgid "Use the connection prompt on screen to continue."
 msgstr "Use o aviso de conexão na tela para continuar."
@@ -6756,6 +7119,10 @@ msgstr "Ver e gerenciar sua agenda; criar e reagendar eventos."
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx
 msgid "View devices"
+msgstr ""
+
+#: src/settings/memory-connections/built-in-memory-card.tsx
+msgid "View full memory"
 msgstr ""
 
 #: src/components/chat/markdown-utils.tsx
@@ -7193,6 +7560,10 @@ msgstr ""
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
 msgstr ""
 
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Your Hindsight bank ID"
+msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Your local data stays on this device until you enable sync."
 msgstr ""
@@ -7220,6 +7591,10 @@ msgstr ""
 
 #: src/components/recovery-phrase-change-dialogs.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr ""
+
+#: src/settings/memory-connections/memory-provider-form.tsx
+msgid "Your organization must enable Zep MCP access before you can connect."
 msgstr ""
 
 #: src/components/recovery-continuity/recovery-continuity-status-card.tsx

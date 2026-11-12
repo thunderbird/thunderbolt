@@ -9,6 +9,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { HttpClient } from './http'
+import { memoryMcpTransportUrl } from '@/memory/providers'
 import { getAuthToken } from './auth-token'
 import { createMcpIrohTransport } from './mcp-iroh-transport'
 import { createProxyFetch } from './proxy-fetch'
@@ -83,7 +84,7 @@ export const createMcpTransport = (
   if (type === 'iroh') {
     return createMcpIrohTransport({ target: url, httpClient })
   }
-  const urlObj = new URL(url)
+  const urlObj = new URL(memoryMcpTransportUrl(url))
   // Authenticate the proxy hop with the Thunderbolt session bearer (the same getter the
   // app-wide ProxyFetchProvider uses) — without it `/v1/proxy` returns 401. The upstream
   // MCP credential rides separately as `X-Proxy-Passthrough-Authorization` (createProxyFetch

@@ -17,6 +17,9 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import type { OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 import type { McpServer } from '@/types'
 import { cleanServerUrl, serverDisplayName } from './display'
+import { getMemoryMcpProvider } from '@/memory/providers'
+import { MemoryConnectionStatus } from '@/settings/memory-connections/memory-connection-status'
+import { MemoryProviderLogo } from '@/components/memory-provider-logo'
 
 const statusLabels: Record<string, MessageDescriptor> = {
   connected: msg`Connected`,
@@ -51,6 +54,8 @@ export const McpServerDetail = ({
   isRetrying,
   onRetry,
   onAuthorize,
+  onCancelAuthorize,
+  onEnable,
   onEdit,
   onDelete,
   onClose,
@@ -66,6 +71,8 @@ export const McpServerDetail = ({
   isRetrying: boolean
   onRetry: () => void
   onAuthorize: () => void
+  onCancelAuthorize?: () => void
+  onEnable?: () => void
   onEdit: () => void
   onDelete: () => void
   onClose: () => void
@@ -73,6 +80,7 @@ export const McpServerDetail = ({
   const { i18n, t } = useLingui()
   const { copy, isCopied } = useCopyToClipboard()
   const transportLabel = transportLabels[server.type ?? 'http'] ?? server.type
+  const memoryProvider = getMemoryMcpProvider(server.url)
 
   const handleCopyUrl = async () => {
     try {
@@ -97,93 +105,112 @@ export const McpServerDetail = ({
   return (
     <DetailPanel
       title={serverDisplayName(server)}
-      subtitle={cleanServerUrl(server.url ?? '')}
+      icon={memoryProvider && <MemoryProviderLogo provider={memoryProvider.id} />}
+      subtitle={memoryProvider ? undefined : cleanServerUrl(server.url ?? '')}
       actions={actionsMenu}
       onClose={onClose}
     >
-      <div className="flex shrink-0 flex-col gap-2">
-        <DetailSectionTitle>
-          <Trans>Status</Trans>
-        </DetailSectionTitle>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="flex items-center gap-2 text-base text-foreground">
-            <StatusIndicator status={effectiveStatus} size="sm" />
-            {i18n._(effectiveStatus === 'neutral' ? disabledStatusLabel : statusLabels[effectiveStatus])}
-          </span>
-          <span className="flex items-center gap-2">
+      {memoryProvider ? (
+        <MemoryConnectionStatus
+          provider={memoryProvider}
+          enabled={isEnabled}
+          status={status}
+          oauthState={oauthState}
+          connectionError={connectionError}
+          actionError={actionError}
+          isRetrying={isRetrying}
+          onRetry={onRetry}
+          onAuthorize={onAuthorize}
+          onCancelAuthorize={onCancelAuthorize}
+          onEnable={onEnable}
+        />
+      ) : (
+        <>
+          <div className="flex shrink-0 flex-col gap-2">
+            <DetailSectionTitle>
+              <Trans>Status</Trans>
+            </DetailSectionTitle>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="flex items-center gap-2 text-base text-foreground">
+                <StatusIndicator status={effectiveStatus} size="sm" />
+                {i18n._(effectiveStatus === 'neutral' ? disabledStatusLabel : statusLabels[effectiveStatus])}
+              </span>
+              <span className="flex items-center gap-2">
+                {connectionError && (
+                  <Button variant="outline" size="sm" disabled={isRetrying} onClick={onRetry}>
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
+                    {isRetrying ? <Trans>Retrying…</Trans> : <Trans>Retry connection</Trans>}
+                  </Button>
+                )}
+                {(showAuthorize || isAuthorizing) && (
+                  <Button variant="outline" size="sm" disabled={isAuthorizing} onClick={onAuthorize}>
+                    <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
+                    {isAuthorizing ? <Trans>Authorizing…</Trans> : <Trans>Authorize</Trans>}
+                  </Button>
+                )}
+                {isAuthorized && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" onClick={onAuthorize}>
+                        <Check className="h-3.5 w-3.5 mr-1.5 text-success" />
+                        <Trans>Re-authorize</Trans>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>
+                        <Trans>Authorized. Re-run the OAuth flow if access was revoked.</Trans>
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </span>
+            </div>
             {connectionError && (
-              <Button variant="outline" size="sm" disabled={isRetrying} onClick={onRetry}>
-                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
-                {isRetrying ? <Trans>Retrying…</Trans> : <Trans>Retry connection</Trans>}
-              </Button>
-            )}
-            {(showAuthorize || isAuthorizing) && (
-              <Button variant="outline" size="sm" disabled={isAuthorizing} onClick={onAuthorize}>
-                <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
-                {isAuthorizing ? <Trans>Authorizing…</Trans> : <Trans>Authorize</Trans>}
-              </Button>
-            )}
-            {isAuthorized && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" onClick={onAuthorize}>
-                    <Check className="h-3.5 w-3.5 mr-1.5 text-success" />
-                    <Trans>Re-authorize</Trans>
-                  </Button>
+                  <p className="text-sm text-destructive cursor-default">
+                    <Trans>Could not connect to this server. Check the URL and that the server is reachable.</Trans>
+                  </p>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  <p>
-                    <Trans>Authorized. Re-run the OAuth flow if access was revoked.</Trans>
-                  </p>
+                  <p className="max-w-xs break-words">{connectionError.message}</p>
                 </TooltipContent>
               </Tooltip>
             )}
-          </span>
-        </div>
-        {connectionError && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <p className="text-sm text-destructive cursor-default">
-                <Trans>Could not connect to this server. Check the URL and that the server is reachable.</Trans>
+            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+            {oauthState?.phase === 'needs-auth' && (
+              <p className="text-sm text-muted-foreground">
+                {oauthState.message ?? t`This server requires authorization. Click Authorize to connect.`}
               </p>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="max-w-xs break-words">{connectionError.message}</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-        {actionError && <p className="text-sm text-destructive">{actionError}</p>}
-        {oauthState?.phase === 'needs-auth' && (
-          <p className="text-sm text-muted-foreground">
-            {oauthState.message ?? t`This server requires authorization. Click Authorize to connect.`}
-          </p>
-        )}
-        {oauthState?.phase === 'error' && <p className="text-sm text-destructive">{oauthState.message}</p>}
-      </div>
+            )}
+            {oauthState?.phase === 'error' && <p className="text-sm text-destructive">{oauthState.message}</p>}
+          </div>
 
-      <DetailDivider />
+          <DetailDivider />
 
-      <div className="flex shrink-0 flex-col gap-2">
-        <DetailSectionTitle>
-          {server.type === 'iroh' ? <Trans>Bridge target</Trans> : <Trans>Server URL</Trans>}
-        </DetailSectionTitle>
-        <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 break-all font-mono text-sm text-foreground">{server.url}</p>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={server.type === 'iroh' ? t`Copy bridge target` : t`Copy URL`}
-            className={mutedIconButtonClass}
-            onClick={handleCopyUrl}
-            disabled={isCopied}
-          >
-            {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          </Button>
-        </div>
-        <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-          <Trans>Transport: {transportLabel}</Trans>
-        </p>
-      </div>
+          <div className="flex shrink-0 flex-col gap-2">
+            <DetailSectionTitle>
+              {server.type === 'iroh' ? <Trans>Bridge target</Trans> : <Trans>Server URL</Trans>}
+            </DetailSectionTitle>
+            <div className="flex items-center gap-2">
+              <p className="min-w-0 flex-1 break-all font-mono text-sm text-foreground">{server.url}</p>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={server.type === 'iroh' ? t`Copy bridge target` : t`Copy URL`}
+                className={mutedIconButtonClass}
+                onClick={handleCopyUrl}
+                disabled={isCopied}
+              >
+                {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
+            <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+              <Trans>Transport: {transportLabel}</Trans>
+            </p>
+          </div>
+        </>
+      )}
 
       {isEnabled && tools.length > 0 && (
         <>

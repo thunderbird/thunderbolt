@@ -12,14 +12,14 @@ import { useAsyncAttempt } from './use-async-attempt'
 import { useIntegrationStatus } from './use-integration-status'
 import { useSettings } from './use-settings'
 
-export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11
 
 /** The final step celebrates completion; step 6 offers an account passkey. */
 export const onboardingStepCount = 7
 
 /** Keep persisted connected steps stable while inserting device-only setup. */
 export const getOnboardingSteps = (isStandalone: boolean, hasBuiltInSearch = false): readonly OnboardingStep[] =>
-  isStandalone ? (hasBuiltInSearch ? [1, 8, 9, 3, 5, 7] : [1, 8, 9, 10, 3, 5, 7]) : [1, 2, 3, 4, 5, 6, 7]
+  isStandalone ? (hasBuiltInSearch ? [1, 8, 9, 3, 5, 11, 7] : [1, 8, 9, 10, 3, 5, 11, 7]) : [1, 2, 3, 4, 5, 6, 11, 7]
 
 /** Maps a saved step into the current server mode after a connection change. */
 export const resolveOnboardingStep = (
@@ -72,6 +72,7 @@ export const selectOnboardingNavigation = (
       case 8:
       case 9:
       case 10:
+      case 11:
         return true
       case 7:
         return false
@@ -155,7 +156,7 @@ const onboardingReducer = (state: Draft, action: OnboardingAction): Draft => {
 /** Read a persisted wizard position, falling back to the first step for invalid settings. */
 const parseOnboardingStep = (value: string): OnboardingStep => {
   const step = Number(value)
-  return Number.isInteger(step) && step >= 1 && step <= 10 ? (step as OnboardingStep) : 1
+  return Number.isInteger(step) && step >= 1 && step <= 11 ? (step as OnboardingStep) : 1
 }
 
 /** Own draft fields and serialized writes; persisted values are defaults until the user edits them. */

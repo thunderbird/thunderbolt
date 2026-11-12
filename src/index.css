@@ -601,6 +601,17 @@
   }
 }
 
+/* Lazy detail panels may first mount already open; width alone reveals their
+   fixed-width content while shrinking the adjacent page at the same pace. */
+@keyframes slide-in-panel-open {
+  from {
+    width: 0;
+  }
+  to {
+    width: var(--slide-panel-width);
+  }
+}
+
 @keyframes accordion-down {
   from {
     height: 0;

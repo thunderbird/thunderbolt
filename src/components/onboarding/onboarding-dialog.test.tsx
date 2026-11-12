@@ -28,6 +28,7 @@ import { SignInModalProvider, type AuthClient } from '@/contexts'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { thunderboltCloudUrl } from '@/lib/constants'
 import * as otariCapabilities from '@/integrations/otari-search/capabilities'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 
 let consoleSpies: ConsoleSpies
 let originalCloudUrl: string
@@ -76,6 +77,91 @@ const createRouterWrapper =
   }
 
 describe('OnboardingDialog', () => {
+  describe('recall consent', () => {
+    const flush = () =>
+      act(async () => {
+        await getClock().runAllAsync()
+      })
+
+    it('offers both features on without enabling them until Continue', async () => {
+      await updateSettings(getDb(), { onboarding_current_step: '11' })
+      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+      await flush()
+      expect(screen.getByRole('switch', { name: 'Saved memories' })).toBeChecked()
+      expect(screen.getByRole('switch', { name: 'Reference earlier chats' })).toBeChecked()
+      expect(screen.getByText(/Private chats cannot read or change built-in memory/)).toBeVisible()
+      expect(await getSettings(getDb(), { memory_enabled: false, session_history_enabled: false })).toEqual({
+        memoryEnabled: false,
+        sessionHistoryEnabled: false,
+      })
+      expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      await flush()
+      expect(await getSettings(getDb(), { memory_enabled: false, session_history_enabled: false })).toEqual({
+        memoryEnabled: true,
+        sessionHistoryEnabled: true,
+      })
+      expect(screen.getByText("You're all set! 🎉")).toBeVisible()
+    })
+
+    it('persists independent opt-outs and preserves existing choices', async () => {
+      await updateSettings(getDb(), { onboarding_current_step: '11', memory_enabled: false })
+      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+      await flush()
+      expect(screen.getByRole('switch', { name: 'Saved memories' })).not.toBeChecked()
+      fireEvent.click(screen.getByRole('switch', { name: 'Reference earlier chats' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      await flush()
+      expect(await getSettings(getDb(), { memory_enabled: true, session_history_enabled: true })).toEqual({
+        memoryEnabled: false,
+        sessionHistoryEnabled: false,
+      })
+    })
+
+    it('does not enable recall for an existing onboarded account', async () => {
+      await updateSettings(getDb(), { user_has_completed_onboarding: true })
+      await reconcileDefaults(getDb())
+      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+      await flush()
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(await getSettings(getDb(), { memory_enabled: false, session_history_enabled: false })).toEqual({
+        memoryEnabled: false,
+        sessionHistoryEnabled: false,
+      })
+    })
+
+    it('cancels queued consent writes and navigation when the account identity changes', async () => {
+      await updateSettings(getDb(), { onboarding_current_step: '11' })
+      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+      await flush()
+      const pending = Promise.withResolvers<void>()
+      const persist = dal.updateSettings
+      const write = spyOn(dal, 'updateSettings').mockImplementationOnce(async (...args) => {
+        await pending.promise
+        await persist(...args)
+      })
+      try {
+        fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+        await flush()
+        expect(write).toHaveBeenCalledTimes(1)
+        invalidateIdentityLifetime()
+        pending.resolve()
+        await flush()
+        expect(
+          await getSettings(getDb(), {
+            memory_enabled: false,
+            session_history_enabled: false,
+            onboarding_current_step: '1',
+          }),
+        ).toEqual({ memoryEnabled: false, sessionHistoryEnabled: false, onboardingCurrentStep: '11' })
+        expect(write).toHaveBeenCalledTimes(1)
+        expect(screen.queryByText('Could not save setup. Please try again.')).toBeNull()
+      } finally {
+        pending.resolve()
+        write.mockRestore()
+      }
+    })
+  })
   describe('anonymous data donation', () => {
     const flush = async () => {
       await act(async () => {

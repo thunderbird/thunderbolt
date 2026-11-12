@@ -8,8 +8,31 @@ import { afterEach, expect, mock, test } from 'bun:test'
 import { i18n } from '@/i18n'
 import type { ProviderType } from '@/providers/types'
 import { NewConnectionPicker } from './new-connection-picker'
+import { memoryMcpProviders } from '@/memory/providers'
 
 afterEach(cleanup)
+
+test('memory-only picker exposes the four MCP providers and preserves selection', () => {
+  const onMemoryProvider = mock((_id: string) => {})
+  render(
+    <I18nProvider i18n={i18n}>
+      <NewConnectionPicker memoryOnly onProvider={() => {}} onMemoryProvider={onMemoryProvider} />
+    </I18nProvider>,
+  )
+  expect(screen.getAllByRole('button')).toHaveLength(4)
+  expect(screen.queryByRole('button', { name: 'MCP server' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'OpenAI Models' })).toBeNull()
+  for (const provider of memoryMcpProviders) {
+    const image = screen.getByRole('button', { name: `${provider.name} Memory` }).querySelector('img')
+    expect(image).toHaveAttribute('alt', '')
+    expect(image?.getAttribute('src')).toContain(provider.id)
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Supermemory Memory' }))
+  expect(onMemoryProvider).toHaveBeenCalledWith('supermemory')
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'hindsight' } })
+  expect(screen.getAllByRole('button')).toHaveLength(1)
+  expect(screen.getByRole('button', { name: 'Hindsight Cloud Memory' })).toBeVisible()
+})
 
 test.each([undefined, 'models', 'search'] as const)('hides Otari by default in the %s picker', (capability) => {
   const picker = (enabled = false) => (

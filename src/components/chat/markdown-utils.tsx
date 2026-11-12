@@ -16,6 +16,8 @@ import {
   type MouseEvent,
 } from 'react'
 import { defaultUrlTransform, type Components } from 'react-markdown'
+import { Link } from 'react-router'
+import { validate as isUuid } from 'uuid'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
@@ -264,6 +266,12 @@ ExternalLinkDialogProvider.displayName = 'ExternalLinkDialogProvider'
 export const markdownUrlTransform = (url: string): string =>
   url.toLowerCase().startsWith('tel:') ? url : defaultUrlTransform(url)
 
+/** Permit source-chat navigation without opening arbitrary model-generated app routes. */
+const isChatHistoryLink = (url: string): boolean => {
+  const match = /^\/chats\/([0-9a-f-]{36})$/i.exec(url)
+  return match !== null && isUuid(match[1])
+}
+
 /**
  * Validates and renders markdown links with external link confirmation.
  * Always uses ExternalLinkDialogContext provided by ExternalLinkDialogProvider.
@@ -277,6 +285,14 @@ const SafeLink = memo((props: ComponentProps<'a'>) => {
   if (!context) {
     throw new Error(
       'SafeLink requires ExternalLinkDialogProvider. Wrap your markdown content with <ExternalLinkDialogProvider>.',
+    )
+  }
+
+  if (href && isChatHistoryLink(href)) {
+    return (
+      <Link {...restProps} to={href}>
+        {children}
+      </Link>
     )
   }
 

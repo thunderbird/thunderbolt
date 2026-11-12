@@ -4,6 +4,7 @@
 
 import { getDb } from '@/db/database'
 import { mcpServersTable } from '@/db/tables'
+import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import {
@@ -11,6 +12,7 @@ import {
   createMcpServersWithCredentials,
   createMcpServerWithCredentials,
   deleteMcpServer,
+  enableMcpServerIfCurrent,
   getAllMcpServers,
   getRemoteMcpServers,
   updateMcpServerWithCredentials,
@@ -30,6 +32,26 @@ describe('MCP Servers DAL', () => {
   beforeEach(async () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
+  })
+
+  it('enables only the unchanged active connection and rejects cancelled enable actions', async () => {
+    const db = getDb()
+    const id = 'memory-connection'
+    const url = 'https://api.getzep.com/mcp'
+    await createMcpServer(db, { id, name: 'Zep', url, type: 'http', enabled: 0 })
+    await expect(enableMcpServerIfCurrent(db, id, url, AbortSignal.abort())).rejects.toThrow()
+    expect((await getAllMcpServers(db))[0].enabled).toBe(0)
+    expect(
+      await enableMcpServerIfCurrent(db, id, 'https://different.example/mcp', new AbortController().signal),
+    ).toBeNull()
+    expect((await getAllMcpServers(db))[0].enabled).toBe(0)
+    expect(await enableMcpServerIfCurrent(db, id, url, new AbortController().signal)).toMatchObject({ id, enabled: 1 })
+    await deleteMcpServer(db, id)
+    expect(await enableMcpServerIfCurrent(db, id, url, new AbortController().signal)).toBeNull()
+    expect(await db.select().from(mcpServersTable).where(eq(mcpServersTable.id, id)).get()).toMatchObject({
+      id,
+      enabled: null,
+    })
   })
 
   describe('createMcpServerWithCredentials', () => {

@@ -47,6 +47,7 @@ import * as chatgptAuth from '@/providers/chatgpt-auth'
 import * as openrouterAuth from '@/lib/openrouter-auth'
 import * as opener from '@tauri-apps/plugin-opener'
 import { ChatModelSetup } from '@/components/chat/chat-model-setup'
+import { memoryMcpProviders } from '@/memory/providers'
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
 const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 })
@@ -118,6 +119,73 @@ describe('ConnectionsPage list', () => {
     otariBrowser.cancelOtariBrowserConnection()
     cancelTinfoilMobileConnection()
   })
+
+  it.each(memoryMcpProviders)('adds $name with the shared MCP OAuth flow and server records', async (provider) => {
+    const start = mock<NonNullable<ConnectionsPageDeps['startMcpOAuthFlow']>>(async () => ({ status: 'completed' }))
+    renderWithReactivity(<ConnectionsPage deps={{ startMcpOAuthFlow: start }} />, {
+      tables: ['mcp_servers', 'mcp_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' })))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: `${provider.name} Memory` })))
+    if (provider.bankScoped) {
+      fireEvent.change(screen.getByLabelText('Memory bank ID'), { target: { value: 'qa-bank' } })
+    }
+    fireEvent.click(
+      await waitForElement(() => {
+        const button = screen.queryByRole('button', { name: `Connect ${provider.name}` })
+        return button && !button.hasAttribute('disabled') ? button : null
+      }),
+    )
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    const rows = await getAllMcpServers(getDb())
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      name: provider.bankScoped ? 'Hindsight Cloud · qa-bank' : provider.name,
+      type: 'http',
+      url: provider.bankScoped ? `${provider.url}/qa-bank/` : provider.url,
+    })
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(start.mock.calls[0][0]).toMatchObject({ serverId: rows[0].id, serverUrl: rows[0].url })
+  })
+
+  it.each([0, 1])(
+    'reuses and enables a memory connection synced after the picker loaded (enabled: %s)',
+    async (enabled) => {
+      const provider = memoryMcpProviders[0]
+      const start = mock<NonNullable<ConnectionsPageDeps['startMcpOAuthFlow']>>(async () => ({ status: 'completed' }))
+      renderWithReactivity(<ConnectionsPage deps={{ startMcpOAuthFlow: start }} />, {
+        tables: ['mcp_servers', 'mcp_secrets'],
+        wrapper: McpProviderWrapper,
+      })
+      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New Connection' })))
+      fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: `${provider.name} Memory` })))
+      const existingId = uuidv7()
+      // No reactive notification: the persisted row is newer than the rendered list.
+      await createMcpServer(getDb(), {
+        id: existingId,
+        name: 'Synced memory account',
+        type: 'http',
+        url: `${provider.url}/`,
+        enabled,
+      })
+      fireEvent.click(
+        await waitForElement(() => {
+          const button = screen.queryByRole('button', { name: `Connect ${provider.name}` })
+          return button && !button.hasAttribute('disabled') ? button : null
+        }),
+      )
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(await getAllMcpServers(getDb())).toHaveLength(1)
+      expect((await getAllMcpServers(getDb()))[0].enabled).toBe(1)
+      expect(start).toHaveBeenCalledTimes(1)
+      expect(start.mock.calls[0][0]).toMatchObject({ serverId: existingId, serverUrl: `${provider.url}/` })
+    },
+  )
 
   it('shows named connections independently of models and preserves per-model toggles when disabled or disconnected', async () => {
     const id = await saveProviderConnection(getDb(), {
@@ -1281,6 +1349,26 @@ describe('ConnectionsPage tools refresh after reconnect', () => {
     await openServerDetail('srv')
     return serverId
   }
+
+  it('shows the automatic memory connection as pending until its transport is ready', async () => {
+    const serverId = 'pending-memory'
+    const url = 'https://api.getzep.com/mcp'
+    const pending = Promise.withResolvers<MCPClient>()
+    await createMcpServer(getDb(), { id: serverId, name: 'Zep', url, type: 'http', enabled: 1 })
+    renderWithReactivity(<ConnectionsPage />, {
+      tables: ['mcp_servers', 'mcp_secrets'],
+      wrapper: makeMcpWrapper(() => pending.promise),
+    })
+    const connecting = getMcp().addServer({ id: serverId, name: 'Zep', url, type: 'http', enabled: true })
+    await openServerDetail('Zep')
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Connecting…' }))).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Connect Zep' })).toBeNull()
+    await act(async () => {
+      pending.resolve(fakeClient(['recall_memory']))
+      await connecting
+    })
+    expect(await waitForElement(() => screen.queryByText('Connected to Zep'))).toBeVisible()
+  })
 
   it('refetches tools when a reconnect swaps the client without changing the connected set', async () => {
     const serverId = await addLiveServer(

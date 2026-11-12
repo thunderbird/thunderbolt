@@ -223,4 +223,44 @@ const checkCriteria = (
   if (criteria.noDuplicateToolCalls && duplicateToolCallCount > 0) {
     failures.push(`Duplicate web tool calls: ${duplicateToolCallCount}`)
   }
+
+  for (const [name, limits] of Object.entries(criteria.toolCallLimits ?? {})) {
+    const count = parsed.toolCalls.filter((call) => call.toolName === name).length
+    if (limits.min !== undefined && count < limits.min) {
+      failures.push(`Too few ${name} calls: ${count} (min: ${limits.min})`)
+    }
+    if (limits.max !== undefined && count > limits.max) {
+      failures.push(`Too many ${name} calls: ${count} (max: ${limits.max})`)
+    }
+  }
+  if (criteria.toolOutputLimits) {
+    const { names, perCallBytes, totalBytes } = criteria.toolOutputLimits
+    const callIds = new Set(
+      parsed.toolCalls.filter((call) => names.includes(call.toolName)).map((call) => call.toolCallId),
+    )
+    const sizes = (parsed.events ?? [])
+      .filter((event) => event.type === 'tool-output-available' && callIds.has(String(event.toolCallId)))
+      .map((event) => {
+        const output = event.output
+        const value = output !== null && typeof output === 'object' && 'details' in output ? output.details : output
+        return new TextEncoder().encode(typeof value === 'string' ? value : (JSON.stringify(value) ?? '')).length
+      })
+    if (sizes.some((size) => size > perCallBytes)) {
+      failures.push(`App tool output exceeded ${perCallBytes} bytes`)
+    }
+    if (sizes.reduce((total, size) => total + size, 0) > totalBytes) {
+      failures.push(`App tool outputs exceeded ${totalBytes} bytes in this turn`)
+    }
+  }
+  const normalizedResponse = parsed.text.toLowerCase()
+  for (const text of criteria.responseIncludes ?? []) {
+    if (!normalizedResponse.includes(text.toLowerCase())) {
+      failures.push(`Response omitted fixture fact: ${text}`)
+    }
+  }
+  for (const text of criteria.responseExcludes ?? []) {
+    if (normalizedResponse.includes(text.toLowerCase())) {
+      failures.push(`Response exposed forbidden fixture text: ${text}`)
+    }
+  }
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { buildMcpHeaders, createMcpTransport } from './mcp-transport'
@@ -19,6 +19,44 @@ describe('createMcpTransport', () => {
   it('returns a StreamableHTTPClientTransport for the "http" type', () => {
     const transport = createMcpTransport(url, 'http', cloudUrl, {})
     expect(transport).toBeInstanceOf(StreamableHTTPClientTransport)
+  })
+
+  it('reaches the Mem0 authentication challenge without a POST redirect for a saved legacy URL', async () => {
+    const requests: Array<{ url: string; authorization: string | null }> = []
+    const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const endpoint = input instanceof Request ? input.url : input.toString()
+          requests.push({ url: endpoint, authorization: new Headers(init?.headers).get('Authorization') })
+          return endpoint.endsWith('/mcp')
+            ? new Response(null, { status: 307, headers: { Location: '/mcp/' } })
+            : new Response('Authentication required', {
+                status: 401,
+                headers: {
+                  'WWW-Authenticate':
+                    'Bearer resource_metadata="https://mcp.mem0.ai/.well-known/oauth-protected-resource"',
+                },
+              })
+        },
+        { preconnect: globalThis.fetch.preconnect },
+      ),
+    )
+    const transport = createMcpTransport('https://mcp.mem0.ai/mcp', 'http', '', buildMcpHeaders('fixture-token'))
+    try {
+      await transport.start()
+      await expect(
+        transport.send({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } },
+        }),
+      ).rejects.toMatchObject({ code: 401 })
+      expect(requests).toEqual([{ url: 'https://mcp.mem0.ai/mcp/', authorization: 'Bearer fixture-token' }])
+    } finally {
+      await transport.close()
+      fetchSpy.mockRestore()
+    }
   })
 
   // `@ai-sdk/mcp`'s `init()` writes the negotiated protocol via a direct `transport.protocolVersion =`

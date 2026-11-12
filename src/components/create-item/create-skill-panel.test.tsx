@@ -159,7 +159,9 @@ describe('CreateSkillPanel', () => {
       { wrapper: createTestProvider() },
     )
 
+    const loadingSurface = screen.getByRole('complementary')
     const nameInput = await waitForElement(() => screen.queryByDisplayValue('Create Panel Edit Target'))
+    expect(screen.getByRole('complementary')).toBe(loadingSurface)
     fireEvent.change(nameInput, { target: { value: 'Morning Brief' } })
 
     await act(async () => {

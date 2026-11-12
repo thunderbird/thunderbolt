@@ -14,6 +14,7 @@ import {
   getMcpServerCredentialSnapshot,
   parseMcpCredentialSummary,
   setMcpServerCredentials,
+  saveMcpAuthorizationCredentials,
   updateMcpServerCredentialsIfCurrent,
 } from './mcp-secrets'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
@@ -29,6 +30,27 @@ afterAll(async () => {
 describe('MCP Secrets DAL', () => {
   beforeEach(async () => {
     await resetTestDatabase()
+  })
+
+  it('rejects cancelled authorization and credentials for a removed or replaced endpoint', async () => {
+    const db = getDb()
+    const id = 'memory-authorization'
+    const url = 'https://mcp.mem0.ai/mcp/'
+    const credential = { type: 'oauth' as const, access_token: 'test-access' }
+    await db.insert(mcpServersTable).values({ id, name: 'Memory', url, type: 'http', enabled: 1 })
+    await expect(saveMcpAuthorizationCredentials(db, id, url, credential, AbortSignal.abort())).rejects.toThrow()
+    expect(await getMcpServerCredentials(db, id)).toBeNull()
+    await db.update(mcpServersTable).set({ url: 'https://mcp.supermemory.ai/mcp' }).where(eq(mcpServersTable.id, id))
+    await expect(
+      saveMcpAuthorizationCredentials(db, id, url, credential, new AbortController().signal),
+    ).rejects.toThrow('changed during authorization')
+    expect(await getMcpServerCredentials(db, id)).toBeNull()
+    await db.update(mcpServersTable).set({ url }).where(eq(mcpServersTable.id, id))
+    await deleteMcpServer(db, id)
+    await expect(
+      saveMcpAuthorizationCredentials(db, id, url, credential, new AbortController().signal),
+    ).rejects.toThrow('changed during authorization')
+    expect(await getMcpServerCredentials(db, id)).toBeNull()
   })
 
   describe('getMcpServerCredentials', () => {

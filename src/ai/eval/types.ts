@@ -32,6 +32,8 @@ export type NecessityCategory =
 /** A single evaluation scenario: one prompt tested against one model in one mode */
 export type EvalScenario = {
   id: string
+  /** A fixture-owned thread whose persisted privacy flags must precede harness setup. */
+  threadId?: string
   modelName: string
   engineName: EvalEngine
   modeName: 'chat' | 'search' | 'research'
@@ -82,6 +84,14 @@ export type EvalCriteria = {
    * and proper nouns inside an otherwise Portuguese answer still pass.
    */
   expectReplyLanguage?: AppLocale
+  /** Limits for app tools, independently of the existing web-call criteria. */
+  toolCallLimits?: Record<string, { min?: number; max?: number }>
+  /** Serialized app-tool output ceilings, including results the model did not use. */
+  toolOutputLimits?: { names: string[]; perCallBytes: number; totalBytes: number }
+  /** Fixture facts that must appear in the final answer, matched without case sensitivity. */
+  responseIncludes?: string[]
+  /** Fixture canaries that must never appear in the final answer. */
+  responseExcludes?: string[]
 }
 
 /** Semantic criteria shared by the judge registry and expectation validation. */

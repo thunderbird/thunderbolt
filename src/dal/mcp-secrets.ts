@@ -46,6 +46,8 @@ export const parseMcpCredentialSummary = (row: McpCredentialSummaryRow): McpCred
 }
 
 /** Credential blob stored on-device for an MCP server. Forward-supports OAuth token sets. */
+export type McpOAuthClientAuthMethod = 'none' | 'client_secret_post' | 'client_secret_basic'
+
 export type McpServerCredentials =
   | { type: 'bearer'; token: string }
   | {
@@ -54,8 +56,11 @@ export type McpServerCredentials =
       refresh_token?: string
       expires_at?: number // epoch ms
       clientId?: string // DCR-issued client_id (per-AS); absent for CIMD
+      clientSecret?: string // DCR-issued secret, device-local like the token set
+      tokenEndpointAuthMethod?: McpOAuthClientAuthMethod
       issuer?: string // AS issuer (per-AS binding)
       tokenEndpoint?: string // discovered token endpoint (for refresh)
+      resource?: string // validated protected-resource audience pinned at authorization
       scope?: string
     }
 
@@ -140,6 +145,37 @@ export const setMcpServerCredentials = async (
   } else {
     await db.insert(mcpSecretsTable).values({ id, credentials: json })
   }
+}
+
+export class McpAuthorizationChangedError extends Error {
+  constructor() {
+    super('MCP connection changed during authorization')
+    this.name = 'McpAuthorizationChangedError'
+  }
+}
+
+/** Commit an authorization only while its originating identity, server, and endpoint still exist. */
+export const saveMcpAuthorizationCredentials = async (
+  db: AnyDrizzleDatabase,
+  id: string,
+  url: string,
+  credentials: McpServerCredentials,
+  signal: AbortSignal,
+): Promise<void> => {
+  await db.transaction(async (tx) => {
+    signal.throwIfAborted()
+    const server = await tx
+      .select({ id: mcpServersTable.id })
+      .from(mcpServersTable)
+      .where(and(eq(mcpServersTable.id, id), eq(mcpServersTable.url, url), isNull(mcpServersTable.deletedAt)))
+      .get()
+    if (!server) {
+      throw new McpAuthorizationChangedError()
+    }
+    signal.throwIfAborted()
+    await setMcpServerCredentials(tx, id, credentials)
+    signal.throwIfAborted()
+  })
 }
 
 /** Delete credentials for an MCP server. */

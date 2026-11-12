@@ -7,14 +7,19 @@ import {
   discoverOAuthProtectedResourceMetadata,
   exchangeAuthorization,
   registerClient,
+  selectResourceURL,
   startAuthorization,
 } from '@modelcontextprotocol/sdk/client/auth.js'
-import type { AuthorizationServerMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
+import type {
+  AuthorizationServerMetadata,
+  OAuthClientInformation,
+  OAuthProtectedResourceMetadata,
+} from '@modelcontextprotocol/sdk/shared/auth.js'
 import { resourceUrlFromServerUrl } from '@modelcontextprotocol/sdk/shared/auth-utils.js'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { openUrl as tauriOpenUrl } from '@tauri-apps/plugin-opener'
 import { v4 as uuidv4 } from 'uuid'
-import { setMcpServerCredentials, type McpServerCredentials } from '@/dal/mcp-secrets'
+import { setMcpServerCredentials, type McpOAuthClientAuthMethod, type McpServerCredentials } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { isMobile as isMobilePlatform, isTauri as isTauriPlatform } from '@/lib/platform'
 import type { McpAuthActionability } from './auth-decision'
@@ -116,7 +121,12 @@ const discoverServer = async (
   serverUrl: string,
   fetchFn: FetchLike,
   deps: WebOAuthDeps,
-): Promise<{ authorizationServerUrl: string; metadata: AuthorizationServerMetadata; scope?: string }> => {
+): Promise<{
+  authorizationServerUrl: string
+  metadata: AuthorizationServerMetadata
+  resourceMetadata: OAuthProtectedResourceMetadata
+  scope?: string
+}> => {
   const discover = deps.discoverOAuthProtectedResourceMetadata ?? discoverOAuthProtectedResourceMetadata
   const discoverAs = deps.discoverAuthorizationServerMetadata ?? discoverAuthorizationServerMetadata
 
@@ -144,7 +154,7 @@ const discoverServer = async (
   // omits the `scope` parameter and preserves behavior for non-gated servers.
   const scope = prm.scopes_supported?.join(' ') || undefined
 
-  return { authorizationServerUrl, metadata, scope }
+  return { authorizationServerUrl, metadata, resourceMetadata: prm, scope }
 }
 
 /**
@@ -188,6 +198,21 @@ const issParameterSupported = (metadata: AuthorizationServerMetadata): boolean =
   (metadata as { authorization_response_iss_parameter_supported?: boolean })
     .authorization_response_iss_parameter_supported === true
 
+/** Prefer public-client PKCE, while supporting servers that issue DCR client secrets. */
+const clientAuthMethod = (metadata: AuthorizationServerMetadata): McpOAuthClientAuthMethod => {
+  const supported = metadata.token_endpoint_auth_methods_supported
+  if (!supported?.length || supported.includes('none')) {
+    return 'none'
+  }
+  if (supported.includes('client_secret_post')) {
+    return 'client_secret_post'
+  }
+  if (supported.includes('client_secret_basic')) {
+    return 'client_secret_basic'
+  }
+  throw new Error('The authorization server does not support a compatible client authentication method.')
+}
+
 type SaveCredentials = (credentials: Extract<McpServerCredentials, { type: 'oauth' }>) => Promise<void>
 
 type StartArgs = {
@@ -200,6 +225,8 @@ type StartArgs = {
   origin?: string
   isBackendConnected?: () => boolean
 }
+
+type AuthorizationAttempt = StartArgs & { stateNonce: string }
 
 /** Outcome of `startMcpOAuthFlow`: the page either navigates away or the desktop loopback completed inline. */
 export type StartMcpOAuthResult = { status: 'redirected' } | { status: 'completed' }
@@ -230,7 +257,7 @@ const assertNoConcurrentFlow = (serverId: string): void => {
  * every platform; only how the resulting URL is opened differs.
  */
 const prepareAuthorization = async (
-  { db, serverId, serverUrl, fetchFn, origin, isBackendConnected }: StartArgs,
+  { db, serverId, serverUrl, fetchFn, origin, isBackendConnected, signal, stateNonce }: AuthorizationAttempt,
   redirectUri: string,
   deps: WebOAuthDeps,
 ): Promise<{ authorizationUrl: URL }> => {
@@ -238,9 +265,13 @@ const prepareAuthorization = async (
   const register = deps.registerClient ?? registerClient
   const start = deps.startAuthorization ?? startAuthorization
 
-  const { authorizationServerUrl, metadata, scope } = await discoverServer(serverUrl, fetchFn, deps)
+  signal?.throwIfAborted()
+  const { authorizationServerUrl, metadata, resourceMetadata, scope } = await discoverServer(serverUrl, fetchFn, deps)
+  signal?.throwIfAborted()
 
   const provider = createMcpOAuthClientProvider({ serverId, db, origin, redirectUri, isBackendConnected })
+  const resource = await selectResourceURL(serverUrl, provider, resourceMetadata)
+  signal?.throwIfAborted()
 
   // Mode-aware registration: CIMD when the AS advertises it AND a client metadata
   // URL is set (backend-connected); DCR otherwise. The SDK applies the same
@@ -254,17 +285,24 @@ const prepareAuthorization = async (
   }
   // The new client_id rides in the handshake; writing it to the stored credential now would pair it with
   // the old refresh token if the user abandons the flow, breaking every refresh until remove + re-add.
-  const clientInformation = useCimd
+  const tokenEndpointAuthMethod = useCimd ? 'none' : clientAuthMethod(metadata)
+  const registration = useCimd
     ? { client_id: provider.clientMetadataUrl! }
     : await register(authorizationServerUrl, {
         metadata,
-        clientMetadata: provider.clientMetadata,
+        clientMetadata: { ...provider.clientMetadata, token_endpoint_auth_method: tokenEndpointAuthMethod },
         scope,
         fetchFn,
       })
 
-  const stateNonce = uuidv4()
-  const resource = resourceUrlFromServerUrl(serverUrl)
+  signal?.throwIfAborted()
+  const clientInformation: OAuthClientInformation & { token_endpoint_auth_method: McpOAuthClientAuthMethod } = {
+    ...registration,
+    token_endpoint_auth_method: tokenEndpointAuthMethod,
+  }
+  if (tokenEndpointAuthMethod !== 'none' && !clientInformation.client_secret) {
+    throw new Error('The authorization server did not issue the required client secret.')
+  }
 
   // Persist the handshake (issuer + redirect + client_id + nonce + the discovered
   // AS) BEFORE building the authorization URL so the provider's state()/
@@ -275,6 +313,7 @@ const prepareAuthorization = async (
     returnTo,
     serverId,
     serverUrl,
+    resource: resource?.href,
     stateNonce,
     issuer: metadata.issuer,
     redirectUrl: provider.redirectUrl,
@@ -293,6 +332,10 @@ const prepareAuthorization = async (
     resource,
   })
 
+  signal?.throwIfAborted()
+  if (getMcpOAuthState().stateNonce !== stateNonce) {
+    throw new DOMException('Authorization was replaced by a newer attempt.', 'AbortError')
+  }
   setMcpOAuthState({ codeVerifier })
   return { authorizationUrl }
 }
@@ -320,16 +363,18 @@ export const startMcpOAuthFlow = async (
   const openUrl = platform.openUrl ?? tauriOpenUrl
   const runLoopback = platform.startMcpOAuthLoopback ?? startMcpOAuthLoopback
 
+  args.signal?.throwIfAborted()
   assertNoConcurrentFlow(args.serverId)
+  const attempt = { ...args, stateNonce: uuidv4() }
 
   try {
     if (isTauri() && !isMobile()) {
-      return await startDesktopOAuthFlow(args, deps, { openUrl, runLoopback })
+      return await startDesktopOAuthFlow(attempt, deps, { openUrl, runLoopback })
     }
 
     const origin = args.origin ?? window.location.origin
     const redirectUri = computeMcpOAuthRedirectUri(origin, { isTauri, isMobile })
-    const { authorizationUrl } = await prepareAuthorization(args, redirectUri, deps)
+    const { authorizationUrl } = await prepareAuthorization(attempt, redirectUri, deps)
     args.signal?.throwIfAborted()
 
     if (isTauri() && isMobile()) {
@@ -349,7 +394,9 @@ export const startMcpOAuthFlow = async (
     // every other server's authorization for `abandonedFlowMs`. Clear it before
     // surfacing. Success paths never reach here — web/mobile need the handshake for
     // the callback, and desktop's `completeMcpOAuthFlow` already cleared it.
-    clearMcpOAuthState()
+    if (getMcpOAuthState().stateNonce === attempt.stateNonce) {
+      clearMcpOAuthState()
+    }
     throw error
   }
 }
@@ -361,7 +408,7 @@ export const startMcpOAuthFlow = async (
  * inline. A module-level guard covers the pre-handshake loopback window.
  */
 const startDesktopOAuthFlow = async (
-  args: StartArgs,
+  args: AuthorizationAttempt,
   deps: WebOAuthDeps,
   { openUrl, runLoopback }: { openUrl: typeof tauriOpenUrl; runLoopback: typeof startMcpOAuthLoopback },
 ): Promise<StartMcpOAuthResult> => {
@@ -381,16 +428,13 @@ const startDesktopOAuthFlow = async (
     if (!callback) {
       // Timed out — the user never finished. Clear the pending handshake so a
       // retry isn't blocked by the single-flight guard.
-      clearMcpOAuthState()
       throw new Error('Authorization timed out — please try again.')
     }
 
     if (callback.error) {
-      clearMcpOAuthState()
       throw new Error(callback.error)
     }
     if (!callback.code) {
-      clearMcpOAuthState()
       throw new Error('Authorization was cancelled.')
     }
 
@@ -404,6 +448,7 @@ const startDesktopOAuthFlow = async (
         returnedIss: callback.iss,
         fetchFn,
         saveCredentials: args.saveCredentials,
+        signal: args.signal,
       },
       deps,
     )
@@ -415,6 +460,7 @@ const startDesktopOAuthFlow = async (
 
 type CompleteArgs = {
   saveCredentials?: SaveCredentials
+  signal?: AbortSignal
   db: AnyDrizzleDatabase
   serverId: string
   code: string
@@ -435,12 +481,12 @@ type CompleteArgs = {
  * cleared, so a retry requires re-authorization.
  */
 export const completeMcpOAuthFlow = async (
-  { db, serverId, code, returnedState, returnedIss, fetchFn, saveCredentials }: CompleteArgs,
+  { db, serverId, code, returnedState, returnedIss, fetchFn, saveCredentials, signal }: CompleteArgs,
   deps: WebOAuthDeps = {},
 ): Promise<void> => {
+  signal?.throwIfAborted()
   const handshake = getMcpOAuthState()
   if (handshake.serverId !== serverId) {
-    clearMcpOAuthState()
     throw new Error('OAuth callback did not match the pending authorization.')
   }
   // Clear before the network exchange: the handshake is single-use, so a
@@ -483,19 +529,24 @@ export const completeMcpOAuthFlow = async (
     throw new Error('OAuth handshake is incomplete — restart the authorization.')
   }
 
-  const clientInformation = JSON.parse(handshake.clientInfo) as { client_id: string }
+  const clientInformation = JSON.parse(handshake.clientInfo) as OAuthClientInformation & {
+    token_endpoint_auth_method?: McpOAuthClientAuthMethod
+  }
   const exchange = deps.exchangeAuthorization ?? exchangeAuthorization
+  const resource = handshake.resource ? new URL(handshake.resource) : resourceUrlFromServerUrl(handshake.serverUrl)
 
+  signal?.throwIfAborted()
   const tokens = await exchange(authorizationServerUrl, {
     metadata,
     clientInformation,
     authorizationCode: code,
     codeVerifier: handshake.codeVerifier,
     redirectUri: handshake.redirectUrl,
-    resource: resourceUrlFromServerUrl(handshake.serverUrl),
+    resource,
     fetchFn,
   })
 
+  signal?.throwIfAborted()
   const save = saveCredentials ?? ((credentials) => setMcpServerCredentials(db, serverId, credentials))
   await save({
     type: 'oauth',
@@ -503,8 +554,11 @@ export const completeMcpOAuthFlow = async (
     refresh_token: tokens.refresh_token,
     expires_at: tokens.expires_in !== undefined ? Date.now() + tokens.expires_in * 1000 : undefined,
     clientId: clientInformation.client_id,
+    clientSecret: clientInformation.client_secret,
+    tokenEndpointAuthMethod: clientInformation.token_endpoint_auth_method,
     issuer: metadata.issuer,
     tokenEndpoint: metadata.token_endpoint,
+    resource: resource.href,
     scope: tokens.scope,
   })
 }

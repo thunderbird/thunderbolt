@@ -129,16 +129,55 @@ export const tasksTable = powersyncSchema.table(
   (table) => [primaryKey({ columns: [table.id, table.userId] }), index('idx_tasks_user_id').on(table.userId)],
 )
 
+/** Reusable provider metadata. Credentials remain device-local and never enter this table. */
+export const providerConnectionsTable = powersyncSchema.table(
+  'provider_connections',
+  {
+    id: text('id').notNull(),
+    provider: text('provider', {
+      enum: [
+        'openai',
+        'anthropic',
+        'custom',
+        'openrouter',
+        'tinfoil',
+        'otari',
+        'trustedrouter',
+        'exa',
+        'brave',
+        'tavily',
+      ],
+    }),
+    name: text('name'),
+    url: text('url'),
+    authMethod: text('auth_method', { enum: ['oauth', 'api_key'] }),
+    enabled: integer('enabled').default(1),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+    deletedAt: timestamp('deleted_at'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  // Stable OAuth IDs repeat across accounts, so ownership is part of the key.
+  (table) => [
+    primaryKey({ columns: [table.id, table.userId] }),
+    index('idx_provider_connections_user_id').on(table.userId),
+  ],
+)
+
 export const modelsTable = powersyncSchema.table(
   'models',
   {
     id: text('id').notNull(),
     provider: text('provider', {
-      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'tinfoil', 'trustedrouter'],
+      enum: ['openai', 'custom', 'openrouter', 'thunderbolt', 'anthropic', 'tinfoil', 'otari', 'trustedrouter'],
     }),
     name: text('name'),
     model: text('model'),
     url: text('url'),
+    // No FK: connection metadata and models arrive independently through sync.
+    providerConnectionId: text('provider_connection_id'),
     isSystem: integer('is_system').default(0),
     enabled: integer('enabled').default(1),
     toolUsage: integer('tool_usage').default(1),
@@ -326,6 +365,7 @@ export const powersyncTablesByName = {
   chat_messages: chatMessagesTable,
   tasks: tasksTable,
   models: modelsTable,
+  provider_connections: providerConnectionsTable,
   prompts: promptsTable,
   skills: skillsTable,
   triggers: triggersTable,
@@ -355,6 +395,7 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
   chat_messages: chatMessagesTable.id,
   tasks: tasksTable.id,
   models: modelsTable.id,
+  provider_connections: providerConnectionsTable.id,
   prompts: promptsTable.id,
   skills: skillsTable.id,
   triggers: triggersTable.id,
@@ -375,6 +416,7 @@ export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> 
   chat_messages: [chatMessagesTable.id],
   tasks: [tasksTable.id, tasksTable.userId],
   models: [modelsTable.id, modelsTable.userId],
+  provider_connections: [providerConnectionsTable.id, providerConnectionsTable.userId],
   prompts: [promptsTable.id, promptsTable.userId],
   skills: [skillsTable.id, skillsTable.userId],
   triggers: [triggersTable.id],

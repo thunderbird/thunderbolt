@@ -3,7 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { clearAllKeys, generateKeyPair, generateMlKemKeyPair, exportPublicKey, exportMlKemPublicKey } from '@/crypto'
+import {
+  clearAllKeys,
+  markAKUnverified,
+  generateKeyPair,
+  generateMlKemKeyPair,
+  exportPublicKey,
+  exportMlKemPublicKey,
+} from '@/crypto'
 import { getCachedSession, setCachedSession, clearCachedSession } from '@/lib/session-cache'
 import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
@@ -32,6 +39,7 @@ const removalErrors = [
 ] as const
 
 import DevicesSettingsPage from './devices'
+import { approvalCodeAttemptsKey } from '@/components/approve-device/approval-code-attempts'
 
 /** Renders Devices settings with an injected HTTP boundary. */
 const renderDevicesPage = (httpClient: HttpClient = createMockHttpClient()) => {
@@ -118,6 +126,8 @@ describe('DevicesSettingsPage reactivity', () => {
   })
 
   afterEach(async () => {
+    // Opening the approval dialog records a code attempt on this device.
+    localStorage.removeItem(approvalCodeAttemptsKey)
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
     await clearAllKeys()
@@ -148,6 +158,37 @@ describe('DevicesSettingsPage reactivity', () => {
     expect(screen.getByText('Revoked')).toBeInTheDocument()
   })
 
+  it('refuses approval from an unverified device, and keeps Deny', async () => {
+    await markAKUnverified()
+    await getDb()
+      .insert(devicesTable)
+      .values([
+        { id: deviceId1, userId: 'user-1', name: 'This Device', trusted: 1 },
+        {
+          id: deviceId2,
+          userId: 'user-1',
+          name: 'Pending Phone',
+          trusted: 0,
+          approvalPending: 1,
+          publicKey: 'pk',
+          mlkemPublicKey: 'mlkem-pk',
+        },
+      ])
+    renderDevicesPage()
+
+    await waitForElement(() =>
+      screen.queryByText(
+        "This device can't approve other devices because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+      ),
+    )
+    const approve = screen.getByRole('button', { name: 'Approve Pending Phone' })
+    expect(approve).toBeDisabled()
+    expect(approve).toHaveAccessibleDescription(
+      "This device can't approve other devices because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+    )
+    expect(screen.getByRole('button', { name: 'Deny Pending Phone' })).toBeEnabled()
+  })
+
   it('keeps approval errors in the translated dialog and removes diagnostics after cancel', async () => {
     const previousSession = getCachedSession()
     setCachedSession({ user: { id: 'user-1' } })
@@ -172,6 +213,7 @@ describe('DevicesSettingsPage reactivity', () => {
       await waitForElement(() => screen.queryByText('Pending Phone'))
       fireEvent.click(screen.getByRole('button', { name: 'Approve Pending Phone' }))
       const dialog = screen.getByRole('alertdialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Use fingerprint instead' }))
       fireEvent.change(within(dialog).getByLabelText('Device fingerprint'), {
         target: { value: Array(16).fill('0000').join('-') },
       })

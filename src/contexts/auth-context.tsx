@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useHttpClient } from '@/contexts/http-client-context'
+import { useConfigStore } from '@/api/config-store'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { getActiveLocale } from '@/i18n/active-locale'
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
@@ -15,17 +16,46 @@ import {
   getAuthToken,
   invalidateAuthRequests,
   isCurrentAuthRequest,
-  isCurrentSessionToken,
   onAuthTokenChangedInOtherTab,
   setAuthToken,
 } from '@/lib/auth-token'
+import {
+  bindLocalData,
+  getLocalDataStatus,
+  releaseSignedOutLocalData,
+  subscribeLocalDataStatus,
+} from '@/lib/local-data-owner'
 import { getPlatform } from '@/lib/platform'
-import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSession } from '@/lib/session-cache'
-import { normalizeBackendUrl } from '@/lib/url-utils'
+import { clearIdentityScopedMemory } from '@/lib/identity-memory'
+import {
+  clearCachedSession,
+  getCachedSession,
+  getUsableCachedSession,
+  isCurrentSession,
+  setCachedSession,
+} from '@/lib/session-cache'
+import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
+import { signOutAndLeave } from '@/lib/sign-out'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
-import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { consumePendingSsoPromotion } from '@/lib/analytics/anonymous-promotion-sso-bridge'
+import { LocalDataSwitchScreen } from '@/components/local-data-switch-screen'
+import {
+  getLocalSetting,
+  isCurrentServer,
+  markServerAuthenticated,
+  onServerChangedInOtherTab,
+} from '@/stores/local-settings-store'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 
 /**
  * Create an auth client instance with the given base URL
@@ -33,15 +63,16 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
  * Uses Bearer token authentication for all platforms, storing tokens
  * in the settings database for persistence across app restarts.
  */
-export const createAuthClientInstance = (cloudUrl: string) => {
-  const baseURL = normalizeBackendUrl(cloudUrl).replace(/\/v1$/, '') // Better Auth adds /api/auth
+export const createAuthClientInstance = (cloudUrl: string, ssoMode = isSsoMode()) => {
+  // Better Auth requires a base URL even when its transport is entirely local.
+  const baseURL = `${resolveAbsoluteBackendUrl(cloudUrl || 'https://standalone.invalid/v1')}/api/auth`
   const platform = getPlatform()
 
   const client = createAuthClient({
     baseURL,
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient(), anonymousClient()],
-    fetchOptions: buildFetchOptions(platform),
+    fetchOptions: cloudUrl ? buildFetchOptions(platform, ssoMode, cloudUrl) : { customFetchImpl: standaloneAuthFetch },
     // Skip focus refetches to avoid spending rate-limit budget on every tab switch.
     // The refresh manager skips offline checks, but still refetches on reconnect
     // and cross-tab broadcasts so cached sessions recover when the network returns.
@@ -51,13 +82,67 @@ export const createAuthClientInstance = (cloudUrl: string) => {
     },
   })
 
-  hydrateSessionFromCache(client)
+  if (cloudUrl) {
+    hydrateSessionFromCache(client, cloudUrl)
+  } else {
+    const session = client.$store.atoms.session
+    session.set({ ...session.get(), data: null, isPending: false })
+  }
+  bindSessionToLocalData(client, cloudUrl)
   return client
 }
 
-/** Cookie-only SSO is revalidated online; bearer payloads must identify the current signed token. */
-const isCurrentSession = (token: string | undefined): boolean =>
-  isCurrentSessionToken(token) || (!getAuthToken() && isSsoMode() && Boolean(token))
+/** An offline auth adapter: session reads are signed out, and account operations require server setup. */
+export const standaloneAuthFetch = async (input: string | URL | Request): Promise<Response> => {
+  const url = new URL(input instanceof Request ? input.url : input.toString())
+  if (url.pathname.endsWith('/get-session')) {
+    return Response.json(null)
+  }
+  return Response.json(
+    { code: 'SERVER_NOT_CONFIGURED', message: 'Select a Thunderbolt server before signing in' },
+    { status: 503 },
+  )
+}
+
+type SessionState = {
+  data: Session | null
+  isPending: boolean
+  isRefetching: boolean
+  error: { status?: number } | null
+}
+
+/** No session, and the request for it failed without the server saying who is signed in (when offline, for example). */
+const isSessionUnknown = (state: Pick<SessionState, 'data' | 'isPending' | 'error'>): boolean =>
+  !state.data?.user?.id && !state.isPending && !!state.error && state.error.status !== 401
+
+/**
+ * Bind every session the client learns about to the open slot, synchronously and before React
+ * renders it, so a session for one account never sees another account's local data.
+ * The subscription lives as long as the client, like the cache seed above.
+ */
+const bindSessionToLocalData = (client: ReturnType<typeof createAuthClient>, cloudUrl: string) => {
+  client.$store.atoms.session.subscribe((state: SessionState) => {
+    if (!isCurrentServer(cloudUrl)) {
+      return
+    }
+    const user = state.data?.user
+    if (!user?.id) {
+      // Only the server saying nobody is signed in releases the slot; a failed request says nothing.
+      if (!state.isPending && !isSessionUnknown(state)) {
+        releaseSignedOutLocalData()
+      }
+      return
+    }
+    // Better Auth publishes the session it already holds again whenever a refetch starts or fails. A
+    // sign-in may have bound another account since (an OTP promotion), so that held session must not bind.
+    if (state.isRefetching || state.error) {
+      return
+    }
+    // The cached seed binds too, in SSO mode as well. When `/get-session` later names another
+    // account, this binds that one, which starts a switch.
+    bindLocalData(user.id, { isAnonymous: user.isAnonymous })
+  })
+}
 
 /**
  * Seed Better Auth's session atom from the localStorage cache so the app can
@@ -79,15 +164,15 @@ const isCurrentSession = (token: string | undefined): boolean =>
  * updates is wired in {@link subscribeSessionCachePersist} from the provider so
  * the listener is released when the auth client is replaced.
  */
-export const hydrateSessionFromCache = (client: ReturnType<typeof createAuthClient>) => {
-  if (!getAuthToken() && !isSsoMode()) {
+export const hydrateSessionFromCache = (
+  client: ReturnType<typeof createAuthClient>,
+  cloudUrl = getLocalSetting('cloudUrl'),
+) => {
+  if (!isCurrentServer(cloudUrl) || (!getAuthToken() && !isSsoMode())) {
     return
   }
-  const cached = getCachedSession()
+  const cached = getUsableCachedSession()
   if (!cached) {
-    return
-  }
-  if (!isCachedSessionValid(cached) || !isCurrentSession(cached.session?.token)) {
     clearCachedSession()
     return
   }
@@ -112,14 +197,23 @@ export const hydrateSessionFromCache = (client: ReturnType<typeof createAuthClie
  * but the initial `useAuthQuery` `onSuccess` writes the raw server payload, so
  * `{ user: null, session: null }` can transit the atom — we filter it out here
  * to avoid caching a payload that would only resurrect as a logged-out flash on
- * the next boot. Real sign-out (atom → `null`) is a no-op here on purpose —
- * cache clearing is owned by the 401 handler and `clearLocalData` callers.
+ * the next boot. A completed, successful signed-out response clears the cache;
+ * pending requests and network failures preserve offline access.
  */
-export const subscribeSessionCachePersist = (client: ReturnType<typeof createAuthClient>): (() => void) => {
-  return client.$store.atoms.session.subscribe((state: { data: Session | null }) => {
+export const subscribeSessionCachePersist = (
+  client: ReturnType<typeof createAuthClient>,
+  cloudUrl = getLocalSetting('cloudUrl'),
+): (() => void) => {
+  return client.$store.atoms.session.subscribe((state) => {
+    if (!isCurrentServer(cloudUrl)) {
+      return
+    }
     const data = state.data
     if (data?.user && data?.session && isCurrentSession(data.session.token)) {
+      markServerAuthenticated()
       setCachedSession(data)
+    } else if (!state.isPending && !state.isRefetching && !state.error) {
+      clearCachedSession()
     }
   })
 }
@@ -147,10 +241,11 @@ const isSignInRequest = (url: URL | string | undefined): boolean =>
 
 type AuthRequest = { headers: Headers; url?: URL | string; signal?: AbortSignal }
 
-export const buildFetchOptions = (platform: string) => {
+export const buildFetchOptions = (platform: string, ssoMode = isSsoMode(), cloudUrl = getLocalSetting('cloudUrl')) => {
   const lifetimes = new WeakMap<Headers, () => boolean>()
   const assertCurrentRequest = (request: AuthRequest) => {
     if (
+      !isCurrentServer(cloudUrl) ||
       request.signal?.aborted ||
       lifetimes.get(request.headers)?.() === false ||
       !isCurrentAuthRequest(request.headers)
@@ -161,10 +256,13 @@ export const buildFetchOptions = (platform: string) => {
     }
   }
   return {
-    credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
+    credentials: (ssoMode ? 'include' : 'omit') as RequestCredentials,
     // Applied per request instead of through `headers` so the locale is re-read on
     // every call, not frozen at client construction before the synced setting hydrates.
     onRequest: (ctx: { headers: Headers }) => {
+      if (!isCurrentServer(cloudUrl)) {
+        throw new DOMException('The selected server changed', 'AbortError')
+      }
       lifetimes.set(ctx.headers, captureAuthRequestLifetime())
       for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
         ctx.headers.set(key, value)
@@ -172,7 +270,7 @@ export const buildFetchOptions = (platform: string) => {
     },
     auth: {
       type: 'Bearer' as const,
-      token: () => getAuthToken() ?? '',
+      token: () => (isCurrentServer(cloudUrl) ? (getAuthToken() ?? '') : ''),
     },
     onResponse: (ctx: { response: Response; request: AuthRequest }) => {
       assertCurrentRequest(ctx.request)
@@ -181,7 +279,7 @@ export const buildFetchOptions = (platform: string) => {
       assertCurrentRequest(ctx.request)
       const token = ctx.response.headers.get('set-auth-token')
       if (token) {
-        setAuthToken(token)
+        setAuthToken(token, cloudUrl)
       }
     },
     onError: (ctx: { response: Response; request: AuthRequest }) => {
@@ -235,6 +333,8 @@ type AuthProviderProps = {
 }
 
 export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }: AuthProviderProps) => {
+  useConfigStore((state) => state.config.authMode)
+  const ssoMode = isSsoMode()
   // Run the credentials-invalid listener at the top of AuthProvider so it mounts early —
   // before any children that depend on auth. When the user deletes their account elsewhere
   // or a device is revoked, this listener triggers a full reset and reload.
@@ -245,13 +345,9 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
       return { authClient: overrideClient }
     }
 
-    if (!cloudUrl) {
-      return null
-    }
-
-    const client = createAuthClientInstance(cloudUrl)
+    const client = createAuthClientInstance(cloudUrl ?? '', ssoMode)
     return { authClient: client }
-  }, [cloudUrl, overrideClient])
+  }, [cloudUrl, overrideClient, ssoMode])
 
   // Persist session updates back to the localStorage cache (THU-580). Scoped to
   // an effect so the listener is released when `value` is replaced — otherwise
@@ -262,20 +358,20 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     if (!client?.$store) {
       return
     }
-    return subscribeSessionCachePersist(client)
-  }, [value])
+    return subscribeSessionCachePersist(client, cloudUrl ?? '')
+  }, [value, cloudUrl])
 
-  // Consume any pending SSO anon-id alias from sessionStorage (written before the SSO redirect
-  // by persistForSso()). A ref guard prevents StrictMode's double-invocation from firing alias
-  // twice.
-  const ssoAliasConsumedRef = useRef(false)
+  // Consume the boolean SSO conversion marker once after returning from sign-in.
+  const ssoPromotionConsumedRef = useRef(false)
   useEffect(() => {
-    if (!value?.authClient || ssoAliasConsumedRef.current) {
+    if (!cloudUrl || !value.authClient || ssoPromotionConsumedRef.current) {
       return
     }
-    ssoAliasConsumedRef.current = true
-    void consumePendingSsoAnonAlias(value.authClient)
-  }, [value])
+    ssoPromotionConsumedRef.current = true
+    void consumePendingSsoPromotion(value.authClient).catch((error) => {
+      console.warn('Could not record sign-in conversion', error)
+    })
+  }, [value, cloudUrl])
 
   // Check the session on mount via HttpClient — its afterResponse hook fires
   // session_expired on the first 401, or device_revoked on a 403 for a revoked device.
@@ -283,16 +379,16 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   // gets its 403. Avoids Better Auth's auth client to sidestep its internal retry path.
   // Ref guards against StrictMode's double mount.
   const httpClient = useHttpClient()
-  const sessionCheckFiredRef = useRef(false)
+  const sessionCheckClientRef = useRef<AuthClient | null>(null)
   useEffect(() => {
-    if (!value?.authClient || sessionCheckFiredRef.current) {
+    if ((!cloudUrl && !overrideClient) || sessionCheckClientRef.current === value.authClient) {
       return
     }
-    sessionCheckFiredRef.current = true
+    sessionCheckClientRef.current = value.authClient
     void httpClient.get('api/auth/get-session').catch(() => {
       // 401 is handled by the afterResponse hook; other failures aren't session signals.
     })
-  }, [value, httpClient])
+  }, [value, httpClient, cloudUrl, overrideClient])
 
   // Cross-tab auth-token sync: another tab's token change propagates via storage events.
   //   - Token rotated (next truthy, changed): reload to pick up the new session identity.
@@ -301,26 +397,84 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   //     (sign-in modal + sync teardown) takes over. Event name kept in sync with
   //     `src/db/powersync/connector.ts`.
   useEffect(() => {
-    return onAuthTokenChangedInOtherTab((next, prev) => {
+    const unsubscribeServer = onServerChangedInOtherTab(() => {
+      clearIdentityScopedMemory()
+      window.location.reload()
+    })
+    const unsubscribeToken = onAuthTokenChangedInOtherTab((next, prev) => {
       if (next && next !== prev) {
         // Cross-tab rotation may swap in a different user identity; wipe the
         // cache so the reloaded tab doesn't seed the previous user's session
         // under the new token before /get-session lands.
+        clearIdentityScopedMemory()
         clearCachedSession()
         window.location.reload()
         return
       }
       if (!next && prev) {
+        clearIdentityScopedMemory()
         window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
       }
     })
+    return () => {
+      unsubscribeServer()
+      unsubscribeToken()
+    }
   }, [])
 
-  if (!value) {
-    return null
+  return (
+    <AuthContext.Provider value={value}>
+      <LocalDataGate>{children}</LocalDataGate>
+    </AuthContext.Provider>
+  )
+}
+
+/** How long the offline wait pauses after a failed session request before trying again. */
+const sessionRetryIntervalMs = 30_000
+
+/**
+ * Shows the app once the open slot is `ready`, and `LocalDataSwitchScreen` until then. The screen says
+ * the app is waiting for the network when a slot with an owner stays `unbound` because the session
+ * request failed.
+ */
+const LocalDataGate = ({ children }: { children: ReactNode }) => {
+  // Better Auth's callable proxy has a non-string `name`; React's dev prop formatter cannot inspect it.
+  const authClient = useAuth()
+  const localDataStatus = useSyncExternalStore(subscribeLocalDataStatus, getLocalDataStatus)
+  const session = authClient.useSession()
+  const isUnknown = isSessionUnknown(session)
+  // The refetch on reconnect clears the error while it runs, so once the wait shows, it stays until the slot is ready.
+  const [hasWaited, setHasWaited] = useState(false)
+  const isWaitingForNetwork = localDataStatus === 'unbound' && (isUnknown || hasWaited)
+  if (isWaitingForNetwork && !hasWaited) {
+    setHasWaited(true)
   }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  // Better Auth refetches only on `online`, which never comes when the device is online and the server is down.
+  const { refetch, isRefetching } = session
+  useEffect(() => {
+    if (!isWaitingForNetwork || isRefetching) {
+      return
+    }
+    const retry = setTimeout(() => void refetch(), sessionRetryIntervalMs)
+    return () => clearTimeout(retry)
+  }, [isWaitingForNetwork, isRefetching, refetch])
+
+  if (localDataStatus === 'ready') {
+    return children
+  }
+  const signOut = () =>
+    signOutAndLeave(authClient, async () => {
+      clearAuthToken()
+      clearCachedSession()
+    })
+  return (
+    <LocalDataSwitchScreen
+      hasFailed={localDataStatus === 'failed'}
+      isWaitingForNetwork={isWaitingForNetwork}
+      onSignOut={signOut}
+    />
+  )
 }
 
 export const useAuth = () => {

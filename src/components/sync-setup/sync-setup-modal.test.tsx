@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { e2eeProvisioningSettledEvent } from '@/hooks/use-e2ee-ready'
 import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key'
 import { clearAllKeys, generateKeyPair, generateMlKemKeyPair, storeKeyPair } from '@/crypto'
 import { clearCachedSession, setCachedSession } from '@/lib/session-cache'
@@ -16,6 +17,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-li
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as setupHook from '@/hooks/use-sync-setup'
 import * as encryption from '@/services/encryption'
+import * as passkeys from '@/lib/passkey'
 import { SyncSetupModal } from './sync-setup-modal'
 
 const fireMigration = () => act(() => dispatchMigrationRecoveryKey('word '.repeat(24).trim()))
@@ -138,6 +140,52 @@ describe('SyncSetupModal', () => {
     expect(requests.filter((path) => path.endsWith('/envelope'))).toHaveLength(pollsBeforeClose)
   })
 
+  it.each([true, false])('warns before a legacy recovery only when flagged (%p)', (legacyRecoveryPhrase) => {
+    const wrapper = createTestProvider()
+    const hook = renderHook(() => setupHook.useSyncSetup(), { wrapper })
+    const setup = { ...hook.result.current, step: 'recovery-key-entry' as const, legacyRecoveryPhrase, reset: () => {} }
+    hook.unmount()
+    const useSetup = spyOn(setupHook, 'useSyncSetup').mockReturnValue(setup)
+    try {
+      render(<SyncSetupModal open onOpenChange={mock()} onComplete={mock()} />, { wrapper })
+      const warning = screen.queryByText(
+        "This recovery phrase was created before a security update, so Thunderbolt can't confirm that the encryption keys it unlocks are yours. Continue only if you have no approved device left.",
+      )
+      expect(warning !== null).toBe(legacyRecoveryPhrase)
+    } finally {
+      useSetup.mockRestore()
+    }
+  })
+
+  it('skips the passkey offer after a legacy recovery, which leaves the device unverified', async () => {
+    const wrapper = createTestProvider()
+    const hook = renderHook(() => setupHook.useSyncSetup(), { wrapper })
+    const completeSetup = mock(() => {})
+    const goToPasskeyEnroll = mock(() => {})
+    const setup = {
+      ...hook.result.current,
+      step: 'recovery-key-entry' as const,
+      legacyRecoveryPhrase: true,
+      recoveryKeyInput: Array(24).fill('word').join(' '),
+      submitRecoveryKey: async () => true,
+      completeSetup,
+      goToPasskeyEnroll,
+      reset: () => {},
+    }
+    hook.unmount()
+    const useSetup = spyOn(setupHook, 'useSyncSetup').mockReturnValue(setup)
+    const available = spyOn(passkeys, 'usePasskeyAvailable').mockReturnValue(true)
+    try {
+      render(<SyncSetupModal open onOpenChange={mock()} onComplete={mock()} />, { wrapper })
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Submit' })))
+      expect(completeSetup).toHaveBeenCalledTimes(1)
+      expect(goToPasskeyEnroll).not.toHaveBeenCalled()
+    } finally {
+      useSetup.mockRestore()
+      available.mockRestore()
+    }
+  })
+
   describe('yielding to the seamless v1→v2 migration', () => {
     it('completes setup rather than just closing', () => {
       // The migration provisioned this device's keys — the wizard's whole success
@@ -158,6 +206,31 @@ describe('SyncSetupModal', () => {
 
       expect(onComplete).not.toHaveBeenCalled()
       expect(onOpenChange).not.toHaveBeenCalled()
+    })
+
+    it('asks every key-trust reader to re-read once setup completes', () => {
+      // Preferences stays mounted under the wizard; without this its guards
+      // keep the trust they read before the keys changed.
+      const settled = mock(() => {})
+      window.addEventListener(e2eeProvisioningSettledEvent, settled)
+      renderModal()
+
+      fireMigration()
+
+      window.removeEventListener(e2eeProvisioningSettledEvent, settled)
+      expect(settled).toHaveBeenCalledTimes(1)
+    })
+
+    it('asks key-trust readers to re-read when the wizard is dismissed', () => {
+      // A recovery can leave the unverified marker behind even when it fails.
+      const settled = mock(() => {})
+      window.addEventListener(e2eeProvisioningSettledEvent, settled)
+      renderModal()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+      window.removeEventListener(e2eeProvisioningSettledEvent, settled)
+      expect(settled).toHaveBeenCalledTimes(1)
     })
 
     it('completes only once when the migration event fires twice', () => {

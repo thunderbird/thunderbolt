@@ -3,22 +3,45 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { devicesTable } from '@/db/tables'
+import * as fs from '@/lib/fs'
 import { setActiveLocale } from '@/i18n/active-locale'
 import { resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import { clearAuthToken, getAuthToken, invalidateAuthRequests, setAuthToken } from '@/lib/auth-token'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
+import { getOAuthState, setOAuthState } from '@/lib/oauth-state'
+import { getMcpOAuthState, isMcpOAuthCallback, setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/session-cache'
 import { createMockAuthClient } from '@/test-utils/auth-client'
+import { localDataKey, readLocalDataRecord } from '@/test-utils/local-data'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getPlatform } from '@/lib/platform'
-import { cleanup, render } from '@testing-library/react'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { act, cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
   authRequestHeaders,
   buildFetchOptions,
+  createAuthClientInstance,
   hydrateSessionFromCache,
   subscribeSessionCachePersist,
+  standaloneAuthFetch,
+  type AuthClient,
 } from './auth-context'
+import * as adapterCache from '@/acp/adapter-cache'
+import {
+  bindLocalData,
+  getLocalDataStatus,
+  isLocalDataOwnedBy,
+  openLocalData,
+  resetLocalDataOwnerForTests,
+} from '@/lib/local-data-owner'
+import * as platform from '@/lib/platform'
+import * as encryption from '@/services/encryption'
+import { spyOn } from 'bun:test'
+import { createElement } from 'react'
 import { createAuthClient } from 'better-auth/react'
 import { getClock } from '@/testing-library'
 
@@ -37,6 +60,22 @@ const fireStorageEvent = (newValue: string | null, oldValue: string | null) => {
 }
 
 const originalDispatch = window.dispatchEvent
+
+describe('standalone authentication', () => {
+  it('starts signed out without hydrating a previous server session', () => {
+    setAuthToken('old-server-token')
+    const client = createAuthClientInstance('')
+    expect(client.$store.atoms.session.get()).toMatchObject({ data: null, isPending: false })
+    clearAuthToken()
+  })
+
+  it('handles session reads locally and rejects sign-in until a server is selected', async () => {
+    expect(await (await standaloneAuthFetch('https://standalone.invalid/v1/api/auth/get-session')).json()).toBeNull()
+    const signIn = await standaloneAuthFetch('https://standalone.invalid/v1/api/auth/sign-in/email-otp')
+    expect(signIn.status).toBe(503)
+    expect(await signIn.json()).toMatchObject({ code: 'SERVER_NOT_CONFIGURED' })
+  })
+})
 
 describe('authRequestHeaders', () => {
   const env = import.meta.env as Record<string, unknown>
@@ -257,6 +296,95 @@ describe('buildFetchOptions onError', () => {
   })
 })
 
+describe('auth client server isolation', () => {
+  const firstServer = 'https://first.example/v1'
+  const nextServer = 'https://next.example/v1'
+  const originalSettings = useLocalSettingsStore.getState()
+
+  beforeEach(() => {
+    clearAuthToken()
+    clearCachedSession()
+    useLocalSettingsStore.setState({ cloudUrl: firstServer, serverHasAuthenticated: false })
+  })
+
+  afterEach(() => {
+    clearAuthToken()
+    clearCachedSession()
+    useLocalSettingsStore.setState(originalSettings)
+  })
+
+  it('does not expose the current token to an obsolete auth client', () => {
+    const options = buildFetchOptions('web')
+    useLocalSettingsStore.setState({ cloudUrl: nextServer })
+    setAuthToken('next-server-token')
+
+    expect(options.auth.token()).toBe('')
+    expect(() => options.onRequest({ headers: new Headers() })).toThrow('The selected server changed')
+  })
+
+  it('rejects stale-tab credentials and callbacks before the settings event is delivered', () => {
+    const options = buildFetchOptions('web')
+    const settings = useLocalSettingsStore.getState()
+    localStorage.setItem('thunderbolt-local-settings', JSON.stringify({ state: { ...settings, cloudUrl: nextServer } }))
+    localStorage.setItem(authTokenKey, JSON.stringify({ token: 'next-token', cloudUrl: nextServer }))
+
+    expect(options.auth.token()).toBe('')
+    expect(() => options.onRequest({ headers: new Headers() })).toThrow('The selected server changed')
+    expect(() =>
+      options.onSuccess({
+        response: Response.json({}, { headers: { 'set-auth-token': 'old-token' } }),
+        request: { headers: new Headers() },
+      }),
+    ).toThrow('Auth session changed')
+    expect(() =>
+      options.onError({ response: new Response(null, { status: 401 }), request: { headers: new Headers() } }),
+    ).toThrow('Auth session changed')
+    expect(JSON.parse(localStorage.getItem(authTokenKey)!)).toEqual({ token: 'next-token', cloudUrl: nextServer })
+  })
+
+  it('rejects a late sign-in result without replacing the current token', async () => {
+    const client = createAuthClientInstance(firstServer)
+    const response = Promise.withResolvers<Response>()
+    const started = Promise.withResolvers<void>()
+    const request = client.$fetch('/sign-in/email-otp', {
+      method: 'POST',
+      body: { email: 'user@example.com', otp: '123456' },
+      customFetchImpl: async () => {
+        started.resolve()
+        return response.promise
+      },
+    })
+    const failure = request.catch((error: Error) => error)
+    await started.promise
+    useLocalSettingsStore.setState({ cloudUrl: nextServer })
+    setAuthToken('next-server-token')
+    response.resolve(Response.json({ user: { id: 'old-user' } }, { headers: { 'set-auth-token': 'old-token' } }))
+
+    expect(await failure).toMatchObject({ name: 'AbortError' })
+    expect(getAuthToken()).toBe('next-server-token')
+    expect(getCachedSession()).toBeNull()
+  })
+
+  it.each([401, 426])('ignores a late %s from the previous server', (status) => {
+    const options = buildFetchOptions('web')
+    useLocalSettingsStore.setState({ cloudUrl: nextServer })
+    setAuthToken('next-server-token')
+    const onInvalid = mock(() => {})
+    window.addEventListener('powersync_credentials_invalid', onInvalid)
+    window.addEventListener('app_version_unsupported', onInvalid)
+    try {
+      expect(() =>
+        options.onError({ response: new Response(null, { status }), request: { headers: new Headers() } }),
+      ).toThrow('Auth session changed')
+      expect(getAuthToken()).toBe('next-server-token')
+      expect(onInvalid).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('powersync_credentials_invalid', onInvalid)
+      window.removeEventListener('app_version_unsupported', onInvalid)
+    }
+  })
+})
+
 describe('hydrateSessionFromCache', () => {
   type AtomState = { data: unknown; isPending: boolean }
 
@@ -376,12 +504,13 @@ describe('hydrateSessionFromCache', () => {
 })
 
 describe('subscribeSessionCachePersist', () => {
-  type Listener = (state: { data: unknown }) => void
+  type AtomState = { data: unknown; isPending?: boolean; isRefetching?: boolean; error?: unknown }
+  type Listener = (state: AtomState) => void
 
   const createFakeSubscribableAtom = () => {
     const listeners = new Set<Listener>()
     return {
-      emit: (state: { data: unknown }) => {
+      emit: (state: AtomState) => {
         listeners.forEach((l) => l(state))
       },
       subscribe: (l: Listener) => {
@@ -418,6 +547,23 @@ describe('subscribeSessionCachePersist', () => {
     expect(getCachedSession()).toEqual(payload)
   })
 
+  it('permanently binds the selected server after its first successful session', () => {
+    useLocalSettingsStore.setState({
+      cloudUrl: 'https://chosen.example/v1',
+      localMode: true,
+      serverHasAuthenticated: false,
+    })
+    setAuthToken('current')
+    useLocalSettingsStore.setState({ serverHasAuthenticated: false })
+    const atom = createFakeSubscribableAtom()
+    subscribeSessionCachePersist(createFakeClient(atom))
+
+    atom.emit({ data: { user: { id: 'u1' }, session: { id: 's1', token: 'current' } } })
+    clearCachedSession()
+    atom.emit({ data: null })
+
+    expect(useLocalSettingsStore.getState().serverHasAuthenticated).toBe(true)
+  })
   it('persists the raw session token correlated with a URI-encoded signed bearer', () => {
     setAuthToken('raw-token.signature%2F%2B%3D')
     const atom = createFakeSubscribableAtom()
@@ -477,6 +623,30 @@ describe('subscribeSessionCachePersist', () => {
     expect(getCachedSession()).toBeNull()
   })
 
+  it.each([null, { user: null, session: null }])(
+    'clears cached authentication after a successful signed-out response: %j',
+    (data) => {
+      const atom = createFakeSubscribableAtom()
+      subscribeSessionCachePersist(createFakeClient(atom))
+      setCachedSession({ user: { id: 'u1' }, session: { expiresAt: new Date(Date.now() + 60_000) } })
+      atom.emit({ data, isPending: false, isRefetching: false, error: null })
+      expect(getCachedSession()).toBeNull()
+    },
+  )
+
+  it.each([
+    { isPending: true, isRefetching: false, error: null },
+    { isPending: false, isRefetching: true, error: null },
+    { isPending: false, isRefetching: false, error: new Error('Offline') },
+  ])('preserves offline authentication during an inconclusive session check: %j', (state) => {
+    const atom = createFakeSubscribableAtom()
+    subscribeSessionCachePersist(createFakeClient(atom))
+    const payload = { user: { id: 'u1' }, session: { expiresAt: new Date(Date.now() + 60_000).toISOString() } }
+    setCachedSession(payload)
+    atom.emit({ data: null, ...state })
+    expect(getCachedSession()).toEqual(payload)
+  })
+
   it('unsubscribe stops further writes to the cache', () => {
     const atom = createFakeSubscribableAtom()
     const unsubscribe = subscribeSessionCachePersist(createFakeClient(atom))
@@ -487,6 +657,22 @@ describe('subscribeSessionCachePersist', () => {
 
     atom.emit({ data: { user: { id: 'u1' }, session: { id: 's1' } } })
     expect(getCachedSession()).toBeNull()
+  })
+
+  it('ignores old session emissions before React cleans up the previous subscription', () => {
+    const settings = useLocalSettingsStore.getState()
+    useLocalSettingsStore.setState({ cloudUrl: 'https://old.example/v1', serverHasAuthenticated: false })
+    const atom = createFakeSubscribableAtom()
+    const unsubscribe = subscribeSessionCachePersist(createFakeClient(atom))
+    useLocalSettingsStore.setState({ cloudUrl: 'https://new.example/v1' })
+    try {
+      atom.emit({ data: { user: { id: 'old-user' }, session: { id: 'old-session' } } })
+      expect(getCachedSession()).toBeNull()
+      expect(useLocalSettingsStore.getState().serverHasAuthenticated).toBe(false)
+    } finally {
+      unsubscribe()
+      useLocalSettingsStore.setState(settings)
+    }
   })
 })
 
@@ -551,6 +737,24 @@ describe('AuthProvider — cross-tab auth-token listener', () => {
 
     expect(reloadSpy).toHaveBeenCalledTimes(1)
     expect(getCachedSession()).toBeNull()
+  })
+
+  it.each(['new-token', null])('retires this tab’s OAuth state before processing an identity change: %s', (token) => {
+    renderAuthProvider()
+    const identity = getIdentitySignal()
+    sessionStorage.setItem('thunderbolt.otari.authorization', 'pending-pkce')
+    sessionStorage.setItem('thunderbolt.provider.browser-authorization', 'pending-pkce')
+    setOAuthState({ state: 'google-nonce', provider: 'google', verifier: 'google-verifier' })
+    setMcpOAuthState({ serverId: 'oauth:exa', stateNonce: 'mcp-nonce', codeVerifier: 'mcp-verifier' })
+
+    fireStorageEvent(token, 'old-token')
+
+    expect(identity.aborted).toBe(true)
+    expect(sessionStorage.getItem('thunderbolt.otari.authorization')).toBeNull()
+    expect(sessionStorage.getItem('thunderbolt.provider.browser-authorization')).toBeNull()
+    expect(getOAuthState().state).toBeNull()
+    expect(getMcpOAuthState().stateNonce).toBeNull()
+    expect(isMcpOAuthCallback({ code: 'late-code', state: 'mcp-nonce', error: null })).toBe(false)
   })
 
   it('dispatches session_expired when another tab clears the token', () => {
@@ -708,5 +912,385 @@ describe('Better Auth session atom ownership', () => {
       options.onSuccess({ request, response: new Response(null, { headers: { 'set-auth-token': 'old.signature' } }) }),
     ).toThrow('Auth session changed')
     expect(getAuthToken()).toBeNull()
+  })
+})
+
+describe('AuthProvider — local data ownership (THU-963)', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+  })
+
+  let reload: ReturnType<typeof Promise.withResolvers<void>>
+  let previousLocalSettings: ReturnType<typeof useLocalSettingsStore.getState>
+
+  /** Device whose open slot belongs to user-a, as after A chose "Leave data on device". */
+  beforeEach(async () => {
+    previousLocalSettings = useLocalSettingsStore.getState()
+    localStorage.clear()
+    useLocalSettingsStore.setState({ cloudUrl: 'https://api.test/v1' })
+    spyOn(platform, 'isOpfsAvailable').mockResolvedValue(false)
+    spyOn(platform, 'hasIndexedDbDatabase').mockResolvedValue(false)
+    spyOn(adapterCache, 'disposeAllAdapters').mockResolvedValue()
+    reload = Promise.withResolvers<void>()
+    spyOn(window.location, 'reload').mockImplementation(() => reload.resolve())
+    resetLocalDataOwnerForTests()
+    await openLocalData()
+    bindLocalData('user-a')
+  })
+
+  afterEach(() => {
+    cleanup()
+    resetLocalDataOwnerForTests()
+    mock.restore()
+    localStorage.clear()
+    useLocalSettingsStore.setState(previousLocalSettings)
+  })
+
+  const session = (id: string) => ({
+    data: { user: { id }, session: { id: `session-${id}`, token: `token-${id}` } },
+    isPending: false,
+    isRefetching: false,
+    error: null,
+  })
+
+  it('does not bind a session from the server the device just left', async () => {
+    resetLocalDataOwnerForTests()
+    await openLocalData()
+    const client = createAuthClientInstance('https://api.test/v1')
+    useLocalSettingsStore.setState({ cloudUrl: 'https://another.test/v1' })
+
+    client.$store.atoms.session.set(session('user-b'))
+
+    expect(getLocalDataStatus()).toBe('unbound')
+    expect(isLocalDataOwnedBy('user-b')).toBe(false)
+  })
+
+  it('keeps an owned slot unused until the session resolves, to its owner or to nobody', async () => {
+    resetLocalDataOwnerForTests()
+    await openLocalData()
+    expect(getLocalDataStatus()).not.toBe('ready')
+    const client = createAuthClientInstance('https://api.test/v1')
+    const atom = client.$store.atoms.session
+    atom.set({ ...atom.get(), data: null, isPending: true })
+    expect(getLocalDataStatus()).not.toBe('ready')
+    atom.set({ ...atom.get(), data: null, isPending: false })
+    expect(getLocalDataStatus()).toBe('ready')
+
+    resetLocalDataOwnerForTests()
+    await openLocalData()
+    atom.set(session('user-a'))
+    expect(isLocalDataOwnedBy('user-a')).toBe(true)
+  })
+
+  /** What Better Auth stores when a session request fails with this status. */
+  const failedRequest = (status: number) =>
+    Object.assign(new Error(`HTTP ${status}`), { status, statusText: `HTTP ${status}`, error: null })
+
+  it('keeps an owned slot unused while the session request fails, until the server says nobody', async () => {
+    resetLocalDataOwnerForTests()
+    await openLocalData()
+    const client = createAuthClientInstance('https://api.test/v1')
+    const atom = client.$store.atoms.session
+    atom.set({ ...atom.get(), data: null, isPending: false, error: failedRequest(503) })
+    expect(getLocalDataStatus()).not.toBe('ready')
+    atom.set({ ...atom.get(), error: failedRequest(401) })
+    expect(getLocalDataStatus()).toBe('ready')
+  })
+
+  describe('offline wait', () => {
+    const waitingText = 'Waiting for a spark… Thunderbolt opens on its own.'
+    const layoutSkeleton = 'app-layout-skeleton'
+    const offline = new TypeError('Failed to fetch')
+
+    /** Renders a reload by A with the real auth client and no usable cached session, so A's slot stays `unbound`. */
+    const renderReload = async () => {
+      resetLocalDataOwnerForTests()
+      await openLocalData()
+      const client = createAuthClientInstance('https://api.test/v1')
+      const atom = client.$store.atoms.session
+      atom.set({ ...atom.get(), data: null, isPending: true, isRefetching: true, error: null })
+      const TestProvider = createTestProvider({ authClient: client })
+      const view = render(createElement('p', null, 'app content'), { wrapper: TestProvider })
+      return { atom, view }
+    }
+
+    it('keeps the loading screen, without the message, while the session request is pending', async () => {
+      const { view } = await renderReload()
+      expect(view.queryByText('app content')).toBeNull()
+      expect(view.queryByText(waitingText)).toBeNull()
+      expect(view.queryByTestId(layoutSkeleton)).toBeNull()
+    })
+
+    it('says it waits for the network once the session request fails offline, until the owner’s session opens the app', async () => {
+      const { atom, view } = await renderReload()
+      // Screen readers only announce text added to a status region that was already on the page.
+      const statusRegion = view.getByRole('status')
+      act(() => atom.set({ ...atom.get(), isPending: false, isRefetching: false, error: offline }))
+      expect(view.getByRole('status')).toBe(statusRegion)
+      expect(statusRegion.textContent).toBe(waitingText)
+      expect(view.queryByText('app content')).toBeNull()
+
+      // The refetch on reconnect clears the error while it runs; the message stays until the slot is ready.
+      act(() => atom.set({ ...atom.get(), isPending: true, isRefetching: true, error: null }))
+      expect(view.queryByText(waitingText)).not.toBeNull()
+      act(() => atom.set(session('user-a')))
+      expect(view.queryByText(waitingText)).toBeNull()
+      expect(view.queryByText('app content')).not.toBeNull()
+    })
+
+    it('draws the layout behind the message as a picture, with no text and nothing to reach', async () => {
+      const { atom, view } = await renderReload()
+      act(() => atom.set({ ...atom.get(), isPending: false, isRefetching: false, error: offline }))
+      const skeleton = view.getByTestId(layoutSkeleton)
+      expect(skeleton.hasAttribute('inert')).toBe(true)
+      expect(skeleton.getAttribute('aria-hidden')).toBe('true')
+      expect(skeleton.textContent).toBe('')
+      expect(skeleton.querySelectorAll('a, button, input, textarea, [tabindex]')).toHaveLength(0)
+
+      act(() => atom.set(session('user-a')))
+      expect(view.queryByTestId(layoutSkeleton)).toBeNull()
+    })
+
+    it('asks the server again every 30 seconds while it waits, and stops once the owner’s session opens the app', async () => {
+      // Online, but the server is down, so no `online` event ever triggers a refetch.
+      const answer = { current: Response.json({ message: 'Service Unavailable' }, { status: 503 }) }
+      const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(
+        Object.assign(async () => answer.current.clone(), { preconnect: () => {} }),
+      )
+      const sessionRequests = () =>
+        fetchSpy.mock.calls.filter(([input]) => String(input).endsWith('/v1/api/auth/get-session')).length
+      const { atom, view } = await renderReload()
+      act(() => atom.set({ ...atom.get(), isPending: false, isRefetching: false, error: offline }))
+      await act(() => getClock().tickAsync(0))
+      const asked = sessionRequests()
+
+      await act(() => getClock().tickAsync(30_000))
+      expect(sessionRequests()).toBe(asked + 1)
+      expect(view.queryByText(waitingText)).not.toBeNull()
+
+      answer.current = Response.json({ user: { id: 'user-a' }, session: { id: 'session-user-a', token: 'token-a' } })
+      await act(() => getClock().tickAsync(30_000))
+      expect(view.queryByText('app content')).not.toBeNull()
+      const askedOnceOpen = sessionRequests()
+      await act(() => getClock().tickAsync(90_000))
+      expect(sessionRequests()).toBe(askedOnceOpen)
+    })
+
+    it('lets a recovering session request finish after more than one retry interval', async () => {
+      const server = { isRecovering: false }
+      spyOn(globalThis, 'fetch').mockImplementation(
+        Object.assign(
+          async (_input: string | URL | Request, init?: RequestInit) => {
+            if (!server.isRecovering) {
+              return Response.json({ message: 'Service Unavailable' }, { status: 503 })
+            }
+            await new Promise<void>((resolve, reject) => {
+              const timer = setTimeout(resolve, 31_000)
+              init?.signal?.addEventListener(
+                'abort',
+                () => {
+                  clearTimeout(timer)
+                  reject(new DOMException('Session request aborted', 'AbortError'))
+                },
+                { once: true },
+              )
+            })
+            return Response.json({ user: { id: 'user-a' }, session: { id: 'session-user-a', token: 'token-a' } })
+          },
+          { preconnect: () => {} },
+        ),
+      )
+      const { view } = await renderReload()
+      await act(() => getClock().tickAsync(0))
+      expect(view.queryByText(waitingText)).not.toBeNull()
+
+      server.isRecovering = true
+      await act(() => getClock().tickAsync(30_000))
+      expect(view.queryByText('app content')).toBeNull()
+      await act(() => getClock().tickAsync(31_000))
+      expect(view.queryByText('app content')).not.toBeNull()
+      expect(view.queryByText(waitingText)).toBeNull()
+    })
+
+    it('shows the loading screen, not the wait, when a failed request still left a session in hand', async () => {
+      const { atom, view } = await renderReload()
+      act(() => atom.set({ ...session('user-a'), isRefetching: false, error: offline }))
+      expect(view.queryByText('app content')).toBeNull()
+      expect(view.queryByText(waitingText)).toBeNull()
+      expect(view.queryByTestId(layoutSkeleton)).toBeNull()
+    })
+
+    it('leaves the wait for the switch screen when the server names another account', async () => {
+      const wipe = Promise.withResolvers<void>()
+      spyOn(encryption, 'handleFullWipe').mockReturnValue(wipe.promise)
+      const { atom, view } = await renderReload()
+      act(() => atom.set({ ...atom.get(), isPending: false, isRefetching: false, error: offline }))
+      act(() => atom.set(session('user-b')))
+      expect(getLocalDataStatus()).toBe('switching')
+      expect(view.queryByText('app content')).toBeNull()
+      expect(view.queryByText(waitingText)).toBeNull()
+      expect(view.queryByTestId(layoutSkeleton)).toBeNull()
+      wipe.resolve()
+      await reload.promise
+    })
+  })
+
+  it('marks the slot an anonymous session claims, so a later boot can delete it once its token is gone', async () => {
+    localStorage.removeItem(localDataKey)
+    resetLocalDataOwnerForTests()
+    await openLocalData()
+    const atom = createAuthClientInstance('https://api.test/v1').$store.atoms.session
+    const anonymous = session('anon-x')
+    atom.set({ ...anonymous, data: { ...anonymous.data, user: { id: 'anon-x', isAnonymous: true } } })
+    const { active, slots } = readLocalDataRecord()
+    expect(slots[active]).toEqual({ owner: 'anon-x', anonymous: true })
+  })
+
+  it('uses an owned slot for a cached SSO session at once, and switches if the server names someone else', async () => {
+    const env = import.meta.env as Record<string, string | undefined>
+    env.VITE_AUTH_MODE = 'sso'
+    try {
+      const expiresAt = new Date(Date.now() + 60_000).toISOString()
+      setCachedSession({ user: { id: 'user-a' }, session: { token: 'cookie-of-a', expiresAt } })
+      resetLocalDataOwnerForTests()
+      await openLocalData()
+      // The cache lets the app start offline, as in consumer mode.
+      expect(isLocalDataOwnedBy('user-a')).toBe(true)
+      const wipe = Promise.withResolvers<void>()
+      spyOn(encryption, 'handleFullWipe').mockReturnValue(wipe.promise)
+      const atom = createAuthClientInstance('https://api.test/v1').$store.atoms.session
+      expect(atom.get().data?.user.id).toBe('user-a')
+
+      // The cookie belonged to B by now, and `/get-session` says so.
+      atom.set({ ...atom.get(), isRefetching: true })
+      atom.set(session('user-b'))
+      expect(getLocalDataStatus()).toBe('switching')
+      wipe.resolve()
+      await reload.promise
+    } finally {
+      delete env.VITE_AUTH_MODE
+    }
+  })
+
+  it('stops local data use the moment a session for another account reaches the client', async () => {
+    const wipe = Promise.withResolvers<void>()
+    spyOn(encryption, 'handleFullWipe').mockReturnValue(wipe.promise)
+    const client = createAuthClientInstance('https://api.test/v1')
+    client.$store.atoms.session.set(session('user-a'))
+    expect(getLocalDataStatus()).toBe('ready')
+
+    client.$store.atoms.session.set(session('user-b'))
+    expect(getLocalDataStatus()).not.toBe('ready')
+    expect(isLocalDataOwnedBy('user-b')).toBe(false)
+    // Let the switch finish, so it cannot outlive this test.
+    wipe.resolve()
+    await reload.promise
+  })
+
+  it('takes the app off A’s data when another tab moves the device to B, with no token event', async () => {
+    const TestProvider = createTestProvider({ authClient: createMockAuthClient({ session: null }) })
+    const view = render(createElement('p', null, 'app content'), { wrapper: TestProvider })
+    expect(view.queryByText('app content')).not.toBeNull()
+
+    const key = localDataKey
+    const oldValue = localStorage.getItem(key)
+    const newValue = JSON.stringify({ ...readLocalDataRecord(), switchingTo: 'slot-b' })
+    localStorage.setItem(key, newValue)
+    window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue, storageArea: localStorage }))
+    await getClock().tickAsync(0)
+
+    expect(view.queryByText('app content')).toBeNull()
+    await reload.promise
+  })
+
+  it('renders no app content while switching accounts, and a blocked screen if it fails', async () => {
+    const wipe = Promise.withResolvers<void>()
+    spyOn(encryption, 'handleFullWipe').mockReturnValue(wipe.promise)
+    const signOut = mock(async () => ({ data: { success: true }, error: null }))
+    const TestProvider = createTestProvider({ authClient: createMockAuthClient({ session: null, signOut }) })
+    const view = render(createElement('p', null, 'app content'), { wrapper: TestProvider })
+    expect(view.queryByText('app content')).not.toBeNull()
+
+    bindLocalData('user-b')
+    await getClock().tickAsync(0)
+    expect(view.queryByText('app content')).toBeNull()
+
+    wipe.reject(new Error('key store locked'))
+    await getClock().tickAsync(0)
+    expect(view.queryByText('app content')).toBeNull()
+    expect(view.queryByText("Couldn't switch accounts")).not.toBeNull()
+    expect(view.queryByTestId('app-layout-skeleton')).toBeNull()
+
+    // Signing out is the way off this screen; it drops only the new account's session.
+    setAuthToken('token-of-b')
+    view.getByRole('button', { name: 'Sign out' }).click()
+    await reload.promise
+    expect(signOut).toHaveBeenCalledTimes(1)
+    expect(getAuthToken()).toBeNull()
+  })
+
+  it('requires confirmed sign-out before leaving a failed SSO switch', async () => {
+    const env = import.meta.env as Record<string, string | undefined>
+    env.VITE_AUTH_MODE = 'sso'
+    try {
+      const replace = spyOn(window.location, 'replace').mockImplementation(() => undefined)
+      const errors = spyOn(console, 'error').mockImplementation(() => {})
+      spyOn(encryption, 'handleFullWipe').mockRejectedValue(new Error('key store locked'))
+      const refused = { message: 'Server error', status: 500, statusText: 'Internal Server Error' }
+      const signOut = mock<() => ReturnType<AuthClient['signOut']>>(async () => ({ data: null, error: refused }))
+      const TestProvider = createTestProvider({ authClient: createMockAuthClient({ session: null, signOut }) })
+      const view = render(createElement('p', null, 'app content'), { wrapper: TestProvider })
+      bindLocalData('user-b')
+      await act(() => getClock().runAllAsync())
+
+      setAuthToken('token-of-b')
+      view.getByRole('button', { name: 'Sign out' }).click()
+      await act(() => getClock().runAllAsync())
+
+      expect(replace).not.toHaveBeenCalled()
+      expect(getAuthToken()).toBe('token-of-b')
+      expect(errors).toHaveBeenCalledWith('Failed to sign out:', refused)
+
+      signOut.mockResolvedValue({ data: { success: true }, error: null })
+      view.getByRole('button', { name: 'Sign out' }).click()
+      await act(() => getClock().runAllAsync())
+
+      expect(replace).toHaveBeenCalledWith('/signed-out')
+      expect(getAuthToken()).toBeNull()
+    } finally {
+      delete env.VITE_AUTH_MODE
+    }
+  })
+
+  it('wipes nothing when a switch fails after the device watcher saw A’s device', async () => {
+    // A has sync on, so A's own device row has synced down.
+    localStorage.setItem('thunderbolt_device_id', 'device-of-a')
+    setAuthToken('token-of-a')
+    const now = new Date().toISOString()
+    await getDb()
+      .insert(devicesTable)
+      .values({ id: 'device-of-a', userId: 'user-a', name: 'A laptop', lastSeen: now, createdAt: now })
+    const replace = spyOn(window.location, 'replace').mockImplementation(() => undefined)
+    const resetAppDir = spyOn(fs, 'resetAppDir').mockResolvedValue()
+    const TestProvider = createTestProvider({ authClient: createMockAuthClient({ session: null }) })
+    const view = render(createElement('p', null, 'app content'), { wrapper: TestProvider })
+    await act(() => getClock().runAllAsync())
+    expect(view.queryByText('app content')).not.toBeNull()
+
+    // A's session expired and B signs in at the sign-in prompt, but removing A's keys fails. The
+    // switch removed A's device id, so the watcher no longer finds A's device row.
+    setAuthToken('token-of-b')
+    spyOn(console, 'error').mockImplementation(() => {})
+    spyOn(encryption, 'handleFullWipe').mockRejectedValue(new Error('key store locked'))
+    bindLocalData('user-b')
+    await act(() => getClock().runAllAsync())
+
+    expect(view.queryByText("Couldn't switch accounts")).not.toBeNull()
+    expect(replace).not.toHaveBeenCalled()
+    expect(resetAppDir).not.toHaveBeenCalled()
   })
 })

@@ -5,7 +5,7 @@
 /**
  * React context for the universal proxy fetch.
  *
- * The provider builds one `proxyFetch` per `cloudUrl` and memoizes it. Consumers
+ * The provider memoizes `proxyFetch` for the current server and authentication. Consumers
  * call `useFetch()` from any component or hook to get a `fetch`-shaped function
  * that hides Hosted (web) vs Standalone (Tauri) mode — see `proxy-fetch.ts`.
  *
@@ -14,6 +14,7 @@
  * to `cloudUrl` for callers that outlive a render.
  */
 
+import { useLocalProviders } from '@/hooks/use-local-providers'
 import { getAuthToken } from '@/lib/auth-token'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createContext, useCallback, useContext, useMemo, useRef, type ReactNode } from 'react'
@@ -46,20 +47,18 @@ export const ProxyFetchProvider = ({
   isStandalone,
   createFetch = createProxyFetch,
 }: ProxyFetchProviderProps) => {
-  // `cloudUrl` is sourced from the persisted local-settings-store (seeded from
-  // VITE_THUNDERBOLT_CLOUD_URL with a localhost fallback), so it's always a
-  // non-null string here.
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const needsOwnModel = useLocalProviders()
   const proxyFetch = useMemo(() => {
     if (override) {
       return override
     }
     return createFetch({
-      cloudUrl,
+      cloudUrl: needsOwnModel ? '' : cloudUrl,
       isStandalone,
       getProxyAuthToken: getAuthToken,
     })
-  }, [override, cloudUrl, isStandalone, createFetch])
+  }, [override, cloudUrl, needsOwnModel, isStandalone, createFetch])
 
   // Mirror `proxyFetch` into a ref so the stable `getProxyFetch` getter below
   // always returns the *current* fetch. Closures captured by non-React callers

@@ -54,6 +54,8 @@ describe('Export DAL', () => {
       'model_profiles',
       'models',
       'models_secrets',
+      'provider_connections',
+      'provider_connection_secrets',
       'projects',
       'prompts',
       'settings',

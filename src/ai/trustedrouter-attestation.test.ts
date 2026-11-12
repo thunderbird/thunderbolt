@@ -75,7 +75,7 @@ const createAttestationFetch = (overrides: TokenOverrides = {}) => {
   const requests: string[] = []
   const fetchFn: FetchFn = Object.assign(
     async (input: RequestInfo | URL) => {
-      const url = new URL(String(input))
+      const url = new URL(input instanceof Request ? input.url : String(input))
       requests.push(url.origin + url.pathname)
       return new Response(await mintToken(url.searchParams.get('nonce') ?? '', overrides))
     },
@@ -121,7 +121,9 @@ describe('verifyTrustedRouterGateway', () => {
     const fetchFn: FetchFn = Object.assign(async () => new Response('down', { status: 503 }), {
       preconnect: async () => false,
     })
-    await expect(verifyTrustedRouterGateway(fetchFn, trustAnchorFetch)).rejects.toThrow('HTTP 503')
+    await expect(verifyTrustedRouterGateway(fetchFn, trustAnchorFetch)).rejects.toThrow(
+      'Request failed with status 503',
+    )
   })
 })
 
@@ -131,7 +133,7 @@ const createUpstream = () => {
   const sent: string[] = []
   const fetchFn: FetchFn = Object.assign(
     async (input: RequestInfo | URL) => {
-      const url = new URL(String(input))
+      const url = new URL(input instanceof Request ? input.url : String(input))
       sent.push(url.origin + url.pathname)
       if (url.origin + url.pathname === trustedRouterAttestationUrl) {
         return new Response(await mintToken(url.searchParams.get('nonce') ?? ''))

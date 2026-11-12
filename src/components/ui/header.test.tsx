@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import {
+  RecoveryContinuityContext,
+  type RecoveryContinuityContextValue,
+} from '@/components/recovery-continuity/recovery-continuity-provider'
 import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
@@ -134,6 +138,18 @@ const flushAgentsQuery = async () => {
   })
 }
 
+const attentionContext: RecoveryContinuityContextValue = {
+  status: 'warning',
+  phraseUpdateRequired: true,
+  passkey: 'none',
+  notice: 'none',
+  deviceTrusted: true,
+  passkeyMigration: { busy: false, errorMessage: null },
+  start: async () => {},
+  startPasskeyMigration: async () => {},
+  dismissNotice: () => {},
+}
+
 describe('Header', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -144,6 +160,7 @@ describe('Header', () => {
   })
 
   beforeEach(() => {
+    resetStore()
     forceMobileViewport()
     useConfigStore.setState({ config: {}, configLoaded: true })
   })
@@ -188,6 +205,17 @@ describe('Header', () => {
 
     expect(screen.getByText(customAgent.name)).toBeInTheDocument()
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
+  })
+
+  it('marks the mobile sidebar toggle while continuity needs attention', () => {
+    setupWithAgent(builtInAgent)
+    render(
+      <RecoveryContinuityContext.Provider value={attentionContext}>
+        <Header />
+      </RecoveryContinuityContext.Provider>,
+      { wrapper: TestWrapper },
+    )
+    expect(screen.getByRole('button', { name: 'Toggle Sidebar Action needed' })).toBeInTheDocument()
   })
 
   it('falls back to the built-in agent when the session has no agent', () => {
@@ -282,6 +310,20 @@ describe('Header', () => {
       useConfigStore.setState({ config: {}, configLoaded: true })
     })
     expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
+  })
+
+  it('leaves a disabled custom agent out of the picker', async () => {
+    const custom = { type: 'remote-acp', transport: 'websocket', url: 'wss://example.com', userId: 'user-1' } as const
+    await createAgent(getDb(), { ...custom, id: 'on-agent', name: 'Enabled Agent' })
+    await createAgent(getDb(), { ...custom, id: 'off-agent', name: 'Disabled Agent', enabled: 0 })
+    setupWithAgent(builtInAgent)
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+
+    expect(await screen.findByText('Enabled Agent')).toBeInTheDocument()
+    expect(screen.queryByText('Disabled Agent')).toBeNull()
   })
 
   it('opens agent creation over the current chat route', async () => {

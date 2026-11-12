@@ -66,6 +66,9 @@ export const createConfigRoutes = (settings: Settings, brandingAssets: BrandingA
       // Safe to delete once MIN_APP_VERSION is at or above the first release that
       // shipped always-on E2EE, which 426s every client that still reads this.
       e2eeEnabled: true,
+      authMode: settings.authMode,
+      authAllowAnonymous: settings.authAllowAnonymous,
+      captchaProvider: settings.captchaProvider,
       orgEscrowEnabled: settings.orgEscrowEnabled,
       debugTranscriptsEnabled: settings.debugTranscriptsEnabled,
       passkeyEnabled: isPasskeyEnabled(settings),

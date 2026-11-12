@@ -10,12 +10,61 @@ import {
   modelApiKeyForConnection,
   providerAutoFetchesCatalog,
   shouldDisableAddModel,
+  isModelAvailable,
+  isModelReady,
+  modelRequiresServer,
+  needsApiKey,
 } from './model-policy'
+
+import { createMockModel } from '@/test-utils/chat-store-mocks'
 
 const model = {
   model: 'gpt-4',
   url: 'https://api.example.com/v1',
 }
+
+describe('standalone model availability', () => {
+  it('requires a server for Thunderbolt and system Tinfoil credentials', () => {
+    expect(modelRequiresServer({ provider: 'thunderbolt', isSystem: 0 })).toBe(true)
+    expect(isModelAvailable({ provider: 'thunderbolt', isSystem: 1 }, '')).toBe(false)
+    expect(isModelAvailable({ provider: 'tinfoil', isSystem: 1 }, '')).toBe(false)
+    expect(isModelAvailable({ provider: 'tinfoil', isSystem: 1 }, 'https://server.example/v1')).toBe(true)
+  })
+
+  it('accepts local endpoints and user credentials without a server', () => {
+    expect(isModelAvailable({ provider: 'custom', isSystem: 0 }, '')).toBe(true)
+    expect(isModelAvailable({ provider: 'openai', isSystem: 0 }, '')).toBe(true)
+    expect(isModelAvailable({ provider: 'tinfoil', isSystem: 0 }, '')).toBe(true)
+    expect(needsApiKey({ provider: 'openai', isSystem: 0, apiKey: null })).toBe(true)
+  })
+})
+
+describe('model readiness', () => {
+  it.each([null, '', '   '])('requires a configured custom endpoint (%s)', (url) => {
+    expect(isModelReady(createMockModel({ provider: 'custom', url }), '')).toBe(false)
+  })
+  it('allows a custom endpoint without a key', () => {
+    expect(
+      isModelReady(createMockModel({ provider: 'custom', url: 'http://localhost:11434/v1', apiKey: null }), ''),
+    ).toBe(true)
+  })
+  it('requires both an endpoint and a credential for Otari', () => {
+    const model = createMockModel({
+      provider: 'otari',
+      isSystem: 0,
+      url: 'https://otari.example/api/v1',
+      apiKey: 'key',
+    })
+    expect(isModelReady(model, '')).toBe(true)
+    expect(isModelReady({ ...model, url: null }, '')).toBe(false)
+    expect(isModelReady({ ...model, apiKey: null }, '')).toBe(false)
+  })
+  it('rejects disabled, deleted, and keyless provider models', () => {
+    for (const overrides of [{ enabled: 0 }, { deletedAt: '2026-01-01' }, { apiKey: null }]) {
+      expect(isModelReady(createMockModel(overrides), '')).toBe(false)
+    }
+  })
+})
 
 describe('model edit policy', () => {
   it('does not require a connection test for a name-only edit', () => {
@@ -64,6 +113,7 @@ describe('catalog policy', () => {
     expect(catalogRequiresApiKey('openrouter')).toBe(true)
     expect(catalogRequiresApiKey('trustedrouter')).toBe(true)
     expect(catalogRequiresApiKey('anthropic')).toBe(true)
+    expect(catalogRequiresApiKey('otari')).toBe(true)
     expect(catalogRequiresApiKey('tinfoil')).toBe(false)
     expect(catalogRequiresApiKey('thunderbolt')).toBe(false)
     expect(catalogRequiresApiKey('custom')).toBe(false)

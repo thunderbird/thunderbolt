@@ -17,10 +17,10 @@ const checkLabels = {
 const detailLabels = {
   source: msg`Source repository`,
   release: msg`Release digest`,
-  measurement: msg`Enclave fingerprint`,
+  measurement: msg`Enclave measurement`,
 }
 
-/** Progressive disclosure keeps fingerprints accessible without making the panel an audit log. */
+/** Progressive disclosure keeps measurements accessible without making the panel an audit log. */
 export const AttestationDetails = ({ evidence, hour12 }: { evidence: AttestationEvidence; hour12: boolean }) => {
   const { i18n } = useLingui()
   const formatters = useFormatters()
@@ -60,7 +60,7 @@ export const AttestationDetails = ({ evidence, hour12 }: { evidence: Attestation
           {evidence.details.map((detail) => (
             <div key={detail.label}>
               <dt className="text-muted-foreground">{i18n._(detailLabels[detail.label])}</dt>
-              <dd className="mt-1 break-all font-mono select-text">{detail.value}</dd>
+              <dd className="mt-1 break-all whitespace-pre-line font-mono select-text">{detail.value}</dd>
             </div>
           ))}
         </dl>

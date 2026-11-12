@@ -12,10 +12,11 @@ import {
   createUsageTelemetry,
   recordTokenCounts,
   type ManagedRequestUser,
+  type UsageCallbacks,
 } from '@/inference/managed-request'
 import { createMeteredRouteGuard } from '@/inference/metered-route-guard'
-import type { InferenceDatabase } from '@/inference/usage-ledger'
-import { resolveConfidentialManagedModel } from '@/inference/managed-models'
+import { calculateMaxInferenceCost, type InferenceLedgerDatabase } from '@/inference/usage-ledger'
+import { confidentialContextWindow, resolveConfidentialManagedModel } from '@/inference/managed-models'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError } from '@/posthog/client'
 import { capStream } from '@/proxy/streaming'
@@ -112,23 +113,27 @@ const decodePolicyPathname = (pathname: string): string => {
   }
 }
 
-type UsageCallbacks = ReturnType<typeof createUsageCallbacks>
-
 /**
  * Charge a managed chat from the enclave's usage report, which arrives as a response header when unstreamed and as
- * an HTTP trailer after a streamed body. Rejected requests usually carry no report, so only a successful response
- * without one is logged as missing.
+ * an HTTP trailer after a streamed body. A rejected request usually carries no report and costs nothing, so its
+ * hold is released. A successful response without one is logged as missing, and its hold stays charged.
  */
 const recordEnclaveUsage = async (upstream: TinfoilResponse, callbacks: UsageCallbacks): Promise<void> => {
-  const report =
-    upstream.headers.get(tinfoilUsageMetricsHeader) ?? (await upstream.trailers)?.get(tinfoilUsageMetricsHeader)
-  const counts = report ? parseTinfoilUsageMetrics(report) : null
-  if (counts) {
-    await recordTokenCounts(callbacks, counts)
-    return
-  }
-  if (upstream.ok) {
-    callbacks.onUsageMissing()
+  try {
+    const report =
+      upstream.headers.get(tinfoilUsageMetricsHeader) ?? (await upstream.trailers)?.get(tinfoilUsageMetricsHeader)
+    const counts = report ? parseTinfoilUsageMetrics(report) : null
+    if (counts) {
+      await recordTokenCounts(callbacks, counts)
+      return
+    }
+    if (upstream.ok) {
+      callbacks.onUsageMissing()
+      return
+    }
+    await callbacks.release()
+  } finally {
+    await callbacks.onEnd()
   }
 }
 
@@ -140,12 +145,15 @@ const slowClientError = new DOMException('The client fell too far behind the Tin
  * Forward the body to the client and keep reading it to the end whatever the client does, so the usage trailer
  * still arrives after a Stop. A client more than `maxUnreadResponseBytes` behind is cut off rather than buffered:
  * through `cutOff`, which resets its socket, or by erroring its stream when there is no server to do that. The
- * read is released once the client is gone and the upstream request has been aborted.
+ * read is released once the client is gone and the upstream request has been aborted. The client's stream closes
+ * only after `usageHandled` resolves (the usage recorded, logged as missing, or the hold released), so a client
+ * that sends its next request at once finds this request's hold settled or gone.
  */
 const relayToEnd = (
   body: ReadableStream<Uint8Array>,
   upstreamSignal: AbortSignal,
   cutOff: (() => void) | undefined,
+  usageHandled: Promise<void>,
 ): ReadableStream<Uint8Array> => {
   const reader = body.getReader()
   const client = { attached: true }
@@ -177,6 +185,7 @@ const relayToEnd = (
           for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
             forward(chunk.value)
           }
+          await usageHandled
           if (client.attached && !upstreamSignal.aborted) {
             controller.close()
           }
@@ -234,7 +243,7 @@ type ProxyToEnclaveOptions = {
 /** Forwards HPKE-encrypted bodies to the Tinfoil enclave; injects the bearer key from env. */
 export type CreateTinfoilRoutesOptions = {
   auth: Auth
-  database: InferenceDatabase
+  database: InferenceLedgerDatabase
   /** The upstream transport. Defaults to {@link fetchWithTrailers}, which can read a stream's usage trailer. */
   fetchFn?: TinfoilFetch
   logger?: TinfoilProxyLogger
@@ -362,19 +371,35 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       return textResponse(400, `Invalid ${inferenceModelHeader}: expected a confidential managed model`)
     }
     if (isManagedChat && identity) {
-      const admission = await admitManagedRequest({ database, settings, identity, user, set, logger: usageLogger })
+      // The body is sealed for the enclave, so only the model's context window bounds the request's tokens.
+      const contextWindow = confidentialContextWindow(identity.model)
+      const admission = await admitManagedRequest({
+        database,
+        settings,
+        identity,
+        user,
+        set,
+        // Prompt and output share the window, so the cost is at most the whole window billed at the higher of the
+        // two rates.
+        maxCostNanoUsd: (price) => {
+          const allPrompt = calculateMaxInferenceCost(price, contextWindow, 0)
+          const allOutput = calculateMaxInferenceCost(price, 0, contextWindow)
+          return allPrompt > allOutput ? allPrompt : allOutput
+        },
+        logger: usageLogger,
+      })
       if (admission instanceof Response) {
         recordLatency({ status: admission.status, completedAt: nowFn() })
         return admission
       }
-      const eventId = crypto.randomUUID()
+      const { eventId, price } = admission
       metered = {
         model: identity.model,
         usage: createUsageCallbacks({
           database,
           eventId,
           userId: user.id,
-          price: admission.price,
+          price,
           telemetry: createUsageTelemetry({ eventId, logger: usageLogger, ...identity, route, transport: 'tinfoil' }),
         }),
       }
@@ -435,8 +460,6 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
                 provider: 'tinfoil',
                 status: 504,
                 errorKind: 'connection',
-                subpath,
-                distinctId: user.id,
                 phase: 'stream',
               })
             },
@@ -445,17 +468,16 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
             onIdleError: server ? () => server.timeout(request, abruptResponseCloseTimeoutSeconds) : undefined,
           }).stream
         : null
+      const usageHandled = metered ? recordEnclaveUsage(upstream, metered.usage) : null
       const responseBody =
-        metered && cappedBody
+        usageHandled && cappedBody
           ? relayToEnd(
               cappedBody,
               upstreamController.signal,
               server ? () => server.timeout(request, abruptResponseCloseTimeoutSeconds) : undefined,
+              usageHandled,
             )
           : cappedBody
-      if (metered) {
-        void recordEnclaveUsage(upstream, metered.usage)
-      }
 
       const response = new Response(responseBody, {
         status: upstream.status,
@@ -478,13 +500,13 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
           provider: 'tinfoil',
           status: upstream.status,
           errorKind: errorKindFromStatus(upstream.status),
-          subpath,
-          distinctId: user.id,
         })
       }
 
       return response
     } catch (error) {
+      // No response, so no report: the enclave may have run the request, and its hold stays charged.
+      await metered?.usage.onEnd()
       const completedAt = nowFn()
       const isClientAbort = isClientAbortError(error, request.signal)
       const status = isClientAbort ? 499 : error === upstreamHeadersTimeoutError ? 504 : 500
@@ -500,8 +522,6 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
           provider: 'tinfoil',
           status,
           errorKind: 'connection',
-          subpath,
-          distinctId: user.id,
         })
       }
 

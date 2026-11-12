@@ -57,6 +57,11 @@ export type KeyRequestReason = 'unknown-key' | 'unwrap-failed'
  *   `invalidate` deliberately keeps is exactly what would leave a warmed
  *   surviving device encoding under the pre-rotation primary after a
  *   revocation. The setup flag is untouched — adoption is not sign-out.
+ * - `primary-dropped` — posted by the main thread right after it stored a new
+ *   AK and its sealed pointer, BEFORE the DEKs wrapped under that AK are staged.
+ *   Drops ALL caches including the pointer, so a warmed encoder stops using the
+ *   old primary, but leaves pending key requests waiting: the keys they wait for
+ *   are not staged yet, and the staging that follows answers them.
  */
 export type KeysSyncMessage =
   | { type: 'invalidate' }
@@ -65,6 +70,7 @@ export type KeysSyncMessage =
   | { type: 'key-staged'; keyId: KeyId }
   | { type: 'ak-refreshed' }
   | { type: 'primary-adopted' }
+  | { type: 'primary-dropped' }
 
 export type KeysSyncChannel = {
   postMessage: (message: KeysSyncMessage) => void
@@ -189,6 +195,9 @@ const handleKeysSyncMessage = (message: KeysSyncMessage) => {
       dropAllCaches()
       settleAllPendingRequests()
       break
+    case 'primary-dropped':
+      dropAllCaches()
+      break
     // 'key-request' is answered by the main thread (D2), not by codecs.
   }
 }
@@ -238,6 +247,18 @@ export const invalidateAdoptedKeyring = () => {
   dropAllCaches()
   settleAllPendingRequests()
   channel?.postMessage({ type: 'primary-adopted' })
+}
+
+/**
+ * Drop every cache, the primary pointer included, in every context, without
+ * settling pending key requests. For the moment a new AK and its pointer are
+ * stored but the DEKs wrapped under it are not staged yet: a warmed encoder
+ * must stop using the old primary, and a decode waiting on a key must keep
+ * waiting, because a retry now would find no key and return the raw ciphertext.
+ */
+export const dropCachedPrimary = () => {
+  dropAllCaches()
+  channel?.postMessage({ type: 'primary-dropped' })
 }
 
 /**

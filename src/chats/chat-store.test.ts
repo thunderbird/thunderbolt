@@ -281,7 +281,7 @@ describe('chat-store', () => {
   })
 
   describe('setModels', () => {
-    it('re-resolves only a built-in session the private-chat lock holds, leaving the rest untouched', () => {
+    it('re-resolves removed and incompatible built-in models without changing other agents', () => {
       const hostedAgent: Agent = { ...builtInAgent, id: 'hosted-agent', type: 'managed-http', transport: 'http' }
       const confidentialModel = createMockModel({
         id: 'confidential',
@@ -311,7 +311,7 @@ describe('chat-store', () => {
 
       const after = useChatStore.getState().sessions
       expect(after.get('hosted')).toBe(before.get('hosted'))
-      expect(after.get('fits')).toBe(before.get('fits'))
+      expect(after.get('fits')?.selectedModel.id).toBe(addedModel.id)
       expect(after.get('blocked')?.selectedModel.id).toBe(addedModel.id)
     })
   })
@@ -402,31 +402,52 @@ describe('chat-store', () => {
       expect(session?.selectedModel?.id).toBe('tracked-model')
     })
 
-    it('invokes the prewarm wrapper with the selected model (wrapper owns the tinfoil/system guard)', async () => {
-      const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
-      const prewarmSystemModel = mock(async () => {})
+    it.each([0, 1])(
+      'warms the selected Tinfoil model without waiting for verification (isSystem=%s)',
+      async (isSystem) => {
+        const model = createMockModel({ id: 'tinfoil-model', provider: 'tinfoil', isSystem })
+        const prewarmTinfoilModel = mock(async () => {})
 
+        hydrateStore({
+          chatInstance: createMockChatInstanceWithValidation(),
+          chatThread: null,
+          id: 'test-id',
+          mcpClients: [],
+          models: [model],
+          selectedModel: model,
+          triggerData: null,
+        })
+
+        await useChatStore.getState().setSelectedModel('test-id', model.id, { prewarmTinfoilModel })
+
+        expect(prewarmTinfoilModel).toHaveBeenCalledTimes(1)
+        expect(prewarmTinfoilModel).toHaveBeenCalledWith(model)
+      },
+    )
+
+    it('does not warm a local model when a remote agent owns inference', async () => {
+      const model = createMockModel({ provider: 'tinfoil', isSystem: 0 })
+      const prewarmTinfoilModel = mock(async () => {})
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
         chatThread: null,
         id: 'test-id',
-        mcpClients: [],
         models: [model],
         selectedModel: model,
         triggerData: null,
       })
-
-      await useChatStore.getState().setSelectedModel('test-id', model.id, { prewarmSystemModel })
-
-      expect(prewarmSystemModel).toHaveBeenCalledTimes(1)
-      expect(prewarmSystemModel).toHaveBeenCalledWith(model)
+      useChatStore.getState().updateSession('test-id', {
+        selectedAgent: { ...builtInAgent, id: 'remote', type: 'remote-acp' },
+      })
+      await useChatStore.getState().setSelectedModel('test-id', model.id, { prewarmTinfoilModel })
+      expect(prewarmTinfoilModel).not.toHaveBeenCalled()
     })
 
     it('does not propagate prewarm errors into model selection', async () => {
       const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
       const prewarmFailure = Promise.reject(new Error('attestation failed'))
       void prewarmFailure.catch(() => undefined)
-      const prewarmSystemModel = mock(() => prewarmFailure)
+      const prewarmTinfoilModel = mock(() => prewarmFailure)
 
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -439,9 +460,9 @@ describe('chat-store', () => {
       })
 
       await expect(
-        useChatStore.getState().setSelectedModel('test-id', model.id, { prewarmSystemModel }),
+        useChatStore.getState().setSelectedModel('test-id', model.id, { prewarmTinfoilModel }),
       ).resolves.toBeUndefined()
-      expect(prewarmSystemModel).toHaveBeenCalledTimes(1)
+      expect(prewarmTinfoilModel).toHaveBeenCalledTimes(1)
       expect(getCurrentSession()?.selectedModel).toBe(model)
     })
   })

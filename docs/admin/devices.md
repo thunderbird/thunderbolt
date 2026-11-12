@@ -25,9 +25,10 @@ Sign in on the new device with the same account. If the setup wizard does not op
 
 ## Approving a device
 
-A pending device shows an "Approve this device" screen with a fingerprint and polls for the result. Choose one of the available ways to unlock it:
+A pending device shows an "Approve this device" screen and polls for the result. Once a trusted device starts the approval, the screen shows a 2-digit approval code. Choose one of the available ways to unlock it:
 
-- **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**. Enter the fingerprint from the new device's screen or a separate channel you trust. Approval stops if it does not match; there is no override. The trusted device then wraps the account's encryption key to the verified device keys.
+- **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**, then tap the code that the new device shows among the six offered. If none match, choose **None of these match**; nothing is approved and there is no override. To retry, choose **New code** on the new device. **Use fingerprint instead** on both screens switches to typing the full fingerprint. The trusted device then wraps the account's encryption key to the verified device keys.
+- **Code limits.** Each trusted device allows three unsuccessful code attempts per 24 hours; after that it offers only the fingerprint until the window passes. A device running an older version shows only the fingerprint, and so does every device when the backend predates approval codes.
 - **Use the recovery key.** On the pending device, choose **Use my recovery key** and enter the current recovery phrase. This is the path when no other device is available.
 - **Use an available passkey.** If the account has an enrolled passkey that can unlock sync, choose **Unlock with passkey** on the pending device.
 
@@ -39,7 +40,7 @@ Among regular app devices, only the device running the upgrade stays trusted. Sa
 
 ### Approval limits
 
-Fingerprint verification requires trusted code on both the approving device and the new device. A web host can modify the approving device's checks or the new device's displayed fingerprint and keys. Independently distributed desktop/mobile builds provide the stronger boundary. Older approvers lack the check. A pending client from a release before fingerprint approval shows no fingerprint. Update it before approving it from an updated device. The current recovery phrase or a passkey enrolled for sync remains an alternative where the client supports that unlock method. On an honest deployment, `MIN_APP_VERSION` can require headers declaring the release introducing fingerprint approval or later on every gated API request; a malicious server can ignore that policy. These checks protect future approvals and do not repair an account key exposed by a past approval.
+Code and fingerprint verification require trusted code on both the approving device and the new device. A web host can modify the approving device's checks or the new device's displayed code, fingerprint and keys. A person who taps a code without comparing it picks the right one one time in six, so tell people to compare before tapping and to choose **Deny** for a request they did not start. Independently distributed desktop/mobile builds provide the stronger boundary. Older approvers lack the check. A pending client from a release before fingerprint approval shows no fingerprint. Update it before approving it from an updated device. The current recovery phrase or a passkey enrolled for sync remains an alternative where the client supports that unlock method. On an honest deployment, `MIN_APP_VERSION` can require headers declaring the release introducing fingerprint approval or later on every gated API request; a malicious server can ignore that policy. These checks protect future approvals and do not repair an account key exposed by a past approval.
 
 ## The recovery key
 
@@ -95,7 +96,11 @@ Where CLI registration is enabled, a command line install is revoked from the sa
 
 The log out prompt offers **Leave data on device** or **Delete data from device**; the account and everything synced to it are untouched either way, and signing back in pulls the synced data down again once the device is approved. Signing out does not revoke the device on the server, so its entry stays in the trusted list and holds one of the ten slots until someone revokes it. Signing out also clears the device's encryption keys, so the next sign-in on that device is treated as a new device and needs approval again.
 
+Data left on the device stays with the account that left it. When a different account signs in on the same browser profile or app, the app reloads into that account's own local data. The new account never sees the first account's chats, attached files, saved connection credentials, voice key or unsent changes. All of it is back when the first account signs in again. The switch removes the first account's encryption keys from the device, even when that account never logged out (for example, its session expired and someone else signed in at the sign-in prompt). So when the first account returns, the device needs approval again before it can read that account's synced data (see [Approving a device](#approving-a-device)). An account with no other trusted device, no recovery phrase and no passkey enrolled for sync can't unlock its encrypted synced data again. A full local wipe (**Delete data from device**, **Delete All Local Data**, or the reset that follows a revoked device or a deleted account) removes the local data of every account on the device. Data left by an account that signed out before this behavior shipped can't be tied to that account, so the app no longer opens it. Its synced data comes back on sign-in, and the developer notes describe how to recover the rest by hand.
+
 A separate **Delete All Local Data** control appears under **Settings → Preferences → Data** in an anonymous session, so only on deployments that allow anonymous access. It wipes that device's local data: the database, attachments and browser storage.
+
+Local data from an anonymous session, its chats included, does not carry over to the next anonymous session. When an anonymous session expires, the app starts a new one with no local data, and deletes the expired session's local data on a later start.
 
 ## Deleting an account
 

@@ -80,6 +80,10 @@ describe('resolveAbsoluteBackendUrl', () => {
     expect(resolveAbsoluteBackendUrl('/v1//', 'https://app.example.com')).toBe('https://app.example.com/v1')
   })
 
+  it('accepts an absolute server URL when the webview has an opaque origin', () => {
+    expect(resolveAbsoluteBackendUrl('https://api.example.com/v1', 'null')).toBe('https://api.example.com/v1')
+  })
+
   it('defaults to the page origin, which is the only form the app itself uses', () => {
     const previousHref = window.location.href
     window.location.href = 'https://app.example.com/settings/models'

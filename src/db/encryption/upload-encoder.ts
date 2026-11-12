@@ -12,6 +12,8 @@ type CrudOperation = {
   data?: Record<string, unknown>
   /** Create-only PUT — see `isCreateOnlyWrite` in `db/powersync/connector.ts`. */
   ifAbsent?: boolean
+  /** Migration-only model link, conditional on an unset connection and the original provider. */
+  ifProviderConnectionUnset?: { provider: string }
 }
 
 /**

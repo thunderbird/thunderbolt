@@ -20,6 +20,7 @@ import { Suspense } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { Outlet, useLocation } from 'react-router'
 import { PageFallback } from '@/loading'
+import { RecoveryContinuityColumn } from '@/components/recovery-continuity'
 import { routeHostsContentView } from './content-view-host'
 import { sharedHeaderHasControls } from './shared-header'
 import { contentViewPanelId, useContentViewPanel } from './use-content-view-panel'
@@ -49,19 +50,20 @@ export default function Page() {
 
   return (
     <SidebarInset className="h-full flex flex-col">
-      <ResizablePanelGroup
-        orientation="horizontal"
-        onLayoutChanged={(layout) => {
-          void handleLayoutChanged(layout)
-        }}
-      >
-        {/* 360px is the content floor the create-item container query in
+      <RecoveryContinuityColumn>
+        <ResizablePanelGroup
+          orientation="horizontal"
+          onLayoutChanged={(layout) => {
+            void handleLayoutChanged(layout)
+          }}
+        >
+          {/* 360px is the content floor the create-item container query in
             index.css derives its 840px breakpoint from (480px
             --create-panel-min-width + this 360px = 840px) — if this changes,
             re-derive that literal. */}
-        <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
-          <div className="relative flex flex-col h-full">
-            {/* Wherever it has something to show — see `sharedHeaderHasControls`.
+          <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
+            <div className="relative flex flex-col h-full">
+              {/* Wherever it has something to show — see `sharedHeaderHasControls`.
                 `/apps/` was chromeless for a while, on the reasoning that a
                 customer's app is the content and a bar above it duplicates the
                 app's own header. That cost the whole shared toolbar:
@@ -69,79 +71,80 @@ export default function Page() {
                 Windows/Linux — the only drag region the window had. Putting it
                 back unconditionally then drew an empty bar over the app on web,
                 because everything else in the header is gated on `/chats`. */}
-            {showsSharedHeader && <FloatingHeader />}
-            {!isTauri() && (
-              <>
-                <DownloadAppBannerMobile />
-                <DownloadAppBannerDesktop />
-              </>
-            )}
-            <div
-              className="flex-1 overflow-auto"
-              style={{
-                // Reserve the home-indicator safe area, but don't double-count it
-                // with the on-screen keyboard: when the keyboard is open (`--kb` > 0)
-                // it already covers that region, so subtract it. Without this, the
-                // safe-area inset stacks on top of `chat-ui`'s `var(--kb)` and shoves
-                // a bottom-anchored input well above the keyboard (THU-586). At rest
-                // (`--kb` = 0) this is the full safe-area inset. Native mobile keeps
-                // at least the standard 12px edge spacing when the inset is smaller.
-                paddingBottom: isNativeMobile
-                  ? `max(var(--safe-area-bottom-padding) - var(--kb, 0px), ${edgeSpacing.mobile}px)`
-                  : 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
-              }}
-            >
-              <Suspense fallback={<PageFallback />}>
-                <Outlet />
-              </Suspense>
+              {showsSharedHeader && <FloatingHeader />}
+              {!isTauri() && (
+                <>
+                  <DownloadAppBannerMobile />
+                  <DownloadAppBannerDesktop />
+                </>
+              )}
+              <div
+                className="flex-1 overflow-auto"
+                style={{
+                  // Reserve the home-indicator safe area, but don't double-count it
+                  // with the on-screen keyboard: when the keyboard is open (`--kb` > 0)
+                  // it already covers that region, so subtract it. Without this, the
+                  // safe-area inset stacks on top of `chat-ui`'s `var(--kb)` and shoves
+                  // a bottom-anchored input well above the keyboard (THU-586). At rest
+                  // (`--kb` = 0) this is the full safe-area inset. Native mobile keeps
+                  // at least the standard 12px edge spacing when the inset is smaller.
+                  paddingBottom: isNativeMobile
+                    ? `max(var(--safe-area-bottom-padding) - var(--kb, 0px), ${edgeSpacing.mobile}px)`
+                    : 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
+                }}
+              >
+                <Suspense fallback={<PageFallback />}>
+                  <Outlet />
+                </Suspense>
+              </div>
             </div>
-          </div>
-        </ResizablePanel>
-        {isDesktopPanelOpen && (
-          <ResizableHandle withHandle className="h-full">
-            {/* 
+          </ResizablePanel>
+          {isDesktopPanelOpen && (
+            <ResizableHandle withHandle className="h-full">
+              {/* 
               Webview cursor mask: When a webview is displayed in the right panel,
               it overlays the resize handle, making the right half non-interactive.
               This div covers the right side to show the correct cursor (default
               instead of ew-resize) over the non-clickable area.
             */}
-            {state.type === 'preview' && (
-              <div className="absolute inset-y-0 left-1/2 w-2 cursor-default z-10" aria-hidden="true" />
-            )}
-          </ResizableHandle>
-        )}
-        {drawsDesktopPanel && (
-          <ResizablePanel
-            id={contentViewPanelId}
-            panelRef={panelRef}
-            collapsible
-            defaultSize="0%"
-            minSize="0%"
-            collapsedSize="0%"
-            onResize={(panelSize, _id, prevPanelSize) => {
-              if (prevPanelSize && prevPanelSize.asPercentage > 0 && panelSize.asPercentage === 0) {
-                close()
-              }
-            }}
-            className="overflow-hidden"
-          >
-            <AnimatePresence initial={false}>
-              {isOpen && (
-                <m.div
-                  key="sidebar-content"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2, delay: 0.15 }}
-                  className="h-full"
-                >
-                  <ActiveContentView />
-                </m.div>
+              {state.type === 'preview' && (
+                <div className="absolute inset-y-0 left-1/2 w-2 cursor-default z-10" aria-hidden="true" />
               )}
-            </AnimatePresence>
-          </ResizablePanel>
-        )}
-      </ResizablePanelGroup>
+            </ResizableHandle>
+          )}
+          {drawsDesktopPanel && (
+            <ResizablePanel
+              id={contentViewPanelId}
+              panelRef={panelRef}
+              collapsible
+              defaultSize="0%"
+              minSize="0%"
+              collapsedSize="0%"
+              onResize={(panelSize, _id, prevPanelSize) => {
+                if (prevPanelSize && prevPanelSize.asPercentage > 0 && panelSize.asPercentage === 0) {
+                  close()
+                }
+              }}
+              className="overflow-hidden"
+            >
+              <AnimatePresence initial={false}>
+                {isOpen && (
+                  <m.div
+                    key="sidebar-content"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2, delay: 0.15 }}
+                    className="h-full"
+                  >
+                    <ActiveContentView />
+                  </m.div>
+                )}
+              </AnimatePresence>
+            </ResizablePanel>
+          )}
+        </ResizablePanelGroup>
+      </RecoveryContinuityColumn>
       {isMobile && (
         <Dialog open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
           <ResponsiveModalContentComposable className="gap-0 p-0" flush>

@@ -11,7 +11,9 @@ import { getClock } from '@/testing-library'
 import { PowerSyncReactivityTestProvider } from '@/test-utils/powersync-mock'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { PostHogProvider } from '@/lib/posthog'
+import type { PostHog } from 'posthog-js'
 import { useAppLanguage } from './use-app-language'
 import { useSettings } from './use-settings'
 
@@ -125,6 +127,24 @@ afterEach(async () => {
 })
 
 describe('useAppLanguage', () => {
+  it('registers a coarse event locale without creating a person profile', async () => {
+    await updateSettings(getDb(), { language: 'de' })
+    const register = mock()
+    const setPersonProperties = mock()
+    const client = { register, setPersonProperties } as unknown as PostHog
+    const TestProvider = createTestProvider()
+    renderHook(() => useAppLanguage(), {
+      wrapper: ({ children }) => (
+        <TestProvider>
+          <PostHogProvider client={client}>{children}</PostHogProvider>
+        </TestProvider>
+      ),
+    })
+    await flush()
+    expect(register).toHaveBeenCalledWith({ locale: 'de' })
+    expect(setPersonProperties).not.toHaveBeenCalled()
+  })
+
   /**
    * `useSettings` reports the schema fallback (`en`) until the settings row
    * arrives, so publishing on every render announced `en` on each page load —

@@ -16,6 +16,9 @@ import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, beforeAll, describe, expect, it, mock, spyOn, test } from 'bun:test'
 import { resolveInitialSyncStep, useAppInitialization, waitForDatabaseReady } from './use-app-initialization'
+import { closeTestLocalData } from '@/test-utils/local-data'
+import * as reconcile from '@/lib/reconcile-defaults'
+import * as onboarding from '@/lib/returning-user-onboarding'
 
 mock.module('@tauri-apps/api/core', () => ({
   isTauri: () => false,
@@ -66,7 +69,11 @@ const stubWorkingIndexedDb = (): void => {
       queueMicrotask(() => request.onsuccess?.())
       return request
     },
-    deleteDatabase: () => ({}),
+    deleteDatabase: () => {
+      const request = { onsuccess: null as (() => void) | null }
+      queueMicrotask(() => request.onsuccess?.())
+      return request
+    },
   } as unknown as IDBFactory
   Object.defineProperty(globalThis, 'indexedDB', { value: factory, configurable: true, writable: true })
 }
@@ -79,6 +86,8 @@ describe('useAppInitialization', () => {
 
   afterAll(async () => {
     await teardownTestDatabase()
+    // Boot opened a slot and began following other tabs; later files must start without one.
+    closeTestLocalData()
     if (!realIndexedDb) {
       Reflect.deleteProperty(globalThis, 'indexedDB')
       return
@@ -521,6 +530,32 @@ describe('useAppInitialization', () => {
     // step6 is skipped when an httpClient is injected (as in this test).
     expect(payload).not.toHaveProperty('step6_create_http_client_ms')
     expect(payload.init_run).toBeGreaterThanOrEqual(1)
+  })
+
+  it('applies a deferred returning-user mark only after reconcile seeds the default it overwrites', async () => {
+    const order: string[] = []
+    const { reconcileDefaults } = reconcile
+    const reconciling = spyOn(reconcile, 'reconcileDefaults').mockImplementation((...args) => {
+      order.push('reconcile')
+      return reconcileDefaults(...args)
+    })
+    const marking = spyOn(onboarding, 'applyDeferredOnboardedMark').mockImplementation(async () => {
+      order.push('mark')
+    })
+    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
+    try {
+      const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
+        wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+      })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(result.current.initData).toBeDefined()
+      expect(order).toEqual(['reconcile', 'mark'])
+    } finally {
+      reconciling.mockRestore()
+      marking.mockRestore()
+    }
   })
 })
 

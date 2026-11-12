@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef, useState } from 'react'
-import { HttpError } from '@/lib/http'
+import { useEffect, useRef } from 'react'
+import { HttpError, isFetchNetworkError } from '@/lib/http'
 import { DeviceApprovalError } from '@/crypto/errors'
+import { EncryptionOperationCancelledError } from '@/crypto/key-storage-lifetime'
+import { EncryptionRequestTimeoutError } from '@/services/encryption-request'
 
 type UseApprovalPollingOptions = {
   enabled: boolean
@@ -13,8 +15,13 @@ type UseApprovalPollingOptions = {
   onRevoked?: () => void
   onDenied?: () => void
   onVerificationFailed?: () => void
+  /** A failure the next tick will likely hit again (an envelope that won't open, missing keys). */
+  onError?: (error: Error) => void
   intervalMs?: number
 }
+
+/** A session not yet bound to this device (403), a timeout, rate limiting or a server error. */
+const isRetryableStatus = (status: number) => status === 403 || status === 408 || status === 429 || status >= 500
 
 /**
  * Polls to detect when this device has been approved by a trusted device.
@@ -22,7 +29,8 @@ type UseApprovalPollingOptions = {
  * A 403 carrying `DEVICE_DISCONNECTED` (device revoked) fires `onRevoked` and stops polling.
  * Any other 403 — a session not yet bound to this device — is transient and keeps polling.
  * Receiver verification failures notify the waiting UI and keep polling so an honest retry can recover.
- * Other errors are silently ignored — the manual Continue button serves as fallback.
+ * Transient failures (no connection, timeouts, retryable statuses) stay silent. Any other failure
+ * goes to `onError`, so the screen can say what is wrong, and polling continues.
  */
 export const useApprovalPolling = ({
   enabled,
@@ -31,9 +39,9 @@ export const useApprovalPolling = ({
   onRevoked,
   onDenied,
   onVerificationFailed,
+  onError,
   intervalMs = 3000,
 }: UseApprovalPollingOptions) => {
-  const [isPolling, setIsPolling] = useState(false)
   const isCheckingRef = useRef(false)
   const onApprovedRef = useRef(onApproved)
   onApprovedRef.current = onApproved
@@ -43,6 +51,8 @@ export const useApprovalPolling = ({
   onDeniedRef.current = onDenied
   const onVerificationFailedRef = useRef(onVerificationFailed)
   onVerificationFailedRef.current = onVerificationFailed
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
   const checkApprovalRef = useRef(checkApproval)
   checkApprovalRef.current = checkApproval
 
@@ -50,12 +60,10 @@ export const useApprovalPolling = ({
   // Refs avoid stale closures without adding callbacks to the dependency array.
   useEffect(() => {
     if (!enabled) {
-      setIsPolling(false)
       return
     }
 
     let cancelled = false
-    setIsPolling(true)
 
     const check = async () => {
       if (isCheckingRef.current) {
@@ -67,7 +75,6 @@ export const useApprovalPolling = ({
         const approved = await checkApprovalRef.current()
         if (approved && !cancelled) {
           clearInterval(intervalId)
-          setIsPolling(false)
           onApprovedRef.current()
         }
       } catch (err) {
@@ -89,18 +96,24 @@ export const useApprovalPolling = ({
           }
           if (body?.code === 'DEVICE_DISCONNECTED') {
             clearInterval(intervalId)
-            setIsPolling(false)
             onRevokedRef.current?.()
             return
           }
           if (err.response.status === 422) {
             clearInterval(intervalId)
-            setIsPolling(false)
             onDeniedRef.current?.()
             return
           }
         }
-        // Silently continue for other errors — manual button is fallback
+        const transient =
+          err instanceof HttpError
+            ? isRetryableStatus(err.response.status)
+            : (err instanceof Error && isFetchNetworkError(err)) ||
+              err instanceof EncryptionRequestTimeoutError ||
+              err instanceof EncryptionOperationCancelledError
+        if (!transient && err instanceof Error && !cancelled) {
+          onErrorRef.current?.(err)
+        }
       } finally {
         isCheckingRef.current = false
       }
@@ -111,9 +124,6 @@ export const useApprovalPolling = ({
     return () => {
       cancelled = true
       clearInterval(intervalId)
-      setIsPolling(false)
     }
   }, [enabled, intervalMs])
-
-  return { isPolling }
 }

@@ -2,30 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { toTokenCounts } from '@/inference/managed-request'
+import { estimateTokens, toTokenCounts } from '@/inference/managed-request'
 import type { InferenceTokenCounts } from '@/inference/usage-ledger'
 import type { LanguageModelUsage, ModelMessage } from 'ai'
-
-/**
- * Characters per token for a usage estimate, outside the scripts in `denseScriptCharacter`. English text averages
- * about four, and the app's context meter uses 3.5 (`src/ai/tokenizers.ts`). Three makes the estimate err high on
- * purpose: it stands in for tokens the provider consumed but never reported, and an undercount would let a client
- * that aborts every run spend past its quota.
- */
-const charsPerToken = 3
-
-/**
- * Chinese, Japanese and Korean characters, which tokenize at roughly one token per one to one and a half
- * characters. Dividing them by `charsPerToken` would undercount them up to threefold, so each is one token.
- */
-const denseScriptCharacter = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu
-
-/** A conservative token count for `text`: one per CJK character, and one per three characters of the rest. */
-const estimateTokens = (text: string): number => {
-  const denseCharacters = text.match(denseScriptCharacter)?.length ?? 0
-  const otherCharacters = text.replace(denseScriptCharacter, '').length
-  return denseCharacters + Math.ceil(otherCharacters / charsPerToken)
-}
 
 type StepUsageEstimateInput = {
   system: string

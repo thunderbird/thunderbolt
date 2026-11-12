@@ -2,11 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { usePrivateSources } from '@/components/chat/private-sources-context'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHttpClient } from '@/contexts'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
+import { useServerAuthentication } from '@/hooks/use-local-providers'
+import { useSettings } from '@/hooks/use-settings'
+import { useQuery } from '@tanstack/react-query'
+import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import type { LinkPreviewData } from '@/integrations/thunderbolt-pro/schemas'
 import type { SourceMetadata } from '@/types/source'
 import { LinkPreview } from './display'
@@ -15,7 +21,7 @@ import { getHostname } from './utils'
 type LinkPreviewWidgetProps = {
   url: string
   source?: string
-  sources?: SourceMetadata[]
+  sourceMetadata?: SourceMetadata[]
   messageId: string
   fetchPreviewFn?: (params: { url: string }) => Promise<LinkPreviewData>
 }
@@ -34,28 +40,69 @@ export const LinkPreviewSkeleton = () => {
   )
 }
 
-/** Renders a link preview instantly from source registry metadata. Image loads
- *  directly from the upstream URL — no proxy on browser sub-resource loads. */
+/** Renders collected metadata while preserving the source's passive-image policy. */
 const InstantLinkPreview = ({ sourceData }: { sourceData: SourceMetadata }) => {
+  const privateSources = usePrivateSources([sourceData])
   return (
     <LinkPreview
       title={sourceData.title || getHostname(sourceData.url)}
       description={sourceData.description ?? null}
       url={sourceData.url}
-      image={sourceData.image ?? null}
+      image={privateSources ? null : (sourceData.image ?? null)}
     />
   )
 }
 
-export const LinkPreviewWidget = ({ url, source, sources, messageId, fetchPreviewFn }: LinkPreviewWidgetProps) => {
-  if (source && sources) {
-    const sourceIndex = parseInt(source, 10)
-    const sourceData = sources[sourceIndex - 1]
-    if (sourceData && sourceData.title) {
-      return <InstantLinkPreview sourceData={sourceData} />
-    }
+/** Matches the page identity without letting URL fragments bypass a saved privacy policy. */
+const pageUrl = (value: string) => {
+  if (!URL.canParse(value)) {
+    return value
   }
-  return <FetchLinkPreview url={url} messageId={messageId} fetchPreviewFn={fetchPreviewFn} />
+  const url = new URL(value)
+  url.hash = ''
+  return url.href
+}
+
+export const LinkPreviewWidget = ({
+  url,
+  source,
+  sourceMetadata,
+  messageId,
+  fetchPreviewFn,
+}: LinkPreviewWidgetProps) => {
+  const privateSources = usePrivateSources(sourceMetadata)
+  const sourceData =
+    sourceMetadata?.find(({ index }) => index === Number(source)) ??
+    sourceMetadata?.find((entry) => pageUrl(entry.url) === pageUrl(url))
+  if (sourceData) {
+    return <InstantLinkPreview sourceData={sourceData} />
+  }
+  // A model can omit or invent a source reference. Such markup cannot authorize a
+  // fresh cloud request when the message's evidence was gathered privately.
+  if (privateSources) {
+    return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
+  }
+  if (fetchPreviewFn) {
+    return <FetchLinkPreview url={url} messageId={messageId} fetchPreviewFn={fetchPreviewFn} />
+  }
+  return <ProviderLinkPreview url={url} messageId={messageId} />
+}
+
+/** Passive previews follow the same provider choice as web tools and never silently use a different server. */
+const ProviderLinkPreview = ({ url, messageId }: Pick<LinkPreviewWidgetProps, 'url' | 'messageId'>) => {
+  const authenticated = useServerAuthentication()
+  const { integrationsProIsEnabled } = useSettings({ integrations_pro_is_enabled: false })
+  const { data: proAccess } = useQuery({ queryKey: ['pro-access'], queryFn: hasProAccess })
+  const selection = useSearchProviderStore((state) => state.selection)
+  const useCloudPreview =
+    (selection === 'auto' || selection === 'cloud') &&
+    authenticated &&
+    Boolean(proAccess) &&
+    integrationsProIsEnabled.value
+  if (!useCloudPreview) {
+    return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
+  }
+  return <FetchLinkPreview url={url} messageId={messageId} />
 }
 
 /** Fallback component that fetches link preview data via the message cache */
@@ -72,7 +119,12 @@ const FetchLinkPreview = ({
   const { data, isLoading, error } = useMessageCache<LinkPreviewData>({
     messageId,
     cacheKey: ['linkPreview', url],
-    fetchFn: () => (fetchPreviewFn ? fetchPreviewFn({ url }) : fetchLinkPreview({ url }, httpClient)),
+    fetchFn: () => {
+      if (fetchPreviewFn) {
+        return fetchPreviewFn({ url })
+      }
+      return fetchLinkPreview({ url }, httpClient)
+    },
   })
 
   if (isLoading) {

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Asking the user to approve a Mini App write tool.
+ * Asking the user to approve a Mini App tool call.
  *
  * The state lives on the chat session (`chat-store.ts`), because the decision
  * belongs to the conversation that provoked it. What lives here is the part
@@ -16,7 +16,7 @@
  */
 
 import { useChatStore, type PendingMiniAppApproval } from '@/chats/chat-store'
-import type { MiniAppApprovalOutcome } from './approval-outcome'
+import type { MiniAppApprovalChoice, MiniAppApprovalOutcome } from './approval-outcome'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
 import type { MiniAppDefinition } from './registry'
 
@@ -56,6 +56,10 @@ export type RequestMiniAppApprovalOptions = {
  * The clock starts when the call is made, not when its prompt reaches the
  * screen. A queued call is holding its turn open just as much as the one on
  * screen is.
+ *
+ * A tool the user chose to always approve resolves `approved` without a prompt.
+ * The choice is stored only when it settles the request, so a click that
+ * arrives after the deadline stores nothing.
  */
 export const requestMiniAppApproval = ({
   chatThreadId,
@@ -64,6 +68,11 @@ export const requestMiniAppApproval = ({
   args,
 }: RequestMiniAppApprovalOptions): Promise<MiniAppApprovalOutcome> =>
   new Promise<MiniAppApprovalOutcome>((resolve) => {
+    if (useChatStore.getState().isMiniAppToolAlwaysApproved(app.id, tool)) {
+      resolve('approved')
+      return
+    }
+
     /*
      * Answered exactly once.
      *
@@ -75,19 +84,24 @@ export const requestMiniAppApproval = ({
      */
     let settled = false
 
-    const settle = (outcome: MiniAppApprovalOutcome) => {
+    const settle = (decision: MiniAppApprovalOutcome | MiniAppApprovalChoice) => {
       if (settled) {
         return
       }
       settled = true
       clearTimeout(timer)
       useChatStore.getState().dequeueMiniAppApproval(chatThreadId, pending)
-      resolve(outcome)
+      if (decision === 'approved-always') {
+        useChatStore.getState().approveMiniAppToolAlways(app.id, tool)
+        resolve('approved')
+        return
+      }
+      resolve(decision)
     }
 
     const timer = setTimeout(() => {
       // Logged because it is invisible otherwise: the turn ends, the model says
-      // something vague, and nothing anywhere records that a write was offered
+      // something vague, and nothing anywhere records that a call was offered
       // and never answered.
       console.warn(`[mini-apps] ${app.id}: nobody answered the prompt for ${tool.name} in time; denying`)
       settle('expired')

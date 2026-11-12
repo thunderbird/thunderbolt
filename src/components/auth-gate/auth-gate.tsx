@@ -7,6 +7,8 @@ import { Navigate, Outlet, useLocation } from 'react-router'
 import Loading from '@/loading'
 import { BrowserCheck } from './browser-check'
 import { useAuthGate, type AuthRequirement } from './use-auth-gate'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useConfigStore } from '@/api/config-store'
 
 type AuthGateProps = {
   /** What auth state is required to access child routes */
@@ -37,6 +39,16 @@ type AuthGateProps = {
  * </Route>
  */
 export const AuthGate = ({ require }: AuthGateProps) => {
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
+  const localMode = useLocalSettingsStore((state) => state.localMode)
+  useConfigStore((state) => state.config.authMode)
+  if (!cloudUrl || localMode) {
+    return require === 'unauthenticated' ? <Navigate to="/" replace /> : <Outlet />
+  }
+  return <ConnectedAuthGate require={require} />
+}
+
+const ConnectedAuthGate = ({ require }: AuthGateProps) => {
   const state = useAuthGate(require, useLocation().search)
 
   if (state.status === 'loading') {

@@ -3,12 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AuthClient } from '@/contexts'
+import { useConfigStore } from '@/api/config-store'
 import { createAgent, getAllAgents } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -73,6 +75,29 @@ describe('AgentsSettingsPage — availability', () => {
 
     expect(screen.getByRole('heading', { name: 'Agents' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /new agent/i })).toBeInTheDocument()
+  })
+
+  it('enables New Agent without a cloud session', () => {
+    renderPage(createMockAuthClient())
+
+    const add = screen.getByRole('button', { name: /new agent/i })
+    expect(add).toBeEnabled()
+    fireEvent.click(add)
+    expect(screen.getByRole('heading', { name: 'Add Agent' })).toBeInTheDocument()
+  })
+
+  it('still hides New Agent when the connected deployment forbids custom agents', () => {
+    const previousConfig = useConfigStore.getState().config
+    const previousSettings = useLocalSettingsStore.getState()
+    useLocalSettingsStore.setState({ cloudUrl: 'https://enterprise.example/v1', localMode: false })
+    useConfigStore.setState({ config: { ...previousConfig, allowCustomAgents: false } })
+    try {
+      renderPage(createMockAuthClient({ session: authedSession }))
+      expect(screen.queryByRole('button', { name: /new agent/i })).not.toBeInTheDocument()
+    } finally {
+      useConfigStore.setState({ config: previousConfig })
+      useLocalSettingsStore.setState(previousSettings)
+    }
   })
 
   it('opens the detail panel when a row is clicked and closes it again', () => {
@@ -163,6 +188,26 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
 
     expect((await getAllAgents(getDb())).some((agent) => agent.url === irohTarget)).toBe(true)
     expect(screen.queryByPlaceholderText(/paste an iroh ticket/i)).not.toBeInTheDocument()
+  })
+
+  it('opens the existing removal confirmation from a custom agent context menu', async () => {
+    await createAgent(getDb(), {
+      id: 'menu-agent',
+      name: 'Menu agent',
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://agent.example/acp',
+      description: null,
+      enabled: 1,
+      userId: authedSession.user.id,
+    })
+    renderPage(createMockAuthClient({ session: authedSession }))
+    fireEvent.contextMenu(await waitForElement(() => screen.queryByRole('button', { name: 'Open Menu agent' })))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Remove' })))
+    expect(await waitForElement(() => screen.queryByRole('alertdialog'))).toHaveTextContent('Delete Menu agent?')
+    expect((await getAllAgents(getDb())).some((agent) => agent.id === 'menu-agent')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect((await getAllAgents(getDb())).some((agent) => agent.id === 'menu-agent')).toBe(true)
   })
 
   it('does not enroll when editing an iroh agent', async () => {

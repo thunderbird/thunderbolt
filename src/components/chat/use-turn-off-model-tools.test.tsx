@@ -81,6 +81,7 @@ describe('useTurnOffModelTools', () => {
   it('keeps a model the user picked while the save was running', async () => {
     const savedModel = await setUpChatOnToolsModel()
     const pickedModel = { ...savedModel, id: 'llama-model', model: 'llama3.2:3b' }
+    await createModel(getDb(), pickedModel)
     const db = getDb()
     const runTransaction = db.transaction.bind(db)
     const transactionSpy = spyOn(db, 'transaction').mockImplementation(((

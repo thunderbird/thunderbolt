@@ -18,7 +18,7 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
   await loginViaEmailCode(page)
 
   await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
   await page.keyboard.press('Escape')
   const composer = page.locator('textarea')
   await expect(page.getByRole('button', { name: 'Add a skill', exact: true })).toBeVisible()
@@ -107,7 +107,7 @@ test('a high-rate markdown stream preserves a focused draft and persists the com
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await loginViaEmailCode(page)
   await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await page.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }).click()
   await page.keyboard.press('Escape')
   const composer = page.locator('textarea')
   await composer.fill(performanceStreamPrompt)

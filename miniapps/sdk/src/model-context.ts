@@ -75,10 +75,11 @@ export type ModelContextTool = {
   inputSchema?: Record<string, unknown>
   annotations?: {
     /**
-     * True for deterministic, side-effect-free tools. Read-only tools run
-     * silently; **everything else prompts the user before it runs**, and an
-     * omitted annotation means "prompt". Only your app knows whether a tool
-     * mutates something, which is why this is your call and not the host's.
+     * True for deterministic, side-effect-free tools. WebMCP defines it, so
+     * declare it honestly. Thunderbolt asks the user before every call either
+     * way, because a call sends model-written arguments to your app and they can
+     * hold the user's private data. Only the user can turn the prompt off for a
+     * tool.
      */
     readOnlyHint?: boolean
     /** Friendly label shown in the approval prompt. Defaults to `name`. */

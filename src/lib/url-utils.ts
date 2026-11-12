@@ -38,11 +38,12 @@ export const normalizeBackendUrl = (url: string): string => url.replace(/\/+$/, 
  *
  * `VITE_THUNDERBOLT_CLOUD_URL` is a relative path on same-origin deployments
  * (`/v1`, the frontend image's build-arg default) so one image can serve any
- * hostname. It is also editable at runtime from the dev settings page.
+ * hostname. Standalone installs can select an absolute server URL at runtime.
  * `fetch` and the OpenAI-compatible clients resolve that against the page
  * themselves, but callers that hand the value to an SDK need an absolute one.
- * An already-absolute value passes through, because `new URL` ignores the base
- * when the first argument is absolute.
+ * Absolute values need no base, including in native webviews with an opaque origin.
  */
-export const resolveAbsoluteBackendUrl = (url: string, origin: string = window.location.origin): string =>
-  normalizeBackendUrl(new URL(url, origin).toString())
+export const resolveAbsoluteBackendUrl = (url: string, origin: string = window.location.origin): string => {
+  const resolved = /^https?:\/\//i.test(url) ? new URL(url) : new URL(url, origin)
+  return normalizeBackendUrl(resolved.toString())
+}

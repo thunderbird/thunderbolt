@@ -2,11 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { getClock } from '@/testing-library'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -15,6 +17,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { OnboardingAuthStep } from './onboarding-auth-step'
 
 const mockOnConnectionChange = mock()
+const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
 
 /**
  * Spy component that tracks navigation state changes via useLocation.
@@ -46,6 +49,8 @@ describe('OnboardingAuthStep', () => {
   })
 
   beforeEach(async () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1' })
+    setAuthToken('test-session')
     await setupTestDatabase()
     mockOnConnectionChange.mockClear()
 
@@ -55,6 +60,8 @@ describe('OnboardingAuthStep', () => {
   })
 
   afterEach(async () => {
+    clearAuthToken()
+    useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
     await resetTestDatabase()
     cleanup()
     mockOnConnectionChange.mockClear()
@@ -184,7 +191,7 @@ describe('OnboardingAuthStep', () => {
     it('should show different UI when already connected', () => {
       renderComponent({ isConnected: true })
 
-      const connectButton = screen.getByRole('button', { name: /Connected!/i })
+      const connectButton = screen.getByRole('button', { name: /Disconnect/i })
       expect(connectButton).toBeInTheDocument()
     })
   })

@@ -20,7 +20,9 @@ test('mobile menus use short transitions and restore keyboard focus after dismis
   const drawer = page.locator('[data-slot="drawer-content"]')
   await expect(drawer).toBeVisible()
   expect(await drawer.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe('0.2s')
-  await expect(drawer.getByRole('button', { name: defaultModelOpus55.name, exact: true })).toBeVisible()
+  await expect(
+    drawer.getByRole('button', { name: `${defaultModelOpus55.name} Thunderbolt`, exact: true }),
+  ).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(drawer).toBeHidden()
   await expect(modelTrigger).toBeFocused()

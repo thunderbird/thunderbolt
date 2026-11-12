@@ -36,6 +36,7 @@
  */
 
 import { getErrorName } from '@/lib/error-utils'
+import { http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { trackEvent } from '@/lib/posthog'
 import { withDeadline } from '@/lib/timeout'
@@ -121,10 +122,10 @@ export const verifyTrustedRouterGateway = async (
   const [policy, document] = await Promise.all([
     policyFromTrustRelease({ fetchImpl: trustAnchorFetch }),
     (async () => {
-      const response = await attestationFetch(`${trustedRouterAttestationUrl}?nonce=${nonceHex}`)
-      if (!response.ok) {
-        throw new Error(`Attestation endpoint returned HTTP ${response.status}`)
-      }
+      const response = await http.get(trustedRouterAttestationUrl, {
+        searchParams: { nonce: nonceHex },
+        fetch: attestationFetch,
+      })
       return new Uint8Array(await response.arrayBuffer())
     })(),
   ])

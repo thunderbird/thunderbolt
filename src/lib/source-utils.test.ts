@@ -5,8 +5,21 @@
 import { describe, expect, test } from 'bun:test'
 import { deriveSiteName, sourceToCitation } from './source-utils'
 import type { SourceMetadata } from '@/types/source'
+import { decodeCitationSources } from './citation-utils'
 
 describe('sourceToCitation', () => {
+  test('preserves private media policy through citation serialization', () => {
+    const source: SourceMetadata = {
+      index: 1,
+      url: 'https://example.com',
+      title: 'Example',
+      toolName: 'search',
+      allowRemoteImages: false,
+    }
+    const citation = sourceToCitation(source)
+    expect(citation.allowRemoteImages).toBe(false)
+    expect(decodeCitationSources(JSON.stringify([citation]))?.[0].allowRemoteImages).toBe(false)
+  })
   test('maps SourceMetadata to CitationSource with all fields', () => {
     const source: SourceMetadata = {
       index: 3,

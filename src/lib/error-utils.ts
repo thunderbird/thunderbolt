@@ -14,6 +14,7 @@ const chatErrorKinds = [
   'network',
   'connection-lost',
   'tools-unsupported',
+  'agent-unavailable',
 ] as const
 export type ChatErrorKind = (typeof chatErrorKinds)[number]
 const inferenceQuotaWindowSchema = z.enum(['5h', '7d'])
@@ -130,8 +131,18 @@ export const createChatErrorResponse = (
   })
 
 /**
+ * The error a send or connection gets when its agent was disabled or deleted
+ * after the chat picked it. Serialized like {@link createChatErrorResponse};
+ * the 4xx status keeps the chat from retrying it on its own.
+ */
+export const createAgentUnavailableError = (agentId: string): Error =>
+  new Error(
+    JSON.stringify({ error: `Agent ${agentId} is disabled or deleted`, status: 410, kind: 'agent-unavailable' }),
+  )
+
+/**
  * Classify a raw pipeline error into a stable user-facing chat error kind.
- * Classification uses only normalized error name, HTTP status, and message.
+ * Classification uses normalized error names, SDK categories, HTTP status, and message.
  */
 export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => {
   const { name, status: structuredStatus, message } = getErrorClassificationFields(error)
@@ -142,7 +153,12 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
   if (name === 'TinfoilAttestationTimeoutError' || name === 'TrustedRouterAttestationTimeoutError') {
     return 'timeout'
   }
-  if (name === 'TinfoilAttestationError' || name === 'TrustedRouterAttestationError') {
+  if (
+    name === 'TinfoilAttestationError' ||
+    name === 'TrustedRouterAttestationError' ||
+    name === 'AttestationError' ||
+    (typeof error === 'object' && error !== null && 'category' in error && error.category === 'attestation')
+  ) {
     return 'attestation'
   }
   if (status === 429) {
@@ -160,9 +176,10 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
     return 'provider'
   }
   if (
-    name === 'TypeError' &&
-    normalizedMessage &&
-    networkErrorMarkers.some((marker) => normalizedMessage.includes(marker))
+    (typeof error === 'object' && error !== null && 'category' in error && error.category === 'network') ||
+    (name === 'TypeError' &&
+      normalizedMessage &&
+      networkErrorMarkers.some((marker) => normalizedMessage.includes(marker)))
   ) {
     return 'network'
   }
@@ -300,6 +317,9 @@ const getAgentErrorCode = (error: Error | null | undefined, status: number): str
  * 408s with deterministic 400s.
  */
 export const getErrorRetryable = (error?: Error | null): boolean | undefined => {
+  if (error && 'isRetryable' in error && typeof error.isRetryable === 'boolean') {
+    return error.isRetryable
+  }
   if (!error?.message) {
     return undefined
   }

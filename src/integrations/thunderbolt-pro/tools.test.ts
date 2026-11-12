@@ -12,6 +12,7 @@ import * as api from './api'
 import type { SearchResultData } from './schemas'
 import type { FetchContentParams, SearchParams } from './tools'
 import { createConfigs, fetchContent, search } from './tools'
+import { createTinfoilWebApi } from '@/integrations/tinfoil-search/api'
 
 const createMockHttpClient = (response: unknown): HttpClient => {
   const mockFetch = async (): Promise<Response> => {
@@ -150,6 +151,44 @@ describe('createConfigs source collector', () => {
   let searchSpy: ReturnType<typeof spyOn>
   let fetchContentSpy: ReturnType<typeof spyOn>
 
+  it('keeps the Tinfoil passive-image restriction when sources are collected, reused, and enriched', async () => {
+    const pageUrl = 'https://example.com/private-search'
+    const sources: SourceMetadata[] = [
+      {
+        index: 1,
+        url: pageUrl,
+        title: 'Existing public source',
+        toolName: 'search',
+      },
+    ]
+    const webApi = createTinfoilWebApi(
+      async () => 'unused',
+      async (name) => ({
+        structuredContent:
+          name === 'search'
+            ? {
+                results: [
+                  {
+                    title: 'Private source',
+                    url: pageUrl,
+                    content: 'Search snippet',
+                    favicon: 'https://example.com/icon',
+                  },
+                  { title: 'New source', url: 'https://example.org', content: 'Another snippet' },
+                ],
+              }
+            : { pages: [{ url: pageUrl, content: 'Full page content' }] },
+      }),
+    )
+    const configs = createConfigs(dummyHttpClient, sources, webApi)
+    await configs[0].execute({ query: 'sensitive search' })
+    expect(sources).toHaveLength(2)
+    expect(sources.every((source) => source.allowRemoteImages === false)).toBe(true)
+    await configs[1].execute({ url: pageUrl })
+    expect(sources[0].description).toBe('Full page content')
+    expect(sources[0].allowRemoteImages).toBe(false)
+  })
+
   const mockSearchResults: SearchResultData[] = [
     {
       title: 'Article A',
@@ -240,6 +279,65 @@ describe('createConfigs source collector', () => {
     expect(sourceCollector).toHaveLength(200)
   })
 
+  it('preserves existing citations at the cap and cites excess search results by URL', async () => {
+    const sourceCollector: SourceMetadata[] = Array.from({ length: 200 }, (_, i) => ({
+      index: i + 1,
+      url: `https://existing-${i}.com`,
+      title: `Existing ${i}`,
+      toolName: 'search',
+    }))
+    searchSpy.mockResolvedValue([
+      { ...mockSearchResults[0], pageUrl: sourceCollector[7].url },
+      { ...mockSearchResults[1], sourceIndex: 999 },
+    ])
+    const configs = createConfigs(dummyHttpClient, sourceCollector)
+    const result = await getSearchTool(configs).execute({ query: 'test', max_results: 2 })
+    expect(result[0]).toMatchObject({ sourceIndex: 8, sourceLabel: '[Source 8] (cite as [8])' })
+    expect(result[1].sourceIndex).toBeUndefined()
+    expect(result[1]).toMatchObject({
+      pageUrl: mockSearchResults[1].pageUrl,
+      sourceLabel: 'Cite this source using its URL.',
+    })
+    expect(sourceCollector).toHaveLength(200)
+  })
+
+  it('preserves existing citations at the cap and cites excess fetched pages by URL', async () => {
+    const sourceCollector: SourceMetadata[] = Array.from({ length: 200 }, (_, i) => ({
+      index: i + 1,
+      url: `https://existing-${i}.com`,
+      title: `Existing ${i}`,
+      toolName: 'search',
+    }))
+    const page = { title: 'Authoritative title', text: 'Evidence', favicon: null, image: null, author: null }
+    fetchContentSpy.mockResolvedValueOnce({ ...page, url: sourceCollector[7].url })
+    fetchContentSpy.mockResolvedValueOnce({ ...page, url: 'https://new-page.com', sourceIndex: 999 })
+    const configs = createConfigs(dummyHttpClient, sourceCollector)
+    expect(await getFetchTool(configs).execute({ url: sourceCollector[7].url })).toMatchObject({
+      sourceIndex: 8,
+      sourceLabel: '[Source 8] (cite as [8])',
+    })
+    expect(sourceCollector[7].title).toBe('Authoritative title')
+    const overflow = await getFetchTool(configs).execute({ url: 'https://new-page.com' })
+    expect(overflow.sourceIndex).toBeUndefined()
+    expect(overflow).toMatchObject({
+      url: 'https://new-page.com',
+      text: 'Evidence',
+      sourceLabel: 'Cite this source using its URL.',
+    })
+    expect(sourceCollector).toHaveLength(200)
+  })
+
+  it('allocates from the live collector when tool configs share one logical turn', async () => {
+    const sources: SourceMetadata[] = []
+    const first = createConfigs(dummyHttpClient, sources)
+    const second = createConfigs(dummyHttpClient, sources)
+    searchSpy.mockResolvedValueOnce([mockSearchResults[0]])
+    searchSpy.mockResolvedValueOnce([mockSearchResults[1]])
+    await getSearchTool(first).execute({ query: 'first', max_results: 1 })
+    expect(await getSearchTool(second).execute({ query: 'second', max_results: 1 })).toMatchObject([{ sourceIndex: 2 }])
+    expect(sources.map(({ index }) => index)).toEqual([1, 2])
+  })
+
   it('fetch_content creates new source entry', async () => {
     fetchContentSpy.mockResolvedValue({
       url: 'https://example.com/page',
@@ -323,6 +421,30 @@ describe('createConfigs source collector', () => {
     expect(result).toHaveLength(2)
     expect(result[0].sourceIndex).toBe(1)
     expect(result[1].sourceIndex).toBe(2)
+  })
+
+  it('keeps our citation indices authoritative when an upstream includes its own indices', async () => {
+    searchSpy.mockResolvedValue([{ ...mockSearchResults[0], sourceIndex: 99 }])
+    fetchContentSpy.mockResolvedValue({
+      url: mockSearchResults[0].pageUrl,
+      title: 'Page',
+      text: 'Evidence',
+      favicon: null,
+      image: null,
+      author: null,
+      sourceIndex: 77,
+    })
+    const sources: SourceMetadata[] = []
+    const configs = createConfigs(dummyHttpClient, sources)
+    expect(await getSearchTool(configs).execute({ query: 'test', max_results: 1 })).toMatchObject([
+      { sourceIndex: 1, sourceLabel: '[Source 1] (cite as [1])' },
+    ])
+    expect(await getFetchTool(configs).execute({ url: mockSearchResults[0].pageUrl })).toMatchObject({
+      sourceIndex: 1,
+      sourceLabel: '[Source 1] (cite as [1])',
+    })
+    expect(sources).toHaveLength(1)
+    expect(sources[0].index).toBe(1)
   })
 })
 

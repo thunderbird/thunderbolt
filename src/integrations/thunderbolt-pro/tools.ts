@@ -22,127 +22,132 @@ export type { FetchContentParams, SearchParams, SearchResultData }
 
 const sourceRegistryCap = 200
 
+/** Only registered sources get numeric citations; overflow evidence remains citable by its URL. */
+const withSourceReference = <T extends { sourceIndex?: number }>(result: T, source?: SourceMetadata) => ({
+  ...result,
+  sourceIndex: source?.index,
+  sourceLabel: source ? `[Source ${source.index}] (cite as [${source.index}])` : 'Cite this source using its URL.',
+})
+
+export type WebToolApi = {
+  /** Private providers must not trigger direct requests to result websites merely by rendering a citation. */
+  allowRemoteImages?: boolean
+  search: typeof search
+  fetchContent?: typeof fetchContent
+  fetchLinkPreview?: typeof fetchLinkPreview
+}
+
 /**
  * Thunderbolt Pro Tools Configuration Factory
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
  * @param sourceCollector - Optional shared array to accumulate source metadata during tool execution
  */
-export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMetadata[]): ToolConfig[] => {
-  let nextIndex = (sourceCollector?.length ?? 0) + 1
+export const createConfigs = (
+  httpClient: HttpClient,
+  sourceCollector?: SourceMetadata[],
+  api: WebToolApi = { search, fetchContent, fetchLinkPreview },
+): ToolConfig[] => {
+  const sources = sourceCollector ?? []
 
-  return [
+  /** Deduplicates against the live collector, including when tool configs share a logical turn. */
+  const collectSource = (source: Omit<SourceMetadata, 'index'>): SourceMetadata | undefined => {
+    const existing = sources.find(({ url }) => url === source.url)
+    if (existing) {
+      if (api.allowRemoteImages === false) {
+        existing.allowRemoteImages = false
+      }
+      return existing
+    }
+    if (sources.length >= sourceRegistryCap) {
+      return undefined
+    }
+    const registered = {
+      ...source,
+      index: sources.length + 1,
+      ...(api.allowRemoteImages === false && { allowRemoteImages: false }),
+    }
+    sources.push(registered)
+    return registered
+  }
+
+  const configs: ToolConfig[] = [
     {
       name: 'search',
-      description: 'Search the web. Each result has a [Source N] label. Cite with [N] at end of sentence.',
+      description: 'Search the web. Cite numbered results with [N] at end of sentence; otherwise cite the result URL.',
       verb: 'searching for {query}',
       cacheable: true,
       parameters: searchSchema,
       execute: async (params: SearchParams) => {
-        const results = await search(params, httpClient)
+        const results = await api.search(params, httpClient)
 
         return results.map((result) => {
-          const existingSource = sourceCollector?.find((s) => s.url === result.pageUrl)
-          const sourceIndex = existingSource ? existingSource.index : nextIndex
-
-          if (!existingSource && sourceCollector && sourceCollector.length < sourceRegistryCap) {
-            sourceCollector.push({
-              index: sourceIndex,
-              url: result.pageUrl,
-              title: result.title,
-              description: result.snippet,
-              image: result.previewImageUrl,
-              favicon: result.faviconUrl,
-              siteName: deriveSiteName(result.pageUrl),
-              author: null,
-              publishedDate: result.publishedDate ?? null,
-              toolName: 'search',
-            })
-            nextIndex++
-          } else if (!existingSource) {
-            if (sourceCollector && sourceCollector.length >= sourceRegistryCap) {
-              console.warn(
-                `Source registry cap (${sourceRegistryCap}) reached — dropping source [${sourceIndex}]: ${result.pageUrl}`,
-              )
-            }
-            nextIndex++
-          }
-
-          return { sourceLabel: `[Source ${sourceIndex}] (cite as [${sourceIndex}])`, sourceIndex, ...result }
+          const source = collectSource({
+            url: result.pageUrl,
+            title: result.title,
+            description: result.snippet,
+            image: result.previewImageUrl,
+            favicon: result.faviconUrl,
+            siteName: deriveSiteName(result.pageUrl),
+            author: null,
+            publishedDate: result.publishedDate ?? null,
+            toolName: 'search',
+          })
+          return withSourceReference(result, source)
         })
       },
     },
-    {
-      name: 'fetch_content',
-      description:
-        'Fetch and parse content from a PUBLIC webpage URL. Result has a [Source N] label. Cite with [N] at end of sentence. Do NOT use for Google Drive, Docs, Sheets, or Slides links. Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
-      verb: 'fetching {url}',
-      cacheable: true,
-      parameters: fetchContentSchema,
-      execute: async (params: FetchContentParams) => {
-        // Fetch content and link preview in parallel — link preview gives us og:site_name
-        const [result, preview] = await Promise.all([
-          fetchContent(params, httpClient),
-          fetchLinkPreview({ url: params.url }, httpClient).catch(() => null),
-        ])
-
-        if (!result) {
-          return result
-        }
-
-        const ogSiteName = preview?.siteName
-        const existingSource = sourceCollector?.find((s) => s.url === result.url)
-        const sourceIndex = existingSource ? existingSource.index : nextIndex
-
-        if (!existingSource && sourceCollector && sourceCollector.length < sourceRegistryCap) {
-          sourceCollector.push({
-            index: sourceIndex,
-            url: result.url,
-            title: result.title ?? result.url,
-            description: result.text?.slice(0, 200),
-            image: preview?.previewImageUrl ?? result.image,
-            favicon: result.favicon,
-            siteName: ogSiteName || deriveSiteName(result.url),
-            author: result.author,
-            publishedDate: result.publishedDate,
-            toolName: 'fetch_content',
-          })
-          nextIndex++
-        } else if (existingSource) {
-          // fetch_content has the authoritative page title — update the existing entry
-          if (result.title) {
-            existingSource.title = result.title
-          }
-          if (result.text) {
-            existingSource.description = result.text.slice(0, 200)
-          }
-          if (preview?.previewImageUrl ?? result.image) {
-            existingSource.image = preview?.previewImageUrl ?? result.image
-          }
-          if (result.favicon) {
-            existingSource.favicon = result.favicon
-          }
-          if (ogSiteName) {
-            existingSource.siteName = ogSiteName
-          }
-          if (result.author) {
-            existingSource.author = result.author
-          }
-          if (result.publishedDate) {
-            existingSource.publishedDate = result.publishedDate
-          }
-        } else {
-          if (sourceCollector && sourceCollector.length >= sourceRegistryCap) {
-            console.warn(
-              `Source registry cap (${sourceRegistryCap}) reached — dropping source [${sourceIndex}]: ${result.url}`,
-            )
-          }
-          nextIndex++
-        }
-
-        return { sourceLabel: `[Source ${sourceIndex}] (cite as [${sourceIndex}])`, sourceIndex, ...result }
-      },
-    },
   ]
+  const fetchPage = api.fetchContent
+  if (!fetchPage) {
+    return configs
+  }
+  configs.push({
+    name: 'fetch_content',
+    description:
+      'Fetch and parse content from a PUBLIC webpage URL. Cite numbered results with [N] at end of sentence; otherwise cite the result URL. Do NOT use for Google Drive, Docs, Sheets, or Slides links. Do NOT use for OneDrive or SharePoint links (use microsoft_get_onedrive_file_content instead).',
+    verb: 'fetching {url}',
+    cacheable: true,
+    parameters: fetchContentSchema,
+    execute: async (params: FetchContentParams) => {
+      // Fetch content and link preview in parallel — link preview gives us og:site_name
+      const [result, preview] = await Promise.all([
+        fetchPage(params, httpClient),
+        api.fetchLinkPreview?.({ url: params.url }, httpClient).catch(() => null) ?? Promise.resolve(null),
+      ])
+
+      if (!result) {
+        return result
+      }
+
+      const ogSiteName = preview?.siteName
+      const source = collectSource({
+        url: result.url,
+        title: result.title ?? result.url,
+        description: result.text?.slice(0, 200),
+        image: preview?.previewImageUrl ?? result.image,
+        favicon: result.favicon,
+        siteName: ogSiteName || deriveSiteName(result.url),
+        author: result.author,
+        publishedDate: result.publishedDate,
+        toolName: 'fetch_content',
+      })
+      if (source) {
+        // fetch_content has the authoritative page title — update the existing entry
+        Object.assign(source, {
+          title: result.title || source.title,
+          description: result.text?.slice(0, 200) || source.description,
+          image: (preview?.previewImageUrl ?? result.image) || source.image,
+          favicon: result.favicon || source.favicon,
+          siteName: ogSiteName || source.siteName,
+          author: result.author || source.author,
+          publishedDate: result.publishedDate || source.publishedDate,
+        })
+      }
+
+      return withSourceReference(result, source)
+    },
+  })
+  return configs
 }
 
 /**

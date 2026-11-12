@@ -45,7 +45,7 @@ import { withChatThreadWrite } from './chat-thread-write'
 import { createChatInstance } from './chat-instance'
 import { resolveSessionAgent } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
-import { prewarmSystemModel } from '@/ai/prewarm-system-model'
+import { prewarmTinfoilModel } from '@/ai/prewarm-tinfoil-model'
 import { waitForSyncCatchUp as defaultWaitForSyncCatchUp } from '@/db/powersync/sync-state'
 
 type UseHydrateChatStoreParams = {
@@ -117,15 +117,15 @@ const getSyncedTail = (session: ChatSession, saved: ChatMessage[]): ThunderboltU
 }
 
 /**
- * Warm the Tinfoil system enclave off the critical path so the first send skips
+ * Warm the selected Tinfoil enclave off the critical path so the first send skips
  * the attestation handshake. Built-in agent only — ACP agents route over the
  * wire and never touch the local model pipeline, so it's a no-op for them (and
- * {@link prewarmSystemModel} further no-ops unless `model` is a Tinfoil *system*
- * model). Fire-and-forget.
+ * {@link prewarmTinfoilModel} further no-ops for other providers and unavailable
+ * managed models). Fire-and-forget.
  */
 const maybePrewarmBuiltInAgent = (agent: Agent, model: Model) => {
   if (agent.type === 'built-in') {
-    void prewarmSystemModel(model)
+    void prewarmTinfoilModel(model)
   }
 }
 
@@ -250,12 +250,18 @@ export const useHydrateChatStore = ({
     })
   }
 
-  const hydrateChatStore = async () => {
+  const hydrateChatStore = async (signal?: AbortSignal) => {
+    if (signal?.aborted) {
+      return
+    }
     const { createSession, sessions, setCurrentSessionId, setGetMcpClients, setReconnectClient, setModels } =
       useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
     const isDeleted = !isNew && (await isChatThreadDeleted(db, id))
+    if (signal?.aborted) {
+      return
+    }
     if (isDeleted) {
       navigate('/not-found', { replace: true })
       return
@@ -263,10 +269,12 @@ export const useHydrateChatStore = ({
 
     // If the session already exists, set the current session id and update the mcp clients and models
     if (sessions.has(id)) {
-      setCurrentSessionId(id)
-
       const models = await getAvailableModels(db)
+      if (signal?.aborted) {
+        return
+      }
 
+      setCurrentSessionId(id)
       // Store the provider's getter (not a snapshot) so each send reads the
       // current connected clients, including any swapped in by a reconnect.
       setGetMcpClients(getEnabledClients)
@@ -298,6 +306,9 @@ export const useHydrateChatStore = ({
         getAllAgents(db),
         getAllSystemAgents(db),
       ])
+    if (signal?.aborted) {
+      return
+    }
 
     // Built-in is implicit (lives in code); the DB rows are only customs + system.
     // Respect the deployment's `disableBuiltInAgent` flag so the resolved agent

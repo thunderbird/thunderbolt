@@ -10,8 +10,9 @@
  * briefly disagree about whether an app exists, which surfaces as a Not Found
  * flashing over a page that is about to work.
  *
- * Ungated: `GET /mini-apps` is unauthenticated and carries no secret, so every
- * session resolves to the same two terminal states — apps, or none. There is no
+ * `GET /mini-apps` is unauthenticated and carries no secret. With a configured
+ * server, every session resolves to apps or none; standalone resolves to none
+ * immediately without issuing a request. There is no
  * third "you may not ask" state to model, which is what used to leave
  * `/apps/:id` on `loading` forever for anonymous and signed-out callers.
  *
@@ -25,6 +26,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { useHttpClient } from '@/contexts'
 import type { HttpClient } from '@/lib/http'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { parseMiniAppRegistry, type MiniAppDefinition } from './registry'
 
 export type MiniAppsState = {
@@ -54,17 +56,16 @@ export type MiniAppsState = {
 export const registryTimeoutMs = 10_000
 
 const emptyState: MiniAppsState = { apps: [], loading: true, failed: false }
+const standaloneState: MiniAppsState = { apps: [], loading: false, failed: false }
 
 let state: MiniAppsState = emptyState
 let inFlight: Promise<void> | null = null
+let registryCloudUrl: string | null = null
 /**
  * Which era of the store a load belongs to.
  *
- * Only {@link resetMiniAppsForTesting} advances it, and only tests call that —
- * but without it a load started by one test file could still be in flight when
- * the next file resets the store, and its `setState` would land afterwards.
- * That made two tests here fail roughly one randomized run in four, which is
- * exactly the kind of flake nobody can reproduce on demand.
+ * A server change or test reset advances it so an old response cannot populate
+ * the new server's registry.
  */
 let generation = 0
 const listeners = new Set<() => void>()
@@ -87,7 +88,16 @@ const subscribe = (listener: () => void) => {
  * transient 502 at startup left the tab with no apps for the rest of its life,
  * and no way to recover short of a reload.
  */
-const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
+const loadMiniApps = (httpClient: HttpClient, cloudUrl: string): Promise<void> => {
+  if (registryCloudUrl !== cloudUrl) {
+    generation += 1
+    registryCloudUrl = cloudUrl
+    inFlight = null
+    setState(cloudUrl ? emptyState : standaloneState)
+  }
+  if (!cloudUrl) {
+    return Promise.resolve()
+  }
   const era = generation
   inFlight ??= (async () => {
     try {
@@ -108,13 +118,13 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
       }
       setState({ apps: registry.apps, loading: false, failed: false })
     } catch (error) {
+      if (era !== generation) {
+        return
+      }
       // Logged rather than swallowed: an empty sidebar is otherwise
       // indistinguishable from a deployment that configures no apps, and the
       // person debugging that has nothing to go on.
       console.error('[mini-apps] Could not load the registry', error)
-      if (era !== generation) {
-        return
-      }
       setState({ apps: [], loading: false, failed: true })
       // Cleared so the next mount retries, rather than the session being stuck.
       inFlight = null
@@ -134,17 +144,24 @@ export const resetMiniAppsForTesting = () => {
   generation += 1
   state = emptyState
   inFlight = null
+  registryCloudUrl = null
   listeners.clear()
 }
 
 export const useMiniApps = (): MiniAppsState => {
   const httpClient = useHttpClient()
-  const snapshot = useSyncExternalStore(subscribe, () => state)
+  const cloudUrl = useLocalSettingsStore((local) => local.cloudUrl)
+  const snapshot = useSyncExternalStore(subscribe, () => {
+    if (!cloudUrl) {
+      return standaloneState
+    }
+    return registryCloudUrl === cloudUrl ? state : emptyState
+  })
 
   // Fetching an external resource on mount — the one thing effects are for.
   useEffect(() => {
-    void loadMiniApps(httpClient)
-  }, [httpClient])
+    void loadMiniApps(httpClient, cloudUrl)
+  }, [httpClient, cloudUrl])
 
   return snapshot
 }

@@ -42,6 +42,10 @@ The four probes stay off until a monitoring token is set.
 MONITORING_TOKEN=$(openssl rand -hex 32)
 ```
 
+The backend refuses to start if `MONITORING_TOKEN` is set to fewer than 32 characters (`MONITORING_TOKEN must be at least 32 characters when set`). Leaving it empty disables deep probes.
+
+Before upgrading, replace any shorter token, including a securely generated one. Generate a new token with `openssl rand -hex 32`, update the backend and monitors that send it, then restart the backend. Existing tokens of 32 or more characters continue to work.
+
 Call them with a bearer token:
 
 ```bash

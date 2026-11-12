@@ -16,7 +16,7 @@ const directModel = defaultModels.find(({ provider }) => provider === 'thunderbo
 const directWireModel = resolveManagedDirectRuntime(directModel)!.internalName
 
 const settings = createTestSettings({
-  monitoringToken: 'test-monitoring-token',
+  monitoringToken: 'test-monitoring-token-012345678901',
   powersyncUrl: 'https://sync.example.com',
   resendMonitoringApiKey: 'test-resend-monitoring-key',
   anthropicApiKey: 'anthropic-test-key',
@@ -45,7 +45,7 @@ describe('deep health', () => {
       ['', headers, 403, 'Monitoring token not configured'],
       [settings.monitoringToken, {}, 401, 'Unauthorized'],
       [settings.monitoringToken, { Authorization: 'Bearer invalid' }, 401, 'Unauthorized'],
-      [settings.monitoringToken, { Authorization: 'Bearer test-monitoring-tokex' }, 401, 'Unauthorized'],
+      [settings.monitoringToken, { Authorization: 'Bearer test-monitoring-token-012345678902' }, 401, 'Unauthorized'],
     ] as const)(
       `${route} rejects unauthorized callers before doing work (%s)`,
       async (token, authHeaders, status, error) => {

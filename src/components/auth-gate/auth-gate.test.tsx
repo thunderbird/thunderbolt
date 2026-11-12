@@ -6,11 +6,16 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { MemoryRouter, Route, Router, Routes, useLocation } from 'react-router'
 import { AuthGate } from './auth-gate'
 
 const env = import.meta.env as Record<string, string | undefined>
+const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+
+beforeEach(() => useLocalSettingsStore.setState({ cloudUrl: 'https://test-api.local/v1' }))
+afterEach(() => useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl }))
 
 const LocationProbe = () => {
   const { pathname, search } = useLocation()
@@ -49,6 +54,19 @@ describe('AuthGate in SSO mode with no session', () => {
     renderGateAt('/')
 
     expect(screen.getByText('/sso-redirect')).toBeInTheDocument()
+  })
+
+  it('opens local routes without a server and never signs in anonymously', () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    env.VITE_AUTH_MODE = 'sso'
+    renderGateAt('/')
+    expect(screen.getByText('/')).toBeInTheDocument()
+  })
+
+  it('keeps local routes open after an optional server connection, before sign-in', () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'https://chosen.example/v1', localMode: true })
+    renderGateAt('/')
+    expect(screen.getByText('/')).toBeInTheDocument()
   })
 
   it('keeps a spinner visible until the auth redirect commits', () => {

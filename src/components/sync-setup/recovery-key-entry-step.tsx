@@ -5,8 +5,9 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { type KeyboardEvent } from 'react'
 
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ShieldAlert } from 'lucide-react'
 
 type RecoveryKeyEntryStepProps = {
   value: string
@@ -14,9 +15,18 @@ type RecoveryKeyEntryStepProps = {
   onChange: (value: string) => void
   onSubmit: () => void
   isLoading?: boolean
+  /** The account's phrase predates the continuity seal: say so before the user recovers. */
+  legacyPhraseWarning?: boolean
 }
 
-export const RecoveryKeyEntryStep = ({ value, error, onChange, onSubmit, isLoading }: RecoveryKeyEntryStepProps) => {
+export const RecoveryKeyEntryStep = ({
+  value,
+  error,
+  onChange,
+  onSubmit,
+  isLoading,
+  legacyPhraseWarning,
+}: RecoveryKeyEntryStepProps) => {
   const { t } = useLingui()
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && e.metaKey && !isLoading) {
@@ -38,6 +48,17 @@ export const RecoveryKeyEntryStep = ({ value, error, onChange, onSubmit, isLoadi
       </div>
 
       <div className="pt-5 space-y-4">
+        {legacyPhraseWarning && (
+          <Alert>
+            <ShieldAlert aria-hidden />
+            <AlertDescription>
+              <Trans>
+                This recovery phrase was created before a security update, so Thunderbolt can't confirm that the
+                encryption keys it unlocks are yours. Continue only if you have no approved device left.
+              </Trans>
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="flex flex-col gap-2">
           <textarea
             value={value}

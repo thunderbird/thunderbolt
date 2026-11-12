@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   type ChatErrorKind,
   classifyErrorKind,
+  createAgentUnavailableError,
   createHandleError,
   getChatErrorKind,
   getErrorName,
@@ -23,6 +24,24 @@ import type { HandleErrorCode } from '@/types/handle-errors'
 
 describe('classifyErrorKind', () => {
   const cases: { label: string; error: unknown; expected: ChatErrorKind }[] = [
+    {
+      label: 'SDK v2 trust rejection during key rotation',
+      error: Object.assign(new Error('attestation error: rotated key rejected'), {
+        name: 'AttestationError',
+        category: 'attestation',
+      }),
+      expected: 'attestation',
+    },
+    {
+      label: 'SDK trust category without a vendor-specific error name',
+      error: { message: 'rejected trust policy', category: 'attestation' },
+      expected: 'attestation',
+    },
+    {
+      label: 'SDK network failure while fetching verification material',
+      error: { name: 'NetworkError', message: 'network error: could not reach enclave', category: 'network' },
+      expected: 'network',
+    },
     {
       label: 'wrapped Tinfoil attestation fetch failures',
       error: Object.assign(new Error('Tinfoil attestation failed: TypeError: Failed to fetch'), {
@@ -107,6 +126,10 @@ describe('classifyErrorKind', () => {
   it('returns undefined for unknown errors', () => {
     expect(classifyErrorKind(new Error('Unknown failure'))).toBeUndefined()
     expect(classifyErrorKind(null)).toBeUndefined()
+    expect(
+      classifyErrorKind({ name: 'ConfigurationError', message: 'invalid baseURL', category: 'configuration' }),
+    ).toBeUndefined()
+    expect(classifyErrorKind(new DOMException('cancelled', 'AbortError'))).toBeUndefined()
   })
 })
 
@@ -115,6 +138,13 @@ describe('getChatErrorKind', () => {
     const error = new Error(JSON.stringify({ error: 'Bad Gateway', status: 502, kind: 'timeout' }))
 
     expect(getChatErrorKind(error)).toBe('timeout')
+  })
+
+  it('marks a send to a disabled or deleted agent as its own kind that is not retried', () => {
+    const error = createAgentUnavailableError('agent-1')
+
+    expect(getChatErrorKind(error)).toBe('agent-unavailable')
+    expect(getErrorRetryable(error)).toBe(false)
   })
 
   it('preserves a serialized ACP connection-lost kind', () => {
@@ -558,6 +588,12 @@ describe('isContentRejectionError', () => {
 })
 
 describe('getErrorRetryable', () => {
+  it('preserves an in-process deterministic failure verdict', () => {
+    expect(getErrorRetryable(Object.assign(new Error('Model is no longer enabled'), { isRetryable: false }))).toBe(
+      false,
+    )
+  })
+
   it('reads the SDK isRetryable verdict from the serialized envelope', () => {
     expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 400, isRetryable: false })))).toBe(false)
     expect(getErrorRetryable(new Error(JSON.stringify({ error: 'x', status: 408, isRetryable: true })))).toBe(true)

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { I18n } from '@lingui/core'
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import {
@@ -167,7 +168,7 @@ export const syncStatusText = (
 
 export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { i18n, t } = useLingui()
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   const configLoaded = useConfigStore(selectConfigSettled)
   const formatters = useFormatters()
   const authClient = useAuth()
@@ -411,6 +412,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
         open={menuOpen}
         onOpenChange={handleMenuOpenChange}
         title={t`Account menu`}
+        mobileMenu={{ forceBackdrop: true }}
         desktopMenu={{
           side: 'top',
           sideOffset: 5,

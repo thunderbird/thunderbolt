@@ -166,6 +166,26 @@ describe('ChatModelPicker', () => {
     expect(container.firstChild).toBeNull()
   })
 
+  it('follows the live available-model list when a provider is hidden', () => {
+    const otari = createMockModel({
+      id: 'otari-model',
+      name: 'Otari model',
+      provider: 'otari',
+      url: 'https://otari.example/api/v1',
+    })
+    setupWithAgent(builtInAgent, [otari, gpt4])
+    render(<ChatModelPicker embedded />, { wrapper: TestWrapper })
+    expect(screen.getByText('Otari model')).toBeInTheDocument()
+
+    act(() => useChatStore.getState().setModels([gpt4]))
+    expect(screen.queryByText('Otari model')).toBeNull()
+    expect(screen.getByText('GPT-4')).toBeInTheDocument()
+    expect(useChatStore.getState().sessions.get('thread-1')?.selectedModel.id).toBe(gpt4.id)
+
+    act(() => useChatStore.getState().setModels([]))
+    expect(screen.queryByText('GPT-4')).toBeNull()
+  })
+
   it('changes the selected model in the store on click', async () => {
     setupWithAgent(builtInAgent)
 

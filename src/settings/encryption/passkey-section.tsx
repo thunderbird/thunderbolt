@@ -29,14 +29,14 @@ export const PasskeySection = () => {
   return (
     <>
       {row.kind === 'passkey' && <PasskeyRow passkey={row.passkey} />}
-      {row.kind === 'add' && <AddPasskeyRow onAdd={openAddDialog} />}
+      {row.kind === 'add' && <AddPasskeyRow onAdd={openAddDialog} blocked={row.blocked} />}
       {/* Outside the rows: enrolling swaps or hides them, and must keep its dialog. */}
       <AddPasskeyDialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen} unlocksSync={unlocksSync} />
     </>
   )
 }
 
-const AddPasskeyRow = ({ onAdd }: { onAdd: () => void }) => (
+const AddPasskeyRow = ({ onAdd, blocked }: { onAdd: () => void; blocked: boolean }) => (
   <>
     <div className="h-px bg-border -mx-6" />
 
@@ -48,8 +48,21 @@ const AddPasskeyRow = ({ onAdd }: { onAdd: () => void }) => (
         <p className="text-sm text-muted-foreground">
           <Trans>Sign in with your fingerprint, face, or device PIN.</Trans>
         </p>
+        {blocked && (
+          <p id="add-passkey-blocked" className="text-sm text-muted-foreground">
+            <Trans>
+              This device can't add or update a passkey because its encryption keys couldn't be verified. Do it from a
+              device that was trusted before.
+            </Trans>
+          </p>
+        )}
       </div>
-      <Button variant="secondary" onClick={onAdd}>
+      <Button
+        variant="secondary"
+        onClick={onAdd}
+        disabled={blocked}
+        aria-describedby={blocked ? 'add-passkey-blocked' : undefined}
+      >
         <Trans>Add</Trans>
       </Button>
     </div>

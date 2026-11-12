@@ -15,6 +15,7 @@ import {
   getDevicePublicKeys,
   getEncryptionServerSnapshot,
   sql,
+  waitForApprovalSession,
   waitForConsumedChallenge,
   waitForDeviceState,
   waitForEncryptedSetting,
@@ -25,6 +26,7 @@ import { expect, test } from './fixtures'
 import {
   completeFirstDeviceSetup,
   approvePendingDevice,
+  approvePendingDeviceWithFingerprint,
   createE2eeEmail,
   createIsolatedDevice,
   createTask,
@@ -33,6 +35,7 @@ import {
   getDeviceId,
   getEncryptionKeyNames,
   loginViaConsumerOtp,
+  openPendingApproval,
   startAdditionalDeviceSetup,
   waitForTasksPreference,
 } from './helpers'
@@ -116,9 +119,11 @@ test.describe('PowerSync E2EE multi-device enrollment', () => {
           releases.push(request.url())
         }
       })
-      await approvePendingDevice(page, device.page)
-      const confirmation = page.getByRole('alertdialog')
-      await expect(confirmation.getByRole('alert')).toBeVisible()
+      // The pending device committed over its REAL keys, so the substituted tuple cannot open the
+      // commitment: the trusted device fails before it ever offers a code.
+      const confirmation = await openPendingApproval(page, device.page)
+      await expect(confirmation.getByText("The codes didn't match", { exact: true })).toBeVisible({ timeout: 30_000 })
+      await expect(confirmation.getByRole('group', { name: 'Codes to choose from' })).toHaveCount(0)
       const snapshot = await getEncryptionServerSnapshot(userId)
       expect(snapshot.envelopes[deviceId]).toBeUndefined()
       expect(releases).toEqual([])
@@ -131,6 +136,10 @@ test.describe('PowerSync E2EE multi-device enrollment', () => {
       await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click()
       await sql`UPDATE powersync.devices SET public_key = ${original.ecdh}, mlkem_public_key = ${original.mlkem}, name = 'Restored owned device' WHERE id = ${deviceId} AND user_id = ${userId}`
       await expect(page.getByText('Restored owned device', { exact: true })).toBeVisible()
+      // The first attempt is spent; a new one needs a fresh code on the pending device.
+      const spent = await waitForApprovalSession(deviceId)
+      await device.page.getByRole('button', { name: 'New code' }).click()
+      await waitForApprovalSession(deviceId, (row) => row.sessionId !== spent.sessionId)
       await approvePendingDevice(page, device.page)
       await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(device.page)
@@ -169,6 +178,66 @@ test.describe('PowerSync E2EE multi-device enrollment', () => {
       await expect(device.page.getByText('Request denied', { exact: true })).toBeVisible({ timeout: 30_000 })
     } finally {
       await device.context.close()
+    }
+  })
+
+  test('approves with the full fingerprint when the user picks it over the code', async ({ browser, page }) => {
+    const email = createE2eeEmail()
+    await loginViaConsumerOtp(page, email)
+    const userId = await waitForUserId(email)
+    await completeFirstDeviceSetup(page)
+
+    const device = await createIsolatedDevice(browser, 'safari')
+    try {
+      await loginViaConsumerOtp(device.page, email)
+      await startAdditionalDeviceSetup(device.page)
+      const deviceId = await getDeviceId(device.page)
+      await waitForDeviceState(userId, deviceId, (state) => state.approvalPending && !state.trusted)
+
+      await approvePendingDeviceWithFingerprint(page, device.page)
+      await waitForConsumedChallenge(userId, 'approve')
+      await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
+      await finishAdditionalDeviceSetup(device.page)
+    } finally {
+      await device.context.close()
+    }
+  })
+
+  test('denies the device being approved, even after a newer one asks', async ({ browser, page }) => {
+    const email = createE2eeEmail()
+    await loginViaConsumerOtp(page, email)
+    const userId = await waitForUserId(email)
+    await completeFirstDeviceSetup(page)
+
+    const device = await createIsolatedDevice(browser, 'windows')
+    const newer = await createIsolatedDevice(browser, 'firefox')
+    try {
+      await loginViaConsumerOtp(device.page, email)
+      await startAdditionalDeviceSetup(device.page)
+      const deviceId = await getDeviceId(device.page)
+      await waitForDeviceState(userId, deviceId, (state) => state.approvalPending)
+
+      const approval = await openPendingApproval(page, device.page)
+      await approval.getByRole('group', { name: 'Codes to choose from' }).waitFor({ timeout: 30_000 })
+      // A second device asks while the first is being approved, so it is now the newest pending one.
+      await loginViaConsumerOtp(newer.page, email)
+      await startAdditionalDeviceSetup(newer.page)
+      const newerId = await getDeviceId(newer.page)
+      await waitForDeviceState(userId, newerId, (state) => state.approvalPending)
+
+      await approval.getByRole('button', { name: 'None of these match' }).click()
+      await approval.getByRole('button', { name: 'Deny device' }).click()
+      const confirmation = page.getByRole('alertdialog')
+      await expect(confirmation.getByText('Deny this device?')).toBeVisible()
+      await confirmation.getByRole('button', { name: 'Deny' }).click()
+
+      await waitForConsumedChallenge(userId, 'deny')
+      await waitForDeviceState(userId, deviceId, (state) => !state.trusted && !state.approvalPending)
+      await expect(device.page.getByText('Request denied', { exact: true })).toBeVisible({ timeout: 30_000 })
+      await waitForDeviceState(userId, newerId, (state) => state.approvalPending && !state.trusted)
+    } finally {
+      await device.context.close()
+      await newer.context.close()
     }
   })
 

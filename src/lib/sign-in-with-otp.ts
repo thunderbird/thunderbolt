@@ -5,6 +5,7 @@
 import type { AuthClient } from '@/contexts'
 import { authRequestHeaders } from '@/contexts/auth-context'
 import { challengeTokenHeader } from '@/lib/constants'
+import { bindSignedInAccount } from '@/lib/local-data-owner'
 import { markOnboardedForReturningUser } from '@/lib/returning-user-onboarding'
 
 type SignInWithOtpArgs = {
@@ -41,6 +42,7 @@ export const signInWithOtp = async (
   { email, otp, challengeToken, signal, onAuthenticated }: SignInWithOtpArgs,
 ): Promise<Awaited<ReturnType<AuthClient['signIn']['emailOtp']>>> => {
   signal?.throwIfAborted()
+  const previousUser = authClient.$store.atoms.session.get().data?.user
   const result = await authClient.signIn.emailOtp({
     email,
     otp,
@@ -56,6 +58,8 @@ export const signInWithOtp = async (
   })
 
   if (!result.error) {
+    // Bind before the session listeners hear of it: they refetch the session on a timer.
+    bindSignedInAccount(result.data?.user, previousUser)
     onAuthenticated?.()
     // Success has already committed through the auth hooks. Finish housekeeping
     // even when that successful sign-in removes this form from the page.

@@ -11,6 +11,8 @@ pub mod oauth_server;
 pub mod platform_utils;
 #[cfg(desktop)]
 mod tray;
+#[cfg(any(target_os = "macos", target_os = "ios", test))]
+mod webview_recovery;
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "ios"))]
 use tauri::Manager;
@@ -18,6 +20,11 @@ use tauri::Manager;
 // Shared app builder function
 pub fn create_app() -> tauri::Builder<tauri::Wry> {
     let mut builder = tauri::Builder::default();
+
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        builder = webview_recovery::native::configure(builder);
+    }
 
     // Single-instance: focus existing window when a second instance is launched (desktop only)
     #[cfg(desktop)]
@@ -50,7 +57,10 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             tray::initialize_tray,
             commands::set_interface_style,
             commands::start_oauth_server,
+            commands::stop_oauth_server,
             commands::install_thunderbolt_cli,
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            webview_recovery::native::retry_webview_after_crash,
         ]);
 
     #[cfg(debug_assertions)]

@@ -37,11 +37,13 @@ const createRoutingHarness = async (threadId: string, history: ThunderboltUIMess
   const db = getDb()
   await db.insert(chatThreadsTable).values({ id: threadId, title: 'Existing chat', isEncrypted: 0 })
   await saveMessagesWithContextUpdate(db, threadId, history)
+  const model = createMockModel()
   hydrateStore({
     id: threadId,
     chatInstance: createMockChatInstance(history),
     chatThread: null,
-    selectedModel: createMockModel(),
+    models: [model],
+    selectedModel: model,
     triggerData: null,
   })
   const save = mock<SaveMessagesFunction>(async ({ id, messages }) => {
@@ -58,6 +60,7 @@ const createRoutingHarness = async (threadId: string, history: ThunderboltUIMess
   const proxyFetch = Object.assign(async () => new Response('unused proxy'), { preconnect: async () => true })
   const connect = mock(async () => adapter)
   const route = createAgentRoutingFetch(threadId, save, {} as HttpClient, () => proxyFetch, {
+    getAvailableModels: async () => [model],
     getOrConnectAdapter: connect,
     getChatReasoningEffort: async () => undefined,
   })

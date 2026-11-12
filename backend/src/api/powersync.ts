@@ -319,6 +319,8 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
               // Create-only PUT — see `PowerSyncOperation.ifAbsent` in dal/powersync.ts.
               // Optional so a client older than this field keeps uploading unchanged.
               ifAbsent: t.Optional(t.Boolean()),
+              // Migration-only link precondition; deliberate model edits omit it.
+              ifProviderConnectionUnset: t.Optional(t.Object({ provider: t.String() })),
             }),
           ),
         }),

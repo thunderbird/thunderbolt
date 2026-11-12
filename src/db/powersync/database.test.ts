@@ -2,9 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { eq } from 'drizzle-orm'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { modelsSecretsTable, modelsTable } from '@/db/tables'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { PowerSyncDatabaseImpl } from './database'
 import { WASQLiteVFS } from '@powersync/web'
@@ -60,6 +64,16 @@ describe('getPowerSyncOptions', () => {
       expect(options.database).toEqual({ dbFilename: 'thunderbolt-sync.db', vfs: WASQLiteVFS.IDBBatchAtomicVFS })
     })
 
+    it.each([
+      ['default', WASQLiteVFS.IDBBatchAtomicVFS],
+      ['safari-tauri', WASQLiteVFS.InMemoryVfs],
+    ] as const)('without OPFS (%s), keeps each slot under its own name in %s (THU-963)', (config, vfs) => {
+      const a = getPowerSyncOptions('thunderbolt-sync-a.db', config, false).database
+      const b = getPowerSyncOptions('thunderbolt-sync-b.db', config, false).database
+      expect(a).toMatchObject({ dbFilename: 'thunderbolt-sync-a.db', vfs })
+      expect(b).toMatchObject({ dbFilename: 'thunderbolt-sync-b.db', vfs })
+    })
+
     it('extracts dbFilename from path with slashes', () => {
       const options = getPowerSyncOptions('foo/bar/baz.db', 'default', true)
       expect(options.database.dbFilename).toBe('baz.db')
@@ -113,10 +127,11 @@ describe('getPowerSyncOptions', () => {
       expect(databaseOf(options).dbFilename).toBe('thunderbolt-sync.db')
     })
 
-    it('falls back to IDBBatchAtomicVFS, syncing in the tab, when OPFS is unavailable', () => {
-      // With multi-tab on, PowerSync would open IndexedDB in a SharedWorker.
+    it('keeps the database in memory, syncing in the tab, when OPFS is unavailable', () => {
+      // Without OPFS `getDatabasePath` gives the bare filename. With multi-tab on, PowerSync would
+      // open the in-memory database in a SharedWorker.
       const database = databaseOf(getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri', false))
-      expect(database.vfs).toBe(WASQLiteVFS.IDBBatchAtomicVFS)
+      expect(database.vfs).toBe(WASQLiteVFS.InMemoryVfs)
       expect(database.enableMultiTabs).toBe(false)
       expect(database.worker).toBe('/@powersync/worker.js')
     })
@@ -236,11 +251,24 @@ describe('PowerSync connection ownership', () => {
     }
     const database = new PowerSyncDatabaseImpl()
     Object.assign(database, { powerSync, _db: {} })
-    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', syncEnabled: true })
     return { database, connecting, disconnecting, powerSync, events }
   }
 
-  afterEach(() => useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false))
+  let originalSettings: ReturnType<typeof useLocalSettingsStore.getState>
+  beforeEach(() => {
+    originalSettings = useLocalSettingsStore.getState()
+  })
+  afterEach(() => useLocalSettingsStore.setState(originalSettings))
+
+  it('keeps standalone storage offline even with a stale enabled preference', async () => {
+    const { database, powerSync } = makeDatabase()
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    await database.connectToSync()
+    expect(powerSync.connect).not.toHaveBeenCalled()
+    expect(database.isConnected).toBe(false)
+    await database.close()
+  })
 
   it('coalesces overlapping connects before native connect has settled', async () => {
     const { database, connecting, powerSync } = makeDatabase()
@@ -320,5 +348,43 @@ describe('PowerSync connection ownership', () => {
     await database.close()
     expect(events).toEqual(['clear', 'close'])
     expect(database.powerSyncInstance).toBeNull()
+  })
+})
+
+describe('credential binding before sync', () => {
+  beforeAll(async () => {
+    await setupTestDatabase()
+  })
+
+  afterAll(async () => {
+    await teardownTestDatabase()
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
+  })
+
+  it('binds a key saved by an older version before sync can move its model', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values({
+      id: 'model-1',
+      provider: 'custom',
+      name: 'Mine',
+      model: 'llama',
+      url: 'https://llm.example.com/v1',
+    })
+    await db.insert(modelsSecretsTable).values({ modelId: 'model-1', apiKey: 'sk-legacy' })
+    const boundAtConnect: Array<string | null | undefined> = []
+    const powerSync = {
+      registerListener: () => () => {},
+      connect: mock(async () => {
+        const secret = await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, 'model-1')).get()
+        boundAtConnect.push(secret?.url)
+      }),
+    }
+    const database = new PowerSyncDatabaseImpl()
+    Object.assign(database, { powerSync, _db: db })
+    useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
+
+    await database.connectAfterBindingCredentials()
+
+    expect(boundAtConnect).toEqual(['https://llm.example.com/v1'])
   })
 })

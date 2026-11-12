@@ -12,6 +12,7 @@ import { settingsTable } from '@/db/tables'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { useWelcomeStore } from '@/components/welcome-dialog'
 import { createMockAuthClient } from '@/test-utils/auth-client'
+import { closeTestLocalData, openTestLocalData } from '@/test-utils/local-data'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -39,11 +40,11 @@ describe('useWaitlistState — returning-user onboarding', () => {
     return (rows[0] as { value: string | null } | undefined)?.value ?? null
   }
 
-  const verifyAs = async (user: { id: string; isNew?: boolean }) => {
+  const verifyAs = async (user: { id: string; isNew?: boolean }, onSuccess?: () => void) => {
     const authClient = createMockAuthClient({
       signInEmailOtp: mock(async () => ({ data: { user }, error: null })),
     })
-    const { result } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+    const { result } = renderHook(() => useWaitlistState({ authClient, onSuccess }), { wrapper: createTestProvider() })
 
     act(() => {
       result.current.actions.setEmail('test@example.com')
@@ -66,6 +67,7 @@ describe('useWaitlistState — returning-user onboarding', () => {
     // Seeds `user_has_completed_onboarding = 'false'`, as a fresh device does at
     // boot before it has ever seen the account.
     await reconcileDefaults(getDb())
+    await openTestLocalData()
   })
 
   afterEach(() => {
@@ -74,10 +76,13 @@ describe('useWaitlistState — returning-user onboarding', () => {
     // randomized run cannot leak `pending: true` into `welcome-dialog.test.ts`.
     useWelcomeStore.setState({ pending: false })
     clearAuthToken()
+    closeTestLocalData()
   })
 
-  it('marks onboarding complete for an account that already existed', async () => {
-    await verifyAs({ id: 'u1', isNew: false })
+  it('marks onboarding complete and notifies the modal after an existing account signs in', async () => {
+    const onSuccess = mock()
+    await verifyAs({ id: 'u1', isNew: false }, onSuccess)
+    expect(onSuccess).toHaveBeenCalledTimes(1)
 
     expect(await readOnboarding()).toBe('true')
   })
@@ -109,17 +114,17 @@ describe('useWaitlistState — returning-user onboarding', () => {
     expect(signIn).toHaveBeenCalledTimes(1)
   })
 
-  it('releases the OTP lane when analytics fails and allows retry', async () => {
-    const getSession = mock().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ data: null, error: null })
+  it('continues OTP sign-in when the optional analytics session lookup fails', async () => {
+    const getSession = mock().mockRejectedValueOnce(new Error('offline'))
     const signIn = mock(async () => ({ data: { user: { id: 'u1', isNew: true } }, error: null }))
+    const onSuccess = mock()
     const authClient = createMockAuthClient({ getSession, signInEmailOtp: signIn })
-    const { result } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+    const { result } = renderHook(() => useWaitlistState({ authClient, onSuccess }), { wrapper: createTestProvider() })
     act(() => result.current.actions.setEmail('test@example.com'))
     await act(() => result.current.actions.handleOtpComplete('12345678'))
-    expect(result.current.state.status).toBe('checkEmail')
-    expect(result.current.state.errorMessage).not.toBe('')
-    await act(() => result.current.actions.handleOtpComplete('12345678'))
+    expect(result.current.state.errorMessage).toBe('')
     expect(signIn).toHaveBeenCalledTimes(1)
+    expect(onSuccess).toHaveBeenCalledTimes(1)
   })
 
   it.each([new DOMException('cancelled', 'AbortError'), new Error('late join failure')])(
@@ -168,7 +173,7 @@ describe('useWaitlistState — returning-user onboarding', () => {
       })
     }
     const analytics = spyOn(promotionAnalytics, 'useAnonymousPromotionAnalytics').mockReturnValue({
-      captureAnonId: async () => {},
+      captureAnonymousSession: async () => {},
       persistForSso: () => {},
       onPromotionSuccess,
     })
@@ -239,7 +244,7 @@ describe('useWaitlistState — returning-user onboarding', () => {
     const completion = Promise.withResolvers<void>()
     const failure = new Error('Promotion analytics failed')
     const analytics = spyOn(promotionAnalytics, 'useAnonymousPromotionAnalytics').mockReturnValue({
-      captureAnonId: async () => {},
+      captureAnonymousSession: async () => {},
       persistForSso: () => {},
       onPromotionSuccess: () => {
         throw failure
@@ -489,18 +494,19 @@ describe('useWaitlistState — returning-user onboarding', () => {
     }
   })
 
-  it('recovers from a passkey analytics failure before opening the browser prompt', async () => {
-    const getSession = mock().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ data: null, error: null })
+  it('continues passkey sign-in when the optional analytics session lookup fails', async () => {
+    const getSession = mock().mockRejectedValueOnce(new Error('offline'))
     const signIn = spyOn(passkeys, 'signInWithPasskey').mockResolvedValue({ userId: 'existing-user' })
+    const onSuccess = mock()
     try {
       const authClient = createMockAuthClient({ getSession })
-      const { result } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+      const { result } = renderHook(() => useWaitlistState({ authClient, onSuccess }), {
+        wrapper: createTestProvider(),
+      })
       await act(() => result.current.actions.handlePasskeySignIn())
-      expect(result.current.state.status).toBe('error')
-      expect(result.current.state.passkeyPending).toBe(false)
-      expect(signIn).not.toHaveBeenCalled()
-      await act(() => result.current.actions.handlePasskeySignIn())
+      expect(result.current.state.errorMessage).toBe('')
       expect(signIn).toHaveBeenCalledTimes(1)
+      expect(onSuccess).toHaveBeenCalledTimes(1)
       expect(useWelcomeStore.getState().pending).toBe(true)
     } finally {
       signIn.mockRestore()

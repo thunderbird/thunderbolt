@@ -19,6 +19,9 @@ import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads
 import { createAgent } from '@/dal/agents'
 import { updateSettings } from '@/dal/settings'
 import { getModel, updateModel } from '@/dal/models'
+import { saveProviderConnection } from '@/dal/provider-connections'
+import * as modelPrewarm from '@/ai/prewarm-tinfoil-model'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
@@ -219,6 +222,160 @@ describe('useHydrateChatStore', () => {
   })
 
   describe('hydrateChatStore', () => {
+    it.each(['managed', 'model key', 'connection OAuth'] as const)(
+      'warms the selected Tinfoil transport on initial and cached hydration: %s',
+      async (credentials) => {
+        const managed = credentials === 'managed'
+        if (!managed) {
+          useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
+        }
+        const modelId = await createTestModel()
+        const connectionId =
+          credentials === 'connection OAuth'
+            ? await saveProviderConnection(getDb(), {
+                provider: 'tinfoil',
+                name: 'Personal Tinfoil',
+                authMethod: 'oauth',
+                credentials: { access_token: 'connection-token', refresh_token: 'refresh' },
+              })
+            : null
+        await updateModel(getDb(), modelId, {
+          provider: 'tinfoil',
+          isSystem: managed ? 1 : 0,
+          isConfidential: 1,
+          apiKey: credentials === 'model key' ? 'model-key' : null,
+          providerConnectionId: connectionId,
+        })
+        await updateSettings(getDb(), { selected_model: modelId })
+        const prewarm = spyOn(modelPrewarm, 'prewarmTinfoilModel').mockResolvedValue(undefined)
+        try {
+          const id = uuidv7()
+          const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true }), {
+            wrapper: TestWrapper,
+          })
+          await act(async () => {
+            await result.current.hydrateChatStore()
+          })
+          expect(prewarm).toHaveBeenCalledTimes(1)
+          expect(prewarm).toHaveBeenCalledWith(getCurrentSession()?.selectedModel)
+          expect(getCurrentSession()?.selectedModel.id).toBe(modelId)
+          prewarm.mockClear()
+          await act(async () => {
+            await result.current.hydrateChatStore()
+          })
+          expect(prewarm).toHaveBeenCalledTimes(1)
+          expect(prewarm).toHaveBeenCalledWith(getCurrentSession()?.selectedModel)
+        } finally {
+          prewarm.mockRestore()
+        }
+      },
+    )
+
+    it('never warms the local model when the selected agent owns inference', async () => {
+      await createAgent(getDb(), {
+        id: 'remote-private',
+        name: 'Remote agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.test/ws',
+        userId: 'u1',
+      })
+      const modelId = await createTestModel()
+      await updateModel(getDb(), modelId, { provider: 'tinfoil', isSystem: 1, isConfidential: 1 })
+      await updateSettings(getDb(), { selected_agent: 'remote-private', selected_model: modelId })
+      const prewarm = spyOn(modelPrewarm, 'prewarmTinfoilModel').mockResolvedValue(undefined)
+      try {
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+          await result.current.hydrateChatStore()
+        })
+        expect(getCurrentSession()?.selectedAgent.id).toBe('remote-private')
+        expect(prewarm).not.toHaveBeenCalled()
+      } finally {
+        prewarm.mockRestore()
+      }
+    })
+
+    it('lets a changed provider mode replace pending hydration without creating the session twice', async () => {
+      const id = uuidv7()
+      const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true }), { wrapper: TestWrapper })
+      const previous = new AbortController()
+
+      await act(async () => {
+        const superseded = result.current.hydrateChatStore(previous.signal)
+        previous.abort()
+        await Promise.all([superseded, result.current.hydrateChatStore(new AbortController().signal)])
+      })
+
+      expect(useChatStore.getState().sessions.size).toBe(1)
+      expect(getCurrentSession()?.id).toBe(id)
+      expect(result.current.isReady).toBe(true)
+    })
+
+    it('does not create a session after its host unmounts', async () => {
+      const id = uuidv7()
+      const { result, unmount } = renderHook(() => useHydrateChatStore({ id, isNew: true }), {
+        wrapper: TestWrapper,
+      })
+      const controller = new AbortController()
+      const pending = result.current.hydrateChatStore(controller.signal)
+      controller.abort()
+      unmount()
+      await pending
+
+      expect(useChatStore.getState().sessions.has(id)).toBe(false)
+      expect(getCurrentSession()).toBeNull()
+    })
+
+    it('does not let a previous route publish its session after the next route hydrates', async () => {
+      const previousId = uuidv7()
+      const nextId = uuidv7()
+      const { result, rerender } = renderHook(({ id }) => useHydrateChatStore({ id, isNew: true }), {
+        initialProps: { id: previousId },
+        wrapper: TestWrapper,
+      })
+      const controller = new AbortController()
+      const previous = result.current.hydrateChatStore(controller.signal)
+      controller.abort()
+      rerender({ id: nextId })
+      await act(async () => {
+        await Promise.all([previous, result.current.hydrateChatStore(new AbortController().signal)])
+      })
+
+      expect(useChatStore.getState().sessions.has(previousId)).toBe(false)
+      expect(getCurrentSession()?.id).toBe(nextId)
+    })
+
+    it('does not publish a cancelled refresh of an existing session', async () => {
+      const id = uuidv7()
+      const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      const originalSession = getCurrentSession()
+      const models = [...useChatStore.getState().models]
+      useChatStore.getState().setModels(models)
+      const controller = new AbortController()
+      const pending = result.current.hydrateChatStore(controller.signal)
+      controller.abort()
+      await pending
+
+      expect(getCurrentSession()).toBe(originalSession)
+      expect(useChatStore.getState().models).toBe(models)
+      expect(useChatStore.getState().sessions.size).toBe(1)
+
+      await act(async () => {
+        await result.current.hydrateChatStore(new AbortController().signal)
+      })
+      expect(useChatStore.getState().models).not.toBe(models)
+      expect(getCurrentSession()?.chatInstance).toBe(originalSession?.chatInstance)
+      expect(useChatStore.getState().sessions.size).toBe(1)
+    })
+
     it('should hydrate useChatStore with correct state', async () => {
       const systemModelId = await createSystemModel()
       const threadId = await createTestThread(systemModelId, 'My Test Thread')

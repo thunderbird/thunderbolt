@@ -168,7 +168,7 @@ import { SharedSyncImplementation } from 'powersync-web-internal/worker/sync/Sha
 
 Both configs store the database on OPFS (`OPFSCoopSyncVFS`, chosen by `shouldUseOpfs` in `src/db/powersync/database.ts`), which is faster than IndexedDB. Two cases keep `IDBBatchAtomicVFS`:
 
-- **No usable OPFS** (WebKitGTK on Tauri Linux, Firefox private browsing).
+- **No usable OPFS** on the `default` config (Firefox private browsing). On the `safari-tauri` config, a platform without OPFS (for example WebKitGTK on Tauri Linux) keeps the database in memory instead (`InMemoryVfs`), because that config avoids the IndexedDB VFS (see `pickVfs`).
 - **A `default`-config device whose data already lives in IndexedDB.** Switching would start from an empty database and lose local-only rows (secrets, MCP servers) and queued uploads, so it moves at its next reset instead: after the wipe, `resetAppDir` leaves an empty OPFS database file, which the next start takes as the signal to use OPFS, and deletes the IndexedDB database. Another tab holding that database open delays the delete; a later OPFS start retries it. Browsers that can't list their IndexedDB databases (Firefox before 126) stay on IndexedDB.
 
 Sync telemetry reports the VFS as `ps_vfs`.

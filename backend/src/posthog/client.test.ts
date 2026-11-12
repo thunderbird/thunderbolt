@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { clearSettingsCache } from '@/config/settings'
+import { managedDirectRuntimes } from '@/inference/managed-models'
 import { isPosthogRequest } from '@/test-utils/posthog'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest, spyOn } from 'bun:test'
@@ -336,67 +337,6 @@ describe('PostHog Privacy Mode', () => {
   })
 })
 
-describe('redactAiError', () => {
-  it('keeps API error identifiers and drops provider response content', () => {
-    const rawError = JSON.stringify({
-      status: 400,
-      error: {
-        message: 'prompt is too long and contains sensitive content',
-        type: 'invalid_request_error',
-      },
-      message: 'prompt is too long and contains sensitive content',
-      code: null,
-      requestID: 'req_1',
-      type: 'invalid_request_error',
-    })
-
-    expect(client.redactAiError(rawError)).toBe(
-      JSON.stringify({
-        status: 400,
-        code: null,
-        type: 'invalid_request_error',
-        requestID: 'req_1',
-      }),
-    )
-  })
-
-  it('drops future provider error details from object input', () => {
-    expect(
-      client.redactAiError({
-        name: 'APIError',
-        statusCode: 429,
-        httpStatus: 429,
-        message: 'sensitive prompt fragment',
-        stack: 'APIError: sensitive prompt fragment',
-        cause: { message: 'sensitive prompt fragment' },
-        headers: { authorization: 'secret' },
-        param: 'messages',
-      }),
-    ).toBe(
-      JSON.stringify({
-        name: 'APIError',
-        statusCode: 429,
-        httpStatus: 429,
-        param: 'messages',
-      }),
-    )
-  })
-
-  it('drops an unparseable string', () => {
-    expect(client.redactAiError('not-json')).toBeUndefined()
-  })
-
-  it('drops non-object values', () => {
-    expect(client.redactAiError(400)).toBeUndefined()
-    expect(client.redactAiError(null)).toBeUndefined()
-  })
-
-  it('drops an error with no whitelisted identifiers', () => {
-    expect(client.redactAiError({ message: 'sensitive prompt fragment' })).toBeUndefined()
-    expect(client.redactAiError({ code: undefined })).toBeUndefined()
-  })
-})
-
 describe('PostHog AI error egress privacy', () => {
   let capturedFetches: FetchCall[] = []
   let mockFetch: typeof fetch
@@ -445,22 +385,33 @@ describe('PostHog AI error egress privacy', () => {
     capturedFetches = []
   })
 
-  it('redacts AI errors while preserving other event payloads', async () => {
+  it('keeps aggregate metrics without account, request, trace, or content data', async () => {
     phClient = client.getPostHogClient(mockFetch)
+    const model = Object.values(managedDirectRuntimes)[0].internalName
     const rawError = JSON.stringify({
       status: 400,
       code: 'context_length_exceeded',
       message: 'sensitive prompt fragment',
       error: { message: 'sensitive prompt fragment' },
+      requestID: 'provider-request-private',
     })
 
     phClient.capture({
       distinctId: 'user-1',
       event: '$ai_generation',
+      groups: { organization: 'private-organization' },
       properties: {
         $ai_error: rawError,
-        $ai_model: 'gpt-4',
-        safeProperty: 'unchanged',
+        $ai_model: model,
+        $ai_input_tokens: 4,
+        $ai_trace_id: 'private-ledger-event',
+        errorType: 'private-provider-error-type',
+        errorCode: 'private-provider-error-code',
+        $ai_tools: [{ description: 'sensitive prompt fragment' }],
+        $ai_model_parameters: { stop: 'sensitive prompt fragment' },
+        $set: { email: 'private@example.com' },
+        accountId: 'user-1',
+        $process_person_profile: true,
       },
     })
     phClient.capture({
@@ -468,7 +419,7 @@ describe('PostHog AI error egress privacy', () => {
       event: 'inference_upstream_error',
       properties: {
         $ai_error: rawError,
-        safeProperty: 'unchanged',
+        status: 400,
       },
     })
     phClient.capture({
@@ -476,8 +427,8 @@ describe('PostHog AI error egress privacy', () => {
       event: '$ai_generation',
       properties: {
         $ai_error: 'not-json',
-        redactionCase: 'drop',
-        safeProperty: 'still-unchanged',
+        $ai_model: 'ft:account-private-model',
+        model: 'ft:account-private-model',
       },
     })
 
@@ -487,21 +438,38 @@ describe('PostHog AI error egress privacy', () => {
     const events = capturedFetches
       .filter((call) => isPosthogRequest(call.url))
       .flatMap((call) => call.body?.batch || [call.body])
-    const aiEvent = events.find(
-      (event) => event.event === '$ai_generation' && event.properties.redactionCase === undefined,
-    )
+    const aiEvent = events.find((event) => event.event === '$ai_generation' && event.properties.$ai_model === model)
     const droppedAiErrorEvent = events.find(
-      (event) => event.event === '$ai_generation' && event.properties.redactionCase === 'drop',
+      (event) => event.event === '$ai_generation' && event.properties.$ai_model === undefined,
     )
     const inferenceErrorEvent = events.find((event) => event.event === 'inference_upstream_error')
 
-    expect(aiEvent.properties.$ai_error).toBe(JSON.stringify({ status: 400, code: 'context_length_exceeded' }))
-    expect(aiEvent.properties.$ai_model).toBe('gpt-4')
-    expect(aiEvent.properties.safeProperty).toBe('unchanged')
+    expect(aiEvent.properties).not.toHaveProperty('$ai_error')
+    expect(aiEvent.properties.$ai_model).toBe(model)
+    expect(aiEvent.properties.$ai_input_tokens).toBe(4)
     expect('$ai_error' in droppedAiErrorEvent.properties).toBe(false)
-    expect(droppedAiErrorEvent.properties.safeProperty).toBe('still-unchanged')
-    expect(inferenceErrorEvent.properties.$ai_error).toBe(rawError)
-    expect(inferenceErrorEvent.properties.safeProperty).toBe('unchanged')
+    expect(inferenceErrorEvent.properties).not.toHaveProperty('$ai_error')
+    expect(inferenceErrorEvent.properties.status).toBe(400)
+    expect(events).toHaveLength(3)
+    expect(new Set(events.map((event) => event.distinct_id)).size).toBe(3)
+    for (const event of events) {
+      expect(event.distinct_id).toMatch(/^[\da-f-]{36}$/)
+      expect(event.properties.$process_person_profile).toBe(false)
+    }
+    const payload = JSON.stringify(events)
+    for (const privateValue of [
+      'user-1',
+      'private-organization',
+      'private-ledger-event',
+      'private-provider-error-type',
+      'private-provider-error-code',
+      'provider-request-private',
+      'private@example.com',
+      'sensitive prompt fragment',
+      'ft:account-private-model',
+    ]) {
+      expect(payload).not.toContain(privateValue)
+    }
   })
 })
 
@@ -514,7 +482,6 @@ describe('captureInferenceError', () => {
       provider: 'anthropic',
       status: 400,
       errorKind: 'bad_request',
-      distinctId: 'user-1',
     })
 
     expect(clientSpy).not.toHaveBeenCalled()
@@ -530,26 +497,18 @@ describe('captureInferenceError', () => {
     client.captureInferenceError({
       provider: 'anthropic',
       status: 400,
-      distinctId: 'user-1',
       errorKind: 'context_length',
       model: 'opus-4.8',
-      errorType: 'invalid_request_error',
-      errorCode: 'context_length_exceeded',
-      requestId: 'provider-request-123',
       phase: 'stream',
     })
 
     expect(capture).toHaveBeenCalledWith({
-      distinctId: 'user-1',
       event: 'inference_upstream_error',
       properties: {
         provider: 'anthropic',
         status: 400,
         errorKind: 'context_length',
         model: 'opus-4.8',
-        errorType: 'invalid_request_error',
-        errorCode: 'context_length_exceeded',
-        requestId: 'provider-request-123',
         phase: 'stream',
       },
     })

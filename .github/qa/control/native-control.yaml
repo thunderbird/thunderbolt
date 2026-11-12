@@ -2,6 +2,30 @@
 # field (cover.js). A finding's `repro_flow` for the replay is this same text.
 - launchApp
 - extendedWaitUntil:
+    visible: Connect your AI|Welcome to Thunderbolt!
+    timeout: 120000
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: I agree to the Privacy Policy.*
+    commands:
+      - tapOn: I agree to the Privacy Policy.*
+      - tapOn: Continue
+      - extendedWaitUntil:
+          visible: Choose your setup
+          timeout: 120000
+- runFlow:
+    when:
+      visible: Connect your AI
+    commands:
+      - tapOn: Toggle Sidebar
+      - tapOn: Sign in
+- extendedWaitUntil:
+    visible: Cloud \(Waitlist\)
+    timeout: 120000
+- tapOn: Cloud \(Waitlist\)
+- tapOn: Continue
+- extendedWaitUntil:
     visible: Want early access?
     timeout: 120000
 - waitForAnimationToEnd

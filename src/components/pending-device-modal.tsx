@@ -5,14 +5,16 @@
 import { Trans } from '@lingui/react/macro'
 import { useState } from 'react'
 import type { Device } from '@/dal'
+import type { DeviceApprovalConfirmation } from '@/services/encryption'
 import { Smartphone } from 'lucide-react'
 
-import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
+import { ApproveDeviceDialog } from '@/components/approve-device'
 import { RevokeDeviceDialog } from '@/components/revoke-device-dialog'
 import { Button } from '@/components/ui/button'
 import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
 import { IconCircle } from '@/components/onboarding/icon-circle'
 import { useApproveDevice } from '@/hooks/use-approve-device'
+import { useDeviceKeyTrust } from '@/hooks/use-e2ee-ready'
 import { useDenyDevice } from '@/hooks/use-deny-device'
 import { usePendingDeviceNotification } from '@/hooks/use-pending-device-notification'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -25,27 +27,37 @@ export const PendingDeviceModal = () => {
 const SyncedPendingDeviceModal = () => {
   const { pendingDeviceToNotify } = usePendingDeviceNotification()
   const [approvalTarget, setApprovalTarget] = useState<Device | null>(null)
-  const [confirmDenyOpen, setConfirmDenyOpen] = useState(false)
+  /** The device the deny confirmation acts on: the one being approved, not whichever is newest by then. */
+  const [denyTarget, setDenyTarget] = useState<Device | null>(null)
 
   const approveMutation = useApproveDevice()
   const denyMutation = useDenyDevice()
+  const { unverified } = useDeviceKeyTrust()
+  // A device that can't approve may set the prompt aside for that pending
+  // device; Settings → Devices still lists it, with Deny.
+  const [dismissedId, setDismissedId] = useState<string | null>(null)
 
-  const isOpen = pendingDeviceToNotify !== null
+  const isOpen = pendingDeviceToNotify !== null && !(unverified && dismissedId === pendingDeviceToNotify.id)
 
-  const confirmApprove = async (fingerprint: string) => {
+  const confirmApprove = async (confirmation: DeviceApprovalConfirmation) => {
     if (!approvalTarget) {
       return
     }
-    await approveMutation.mutateAsync({ device: approvalTarget, fingerprint })
+    await approveMutation.mutateAsync({ device: approvalTarget, confirmation })
+    setApprovalTarget(null)
+  }
+
+  const denyFromApproval = () => {
+    setDenyTarget(approvalTarget)
     setApprovalTarget(null)
   }
 
   const confirmDeny = () => {
-    if (!pendingDeviceToNotify) {
+    if (!denyTarget) {
       return
     }
-    denyMutation.mutate(pendingDeviceToNotify.id, {
-      onSuccess: () => setConfirmDenyOpen(false),
+    denyMutation.mutate(denyTarget.id, {
+      onSuccess: () => setDenyTarget(null),
     })
   }
 
@@ -53,11 +65,11 @@ const SyncedPendingDeviceModal = () => {
     <>
       <ResponsiveModal
         open={isOpen}
-        onOpenChange={() => {}}
+        onOpenChange={(open) => !open && unverified && setDismissedId(pendingDeviceToNotify?.id ?? null)}
         className="sm:min-h-0 sm:h-auto"
-        showCloseButton={false}
+        showCloseButton={unverified}
         onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => !unverified && e.preventDefault()}
       >
         <ResponsiveModalContent>
           <div className="w-full flex flex-col">
@@ -86,13 +98,23 @@ const SyncedPendingDeviceModal = () => {
             </div>
 
             <div className="pt-5 flex flex-col gap-2">
+              {unverified && (
+                <p id="pending-device-approve-blocked" className="text-sm text-muted-foreground">
+                  <Trans>
+                    This device can't approve other devices because its encryption keys couldn't be verified. Approve
+                    from a device that was trusted before.
+                  </Trans>
+                </p>
+              )}
               <Button
                 className="w-full"
+                disabled={unverified}
+                aria-describedby={unverified ? 'pending-device-approve-blocked' : undefined}
                 onClick={() => pendingDeviceToNotify && setApprovalTarget({ ...pendingDeviceToNotify })}
               >
                 <Trans>Approve</Trans>
               </Button>
-              <Button className="w-full" variant="ghost" onClick={() => setConfirmDenyOpen(true)}>
+              <Button className="w-full" variant="ghost" onClick={() => setDenyTarget(pendingDeviceToNotify)}>
                 <span className="text-destructive">
                   <Trans>Deny</Trans>
                 </span>
@@ -104,10 +126,10 @@ const SyncedPendingDeviceModal = () => {
 
       {/*
         Both dialogs render their own failure (THU-887). This surface needs it
-        more than the settings page does: the modal behind them cannot be
-        dismissed at all — no close button, escape and outside-click both
-        prevented — so a silent no-op here leaves the user with nothing to do
-        and nothing to read. `useApproveDevice` throws a real error on a device
+        more than the settings page does: on a device that can approve, the
+        modal behind them cannot be dismissed at all — no close button, escape
+        and outside-click both prevented — so a silent no-op here leaves the user
+        with nothing to do and nothing to read. `useApproveDevice` throws a real error on a device
         with missing public keys.
       */}
       <ApproveDeviceDialog
@@ -115,12 +137,13 @@ const SyncedPendingDeviceModal = () => {
         open={approvalTarget !== null}
         onOpenChange={(open) => !open && setApprovalTarget(null)}
         onConfirm={confirmApprove}
+        onDeny={denyFromApproval}
         isPending={approveMutation.isPending}
       />
 
       <RevokeDeviceDialog
-        open={confirmDenyOpen}
-        onOpenChange={(open) => !open && setConfirmDenyOpen(false)}
+        open={denyTarget !== null}
+        onOpenChange={(open) => !open && setDenyTarget(null)}
         onConfirm={confirmDeny}
         isPending={denyMutation.isPending}
         variant="pending"

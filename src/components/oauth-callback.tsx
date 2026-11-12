@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isMcpOAuthCallback } from '@/lib/mcp-auth/mcp-oauth-state'
+import { getMcpOAuthState, isMcpOAuthCallback } from '@/lib/mcp-auth/mcp-oauth-state'
 import { getOAuthState } from '@/lib/oauth-state'
 import { isSafeRelativePath } from '@/lib/safe-relative-path'
+import { oauthReturnPath } from '@/lib/oauth-return-route'
+import { isOnboardingSearchAuthorization } from '@/providers/authorization-draft'
 import Loading from '@/loading'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
@@ -67,7 +69,12 @@ export default function OAuthCallback() {
         // pending), independent of the shared return-context slot — so a
         // concurrent integrations flow can't misroute it to the wrong page.
         if (isMcpOAuthCallback({ code, state, error: oauthError })) {
-          navigate('/settings/connections', { state: { oauth: oauthPayload } })
+          navigate(oauthReturnPath(getMcpOAuthState().returnTo), {
+            replace: true,
+            state: isOnboardingSearchAuthorization()
+              ? { oauth: oauthPayload }
+              : { oauth: oauthPayload, connectionOAuthReturn: state || 'oauth-return' },
+          })
           return
         }
 
@@ -75,7 +82,10 @@ export default function OAuthCallback() {
         const returnContext = oauthState.returnContext
 
         if (isSafeRelativePath(returnContext)) {
-          navigate(returnContext, { state: { oauth: oauthPayload } })
+          navigate(oauthReturnPath(returnContext), {
+            replace: true,
+            state: { oauth: oauthPayload, connectionOAuthReturn: state || 'oauth-return' },
+          })
         } else if (returnContext === 'onboarding') {
           navigate('/chats/new', { state: { oauth: oauthPayload } })
         } else {

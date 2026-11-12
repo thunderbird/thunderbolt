@@ -6,6 +6,7 @@ import { useHttpClient } from '@/contexts'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useActiveLocale } from '@/i18n/use-active-locale'
 import { fetchLocations, type LocationData } from '@/lib/locations'
+import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useEffect, useReducer } from 'react'
 
 type LocationState = {
@@ -57,13 +58,14 @@ type UseLocationSearchOptions = {
 export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) => {
   const httpClient = useHttpClient()
   const locale = useActiveLocale()
+  const authenticated = useServerAuthentication()
   const [locationState, dispatch] = useReducer(locationReducer, createInitialState(autoOpen))
   const { open, searchQuery, locations, isSearching } = locationState
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
 
   useEffect(() => {
     // Invalidate immediately on input changes, including during the debounce.
-    if (searchQuery !== debouncedSearchQuery || searchQuery.trim().length <= 1) {
+    if (!authenticated || searchQuery !== debouncedSearchQuery || searchQuery.trim().length <= 1) {
       return
     }
     let cancelled = false
@@ -85,7 +87,7 @@ export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) =
     return () => {
       cancelled = true
     }
-  }, [searchQuery, debouncedSearchQuery, httpClient, locale])
+  }, [searchQuery, debouncedSearchQuery, httpClient, locale, authenticated])
 
   const setOpen = (open: boolean) => dispatch({ type: 'SET_OPEN', payload: open })
   const setSearchQuery = (query: string) => dispatch({ type: 'SET_SEARCH_QUERY', payload: query })

@@ -696,6 +696,13 @@
   margin-inline: 0 -3px;
 }
 
+/* Composite the macOS sidebar tint over an opaque backing so alerts tucked
+   behind the composer cannot show through its surface. */
+.composer-surface {
+  background-color: var(--color-background);
+  background-image: linear-gradient(var(--color-sidebar), var(--color-sidebar));
+}
+
 @layer base {
   * {
     border-color: var(--color-border);

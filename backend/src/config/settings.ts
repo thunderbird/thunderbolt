@@ -110,6 +110,8 @@ const settingsSchema = z
     // Health Check Configuration
     monitoringToken: z.string().default(''),
 
+    // Public integration relay is an explicit operator choice, independent of account sign-in.
+    integrationOAuthAllowPublic: z.boolean().default(false),
     // OAuth Settings
     googleClientId: z.string().trim().default(''),
     googleClientSecret: z.string().trim().default(''),
@@ -385,6 +387,13 @@ const settingsSchema = z
     allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
+    if (data.monitoringToken && data.monitoringToken.length < 32) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'MONITORING_TOKEN must be at least 32 characters when set',
+        path: ['monitoringToken'],
+      })
+    }
     if (data.passkeyEnabled && (!data.passkeyRpId || isIpLiteral(data.passkeyRpId))) {
       ctx.addIssue({
         code: 'custom',
@@ -562,6 +571,7 @@ const parseSettings = (): Settings => {
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
     tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh/v1',
     monitoringToken: process.env.MONITORING_TOKEN || '',
+    integrationOAuthAllowPublic: process.env.INTEGRATION_OAUTH_ALLOW_PUBLIC === 'true',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     // Only a loopback override (a QA stack's fake provider) is honoured, so the client secret never leaves for

@@ -4,6 +4,11 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { X } from 'lucide-react'
+import { useState } from 'react'
+import { useAppName } from '@/lib/branding-selectors'
+import { PageSearch } from '@/components/ui/page-search'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
+import { getProviderDisplay } from './model-presentation'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { SettingsListPane } from '@/components/settings/settings-list'
@@ -21,16 +26,22 @@ import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { StatusCard } from '@/components/ui/status-card'
 import { useEntityActionIntent } from '@/search/actions/use-entity-action-intent'
-import { AddModelForm } from './add-model-form'
+import { AddProviderModelsPanel } from './add-provider-models-panel'
 import { EditModelForm } from './edit-model-form'
 import { ModelDetail } from './model-detail'
 import { ModelsList } from './models-list'
 import { useModelsPageState } from './use-models-page-state'
 
 const ModelsPage = () => {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
+  const appName = useAppName()
+  const [search, setSearch] = useState('')
   const page = useModelsPageState()
   const { activeModel, editingModel } = page
+  const query = search.trim().toLowerCase()
+  const filteredModels = page.models.filter((model) =>
+    `${model.name} ${model.model} ${getProviderDisplay(i18n, model, appName)}`.toLowerCase().includes(query),
+  )
 
   // Palette (Cmd+K) create/edit/remove intents arrive as one-shot router
   // state and route straight into the page's existing handlers (THU-768).
@@ -49,11 +60,7 @@ const ModelsPage = () => {
 
   const renderPanel = () => {
     if (page.isAddPanelOpen) {
-      return (
-        <DetailPanel title={t`Add Model`} onClose={page.addForm.onCancel}>
-          <AddModelForm {...page.addForm} />
-        </DetailPanel>
-      )
+      return <AddProviderModelsPanel onClose={page.closePanel} />
     }
     if (activeModel && editingModel) {
       return (
@@ -91,9 +98,13 @@ const ModelsPage = () => {
     <div className="relative flex h-full">
       <div className="min-w-0 flex-1 overflow-hidden">
         <SettingsListPane className="gap-6 md:pb-12">
-          <PageHeader title={t`Models`}>
-            <PageCreateAction label={t`New Model`} onClick={page.openAddPanel} />
-          </PageHeader>
+          <PageSearch onSearch={setSearch}>
+            <PageHeader title={t`Models`}>
+              <PageSearch.Button />
+              <PageCreateAction label={t`New Model`} onClick={page.openAddPanel} />
+            </PageHeader>
+            <PageSearch.Input placeholder={t`Search models`} onSearch={setSearch} />
+          </PageSearch>
           {showPageLevelError && (
             <StatusCard
               icon={<X className="h-4 w-4 text-destructive" />}
@@ -101,13 +112,21 @@ const ModelsPage = () => {
               description={page.mutationError}
             />
           )}
-          <ModelsList
-            models={page.models}
-            activeModelId={page.activeModelId}
-            onSelect={page.selectActiveModel}
-            onToggle={page.toggleModel}
-            onAdd={page.openAddPanel}
-          />
+          {query && filteredModels.length === 0 ? (
+            <SettingsNoResults>
+              <Trans>No matching models.</Trans>
+            </SettingsNoResults>
+          ) : (
+            <ModelsList
+              models={filteredModels}
+              activeModelId={page.activeModelId}
+              onSelect={page.selectActiveModel}
+              onToggle={page.toggleModel}
+              onAdd={page.openAddPanel}
+              onEdit={page.openEditPanel}
+              onRemove={page.requestDelete}
+            />
+          )}
         </SettingsListPane>
       </div>
 

@@ -20,7 +20,7 @@ import { SkillForm, type SkillFormValues } from './skill-form'
 import { handleSkillSaveError, skillSaveFailedMessage, useCreateSkillTracked } from './skill-save'
 import { initialSkillsViewState, skillsViewReducer, type LeaveIntent } from './skills-view-state'
 import { SkillsList } from './skills-list'
-import { useSkillTelemetry } from './telemetry'
+import { trackSkillEvent } from './telemetry'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills, useStickySkills } from './use-skills'
 
 export const SkillsView = () => {
@@ -34,7 +34,6 @@ export const SkillsView = () => {
   // one of the 10 available).
   const { pinnedSet, togglePin } = usePinnedSkills()
   const { isEnabled, setEnabled } = useEnabledSkills()
-  const trackSkillEvent = useSkillTelemetry()
 
   const submission = useAsyncAttempt()
   const [state, dispatch] = useReducer(skillsViewReducer, initialSkillsViewState)
@@ -174,9 +173,9 @@ export const SkillsView = () => {
   const removeSkill = useCallback(
     async (id: string) => {
       await softDeleteSkill(id)
-      trackSkillEvent('skill_deleted', id, {})
+      trackSkillEvent('skill_deleted', {})
     },
-    [softDeleteSkill, trackSkillEvent],
+    [softDeleteSkill],
   )
 
   const confirmPendingDependents = () => {
@@ -207,7 +206,7 @@ export const SkillsView = () => {
       } else if (activeSkill) {
         const renamed = values.name !== activeSkill.name
         await updateSkill({ id: activeSkill.id, patch: values })
-        trackSkillEvent('skill_edited', activeSkill.id, { renamed })
+        trackSkillEvent('skill_edited', { renamed })
         if (attempt.isCurrent()) {
           dispatch({ type: 'SUBMIT_SUCCESS', activeId: activeSkill.id })
         }

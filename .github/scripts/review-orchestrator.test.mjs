@@ -31,6 +31,7 @@ import {
   buildUnifiedDiff,
   computeDeepMode,
   matchesSecurityPath,
+  selectLanes,
   normalizeFindings,
   classifyFindings,
   selectFindingsToPost,
@@ -934,7 +935,8 @@ describe('computeDeepMode: size gate + bounded-mode flag', () => {
   });
 
   test('executable Markdown prompts contribute to deep mode', () => {
-    for (const filename of ['.claude/skills/review/SKILL.md', '.claude/agents/reviewer.md', 'AGENTS.md', 'CLAUDE.md']) {
+    for (const filename of ['.claude/skills/review/SKILL.md', '.agents/skills/review/SKILL.md', '.claude/agents/reviewer.md',
+      'AGENTS.md', 'CLAUDE.md']) {
       const info = computeDeepMode([{ filename, additions: 600, deletions: 0 }], false);
       expect(info.deepMode).toBe(true);
       expect(info.fileCount).toBe(1);
@@ -986,6 +988,109 @@ describe('computeDeepMode: size gate + bounded-mode flag', () => {
     );
     expect(info.securityMode).toBe(true);
     expect(info.sensitiveFiles).toEqual(['src/crypto/primitives.ts', 'backend/drizzle/0042_x.sql']);
+  });
+
+  test('the flags file carries the lane selection', () => {
+    const info = computeDeepMode([{ filename: 'docs/guide.md', additions: 5, deletions: 0 }], false);
+    expect(info.lanes).toEqual(['I']);
+    expect(info.domainReviewers).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 7a — selectLanes: deterministic lane routing by changed files.
+// ---------------------------------------------------------------------------
+
+describe('selectLanes: only the lanes the diff can need', () => {
+  const noHeadFile = () => '';
+  const lanesFor = (...filenames) => selectLanes(filenames.map((filename) => ({ filename })), noHeadFile);
+  const lanesForPatch = (filename, patch) => selectLanes([{ filename, patch }], noHeadFile);
+  const backendCodeLanes = ['A', 'B', 'C', 'E', 'F', 'H', 'I', 'J'];
+
+  test('a docs-only diff runs only lane I', () => {
+    expect(lanesFor('docs/a.md', 'README.md', 'web/public/logo.png')).toEqual({ lanes: ['I'], domainReviewers: [] });
+  });
+
+  test('skill and agent prompts are reviewed by lane I alone', () => {
+    expect(lanesFor('.agents/skills/x/SKILL.md', '.claude/agents/y.md').lanes).toEqual(['I']);
+  });
+
+  test('a backend-only change skips React, bundle and localization', () => {
+    expect(lanesFor('backend/src/api/health.ts')).toEqual({ lanes: backendCodeLanes, domainReviewers: [] });
+  });
+
+  test('a test-only change keeps the test lane and drops security', () => {
+    const { lanes } = lanesFor('src/lib/http.test.ts');
+    expect(lanes).toContain('F');
+    expect(lanes).not.toContain('H');
+  });
+
+  test('frontend components add localization and the React lens, never lane D', () => {
+    const result = lanesFor('src/components/chat-input.tsx');
+    expect(result.lanes).toContain('K');
+    expect(result.lanes).not.toContain('D');
+    expect(result.domainReviewers).toEqual(['react-effect-reviewer']);
+    expect(lanesFor('src/hooks/use-mobile.ts').domainReviewers).toEqual(['react-effect-reviewer']);
+  });
+
+  test.each(['backend/src/emails/otp.tsx', 'src/locales/de/messages.po', 'shared/i18n/locales.ts'])(
+    '%s runs localization', (filename) => {
+      expect(lanesFor(filename).lanes).toContain('K');
+    });
+
+  test('a Lingui import added under backend/src runs localization', () => {
+    const patch = ['@@ -1,1 +1,2 @@', " import { x } from './x'", "+import { t } from '@lingui/core/macro'"].join('\n');
+    expect(lanesForPatch('backend/src/api/health.ts', patch).lanes).toContain('K');
+  });
+
+  test.each(['package.json', 'backend/package.json', 'bun.lock', 'src-tauri/Cargo.toml', 'src/app.tsx'])(
+    '%s runs the bundle lane', (filename) => {
+      expect(lanesFor(filename).lanes).toContain('G');
+    });
+
+  test('a new package import runs the bundle lane; relative and alias imports do not', () => {
+    const patchWith = (line) => ['@@ -1,1 +1,2 @@', ' const a = 1', `+${line}`].join('\n');
+    expect(lanesForPatch('src/lib/a.ts', patchWith("import { z } from 'zod'")).lanes).toContain('G');
+    expect(lanesForPatch('src/lib/a.ts', patchWith("const m = await import('marked')")).lanes).toContain('G');
+    expect(lanesForPatch('src/lib/a.ts', patchWith("import { b } from './b'")).lanes).not.toContain('G');
+    expect(lanesForPatch('src/lib/a.ts', patchWith("import { c } from '@/lib/c'")).lanes).not.toContain('G');
+  });
+
+  test('a plain .ts file that calls a hook or imports React gets the React lens', () => {
+    const hookPatch = ['@@ -97,3 +97,3 @@', '   useEffect(() => {', '-    load()', '+    void load()'].join('\n');
+    expect(lanesForPatch('src/chats/pending-prompt-store.ts', hookPatch).domainReviewers).toEqual(['react-effect-reviewer']);
+    const importPatch = ['@@ -1,1 +1,2 @@', " import { a } from './a'", "+import { startTransition } from 'react'"].join('\n');
+    expect(lanesForPatch('src/lib/handler.ts', importPatch).domainReviewers).toEqual(['react-effect-reviewer']);
+    expect(lanesForPatch('src/lib/handler.ts', ['@@ -1 +1 @@', '-a()', '+b()'].join('\n')).domainReviewers).toEqual([]);
+  });
+
+  test('a hunk inside a useEffect body still gets the React lens from the head file', () => {
+    const innerHunk = ['@@ -101,7 +101,7 @@', '     const next = queue.shift()', '-    send(next)', '+    void send(next)'].join('\n');
+    const headFile = "import { useEffect } from 'react'\n\nexport const usePendingPrompt = () => {\n  useEffect(() => {})\n}\n";
+    const readContent = (filename) => (filename === 'src/chats/pending-prompt-store.ts' ? headFile : '');
+    const result = selectLanes([{ filename: 'src/chats/pending-prompt-store.ts', patch: innerHunk }], readContent);
+    expect(result.domainReviewers).toEqual(['react-effect-reviewer']);
+    expect(selectLanes([{ filename: 'src/chats/pending-prompt-store.ts', patch: innerHunk }], noHeadFile).domainReviewers)
+      .toEqual([]); // deleted head file: falls back to the patch alone
+  });
+
+  test('the default reader takes the head version from the working tree', () => {
+    expect(selectLanes([{ filename: 'src/chats/pending-prompt-store.ts', patch: '' }]).domainReviewers)
+      .toEqual(['react-effect-reviewer']);
+  });
+
+  test.each(['shared/powersync-tables.ts', 'backend/drizzle/0042_x.sql', 'powersync-service/config/config.yaml',
+    'src/dal/chats.ts', 'backend/src/api/account.ts', 'backend/src/dal/powersync.ts', 'backend/src/dal/devices.ts',
+    'src/lib/reconcile-defaults.ts', 'src/lib/pick-defaults.ts'])('%s dispatches the PowerSync lens', (filename) => {
+    expect(lanesFor(filename).domainReviewers).toContain('powersync-sync-reviewer');
+  });
+
+  test('unknown file kinds count as code so the lanes still run', () => {
+    expect(lanesFor('.github/workflows/ci.yml').lanes).toEqual(['A', 'B', 'E', 'H', 'I', 'J']);
+  });
+
+  test('an empty diff selects nothing', () => {
+    expect(selectLanes([])).toEqual({ lanes: [], domainReviewers: [] });
   });
 });
 

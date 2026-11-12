@@ -156,13 +156,13 @@ jobs:
       # review:full, review the full PR. If nothing reviewable remains, the model steps are skipped.
       # Files without usable patches are listed in a partial review, and the head marker is still recorded.
       # ─────────────────────────────────────────────────────────────────────
-      # The repo commits `.claude/{commands,agents}/thunderbot*` as symlinks into
-      # a local-only `.thunderbot/` dir that is NOT checked out in CI, so they are
-      # dangling links here. The Claude SDK scans `.claude/` (the project setting
-      # source) and crashes (`ENOENT ... statx`) on a dangling link. Remove ONLY
-      # broken symlinks; the real skill/agent files are left untouched.
+      # Every committed skill under `.claude/skills/` is a symlink into
+      # `.agents/skills/`. The Claude SDK scans `.claude/` (the project setting
+      # source) and crashes (`ENOENT ... statx`) on a symlink whose target is
+      # missing, e.g. when a PR renames a skill folder but keeps the old link.
+      # Remove ONLY broken symlinks; links that resolve are left untouched.
       # ─────────────────────────────────────────────────────────────────────
-      - name: Prune dangling .claude symlinks (local-only tooling)
+      - name: Prune dangling .claude symlinks
         run: |
           find .claude -type l | while read -r l; do
             [ -e "$l" ] || { echo "pruning dangling symlink: $l"; rm -f "$l"; }
@@ -288,10 +288,10 @@ jobs:
             The unified diff to review is in the file: ${{ env.THUNDER_DIFF_FILE }} (read it with Read).
             Previous-findings file: ${{ env.THUNDER_PREVIOUS_FINDINGS_FILE }}.
             Follow SKILL.md's Inputs and operating rule 6 for scope and history.
-            Review all categories covered by the skill (bugs, conventions,
-            React, tests, security, bundle size, docs-intent, readability).
-            Deep-mode / bounded-mode / securityMode flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
-            honor them; do NOT decide spend yourself. When `securityMode` is true,
+            Deep-mode / bounded-mode / securityMode / lanes / domainReviewers flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
+            honor them; do NOT decide spend yourself. Spawn one sub-reviewer per
+            lane listed in `lanes` and dispatch every reviewer listed in
+            `domainReviewers`; skip the lanes the file leaves out. When `securityMode` is true,
             ALSO run the skill's path-conditional Security dimension over the
             listed `sensitiveFiles` (it loads docs/internals/architecture/e2ee-threat-model.md
             and the exclusion list at ${{ env.THUNDER_FP_RULES_FILE }}); when false,
@@ -420,11 +420,10 @@ jobs:
       # broken recall never launders into a green "no issues".
       # ─────────────────────────────────────────────────────────────────────
 
-      # STEP 1's claude-code-action restores the committed dangling `.claude`
-      # symlinks (via its own internal git checkout), so by now they're back and
-      # the gate's SDK scan would crash on them again (`ENOENT ... statx`). Re-run
-      # the same prune right before STEP 2. Same `if:` as the gate so it only runs
-      # when the gate does.
+      # STEP 1's claude-code-action restores committed `.claude` symlinks (via its
+      # own internal git checkout), so any broken one is back and the gate's SDK
+      # scan would crash on it again (`ENOENT ... statx`). Re-run the same prune
+      # right before STEP 2. Same `if:` as the gate so it only runs when the gate does.
       - name: Prune dangling .claude symlinks (before gate)
         if: >-
           steps.persist_candidates.outputs.count != '' &&

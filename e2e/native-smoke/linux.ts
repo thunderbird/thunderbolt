@@ -82,9 +82,25 @@ const setUpCloud = async () => {
 }
 
 try {
-  // A fresh install opens the setup wizard: accept the terms, then choose how to use the app.
+  // A fresh install opens the setup wizard. Reload it here: under tauri-driver a reload drops the app's
+  // data and brings back a fresh install, so a reload after setup would undo it.
+  await (await browser.$('#terms-agreement')).waitForDisplayed({ timeout: 60_000 })
+  const trayBeforeReload = await invokeNative('plugin:tray|get_by_id', { id: 'main-tray' })
+  assert.ok(Number.isInteger(trayBeforeReload), 'The desktop tray should be initialized')
+  await Promise.all([
+    invokeNative('initialize_tray', { showLabel: 'Show', quitLabel: 'Quit' }),
+    invokeNative('initialize_tray', { showLabel: 'Show', quitLabel: 'Quit' }),
+  ])
+  await browser.refresh()
   const terms = await browser.$('#terms-agreement')
   await terms.waitForDisplayed({ timeout: 60_000 })
+  assert.equal(
+    await invokeNative('plugin:tray|get_by_id', { id: 'main-tray' }),
+    trayBeforeReload,
+    'Reloading the frontend should retain the native tray',
+  )
+
+  // Accept the terms, then choose how to use the app.
   await terms.click()
   await clickButton('Continue')
   await waitForStep('Choose your setup')
@@ -102,15 +118,6 @@ try {
   await clickButton('Continue')
   await waitForStep("You're all set!")
   await clickButton('Continue')
-  await (await browser.$('textarea')).waitForDisplayed({ timeout: 60_000 })
-
-  const trayBeforeReload = await invokeNative('plugin:tray|get_by_id', { id: 'main-tray' })
-  assert.ok(Number.isInteger(trayBeforeReload), 'The desktop tray should be initialized')
-  await Promise.all([
-    invokeNative('initialize_tray', { showLabel: 'Show', quitLabel: 'Quit' }),
-    invokeNative('initialize_tray', { showLabel: 'Show', quitLabel: 'Quit' }),
-  ])
-  await browser.refresh()
   const composer = await browser.$('textarea')
   await composer.waitForDisplayed({ timeout: 60_000 })
   const appReadyAt = Date.now()
@@ -118,11 +125,6 @@ try {
     await (await browser.$('section[aria-label="Security notice"]')).isExisting(),
     false,
     'A new account must not show the recovery banner',
-  )
-  assert.equal(
-    await invokeNative('plugin:tray|get_by_id', { id: 'main-tray' }),
-    trayBeforeReload,
-    'Reloading the frontend should retain the native tray',
   )
 
   await invokeNative('plugin:window|close', { label: 'main' })

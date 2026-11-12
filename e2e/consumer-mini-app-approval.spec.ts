@@ -16,6 +16,9 @@ import {
 } from './mini-app-fixture'
 import { expect, test } from './test'
 
+// Mini Apps are desktop only, gated on viewport width (`useIsMobile`): a narrow viewport shows a notice instead.
+test.skip(({ viewport }) => (viewport?.width ?? 1280) < 768, 'Mini Apps are only available on desktop')
+
 const appId = 'e2e-notes'
 const appName = 'E2E Notes'
 const googleEmail = 'e2e-gmail@gmail.test'
@@ -73,7 +76,11 @@ const stubOutsideWorld = async (page: Page, hostOrigin: string) => {
     const callback = new URL(authUrl.searchParams.get('redirect_uri')!)
     callback.searchParams.set('code', 'e2e-google-code')
     callback.searchParams.set('state', authUrl.searchParams.get('state')!)
-    return route.fulfill({ status: 302, headers: { Location: callback.href } })
+    // WebKit cannot fulfill a request with a redirect status, so the page does the redirect.
+    return route.fulfill({
+      contentType: 'text/html',
+      body: `<!doctype html><script>location.replace(${JSON.stringify(callback.href)})</script>`,
+    })
   })
   await page.route('**/v1/auth/google/exchange', (route) =>
     route.fulfill({

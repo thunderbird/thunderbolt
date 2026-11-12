@@ -9,6 +9,8 @@ import docxUrl from 'office-sandbox-docx/index.umd.cjs?url'
 import pptxgenjsUrl from 'office-sandbox-pptxgenjs/pptxgen.bundle.js?url'
 import encodingUrl from 'quickjs-wasi/encoding.so?url'
 import quickjsUrl from 'quickjs-wasi/quickjs.wasm?url'
+import { sandboxLimits } from './constants'
+import type { SandboxMessage } from './run-in-worker'
 import { runSandboxedScript, type SandboxResult } from './sandbox'
 
 const compile = async (url: string) => WebAssembly.compile(await (await fetch(url)).arrayBuffer())
@@ -24,7 +26,9 @@ const run = async (script: string): Promise<SandboxResult> => {
       loadText(pptxgenjsUrl),
     ])
     const runtime = { wasm, extensions: [{ name: 'encoding', wasm: encoding }], libraries: [docx, pptxgenjs] }
-    return await runSandboxedScript(runtime, script)
+    return await runSandboxedScript(runtime, script, sandboxLimits, () =>
+      self.postMessage('ready' satisfies SandboxMessage),
+    )
   } catch (error) {
     return { ok: false, error: `The sandbox failed to run: ${String(error)}`, logs: '' }
   }

@@ -31,12 +31,39 @@ describe('runInSandboxWorker', () => {
     expect(worker.terminated).toBe(true)
   })
 
-  it('shuts down a Worker that stops answering', async () => {
+  it('shuts down a Worker that stops answering once the script started', async () => {
     const worker = createFakeWorker()
     const run = runInSandboxWorker('while (true) {}', undefined, () => worker)
+    worker.onmessage?.(new MessageEvent('message', { data: 'ready' }))
     await getClock().tickAsync(35_000)
 
-    expect(await run).toMatchObject({ ok: false, error: expect.stringContaining('did not answer within 35 seconds') })
+    expect(await run).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('stopped answering 35 seconds after the script started'),
+    })
+    expect(worker.terminated).toBe(true)
+  })
+
+  it('starts the script time only when the sandbox has loaded', async () => {
+    const worker = createFakeWorker()
+    const run = runInSandboxWorker('saveFile()', undefined, () => worker)
+    await getClock().tickAsync(100_000)
+    worker.onmessage?.(new MessageEvent('message', { data: 'ready' }))
+    await getClock().tickAsync(34_000)
+    worker.onmessage?.(new MessageEvent('message', { data: { ok: true, files: [], logs: '' } }))
+
+    expect(await run).toEqual({ ok: true, files: [], logs: '' })
+  })
+
+  it('gives up on a sandbox that never finishes loading', async () => {
+    const worker = createFakeWorker()
+    const run = runInSandboxWorker('saveFile()', undefined, () => worker)
+    await getClock().tickAsync(120_000)
+
+    expect(await run).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('did not finish loading within 120 seconds'),
+    })
     expect(worker.terminated).toBe(true)
   })
 

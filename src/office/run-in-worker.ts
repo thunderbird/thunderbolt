@@ -5,9 +5,12 @@
 import { sandboxLimits } from './constants'
 import type { SandboxResult } from './sandbox'
 
+/** What the Worker posts: `'ready'` once the sandbox is loaded and the script starts, then the result. */
+export type SandboxMessage = 'ready' | SandboxResult
+
 /** The part of a Worker the host uses, so a test can drive a fake one. */
 export type SandboxWorker = {
-  onmessage: ((event: MessageEvent<SandboxResult>) => void) | null
+  onmessage: ((event: MessageEvent<SandboxMessage>) => void) | null
   onerror: ((event: ErrorEvent) => void) | null
   postMessage: (script: string) => void
   terminate: () => void
@@ -20,10 +23,15 @@ const createOfficeWorker = (): SandboxWorker =>
 /** How long past the VM's own limit the host waits before it gives up on the Worker. */
 const watchdogGraceMs = 5_000
 
+/** How long the Worker may take to download and load the sandbox, before the script's own time starts. */
+const loadTimeoutMs = 120_000
+
 /**
  * Run a script in a fresh sandbox Worker and terminate the Worker afterwards. The VM interrupt enforces the
- * time limit; this watchdog only fires when the Worker stops answering (for example inside a long WASM call),
- * and it also covers the first download of the sandbox files. Rejects with the signal's reason on Stop.
+ * time limit; this watchdog only fires when the Worker stops answering (for example inside a long WASM call).
+ * Loading the sandbox has its own, longer limit, and the script's watchdog starts only when the Worker says
+ * it is ready: in WebKit a Worker's fetches go through the page's main thread, so a busy page holds up the
+ * load without the script having run. Rejects with the signal's reason on Stop.
  */
 export const runInSandboxWorker = (
   script: string,
@@ -33,19 +41,29 @@ export const runInSandboxWorker = (
   signal?.throwIfAborted()
   const worker = createWorker()
   const { promise, resolve, reject } = Promise.withResolvers<SandboxResult>()
+  const giveUp = (error: string) => () => resolve({ ok: false, error, logs: '' })
   const timeoutMs = sandboxLimits.timeoutMs + watchdogGraceMs
-  const watchdog = setTimeout(
-    () =>
-      resolve({
-        ok: false,
-        error: `The sandbox did not answer within ${timeoutMs / 1000} seconds and was shut down. Make the script do less work and try again.`,
-        logs: '',
-      }),
-    timeoutMs,
+  let watchdog = setTimeout(
+    giveUp(
+      `The sandbox did not finish loading within ${loadTimeoutMs / 1000} seconds and was shut down before the script ran. Call the tool again.`,
+    ),
+    loadTimeoutMs,
   )
   const onAbort = () => reject(signal?.reason)
   signal?.addEventListener('abort', onAbort, { once: true })
-  worker.onmessage = ({ data }) => resolve(data)
+  worker.onmessage = ({ data }) => {
+    if (data !== 'ready') {
+      resolve(data)
+      return
+    }
+    clearTimeout(watchdog)
+    watchdog = setTimeout(
+      giveUp(
+        `The sandbox stopped answering ${timeoutMs / 1000} seconds after the script started and was shut down. If the script does heavy work, make it do less; otherwise call the tool again.`,
+      ),
+      timeoutMs,
+    )
+  }
   worker.onerror = (event) => {
     event.preventDefault()
     resolve({ ok: false, error: `The sandbox failed to start: ${event.message}`, logs: '' })

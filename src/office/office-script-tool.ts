@@ -117,7 +117,7 @@ export const createOfficeScriptTool = (
     'Pass each finished file to `saveFile(filename, bytes)`. The name must end in .docx or .pptx. Get the bytes from `await docx.Packer.toArrayBuffer(doc)` or `await pres.write({ outputType: "uint8array" })`; `Packer.toBuffer`, `Packer.toBlob` and `pres.writeFile` do not work here.',
     'The sandbox has no network, no DOM, no fetch, no imports and no access to the chat or its attachments, so write all the content into the script.',
     'Each saved file appears in the chat for the user to download, so do not paste its contents into your reply.',
-    `Limits per run: ${sandboxLimits.timeoutMs / 1000} seconds, ${sandboxLimits.memoryBytes / 1024 / 1024} MiB of memory, ${sandboxLimits.textOutputBytes / 1024 / 1024} MiB of console output and ${sandboxLimits.maxFiles} files. If the result is { ok: false }, read the error, fix the script and call the tool again.`,
+    `Limits per run: ${sandboxLimits.timeoutMs / 1000} seconds of script time (loading the libraries does not count), ${sandboxLimits.memoryBytes / 1024 / 1024} MiB of memory, ${sandboxLimits.textOutputBytes / 1024 / 1024} MiB of console output and ${sandboxLimits.maxFiles} files. If the result is { ok: false }, read the error: fix the script when the error is about it, then call the tool again.`,
   ].join(' '),
   verb: 'Creating file',
   parameters: officeScriptParameters,

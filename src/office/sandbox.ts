@@ -63,14 +63,17 @@ const clip = (text: string) =>
 /**
  * Run `script` (the body of an async function) in a fresh QuickJS VM with no network, no DOM and no app
  * state. The script hands files back with `saveFile(filename, bytes)`. Every failure, including each limit,
- * returns an error worded for the model to act on.
+ * returns an error worded for the model to act on. `onReady` runs once the libraries are loaded, right before
+ * the script starts, which is also when the script's time starts.
  */
 export const runSandboxedScript = async (
   runtime: SandboxRuntime,
   script: string,
   limits: SandboxLimits = sandboxLimits,
+  onReady: () => void = () => {},
 ): Promise<SandboxResult> => {
-  const deadline = performance.now() + limits.timeoutMs
+  // Loading the libraries is the app's own work, so it does not count against the script's time.
+  let deadline = Infinity
   const encoder = new TextEncoder()
   const files: SavedFile[] = []
   let logs = ''
@@ -130,6 +133,8 @@ export const runSandboxedScript = async (
 
     vm.evalCode(prelude, 'prelude.js').dispose()
     runtime.libraries.forEach((code, index) => vm.evalCode(code, `library-${index}.js`).dispose())
+    deadline = performance.now() + limits.timeoutMs
+    onReady()
     // Same line as the script's first line, so line numbers in its errors match what the model wrote.
     vm.evalCode(
       `(async () => {${script}\n})().then(() => __finish(), (error) => __finish(error instanceof Error ? error.name + ': ' + error.message + '\\n' + (error.stack ?? '') : String(error)))`,

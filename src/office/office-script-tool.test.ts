@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, describe, expect, it } from 'bun:test'
+import { afterAll, describe, expect, it, spyOn } from 'bun:test'
 import JSZip from 'jszip'
 import mammoth from 'mammoth'
 import { docxMime, pptxMime } from '@/files/transformers'
@@ -232,6 +232,29 @@ describe.each([
       '{ toString() { for (let i = 0; i < 20; i++) saveFile(i + ".docx", new Uint8Array([1])); return "outer.docx" } }'
     for (const save of ['saveFile', '__saveFile']) {
       expect(await errorOf(`${save}(${name}, new Uint8Array([1]))`)).toContain('saved more than 20 files')
+    }
+  })
+})
+
+describe('runSandboxedScript', () => {
+  it('does not count loading the libraries against the script time', async () => {
+    // A clock that moves one unit per reading, so the outcome depends on how much code runs, not on how fast
+    // the machine is. Loading the libraries reads it about 200 times; this short script reads it almost never.
+    let ticks = 0
+    const clock = spyOn(performance, 'now').mockImplementation(() => ++ticks)
+    let readyCalls = 0
+    try {
+      const result = await runSandboxedScript(
+        { ...runtime, libraries: [...runtime.libraries, 'for (let i = 0; i < 1e6; i++) {}'] },
+        'saveFile("a.docx", new Uint8Array([1]))',
+        { ...sandboxLimits, timeoutMs: 10 },
+        () => readyCalls++,
+      )
+
+      expect(result.ok).toBe(true)
+      expect(readyCalls).toBe(1)
+    } finally {
+      clock.mockRestore()
     }
   })
 })

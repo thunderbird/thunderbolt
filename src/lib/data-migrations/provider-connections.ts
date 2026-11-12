@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { and, eq, getTableColumns, isNotNull, isNull, ne, or } from 'drizzle-orm'
+import { and, eq, getTableColumns, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { modelConnectionMigrationMetadataPrefix } from '@/db/powersync/crud-metadata'
 import {
   integrationsSecretsTable,
   modelsSecretsTable,
@@ -50,7 +51,7 @@ export const migrateLegacyProviderCredential = async (
     .where(eq(providerConnectionsTable.id, input.id))
     .get()
   if (!existing) {
-    await saveProviderConnectionInTransaction(db, input)
+    await saveProviderConnectionInTransaction(db, input, { createOnly: true })
     return true
   }
   const local = await db
@@ -180,7 +181,12 @@ export const migrateProviderConnections = async (db: AnyDrizzleDatabase): Promis
       }
       // Retain the approved legacy URL until every device has migrated its own local key.
       if (model.providerConnectionId !== connectionId) {
-        await tx.update(modelsTable).set({ providerConnectionId: connectionId }).where(eq(modelsTable.id, model.id))
+        // The upload applies this link only while the remote model still has no connection
+        // and the same provider; an offline migration must not undo a deliberate relink.
+        await tx.run(sql`UPDATE ${modelsTable}
+          SET provider_connection_id = ${connectionId},
+              _metadata = ${`${modelConnectionMigrationMetadataPrefix}${model.provider}`}
+          WHERE id = ${model.id}`)
       }
       if (secret && (hasLegacyKey || secret.providerDefault !== null)) {
         await tx

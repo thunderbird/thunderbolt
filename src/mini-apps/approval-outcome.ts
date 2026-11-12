@@ -26,3 +26,10 @@ export type MiniAppApprovalOutcome =
    * app closed or re-handshaked while the call was queued.
    */
   | 'unavailable'
+
+/**
+ * What the user can pick in the prompt. `approved-always` settles the call as
+ * `approved` and also stops asking about the same tool of the same app until
+ * Thunderbolt reloads.
+ */
+export type MiniAppApprovalChoice = 'approved' | 'approved-always' | 'denied'

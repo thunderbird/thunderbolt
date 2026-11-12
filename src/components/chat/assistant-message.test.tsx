@@ -283,8 +283,9 @@ describe('AssistantMessage activity', () => {
         { type: 'tool-render_html', toolCallId: 'page', state: 'input-streaming', input: { presentation: 'sidebar' } },
       ],
     }
-    render(<AssistantMessage message={message} isStreaming />)
-    expect(screen.getByRole('status')).toHaveTextContent('Working…')
+    render(<AssistantMessage message={message} isStreaming />, { wrapper: ContentViewProvider })
+    expect(screen.getByTestId('tool-status')).toHaveTextContent(/\S/)
+    expect(screen.queryByTestId('loading-status')).toBeNull()
     expect(screen.queryByText('Show inline')).toBeNull()
     cleanup()
   })

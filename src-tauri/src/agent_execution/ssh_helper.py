@@ -75,6 +75,10 @@ def execute(request, disconnected, heartbeat):
         raise ValueError("Install bash on the SSH host to run agent commands")
     environment = os.environ.copy()
     environment.update(request.get("env") or {})
+    # This is the SSH bash tool, not a web request handler: the command is the
+    # approved shell program. Approval/full-access checks and main-webview-only
+    # IPC authorize execution on the user's selected SSH host.
+    # nosemgrep: python.django.security.injection.command.subprocess-injection.subprocess-injection
     process = subprocess.Popen(
         [shell, "-lc", command], cwd=directory(request["cwd"]), env=environment,
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,

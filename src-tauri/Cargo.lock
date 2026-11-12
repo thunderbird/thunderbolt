@@ -5314,7 +5314,7 @@ dependencies = [
 
 [[package]]
 name = "thunderbolt"
-version = "0.1.162"
+version = "0.1.164"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

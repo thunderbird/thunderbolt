@@ -50,10 +50,10 @@ trait CredentialStore {
 struct SystemCredentialStore;
 
 #[cfg(desktop)]
-fn lock_vault() -> Result<std::sync::MutexGuard<'static, ()>, String> {
+fn lock_vault(access: &std::sync::Mutex<()>) -> Result<std::sync::MutexGuard<'_, ()>, String> {
     // An OS unlock prompt can outlive an async timeout. Keep its worker's lock
     // until the actual vault call returns, so retries cannot stack prompts.
-    VAULT_ACCESS
+    access
         .try_lock()
         .map_err(|_| "The system credential store is busy. Finish its prompt and try again".into())
 }
@@ -85,7 +85,7 @@ fn credential_target(connection: &SshConnection) -> SshConnection {
 #[cfg(desktop)]
 impl CredentialStore for SystemCredentialStore {
     fn read(&self, environment_id: &str) -> Result<Option<String>, String> {
-        let _access = lock_vault()?;
+        let _access = lock_vault(&VAULT_ACCESS)?;
         match system_entry(SERVICE, environment_id)
             .map_err(|_| "The system credential store is unavailable or locked")?
             .get_password()
@@ -97,14 +97,14 @@ impl CredentialStore for SystemCredentialStore {
     }
 
     fn write(&self, environment_id: &str, value: &str) -> Result<(), String> {
-        let _access = lock_vault()?;
+        let _access = lock_vault(&VAULT_ACCESS)?;
         system_entry(SERVICE, environment_id)
             .and_then(|entry| entry.set_password(value))
             .map_err(|_| "Could not save the SSH secret in the system credential store".into())
     }
 
     fn remove(&self, environment_id: &str) -> Result<(), String> {
-        let _access = lock_vault()?;
+        let _access = lock_vault(&VAULT_ACCESS)?;
         match system_entry(SERVICE, environment_id)
             .map_err(|_| "The system credential store is unavailable or locked")?
             .delete_credential()
@@ -180,6 +180,17 @@ fn load_secret(
     Ok(Some(Zeroizing::new(credential.secret.clone())))
 }
 
+/// Bound the caller's wait; the blocking worker retains its vault lock until it finishes.
+async fn access_vault<T: Send + 'static>(
+    timeout: Duration,
+    operation: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tokio::time::timeout(timeout, tauri::async_runtime::spawn_blocking(operation))
+        .await
+        .map_err(|_| "Unlock the system credential store and try again")?
+        .map_err(|_| "Could not access the SSH credential store")?
+}
+
 /// Store or forget one secret without ever returning it to the webview.
 #[tauri::command]
 pub async fn agent_ssh_set_secret(
@@ -188,11 +199,10 @@ pub async fn agent_ssh_set_secret(
     secret: Option<String>,
 ) -> Result<(), String> {
     super::require_main(&webview)?;
-    tauri::async_runtime::spawn_blocking(move || {
+    access_vault(AUTH_TIMEOUT, move || {
         save_secret(&SystemCredentialStore, connection, secret)
     })
     .await
-    .map_err(|_| "Could not access the SSH credential store")?
 }
 
 #[derive(Serialize, Deserialize)]
@@ -347,15 +357,10 @@ pub(super) async fn prepare_askpass(
 ) -> Result<Option<AskpassSession>, String> {
     let connection = connection.clone();
     let authentication = connection.authentication.clone();
-    let secret = tokio::time::timeout(
-        AUTH_TIMEOUT,
-        tauri::async_runtime::spawn_blocking(move || {
-            load_secret(&SystemCredentialStore, &connection)
-        }),
-    )
-    .await
-    .map_err(|_| "Unlock the system credential store and try again")?
-    .map_err(|_| "Could not access the SSH credential store")??;
+    let secret = access_vault(AUTH_TIMEOUT, move || {
+        load_secret(&SystemCredentialStore, &connection)
+    })
+    .await?;
     match secret {
         Some(secret) => AskpassSession::new(secret, authentication).await.map(Some),
         None => Ok(None),
@@ -741,7 +746,7 @@ mod tests {
     #[cfg(desktop)]
     #[test]
     fn pending_vault_access_rejects_other_operations_without_opening_the_store() {
-        let access = lock_vault().unwrap();
+        let access = lock_vault(&VAULT_ACCESS).unwrap();
         std::thread::spawn(|| {
             for result in [
                 SystemCredentialStore.read("unused").map(|_| ()),
@@ -754,7 +759,112 @@ mod tests {
         .join()
         .unwrap();
         drop(access);
-        assert!(lock_vault().is_ok());
+        assert!(lock_vault(&VAULT_ACCESS).is_ok());
+    }
+
+    #[tokio::test]
+    async fn vault_access_returns_the_operation_result() {
+        assert_eq!(
+            access_vault(Duration::from_secs(1), || Ok(42)).await,
+            Ok(42)
+        );
+        assert_eq!(
+            access_vault(Duration::from_secs(1), || Err::<(), _>(
+                "vault unavailable".into()
+            ))
+            .await,
+            Err("vault unavailable".into())
+        );
+    }
+
+    #[cfg(desktop)]
+    async fn assert_timed_out_mutation_preserves_order(pending: Option<&str>, retry: Option<&str>) {
+        use std::sync::{mpsc, Arc};
+
+        let store = Arc::new(MemoryCredentialStore::default());
+        let access = Arc::new(Mutex::new(()));
+        save_secret(store.as_ref(), connection(), Some("original".into())).unwrap();
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let worker_store = Arc::clone(&store);
+        let worker_access = Arc::clone(&access);
+        let pending = pending.map(str::to_owned);
+        let task = tokio::spawn(access_vault(Duration::from_millis(20), move || {
+            let result = {
+                let _access = lock_vault(&worker_access)?;
+                let _ = entered_tx.send(());
+                release_rx.recv().map_err(|_| "test worker released")?;
+                save_secret(worker_store.as_ref(), connection(), pending)
+            };
+            let _ = finished_tx.send(result.clone());
+            result
+        }));
+        tokio::time::timeout(Duration::from_secs(2), entered_rx)
+            .await
+            .expect("the blocking vault worker must start")
+            .unwrap();
+        assert_eq!(
+            task.await.unwrap().unwrap_err(),
+            "Unlock the system credential store and try again"
+        );
+
+        // A timeout releases the caller, not the OS call or its serialization lock.
+        let retry_store = Arc::clone(&store);
+        let retry_access = Arc::clone(&access);
+        let blocked_retry = retry.map(str::to_owned);
+        assert!(access_vault(Duration::from_secs(2), move || {
+            let _access = lock_vault(&retry_access)?;
+            save_secret(retry_store.as_ref(), connection(), blocked_retry)
+        })
+        .await
+        .unwrap_err()
+        .contains("credential store is busy"));
+        assert_eq!(
+            load_secret(store.as_ref(), &connection())
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "original"
+        );
+
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), finished_rx)
+            .await
+            .expect("the vault lock must be released when the OS operation returns")
+            .unwrap()
+            .unwrap();
+        let retry = retry.map(str::to_owned);
+        let expected = retry.clone();
+        let retry_store = Arc::clone(&store);
+        access_vault(Duration::from_secs(2), move || {
+            let _access = lock_vault(&access)?;
+            save_secret(retry_store.as_ref(), connection(), retry)
+        })
+        .await
+        .unwrap();
+        match expected {
+            Some(expected) => assert_eq!(
+                load_secret(store.as_ref(), &connection())
+                    .unwrap()
+                    .unwrap()
+                    .as_str(),
+                expected
+            ),
+            None => assert!(store.read(&connection().environment_id).unwrap().is_none()),
+        }
+    }
+
+    #[cfg(desktop)]
+    #[tokio::test]
+    async fn timed_out_save_cannot_overtake_a_later_removal() {
+        assert_timed_out_mutation_preserves_order(Some("pending save"), None).await;
+    }
+
+    #[cfg(desktop)]
+    #[tokio::test]
+    async fn timed_out_removal_cannot_overtake_a_later_save() {
+        assert_timed_out_mutation_preserves_order(None, Some("replacement")).await;
     }
 
     #[cfg(desktop)]

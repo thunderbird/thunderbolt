@@ -11,13 +11,12 @@ import {
   getDebugTranscriptNotes,
   setDebugTranscriptCaptureEnabled,
 } from '@/debug-transcript/recorder'
-import { clearLocalData } from './cleanup'
+import { clearLocalData, clearLocalDataOrThrow } from './cleanup'
 import { withKeyStoreLock } from '@/crypto/key-store-lock'
 import { getCachedSession, setCachedSession } from './session-cache'
 import { captureKeyStorageLifetime } from '@/crypto/key-storage-lifetime'
 import * as encryption from '@/services/encryption'
 import * as authToken from './auth-token'
-import * as fileBlobStorage from './file-blob-storage'
 import * as fs from './fs'
 import { clearIdentityScopedMemory } from './identity-memory'
 import { getIdentitySignal } from './identity-lifetime'
@@ -31,10 +30,12 @@ import {
 import { getOAuthState, setOAuthState } from './oauth-state'
 import { getMcpOAuthState, isMcpOAuthCallback, setMcpOAuthState } from './mcp-auth/mcp-oauth-state'
 import { providerAuthorizationDraftKey, providerAuthorizationDraftStorage } from '@/providers/authorization-draft'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
+import type { exchangeOtariCode } from './otari-auth'
 
 const authorizationState = 'n'.repeat(43)
 /** Start an actual tab handoff while replacing only browser navigation and provider transport. */
-const startOtari = async (exchange = async (_origin: string, _grant: unknown, _signal: AbortSignal) => 'token') => {
+const startOtari = async (exchange: typeof exchangeOtariCode = async () => 'token') => {
   const dependencies = {
     mobile: () => false,
     storage: () => sessionStorage,
@@ -66,7 +67,6 @@ describe('clearLocalData', () => {
 
   beforeEach(() => {
     spyOn(fs, 'resetAppDir').mockResolvedValue()
-    spyOn(fileBlobStorage, 'clearAllAttachments').mockResolvedValue()
     spyOn(adapterCache, 'disposeAllAdapters').mockResolvedValue()
     setCachedImageSupport(llava, 'supported')
   })
@@ -120,7 +120,6 @@ describe('clearLocalData', () => {
     sessionStorage.setItem('oauth_connecting', 'x')
     await clearLocalData({ ...onlyLocalSteps, clearDatabase: true })
     expect(getCachedImageSupport(llava)).toBeUndefined()
-    expect(fileBlobStorage.clearAllAttachments).toHaveBeenCalledTimes(1)
     expect(localStorage.length).toBe(0)
     expect(sessionStorage.length).toBe(0)
   })
@@ -129,7 +128,7 @@ describe('clearLocalData', () => {
     localStorage.setItem('retained-local-preference', 'x')
     await clearLocalData({ ...onlyLocalSteps, clearDatabase: false })
     expect(getCachedImageSupport(llava)).toBe('supported')
-    expect(fileBlobStorage.clearAllAttachments).not.toHaveBeenCalled()
+    expect(fs.resetAppDir).not.toHaveBeenCalled()
     expect(localStorage.getItem('retained-local-preference')).toBe('x')
     localStorage.removeItem('retained-local-preference')
   })
@@ -158,6 +157,20 @@ describe('clearLocalData', () => {
     ).toBeNull()
   })
 
+  it('forgets them when another account signs in, whose database is not this one', async () => {
+    localStorage.setItem('oauth_flow_state', 'x')
+    localStorage.setItem('mcp_oauth_flow_state', 'x')
+    localStorage.setItem('thunderbolt_locale', 'de')
+    useSearchProviderStore.getState().selectSearchConnection('connection-of-a')
+    await clearLocalData({ ...onlyLocalSteps, clearDatabase: false, keepSession: true })
+    expect(getCachedImageSupport(llava)).toBeUndefined()
+    expect(localStorage.getItem('oauth_flow_state')).toBeNull()
+    expect(localStorage.getItem('mcp_oauth_flow_state')).toBeNull()
+    expect(localStorage.getItem('thunderbolt_locale')).toBeNull()
+    expect(useSearchProviderStore.getState().selection).toBe('auto')
+    expect(useSearchProviderStore.getState().connectionId).toBeNull()
+  })
+
   it('clears web storage only after removing the token, so other tabs hear about the sign-out', async () => {
     // Other tabs react to the keyed `storage` event of the token removal; clear() sends
     // only an unkeyed one, so the token must still be there to remove when it runs.
@@ -171,6 +184,27 @@ describe('clearLocalData', () => {
 
     expect(storageIntactAtTokenRemoval).toBe(true)
     expect(localStorage.length).toBe(0)
+  })
+
+  it('keeps the new account’s session but drops the old account’s device credentials', async () => {
+    authToken.setAuthToken('token-of-b')
+    setCachedSession({ user: { id: 'user-b' } })
+    const deviceId = authToken.getDeviceId()
+    await clearLocalData({ ...onlyLocalSteps, clearAuth: true, keepSession: true, clearDatabase: false })
+    expect(authToken.getAuthToken()).toBe('token-of-b')
+    expect(getCachedSession()?.user?.id).toBe('user-b')
+    expect(authToken.getDeviceId()).not.toBe(deviceId)
+    authToken.clearAuthToken()
+  })
+
+  it('clearLocalDataOrThrow runs every step, then rejects when one failed', async () => {
+    spyOn(encryption, 'handleFullWipe').mockRejectedValue(new Error('key store locked'))
+    spyOn(console, 'error').mockImplementation(() => {})
+    authToken.setAuthToken('token')
+    await expect(
+      clearLocalDataOrThrow({ ...onlyLocalSteps, clearEncryptionKeys: true, clearAuth: true, clearDatabase: false }),
+    ).rejects.toThrow('Failed to clear local data')
+    expect(authToken.getAuthToken()).toBeNull()
   })
 })
 
@@ -193,7 +227,7 @@ describe('clearIdentityScopedMemory', () => {
 
   it('aborts a claimed provider exchange before asynchronous teardown and permits new identity work', async () => {
     const pending = Promise.withResolvers<string>()
-    const exchange = mock(async (_origin: string, _grant: unknown, signal: AbortSignal) => {
+    const exchange = mock<typeof exchangeOtariCode>(async (_origin, _grant, signal) => {
       const token = await pending.promise
       signal.throwIfAborted()
       return token

@@ -28,6 +28,14 @@ export {
   countActiveDevices,
 } from './devices'
 
+// Device approval sessions (short-code approval relay)
+export {
+  upsertApprovalSession,
+  getApprovalSession,
+  setApprovalChallenge,
+  setApprovalReveal,
+} from './device-approval-sessions'
+
 // Users
 export { getUserById, getUserByEmail, deleteUser, deleteIdleAnonymousUsers, markUserNotNew } from './users'
 

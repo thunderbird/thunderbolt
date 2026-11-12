@@ -67,7 +67,7 @@ See [rate-limit.ts:70](../src/middleware/rate-limit.ts) and [rate-limit.ts:82](.
 
 **Browsers cannot read those headers cross-origin.** None are in `defaultCorsExposeHeaders` ([config/settings.ts:15](../src/config/settings.ts)); adding them via `CORS_EXPOSE_HEADERS` replaces the default list rather than appending, so carry the existing values across. [AGENTS.md](../../AGENTS.md) explains why the expose list is explicit while the allowed-request-header list is not.
 
-**Not every backend `429` is this limiter.** Managed inference returns `429` with `{ "error": { "code": "INFERENCE_QUOTA_EXCEEDED", "window": … } }` from [inference/usage-responses.ts](../src/inference/usage-responses.ts) when a rolling spend quota is exhausted; that body shape is how the client tells a usage ledger from a request counter.
+**Not every backend `429` is this limiter.** Managed inference returns `429` with `{ "error": { "code": "INFERENCE_QUOTA_EXCEEDED", "window": … } }` from [inference/usage-responses.ts](../src/inference/usage-responses.ts) when a rolling spend quota is exhausted. It returns `INFERENCE_REQUEST_IN_PROGRESS` when a request does not fit beside the user's requests still running. That body shape is how the client tells a usage ledger from a request counter.
 
 ## Storage
 

@@ -5,9 +5,12 @@
 import { AcpCompactionNotice } from '@/components/context-usage'
 import { isRenderHtmlPart } from '@/artifacts/render-html-tool'
 import { PageMessagePart } from '@/pages/page-message-part'
-import { publishedPageOutput } from '@/pages/published-page-output'
+import { pagePublicationFromPart } from '@/pages/page-publications'
+import { PagePublicationsContext } from '@/pages/page-publications-context'
+import { usePageStore } from '@/pages/page-store'
+import { useShallow } from 'zustand/react/shallow'
 import {
-  artifactRendersStandalone,
+  pageRendersStandalone,
   filterMessageParts,
   type GroupedUIPart,
   groupMessageParts,
@@ -19,7 +22,8 @@ import { splitPartType } from '@/lib/utils'
 import type { HaystackReferenceMeta, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import type { TextUIPart } from 'ai'
-import { memo, useMemo, type ReactNode } from 'react'
+import { memo, useMemo, useContext, type ReactNode } from 'react'
+import { isToolOrDynamicToolUIPart } from 'ai'
 import { ArtifactMessagePart } from './artifact-message-part'
 import { CopyMessageButton } from './copy-message-button'
 import { ReasoningGroup } from './reasoning-group'
@@ -137,8 +141,27 @@ export const AssistantMessage = memo(
     lastAssistantAction,
     activity,
   }: AssistantMessageProps) => {
-    // Memoize filtering and grouping to avoid recomputing on every render
-    const groupedParts = useMemo(() => groupMessageParts(filterMessageParts(message.parts)), [message.parts])
+    const publications = useContext(PagePublicationsContext)
+    const placements = usePageStore(
+      useShallow((state) =>
+        Object.fromEntries(state.sessions.map((session) => [session.page.id, session.presentation])),
+      ),
+    )
+    const groupedParts = useMemo(
+      () =>
+        groupMessageParts(filterMessageParts(message.parts), (part) => {
+          const published = pagePublicationFromPart(part)
+          const latest = published && publications.get(published.page.id)
+          if (latest && latest.firstToolCallId !== part.toolCallId) {
+            return false
+          }
+          return pageRendersStandalone(
+            part,
+            published ? (placements[published.page.id] ?? latest?.presentation) : undefined,
+          )
+        }),
+      [message.parts, publications, placements],
+    )
 
     // Read metadata fields directly. During streaming `message.parts` grows every
     // token, so `groupedParts` — and therefore `partElements` below — already
@@ -189,17 +212,10 @@ export const AssistantMessage = memo(
       [message.parts],
     )
 
-    // An artifact is a tall block of its own, so it doesn't need the last-message
-    // height reserve — and applying it would leave empty space that pushes the
-    // artifact toward the middle of the viewport ("floating" too far down). Match the
-    // same condition that actually lifts the card out (streaming or verified-ok), so a
-    // last message whose only render_html call FAILED still gets the normal reserve.
+    // Only a visible inline preview replaces the last-message height reserve.
     const hasArtifact = useMemo(
-      () =>
-        message.parts.some(
-          (part) => (isRenderHtmlPart(part) && artifactRendersStandalone(part)) || publishedPageOutput(part),
-        ),
-      [message.parts],
+      () => groupedParts.some((part) => part.type !== 'reasoning_group' && isToolOrDynamicToolUIPart(part)),
+      [groupedParts],
     )
 
     const lastPartIsActivity = useMemo(() => {

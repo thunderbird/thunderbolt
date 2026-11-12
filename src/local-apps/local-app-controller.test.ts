@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { LocalAppStatus } from '@shared/local-app-protocol'
 import { createLocalAppController } from './local-app-controller'
 import { listLocalApps, useLocalAppStore } from './local-app-store'
@@ -33,6 +33,7 @@ const fixture = () => {
 }
 
 beforeEach(() => useLocalAppStore.setState({ apps: {} }))
+afterEach(() => useLocalAppStore.setState({ apps: {} }))
 
 describe('local app lifecycle', () => {
   it('stores project and standalone recipes locally without ephemeral URLs', () => {

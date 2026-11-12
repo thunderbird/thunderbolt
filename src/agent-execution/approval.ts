@@ -33,6 +33,14 @@ const readOnlyTools = new Set([
   'microsoft_get_onedrive_file_content',
 ])
 
+/** Inspection never starts a preview; every other local-app action can change its process or recipe. */
+const isLocalAppInspection = (name: string, input: unknown): boolean =>
+  name === 'local_app' &&
+  typeof input === 'object' &&
+  input !== null &&
+  'action' in input &&
+  (input.action === 'list' || input.action === 'status')
+
 /** A grant for another workspace must not authorize this turn's tools. */
 const matchesExecutionTarget = (left: AgentExecution, right: AgentExecution): boolean =>
   left.location === right.location &&
@@ -59,7 +67,7 @@ export const createToolAuthorizer = (
   let pending: Promise<void> = Promise.resolve()
   return async ({ name, source }, input, id, signal) => {
     signal?.throwIfAborted()
-    if (hasFullAccess() || (source === 'built-in' && readOnlyTools.has(name))) {
+    if (hasFullAccess() || (source === 'built-in' && (readOnlyTools.has(name) || isLocalAppInspection(name, input)))) {
       return
     }
     const previous = pending

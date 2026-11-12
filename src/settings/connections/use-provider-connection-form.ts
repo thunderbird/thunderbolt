@@ -13,6 +13,7 @@ import {
   updateProviderConnection,
 } from '@/dal/provider-connections'
 import { getAvailableModels } from '@/dal/models'
+import { createIdentityController } from '@/lib/identity-lifetime'
 import { canConnectChatGPT } from '@/providers/chatgpt-auth'
 import { useChatStore } from '@/chats/chat-store'
 import { loadOtariSearchStatus } from '@/integrations/otari-search/capabilities'
@@ -46,7 +47,7 @@ export const useProviderConnectionForm = ({
   const db = useDatabase()
   const queryClient = useQueryClient()
   const definition = getProviderDefinition(provider)
-  const pending = useRef<AbortController | null>(null)
+  const pending = useRef<ReturnType<typeof createIdentityController> | null>(null)
   useEffect(() => () => pending.current?.abort(), [])
   const [state, dispatch] = useReducer(
     (state: FormState, action: FormAction): FormState => ({ ...state, [action.field]: action.value }),
@@ -66,7 +67,7 @@ export const useProviderConnectionForm = ({
   const urlChanged = state.url.trim() !== (connection?.url ?? definition.defaultUrl ?? '')
   const credentialsChanged = !editing || (!oauthLocked && (Boolean(state.apiKey.trim()) || urlChanged))
   const mutation = useMutation({
-    mutationFn: async (controller: AbortController) => {
+    mutationFn: async (controller: ReturnType<typeof createIdentityController>) => {
       if (editing && !credentialsChanged) {
         controller.signal.throwIfAborted()
         await updateProviderConnection(db, connection!.id, { name: state.name.trim() })
@@ -112,7 +113,9 @@ export const useProviderConnectionForm = ({
         await assertCurrent()
         useSearchProviderStore.getState().configureProviderSearch(id, status, { select: false })
       }
-      useChatStore.getState().setModels(await getAvailableModels(db))
+      const models = await getAvailableModels(db)
+      controller.signal.throwIfAborted()
+      useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['provider-connections'] })
       await queryClient.invalidateQueries({ queryKey: ['models'] })
       await assertCurrent()
@@ -143,7 +146,7 @@ export const useProviderConnectionForm = ({
       })
       return
     }
-    const controller = new AbortController()
+    const controller = createIdentityController()
     pending.current = controller
     mutation.mutate(controller)
   }

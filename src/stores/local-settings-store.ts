@@ -7,22 +7,26 @@ import { persist } from 'zustand/middleware'
 import type { ExternalLinkBehavior } from '@/lib/external-link-behavior'
 import { isTauri } from '@/lib/platform'
 import { isRecord } from '@shared/lib/is-record'
+import { z } from 'zod'
 
 /**
  * Voice engine selection (THU-718). `thunderbolt` uses the hosted enclave STT/TTS
  * (via the /tinfoil proxy); `openai-compatible` points at any OpenAI-shaped
  * `/v1/audio/*` endpoint — another provider or a self-hosted local server.
  * Device-local (not synced): holds a key and a machine-specific URL.
+ * A schema because the ownership record keeps a copy per account (see `local-data-owner.ts`).
  */
-export type VoiceProviderConfig = {
-  kind: 'thunderbolt' | 'openai-compatible'
+export const voiceProviderSchema = z.object({
+  kind: z.enum(['thunderbolt', 'openai-compatible']),
   /** Base URL including the version prefix, e.g. http://localhost:8000/v1. */
-  baseUrl: string
-  apiKey: string
-  sttModel: string
-  ttsModel: string
-  ttsVoice: string
-}
+  baseUrl: z.string(),
+  apiKey: z.string(),
+  sttModel: z.string(),
+  ttsModel: z.string(),
+  ttsVoice: z.string(),
+})
+
+export type VoiceProviderConfig = z.infer<typeof voiceProviderSchema>
 
 export const defaultVoiceProvider: VoiceProviderConfig = {
   kind: 'thunderbolt',
@@ -32,6 +36,18 @@ export const defaultVoiceProvider: VoiceProviderConfig = {
   ttsModel: 'qwen3-tts',
   ttsVoice: 'aiden',
 }
+
+/**
+ * The local settings that belong to the signed-in account rather than to the device. An account
+ * switch stashes them on the previous owner's slot (see `local-data-owner.ts`), so a new local
+ * setting that holds one account's secret or state belongs here.
+ */
+export const accountLocalSettingsSchema = z.object({
+  voiceProvider: voiceProviderSchema,
+  recoveryPhrasePending: z.boolean(),
+})
+
+export type AccountLocalSettings = z.infer<typeof accountLocalSettingsSchema>
 
 type LocalSettingsState = {
   cloudUrl: string
@@ -48,6 +64,9 @@ type LocalSettingsState = {
    *  Survives reload/crash so the app can re-prompt — the phrase itself is
    *  unrecoverable (AK = PBKDF2(seed, salt)), so the prompt offers a rotation. */
   recoveryPhrasePending: boolean
+  /** The user whose recovery phrase was last seen needing a continuity update, so
+   *  the warning survives going offline. Set and cleared only by an online answer. */
+  recoveryContinuityUpdateRequiredFor: string | null
   /** Null until the user picks one; ThemeProvider then falls back to the operator default, then 'system'. */
   theme: 'light' | 'dark' | 'system' | null
   voiceProvider: VoiceProviderConfig
@@ -76,6 +95,7 @@ export const initialLocalSettings: LocalSettingsState = {
   hapticsEnabled: true,
   syncEnabled: false,
   recoveryPhrasePending: false,
+  recoveryContinuityUpdateRequiredFor: null,
   theme: null,
   voiceProvider: defaultVoiceProvider,
 }
@@ -133,6 +153,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
         hapticsEnabled: s.hapticsEnabled,
         syncEnabled: s.syncEnabled,
         recoveryPhrasePending: s.recoveryPhrasePending,
+        recoveryContinuityUpdateRequiredFor: s.recoveryContinuityUpdateRequiredFor,
         theme: s.theme,
         voiceProvider: s.voiceProvider,
       }),

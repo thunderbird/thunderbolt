@@ -6,6 +6,7 @@ import { expect, test } from 'bun:test'
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { browserBannerPrompt, browserBannerReply, createFakeProvider, fakeProviderReply } from './fake-provider'
+import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailBody, protectedEmailId } from './mini-app-fixture'
 import { performanceStreamPrompt, performanceStreamReply } from './streaming-fixture'
 
 test('streams a complete reply over IPv4 loopback', async () => {
@@ -135,6 +136,47 @@ test('the browser banner fixture runs two tools then answers, without leaking in
     expect(completed.content).toMatchObject([{ type: 'text', text: browserBannerReply }])
     messages.push({ role: 'assistant', content: completed.content }, { role: 'user', content: 'Hello again.' })
     expect((await send()).content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  } finally {
+    server.close()
+    server.closeAllConnections()
+  }
+})
+
+test('plays a model that reads an email and passes its body to the open Mini App', async () => {
+  const server = await createFakeProvider(0, { delayMs: 0 })
+  try {
+    const { port } = z.object({ port: z.number() }).parse(server.address())
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: `http://127.0.0.1:${port}`, maxRetries: 0 })
+    const send = (messages: Anthropic.MessageParam[]) =>
+      client.messages.stream({ model: 'test-model', max_tokens: 100, messages }).finalMessage()
+    const ask: Anthropic.MessageParam = { role: 'user', content: miniAppTransferPrompt }
+
+    const read = await send([ask])
+    expect(read.stop_reason).toBe('tool_use')
+    expect(read.content).toMatchObject([
+      { type: 'tool_use', name: 'google_get_email', input: { id: protectedEmailId } },
+    ])
+
+    const toolResult = (content: string): Anthropic.MessageParam => ({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 'toolu_test', content: [{ type: 'text', text: content }] }],
+    })
+    const email = JSON.stringify({ id: protectedEmailId, body_text: protectedEmailBody })
+    const transfer = await send([ask, { role: 'assistant', content: read.content }, toolResult(email)])
+    expect(transfer.content).toMatchObject([
+      { type: 'tool_use', name: miniAppToolsetName, input: { note: protectedEmailBody } },
+    ])
+
+    const reply = await send([ask, { role: 'assistant', content: transfer.content }, toolResult('Shown.')])
+    expect(reply.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+
+    // Another tool's JSON result is not an email; it gets the ordinary reply.
+    const otherCall: Anthropic.MessageParam = {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 'toolu_test', name: 'search', input: {} }],
+    }
+    const unrelated = await send([ask, otherCall, toolResult('{"count":1}')])
+    expect(unrelated.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
   } finally {
     server.close()
     server.closeAllConnections()

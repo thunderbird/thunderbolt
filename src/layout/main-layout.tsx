@@ -5,6 +5,7 @@
 import { DownloadAppBannerDesktop } from '@/components/download-app-banner-desktop'
 import { DownloadAppBannerMobile } from '@/components/download-app-banner-mobile'
 import { FloatingHeader } from '@/components/floating-header'
+import { RecoveryContinuityColumn } from '@/components/recovery-continuity'
 import { useIsNativeMobile } from '@/hooks/use-mobile'
 import { edgeSpacing } from '@/lib/constants'
 import { isTauri } from '@/lib/platform'
@@ -21,33 +22,35 @@ export default function Page() {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      {/* Expanded pages carry app navigation in their own tab row. */}
-      {showsSharedHeader && <FloatingHeader />}
-      {!isTauri() && (
-        <>
-          <DownloadAppBannerMobile />
-          <DownloadAppBannerDesktop />
-        </>
-      )}
-      <div
-        className="flex-1 overflow-auto"
-        style={{
-          // Reserve the home-indicator safe area, but don't double-count it
-          // with the on-screen keyboard: when the keyboard is open (`--kb` > 0)
-          // it already covers that region, so subtract it. Without this, the
-          // safe-area inset stacks on top of `chat-ui`'s `var(--kb)` and shoves
-          // a bottom-anchored input well above the keyboard (THU-586). At rest
-          // (`--kb` = 0) this is the full safe-area inset. Native mobile keeps
-          // at least the standard 12px edge spacing when the inset is smaller.
-          paddingBottom: isNativeMobile
-            ? `max(var(--safe-area-bottom-padding) - var(--kb, 0px), ${edgeSpacing.mobile}px)`
-            : 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
-        }}
-      >
-        <Suspense fallback={<PageFallback />}>
-          <Outlet />
-        </Suspense>
-      </div>
+      <RecoveryContinuityColumn>
+        {/* Expanded pages carry app navigation in their own tab row. */}
+        {showsSharedHeader && <FloatingHeader />}
+        {!isTauri() && (
+          <>
+            <DownloadAppBannerMobile />
+            <DownloadAppBannerDesktop />
+          </>
+        )}
+        <div
+          className="flex-1 overflow-auto"
+          style={{
+            // Reserve the home-indicator safe area, but don't double-count it
+            // with the on-screen keyboard: when the keyboard is open (`--kb` > 0)
+            // it already covers that region, so subtract it. Without this, the
+            // safe-area inset stacks on top of `chat-ui`'s `var(--kb)` and shoves
+            // a bottom-anchored input well above the keyboard (THU-586). At rest
+            // (`--kb` = 0) this is the full safe-area inset. Native mobile keeps
+            // at least the standard 12px edge spacing when the inset is smaller.
+            paddingBottom: isNativeMobile
+              ? `max(var(--safe-area-bottom-padding) - var(--kb, 0px), ${edgeSpacing.mobile}px)`
+              : 'max(var(--safe-area-bottom-padding) - var(--kb, 0px), 0px)',
+          }}
+        >
+          <Suspense fallback={<PageFallback />}>
+            <Outlet />
+          </Suspense>
+        </div>
+      </RecoveryContinuityColumn>
     </div>
   )
 }

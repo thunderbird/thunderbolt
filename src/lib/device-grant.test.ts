@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 
 import {
@@ -109,6 +110,18 @@ describe('verifyDeviceCode', () => {
 })
 
 describe('approveDeviceCode', () => {
+  it('refuses to approve a CLI sign-in from an unverified device', async () => {
+    const { client, fetch } = fakeClient(() => ({ data: { success: true }, error: null }))
+
+    const refused = await approveDeviceCode(client, 'ABCD1234', async () => true)
+
+    expect(refused).toMatchObject({ ok: false, reason: 'unverifiedDevice' })
+    expect(fetch).not.toHaveBeenCalled()
+
+    expect(await approveDeviceCode(client, 'ABCD1234', async () => false)).toEqual({ ok: true })
+    expect(fetch).toHaveBeenCalledWith('/device/approve', { method: 'POST', body: { userCode: 'ABCD1234' } })
+  })
+
   it('POSTs the userCode to /device/approve and succeeds', async () => {
     const { client, fetch } = fakeClient(() => ({ data: { success: true }, error: null }))
 

@@ -36,6 +36,16 @@ for (const viewport of [
       if (viewport.width < 768) {
         await expect(menu).toHaveAttribute('data-slot', 'drawer-content')
         await expect(menu).toHaveAttribute('data-swipe-direction', 'down')
+        const backdrop = menu.locator('..').locator('xpath=preceding-sibling::*[@data-slot="drawer-overlay"]')
+        await expect(backdrop).toBeVisible()
+        await expect
+          .poll(() => backdrop.evaluate((element) => getComputedStyle(element).backdropFilter))
+          .toContain('blur(')
+        const backdropBounds = await backdrop.boundingBox()
+        expect(backdropBounds!.x).toBe(0)
+        expect(backdropBounds!.y).toBe(0)
+        expect(backdropBounds!.width).toBe(viewport.width)
+        expect(backdropBounds!.height).toBeGreaterThanOrEqual(viewport.height)
         await expect(menu.locator('[data-slot="drawer-handle"]')).toBeVisible()
         await expect
           .poll(async () => {

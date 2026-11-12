@@ -64,7 +64,7 @@ You can skip PostgreSQL entirely with `DATABASE_DRIVER=pglite`, which runs the s
 
 ## TLS and DNS
 
-Serve the app over HTTPS on anything other than `localhost`. Thunderbolt keeps each user's conversations in a database inside their browser, and browsers grant the storage and isolation features that requires only to pages served securely, so on a plain-HTTP hostname the local database falls back to memory and every reload loses the user's data.
+Serve the app over HTTPS on anything other than `localhost`. Thunderbolt keeps each user's conversations in a database inside their browser, and browsers grant the storage and isolation features that requires only to pages served securely. On a plain-HTTP hostname the app cannot open that database at all, so it does not start.
 
 The containers themselves speak plain HTTP and expect TLS to terminate in front of them, at your ingress controller, load balancer, or a reverse proxy such as Caddy or Traefik. cert-manager handles the certificates on Kubernetes, and the Pulumi path uses AWS Certificate Manager.
 

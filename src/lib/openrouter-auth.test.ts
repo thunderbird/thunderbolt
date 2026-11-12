@@ -436,22 +436,50 @@ it.each(['openrouter', 'tinfoil'] as const)(
   },
 )
 
-it.each(['openrouter', 'tinfoil'] as const)(
-  'cancels a stalled %s token body on user cancellation',
-  async (provider) => {
-    const transport = stalledTokenTransport()
-    const controller = new AbortController()
-    const harness = createHarness(true, { fetch: transport.fetch })
-    const auth = provider === 'openrouter' ? harness.auth : createTinfoilAuth('client', harness.deps)
-    const result = auth.startConnection({ signal: controller.signal }).catch((error: unknown) => error)
-    await settle()
-    harness.state.loopbackHandler?.(successfulLoopback)
-    await settle()
-    controller.abort()
-    expect(await result).toHaveProperty('name', 'AbortError')
-    expect(transport.signals[0].aborted).toBe(true)
-  },
-)
+it('cancels a stalled OpenRouter token body on user cancellation', async () => {
+  const transport = stalledTokenTransport()
+  const controller = new AbortController()
+  const harness = createHarness(true, { fetch: transport.fetch })
+  const result = harness.auth.startConnection({ signal: controller.signal }).catch((error: unknown) => error)
+  await settle()
+  harness.state.loopbackHandler?.(successfulLoopback)
+  await settle()
+  controller.abort()
+  expect(await result).toHaveProperty('name', 'AbortError')
+  expect(transport.signals[0].aborted).toBe(true)
+})
+
+it('returns a started Tinfoil grant after cancellation so its owner can revoke it', async () => {
+  const response = Promise.withResolvers<Response>()
+  const requests: Request[] = []
+  const harness = createHarness(true, {
+    fetch: async (input) => {
+      requests.push(input as Request)
+      return response.promise
+    },
+  })
+  const controller = new AbortController()
+  const auth = createTinfoilAuth('client', harness.deps)
+  const result = auth.startConnection({ signal: controller.signal })
+  await settle()
+  harness.state.loopbackHandler?.(successfulLoopback)
+  await settle()
+  controller.abort()
+  expect(requests[0].signal.aborted).toBe(false)
+  response.resolve(
+    Response.json({
+      access_token: 'unused-token',
+      refresh_token: 'unused-refresh',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    }),
+  )
+  expect(await result).toMatchObject({
+    access_token: 'unused-token',
+    refresh_token: 'unused-refresh',
+    authorizationId: expect.any(String),
+  })
+})
 
 it('refuses redirect replay for Tinfoil refresh and revocation credentials', async () => {
   const requests: Request[] = []
@@ -468,4 +496,61 @@ it('refuses redirect replay for Tinfoil refresh and revocation credentials', asy
   await auth.revoke('refresh')
   expect(requests.map((request) => request.redirect)).toEqual(['error', 'error'])
   expect(requests.map((request) => request.credentials)).toEqual(['omit', 'omit'])
+})
+
+it('does not exchange an already-cancelled Tinfoil authorization', async () => {
+  const request = mock(async () => Response.json({ access_token: 'unused', expires_in: 900, token_type: 'Bearer' }))
+  const auth = createTinfoilAuth('client', { fetch: request })
+  await expect(
+    auth.exchangeCode(
+      { code: 'code', verifier: 'verifier', redirectUri: 'https://app.example/oauth/tinfoil' },
+      AbortSignal.abort(),
+    ),
+  ).rejects.toHaveProperty('name', 'AbortError')
+  expect(request).not.toHaveBeenCalled()
+})
+
+it('lets an in-flight Tinfoil code exchange finish under its deadline after cancellation', async () => {
+  const deadline = new AbortController()
+  const timeout = spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+  const transport = stalledTokenTransport()
+  const caller = new AbortController()
+  const auth = createTinfoilAuth('client', { fetch: transport.fetch })
+  try {
+    const result = auth
+      .exchangeCode(
+        { code: 'code', verifier: 'verifier', redirectUri: 'https://app.example/oauth/tinfoil' },
+        caller.signal,
+      )
+      .catch((error: unknown) => error)
+    await settle()
+    caller.abort()
+    expect(transport.signals[0].aborted).toBe(false)
+    expect(timeout).toHaveBeenCalledWith(30_000)
+    deadline.abort(new DOMException('Token response timed out', 'TimeoutError'))
+    expect(await result).toBeInstanceOf(Error)
+    expect(transport.signals[0].reason.name).toBe('TimeoutError')
+  } finally {
+    timeout.mockRestore()
+  }
+})
+
+it('finishes a bounded Tinfoil revocation after identity teardown', async () => {
+  const sent = Promise.withResolvers<Request>()
+  const response = Promise.withResolvers<Response>()
+  const auth = createTinfoilAuth('client', {
+    fetch: async (input) => {
+      const request = input as Request
+      sent.resolve(request)
+      request.signal.addEventListener('abort', () => response.reject(request.signal.reason), { once: true })
+      return response.promise
+    },
+  })
+  const revoking = auth.revoke('unused-refresh')
+  const request = await sent.promise
+  invalidateIdentityLifetime()
+  expect(request.signal.aborted).toBe(false)
+  response.resolve(new Response(null, { status: 204 }))
+  await revoking
+  expect(new URLSearchParams(await request.text()).get('token')).toBe('unused-refresh')
 })

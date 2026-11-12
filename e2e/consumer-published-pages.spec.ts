@@ -132,16 +132,19 @@ test('published file pages retain live state while website and device-local outp
   await expect(frameElement).toHaveAttribute('data-retained-frame', 'same-document')
   await expect(frame.getByRole('textbox', { name: 'Unsaved draft' })).toHaveValue('Keep this draft through expansion')
 
-  const external = page.locator(`[data-published-page="${websiteId}"]`)
+  const pageTools = page.locator('.tool-invocation-card').filter({ hasText: 'Completed 3 steps' })
+  await pageTools.getByRole('button', { name: /Completed 3 steps/ }).click()
+  await expect(pageTools.getByTitle('This local app is unavailable on this device.')).toHaveCount(2)
+  await expect(pageTools.getByTitle('This local app is unavailable on this device.').first()).toBeDisabled()
+  await pageTools.getByTitle('External website', { exact: true }).click()
+  const external = page.locator('[data-page-panel]')
   await expect(external.getByRole('link', { name: 'Open in your browser' })).toHaveAttribute(
     'href',
     'https://example.com/',
   )
-  await expect(external.getByRole('link')).toHaveAttribute('target', '_blank')
-  await expect(external.locator('[data-page-slot], iframe')).toHaveCount(0)
-  await expect(page.getByText('Updated device-only preview', { exact: true })).toBeVisible()
-  await expect(page.locator(`[data-published-page="local-app:${localId}"]`)).toHaveCount(1)
-  await expect(page.getByText(/Its files do not sync/)).toBeVisible()
+  await expect(external.getByRole('link', { name: 'Open in your browser' })).toHaveAttribute('target', '_blank')
+  await expect(external.locator('iframe')).toHaveCount(0)
+  await expect(page.locator('[data-published-page]')).toHaveCount(0)
   await expect(page.locator('[data-page-host] iframe')).toHaveCount(1)
   await expect(page.locator(`[data-published-page="${failedPageId}"]`)).toHaveCount(0)
   await expect(page.locator('iframe[title="Failed page must stay inert"]')).toHaveCount(0)
@@ -230,11 +233,10 @@ for (const toolName of ['render_html', 'page_show_file'] as const) {
         html: '<h1>Latest app version</h1><label>Draft <input aria-label="Draft"></label>',
       },
     }
-    const sessionId = await page.evaluate(async (latestPage) => {
-      const modulePath = '/src/pages/page-controller.ts'
-      const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
-      return pageController.publishHtml(latestPage)
-    }, latestPage)
+    const tools = transcript.locator('.tool-invocation-card')
+    await tools.getByRole('button', { name: /Completed 2 steps/ }).click()
+    // Both historical tool results reopen the latest snapshot, even the first creation.
+    await tools.getByRole('button', { name: 'Open in side panel', exact: true }).first().click()
     await expect(page.locator('[data-page-panel]')).toBeVisible()
     await expect(appFrame.contentFrame().getByRole('heading', { name: 'Latest app version' })).toBeVisible()
     await appFrame.contentFrame().getByRole('textbox', { name: 'Draft' }).fill('Retain my draft')
@@ -247,6 +249,11 @@ for (const toolName of ['render_html', 'page_show_file'] as const) {
     await expect(appFrame.contentFrame().getByRole('textbox', { name: 'Draft' })).toHaveValue('Retain my draft')
     await expect(transcript.getByText(title, { exact: true })).toHaveCount(0)
     await expect(transcript.locator('[data-published-page], [data-page-update]')).toHaveCount(0)
+    const sessionId = await page.evaluate(async (pageId) => {
+      const modulePath = '/src/pages/page-store.ts'
+      const { usePageStore } = (await import(modulePath)) as typeof import('../src/pages/page-store')
+      return usePageStore.getState().sessions.find((session) => session.page.id === pageId)!.id
+    }, pageId)
     await page.evaluate(async (sessionId) => {
       const modulePath = '/src/pages/page-store.ts'
       const { usePageStore } = (await import(modulePath)) as typeof import('../src/pages/page-store')
@@ -258,6 +265,20 @@ for (const toolName of ['render_html', 'page_show_file'] as const) {
     await expect(transcript.getByTitle('Open in side panel', { exact: true })).toHaveCount(2)
     await expect(transcript.locator('[data-page-update]')).toHaveCount(0)
     await expect(page.locator('[data-page-host] iframe')).toHaveCount(2)
+    // Closing/reloading does not reopen anything implicitly. The tool remains a recovery path.
+    await page.evaluate(async (sessionId) => {
+      const modulePath = '/src/pages/page-controller.ts'
+      const { pageController } = (await import(modulePath)) as typeof import('../src/pages/page-controller')
+      pageController.close(sessionId)
+    }, sessionId)
+    await expect(appFrame).toHaveCount(0)
+    await page.reload()
+    await expect(page.locator('[data-page-panel]')).toHaveCount(0)
+    await expect(appFrame).toHaveCount(0)
+    await tools.getByRole('button', { name: /Completed 2 steps/ }).click()
+    await tools.getByRole('button', { name: 'Open in side panel', exact: true }).first().click()
+    await expect(appFrame.contentFrame().getByRole('heading', { name: 'Latest app version' })).toBeVisible()
+    await expect(appFrame.contentFrame().getByRole('heading', { name: 'Old app version' })).toHaveCount(0)
     expect(errors).toEqual([])
   })
 }

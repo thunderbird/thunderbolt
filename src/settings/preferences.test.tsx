@@ -6,6 +6,10 @@ import { unitDefaultsForRegion } from '@/i18n/region-units'
 import { getSettingsRecords, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { agentsTable } from '@/db/tables'
+import { exportFormat, exportSchemaVersion } from '@/dal/export'
+import { customRowToAgent } from '@/dal/agents'
+import { canManageAgent } from '@/components/settings/agents/agent-permissions'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { getClock } from '@/testing-library'
@@ -99,6 +103,48 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
         (setting) => setting.key === 'experimental_feature_otari',
       )?.value,
     ).toBe('false')
+  })
+
+  it('imports an agent without an account as manageable local data', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const { container } = renderPage(createMockAuthClient({ session: null }))
+    const backup = new File(
+      [
+        JSON.stringify({
+          format: exportFormat,
+          schemaVersion: exportSchemaVersion,
+          tables: {
+            agents: [
+              {
+                id: 'restored-agent',
+                name: 'Restored agent',
+                type: 'remote-acp',
+                transport: 'websocket',
+                url: 'wss://local-agent.example/ws',
+                userId: 'previous-owner',
+              },
+            ],
+          },
+        }),
+      ],
+      'backup.json',
+      { type: 'application/json' },
+    )
+
+    await act(async () => {
+      fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [backup] } })
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    })
+    expect(
+      await screen.findByText('Imported 1 row. The app may take a moment to reflect new chats.'),
+    ).toBeInTheDocument()
+
+    const restored = await getDb().select().from(agentsTable).get()
+    expect(restored?.userId).toBeNull()
+    expect(canManageAgent(customRowToAgent(restored!), null)).toBe(true)
+    expect(container.querySelector('#import-data-success')).toBeInTheDocument()
   })
 
   it('asks for a server when enabling cloud proxy in standalone mode', async () => {

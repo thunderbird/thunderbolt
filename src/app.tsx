@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { I18nProvider } from '@lingui/react'
 import { useLingui } from '@lingui/react/macro'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -57,6 +58,7 @@ import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupp
 import { useMigrationRecoveryKey } from './hooks/use-migration-recovery-key'
 import { RecoveryKeyDialog } from './components/recovery-key-dialog'
 import { UnsavedRecoveryPhrasePrompt } from './components/unsaved-recovery-phrase-prompt'
+import { RecoveryContinuityProvider } from './components/recovery-continuity'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
 import { loadSearchPalette } from '@/search/palette/search-palette-loader'
@@ -343,7 +345,7 @@ export const App = () => {
   // the WebView's default white background from flashing before the theme loads.
   useEffect(() => {
     if (isTauri()) {
-      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().show()).catch(console.error)
+      getCurrentWindow().show().catch(console.error)
     }
   }, [])
 
@@ -398,8 +400,9 @@ export const App = () => {
                         <HapticsProvider>
                           <ContentViewProvider>
                             <ExternalLinkDialogProvider>
-                              <AppContent initData={initData} />
-                              {/* Catches every phrase that was minted but never
+                              <RecoveryContinuityProvider>
+                                <AppContent initData={initData} />
+                                {/* Catches every phrase that was minted but never
                                     confirmed — reload, crash, or a dialog that
                                     never got the chance to render. Must live
                                     INSIDE HttpClientProvider: it rotates the key
@@ -418,7 +421,8 @@ export const App = () => {
                                     dialog displaying it. The prompt's own
                                     mount-time snapshot cannot see this — only
                                     the parent holding both can. */}
-                              {migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
+                                {migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
+                              </RecoveryContinuityProvider>
                             </ExternalLinkDialogProvider>
                           </ContentViewProvider>
                         </HapticsProvider>

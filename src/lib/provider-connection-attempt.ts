@@ -28,9 +28,10 @@ export const getProviderConnectionAttempt = async <P extends Provider>(
     provider === 'openrouter' || provider === 'tinfoil' || provider === 'otari'
       ? await getIntegrationCredentials(db, provider)
       : null
+  // Retiring an expired/replaced grant does not supersede the authorization already replacing it.
   const legacy = row?.credentials.sessionRevision
     ? { revision: row.credentials.sessionRevision, enabled: row.enabled }
-    : row
+    : row && { ...row, credentials: { ...row.credentials, reauth_required: undefined } }
   return { provider, revision: await connectionFingerprint(legacy) }
 }
 

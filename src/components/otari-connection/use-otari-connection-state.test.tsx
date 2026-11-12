@@ -257,13 +257,65 @@ describe('Otari connection', () => {
     expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
     fireEvent.mouseEnter(disconnect)
     expect(disconnect).toHaveTextContent('Disconnect')
+    const revocation = Promise.withResolvers<void>()
+    spyOn(otariAuth, 'revokeOtariToken').mockReturnValue(revocation.promise)
     await act(async () => fireEvent.click(disconnect))
+    expect(disconnect).toBeDisabled()
+    expect(disconnect).toHaveTextContent('Disconnecting…')
+    expect(screen.getByRole('combobox', { name: 'Choose a model' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Refresh models' })).toBeDisabled()
+    await act(async () => revocation.resolve())
     expect(await getProviderCredentials(getDb(), 'oauth:otari')).toBeNull()
     expect(otariAuth.revokeOtariToken).toHaveBeenCalledWith('http://localhost:8099', 'otari-key')
     expect(screen.getByRole('button', { name: 'Connect Otari' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Otari server URL')).toHaveValue('http://localhost:8099')
+  })
+
+  it('retains the Otari grant and model selection when disconnect fails, then retries safely', async () => {
+    const deps = { connect: mock(async () => 'otari-key'), loadModels: mock(async () => [{ id: 'model' }]) }
+    const { result } = renderHook(() => useOtariConnectionState(undefined, deps), { wrapper: createTestProvider() })
+    await act(async () => result.current.connect())
+    const credentials = await getProviderCredentials(getDb(), 'oauth:otari')
+    const revocation = Promise.withResolvers<void>()
+    const started = Promise.withResolvers<void>()
+    const revoke = spyOn(otariAuth, 'revokeOtariToken').mockImplementation(() => {
+      started.resolve()
+      return revocation.promise
+    })
+    let disconnecting!: Promise<void>
+    await act(async () => {
+      disconnecting = result.current.reconnect()
+      await started.promise
+    })
+    expect(result.current.operation).toBe('disconnect')
+    expect(result.current.busy).toBe(true)
+    await act(async () => {
+      await result.current.reconnect()
+      await result.current.connect()
+      await result.current.save()
+    })
+    expect(revoke).toHaveBeenCalledTimes(1)
+    expect(deps.loadModels).toHaveBeenCalledTimes(1)
+    expect(await getAllModels(getDb())).toEqual([])
+    await act(async () => {
+      revocation.reject(new Error('secret-revocation-details'))
+      await disconnecting
+    })
+    expect(result.current.error).toBe('Could not disconnect Otari. Please try again.')
+    expect(result.current.busy).toBe(false)
+    expect(result.current.key).toBe('otari-key')
+    expect(result.current.selected).toBe('model')
+    expect(await getProviderCredentials(getDb(), 'oauth:otari')).toEqual(credentials)
+    revoke.mockResolvedValue()
+    await act(async () => result.current.reconnect())
+    expect(revoke).toHaveBeenCalledTimes(2)
+    expect(result.current.error).toBe('')
+    expect(result.current.key).toBe('')
+    expect(result.current.selected).toBe('')
+    expect(await getProviderCredentials(getDb(), 'oauth:otari')).toBeNull()
   })
 
   it('refreshes an empty Otari catalog without requesting another OAuth grant', async () => {

@@ -58,7 +58,7 @@ Two PRs, to avoid sync rule mismatches.
 
 **PR 2: frontend** (`src/db/tables.ts`, step 3, plus DAL, defaults, reconciliation, UI). Merge only after PR 1's image is live. Frontend-first fails silently: the table works locally but never replicates.
 
-The provider-connections preparation follows this sequence: apply the generated backend migration and deploy all three sync-rule configurations before releasing the frontend that creates connections. The older frontend's `syncedTables` can be a subset of the shared backend registry during this rollout; it does not create or use the new local table yet. Existing model rows retain a null connection reference until the frontend migrates them.
+Provider connections are an explicitly approved exception to the two-PR procedure: schema, sync rules, and frontend ship together in PR #1511, with brief rollout downtime accepted. Apply backend migration `0043_provider-connections`, then deploy the PowerSync configuration before releasing the new frontend. Deployments updating these services together can temporarily fail connection sync until both backend and PowerSync are ready. Existing model rows retain a null connection reference until the frontend migrates them. Future synced tables still follow the two-PR procedure above.
 
 ### Adding Columns to an Existing Synced Table
 
@@ -210,6 +210,27 @@ it invented locally: the bundled defaults and the seeded settings keys, all with
 ids that collide with whatever another device already stored. Those writes are guesses, and a
 guess must not beat a stored value.
 
+Legacy provider-connection migrations also use create-only uploads on devices that have
+synced before. An offline upgrade may not have downloaded this newly introduced table, so
+its deterministic connection IDs can collide with remote edits or tombstones. Migration
+inserts attach a local `_metadata` marker through PowerSync's `trackMetadata` support;
+the connector converts marked provider-connection `PUT`s to `ifAbsent: true`. The marker
+stays with the queued operation across retries and is never a synced column. Ordinary
+connection creation and deliberate `PATCH` edits keep their usual semantics.
+
+Migration-generated model links use a separate durable marker containing the original
+provider. The connector sends those model `PATCH` operations with
+`ifProviderConnectionUnset: { provider }`; the backend applies only the connection field,
+only while the model is active, has the same provider, and still has no connection. A remote
+relink, provider change, or deletion wins, including when a successful upload is retried.
+Deliberate model edits carry no marker and remain unconditional.
+
+A pre-connection client can still change a legacy URL without changing the provider or
+setting a connection. The backend cannot compare that encrypted URL against the migration's
+plaintext snapshot. During the coordinated rollout, use the existing `MIN_APP_VERSION` gate
+to stop pre-connection clients from editing legacy routing after upgrade; this requires the
+release's actual minimum version and a backend restart, not a new gating mechanism.
+
 This is GH #1299: sync is off by default, so a second device seeds
 `user_has_completed_onboarding = false` at boot, and the moment the user enables sync that seed
 uploaded straight over the already-onboarded value on every other device.
@@ -222,7 +243,7 @@ mid-drain. A download _completing_ only lands ops in `ps_oplog`. By the time the
 there is nothing left to send.
 
 **Deploy the backend before the client.** Elysia drops body fields it does not declare, so a
-client sending `ifAbsent` to a backend that predates it is silently ignored and the overwrite
+client sending `ifAbsent` or `ifProviderConnectionUnset` to a backend that predates it is silently ignored and the overwrite
 behaviour returns, with no error anywhere.
 
 Two properties keep the rule safe:
@@ -232,7 +253,8 @@ Two properties keep the rule safe:
   anything), the row is created. Dropping it instead would leave the device holding rows the
   server has never heard of, and the first `PATCH` against one of those would miss, return 400,
   and wedge the upload queue permanently.
-- **Only `PUT` is constrained**, because `PUT` is the op with no user intent behind it. PowerSync
+- **Ordinary `PATCH` edits are unconditional**; only `PUT` and explicitly marked migration
+  links are constrained. PowerSync
   emits `PUT` from `INSERT` statements and `PATCH` from `UPDATE` statements (`UpdateType` in
   `@powersync/common`), so a `PUT` is a row the device made up while a `PATCH` is someone editing
   a row in front of them. That is what keeps resetting a setting to its default

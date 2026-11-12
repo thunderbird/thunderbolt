@@ -7,6 +7,7 @@ import { json } from 'node:stream/consumers'
 import { setTimeout } from 'node:timers/promises'
 import type { RawMessageStreamEvent } from '@anthropic-ai/sdk/resources/messages'
 import { z } from 'zod'
+import { miniAppToolsetName, miniAppTransferPrompt, protectedEmailId } from './mini-app-fixture'
 import { performanceStreamOptions, performanceStreamPrompt } from './streaming-fixture'
 
 export const fakeProviderReply = 'Hello from the fake provider, one word at a time.'
@@ -16,41 +17,45 @@ export const browserBannerReply = `${browserBannerThinking} Browser banner test 
 
 type FakeProviderOptions = { delayMs?: number }
 
-const requestSchema = z.object({
-  messages: z.array(
-    z.object({
-      role: z.string(),
-      content: z.union([
-        z.string(),
-        z.array(
-          z.object({
-            type: z.string(),
-            text: z.string().optional(),
-            tool_use_id: z.string().optional(),
-            content: z.unknown().optional(),
-          }),
-        ),
-      ]),
-    }),
-  ),
-})
+const textPartSchema = z.object({ type: z.string(), text: z.string().optional() })
+type TextPart = z.infer<typeof textPartSchema>
+const joinText = (parts: TextPart[]) =>
+  parts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text ?? '')
+    .join('\n')
+const textSchema = z.union([z.string(), z.array(textPartSchema).transform(joinText)])
+// Preserve result IDs so independent fixture scripts can follow their own tool calls.
+const contentSchema = z.union([
+  z.string().transform((text) => ({ text, toolCall: undefined, toolResults: [] })),
+  z
+    .array(
+      textPartSchema.extend({
+        name: z.string().optional(),
+        tool_use_id: z.string().optional(),
+        content: textSchema.optional(),
+      }),
+    )
+    .transform((parts) => ({
+      text: joinText(parts),
+      toolCall: parts.find((part) => part.type === 'tool_use')?.name,
+      toolResults: parts
+        .filter((part) => part.type === 'tool_result')
+        .map((part) => ({ id: part.tool_use_id, text: part.content })),
+    })),
+])
+const requestSchema = z.object({ messages: z.array(z.object({ role: z.string(), content: contentSchema })) })
 
-/** Decode text without mistaking a tool result for a new user prompt. */
-const messageText = (content: z.infer<typeof requestSchema>['messages'][number]['content']) =>
-  typeof content === 'string'
-    ? content
-    : content
-        .filter((part) => part.type === 'text')
-        .map((part) => part.text ?? '')
-        .join('\n')
+type FakeRequest = z.infer<typeof requestSchema>
+
+const lastUserContent = (request: FakeRequest) =>
+  request.messages.findLast((message) => message.role === 'user')?.content
 
 /** Opt in only the latest human prompt and only allow local fixture URLs. */
-const browserBannerStep = (request: z.infer<typeof requestSchema>) => {
-  const promptIndex = request.messages.findLastIndex(
-    (message) => message.role === 'user' && messageText(message.content),
-  )
+const browserBannerStep = (request: FakeRequest) => {
+  const promptIndex = request.messages.findLastIndex((message) => message.role === 'user' && message.content.text)
   const prompt = request.messages[promptIndex]
-  const text = prompt ? messageText(prompt.content) : ''
+  const text = prompt?.content.text ?? ''
   if (!text.startsWith(browserBannerPrompt)) {
     return null
   }
@@ -58,36 +63,42 @@ const browserBannerStep = (request: z.infer<typeof requestSchema>) => {
   if (!url || url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname)) {
     return null
   }
-  const results = request.messages
-    .slice(promptIndex + 1)
-    .flatMap((message) =>
-      Array.isArray(message.content) ? message.content.filter((part) => part.type === 'tool_result') : [],
-    )
-  const opened = results.find((part) => part.tool_use_id === 'browser-banner-open')
+  const results = request.messages.slice(promptIndex + 1).flatMap((message) => message.content.toolResults)
+  const opened = results.find((part) => part.id === 'browser-banner-open')
   if (!opened) {
     return { id: 'browser-banner-open', name: 'browser_tabs', input: { action: 'open', url: url.href } }
   }
-  if (results.some((part) => part.tool_use_id === 'browser-banner-snapshot')) {
+  if (results.some((part) => part.id === 'browser-banner-snapshot')) {
     return { done: true } as const
   }
-  const content = z
-    .union([z.string(), z.array(z.object({ type: z.string(), text: z.string().optional() }))])
-    .parse(opened.content)
-  const { tab } = z.object({ tab: z.object({ id: z.string() }) }).parse(JSON.parse(messageText(content)))
+  const { tab } = z.object({ tab: z.object({ id: z.string() }) }).parse(JSON.parse(z.string().parse(opened.text)))
   return { id: 'browser-banner-snapshot', name: 'browser_snapshot', input: { tabId: tab.id } }
 }
 
 /** Only the last user turn can opt into the expensive fixture; ordinary replies retain their original timing. */
-const requestsPerformanceStream = (request: z.infer<typeof requestSchema>) => {
-  const content = request.messages.findLast((message) => message.role === 'user')?.content
-  const text =
-    typeof content === 'string'
-      ? content
-      : content
-          ?.filter((part) => part.type === 'text')
-          .map((part) => part.text ?? '')
-          .join('\n')
-  return text === performanceStreamPrompt
+const requestsPerformanceStream = (request: FakeRequest) => lastUserContent(request)?.text === performanceStreamPrompt
+
+const emailResultSchema = z.object({ body_text: z.string() })
+
+/** The email body, when the last turn answers the `google_get_email` call this script made. */
+const emailBodyFromToolResult = ({ messages }: FakeRequest) => {
+  const [call, result] = messages.slice(-2)
+  const text = result?.content.toolResults[0]?.text
+  return call?.content.toolCall === 'google_get_email' && text !== undefined
+    ? emailResultSchema.parse(JSON.parse(text)).body_text
+    : null
+}
+
+/**
+ * The Mini App transfer script: read the email, then pass its body to the open app's tool, then reply in text. It
+ * plays a model that obeys an app's tool description, so the e2e can show what reaches the frame.
+ */
+const scriptedToolCall = (request: FakeRequest): { name: string; input: Record<string, string> } | null => {
+  if (lastUserContent(request)?.text === miniAppTransferPrompt) {
+    return { name: 'google_get_email', input: { id: protectedEmailId } }
+  }
+  const body = emailBodyFromToolResult(request)
+  return body === null ? null : { name: miniAppToolsetName, input: { note: body } }
 }
 
 /** Start a local Anthropic Messages provider with a deterministic streamed reply. */
@@ -149,22 +160,29 @@ export const createFakeProvider = async (port: number, options: FakeProviderOpti
         usage,
       },
     })
-    if (banner && !('done' in banner)) {
+    const toolCall = banner && !('done' in banner) ? banner : scriptedToolCall(request)
+    if (toolCall) {
       writeEvent({
         type: 'content_block_start',
         index: 0,
-        content_block: { type: 'tool_use', id: banner.id, name: banner.name, input: {}, caller: { type: 'direct' } },
+        content_block: {
+          type: 'tool_use',
+          id: 'id' in toolCall ? toolCall.id : `toolu_${crypto.randomUUID()}`,
+          name: toolCall.name,
+          input: {},
+          caller: { type: 'direct' },
+        },
       })
       writeEvent({
         type: 'content_block_delta',
         index: 0,
-        delta: { type: 'input_json_delta', partial_json: JSON.stringify(banner.input) },
+        delta: { type: 'input_json_delta', partial_json: JSON.stringify(toolCall.input) },
       })
       writeEvent({ type: 'content_block_stop', index: 0 })
       writeEvent({
         type: 'message_delta',
         delta: { stop_reason: 'tool_use', stop_sequence: null, stop_details: null, container: null },
-        usage: { ...usage, output_tokens: 20 },
+        usage: { ...usage, output_tokens: banner ? 20 : 8 },
       })
       writeEvent({ type: 'message_stop' })
       res.end()

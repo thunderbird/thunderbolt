@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AcpCompaction } from '@/acp/compaction'
-import { isRenderHtmlPart, renderHtmlOutput } from '@/artifacts/render-html-tool'
-import { publishedPageOutput } from '@/pages/published-page-output'
+import { isRenderHtmlPart, renderHtmlInput, renderHtmlOutput } from '@/artifacts/render-html-tool'
+import { pagePublicationFromPart } from '@/pages/page-publications'
 import {
   type DynamicToolUIPart,
   isToolOrDynamicToolUIPart,
@@ -49,9 +49,8 @@ export type GroupedUIPart = GroupableUIPart | ReasoningGroupUIPart
 
 /**
  * Whether a render_html part should render as its own artifact card rather than a
- * generic tool card. It lifts out as soon as the call starts (so the card shows
- * immediately and streams into place) and while verifying; only a finished call
- * that failed — or errored — stays an ordinary tool call in the group.
+ * generic tool card. This checks execution success; placement is handled by
+ * `pageRendersStandalone`, which also keeps sidebar publications in their tool group.
  */
 export const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolean => {
   if (part.state === 'output-error') {
@@ -63,13 +62,28 @@ export const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolea
   return true
 }
 
+/** Only inline publications occupy the message body; sidebar results stay inspectable in the tool group. */
+export const pageRendersStandalone = (
+  part: ToolOrDynamicToolUIPart,
+  presentation?: 'inline' | 'sidebar' | 'expanded',
+): boolean => {
+  const published = pagePublicationFromPart(part)
+  if (published) {
+    return (
+      (presentation ?? published.presentation ?? (published.page.source.kind === 'html' ? 'inline' : 'sidebar')) ===
+      'inline'
+    )
+  }
+  return isRenderHtmlPart(part) && artifactRendersStandalone(part) && renderHtmlInput(part).presentation === 'inline'
+}
+
 /**
  * Groups consecutive reasoning/tool parts into `reasoning_group` nodes for batch rendering.
  *
  * **Context**: Called by `AssistantMessage` after filtering, to organize tool calls for display.
  * Reasoning and tool calls (like `read_file`, `grep`, etc.) are grouped into a compact panel rather
- * than scattered through the message. A streaming or verified `render_html` part is lifted out to
- * render as its own artifact instead of joining the group.
+ * than scattered through the message. Inline previews are lifted out; sidebar publications
+ * retain their normal tool row and an explicit reopen action inside the expanded group.
  *
  * **Grouping logic**:
  * - Consecutive reasoning/tool parts → grouped into a single `ReasoningGroupUIPart`
@@ -78,7 +92,10 @@ export const artifactRendersStandalone = (part: ToolOrDynamicToolUIPart): boolea
  * @param parts - Filtered message parts (output from `filterMessageParts`)
  * @returns Parts with consecutive reasoning/tool parts grouped into `ReasoningGroupUIPart` nodes
  */
-export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => {
+export const groupMessageParts = (
+  parts: GroupableUIPart[],
+  rendersStandalone: (part: ToolOrDynamicToolUIPart) => boolean = pageRendersStandalone,
+): GroupedUIPart[] => {
   const grouped: GroupedUIPart[] = []
   let currentItems: ReasoningGroupItem[] = []
 
@@ -104,11 +121,7 @@ export const groupMessageParts = (parts: GroupableUIPart[]): GroupedUIPart[] => 
   // Both typed `tool-<name>` parts and MCP `dynamic-tool` parts group as tool items.
   parts.forEach((part) => {
     if (isToolOrDynamicToolUIPart(part)) {
-      // An artifact renders on its own from the moment the call starts — a live scripts-off
-      // preview streams into place (even before any HTML has arrived), then it becomes the
-      // verified result. Only a finished call that FAILED verification — or errored — stays in
-      // the group as an ordinary tool call.
-      if ((isRenderHtmlPart(part) && artifactRendersStandalone(part)) || publishedPageOutput(part)) {
+      if (rendersStandalone(part)) {
         flushGroup()
         grouped.push(part)
         return

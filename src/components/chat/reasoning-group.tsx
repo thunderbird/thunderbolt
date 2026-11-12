@@ -13,6 +13,7 @@ import { Expandable } from '../ui/expandable'
 import { ReasoningDisplay } from './reasoning-display'
 import { ReasoningGroupTitle } from './reasoning-group-title'
 import { ReasoningItem } from './reasoning-item'
+import { PagePublicationAction } from '@/pages/page-publication-action'
 
 type ReasoningGroupProps = {
   parts: ReasoningGroupItem[]
@@ -95,14 +96,16 @@ export const ReasoningGroup = ({
         <div className="max-h-[200px] overflow-y-auto" ref={scrollContainerRef}>
           {parts.map((part, index) => {
             return (
-              <ReasoningItem
-                key={index}
-                part={part}
-                onClick={() => openObjectSidebar(part.content as ToolOrDynamicToolUIPart | ReasoningUIPart, mcpTools)}
-                reasoningTime={reasoningTime?.[part.id]}
-                isGroupReasoning={isGroupReasoning}
-                mcpTools={mcpTools}
-              />
+              <div key={index}>
+                <ReasoningItem
+                  part={part}
+                  onClick={() => openObjectSidebar(part.content as ToolOrDynamicToolUIPart | ReasoningUIPart, mcpTools)}
+                  reasoningTime={reasoningTime?.[part.id]}
+                  isGroupReasoning={isGroupReasoning}
+                  mcpTools={mcpTools}
+                />
+                {part.type === 'tool' && <PagePublicationAction part={part.content as ToolOrDynamicToolUIPart} />}
+              </div>
             )
           })}
           <div ref={scrollTargetRef} />

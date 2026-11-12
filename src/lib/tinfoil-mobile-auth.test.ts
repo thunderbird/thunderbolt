@@ -173,3 +173,14 @@ it('restores the initiating chat after a mobile restart', async () => {
   await startTinfoilMobileConnection('connections', attempt, new AbortController().signal, deps)
   expect(captureTinfoilMobileReturn(callback(), deps)?.returnTo).toBe('/chats/new?project=work')
 })
+
+it('hands an issued grant to its owner for cleanup when cancellation races the exchange', async () => {
+  const exchanged = Promise.withResolvers<typeof tokens>()
+  const deps = { ...dependencies(), exchange: () => exchanged.promise }
+  await startTinfoilMobileConnection('onboarding', attempt, new AbortController().signal, deps)
+  const returned = captureTinfoilMobileReturn(callback(), deps)!
+  const completion = returned.complete()
+  returned.cancel()
+  exchanged.resolve(tokens)
+  expect(await completion).toEqual(tokens)
+})

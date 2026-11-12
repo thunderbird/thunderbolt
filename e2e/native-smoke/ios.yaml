@@ -6,6 +6,13 @@ env:
 - launchApp:
     clearState: true
 - extendedWaitUntil:
+    visible: Connect your AI
+    timeout: 300000
+- tapOn: Toggle Sidebar
+- tapOn: Sign in
+- tapOn: Cloud \(Waitlist\)
+- tapOn: Continue
+- extendedWaitUntil:
     visible: Want early access?
     timeout: 300000
 - waitForAnimationToEnd
@@ -28,8 +35,17 @@ env:
     timeout: 120000
 - inputText: 12345678
 - extendedWaitUntil:
+    visible: Set up sync
+    timeout: 120000
+- tapOn: Close
+# Cloud sign-in does not require enabling sync. Close the sidebar before choosing a model.
+- tapOn:
+    point: 95%,50%
+- extendedWaitUntil:
     visible: ${DEFAULT_MODEL}
     timeout: 120000
+# A new account has no recovery phrase to update, so the banner must stay away.
+- assertNotVisible: Security notice
 - tapOn: Agent location
 - assertVisible: Cloud
 - assertNotVisible: Manage SSH environments
@@ -56,7 +72,7 @@ env:
           when:
             notVisible: Model and reasoning effort
           commands:
-            - tapOn: '${DEFAULT_MODEL}|Opus 5.5'
+            - tapOn: "${DEFAULT_MODEL}|Opus 5.5"
       - waitForAnimationToEnd
       - tapOn: Opus 5.5 Thunderbolt
       # A pick leaves the sheet open; a tap above it closes it.

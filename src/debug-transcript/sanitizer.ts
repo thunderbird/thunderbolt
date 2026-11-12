@@ -16,6 +16,53 @@ const sensitiveKeyFragments = [
   'credential',
   'pwd',
 ]
+const privateKeyPattern = /-----BEGIN ((?:[A-Z0-9]+ )?PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/gi
+const credentialAssignmentPattern =
+  /([?&])?\b(?:aws[-_ ]*secret[-_ ]*access[-_ ]*key|client[-_ ]*secret)(?:\\*["'])?\s*[:=]\s*/gi
+
+/** Find a quoted value's end without backtracking, including JSON-escaped delimiters. */
+const quotedCredentialEnd = (value: string, start: number, delimiter: string): number => {
+  const quote = delimiter.at(-1)
+  // Each JSON wrapping doubles escape runs: closing quotes recur every 2 * (escaped + 1) backslashes.
+  const escaped = delimiter.length - 1
+  let backslashes = 0
+  for (let index = start + delimiter.length; index < value.length; index++) {
+    const character = value[index]
+    if (character === quote && backslashes >= escaped && (backslashes - escaped) % (2 * (escaped + 1)) === 0) {
+      return index + 1
+    }
+    backslashes = character === '\\' ? backslashes + 1 : 0
+  }
+  // A truncated log or note must not expose the unfinished credential.
+  return value.length
+}
+
+/** Redact labeled assignments while preserving surrounding text and quote delimiters. */
+const redactCredentialAssignments = (value: string): string => {
+  const chunks: string[] = []
+  let cursor = 0
+  for (const match of value.matchAll(credentialAssignmentPattern)) {
+    if (match.index < cursor) {
+      continue
+    }
+    const start = match.index + match[0].length
+    const remaining = value.slice(start)
+    const delimiter = /^\\*["'`]/.exec(remaining)?.[0] ?? ''
+    // URL-style parameters keep their separators; bare opaque secrets may contain punctuation.
+    const bareValue = match[1] ? /^[^&#\s]*/ : /^\S*/
+    const end = delimiter
+      ? quotedCredentialEnd(value, start, delimiter)
+      : start + (bareValue.exec(remaining)?.[0].length ?? 0)
+    if (end === start) {
+      continue
+    }
+    chunks.push(value.slice(cursor, start), `${delimiter}${redacted}${delimiter}`)
+    cursor = end
+  }
+  chunks.push(value.slice(cursor))
+  return chunks.join('')
+}
+
 const jwtPattern = /\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]{5,})?\b/g
 const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi
 const skProviderKeyPattern = /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}\b/gi
@@ -34,7 +81,10 @@ const isSensitiveKey = (key: string): boolean => {
 /** Redact credentials embedded in free-form transcript text. */
 export const sanitizeDebugTranscriptText = (value: string): string =>
   [jwtPattern, bearerPattern, skProviderKeyPattern, knownProviderKeyPattern]
-    .reduce((sanitized, pattern) => sanitized.replace(pattern, redacted), value)
+    .reduce(
+      (sanitized, pattern) => sanitized.replace(pattern, redacted),
+      redactCredentialAssignments(value.replace(privateKeyPattern, redacted)),
+    )
     .replace(urlCredentialQueryPattern, `$1${redacted}`)
     .replace(urlUserInfoPattern, `$1${redacted}:${redacted}@`)
 

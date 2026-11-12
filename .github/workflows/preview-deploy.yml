@@ -12,7 +12,8 @@ name: Preview Deploy
 # Fork PRs are supported via the `pull_request_target` trigger, gated behind
 # the `fork-preview-approval` environment so a maintainer must explicitly
 # approve each run (including each new push). Internal (same-repo) PRs use
-# `pull_request` and auto-deploy with no human gate, same as before.
+# `pull_request` and deploy automatically: only collaborators with write access
+# can push a branch here, and they are trusted with the preview credentials.
 #
 # Trust boundary: under `pull_request_target`, the workflow file is read from
 # main (so a fork cannot modify how the deploy behaves) and the default
@@ -38,9 +39,12 @@ on:
         required: true
 
 concurrency:
-  # event_name in the key so the no-op pull_request run for a fork doesn't
-  # cancel the approval-pending pull_request_target run on the same PR.
-  group: preview-pr-${{ github.event.pull_request.number || inputs.pr_number }}-${{ github.event_name }}
+  # Runs that can deploy (same-repo pull_request, fork pull_request_target, dispatch)
+  # share the `deploy` group, so a new push cancels any pending or running deploy of
+  # the old head, approved or not. Each PR event also leaves a no-op run (fork
+  # pull_request, same-repo pull_request_target); it keeps its event name as its
+  # group so it cannot cancel the real one.
+  group: preview-pr-${{ github.event.pull_request.number || inputs.pr_number }}-${{ (github.event_name == 'pull_request') == (github.event.pull_request.head.repo.full_name != github.repository) && github.event_name || 'deploy' }}
   cancel-in-progress: true
 
 permissions:
@@ -112,24 +116,39 @@ jobs:
     # Required-reviewer gate for fork PRs. Configure required reviewers on the
     # `fork-preview-approval` environment in repo Settings → Environments.
     # Each new push to a fork PR re-enters this gate (concurrency cancels the
-    # prior pending run), so approval is per-commit, not per-PR.
+    # prior pending run), so approval is per-commit, not per-PR. The name carries
+    # the SHA so the reviewer sees exactly which commit they approve.
+    name: 'Approve fork preview of PR #${{ needs.resolve.outputs.pr_number }} at ${{ needs.resolve.outputs.head_sha }}'
     needs: resolve
     if: needs.resolve.outputs.proceed == 'true' && needs.resolve.outputs.is_fork == 'true'
     runs-on: ubuntu-latest
     environment: fork-preview-approval
+    permissions:
+      actions: read # read the environment's protection rules
     steps:
-      - run: |
-          echo "Fork preview approved for PR #${{ needs.resolve.outputs.pr_number }} @ ${{ needs.resolve.outputs.head_sha }}"
+      - name: Require reviewers on the approval environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # GitHub creates a missing environment without rules, and an environment
+          # without reviewers starts this job unapproved. Fail closed in both cases.
+          gh api "repos/$REPO/environments/fork-preview-approval" \
+            | jq -e 'any(.protection_rules[]; .type == "required_reviewers" and (.reviewers | length) > 0)' >/dev/null \
+            || { echo "::error::The fork-preview-approval environment must have required reviewers."; exit 1; }
 
   publish:
     needs: [resolve, approve-fork]
     # Runs when resolve told us to proceed AND either:
     #   - approve-fork ran and succeeded (fork path), OR
-    #   - approve-fork was skipped (internal path; no gate needed)
+    #   - approve-fork was skipped for a same-repo PR (internal path; no gate needed)
+    # !cancelled() rather than always(): a run cancelled by a newer push must not deploy.
     if: |
-      always() &&
+      !cancelled() &&
       needs.resolve.outputs.proceed == 'true' &&
-      (needs.approve-fork.result == 'success' || needs.approve-fork.result == 'skipped')
+      (needs.approve-fork.result == 'success' ||
+        (needs.approve-fork.result == 'skipped' && needs.resolve.outputs.is_fork == 'false'))
     uses: ./.github/workflows/images-publish.yml
     with:
       # Preview stacks run on amd64 Fargate; skip the emulated arm64 build.
@@ -140,7 +159,7 @@ jobs:
 
   deploy:
     needs: [resolve, publish]
-    if: always() && needs.publish.result == 'success'
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
     uses: ./.github/workflows/stack-deploy.yml
     with:
       action: deploy

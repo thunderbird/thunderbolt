@@ -338,3 +338,35 @@ describe('buildDebugTranscriptPayload', () => {
     expect(payload.identity).toEqual({ userId: null, email: null })
   })
 })
+
+it('redacts credentials in captured system prompts and failures before upload', () => {
+  clearDebugTranscriptRecorder()
+  setDebugTranscriptCaptureEnabled(true)
+  try {
+    const secret = crypto.randomUUID()
+    const text = `Ordinary context {"client_secret":"${secret}"}`
+    beginDebugTranscriptTurn({
+      threadId: 'captured-thread',
+      traceId: 'captured-trace',
+      engine: 'pi',
+      model: { id: 'model-1', name: 'Model', provider: 'test' },
+      agentId: 'built-in',
+      userMessageId: 'm1',
+    })
+    recordDebugTranscriptSystemPrompts('captured-thread', 'captured-trace', [text])
+    recordDebugTranscriptFailure('captured-thread', 'captured-trace', { errorClass: 'ProviderError', message: text })
+    const payload = buildDebugTranscriptPayload({
+      threadId: 'captured-thread',
+      authSession: null,
+      appVersion: '1',
+      platform: 'web',
+      messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Ordinary question' }] }],
+    })
+    expect(JSON.stringify(payload).includes(secret)).toBe(false)
+    expect(payload.turns[0]?.systemPrompts[0]?.text).toBe('Ordinary context {"client_secret":"[redacted]"}')
+    expect(payload.turns[0]?.failures[0]?.message).toBe('Ordinary context {"client_secret":"[redacted]"}')
+  } finally {
+    clearDebugTranscriptRecorder()
+    setDebugTranscriptCaptureEnabled(false)
+  }
+})

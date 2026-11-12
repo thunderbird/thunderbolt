@@ -95,12 +95,16 @@ describe('publishedPageOutput', () => {
     expect(publishedPageOutput(part('page_open', { content: [{ type: 'text', text: '{bad JSON' }] }))).toBeNull()
   })
 
-  it('lifts a completed dynamic page result between reasoning groups', () => {
+  it('keeps a completed sidebar page result in its ordinary tool group', () => {
     const published = part('page_open', { ok: true, page })
     const ordinary = part('page_snapshot', { text: 'Example' })
     const grouped = groupMessageParts([ordinary, published, ordinary])
-    expect(grouped.map((item) => item.type)).toEqual(['reasoning_group', 'dynamic-tool', 'reasoning_group'])
-    expect(grouped[1]).toBe(published)
+    expect(grouped).toEqual([
+      {
+        type: 'reasoning_group',
+        items: [ordinary, published, ordinary].map((content) => ({ type: 'tool', content, id: content.toolCallId })),
+      },
+    ])
   })
 })
 

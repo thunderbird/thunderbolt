@@ -12,9 +12,11 @@ import { nativeFetch } from '@/lib/native-fetch'
 import {
   createProviderAuthorization,
   createOAuthRequestSignal,
+  oauthRequestTimeoutMs,
   type OpenRouterAuthDependencies,
 } from '@/lib/openrouter-auth'
 import { generateCodeVerifier } from '@/lib/pkce'
+import { getIdentitySignal } from '@/lib/identity-lifetime'
 import { isTauri, isMobile } from '@/lib/platform'
 import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import { readChatGPTRegistration, retainChatGPTRegistration } from './chatgpt-registration'
@@ -59,10 +61,11 @@ export const validateChatGPTIdentity = async (
 /** Signs in using OpenAI's public OSS client registration, without borrowing another application's client ID. */
 export const connectChatGPT = async (
   db: AnyDrizzleDatabase,
-  signal: AbortSignal,
+  callerSignal: AbortSignal,
   platform?: Partial<OpenRouterAuthDependencies>,
   accountClientId?: string | null,
 ): Promise<ProviderCredentials> => {
+  const signal = AbortSignal.any([callerSignal, getIdentitySignal()])
   if (!platform && !canConnectChatGPT()) {
     throw new Error('ChatGPT sign-in requires the desktop app')
   }
@@ -105,13 +108,15 @@ export const connectChatGPT = async (
     throw new Error('Invalid ChatGPT client registration')
   }
   await retainChatGPTRegistration(db, { clientId }, attempt, signal)
+  signal.throwIfAborted()
+  // Finish a started grant exchange so cancellation can revoke the returned refresh token.
   const tokens = oauthTokensSchema.extend({ id_token: z.string().min(1), expires_in: z.number().positive() }).parse(
     await http
       .post(metadata.token_endpoint, {
         fetch: nativeFetch,
         redirect: 'error',
         credentials: 'omit',
-        signal: createOAuthRequestSignal(signal),
+        signal: AbortSignal.timeout(oauthRequestTimeoutMs),
         body: new URLSearchParams({
           grant_type: 'authorization_code',
           client_id: clientId,
@@ -138,6 +143,7 @@ export const connectChatGPT = async (
     },
   }
   try {
+    signal.throwIfAborted()
     const jwks = await http
       .get(metadata.jwks_uri, {
         fetch: nativeFetch,

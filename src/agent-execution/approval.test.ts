@@ -13,6 +13,30 @@ beforeEach(() => useAgentExecutionStore.setState({ byThread: {}, byProject: {} }
 afterEach(() => useAgentExecutionStore.setState({ byThread: {}, byProject: {} }))
 
 describe('built-in tool approval', () => {
+  it('allows local app inspection while gating mutations, unknown actions, and external lookalikes', async () => {
+    const requestPermission = mock(
+      async (): Promise<RequestPermissionResponse> => ({ outcome: { outcome: 'selected', optionId: 'deny' } }),
+    )
+    const authorize = createToolAuthorizer(
+      { location: 'computer', cwd: '/workspace', access: 'ask' },
+      { threadId: 'chat', requestPermission },
+    )
+    for (const action of ['list', 'status']) {
+      await authorize({ name: 'local_app', source: 'built-in' }, { action, appId: 'existing' }, action)
+    }
+    expect(requestPermission).not.toHaveBeenCalled()
+    for (const action of ['create', 'update', 'start', 'restart', 'stop', 'unknown']) {
+      await expect(authorize({ name: 'local_app', source: 'built-in' }, { action }, action)).rejects.toThrow('denied')
+    }
+    for (const action of ['list', 'status']) {
+      await expect(authorize({ name: 'local_app', source: 'external' }, { action }, action)).rejects.toThrow('denied')
+    }
+    expect(requestPermission).toHaveBeenCalledTimes(8)
+    await expect(
+      authorize({ name: 'local_app', source: 'built-in' }, { action: 'list' }, 'cancelled', AbortSignal.abort()),
+    ).rejects.toThrow()
+  })
+
   it('requires approval for an external tool even when its name matches a trusted read', async () => {
     const execute = mock(async () => 'side effect')
     const requestPermission = mock(

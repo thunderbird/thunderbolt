@@ -65,7 +65,7 @@ export const addProviderModels = async (
   db: AnyDrizzleDatabase,
   connectionId: string,
   models: AvailableModel[],
-  { expectedUpdatedAt, signal }: { expectedUpdatedAt?: string; signal?: AbortSignal } = {},
+  { expectedUpdatedAt, signal }: { expectedUpdatedAt?: string | null; signal?: AbortSignal } = {},
 ): Promise<string[]> => {
   const operation = AbortSignal.any([getIdentitySignal(), ...(signal ? [signal] : [])])
   return db.transaction(async (tx) => {

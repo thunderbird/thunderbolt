@@ -12,6 +12,7 @@ import { settingsTable } from '@/db/tables'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { useWelcomeStore } from '@/components/welcome-dialog'
 import { createMockAuthClient } from '@/test-utils/auth-client'
+import { closeTestLocalData, openTestLocalData } from '@/test-utils/local-data'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -66,6 +67,7 @@ describe('useWaitlistState — returning-user onboarding', () => {
     // Seeds `user_has_completed_onboarding = 'false'`, as a fresh device does at
     // boot before it has ever seen the account.
     await reconcileDefaults(getDb())
+    await openTestLocalData()
   })
 
   afterEach(() => {
@@ -74,6 +76,7 @@ describe('useWaitlistState — returning-user onboarding', () => {
     // randomized run cannot leak `pending: true` into `welcome-dialog.test.ts`.
     useWelcomeStore.setState({ pending: false })
     clearAuthToken()
+    closeTestLocalData()
   })
 
   it('marks onboarding complete and notifies the modal after an existing account signs in', async () => {

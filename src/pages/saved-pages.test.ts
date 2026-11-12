@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import type { PageDefinition } from '@shared/page-protocol'
 import { encryptedColumnsMap } from '@shared/e2ee-types'
@@ -195,3 +195,36 @@ it('updates a pinned HTML snapshot without replacing custom title/chrome or revi
   await updatePinnedPageSource(db, { ...revision, id: 'never-pinned' })
   expect(await getSavedPagesQuery(db, 'never-pinned')).toEqual([])
 })
+
+it.each(['rename', 'unpin'] as const)(
+  'preserves a %s committed while the source update waits for its transaction',
+  async (change) => {
+    const db = getDb()
+    await savePage(db, html, 'app')
+    const transaction = db.transaction.bind(db)
+    const pending = spyOn(db, 'transaction').mockImplementationOnce(async (callback) => {
+      if (change === 'rename') {
+        await renameSavedPage(db, html.id, 'Renamed while publishing')
+      } else {
+        await removeSavedPage(db, html.id)
+      }
+      return transaction(callback)
+    })
+    try {
+      await updatePinnedPageSource(db, { ...html, source: { kind: 'html', html: '<p>Revision</p>' } })
+      const saved = parseSavedPage((await getSavedPagesQuery(db, html.id))[0]?.value)
+      if (change === 'rename') {
+        expect(saved).toMatchObject({
+          title: 'Renamed while publishing',
+          chrome: 'app',
+          source: { html: '<p>Revision</p>' },
+        })
+      } else {
+        expect(saved?.deletedAt).not.toBeNull()
+        expect(saved?.source).toEqual(html.source)
+      }
+    } finally {
+      pending.mockRestore()
+    }
+  },
+)

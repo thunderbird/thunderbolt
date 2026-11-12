@@ -4,11 +4,13 @@
 
 import { StrictMode } from 'react'
 import { act, renderHook } from '@testing-library/react'
-import { expect, it, mock } from 'bun:test'
+import { afterEach, expect, it, mock } from 'bun:test'
 import type { LocalAppStatus } from '@shared/local-app-protocol'
 import { createLocalAppController } from './local-app-controller'
 import { useLocalAppStore } from './local-app-store'
 import { useLocalAppUrl } from './use-local-app-url'
+
+afterEach(() => useLocalAppStore.setState({ apps: {} }))
 
 it.each([false, true])(
   'updates the mounted page after restart (fixed port: %s) without duplicate StrictMode launches',

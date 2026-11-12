@@ -91,11 +91,14 @@ export const updatePinnedPageSource = async (db: AnyDrizzleDatabase, page: PageD
   if (page.source.kind !== 'html') {
     return
   }
-  const previous = parseSavedPage((await getSavedPagesQuery(db, page.id))[0]?.value)
-  if (!previous || previous.deletedAt !== null || previous.source.kind !== 'html') {
-    return
-  }
-  await updateSettings(db, {
-    [savedPageKey(page.id)]: JSON.stringify({ ...previous, source: page.source, updatedAt: new Date().toISOString() }),
+  await db.transaction(async (tx) => {
+    const previous = parseSavedPage((await getSavedPagesQuery(tx, page.id))[0]?.value)
+    if (!previous || previous.deletedAt !== null || previous.source.kind !== 'html') {
+      return
+    }
+    await tx
+      .update(settingsTable)
+      .set({ value: JSON.stringify({ ...previous, source: page.source, updatedAt: new Date().toISOString() }) })
+      .where(eq(settingsTable.key, savedPageKey(page.id)))
   })
 }

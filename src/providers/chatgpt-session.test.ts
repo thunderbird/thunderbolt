@@ -5,6 +5,8 @@
 import { afterEach, expect, mock, spyOn, test } from 'bun:test'
 import { http } from '@/lib/http'
 import { nativeFetch } from '@/lib/native-fetch'
+import * as nativeTransport from '@/lib/native-fetch'
+import { invalidateIdentityLifetime } from '@/lib/identity-lifetime'
 import { stubJsonResponse } from '@/test-utils/http'
 import { chatGPTIssuer, chatGPTResource, loadChatGPTMetadata, revokeChatGPTSession } from './chatgpt-session'
 import type { ProviderCredentials } from './types'
@@ -99,3 +101,38 @@ test('surfaces revocation failures to the caller so a disconnect remains retryab
   })
   await expect(revokeChatGPTSession(credentials)).rejects.toBe(failure)
 })
+
+test.each(['discovery', 'revocation'] as const)(
+  'finishes bounded ChatGPT cleanup when identity teardown interrupts %s',
+  async (phase) => {
+    const started = Promise.withResolvers<Request>()
+    const pending = Promise.withResolvers<Response>()
+    const deadline = new AbortController()
+    const timeout = spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+    const requests: Request[] = []
+    spyOn(nativeTransport, 'nativeFetch').mockImplementation(async (input) => {
+      const request = input as Request
+      requests.push(request)
+      if ((phase === 'revocation') === (request.url === metadata.revocation_endpoint)) {
+        started.resolve(request)
+        return pending.promise
+      }
+      return Response.json(metadata)
+    })
+    const revoking = revokeChatGPTSession(credentials)
+    const request = await started.promise
+    invalidateIdentityLifetime()
+    const abortedByIdentity = request.signal.aborted
+    pending.resolve(phase === 'discovery' ? Response.json(metadata) : new Response(null, { status: 204 }))
+    await revoking
+    expect(abortedByIdentity).toBe(false)
+    expect(timeout).toHaveBeenCalledTimes(1)
+    expect(timeout).toHaveBeenCalledWith(30_000)
+    expect(requests.map((request) => request.url)).toEqual([
+      `${chatGPTIssuer}/.well-known/openid-configuration`,
+      metadata.revocation_endpoint,
+    ])
+    deadline.abort(new DOMException('Timed out', 'TimeoutError'))
+    expect(requests.every((request) => request.signal.aborted)).toBe(true)
+  },
+)

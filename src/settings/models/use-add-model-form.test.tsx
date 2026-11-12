@@ -59,6 +59,7 @@ describe('useAddModelForm', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
+    spyOn(tinfoilAuth, 'revoke').mockResolvedValue()
     resetStore()
     originalCloudUrl = getLocalSetting('cloudUrl')
     originalLocalMode = getLocalSetting('localMode')
@@ -71,6 +72,7 @@ describe('useAddModelForm', () => {
 
   afterEach(() => {
     cleanup()
+    mock.restore()
     resetStore()
     useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl, localMode: originalLocalMode })
   })

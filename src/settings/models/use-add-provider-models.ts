@@ -14,6 +14,7 @@ import { getAllModels, getAvailableModels } from '@/dal'
 import { getProviderConnections } from '@/dal/provider-connections'
 import { addProviderModels, fetchProviderModels } from '@/providers/models'
 import { getProviderDefinition } from '@/providers/registry'
+import { createIdentityController } from '@/lib/identity-lifetime'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { AvailableModel } from './model-catalog'
 import { getModelDisplayName } from './model-display-name'
@@ -72,7 +73,7 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
   const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(providerModelPickerReducer, initialState)
   const toggleModel = useCallback((id: string) => dispatch({ type: 'toggle', id }), [])
-  const pending = useRef<AbortController | null>(null)
+  const pending = useRef<ReturnType<typeof createIdentityController> | null>(null)
   useEffect(() => () => pending.current?.abort(), [])
   const { data: allConnections = [], isLoading } = usePowerSyncQuery({
     queryKey: ['provider-connections'],
@@ -117,8 +118,8 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     }: {
       id: string
       models: AvailableModel[]
-      updatedAt: string
-      controller: AbortController
+      updatedAt: string | null
+      controller: ReturnType<typeof createIdentityController>
     }) => {
       await addProviderModels(db, id, models, { expectedUpdatedAt: updatedAt, signal: controller.signal })
       const availableModels = await getAvailableModels(db)
@@ -176,7 +177,7 @@ export const useAddProviderModels = ({ isOpen, onClose }: { isOpen: boolean; onC
     refresh: () => void catalog.refetch(),
     submit: () => {
       if (canSubmit && connection && !pending.current) {
-        const controller = new AbortController()
+        const controller = createIdentityController()
         pending.current = controller
         mutation.mutate({
           id: connection.id,

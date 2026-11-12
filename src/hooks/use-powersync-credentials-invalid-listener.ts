@@ -10,9 +10,10 @@ import type { CredentialsInvalidReason } from '@/db/powersync/connector'
 import { showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
 import { clearAuthToken, getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { clearLocalData as defaultClearLocalData } from '@/lib/cleanup'
+import { getLocalDataStatus, subscribeLocalDataStatus } from '@/lib/local-data-owner'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 
 /** Where each reset lands; every other reason goes to `/`. */
 const resetRedirects: Partial<Record<CredentialsInvalidReason, string>> = {
@@ -78,6 +79,7 @@ export const usePowerSyncCredentialsInvalidListener = ({
   const hasDispatchedSignInModalRef = useRef(false)
   const hadDeviceOnceRef = useRef(false)
   const deviceId = getDeviceId()
+  const localDataStatus = useSyncExternalStore(subscribeLocalDataStatus, getLocalDataStatus)
 
   const { data = [], isFetched } = useQuery({
     queryKey: ['devices', deviceId],
@@ -142,6 +144,11 @@ export const usePowerSyncCredentialsInvalidListener = ({
 
   // Handle device revoked or device row missing (account deleted) from synced devices table.
   useEffect(() => {
+    // Only the open slot's owner may act on its device row. An account switch removes the
+    // device id, so during a switch, or after one fails, a missing row is no sign of a deleted account.
+    if (localDataStatus !== 'ready') {
+      return
+    }
     if (device != null) {
       hadDeviceOnceRef.current = true
     }
@@ -165,5 +172,5 @@ export const usePowerSyncCredentialsInvalidListener = ({
       hasTriggeredResetRef.current = true
       void performCredentialsInvalidReset('/account-deleted', clearLocalData)
     }
-  }, [isFetched, deviceId, device, clearLocalData])
+  }, [isFetched, deviceId, device, clearLocalData, localDataStatus])
 }

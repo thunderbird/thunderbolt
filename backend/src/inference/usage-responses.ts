@@ -10,6 +10,13 @@ type ExceededInferenceQuotaDecision = Extract<InferenceQuotaDecision, { allowed:
 export const createPriceUnavailableResponse = (): Response =>
   Response.json({ error: { code: 'INFERENCE_PRICE_UNAVAILABLE' } }, { status: 503 })
 
+/**
+ * Create the stable response returned when a request does not fit beside the user's requests still running. The
+ * app shows it as a plain rate limit rather than a spent quota, since the request can fit once those finish.
+ */
+export const createRequestInProgressResponse = (): Response =>
+  Response.json({ error: { code: 'INFERENCE_REQUEST_IN_PROGRESS' } }, { status: 429 })
+
 /** Create the stable response returned when a rolling inference quota is exhausted. */
 export const createQuotaExceededResponse = (decision: ExceededInferenceQuotaDecision): Response =>
   Response.json({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: decision.exceededWindow } }, { status: 429 })

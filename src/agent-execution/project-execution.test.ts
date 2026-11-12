@@ -76,6 +76,15 @@ it('refuses SSH projects in web/mobile and rejects a declaration without its env
   )
 })
 
+it.each(['sandbox', 'cloud'] as const)('does not reuse another environment’s grant for %s', (location) => {
+  expect(resolveProjectExecution({ location }, { location: 'computer', cwd: '/other', access: 'full' })).toEqual({
+    location,
+    access: 'ask',
+  })
+  expect(resolveProjectExecution({ location }, { location, access: 'full' })).toEqual({ location, access: 'full' })
+  expect(resolveProjectExecution({ location }, undefined)).toEqual({ location, access: 'ask' })
+})
+
 it('creates immutable project environment atomically and stores paths/access only on this device', async () => {
   spyOn(platform, 'isTauriDesktop').mockReturnValue(true)
   const execution = { location: 'computer', cwd: '/private/working-folder', access: 'full' } as const

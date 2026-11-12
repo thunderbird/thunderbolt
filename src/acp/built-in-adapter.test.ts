@@ -227,6 +227,34 @@ describe('composeAppHarnessSystemPrompt', () => {
     expect(composed).toContain('Never claim tests passed without running them')
     expect(composed).not.toContain('simulated shell')
   })
+
+  it.each([true, false])(
+    'scopes SSH preview and process-lifetime guidance to tool-capable SSH turns (%s)',
+    (supportsTools) => {
+      const config = { stableSystemPrompt: 'Stable instructions', volatileSystemPrompt: 'Now', supportsTools }
+      const ssh = composeAppHarnessSystemPrompt(config, {
+        location: 'ssh',
+        environmentId: 'remote',
+        cwd: '/workspace',
+        access: 'full',
+      })
+      for (const text of [
+        'terminates its process group, including ordinary background children',
+        'Do not evade this cleanup with setsid, disown, or daemonization',
+        'reuse their resolved paths',
+        'Use local_app create to launch a persistent remote server',
+        'Use local_app attach with the remote port',
+        "Run the project's existing browser/E2E tests when appropriate",
+        'Do not install a headless browser merely to substitute',
+      ]) {
+        expect(ssh.includes(text)).toBe(supportsTools)
+        expect(
+          composeAppHarnessSystemPrompt(config, { location: 'computer', cwd: '/workspace', access: 'full' }),
+        ).not.toContain(text)
+        expect(composeAppHarnessSystemPrompt(config)).not.toContain(text)
+      }
+    },
+  )
 })
 
 describe('harnessSignature', () => {
@@ -1434,7 +1462,7 @@ describe('real Pi approvals', () => {
         'remote only',
       ])
       expect(JSON.stringify(run.requests[0].messages)).toContain("user's SSH environment")
-      expect(JSON.stringify(run.requests[0].tools)).not.toContain('local_app')
+      expect(JSON.stringify(run.requests[0].tools)).toContain('local_app')
       run.context.execution = { ...run.context.execution, access: 'full' }
       const history: ThunderboltUIMessage[] = [
         { id: 'budget-user', role: 'user', parts: [{ type: 'text', text: 'Save a remote file.' }] },

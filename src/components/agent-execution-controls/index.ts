@@ -3,3 +3,4 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export { AgentExecutionControls } from './agent-execution-controls'
+export { AgentAccessField } from './agent-access-field'

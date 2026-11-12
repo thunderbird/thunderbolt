@@ -12,7 +12,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { eq } from 'drizzle-orm'
 import { getAllProjects } from '@/dal/projects'
 import { getDb } from '@/db/database'
-import { chatThreadsTable, projectsTable } from '@/db/tables'
+import { chatThreadsTable, projectsTable, settingsTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
@@ -74,6 +74,22 @@ describe('ProjectBadge', async () => {
   it('names the project it is in', async () => {
     await renderBadge()
     expect(screen.getByText('Q3 Planning')).toBeInTheDocument()
+  })
+
+  it('keeps SSH status immediately after the project name in its badge and picker', async () => {
+    await getDb()
+      .insert(settingsTable)
+      .values({
+        key: 'project-execution:p1',
+        value: JSON.stringify({ version: 1, location: 'ssh', environmentId: 'edfa69dd-fe35-4bbe-a745-026769cbb913' }),
+      })
+    await renderBadge()
+    const badge = screen.getByTitle('In project: Q3 Planning')
+    expect(within(badge).getByRole('status').previousElementSibling).toBe(within(badge).getByText('Q3 Planning'))
+
+    fireEvent.click(badge)
+    const row = screen.getAllByText('Q3 Planning').at(-1)!.parentElement!
+    expect(within(row).getByRole('status').previousElementSibling).toBe(within(row).getByText('Q3 Planning'))
   })
 
   it('renders nothing in minimal mode, though the chat keeps its project', async () => {

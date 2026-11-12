@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { useSshEnvironmentsStore } from '@/agent-execution/ssh-environments'
 import { SshEnvironmentMenuItem, SshEnvironmentStatus } from '@/components/ssh-environments'
 import { Link } from 'react-router'
+import { AgentAccessMenuItems } from './agent-access-menu-items'
 
 type AgentExecutionControlsProps = { threadId: string; projectId?: string | null; disabled: boolean }
 
@@ -196,32 +197,7 @@ const AgentExecutionControlsView = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="top" className="w-72">
-          <DropdownMenuItem className="cursor-pointer" onSelect={() => setExecution({ ...execution, access: 'ask' })}>
-            <ShieldCheck />
-            <div>
-              <div>
-                <Trans>Ask for approval</Trans>
-              </div>
-              <p className="text-muted-foreground text-[length:var(--font-size-xs)]">
-                <Trans>Ask before changes, commands, and external actions</Trans>
-              </p>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="cursor-pointer"
-            variant="destructive"
-            onSelect={() => setExecution({ ...execution, access: 'full' })}
-          >
-            <ShieldAlert />
-            <div>
-              <div>
-                <Trans>Full access</Trans>
-              </div>
-              <p className="text-[length:var(--font-size-xs)]">
-                <Trans>Allow tools to act without asking</Trans>
-              </p>
-            </div>
-          </DropdownMenuItem>
+          <AgentAccessMenuItems onChange={(access) => setExecution({ ...execution, access })} />
         </DropdownMenuContent>
       </DropdownMenu>
       {state.error && (

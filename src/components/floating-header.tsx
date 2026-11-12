@@ -18,7 +18,13 @@ import { Scrim } from '@/components/ui/scrim'
  */
 export const FloatingHeader = () => (
   <>
-    <Scrim className="z-20" height="calc(var(--header-inset) + 2.5rem)" />
+    {/* A masked backdrop blur can composite the native window's transparency
+        through this opaque pane in WebKit. The gradient alone fades content. */}
+    <Scrim
+      data-slot="app-header-scrim"
+      className="z-20 backdrop-blur-none"
+      height="calc(var(--header-inset) + 2.5rem)"
+    />
     <div className="absolute inset-x-0 top-0 z-30" style={{ paddingTop: 'var(--header-safe-area-top)' }}>
       <Header />
     </div>

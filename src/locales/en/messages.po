@@ -477,6 +477,10 @@ msgstr "Agent is using this tab"
 msgid "Agent location"
 msgstr "Agent location"
 
+#: src/components/agent-execution-controls/agent-access-field.tsx
+msgid "Agent permissions"
+msgstr "Agent permissions"
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Agent privacy"
 msgstr "Agent privacy"
@@ -529,7 +533,7 @@ msgstr "Allow plan access"
 #~ msgid "Allow popups to connect to OpenRouter, then try again."
 #~ msgstr "Allow popups to connect to OpenRouter, then try again."
 
-#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#: src/components/agent-execution-controls/agent-access-menu-items.tsx
 msgid "Allow tools to act without asking"
 msgstr "Allow tools to act without asking"
 
@@ -648,6 +652,10 @@ msgstr "App Version"
 #~ msgid "Applied to every chat in this project."
 #~ msgstr "Applied to every chat in this project."
 
+#: src/components/agent-execution-controls/agent-access-field.tsx
+msgid "Applies to all chats in this project on this device."
+msgstr "Applies to all chats in this project on this device."
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Approval code"
 msgstr "Approval code"
@@ -714,10 +722,12 @@ msgstr "Ask"
 #~ msgid "Ask about this"
 #~ msgstr "Ask about this"
 
-#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#: src/components/agent-execution-controls/agent-access-menu-items.tsx
 msgid "Ask before changes, commands, and external actions"
 msgstr "Ask before changes, commands, and external actions"
 
+#: src/components/agent-execution-controls/agent-access-field.tsx
+#: src/components/agent-execution-controls/agent-access-menu-items.tsx
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 msgid "Ask for approval"
 msgstr "Ask for approval"
@@ -3261,6 +3271,8 @@ msgstr "For example, orb or server.example.com"
 msgid "From SSH config"
 msgstr "From SSH config"
 
+#: src/components/agent-execution-controls/agent-access-field.tsx
+#: src/components/agent-execution-controls/agent-access-menu-items.tsx
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 msgid "Full access"
 msgstr "Full access"
@@ -6646,6 +6658,10 @@ msgstr "This private chat won't run on {agentName}. Switch to {builtInAgentName}
 #: src/projects/project-form.tsx
 msgid "this project"
 msgstr "this project"
+
+#: src/projects/use-project-editor-state.ts
+msgid "This project's working environment changed. Review its permissions and try again."
+msgstr "This project's working environment changed. Review its permissions and try again."
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "This recovery phrase was created before a security update, so Thunderbolt can't confirm that the encryption keys it unlocks are yours. Continue only if you have no approved device left."

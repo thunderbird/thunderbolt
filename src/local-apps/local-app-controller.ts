@@ -6,15 +6,22 @@ import { invoke } from '@tauri-apps/api/core'
 import type { LocalApp, LocalAppLaunch, LocalAppOwner, LocalAppStatus } from '@shared/local-app-protocol'
 import { isTauriDesktop } from '@/lib/platform'
 import { createSerialQueue } from '@/lib/serial-queue'
+import { isCurrentSshConnection, useSshEnvironmentsStore } from '@/agent-execution/ssh-environments'
 import { getLocalApp, listLocalApps, useLocalAppStore } from './local-app-store'
 
 type NativeInvoke = <T>(command: string, args: Record<string, unknown>) => Promise<T>
-type LocalAppInput = { owner: LocalAppOwner; title: string; cwd: string; launch: LocalAppLaunch }
-type LocalAppLaunchChanges = Partial<Omit<LocalAppLaunch, 'port'>> & { port?: number | null }
+type LocalAppInput = {
+  owner: LocalAppOwner
+  title: string
+  cwd: string
+  launch: LocalAppLaunch
+  connection?: LocalApp['connection']
+}
+type LocalAppLaunchChanges = { executable?: string; args?: string[]; port?: number | null }
 
 /** Validate a recipe before changing the currently running process. */
 const validateLaunch = (launch: LocalAppLaunch) => {
-  if (!launch.executable.trim()) {
+  if (launch.mode !== 'attach' && !launch.executable.trim()) {
     throw new Error('A local app needs an executable')
   }
   if (launch.port !== undefined && (!Number.isInteger(launch.port) || launch.port < 1 || launch.port > 65535)) {
@@ -42,6 +49,7 @@ const delay = (signal?: AbortSignal): Promise<void> =>
 /** Shared page tools and controls use the same local-app lifecycle. */
 export const createLocalAppController = (native: NativeInvoke = invoke, supported = isTauriDesktop) => {
   const listeners = new Set<(status: LocalAppStatus) => void>()
+  const invalidConnections = new Set<string>()
   type Startup = { abort: AbortController; promise: Promise<LocalAppStatus>; waiters: Set<symbol>; settled: boolean }
   const startups = new Map<string, Startup>()
   const operations = new Map<string, ReturnType<typeof createSerialQueue>>()
@@ -75,11 +83,14 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
   }
   const stopped = (id: string): LocalAppStatus => ({ id, status: 'stopped', url: null, error: null, logs: '' })
   const status = async (id: string): Promise<LocalAppStatus> => {
-    requireApp(id)
-    return publish((await native<LocalAppStatus | null>('agent_preview_status', { id })) ?? stopped(id))
+    const app = requireApp(id)
+    const value = (await native<LocalAppStatus | null>('agent_preview_status', { id })) ?? stopped(id)
+    requireCurrentConnection(app)
+    return publish(value)
   }
-  const nativeStop = async (id: string) =>
-    publish((await native<LocalAppStatus | null>('agent_preview_stop', { id })) ?? stopped(id))
+  const nativeStop = async (id: string) => {
+    return publish((await native<LocalAppStatus | null>('agent_preview_stop', { id })) ?? stopped(id))
+  }
   const stop = async (id: string): Promise<LocalAppStatus> => {
     requireApp(id)
     const startup = startups.get(id)
@@ -89,17 +100,41 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
     }
     return nativeStop(id)
   }
+  const requireCurrentConnection = (app: LocalApp) => {
+    if (app.connection && !isCurrentSshConnection(app.connection)) {
+      throw new Error('The SSH environment changed or was removed. Create a new app in its current environment.')
+    }
+  }
   const launch = async (app: LocalApp, signal: AbortSignal): Promise<LocalAppStatus> => {
+    requireCurrentConnection(app)
+    invalidConnections.delete(app.id)
     const previous = await status(app.id)
     signal.throwIfAborted()
+    requireCurrentConnection(app)
     if (previous.status === 'ready') {
+      if (app.connection) {
+        useSshEnvironmentsStore.getState().recordConnectionStatus(app.connection, 'connected')
+      }
       return previous
     }
-    const initial = publish(
-      await native<LocalAppStatus>('agent_preview_start', { request: { id: app.id, cwd: app.cwd, ...app.launch } }),
-    )
+    const cancel = () => {
+      void nativeStop(app.id).catch(console.error)
+    }
+    signal.addEventListener('abort', cancel, { once: true })
     try {
-      const deadline = Date.now() + 35_000
+      const initial = await native<LocalAppStatus>('agent_preview_start', {
+        request: {
+          id: app.id,
+          cwd: app.cwd,
+          ...app.launch,
+          ...(app.connection ? { connection: app.connection } : {}),
+        },
+      })
+      signal.throwIfAborted()
+      requireCurrentConnection(app)
+      publish(initial)
+      // SSH has a native two-minute setup deadline; allow time to report its result.
+      const deadline = Date.now() + (app.connection ? 125_000 : 35_000)
       let current = initial
       while (current.status === 'starting') {
         signal.throwIfAborted()
@@ -110,8 +145,12 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
         current = await status(app.id)
       }
       signal.throwIfAborted()
+      requireCurrentConnection(app)
       if (current.status !== 'ready' || !current.url) {
         throw new Error(current.error ?? 'The local app stopped before it was ready')
+      }
+      if (app.connection) {
+        useSshEnvironmentsStore.getState().recordConnectionStatus(app.connection, 'connected')
       }
       return current
     } catch (error) {
@@ -119,6 +158,8 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
         await nativeStop(app.id)
       }
       throw error
+    } finally {
+      signal.removeEventListener('abort', cancel)
     }
   }
   const start = async (id: string, signal?: AbortSignal): Promise<LocalAppStatus> => {
@@ -175,6 +216,30 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
       }
     })
   }
+  const stopInvalidSshPreviews = async () => {
+    const invalid = Object.values(useLocalAppStore.getState().apps).filter(
+      (app) =>
+        !app.deletedAt && app.connection && !isCurrentSshConnection(app.connection) && !invalidConnections.has(app.id),
+    )
+    await Promise.all(
+      invalid.map(async (app) => {
+        invalidConnections.add(app.id)
+        try {
+          await queueFor(app.id)(async () => {
+            await stop(app.id)
+            publish({
+              ...stopped(app.id),
+              status: 'failed',
+              error: 'The SSH environment changed or was removed. Create a new app in its current environment.',
+            })
+          })
+        } catch (error) {
+          invalidConnections.delete(app.id)
+          throw error
+        }
+      }),
+    )
+  }
   // Serialize recipe changes and process admission, not HTTP readiness: Stop must
   // remain able to cancel a shared startup while it waits for the server.
   const launchInOrder = async (id: string, signal?: AbortSignal, prepare?: () => Promise<void>) => {
@@ -187,6 +252,7 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
     return pending
   }
   return {
+    stopInvalidSshPreviews,
     subscribe: (listener: (status: LocalAppStatus) => void) => {
       listeners.add(listener)
       return () => {
@@ -195,18 +261,25 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
     },
     list: listLocalApps,
     get: getLocalApp,
-    create: ({ owner, title, cwd, launch }: LocalAppInput): LocalApp => {
+    create: ({ owner, title, cwd, launch, connection }: LocalAppInput): LocalApp => {
       requireDesktop()
-      if (!owner.id || !cwd || !title.trim() || !launch.executable.trim()) {
+      if (!owner.id || !cwd || !title.trim()) {
         throw new Error('A local app needs an owner, title, working directory, and executable')
       }
       validateLaunch(launch)
+      if (launch.mode === 'attach' && !connection) {
+        throw new Error('Attaching an existing service requires an SSH environment')
+      }
+      if (connection && !isCurrentSshConnection(connection)) {
+        throw new Error('The SSH environment changed or was removed')
+      }
       const app: LocalApp = {
         id: crypto.randomUUID(),
         owner,
         title: title.trim(),
         cwd,
         launch,
+        ...(connection ? { connection } : {}),
         createdAt: new Date().toISOString(),
       }
       useLocalAppStore.getState().save(app)
@@ -223,14 +296,26 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
     update: (id: string, changes: LocalAppLaunchChanges, signal?: AbortSignal) =>
       launchInOrder(id, signal, async () => {
         const app = requireApp(id)
+        if (app.connection && !isCurrentSshConnection(app.connection)) {
+          throw new Error('The SSH environment changed or was removed')
+        }
         if (changes.executable === undefined && changes.args === undefined && changes.port === undefined) {
           throw new Error('Provide executable, args, or port for update')
         }
-        const launch: LocalAppLaunch = {
-          executable: changes.executable ?? app.launch.executable,
-          args: changes.args ?? app.launch.args,
-          port: changes.port === null ? undefined : (changes.port ?? app.launch.port),
+        if (
+          app.launch.mode === 'attach' &&
+          (changes.executable !== undefined || changes.args !== undefined || changes.port === null)
+        ) {
+          throw new Error('An attached service can only change its remote port')
         }
+        const launch: LocalAppLaunch =
+          app.launch.mode === 'attach'
+            ? { mode: 'attach', port: changes.port ?? app.launch.port }
+            : {
+                executable: changes.executable ?? app.launch.executable,
+                args: changes.args ?? app.launch.args,
+                port: changes.port === null ? undefined : (changes.port ?? app.launch.port),
+              }
         validateLaunch(launch)
         await stop(id)
         signal?.throwIfAborted()
@@ -245,3 +330,17 @@ export const createLocalAppController = (native: NativeInvoke = invoke, supporte
 }
 
 export const localAppController = createLocalAppController()
+
+// Native previews can outlive a frontend reload, including tabs not reopened yet.
+const stopInvalidSshPreviews = () => {
+  if (isTauriDesktop()) {
+    void localAppController.stopInvalidSshPreviews().catch(console.error)
+  }
+}
+const unsubscribeSshProfiles = useSshEnvironmentsStore.subscribe((state, previous) => {
+  if (state.environments !== previous.environments) {
+    stopInvalidSshPreviews()
+  }
+})
+stopInvalidSshPreviews()
+import.meta.hot?.dispose(unsubscribeSshProfiles)

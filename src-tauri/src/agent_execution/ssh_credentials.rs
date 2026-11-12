@@ -688,7 +688,11 @@ mod tests {
         )
         .await
         .unwrap();
-        let endpoint = session.endpoint;
+        // Observe this exact channel: failed reconnect timing is OS-specific,
+        // and a new connect after Drop can reach a parallel test's reused port.
+        let mut peer = tokio::net::TcpStream::connect(session.endpoint)
+            .await
+            .unwrap();
         let mut command = Command::new("ssh");
         session.configure(&mut command).unwrap();
         assert!(!command
@@ -706,13 +710,21 @@ mod tests {
             Some(std::ffi::OsStr::new("force"))
         );
         drop(session);
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while tokio::net::TcpStream::connect(endpoint).await.is_ok() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("dropping the session must close its listener");
+        let mut received = [0; 1];
+        match tokio::time::timeout(Duration::from_secs(1), peer.read(&mut received))
+            .await
+            .expect("dropping the session must close its authentication channel")
+        {
+            Ok(0) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+                ) => {}
+            result => panic!(
+                "The dropped credential channel must close without returning a secret: {result:?}"
+            ),
+        }
     }
 
     #[tokio::test]

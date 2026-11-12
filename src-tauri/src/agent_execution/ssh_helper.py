@@ -78,8 +78,7 @@ def execute(request, disconnected, heartbeat):
     # This is the SSH bash tool, not a web request handler: the command is the
     # approved shell program. Approval/full-access checks and main-webview-only
     # IPC authorize execution on the user's selected SSH host.
-    # nosemgrep: python.django.security.injection.command.subprocess-injection.subprocess-injection
-    process = subprocess.Popen(
+    process = subprocess.Popen(  # nosemgrep: python.django.security.injection.command.subprocess-injection.subprocess-injection
         [shell, "-lc", command], cwd=directory(request["cwd"]), env=environment,
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         start_new_session=True,

@@ -72,6 +72,23 @@ it('keeps the draft on failure and allows retrying without duplicate pending sub
   }
 })
 
+it('includes the explicitly selected permission when creating a project', async () => {
+  const onSubmit = mock(async () => {})
+  render(<Fixture onSubmit={onSubmit} />)
+  fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Trusted project' } })
+  expect(screen.getByLabelText('Agent permissions')).toHaveTextContent('Ask for approval')
+  fireEvent.pointerDown(screen.getByLabelText('Agent permissions'), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+  fireEvent.click(screen.getByRole('menuitem', { name: /Full access/ }))
+  expect(screen.getByLabelText('Agent permissions')).toHaveTextContent('Full access')
+  expect(onSubmit).not.toHaveBeenCalled()
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Create' })))
+  expect(onSubmit).toHaveBeenCalledWith({
+    name: 'Trusted project',
+    icon: null,
+    execution: { location: 'sandbox', access: 'full' },
+  })
+})
+
 it('reserves creation synchronously before the transition renders', async () => {
   const pending = Promise.withResolvers<void>()
   const onSubmit = mock(() => pending.promise)

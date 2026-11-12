@@ -510,7 +510,12 @@ export const composeAppHarnessSystemPrompt = (
     execution.location === 'computer'
       ? `You are running on the user's computer with real filesystem access and a native bash shell. Your working directory is ${JSON.stringify(execution.cwd)}. Files are visible to the user and persist after this chat. The working directory is not a sandbox boundary. Do not claim files live in a virtual workspace.`
       : execution.location === 'ssh'
-        ? `Your filesystem and bash tools run on the user's SSH environment, not on this computer or in the browser sandbox. Your remote working directory is ${JSON.stringify(execution.cwd)}. Files persist remotely. The working directory is not a sandbox boundary. Do not use localhost URLs as if they were local to the user; remote server port forwarding is not available. Use page_show_file to display self-contained remote HTML artifacts. If the connection fails, report the error; do not retry a command whose outcome is unknown or switch environments.`
+        ? `Your filesystem and bash tools run on the user's SSH environment, not on this computer or in the browser sandbox. Your remote working directory is ${JSON.stringify(execution.cwd)}. Files persist remotely. The working directory is not a sandbox boundary.
+SSH bash commands are foreground jobs: when a command finishes, is stopped, or loses its channel, its supervisor terminates its process group, including ordinary background children. Backgrounding with & or nohup does not create a persistent app. Do not evade this cleanup with setsid, disown, or daemonization.
+Discover the runtime executables needed for the task once, and reuse their resolved paths. Non-interactive shells may have a different PATH; if a runtime is installed outside it, use its absolute path instead of repeatedly trying the missing command.
+The page tools control the user's desktop browser. Use local_app create to launch a persistent remote server and open its page: Thunderbolt manages the SSH process and forwards its remote loopback port to this computer. Use local_app attach with the remote port to open an already-running service without taking ownership of it. Use the returned sessionId for page_snapshot; do not open the remote localhost URL directly. Managed previews survive agent turns. Use page_show_file for self-contained remote HTML artifacts.
+Run the project's existing browser/E2E tests when appropriate. Do not install a headless browser merely to substitute for opening a preview in the user's browser; headless verification does not make that preview visible.
+If the connection fails, report the error; do not retry a command whose outcome is unknown or switch environments.`
         : appHarnessEnvironmentPrompt
   const accessPrompt =
     execution.access === 'ask'
@@ -612,17 +617,20 @@ const prepareHarnessForSend = async (
         execution.location === 'ssh' ? execution.environmentId : getDeviceId(),
       ]),
       cwd: record.execution?.cwd ?? agentCore.workspaceDirFor(context.workspaceId ?? context.threadId),
-      localAppsAvailable: context.execution?.location === 'computer',
+      localAppsAvailable: execution.location === 'computer' || execution.location === 'ssh',
       readFile: (path, signal) =>
         agentCore.readAgentWorkspaceFile(context.workspaceId ?? context.threadId, path, record.execution, signal),
       onOpen: onPublish,
     }),
-    ...(context.execution?.location === 'computer'
+    ...(execution.location === 'computer' || execution.location === 'ssh'
       ? createLocalAppTools({
           owner: context.projectId
             ? { kind: 'project', id: context.projectId }
             : { kind: 'chat', id: context.threadId },
-          cwd: context.execution.cwd,
+          cwd: execution.cwd,
+          ...(execution.location === 'ssh'
+            ? { connection: sshConnection(getSshEnvironment(execution.environmentId)) }
+            : {}),
           onOpen,
         })
       : {}),

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { maxProjectNameLength } from '@/dal/projects'
 import { EmojiPicker } from './emoji-picker'
+import { AgentAccessField } from '@/components/agent-execution-controls'
 import { ProjectExecutionField } from './project-execution-field'
 import type { useProjectCreateState } from './use-project-create-state'
 
@@ -50,6 +51,11 @@ export const ProjectCreateForm = ({
         onChange={form.setExecution}
         disabled={form.isPending}
         onManageEnvironments={onCancel}
+      />
+      <AgentAccessField
+        access={form.execution.access}
+        onChange={(access) => form.setExecution({ ...form.execution, access })}
+        disabled={form.isPending}
       />
       {form.error && (
         <p role="alert" className="text-sm text-destructive">

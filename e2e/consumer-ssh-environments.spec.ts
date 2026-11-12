@@ -5,8 +5,20 @@
 import { expect, test } from './test'
 import { loginViaEmailCode } from './helpers'
 import { importBackup } from './import-backup'
+import type { Locator } from '@playwright/test'
 
 test.use({ viewport: { width: 1280, height: 900 } })
+
+/** Status stays with the label instead of drifting toward the row's settings action. */
+const expectStatusAfterName = async (row: Locator, name: string) => {
+  await expect(row.getByRole('status')).toBeVisible()
+  const status = await row.getByRole('status').boundingBox()
+  const label = await row.getByText(name, { exact: true }).boundingBox()
+  expect(status).not.toBeNull()
+  expect(label).not.toBeNull()
+  expect(status!.x - label!.x - label!.width).toBeGreaterThanOrEqual(0)
+  expect(status!.x - label!.x - label!.width).toBeLessThanOrEqual(12)
+}
 
 test('web explains SSH availability without showing connection or credential controls', async ({ page }) => {
   await loginViaEmailCode(page)
@@ -50,6 +62,7 @@ test('a synced SSH project on web keeps its fixed identity and cannot fall back 
   await page.goto(`/chats/${threadId}`)
   const projectRow = page.locator(`button[aria-controls="project-chats-${projectId}"]`)
   await expect(projectRow.getByRole('status', { name: 'SSH environment unavailable', exact: true })).toBeVisible()
+  await expectStatusAfterName(projectRow, 'Remote project')
   await expect(projectRow.getByRole('status', { name: 'SSH environment unavailable', exact: true })).toHaveAttribute(
     'title',
     'SSH environments require the desktop app.',
@@ -60,6 +73,7 @@ test('a synced SSH project on web keeps its fixed identity and cannot fall back 
 
   const projectSelector = page.locator('[title="In project: Remote project"]')
   await expect(projectSelector.getByRole('status', { name: 'SSH environment unavailable', exact: true })).toBeVisible()
+  await expectStatusAfterName(projectSelector, 'Remote project')
   await projectSelector.click()
   const picker = page.locator('[data-slot="popover-content"]')
   await expect(
@@ -68,6 +82,7 @@ test('a synced SSH project on web keeps its fixed identity and cannot fall back 
       .filter({ hasText: /^Remote project$/ })
       .getByRole('status'),
   ).toHaveAttribute('aria-label', 'SSH environment unavailable')
+  await expectStatusAfterName(picker.getByRole('button').filter({ hasText: /^Remote project$/ }), 'Remote project')
   await expect(picker.getByRole('button', { name: 'Sandbox project', exact: true }).getByRole('status')).toHaveCount(0)
   await picker.getByRole('button', { name: 'Configure Remote project', exact: true }).click()
   const projectSettings = page.getByRole('dialog', { name: 'Project settings', exact: true })
@@ -92,6 +107,7 @@ test('a synced SSH project on web keeps its fixed identity and cannot fall back 
       .filter({ hasText: /^Remote project$/ })
       .getByRole('status', { name: 'SSH environment unavailable' }),
   ).toBeVisible()
+  await expectStatusAfterName(page.getByRole('menuitem').filter({ hasText: /^Remote project$/ }), 'Remote project')
   await expect(page.getByRole('menuitem', { name: 'Sandbox project', exact: true }).getByRole('status')).toHaveCount(0)
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Toggle Sidebar', exact: true }).click()

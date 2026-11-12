@@ -477,6 +477,10 @@ msgstr ""
 msgid "Agent location"
 msgstr ""
 
+#: src/components/agent-execution-controls/agent-access-field.tsx
+msgid "Agent permissions"
+msgstr ""
+
 #: src/components/chat/attestation/use-attestation-display.ts
 msgid "Agent privacy"
 msgstr ""
@@ -529,7 +533,7 @@ msgstr ""
 #~ msgid "Allow popups to connect to OpenRouter, then try again."
 #~ msgstr ""
 
-#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#: src/components/agent-execution-controls/agent-access-menu-items.tsx
 msgid "Allow tools to act without asking"
 msgstr ""
 
@@ -648,6 +652,10 @@ msgstr ""
 #~ msgid "Applied to every chat in this project."
 #~ msgstr ""
 
+#: src/components/agent-execution-controls/agent-access-field.tsx
+msgid "Applies to all chats in this project on this device."
+msgstr ""
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Approval code"
 msgstr ""
@@ -714,10 +722,12 @@ msgstr ""
 #~ msgid "Ask about this"
 #~ msgstr ""
 
-#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#: src/components/agent-execution-controls/agent-access-menu-items.tsx
 msgid "Ask before changes, commands, and external actions"
 msgstr ""
 
+#: src/components/agent-execution-controls/agent-access-field.tsx
+#: src/components/agent-execution-controls/agent-access-menu-items.tsx
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 msgid "Ask for approval"
 msgstr ""
@@ -3261,6 +3271,8 @@ msgstr ""
 msgid "From SSH config"
 msgstr ""
 
+#: src/components/agent-execution-controls/agent-access-field.tsx
+#: src/components/agent-execution-controls/agent-access-menu-items.tsx
 #: src/components/agent-execution-controls/agent-execution-controls.tsx
 msgid "Full access"
 msgstr ""
@@ -6645,6 +6657,10 @@ msgstr ""
 #: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx
 msgid "this project"
+msgstr ""
+
+#: src/projects/use-project-editor-state.ts
+msgid "This project's working environment changed. Review its permissions and try again."
 msgstr ""
 
 #: src/components/sync-setup/recovery-key-entry-step.tsx

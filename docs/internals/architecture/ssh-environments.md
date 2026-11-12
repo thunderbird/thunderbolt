@@ -144,12 +144,71 @@ host is unavailable.
   Docker API, not an arbitrary container shell; it is a different transport.
   See [Docker's SSH connection documentation](https://docs.docker.com/engine/security/protect-access/).
 
-There is no automatic VM/container provisioning, interactive MFA, remote desktop
-control, or remote preview port forwarding in this feature.
-`local_app` remains a local-computer capability. A remote server's `localhost`
-is not the desktop's `localhost`, so a remote server URL must not be opened as
-though it were local. Port forwarding can be added as an explicit owned page
-capability later.
+There is no automatic VM/container provisioning, interactive MFA, or remote desktop
+control in this feature.
+
+## Managed development previews
+
+SSH projects and standalone chats expose the same `local_app` tool as computer
+environments. Recipes remain device-local and are scoped to the project/chat,
+remote working directory, and exact saved SSH connection. HTML artifacts can
+still use `page_show_file` without starting a server.
+
+- `create` saves an argv-based launch recipe, starts the remote server under an
+  owned supervisor, forwards its loopback port, waits for HTTP readiness, and
+  opens a browser page. The executable and working directory are remote paths;
+  `{port}` arguments and `PORT` refer to the remote listener.
+- `attach` accepts a title and remote port for an already-running service. It
+  creates only a managed tunnel and never starts or stops that remote service.
+- `start`, `restart`, and `update` reuse the stable app/page IDs. Updates replace
+  launch fields; an attached service can update only its remote port. `stop`
+  closes the tunnel and, for launched apps, the supervised process group.
+- Successful open results include the live `sessionId` for `page_snapshot` and
+  other page tools. The returned browser URL is the forwarded desktop loopback
+  address, not the remote `localhost`. Recipe metadata and credentials are not
+  included in published page results.
+
+The native `agent_preview_start` request accepts an optional `connection` and
+`mode: "launch" | "attach"` (default `launch`). Attach requires the connection and
+port, with no executable or arguments. `agent_preview_status` and
+`agent_preview_stop` retain their app-ID contract. Native sessions register before
+asynchronous authentication, so cancellation can stop setup while a keychain
+prompt or SSH connection is pending. SSH startup has a two-minute total native
+deadline; the frontend allows five additional seconds to receive its result.
+
+Native `PreviewSessions` owns the remote supervisor channel and forwarding
+process across agent turns. A lost supervisor lease reaps its remote process
+group. Stop, identity cleanup, and desktop exit close the owned processes. The
+frontend also reconciles saved connection snapshots at boot and after profile
+changes, stopping previews for removed or retargeted profiles. It checks the
+connection again before accepting readiness or opening the page. Successful SSH
+readiness updates the environment's connection indicator; an HTTP application
+failure does not imply SSH disconnected.
+
+Forwarding uses strict host-key checks, the existing keychain/askpass flow, and
+native process containment. It admits only the requested loopback forward, with
+`ExitOnForwardFailure=yes`, and verifies destination HTTP readiness separately.
+Remote hosts retain the current POSIX/Bash/Python requirement. The desktop client
+implementation supports macOS, Linux, and Windows. Ordinary coding-shell commands
+remain supervised, so the harness explicitly directs agents to `local_app`
+instead of daemonizing a server with `nohup`, `setsid`, or shell backgrounding.
+
+Launch and attach are mutations under the existing approval policy; only list
+and status are read-only. Restoring chat history never launches a process without
+an explicit user action. Opening an existing local-app page or pin resolves the
+saved recipe on this device.
+
+**Current limitation:** restarting an SSH preview can allocate a new desktop
+forwarding port. Its browser origin therefore changes even though the app/page
+ID stays the same. Cookies, local storage, and logins scoped to the previous
+origin will not follow automatically. Stable per-app origins/forwarding ports
+are a separate follow-up.
+
+A November 2026 desktop smoke with DeepSeek V4.1 Flash on Low effort exposed the
+previous lifecycle gap: the agent attempted to daemonize Vite through the coding
+shell and substituted remote headless tests for a visible preview. Managed
+launch and attach now provide the supported path; existing project tests remain
+useful, but they do not replace opening and inspecting the user's page.
 
 ## Relationship to cloud agents
 

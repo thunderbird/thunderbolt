@@ -72,8 +72,8 @@ export const resolveProjectExecution = (
   binding: AgentExecution | undefined,
   desktop = isTauriDesktop(),
 ): AgentExecution => {
-  const access = binding?.access ?? defaultAgentExecution.access
   const { location } = declaration
+  const access = binding?.location === location ? binding.access : defaultAgentExecution.access
   if (location === 'ssh') {
     if (!desktop) {
       throw new ProjectExecutionUnavailableError('desktop-required')

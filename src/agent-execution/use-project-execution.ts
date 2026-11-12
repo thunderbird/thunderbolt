@@ -60,9 +60,11 @@ export const useProjectExecution = (projectId: string) => {
       if (result.location !== 'computer' || !cwd.trim()) {
         throw new Error('This project cannot use a computer folder')
       }
-      useAgentExecutionStore
-        .getState()
-        .setProjectExecution(projectId, { location: 'computer', cwd, access: binding?.access ?? 'ask' })
+      useAgentExecutionStore.getState().setProjectExecution(projectId, {
+        location: 'computer',
+        cwd,
+        access: binding?.location === 'computer' && binding.cwd === cwd ? binding.access : 'ask',
+      })
     },
   }
 }

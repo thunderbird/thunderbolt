@@ -16,6 +16,7 @@ use tokio::{
 };
 
 const HELPER: &str = include_str!("ssh_helper.py");
+const PREVIEW_HELPER: &str = include_str!("ssh_preview.py");
 const MAX_WIRE_BYTES: usize = 128 * 1024 * 1024;
 const MAX_FILE_BYTES: usize = 25 * 1024 * 1024;
 
@@ -89,7 +90,7 @@ fn valid_identifier(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte))
 }
 
-pub(super) fn validate_connection(connection: &SshConnection) -> Result<(), String> {
+pub(crate) fn validate_connection(connection: &SshConnection) -> Result<(), String> {
     if !valid_identifier(&connection.environment_id)
         || connection.host.is_empty()
         || connection.host.len() > 253
@@ -164,7 +165,11 @@ fn helper_command() -> String {
     format!("python3 -u -c '{}'", HELPER.replace('\'', "'\\''"))
 }
 
-fn ssh_command(connection: &SshConnection, askpass: bool) -> Command {
+pub(crate) fn ssh_client_command(
+    connection: &SshConnection,
+    askpass: bool,
+    clear_forwardings: bool,
+) -> Command {
     let mut command = Command::new("ssh");
     command.args([
         "-T",
@@ -173,13 +178,20 @@ fn ssh_command(connection: &SshConnection, askpass: bool) -> Command {
         "-oConnectionAttempts=1",
         "-oServerAliveInterval=5",
         "-oServerAliveCountMax=2",
-        "-oClearAllForwardings=yes",
+        if clear_forwardings {
+            "-oClearAllForwardings=yes"
+        } else {
+            "-oClearAllForwardings=no"
+        },
         "-oForwardAgent=no",
         "-oForwardX11=no",
+        "-oTunnel=no",
         "-oRemoteCommand=none",
         "-oNumberOfPasswordPrompts=1",
         "-oPermitLocalCommand=no",
         "-oRequestTTY=no",
+        "-oForkAfterAuthentication=no",
+        "-oStdinNull=no",
         "-oControlMaster=no",
         "-oControlPath=none",
         "-oUpdateHostKeys=no",
@@ -213,10 +225,53 @@ fn ssh_command(connection: &SshConnection, askpass: bool) -> Command {
         command.arg("-i").arg(identity);
     }
     command
+}
+
+fn ssh_command(connection: &SshConnection, askpass: bool) -> Command {
+    let mut command = ssh_client_command(connection, askpass, true);
+    command
         .arg("--")
         .arg(&connection.host)
         .arg(helper_command());
     command
+}
+
+/// Reuse connection-bound credentials without exposing their secret to preview code.
+pub(crate) struct SshAuthentication(Option<ssh_credentials::AskpassSession>);
+
+impl SshAuthentication {
+    pub(crate) fn command(
+        &self,
+        connection: &SshConnection,
+        clear_forwardings: bool,
+    ) -> Result<Command, String> {
+        let mut command = ssh_client_command(connection, self.0.is_some(), clear_forwardings);
+        if let Some(askpass) = &self.0 {
+            askpass.configure(&mut command)?;
+        }
+        Ok(command)
+    }
+}
+
+pub(crate) async fn authenticate_preview(
+    connection: &SshConnection,
+) -> Result<SshAuthentication, String> {
+    validate_connection(connection)?;
+    Ok(SshAuthentication(
+        ssh_credentials::prepare_askpass(connection).await?,
+    ))
+}
+
+/// The preview uses the same path validation/process-group cleanup helpers, with a streaming lifecycle.
+pub(crate) fn preview_script() -> String {
+    format!("__name__ = 'thunderbolt_ssh_preview'\n{HELPER}\n{PREVIEW_HELPER}\npreview_main()")
+}
+
+pub(crate) fn preview_command() -> String {
+    format!(
+        "python3 -u -c '{}'",
+        preview_script().replace('\'', "'\\''")
+    )
 }
 
 async fn capture(mut stream: impl AsyncRead + Unpin, limit: usize) -> Result<Vec<u8>, String> {
@@ -535,6 +590,7 @@ mod tests {
             "-oPermitLocalCommand=no",
             "-oForwardAgent=no",
             "-oForwardX11=no",
+            "-oTunnel=no",
             "-oRemoteCommand=none",
             "-oIdentitiesOnly=yes",
             "-oPreferredAuthentications=publickey",

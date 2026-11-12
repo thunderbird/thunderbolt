@@ -128,6 +128,12 @@ const exerciseSshEnvironments = async () => {
   const projectSelector = await browser.$('[title="In project: SSH smoke project"]')
   await (await projectRow.$('[role="status"]')).waitForDisplayed()
   await (await projectSelector.$('[role="status"]')).waitForDisplayed()
+  for (const row of [projectRow, projectSelector]) {
+    const status = await row.$('[role="status"]')
+    const label = await row.$('span.truncate=SSH smoke project')
+    const gap = (await status.getLocation('x')) - (await label.getLocation('x')) - (await label.getSize('width'))
+    assert(gap >= 0 && gap <= 12, 'SSH status must sit immediately after the project name')
+  }
   await (await browser.$('button[aria-label="Agent location"]')).click()
   const fixed = await browser.$('[role="menuitem"]*=Smoke SSH')
   assert.equal(await fixed.getAttribute('aria-disabled'), 'true')
@@ -420,6 +426,7 @@ const exerciseBrowser = async () => {
   const receivedCookies = new Map<string, string>()
   const sessionCookie = `browser-smoke-session=${crypto.randomUUID()}`
   const mainCookie = `browser-smoke-main=${crypto.randomUUID()}`
+  // Fixture script values are generated UUIDs (hex and hyphens), never request data or arbitrary HTML.
   const storageValue = crypto.randomUUID()
   const defaultProfileStorage: (string | null)[] = []
   const indexedStorageScript = `
@@ -453,7 +460,7 @@ const exerciseBrowser = async () => {
       response.end(`<!doctype html><title>Default profile probe</title><script>
         const value = localStorage.getItem('browser-smoke-data');
         fetch('/default-profile-report' + (value === null ? '' : '?value=' + encodeURIComponent(value)));
-        localStorage.setItem('main-profile-data', ${JSON.stringify(storageValue)});
+        localStorage.setItem('main-profile-data', ${JSON.stringify(storageValue)}); // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
       </script>`)
       return
     }
@@ -484,8 +491,8 @@ const exerciseBrowser = async () => {
       response.end(`<!doctype html><title>Browser smoke one</title>
         <h1>First page</h1><a id="next" href="/redirect" target="_blank">Next page</a>
         <script>${indexedStorageScript}
-          localStorage.setItem('browser-smoke-data', ${JSON.stringify(storageValue)});
-          Promise.all([storedValue(${JSON.stringify(storageValue)}), fetch('/follow-link')]).then(() => document.getElementById('next').click());
+          localStorage.setItem('browser-smoke-data', ${JSON.stringify(storageValue)}); // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+          Promise.all([storedValue(${JSON.stringify(storageValue)}), fetch('/follow-link')]).then(() => document.getElementById('next').click()); // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
         </script>`)
       return
     }

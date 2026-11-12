@@ -39,7 +39,7 @@ export const publishedPageOutput = (part: UIMessage['parts'][number]): Published
   }
   if (
     name === 'local_app' &&
-    (!record(part.input) || !['create', 'start', 'restart', 'update'].includes(String(part.input.action)))
+    (!record(part.input) || !['create', 'attach', 'start', 'restart', 'update'].includes(String(part.input.action)))
   ) {
     return null
   }

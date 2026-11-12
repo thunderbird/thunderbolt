@@ -103,8 +103,10 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
         renderItem={(item) => (
           <div className={cn(searchableMenuRowClass, isPending && 'cursor-wait opacity-60')}>
             {item.icon}
-            <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
-            <ProjectSshStatus projectId={item.id} />
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="min-w-0 truncate font-medium">{item.label}</span>
+              <ProjectSshStatus projectId={item.id} />
+            </span>
           </div>
         )}
         trigger={(_selected, open) => (

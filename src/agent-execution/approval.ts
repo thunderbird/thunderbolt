@@ -5,7 +5,7 @@
 import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import type { AgentAdapterContext } from '@/types/acp'
-import { useAgentExecutionStore, type AgentExecution } from './store'
+import { matchesExecutionTarget, useAgentExecutionStore, type AgentExecution } from './store'
 import type { Tool } from 'ai'
 import { toAcpToolKind } from '@shared/agent-tool-permissions'
 
@@ -40,12 +40,6 @@ const isLocalAppInspection = (name: string, input: unknown): boolean =>
   input !== null &&
   'action' in input &&
   (input.action === 'list' || input.action === 'status')
-
-/** A grant for another workspace must not authorize this turn's tools. */
-const matchesExecutionTarget = (left: AgentExecution, right: AgentExecution): boolean =>
-  left.location === right.location &&
-  left.cwd === right.cwd &&
-  (left.location !== 'ssh' || (right.location === 'ssh' && left.environmentId === right.environmentId))
 
 /** One turn's approval gate, shared by Pi and the legacy engine. Requests queue per chat. */
 export const createToolAuthorizer = (

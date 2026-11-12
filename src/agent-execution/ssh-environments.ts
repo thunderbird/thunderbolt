@@ -74,10 +74,10 @@ export const useSshEnvironmentsStore = create<SshEnvironmentsState>()(
       recordConnectionStatus: (connection, status, observedStatus) =>
         set((state) => {
           const environment = state.environments[connection.environmentId]
-          const connectionKey = JSON.stringify(connection)
-          if (!environment || environment.deletedAt || JSON.stringify(sshConnection(environment)) !== connectionKey) {
+          if (!environment || environment.deletedAt || !matchesSshConnection(sshConnection(environment), connection)) {
             return state
           }
+          const connectionKey = JSON.stringify(sshConnection(environment))
           // A request started before newer evidence cannot turn that connection red.
           if (status === 'disconnected' && state.connectionStatuses[environment.id] !== observedStatus) {
             return state
@@ -138,3 +138,28 @@ export const sshConnection = (environment: SshEnvironment): SshConnection => ({
   authentication: environment.authentication,
   hasSecret: environment.hasSecret,
 })
+
+/** Compare transport identity independently of persisted JSON property order. */
+export const matchesSshConnection = (first: SshConnection | undefined, second: SshConnection | undefined): boolean => {
+  if (first === second) {
+    return true
+  }
+  if (!first || !second) {
+    return false
+  }
+  return (
+    first.environmentId === second.environmentId &&
+    first.host === second.host &&
+    first.username === second.username &&
+    first.port === second.port &&
+    first.identityFile === second.identityFile &&
+    first.authentication === second.authentication &&
+    first.hasSecret === second.hasSecret
+  )
+}
+
+/** Refuse delayed work or saved app launches after a profile was removed or retargeted. */
+export const isCurrentSshConnection = (connection: SshConnection): boolean => {
+  const environment = useSshEnvironmentsStore.getState().environments[connection.environmentId]
+  return Boolean(environment && !environment.deletedAt && matchesSshConnection(sshConnection(environment), connection))
+}

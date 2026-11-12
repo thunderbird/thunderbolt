@@ -17,6 +17,7 @@ test('published file pages retain live state while website and device-local outp
   const chatId = crypto.randomUUID()
   const htmlId = crypto.randomUUID()
   const websiteId = crypto.randomUUID()
+  // These local-app references use a generated UUID, never imported or browser-supplied text.
   const localId = crypto.randomUUID()
   const failedPageId = crypto.randomUUID()
   const html = `<!doctype html><html><body>
@@ -95,15 +96,30 @@ test('published file pages retain live state while website and device-local outp
               type: 'tool-local_app',
               toolCallId: crypto.randomUUID(),
               state: 'output-available',
-              input: { action: 'update', appId: localId, args: ['server.cjs'] },
+              input: { action: 'attach', title: 'Remote SSH service', port: 1420 },
+              output: {
+                status: 'ready',
+                sessionId: 'previous-ssh-session',
+                page: {
+                  id: `local-app:${localId}`,
+                  title: 'Remote SSH service',
+                  source: { kind: 'local-app', appId: localId },
+                },
+              },
+            },
+            {
+              type: 'tool-local_app',
+              toolCallId: crypto.randomUUID(),
+              state: 'output-available',
+              input: { action: 'update', appId: localId, args: ['server.cjs'] }, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
               output: {
                 status: 'ready',
                 updated: true,
                 sessionId: 'old-preview-session',
                 page: {
-                  id: `local-app:${localId}`,
+                  id: `local-app:${localId}`, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
                   title: 'Updated device-only preview',
-                  source: { kind: 'local-app', appId: localId },
+                  source: { kind: 'local-app', appId: localId }, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
                 },
               },
             },
@@ -132,9 +148,9 @@ test('published file pages retain live state while website and device-local outp
   await expect(frameElement).toHaveAttribute('data-retained-frame', 'same-document')
   await expect(frame.getByRole('textbox', { name: 'Unsaved draft' })).toHaveValue('Keep this draft through expansion')
 
-  const pageTools = page.locator('.tool-invocation-card').filter({ hasText: 'Completed 3 steps' })
-  await pageTools.getByRole('button', { name: /Completed 3 steps/ }).click()
-  await expect(pageTools.getByTitle('This local app is unavailable on this device.')).toHaveCount(2)
+  const pageTools = page.locator('.tool-invocation-card').filter({ hasText: 'Completed 4 steps' })
+  await pageTools.getByRole('button', { name: /Completed 4 steps/ }).click()
+  await expect(pageTools.getByTitle('This local app is unavailable on this device.')).toHaveCount(3)
   await expect(pageTools.getByTitle('This local app is unavailable on this device.').first()).toBeDisabled()
   await pageTools.getByTitle('External website', { exact: true }).click()
   const external = page.locator('[data-page-panel]')

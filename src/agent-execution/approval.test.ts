@@ -25,13 +25,13 @@ describe('built-in tool approval', () => {
       await authorize({ name: 'local_app', source: 'built-in' }, { action, appId: 'existing' }, action)
     }
     expect(requestPermission).not.toHaveBeenCalled()
-    for (const action of ['create', 'update', 'start', 'restart', 'stop', 'unknown']) {
+    for (const action of ['create', 'attach', 'update', 'start', 'restart', 'stop', 'unknown']) {
       await expect(authorize({ name: 'local_app', source: 'built-in' }, { action }, action)).rejects.toThrow('denied')
     }
     for (const action of ['list', 'status']) {
       await expect(authorize({ name: 'local_app', source: 'external' }, { action }, action)).rejects.toThrow('denied')
     }
-    expect(requestPermission).toHaveBeenCalledTimes(8)
+    expect(requestPermission).toHaveBeenCalledTimes(9)
     await expect(
       authorize({ name: 'local_app', source: 'built-in' }, { action: 'list' }, 'cancelled', AbortSignal.abort()),
     ).rejects.toThrow()

@@ -38,17 +38,6 @@ export type ProjectChatHit = {
   excerpt: string
 }
 
-/**
- * One raw result row, **positional**: `[parent_id, snippet]`.
- *
- * The bun-sqlite backend goes through drizzle's `sqlite-proxy` driver (see
- * `src/db/bun-sqlite-database.ts`), which hands raw `db.all()` results back as
- * arrays, not keyed objects — a raw query carries no column metadata for
- * drizzle to map. Reading `row.parent_id` here yields `undefined` for every
- * row and silently returns zero hits.
- */
-type SearchRow = readonly [parentId: string | null, snippet: string | null]
-
 const maxHits = 8
 
 /** Body characters kept before, and in total around, a substring hit. */
@@ -93,18 +82,21 @@ export const searchProjectChats = async (
   // newest-first (see `uuidv7ToDate` in `src/lib/utils.ts`).
   const excerpt =
     plan.match !== null
-      ? sql.raw(`snippet(search_index, ${bodyColumnIndex}, '', '', '…', 30)`)
-      : sql`substr(body, max(1, instr(body, ${plan.substrings[0]}) - ${excerptLead}), ${excerptLength})`
-  const rows = (await db.all(sql`
-    SELECT parent_id, ${excerpt} AS snippet
-    FROM search_index
-    WHERE ${filter}
+      ? sql<string | null>`snippet(search_index, ${bodyColumnIndex}, '', '', '…', 30)`
+      : sql<string | null>`substr(body, max(1, instr(body, ${plan.substrings[0]}) - ${excerptLead}), ${excerptLength})`
+  // A typed selection maps both PowerSync's object rows and sqlite-proxy's
+  // positional rows; raw db.all() has a different shape in those two drivers.
+  const rows = await db
+    .select({ parentId: sql<string | null>`parent_id`, snippet: excerpt })
+    .from(sql`search_index`)
+    .where(
+      sql`${filter}
       AND entity_type = 'message'
-      AND parent_id IN (${threadList})
-    ORDER BY ${plan.match !== null ? sql.raw(bm25Sql) : sql`id DESC`}
-    LIMIT ${maxHits}
-  `)) as SearchRow[]
-  return rows.flatMap(([parentId, snippet]) =>
+      AND parent_id IN (${threadList})`,
+    )
+    .orderBy(plan.match !== null ? sql.raw(bm25Sql) : sql`id DESC`)
+    .limit(maxHits)
+  return rows.flatMap(({ parentId, snippet }) =>
     parentId
       ? [
           {

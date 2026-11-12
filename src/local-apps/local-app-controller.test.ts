@@ -43,7 +43,7 @@ describe('local app lifecycle', () => {
     expect(listLocalApps(project)).toEqual([app])
     expect(app.title).toBe('My app')
     expect(app).not.toHaveProperty('url')
-    expect(app.launch.args).toContain('{port}')
+    expect(app.launch).toMatchObject({ args: expect.arrayContaining(['{port}']) })
   })
 
   it('reuses a running app and restarts only when explicitly requested', async () => {
@@ -68,7 +68,7 @@ describe('local app lifecycle', () => {
     const updated = controller.get(app.id)!
     expect(updated).toEqual({
       ...app,
-      launch: { executable: app.launch.executable, args: ['server.cjs'], port: undefined },
+      launch: { executable: input.launch.executable, args: ['server.cjs'], port: undefined },
     })
     expect(controller.list(project)).toHaveLength(1)
     expect(calls.filter((call) => call.command === 'agent_preview_start').at(-1)?.args).toEqual({
@@ -150,7 +150,8 @@ describe('local app lifecycle', () => {
     const controller = createLocalAppController(native, () => true)
     const app = controller.create(input)
     await expect(controller.start(app.id, abort.signal)).rejects.toThrow()
-    expect(calls).toEqual(['agent_preview_status', 'agent_preview_start', 'agent_preview_stop'])
+    // Cancel immediately, then clean up again after the in-flight start resolves.
+    expect(calls).toEqual(['agent_preview_status', 'agent_preview_start', 'agent_preview_stop', 'agent_preview_stop'])
   })
 
   it('shares startup across callers and one cancelled waiter cannot stop the other', async () => {

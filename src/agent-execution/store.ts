@@ -12,6 +12,12 @@ export type AgentExecution = { access: 'ask' | 'full' } & (
 )
 export const defaultAgentExecution: AgentExecution = { location: 'sandbox', access: 'ask' }
 
+/** A permission grant is valid only for the exact environment and working folder it names. */
+export const matchesExecutionTarget = (left: AgentExecution, right: AgentExecution): boolean =>
+  left.location === right.location &&
+  left.cwd === right.cwd &&
+  (left.location !== 'ssh' || (right.location === 'ssh' && left.environmentId === right.environmentId))
+
 type ExecutionStore = {
   byThread: Record<string, AgentExecution>
   byProject: Record<string, AgentExecution>

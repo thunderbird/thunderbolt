@@ -71,6 +71,7 @@ it('shows the fixed SSH name, status and project folder in settings, and preserv
   await settle()
   expect(screen.getByLabelText('Project environment')).toHaveTextContent('My OrbStack')
   expect(screen.getByRole('status', { name: 'Connected' })).toBeInTheDocument()
+  expect(screen.getByRole('status', { name: 'Connected' }).previousElementSibling).toHaveTextContent('My OrbStack')
   expect(screen.getByText('~/work/my-app')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Project environment' })).toBeNull()
   expect(screen.queryByRole('button', { name: 'Browse remote folders' })).toBeNull()
@@ -98,6 +99,53 @@ it('shows the saved SSH choice even when this computer has no connection profile
   expect(screen.getByLabelText('Project environment')).toHaveTextContent('SSH environment unavailable')
   expect(screen.getByRole('status', { name: 'SSH environment unavailable' })).toBeInTheDocument()
   expect(screen.getByText('~/project')).toBeInTheDocument()
+})
+
+it('saves edited permissions for this project and device without changing the SSH target', async () => {
+  const execution = { location: 'ssh', environmentId: environment.id, cwd: '~/project', access: 'ask' } as const
+  const project = await createProject(getDb(), { name: 'Remote work', execution })
+  const other = await createProject(getDb(), { name: 'Other project' })
+  const onClose = mock()
+  render(<ProjectEditorDialog project={project} onClose={onClose} />, { wrapper: createTestProvider() })
+  await settle()
+  const permissions = screen.getByLabelText('Agent permissions')
+  expect(permissions).toHaveTextContent('Ask for approval')
+  fireEvent.pointerDown(permissions, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+  fireEvent.click(screen.getByRole('menuitem', { name: /Full access/ }))
+  expect(await getProjectExecution(getDb(), project.id)).toEqual(execution)
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+  await settle()
+  expect(await getProjectExecution(getDb(), project.id)).toEqual({ ...execution, access: 'full' })
+  expect(await getProjectExecution(getDb(), other.id)).toEqual({ location: 'sandbox', access: 'ask' })
+  expect(useAgentExecutionStore.getState().byThread).toEqual({})
+  expect(onClose).toHaveBeenCalledTimes(1)
+})
+
+it('canceling a permission edit leaves the project policy unchanged', async () => {
+  const project = await createProject(getDb(), { name: 'Remote work' })
+  const onClose = mock()
+  render(<ProjectEditorDialog project={project} onClose={onClose} />, { wrapper: createTestProvider() })
+  await settle()
+  fireEvent.pointerDown(screen.getByLabelText('Agent permissions'), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+  fireEvent.click(screen.getByRole('menuitem', { name: /Full access/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(await getProjectExecution(getDb(), project.id)).toEqual({ location: 'sandbox', access: 'ask' })
+  expect(onClose).toHaveBeenCalledTimes(1)
+})
+
+it('does not grant access to an SSH environment unavailable on this device', async () => {
+  const project = await createProject(getDb(), {
+    name: 'Remote work',
+    execution: { location: 'ssh', environmentId: environment.id, cwd: '~/project', access: 'full' },
+  })
+  useSshEnvironmentsStore.setState({ environments: {} })
+  useAgentExecutionStore.setState({ byProject: {} })
+  render(<ProjectEditorDialog project={project} onClose={() => {}} />, { wrapper: createTestProvider() })
+  await settle()
+  expect(screen.getByLabelText('Agent permissions')).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+  await settle()
+  expect(useAgentExecutionStore.getState().byProject).toEqual({})
 })
 
 it.each([

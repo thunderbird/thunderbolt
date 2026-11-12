@@ -6,11 +6,13 @@ import { tool, type Tool } from 'ai'
 import { z } from 'zod'
 import type { LocalApp, LocalAppOwner } from '@shared/local-app-protocol'
 import type { PageDefinition } from '@shared/page-protocol'
+import { isCurrentSshConnection, matchesSshConnection } from '@/agent-execution/ssh-environments'
 import { localAppController } from './local-app-controller'
 
 export type LocalAppToolOptions = {
   owner: LocalAppOwner
   cwd: string
+  connection?: LocalApp['connection']
   onOpen: (page: PageDefinition) => string | Promise<string>
 }
 
@@ -20,13 +22,13 @@ export type LocalAppToolController = Pick<
 >
 
 const localAppSchema = z.object({
-  action: z.enum(['list', 'create', 'start', 'status', 'stop', 'restart', 'update']),
-  appId: z.string().min(1).max(128).optional().describe('Existing local app id; required except for list/create.'),
-  title: z.string().trim().min(1).max(200).optional().describe('Human-readable title, required for create.'),
+  action: z.enum(['list', 'create', 'attach', 'start', 'status', 'stop', 'restart', 'update']),
+  appId: z.string().min(1).max(128).optional().describe('Existing app id; required except for list/create/attach.'),
+  title: z.string().trim().min(1).max(200).optional().describe('Human-readable title, required for create/attach.'),
   executable: z
     .string()
     .min(1)
-    .max(8192)
+    .max(4096)
     .optional()
     .describe(
       'Executable such as bun, node, or python3. Prefer an absolute path obtained with the coding shell (command -v) because a desktop app may have a different PATH. Required for create; optional replacement for update. No shell expansion.',
@@ -46,7 +48,7 @@ const localAppSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      'Only for programs requiring a fixed port. Otherwise use {port} in args or read PORT from the environment. Omit to keep the current port on update, or pass null to return to an allocated port.',
+      'Required remote port for attach. For create, only needed for programs requiring a fixed port; otherwise use {port} in args or read PORT from the environment. On SSH this is the remote port, not the forwarded desktop port. Omit to keep it on update; null returns launch recipes to an allocated port.',
     ),
 })
 
@@ -63,7 +65,10 @@ export const createLocalAppTools = (
   controller: LocalAppToolController = localAppController,
 ): Record<string, Tool> => {
   const permitted = (app: LocalApp) =>
-    app.owner.kind === options.owner.kind && app.owner.id === options.owner.id && app.cwd === options.cwd
+    app.owner.kind === options.owner.kind &&
+    app.owner.id === options.owner.id &&
+    app.cwd === options.cwd &&
+    matchesSshConnection(app.connection, options.connection)
   const requireApp = (id?: string) => {
     if (!id) {
       throw new Error('Provide appId from local_app list or create')
@@ -74,10 +79,17 @@ export const createLocalAppTools = (
     }
     return app
   }
+  const open = (page: PageDefinition, signal?: AbortSignal) => {
+    signal?.throwIfAborted()
+    if (options.connection && !isCurrentSshConnection(options.connection)) {
+      throw new Error('The SSH environment changed or was removed')
+    }
+    return options.onOpen(page)
+  }
   return {
     local_app: tool({
       description:
-        'Create, update, start, inspect, restart, or stop a persistent app running on this computer. First create its files with the coding tools in the current working directory. Create saves a device-local launch recipe, starts the server, waits for HTTP readiness, and opens its page in the browser. Start/restart also open the page. To fix a launch command, use update with the existing appId and the changed executable/args/port; it restarts and opens the same app, preserving tabs and pins. Unspecified launch fields stay unchanged. Use the returned sessionId, not page.id, for page_snapshot and other page interaction tools. Processes survive agent turns and stop on app exit or explicit stop. Use this instead of backgrounding a server with bash. Files and launch recipes do not sync. The working directory is fixed to the current project or standalone chat environment.',
+        'Create, attach, update, start, inspect, restart, or stop a persistent app in the current computer or SSH environment. First create files with the coding tools in the current working directory. Create saves a device-local launch recipe, starts the server, waits for HTTP readiness, and opens its page in the desktop browser. SSH servers stay remote; Thunderbolt forwards their loopback port to this computer automatically. For an already-running SSH service use attach with title and its remote port; it opens a managed tunnel without starting or stopping that service. Start/restart also open the page. To fix a launch command, use update with its existing appId and changed executable/args/port; this preserves tabs and pins. Attached services can update only their remote port. Use returned sessionId, not page.id, for page_snapshot and page interaction tools. Managed processes and tunnels survive agent turns and stop on app exit or explicit stop. Use this instead of backgrounding a server with bash. Recipes do not sync; SSH files remain remote. The destination and working directory are fixed to this project or standalone chat environment.',
       inputSchema: localAppSchema,
       execute: async (raw, { abortSignal }) => {
         const input = localAppSchema.parse(raw)
@@ -90,24 +102,35 @@ export const createLocalAppTools = (
               .map((app) => ({ id: app.id, title: app.title, page: localAppPage(app) })),
           }
         }
-        if (input.action === 'create') {
-          if (!input.title || !input.executable) {
+        if (input.action === 'create' || input.action === 'attach') {
+          const attaching = input.action === 'attach'
+          if (attaching && (!options.connection || !input.title || input.port == null)) {
+            throw new Error('Attach requires an SSH environment, title and remote port')
+          }
+          if (attaching && (input.executable !== undefined || input.args !== undefined)) {
+            throw new Error('Attach opens an existing service; use create to launch a command')
+          }
+          if (!attaching && (!input.title || !input.executable)) {
             throw new Error('Provide title and executable for create')
           }
           const app = controller.create({
             owner: options.owner,
             cwd: options.cwd,
-            title: input.title,
-            launch: {
-              executable: input.executable,
-              args: input.args ?? [],
-              ...(input.port == null ? {} : { port: input.port }),
-            },
+            title: input.title!,
+            ...(options.connection ? { connection: options.connection } : {}),
+            launch: attaching
+              ? { mode: 'attach', port: input.port! }
+              : {
+                  executable: input.executable!,
+                  args: input.args ?? [],
+                  ...(input.port == null ? {} : { port: input.port }),
+                },
           })
           try {
             const status = await controller.start(app.id, abortSignal)
+            abortSignal?.throwIfAborted()
             const page = localAppPage(app)
-            const sessionId = await options.onOpen(page)
+            const sessionId = await open(page, abortSignal)
             return { appId: app.id, page, sessionId, status: status.status }
           } catch (error) {
             throw new Error(
@@ -129,7 +152,8 @@ export const createLocalAppTools = (
             ? controller.restart(app.id, abortSignal)
             : controller.start(app.id, abortSignal))
         const page = localAppPage(app)
-        const sessionId = await options.onOpen(page)
+        abortSignal?.throwIfAborted()
+        const sessionId = await open(page, abortSignal)
         return {
           appId: app.id,
           page,

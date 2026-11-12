@@ -36,7 +36,7 @@ describe('publishedPageOutput', () => {
 
   it('only lifts successful publishing operations, leaving status/list/failures in the tool group', () => {
     const local: PageDefinition = { id: 'local-app:123', title: 'App', source: { kind: 'local-app', appId: '123' } }
-    for (const action of ['create', 'start', 'restart', 'update']) {
+    for (const action of ['create', 'attach', 'start', 'restart', 'update']) {
       expect(publishedPageOutput(part('local_app', { page: local, status: 'ready' }, { action }))?.page).toEqual(local)
     }
     expect(

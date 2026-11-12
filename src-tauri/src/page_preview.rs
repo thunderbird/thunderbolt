@@ -4,6 +4,9 @@
 
 //! Device-local app servers outlive agent turns, but remain owned by this app.
 
+mod ssh;
+
+use crate::agent_execution::ssh::SshConnection;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -19,12 +22,23 @@ use tokio::{
     sync::watch,
 };
 
+#[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum PreviewMode {
+    #[default]
+    Launch,
+    Attach,
+}
+
 #[derive(Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewRequest {
     pub id: String,
     pub cwd: String,
-    pub executable: String,
+    pub executable: Option<String>,
+    pub connection: Option<SshConnection>,
+    #[serde(default)]
+    pub mode: PreviewMode,
     #[serde(default)]
     pub args: Vec<String>,
     pub port: Option<u16>,
@@ -115,19 +129,7 @@ impl PreviewSessions {
         {
             return Err("Invalid local app identifier".into());
         }
-        if request.executable.trim().is_empty()
-            || request.executable.contains('\0')
-            || request.args.iter().any(|arg| arg.contains('\0'))
-        {
-            return Err("Provide a valid executable and arguments".into());
-        }
-        let cwd = PathBuf::from(&request.cwd);
-        if !cwd.is_absolute() || !cwd.is_dir() {
-            return Err("Choose an existing absolute working directory".into());
-        }
-        if request.port == Some(0) {
-            return Err("A fixed preview port must be greater than zero".into());
-        }
+        validate_request(&request)?;
         let mut sessions = self.0.lock().map_err(|error| error.to_string())?;
         if let Some(existing) = sessions.get(&request.id) {
             if running(&existing.state.borrow()) {
@@ -138,8 +140,15 @@ impl PreviewSessions {
             }
         }
         // Reserve before spawning: an occupied fixed port must never open some other server.
-        let reservation = TcpListener::bind(("127.0.0.1", request.port.unwrap_or(0)))
-            .map_err(|error| format!("Preview port is unavailable: {error}"))?;
+        let reservation = TcpListener::bind((
+            "127.0.0.1",
+            if request.connection.is_some() {
+                0
+            } else {
+                request.port.unwrap_or(0)
+            },
+        ))
+        .map_err(|error| format!("Preview port is unavailable: {error}"))?;
         let port = reservation
             .local_addr()
             .map_err(|error| error.to_string())?
@@ -160,7 +169,12 @@ impl PreviewSessions {
         sessions.insert(preview.request.id.clone(), preview.clone());
         let worker = preview.clone();
         tauri::async_runtime::spawn(async move {
-            if let Err(error) = run_preview(worker.clone(), reservation, port, cancel_rx).await {
+            let outcome = if worker.request.connection.is_some() {
+                ssh::run(worker.clone(), reservation, port, cancel_rx).await
+            } else {
+                run_preview(worker.clone(), reservation, port, cancel_rx).await
+            };
+            if let Err(error) = outcome {
                 worker.finish("failed", Some(error));
             }
         });
@@ -186,11 +200,61 @@ impl PreviewSessions {
     }
 }
 
+fn validate_request(request: &PreviewRequest) -> Result<(), String> {
+    if request.port == Some(0) {
+        return Err("A fixed preview port must be greater than zero".into());
+    }
+    match request.mode {
+        PreviewMode::Attach => {
+            if request.connection.is_none()
+                || request.port.is_none()
+                || request.executable.is_some()
+                || !request.args.is_empty()
+            {
+                return Err(
+                    "Attach requires an SSH environment and port, without a launch command".into(),
+                );
+            }
+        }
+        PreviewMode::Launch => {
+            if request.executable.as_ref().is_none_or(|value| {
+                value.trim().is_empty() || value.contains('\0') || value.len() > 4096
+            }) || request.args.len() > 100
+                || request
+                    .args
+                    .iter()
+                    .any(|arg| arg.contains('\0') || arg.len() > 32768)
+            {
+                return Err("Provide a valid executable and arguments".into());
+            }
+        }
+    }
+    if let Some(connection) = &request.connection {
+        crate::agent_execution::ssh::validate_connection(connection)?;
+        if request.cwd.is_empty() || request.cwd.len() > 4096 || request.cwd.contains('\0') {
+            return Err("Provide a remote working directory".into());
+        }
+    } else {
+        let cwd = PathBuf::from(&request.cwd);
+        if !cwd.is_absolute() || !cwd.is_dir() {
+            return Err("Choose an existing absolute working directory".into());
+        }
+    }
+    Ok(())
+}
+
+fn append_logs(logs: &Mutex<Vec<u8>>, bytes: &[u8]) -> Result<(), String> {
+    let mut logs = logs.lock().map_err(|error| error.to_string())?;
+    logs.extend_from_slice(bytes);
+    let excess = logs.len().saturating_sub(64 * 1024);
+    logs.drain(..excess);
+    Ok(())
+}
+
 async fn capture(
     mut reader: impl AsyncRead + Unpin,
     logs: Arc<Mutex<Vec<u8>>>,
 ) -> Result<(), String> {
-    const LIMIT: usize = 64 * 1024;
     let mut buffer = [0u8; 4096];
     loop {
         let count = reader
@@ -200,10 +264,7 @@ async fn capture(
         if count == 0 {
             return Ok(());
         }
-        let mut logs = logs.lock().map_err(|error| error.to_string())?;
-        logs.extend_from_slice(&buffer[..count]);
-        let excess = logs.len().saturating_sub(LIMIT);
-        logs.drain(..excess);
+        append_logs(&logs, &buffer[..count])?;
     }
 }
 
@@ -243,7 +304,13 @@ async fn run_preview(
         .iter()
         .map(|arg| arg.replace("{port}", &port_text))
         .collect();
-    let mut command = Command::new(&preview.request.executable);
+    let mut command = Command::new(
+        preview
+            .request
+            .executable
+            .as_ref()
+            .expect("validated executable"),
+    );
     command
         .args(args)
         .current_dir(&preview.request.cwd)
@@ -374,10 +441,14 @@ mod tests {
         PreviewRequest {
             id: id.into(),
             cwd: std::env::temp_dir().to_string_lossy().into_owned(),
-            executable: std::env::current_exe()
-                .unwrap()
-                .to_string_lossy()
-                .into_owned(),
+            executable: Some(
+                std::env::current_exe()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            connection: None,
+            mode: PreviewMode::Launch,
             args: vec![
                 "--ignored".into(),
                 "--exact".into(),
@@ -398,6 +469,27 @@ mod tests {
         })
         .await
         .unwrap()
+    }
+
+    #[test]
+    fn ssh_attach_has_no_launch_command_and_requires_a_remote_port() {
+        let mut attach = request("attach");
+        attach.mode = PreviewMode::Attach;
+        attach.executable = None;
+        attach.args.clear();
+        attach.port = Some(1420);
+        assert!(validate_request(&attach).is_err());
+        attach.connection = Some(
+            serde_json::from_value(serde_json::json!({"environmentId":"fixture", "host":"vm"}))
+                .unwrap(),
+        );
+        attach.cwd = "~".into();
+        assert!(validate_request(&attach).is_ok());
+        attach.args.push("unapproved".into());
+        assert!(validate_request(&attach).is_err());
+        attach.args.clear();
+        attach.port = None;
+        assert!(validate_request(&attach).is_err());
     }
 
     #[tokio::test]
@@ -444,7 +536,7 @@ mod tests {
         assert!(sessions.start(conflicting).is_err());
         assert!(sessions.get("occupied").unwrap().is_none());
         let mut missing = request("missing");
-        missing.executable = "/does/not/exist/thunderbolt-preview".into();
+        missing.executable = Some("/does/not/exist/thunderbolt-preview".into());
         sessions.start(missing).unwrap();
         let failed = settled(&sessions.get("missing").unwrap().unwrap()).await;
         assert_eq!(failed.status, "failed");

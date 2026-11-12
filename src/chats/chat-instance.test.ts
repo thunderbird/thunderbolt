@@ -1285,6 +1285,24 @@ describe('createChatInstance — retry policy', () => {
     }
   })
 
+  it.each([
+    '402: {"message":"free token quota is locked"}',
+    JSON.stringify({ error: 'Payment Required', kind: 'billing' }),
+  ])('waits for user action after a billing refusal: %s', async (message) => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    const { finishWithError, regenerate } = createRetryHarness()
+    try {
+      await finishWithError(new Error(message))
+      await getClock().runAllAsync()
+      const session = useChatStore.getState().sessions.get(sessionId)!
+      expect(session.retryCount).toBe(0)
+      expect(session.retriesExhausted).toBe(true)
+      expect(regenerate).not.toHaveBeenCalled()
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
   it('never auto-regenerates a pi-ai flattened JSON 429', async () => {
     const errorLog = spyOn(console, 'error').mockImplementation(() => {})
     const { finishWithError, regenerate, trackEvent } = createRetryHarness()

@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { AttestationError, RouterHTTPClient, EnclaveHTTPClient } from 'tinfoil'
+import { decryptResponseWithToken, PROTOCOL, RESPONSE_NONCE_LENGTH } from 'ehbp'
 import { getClock } from '@/testing-library'
 import { testTinfoilVerification } from '@/test-utils/tinfoil'
 import { createAttestationStore } from './store'
@@ -173,6 +174,30 @@ describe('observed SDK lifecycle', () => {
     const reading = response.text().catch((error: unknown) => error)
     await client.close()
     expect(await reading).toHaveProperty('name', 'AbortError')
+  })
+
+  it('cancels the encrypted EHBP source after headers without aborting a completed request callback', async () => {
+    const { client, sdk } = setup()
+    const cancelled = Promise.withResolvers<unknown>()
+    const signal = Promise.withResolvers<AbortSignal>()
+    sdk.fetch.mockImplementation(async (_input, init) => {
+      signal.resolve(init!.signal!)
+      return decryptResponseWithToken(
+        new Response(new ReadableStream({ cancel: cancelled.resolve }), {
+          headers: { [PROTOCOL.RESPONSE_NONCE_HEADER]: '00'.repeat(RESPONSE_NONCE_LENGTH) },
+        }),
+        { exportedSecret: new Uint8Array(32), requestEnc: new Uint8Array(32) },
+      )
+    })
+    const response = await client.fetch('https://router.tinfoil.sh/v1/chat/completions')
+    const reading = response
+      .body!.getReader()
+      .read()
+      .catch((error: unknown) => error)
+    await client.close()
+    expect(await reading).toHaveProperty('name', 'AbortError')
+    expect(await cancelled.promise).toHaveProperty('name', 'AbortError')
+    expect((await signal.promise).aborted).toBe(false)
   })
 
   it('closes and revokes evidence immediately, including verification that finishes later', async () => {

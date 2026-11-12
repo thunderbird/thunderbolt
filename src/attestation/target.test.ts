@@ -9,6 +9,18 @@ import { resolveAttestationTarget } from './target'
 const model = { provider: 'tinfoil', isSystem: 1, isConfidential: 1 } as const
 
 describe('attestation target', () => {
+  it('isolates Privatemode evidence by connection and never inherits another provider', () => {
+    const privateModel = { ...model, provider: 'privatemode' as const, providerConnectionId: 'connection-one' }
+    expect(resolveAttestationTarget(builtInAgent, privateModel, '')).toEqual({
+      kind: 'local',
+      key: 'privatemode:connection-one',
+      provider: 'Privatemode',
+      client: 'user',
+    })
+    expect(
+      resolveAttestationTarget(builtInAgent, { ...privateModel, providerConnectionId: 'connection-two' }, '')?.key,
+    ).toBe('privatemode:connection-two')
+  })
   it.each(['remote-acp', 'managed-acp', 'managed-http'] as const)(
     'never attributes a local Tinfoil attestation to a %s agent',
     (type) => {

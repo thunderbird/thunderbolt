@@ -6,6 +6,7 @@ import { and, eq, exists, isNull, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { providerConnectionsTable as connections, providerConnectionSecretsTable as secrets } from '@/db/tables'
 import type { ProviderCredentials } from './types'
+import { revokeAttestedConnection } from '@/attestation/client-cache'
 
 type OAuthCredentialProvider = 'openrouter' | 'tinfoil' | 'otari'
 
@@ -49,6 +50,7 @@ export const writeProviderCredentials = async (
   } else {
     await db.insert(secrets).values({ id, ...values })
   }
+  revokeAttestedConnection(id)
 }
 
 /** Read the OAuth generation even after disconnect; stale callbacks must remain invalid. */

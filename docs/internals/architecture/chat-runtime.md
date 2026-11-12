@@ -142,16 +142,66 @@ explicit regenerate (the Retry button, `useChatAutomation`'s auto-run).
 (lazily imported to keep its weight off the chat entry chunk) and the legacy
 `aiFetchStreamingResponse` pipeline for the rest. Invisible to `src/chats/`.
 
-`isPiModelCandidate` (`built-in-adapter.ts:165`) takes Pi when **both** hold:
+`isPiModelCandidate` (`built-in-model-support.ts`) takes Pi when **both** hold:
 
-- the provider is `anthropic`, `openai`, `custom`, `openrouter`, `thunderbolt`
-  or `tinfoil`, **and**
-- the model is `tinfoil` or declares `toolUsage !== 0`.
+- the provider is `anthropic`, `openai`, `custom`, `openrouter`, `otari`, `thunderbolt`,
+  `tinfoil`, or `privatemode`, **and**
+- the model is `tinfoil`/`privatemode` or declares `toolUsage !== 0`.
 
-Tinfoil takes Pi unconditionally because confidential inference has no legacy
+Tinfoil and Privatemode take Pi unconditionally because confidential inference has no legacy
 fallback. Turn telemetry records which ran as the turn's `engine` (`pi` or
 `legacy`); an ACP turn emits no turn telemetry and carries `acp` in its
 debug-transcript metadata instead.
+
+### Confidential provider adapters
+
+`src/attestation/client.ts` owns verification deadlines, evidence expiry,
+stream lifetime, cancellation, and failure handling. SDK adapters implement
+`AttestationTransport`; `client-cache.ts` owns identity and credential generations.
+Chat uses the same attestation store, badge, details dialog, and retry action for
+both providers. The UI dispatches through `attestation/providers.ts` and never
+imports vendor SDKs.
+
+Tinfoil retains its managed and user routes. Privatemode connects with a
+device-local API key and uses the official `privatemode-ai` SDK for local
+verification and encrypted OpenAI-compatible requests, including streaming and
+tool calls. Model discovery also uses that transport. There is no plaintext or
+proxyless fallback. Privatemode advertises model connections only; OAuth, search,
+VM provisioning, and hosted code execution are not supplied by this adapter.
+Ordinary Thunderbolt tools remain separate services with their own data paths.
+
+The shared connection form dispatches API-key validation through
+`src/providers/connection-validation.ts` before saving new or replacement
+credentials. Privatemode validates an authenticated model-list request on a
+temporary SDK-attested connection, then closes it. Failed validation leaves
+existing credentials intact; opening the form alone does not load the SDK.
+
+Privatemode verification calls the SDK's `verify()` and `refreshSecret()` before
+publishing evidence. Its details show the verified deployment manifest digest
+and policy hashes; the SDK does not expose a raw hardware quote. Evidence expires
+after at most five minutes or when the encryption secret expires, and SDK
+manifest/secret rotation revokes it until verification succeeds again. The SDK
+uses its default published-manifest update policy and strict NVIDIA OCSP checks.
+The SDK's explicit verification has no abort parameter: cancellation rejects the
+app request immediately, clears evidence, and discards late results, while the
+underlying vendor request may finish its own timeout.
+
+Only explicit provider use imports `attestation/tinfoil.ts` or
+`attestation/privatemode.ts`. Provider metadata, settings, identity cleanup, and
+route preloading import SDK-free facades. The Vite build checks the emitted chunk
+graph with `scripts/confidential-sdk-isolation.ts`, rejecting eager SDK code,
+exclusive transitive dependencies, and cross-provider imports. Tests execute
+both lazy-loading orders and exercise ordinary routes without either SDK.
+This is a runtime loading boundary, not an install/build-time sandbox; dependencies
+independently used by the rest of the app remain part of its trust boundary.
+Once a provider has been used, its JavaScript module remains loaded until the
+page or webview reloads; closing a connection revokes its state, not its code.
+
+Privatemode's Go WASM verifier ships as a separate local asset. Its SDK version is
+exactly pinned in `package.json`/`bun.lock`, and `privatemodeWasmHash` in the adapter
+pins the asset SHA-256 checked by the SDK before instantiation. Upgrade these
+together after reviewing the SDK/verifier changes; rerun the adapter tests,
+browser attestation tests, and production build isolation gate.
 
 ## Budgets and retries
 

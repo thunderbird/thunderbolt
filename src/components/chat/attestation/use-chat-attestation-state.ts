@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useSyncExternalStore } from 'react'
-import { getSystemTinfoilClient, getTinfoilClient } from '@/ai/tinfoil-client'
+import { verifyAttestedModel } from '@/attestation/providers'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { attestationStore, idleAttestation } from '@/attestation/store'
 import { resolveAttestationTarget } from '@/attestation/target'
@@ -29,7 +29,7 @@ export const useChatAttestationState = () => {
     // Verification is an explicit action; merely rendering the control must not
     // download the SDK or start a connection to a provider.
     try {
-      await (target.client === 'system' ? getSystemTinfoilClient() : getTinfoilClient())
+      await verifyAttestedModel(selectedModel)
     } catch {
       // The transport publishes a failure to the same store the panel reads.
     }

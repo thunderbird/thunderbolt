@@ -19,6 +19,10 @@ import { useChatStore } from '@/chats/chat-store'
 import { loadOtariSearchStatus } from '@/integrations/otari-search/capabilities'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { getProviderDefinition } from '@/providers/registry'
+import {
+  ProviderConnectionValidationError,
+  validateProviderConnectionCredentials,
+} from '@/providers/connection-validation'
 import type { ProviderAuthMethod, ProviderConnection, ProviderType, OAuthProviderType } from '@/providers/types'
 import type { useProviderAuthorization } from '@/providers/use-provider-authorization'
 
@@ -78,8 +82,12 @@ export const useProviderConnectionForm = ({
           credentialsChanged: false,
         }
       }
+      const expectedRevision = connection ? await getProviderConnectionRevision(db, connection.id) : undefined
+      await validateProviderConnectionCredentials({ provider, apiKey: state.apiKey.trim(), signal: controller.signal })
+      controller.signal.throwIfAborted()
       const saved = await saveProviderConnectionWithRevision(db, {
         id: connection?.id,
+        expectedRevision,
         provider,
         name: state.name.trim(),
         authMethod: 'api_key',
@@ -128,6 +136,18 @@ export const useProviderConnectionForm = ({
     },
   })
   const busy = mutation.isPending || authorization.isPending
+  const validationError = mutation.error instanceof ProviderConnectionValidationError ? mutation.error.kind : null
+  const error = mutation.isError
+    ? validationError === 'credentials'
+      ? t`The API key was rejected. Check it and try again.`
+      : validationError === 'timeout'
+        ? t`Connection verification timed out. Try again.`
+        : validationError === 'attestation'
+          ? t`The provider's security verification failed. Try again.`
+          : validationError === 'connection'
+            ? t`Could not verify the connection. Check your network and try again.`
+            : t`Could not save the connection. Try again.`
+    : authorization.error
   const valid =
     Boolean(state.name.trim()) &&
     (!definition.requiresUrl || Boolean(state.url.trim())) &&
@@ -160,6 +180,6 @@ export const useProviderConnectionForm = ({
     valid,
     dispatch,
     submit,
-    error: mutation.isError ? t`Could not save the connection. Try again.` : authorization.error,
+    error,
   }
 }

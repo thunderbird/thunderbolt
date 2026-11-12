@@ -17,6 +17,11 @@ describe('ErrorMessage', () => {
         message: "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment.",
       },
       {
+        kind: 'billing',
+        message:
+          'The AI provider requires billing setup or additional credits. Check your provider account before retrying.',
+      },
+      {
         kind: 'timeout',
         message: 'The AI provider took too long to respond. Try again.',
       },
@@ -54,6 +59,22 @@ describe('ErrorMessage', () => {
         expect(screen.getByText('Retry')).toBeTruthy()
       })
     }
+  })
+
+  it('explains a provider billing refusal without rendering raw response details', () => {
+    const onRetry = mock(() => {})
+    const error = new Error('402: {"message":"private-key rejected; visit https://untrusted.example/billing"}')
+    render(<ErrorMessage retryCount={0} retriesExhausted={true} error={error} onRetry={onRetry} />)
+
+    expect(
+      screen.getByText(
+        'The AI provider requires billing setup or additional credits. Check your provider account before retrying.',
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull()
+    expect(screen.queryByText(/private-key|untrusted\.example/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
   describe('rate limit errors', () => {

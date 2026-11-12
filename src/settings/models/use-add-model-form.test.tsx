@@ -322,6 +322,8 @@ describe('useAddModelForm', () => {
     ['openrouter', 0],
     ['tinfoil', 1],
     ['tinfoil', 0],
+    ['privatemode', 1],
+    ['privatemode', 0],
   ] as const)(
     'creates separate %s API-key connections and preserves existing model preferences (enabled=%i)',
     async (provider, enabled) => {
@@ -348,6 +350,7 @@ describe('useAddModelForm', () => {
       })
       const original = (await getModel(getDb(), originalId))!
       expect(original.providerConnectionId).toBeTruthy()
+      expect(original.isConfidential).toBe(provider === 'openrouter' ? 0 : 1)
       expect((await getProviderConnections(getDb()))[0].authMethod).toBe('api_key')
       await updateModel(getDb(), original.id, { name: 'My renamed model', enabled, toolUsage: 0, contextWindow: 8192 })
       await disconnectProviderConnection(getDb(), original.providerConnectionId!)

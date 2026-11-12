@@ -30,6 +30,54 @@ const completionResponse = (): Response =>
   })
 
 describe('createDefaultProbe', () => {
+  it('tests a Privatemode model through its SDK without acquiring the Tinfoil client or cloud transport', async () => {
+    const requests: Request[] = []
+    const getPrivatemodeClient = mock(async () => ({
+      baseURL: 'https://privatemode.example/v1',
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(new Request(input, init))
+        return completionResponse()
+      },
+      ensureVerified: async () => {},
+      close: () => {},
+    }))
+    const getTinfoilClient = mock(async () => {
+      throw new Error('Must not load the unused SDK')
+    })
+    const getProxy = mock(() => {
+      throw new Error('Must not use the cloud proxy')
+    })
+    const probe = createDefaultProbe({ getPrivatemodeClient, getTinfoilClient })
+    expect(
+      await probe(
+        { provider: 'privatemode', model: 'private-model', url: null, apiKey: 'private-key' },
+        getProxy,
+        new AbortController().signal,
+      ),
+    ).toBe('supported')
+    expect(getPrivatemodeClient).toHaveBeenCalledWith({ apiKey: 'private-key', connectionId: undefined })
+    expect(getTinfoilClient).not.toHaveBeenCalled()
+    expect(getProxy).not.toHaveBeenCalled()
+    expect(requests).toHaveLength(1)
+    expect(requests[0].url).toBe('https://privatemode.example/v1/chat/completions')
+    expect(requests[0].headers.get('authorization')).toBe('Bearer private-key')
+  })
+
+  it('rejects a keyless Privatemode probe before acquiring its SDK', async () => {
+    const getPrivatemodeClient = mock(async () => {
+      throw new Error('Must not acquire')
+    })
+    const probe = createDefaultProbe({ getPrivatemodeClient })
+    await expect(
+      probe(
+        { provider: 'privatemode', model: 'private-model', url: null, apiKey: null },
+        () => proxyFetch,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow('No API key provided')
+    expect(getPrivatemodeClient).not.toHaveBeenCalled()
+  })
+
   it('tests a BYOK Tinfoil model through one attested chat completion', async () => {
     const requests: Request[] = []
     const client = {
@@ -113,7 +161,7 @@ describe('createDefaultProbe provider connection binding', () => {
   afterAll(teardownTestDatabase)
 
   /** Deliberately stale model fields must never override the linked account. */
-  const linkedConfig = async (provider: 'openrouter' | 'tinfoil') => ({
+  const linkedConfig = async (provider: 'openrouter' | 'tinfoil' | 'privatemode') => ({
     providerConnectionId: await saveProviderConnection(getDb(), {
       provider,
       name: 'Work',
@@ -166,6 +214,30 @@ describe('createDefaultProbe provider connection binding', () => {
     })
     expect(await probe(config, () => proxyFetch, new AbortController().signal)).toBe('supported')
     expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('binds the Privatemode client to the linked credential and rejects a replacement during verification', async () => {
+    const config = await linkedConfig('privatemode')
+    const send = mock(async () => completionResponse())
+    const getPrivatemodeClient = mock(async () => {
+      await saveProviderConnection(getDb(), {
+        id: config.providerConnectionId,
+        provider: 'privatemode',
+        name: 'Replacement',
+        authMethod: 'api_key',
+        credentials: { apiKey: 'replacement-key' },
+      })
+      return { baseURL: 'https://privatemode.example/v1', fetch: send, ensureVerified: async () => {}, close: () => {} }
+    })
+    const probe = createDefaultProbe({ getPrivatemodeClient })
+    await expect(probe(config, () => proxyFetch, new AbortController().signal)).rejects.toThrow(
+      'The provider connection changed',
+    )
+    expect(getPrivatemodeClient).toHaveBeenCalledWith({
+      apiKey: 'current-key',
+      connectionId: config.providerConnectionId,
+    })
+    expect(send).not.toHaveBeenCalled()
   })
 
   it.each(['disabled', 'disconnected', 'replaced'] as const)(

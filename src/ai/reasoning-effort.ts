@@ -54,6 +54,12 @@ export const createReasoningCapabilitiesLoader = () => {
 
   /** Resolve capabilities from the serving provider, never from the existence of a profile preference. */
   return async (model: Model): Promise<ReasoningCapabilities> => {
+    if (model.provider === 'privatemode') {
+      if (['glm-5.3', 'glm-5.3-flash', 'glm-latest', 'glm-flash-latest'].includes(model.model)) {
+        return { efforts: ['none', 'low', 'high', 'max'] }
+      }
+      return model.model === 'gpt-oss-120b' ? { efforts: ['low', 'medium', 'high'] } : noReasoningEffort
+    }
     if (model.provider === 'tinfoil') {
       return (await loadTinfoilCatalog()).get(model.model) ?? noReasoningEffort
     }

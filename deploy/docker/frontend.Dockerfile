@@ -26,7 +26,7 @@ COPY index.html webview-recovery.html ./
 # time to locate and compile the .po catalogs (THU-806).
 COPY vite.config.ts lingui.config.ts tsconfig.json tsconfig.node.json ./
 # Helpers imported by vite.config.ts must be present even when only used in dev.
-COPY scripts/copy-powersync-assets.ts scripts/webkit-compat.ts scripts/tinfoil-search-relay.ts scripts/exa-relay.ts ./scripts/
+COPY scripts/copy-powersync-assets.ts scripts/webkit-compat.ts scripts/tinfoil-search-relay.ts scripts/exa-relay.ts scripts/confidential-sdk-isolation.ts ./scripts/
 COPY components.json ./
 COPY .storybook ./.storybook
 

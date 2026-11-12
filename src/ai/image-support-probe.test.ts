@@ -51,6 +51,18 @@ const customModel = (overrides: Partial<Model> = {}): Model =>
   }) as Model
 
 describe('probeImageSupport', () => {
+  it.each(['tinfoil', 'privatemode'] as const)(
+    'never probes %s over an unattested fallback connection',
+    async (provider) => {
+      const getProxyFetch = mock(() => {
+        throw new Error('Must not acquire a cloud transport')
+      })
+      await expect(
+        probeImageSupport(customModel({ provider, url: null }), getProxyFetch, signal),
+      ).rejects.toBeInstanceOf(ImageSupportInconclusiveError)
+      expect(getProxyFetch).not.toHaveBeenCalled()
+    },
+  )
   it('reports support when the model names the image color', async () => {
     const { requests, getProxyFetch } = createFetch(completion({ content: 'Green.' }))
 

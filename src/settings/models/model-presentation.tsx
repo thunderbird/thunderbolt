@@ -6,7 +6,7 @@ import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
 import { SiAnthropic } from '@icons-pack/react-simple-icons'
-import { Server } from 'lucide-react'
+import { Server, Shield } from 'lucide-react'
 
 import openAiLogoSrc from '@/assets/openai.svg'
 import { AppLogo } from '@/components/app-logo'
@@ -25,6 +25,7 @@ export const customProviderLabel = msg`Custom`
 // here or `getProviderLabel` fails to compile.
 const providerBrandNames: Record<Exclude<Model['provider'], 'thunderbolt' | 'custom'>, string> = {
   tinfoil: 'Tinfoil',
+  privatemode: 'Privatemode',
   otari: 'Otari',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
@@ -76,6 +77,8 @@ export const ModelProviderIcon = ({
       return <img src={openAiLogoSrc} alt="" className={cn('size-5 dark:invert', className)} />
     case 'anthropic':
       return <SiAnthropic className={cn('size-5', className)} aria-hidden="true" />
+    case 'privatemode':
+      return <Shield className={cn('size-5', className)} aria-hidden="true" />
     case 'openrouter':
     case 'tinfoil':
     case 'otari':

@@ -38,6 +38,7 @@ import { revokeReplacedTinfoilAuthorization, tinfoilSession, withTinfoilSessionL
 import { getOtariEndpoints, normalizeOtariOrigin } from '@/lib/otari-auth'
 import { isCurrentOtariAuthorization, revokeStoredOtariAuthorization } from '@/providers/otari-session'
 import { getProviderConnectionRevision } from '@/providers/revision'
+import { revokeAttestedConnection } from '@/attestation/client-cache'
 export { getProviderConnectionRevision } from '@/providers/revision'
 
 // Sync can deliver partial rows or providers introduced by newer clients. Keep them stored
@@ -360,6 +361,7 @@ export const updateProviderConnection = async (
         })
         .where(and(eq(connections.id, id), isNull(connections.deletedAt)))
       if (previous && updates.enabled !== undefined && previous.enabled !== Number(updates.enabled)) {
+        revokeAttestedConnection(id)
         // Re-enabling grants new turns access; a previously bound turn stays retired.
         await tx
           .update(secrets)

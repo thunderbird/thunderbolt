@@ -48,7 +48,7 @@ export const resolveWebBudgetPromotion = (value: string | undefined): boolean =>
 export const createWebToolBudget = (
   intent: WebToolIntent,
   promotionEnabled = resolveWebBudgetPromotion(
-    typeof process === 'undefined' ? undefined : process.env.WEB_BUDGET_PROMOTION,
+    typeof process === 'undefined' ? undefined : process.env?.WEB_BUDGET_PROMOTION,
   ),
   exhaustedMessage?: string,
 ): WebToolBudget => {

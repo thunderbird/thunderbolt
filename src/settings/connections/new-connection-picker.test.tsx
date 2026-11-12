@@ -36,6 +36,8 @@ test('describes both capabilities for Otari and Tinfoil while preserving provide
   expect(onProvider).toHaveBeenCalledWith('otari')
   expect(screen.getByRole('button', { name: 'Tinfoil Models and search' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'OpenAI Models' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Privatemode Models' }))
+  expect(onProvider).toHaveBeenCalledWith('privatemode')
   expect(screen.getByRole('button', { name: 'Exa Search' })).toBeInTheDocument()
 })
 
@@ -118,6 +120,7 @@ test('searches within the supported capability instead of exposing unrelated con
     </I18nProvider>,
   )
   const search = screen.getByRole('searchbox', { name: 'Search connections' })
+  expect(screen.queryByRole('button', { name: 'Privatemode Models' })).not.toBeInTheDocument()
   fireEvent.change(search, { target: { value: 'models' } })
   expect(screen.getAllByRole('button')).toHaveLength(2)
   expect(screen.getByRole('button', { name: 'Tinfoil Models and search' })).toBeInTheDocument()

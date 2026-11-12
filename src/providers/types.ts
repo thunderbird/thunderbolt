@@ -8,6 +8,7 @@ export const providerTypes = [
   'custom',
   'openrouter',
   'tinfoil',
+  'privatemode',
   'otari',
   'exa',
   'brave',

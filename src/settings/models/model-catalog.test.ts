@@ -4,6 +4,7 @@
 
 import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { http } from '@/lib/http'
+import * as privatemode from '@/ai/privatemode-client'
 import { stubJsonResponse } from '@/test-utils/http'
 import { defaultModels } from '@shared/defaults/models'
 import { i18n } from '@/i18n'
@@ -72,6 +73,8 @@ describe('model catalog policy', () => {
       expect(canFetchCatalog({ provider: 'openrouter', apiKey: '' })).toBe(false)
       expect(canFetchCatalog({ provider: 'anthropic', apiKey: 'sk-test' })).toBe(true)
       expect(canFetchCatalog({ provider: 'openai', apiKey: 'sk-test' })).toBe(true)
+      expect(canFetchCatalog({ provider: 'privatemode' })).toBe(false)
+      expect(canFetchCatalog({ provider: 'privatemode', apiKey: 'private-key' })).toBe(true)
     })
 
     it('blocks custom providers until the URL is fetchable', () => {
@@ -99,6 +102,71 @@ describe('model catalog policy', () => {
   })
 
   describe('fetchModelsForProvider', () => {
+    it('loads Privatemode chat models through its SDK and preserves the advertised tools and vision capabilities', async () => {
+      const send = mock(async () =>
+        Response.json({
+          data: [
+            { id: 'text-model', tasks: ['generate'] },
+            { id: 'embedding-model', tasks: ['embed'] },
+            { id: 'image-model', tasks: ['generate', 'tool_calling', 'vision'] },
+          ],
+        }),
+      )
+      const acquire = spyOn(privatemode, 'getPrivatemodeClient').mockResolvedValue({
+        baseURL: 'https://attested.example/v1',
+        fetch: send,
+        ensureVerified: async () => {},
+        close: () => {},
+      })
+      const proxy = stubProxyFetch()
+      const signal = new AbortController().signal
+      try {
+        const models = await fetchModelsForProvider(
+          { provider: 'privatemode', apiKey: 'private-key', connectionId: 'work' },
+          () => proxy,
+          signal,
+        )
+        expect(acquire).toHaveBeenCalledWith({ apiKey: 'private-key', connectionId: 'work' })
+        expect(
+          models.map(({ id, supports_tools, supports_images }) => ({ id, supports_tools, supports_images })),
+        ).toEqual([
+          { id: 'image-model', supports_tools: true, supports_images: true },
+          { id: 'text-model', supports_tools: false, supports_images: false },
+        ])
+        expect(proxy).not.toHaveBeenCalled()
+        expect(send).toHaveBeenCalledTimes(1)
+      } finally {
+        acquire.mockRestore()
+      }
+    })
+
+    it('does not acquire the Privatemode SDK without a key or after catalog cancellation', async () => {
+      const acquire = spyOn(privatemode, 'getPrivatemodeClient').mockImplementation(async () => {
+        throw new Error('must not acquire')
+      })
+      try {
+        expect(await fetchModelsForProvider({ provider: 'privatemode' }, stubProxyFetch)).toEqual([])
+        await expect(
+          fetchModelsForProvider({ provider: 'privatemode', apiKey: 'key' }, stubProxyFetch, AbortSignal.abort()),
+        ).rejects.toThrow()
+        expect(acquire).not.toHaveBeenCalled()
+      } finally {
+        acquire.mockRestore()
+      }
+    })
+
+    it('propagates Privatemode verification failures without falling back to the cloud proxy', async () => {
+      const acquire = spyOn(privatemode, 'getPrivatemodeClient').mockRejectedValue(new Error('Verification failed'))
+      const proxy = stubProxyFetch()
+      try {
+        await expect(fetchModelsForProvider({ provider: 'privatemode', apiKey: 'key' }, () => proxy)).rejects.toThrow(
+          'Verification failed',
+        )
+        expect(proxy).not.toHaveBeenCalled()
+      } finally {
+        acquire.mockRestore()
+      }
+    })
     it.each<[CatalogRequest, string]>([
       [{ provider: 'openai', apiKey: 'sk-test' }, 'https://api.openai.com/v1/models'],
       [{ provider: 'openrouter', apiKey: 'sk-test' }, 'https://openrouter.ai/api/v1/models/user'],

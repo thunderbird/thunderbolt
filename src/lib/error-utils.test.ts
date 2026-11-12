@@ -56,6 +56,20 @@ describe('classifyErrorKind', () => {
       expected: 'timeout',
     },
     {
+      label: 'Privatemode attestation deadline errors',
+      error: Object.assign(new Error('Attestation timed out'), { name: 'PrivatemodeAttestationTimeoutError' }),
+      expected: 'timeout',
+    },
+    {
+      label: 'shared adapter trust failures with an underlying fetch error',
+      error: Object.assign(new Error('Confidential connection verification failed: Failed to fetch'), {
+        name: 'AttestationError',
+        category: 'attestation',
+        cause: new TypeError('Failed to fetch'),
+      }),
+      expected: 'attestation',
+    },
+    {
       label: 'Tinfoil key configuration transport errors',
       error: Object.assign(new Error('Key configuration mismatch'), { name: 'KeyConfigMismatchError' }),
       expected: 'provider',
@@ -69,6 +83,11 @@ describe('classifyErrorKind', () => {
       label: 'Tinfoil decryption transport errors',
       error: Object.assign(new Error('Decryption failed'), { name: 'DecryptionError' }),
       expected: 'provider',
+    },
+    {
+      label: 'HTTP 402 responses',
+      error: { status: 402, message: 'Payment Required' },
+      expected: 'billing',
     },
     {
       label: 'HTTP 429 responses',
@@ -176,6 +195,20 @@ describe('getChatErrorKind', () => {
 
   it('classifies raw browser network errors', () => {
     expect(getChatErrorKind(new TypeError('Failed to fetch'))).toBe('network')
+  })
+
+  it.each([
+    '402: {"message":"your organization\'s free token quota is locked","type":""}',
+    '402 {"error":{"message":"Insufficient credits"}}',
+    'provider (402): Payment Required',
+    JSON.stringify({ error: 'Payment Required', status: 402 }),
+    JSON.stringify({ error: 'Payment Required', kind: 'billing' }),
+    JSON.stringify({ error: 'Payment Required', kind: 'billing', isRetryable: true }),
+  ])('recognizes billing refusals without retrying or remediating attachments: %s', (message) => {
+    const error = new Error(message)
+    expect(getChatErrorKind(error)).toBe('billing')
+    expect(getErrorRetryable(error)).toBe(false)
+    expect(isContentRejectionError(error)).toBe(false)
   })
 
   it('returns undefined for unknown, null, and missing errors', () => {

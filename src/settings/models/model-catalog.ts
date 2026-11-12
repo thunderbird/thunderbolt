@@ -6,6 +6,7 @@ import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { resolveOpenAiCompatConnection } from '@/ai/fetch'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
+import { getPrivatemodeClient } from '@/ai/privatemode-client'
 import { http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
@@ -32,6 +33,7 @@ export const catalogRowSupportsImages = (row: ModalityCatalogRow): boolean | und
 
 export type CatalogRequest = {
   provider: Model['provider']
+  connectionId?: string
   apiKey?: string
   url?: string
 }
@@ -97,12 +99,12 @@ export const canFetchCatalog = ({ provider, apiKey, url }: CatalogRequest): bool
 }
 
 /** Stable identity for the inputs that produced a catalog result. */
-export const catalogRequestKey = ({ provider, apiKey, url }: CatalogRequest): string =>
-  JSON.stringify([provider, apiKey ?? '', url ?? ''])
+export const catalogRequestKey = ({ provider, apiKey, url, connectionId }: CatalogRequest): string =>
+  JSON.stringify([provider, apiKey ?? '', url ?? '', connectionId ?? ''])
 
 /** Fetches a provider catalog only when explicitly requested by the caller. */
 export const fetchModelsForProvider = async (
-  { provider, apiKey, url }: CatalogRequest,
+  { provider, apiKey, url, connectionId }: CatalogRequest,
   getProxyFetch: () => FetchFn,
   signal?: AbortSignal,
 ): Promise<AvailableModel[]> => {
@@ -112,6 +114,24 @@ export const fetchModelsForProvider = async (
   }
   if (provider === 'anthropic') {
     return apiKey ? fetchAnthropicModels(apiKey, getProxyFetch, signal) : []
+  }
+  if (provider === 'privatemode') {
+    if (!apiKey) {
+      return []
+    }
+    const client = await getPrivatemodeClient({ apiKey, connectionId })
+    signal?.throwIfAborted()
+    const response = await http.get(`${client.baseURL}/models`, { fetch: client.fetch, signal }).json<{
+      data: Array<AvailableModel & { tasks: string[] }>
+    }>()
+    return response.data
+      .filter((model) => model.tasks.includes('generate'))
+      .map((model) => ({
+        ...model,
+        supports_tools: model.tasks.includes('tool_calling'),
+        supports_images: model.tasks.includes('vision'),
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id))
   }
   if (provider === 'tinfoil') {
     const client = await getTinfoilClient()

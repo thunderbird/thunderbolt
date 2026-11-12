@@ -14,10 +14,31 @@ export type AttestationTarget =
 export const tinfoilAttestationKey = (client: 'system' | 'user', cloudUrl: string): string =>
   client === 'user' ? 'tinfoil:user' : `tinfoil:system:${cloudUrl.replace(/\/$/, '')}`
 
+/** Separate each user's credential-bound Privatemode verification from model discovery. */
+export const privatemodeAttestationKey = (connectionId = 'catalog'): string => `privatemode:${connectionId}`
+
+type AttestationModel = Pick<Model, 'provider' | 'isSystem' | 'isConfidential'> &
+  Partial<Pick<Model, 'id' | 'providerConnectionId'>>
+
+const localTargets: Partial<
+  Record<Model['provider'], (model: AttestationModel, cloudUrl: string) => AttestationTarget>
+> = {
+  tinfoil: (model, cloudUrl) => {
+    const client = model.isSystem === 1 ? 'system' : 'user'
+    return { kind: 'local', key: tinfoilAttestationKey(client, cloudUrl), provider: 'Tinfoil', client }
+  },
+  privatemode: (model) => ({
+    kind: 'local',
+    key: privatemodeAttestationKey(model.providerConnectionId ?? model.id),
+    provider: 'Privatemode',
+    client: 'user',
+  }),
+}
+
 /** Resolve the actual inference owner before considering a model's catalog flags. */
 export const resolveAttestationTarget = (
   agent: Pick<Agent, 'id' | 'type' | 'name'>,
-  model: Pick<Model, 'provider' | 'isSystem' | 'isConfidential'>,
+  model: AttestationModel,
   cloudUrl: string,
 ): AttestationTarget | null => {
   // ACP/hosted agents choose their own models. Their metadata is not local proof,
@@ -25,9 +46,9 @@ export const resolveAttestationTarget = (
   if (agent.type !== 'built-in') {
     return { kind: 'agent', key: `agent:${agent.id}`, name: agent.name }
   }
-  if (model.provider === 'tinfoil') {
-    const client = model.isSystem === 1 ? 'system' : 'user'
-    return { kind: 'local', key: tinfoilAttestationKey(client, cloudUrl), provider: 'Tinfoil', client }
+  const target = localTargets[model.provider]?.(model, cloudUrl)
+  if (target) {
+    return target
   }
   return model.isConfidential === 1 ? { kind: 'unsupported', key: `unsupported:${model.provider}` } : null
 }

@@ -123,8 +123,9 @@ describe('detectImageSupport', () => {
       options,
     )
     expect(options.fetchCatalog).toHaveBeenCalledWith(
-      { provider: 'openrouter', apiKey: 'or-key', url: undefined },
+      { provider: 'openrouter', apiKey: 'or-key', url: undefined, connectionId: undefined },
       getProxyFetch,
+      options.signal,
     )
   })
 
@@ -219,8 +220,27 @@ describe('provider-connected image catalogs', () => {
     const options = makeOptions({ fetchCatalog: async () => [{ id: model.model, supports_images: true }] })
     expect(await detectImageSupport(model, getProxyFetch, options)).toBe('supported')
     expect(options.fetchCatalog).toHaveBeenCalledWith(
-      { provider: 'openrouter', apiKey: 'current-key', url: undefined },
+      { provider: 'openrouter', apiKey: 'current-key', url: undefined, connectionId: model.providerConnectionId },
       getProxyFetch,
+      options.signal,
+    )
+    expect(options.probe).not.toHaveBeenCalled()
+  })
+
+  it('keeps Privatemode image discovery bound to its connection and deadline', async () => {
+    const connectionId = await saveProviderConnection(getDb(), {
+      provider: 'privatemode',
+      name: 'Private workspace',
+      authMethod: 'api_key',
+      credentials: { apiKey: 'private-key' },
+    })
+    const model = makeModel({ provider: 'privatemode', model: 'private-vision', providerConnectionId: connectionId })
+    const options = makeOptions({ fetchCatalog: async () => [{ id: model.model, supports_images: true }] })
+    expect(await detectImageSupport(model, getProxyFetch, options)).toBe('supported')
+    expect(options.fetchCatalog).toHaveBeenCalledWith(
+      { provider: 'privatemode', apiKey: 'private-key', url: undefined, connectionId },
+      getProxyFetch,
+      options.signal,
     )
     expect(options.probe).not.toHaveBeenCalled()
   })

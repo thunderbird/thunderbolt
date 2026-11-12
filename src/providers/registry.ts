@@ -11,11 +11,27 @@ export type ProviderDefinition = {
   capabilities: readonly ProviderCapability[]
   oauth: boolean
   requiresUrl: boolean
+  attested?: boolean
   defaultUrl?: string
 }
 
 export const providerDefinitions: readonly ProviderDefinition[] = [
-  { id: 'tinfoil', name: 'Tinfoil', capabilities: ['models', 'search'], oauth: true, requiresUrl: false },
+  {
+    id: 'tinfoil',
+    name: 'Tinfoil',
+    capabilities: ['models', 'search'],
+    oauth: true,
+    requiresUrl: false,
+    attested: true,
+  },
+  {
+    id: 'privatemode',
+    name: 'Privatemode',
+    capabilities: ['models'],
+    oauth: false,
+    requiresUrl: false,
+    attested: true,
+  },
   {
     id: 'otari',
     name: 'Otari',

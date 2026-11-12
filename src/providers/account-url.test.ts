@@ -7,6 +7,7 @@ import { getProviderAccountUrl } from './account-url'
 
 it.each([
   ['tinfoil', 'https://dash.tinfoil.sh/'],
+  ['privatemode', 'https://portal.privatemode.ai/'],
   ['openrouter', 'https://openrouter.ai/settings/keys'],
   ['anthropic', 'https://platform.claude.com/'],
   ['exa', 'https://dashboard.exa.ai/'],

@@ -78,6 +78,8 @@ import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentHarnessTool, AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
 import type { AttestedTinfoilClient } from '@/attestation/tinfoil'
+import type { AttestedClient } from '@/attestation/types'
+import { getPrivatemodeClient } from '@/ai/privatemode-client'
 import {
   evictSystemTinfoilClient,
   evictUserTinfoilClient,
@@ -202,11 +204,11 @@ export type ResolvedPiModel = {
   readonly thinkingLevel: ThinkingLevel
   readonly providerBinding?: ModelProviderBinding
   /** Attested transport identity used only to invalidate the local harness cache. */
-  readonly tinfoilClient?: AttestedTinfoilClient
+  readonly attestedClient?: AttestedClient
 }
 
-/** Time a Tinfoil client acquisition without changing its error behavior. */
-const acquireTinfoilClient = async <Client>(
+/** Time a provider's attestation without changing its error behavior. */
+const acquireAttestedClient = async <Client>(
   acquire: () => Promise<Client>,
   telemetry: AgentAdapterContext['telemetry'],
 ): Promise<Client> => {
@@ -255,7 +257,7 @@ export const resolvePiModel = async (
   if (model.provider === 'tinfoil') {
     if (model.isSystem === 1) {
       const acquireSystemClient = options.getSystemTinfoilClient ?? getSystemTinfoilClient
-      const client = await acquireTinfoilClient(
+      const client = await acquireAttestedClient(
         () =>
           acquireSystemClient({
             trace_id: context.telemetry?.traceId,
@@ -302,7 +304,7 @@ export const resolvePiModel = async (
         },
         thinkingLevel,
         providerBinding,
-        tinfoilClient: client,
+        attestedClient: client,
       }
     }
     const usesLegacySession = !model.providerConnectionId && model.oauthProvider === 'tinfoil'
@@ -311,7 +313,7 @@ export const resolvePiModel = async (
       throw new Error('No API key provided for Tinfoil provider')
     }
     const acquireUserClient = options.getTinfoilClient ?? getTinfoilClient
-    const client = await acquireTinfoilClient(
+    const client = await acquireAttestedClient(
       () =>
         acquireUserClient({
           trace_id: context.telemetry?.traceId,
@@ -346,7 +348,29 @@ export const resolvePiModel = async (
       },
       thinkingLevel,
       providerBinding,
-      tinfoilClient: client,
+      attestedClient: client,
+    }
+  }
+  if (model.provider === 'privatemode') {
+    const client = await acquireAttestedClient(
+      () => getPrivatemodeClient({ apiKey: model.apiKey ?? '', connectionId: model.providerConnectionId ?? model.id }),
+      context.telemetry,
+    )
+    return {
+      descriptor: {
+        kind: 'openai-compat',
+        providerId: model.provider,
+        modelId: model.model,
+        baseURL: client.baseURL,
+        apiKey: 'attested-provider',
+        fetch: wrapFetch(Object.assign(client.fetch, { preconnect: async () => false })),
+        reasoning: true,
+        contextWindow: model.contextWindow ?? undefined,
+        supportsImages,
+      },
+      thinkingLevel,
+      providerBinding,
+      attestedClient: client,
     }
   }
   if (model.provider === 'anthropic') {
@@ -411,16 +435,16 @@ export const resolvePiModel = async (
   }
 }
 
-const tinfoilClientIds = new WeakMap<AttestedTinfoilClient, string>()
+const attestedClientIds = new WeakMap<AttestedClient, string>()
 
 /** Return a short process-local identity for one attested client instance. */
-const tinfoilClientId = (client: AttestedTinfoilClient): string => {
-  const existing = tinfoilClientIds.get(client)
+const attestedClientId = (client: AttestedClient): string => {
+  const existing = attestedClientIds.get(client)
   if (existing) {
     return existing
   }
   const id = crypto.randomUUID().slice(0, 8)
-  tinfoilClientIds.set(client, id)
+  attestedClientIds.set(client, id)
   return id
 }
 
@@ -452,7 +476,8 @@ export const harnessSignature = (
 ): string => {
   const d = resolved.descriptor
   const vendor = d.kind === 'confidential' ? (d.vendor ?? '') : ''
-  const clientId = resolved.tinfoilClient ? tinfoilClientId(resolved.tinfoilClient) : ''
+  const client = resolved.attestedClient
+  const clientId = client ? attestedClientId(client) : ''
   const model =
     d.kind === 'anthropic'
       ? `anthropic|${d.modelId}|${d.catalogModelId ?? ''}|${d.baseURL ?? ''}|${d.contextWindow ?? ''}|${hashSecret(d.apiKey)}`

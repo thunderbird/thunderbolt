@@ -57,6 +57,9 @@ def preview_main():
         threading.Thread(target=watch_channel, daemon=True).start()
         os.set_blocking(sys.stdout.fileno(), False)
         reservation = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # Permit immediate restarts after HTTP connections enter TIME_WAIT.
+        # SO_REUSEADDR still rejects another active listener on this address.
+        reservation.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         reservation.bind(("127.0.0.1", port))
         port = reservation.getsockname()[1]
         environment = os.environ.copy()

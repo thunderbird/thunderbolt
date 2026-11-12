@@ -596,6 +596,72 @@ while True: time.sleep(.1)
     }
 
     #[tokio::test]
+    async fn fixed_remote_port_restarts_after_a_completed_http_request() {
+        const SERVER_CLOSES_FIRST: &str = r#"
+import os, socket
+server = socket.socket()
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(('127.0.0.1', int(os.environ['PORT'])))
+server.listen()
+while True:
+    connection, _ = server.accept()
+    connection.recv(4096)
+    connection.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok')
+    connection.shutdown(socket.SHUT_WR)
+    while connection.recv(1024): pass
+    connection.close()
+    print('HTTP request completed', flush=True)
+"#;
+        let mut port = None;
+        for _ in 0..2 {
+            let preview = preview(SERVER_CLOSES_FIRST, port);
+            let mut clients = Clients::default();
+            let mut state = spawn_fixture(&mut clients, preview.clone(), None);
+            let started = tokio::time::timeout(Duration::from_secs(5), remote_port(&mut state))
+                .await
+                .unwrap();
+            if let Err(error) = &started {
+                clients.stop().await.unwrap();
+                panic!("Could not restart the fixed remote port: {error}");
+            }
+            let active_port = started.unwrap();
+            if let Some(expected) = port {
+                assert_eq!(active_port, expected);
+            }
+            port = Some(active_port);
+            let response = tokio::time::timeout(Duration::from_secs(5), async {
+                let mut connection = loop {
+                    match tokio::net::TcpStream::connect(("127.0.0.1", active_port)).await {
+                        Ok(connection) => break connection,
+                        Err(_) => tokio::time::sleep(Duration::from_millis(10)).await,
+                    }
+                };
+                connection
+                    .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                    .await
+                    .unwrap();
+                let mut response = Vec::new();
+                connection.read_to_end(&mut response).await.unwrap();
+                drop(connection);
+                // The server actively closes, then observes the client's FIN. Its
+                // accepted socket enters TIME_WAIT before the listener is stopped.
+                while !preview
+                    .snapshot()
+                    .unwrap()
+                    .logs
+                    .contains("HTTP request completed")
+                {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                response
+            })
+            .await;
+            clients.stop().await.unwrap();
+            assert!(response.unwrap().ends_with(b"\r\n\r\nok"));
+        }
+    }
+
+    #[tokio::test]
     async fn occupied_remote_port_fails_without_touching_existing_service() {
         let occupied = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = occupied.local_addr().unwrap().port();

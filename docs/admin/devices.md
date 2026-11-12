@@ -2,8 +2,6 @@
 
 Each install of Thunderbolt is a device on someone's account.
 
-> **Preview.** Cross-device sync and end-to-end encryption are in preview and have not completed a security audit.
-
 ## Who does what
 
 Device management is self-service. Each person manages the devices on their own account under **Settings → Devices**, approving, denying, or revoking from another device on the same account that is already trusted. The account owner can also delete the account and its server-side data, from **Settings → Preferences → Data**.

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import '../lib/install-webkit-own-property'
+
 // Real files served by the app: the app CSP and the Tauri webviews block blob: and data: Workers.
 import docxUrl from 'office-sandbox-docx/index.umd.cjs?url'
 import pptxgenjsUrl from 'office-sandbox-pptxgenjs/pptxgen.bundle.js?url'

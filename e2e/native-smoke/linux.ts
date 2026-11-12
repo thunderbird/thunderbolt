@@ -132,13 +132,14 @@ try {
   await invokeNative('show_main_window')
   await browser.waitUntil(async () => (await invokeNative('plugin:window|is_visible', { label: 'main' })) === true)
 
-  const modelSelector = await browser.$('[data-testid="model-selector-trigger"]')
   if (setup === 'local') {
-    // The model added during setup is already the chat's model.
-    assert.match(await modelSelector.getText(), /Fake Model/)
+    // The model added during setup is already the chat's model. Wait for it: the window has just come back.
+    await (
+      await browser.$('//*[@data-testid="model-selector-trigger"][contains(., "Fake Model")]')
+    ).waitForDisplayed({ timeout: 30_000 })
   } else {
     // The backend routes Anthropic models to the fake provider; the default model is not faked.
-    await modelSelector.click()
+    await (await browser.$('[data-testid="model-selector-trigger"]')).click()
     const standardModel = await browser.$('//button[normalize-space()="Opus 5.5"]')
     await (await standardModel.$('[role="img"][aria-label="Thunderbolt"]')).waitForDisplayed()
     await standardModel.click()

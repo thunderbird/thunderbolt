@@ -8,7 +8,17 @@ env:
 - extendedWaitUntil:
     visible: Connect your AI
     timeout: 300000
-- tapOn: Toggle Sidebar
+# On a slow runner the first tap can land before the page takes input and the sidebar never opens, so
+# only tap while "Sign in" is missing: a retry then cannot close a sidebar that did open.
+- retry:
+    maxRetries: 3
+    commands:
+      - runFlow:
+          when:
+            notVisible: Sign in
+          commands:
+            - tapOn: Toggle Sidebar
+      - assertVisible: Sign in
 - tapOn: Sign in
 - tapOn: Cloud \(Waitlist\)
 - tapOn: Continue

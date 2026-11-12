@@ -16,24 +16,46 @@ import {
   getAuthToken,
   invalidateAuthRequests,
   isCurrentAuthRequest,
-  isCurrentSessionToken,
   onAuthTokenChangedInOtherTab,
   setAuthToken,
 } from '@/lib/auth-token'
+import {
+  bindLocalData,
+  getLocalDataStatus,
+  releaseSignedOutLocalData,
+  subscribeLocalDataStatus,
+} from '@/lib/local-data-owner'
 import { getPlatform } from '@/lib/platform'
 import { clearIdentityScopedMemory } from '@/lib/identity-memory'
-import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSession } from '@/lib/session-cache'
+import {
+  clearCachedSession,
+  getCachedSession,
+  getUsableCachedSession,
+  isCurrentSession,
+  setCachedSession,
+} from '@/lib/session-cache'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
+import { signOutAndLeave } from '@/lib/sign-out'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoPromotion } from '@/lib/analytics/anonymous-promotion-sso-bridge'
+import { LocalDataSwitchScreen } from '@/components/local-data-switch-screen'
 import {
   getLocalSetting,
   isCurrentServer,
   markServerAuthenticated,
   onServerChangedInOtherTab,
 } from '@/stores/local-settings-store'
-import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 
 /**
  * Create an auth client instance with the given base URL
@@ -66,6 +88,7 @@ export const createAuthClientInstance = (cloudUrl: string, ssoMode = isSsoMode()
     const session = client.$store.atoms.session
     session.set({ ...session.get(), data: null, isPending: false })
   }
+  bindSessionToLocalData(client, cloudUrl)
   return client
 }
 
@@ -80,9 +103,46 @@ export const standaloneAuthFetch = async (input: string | URL | Request): Promis
     { status: 503 },
   )
 }
-/** Cookie-only SSO is revalidated online; bearer payloads must identify the current signed token. */
-const isCurrentSession = (token: string | undefined): boolean =>
-  isCurrentSessionToken(token) || (!getAuthToken() && isSsoMode() && Boolean(token))
+
+type SessionState = {
+  data: Session | null
+  isPending: boolean
+  isRefetching: boolean
+  error: { status?: number } | null
+}
+
+/** No session, and the request for it failed without the server saying who is signed in (when offline, for example). */
+const isSessionUnknown = (state: Pick<SessionState, 'data' | 'isPending' | 'error'>): boolean =>
+  !state.data?.user?.id && !state.isPending && !!state.error && state.error.status !== 401
+
+/**
+ * Bind every session the client learns about to the open slot, synchronously and before React
+ * renders it, so a session for one account never sees another account's local data.
+ * The subscription lives as long as the client, like the cache seed above.
+ */
+const bindSessionToLocalData = (client: ReturnType<typeof createAuthClient>, cloudUrl: string) => {
+  client.$store.atoms.session.subscribe((state: SessionState) => {
+    if (!isCurrentServer(cloudUrl)) {
+      return
+    }
+    const user = state.data?.user
+    if (!user?.id) {
+      // Only the server saying nobody is signed in releases the slot; a failed request says nothing.
+      if (!state.isPending && !isSessionUnknown(state)) {
+        releaseSignedOutLocalData()
+      }
+      return
+    }
+    // Better Auth publishes the session it already holds again whenever a refetch starts or fails. A
+    // sign-in may have bound another account since (an OTP promotion), so that held session must not bind.
+    if (state.isRefetching || state.error) {
+      return
+    }
+    // The cached seed binds too, in SSO mode as well. When `/get-session` later names another
+    // account, this binds that one, which starts a switch.
+    bindLocalData(user.id, { isAnonymous: user.isAnonymous })
+  })
+}
 
 /**
  * Seed Better Auth's session atom from the localStorage cache so the app can
@@ -111,11 +171,8 @@ export const hydrateSessionFromCache = (
   if (!isCurrentServer(cloudUrl) || (!getAuthToken() && !isSsoMode())) {
     return
   }
-  const cached = getCachedSession()
+  const cached = getUsableCachedSession()
   if (!cached) {
-    return
-  }
-  if (!isCachedSessionValid(cached) || !isCurrentSession(cached.session?.token)) {
     clearCachedSession()
     return
   }
@@ -365,7 +422,59 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     }
   }, [])
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      <LocalDataGate>{children}</LocalDataGate>
+    </AuthContext.Provider>
+  )
+}
+
+/** How long the offline wait pauses after a failed session request before trying again. */
+const sessionRetryIntervalMs = 30_000
+
+/**
+ * Shows the app once the open slot is `ready`, and `LocalDataSwitchScreen` until then. The screen says
+ * the app is waiting for the network when a slot with an owner stays `unbound` because the session
+ * request failed.
+ */
+const LocalDataGate = ({ children }: { children: ReactNode }) => {
+  // Better Auth's callable proxy has a non-string `name`; React's dev prop formatter cannot inspect it.
+  const authClient = useAuth()
+  const localDataStatus = useSyncExternalStore(subscribeLocalDataStatus, getLocalDataStatus)
+  const session = authClient.useSession()
+  const isUnknown = isSessionUnknown(session)
+  // The refetch on reconnect clears the error while it runs, so once the wait shows, it stays until the slot is ready.
+  const [hasWaited, setHasWaited] = useState(false)
+  const isWaitingForNetwork = localDataStatus === 'unbound' && (isUnknown || hasWaited)
+  if (isWaitingForNetwork && !hasWaited) {
+    setHasWaited(true)
+  }
+
+  // Better Auth refetches only on `online`, which never comes when the device is online and the server is down.
+  const { refetch, isRefetching } = session
+  useEffect(() => {
+    if (!isWaitingForNetwork || isRefetching) {
+      return
+    }
+    const retry = setTimeout(() => void refetch(), sessionRetryIntervalMs)
+    return () => clearTimeout(retry)
+  }, [isWaitingForNetwork, isRefetching, refetch])
+
+  if (localDataStatus === 'ready') {
+    return children
+  }
+  const signOut = () =>
+    signOutAndLeave(authClient, async () => {
+      clearAuthToken()
+      clearCachedSession()
+    })
+  return (
+    <LocalDataSwitchScreen
+      hasFailed={localDataStatus === 'failed'}
+      isWaitingForNetwork={isWaitingForNetwork}
+      onSignOut={signOut}
+    />
+  )
 }
 
 export const useAuth = () => {

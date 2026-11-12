@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import {
+  RecoveryContinuityContext,
+  type RecoveryContinuityContextValue,
+} from '@/components/recovery-continuity/recovery-continuity-provider'
 import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
@@ -134,6 +138,18 @@ const flushAgentsQuery = async () => {
   })
 }
 
+const attentionContext: RecoveryContinuityContextValue = {
+  status: 'warning',
+  phraseUpdateRequired: true,
+  passkey: 'none',
+  notice: 'none',
+  deviceTrusted: true,
+  passkeyMigration: { busy: false, errorMessage: null },
+  start: async () => {},
+  startPasskeyMigration: async () => {},
+  dismissNotice: () => {},
+}
+
 describe('Header', () => {
   beforeAll(async () => {
     await setupTestDatabase()
@@ -189,6 +205,17 @@ describe('Header', () => {
 
     expect(screen.getByText(customAgent.name)).toBeInTheDocument()
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
+  })
+
+  it('marks the mobile sidebar toggle while continuity needs attention', () => {
+    setupWithAgent(builtInAgent)
+    render(
+      <RecoveryContinuityContext.Provider value={attentionContext}>
+        <Header />
+      </RecoveryContinuityContext.Provider>,
+      { wrapper: TestWrapper },
+    )
+    expect(screen.getByRole('button', { name: 'Toggle Sidebar Action needed' })).toBeInTheDocument()
   })
 
   it('falls back to the built-in agent when the session has no agent', () => {

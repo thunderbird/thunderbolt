@@ -28,6 +28,7 @@ import {
   generateMlKemKeyPair,
   storeKeyPair,
   clearAllKeys,
+  markAKUnverified,
   exportPublicKey,
   exportMlKemPublicKey,
 } from '@/crypto'
@@ -185,6 +186,57 @@ describe('PendingDeviceModal', () => {
     await waitForElement(() => screen.queryByText('New device waiting'))
     expect(screen.getByText('My Phone')).toBeInTheDocument()
     expect(screen.getByText('Waiting for approval')).toBeInTheDocument()
+  })
+
+  it('refuses approval from an unverified device, and keeps Deny', async () => {
+    await markAKUnverified()
+    await getDb()
+      .insert(devicesTable)
+      .values([
+        { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
+        {
+          id: pendingDeviceId1,
+          userId: 'user-1',
+          name: 'My Phone',
+          trusted: 0,
+          approvalPending: 1,
+          publicKey: 'pk-1',
+          mlkemPublicKey: 'mlkem-pk-1',
+        },
+      ])
+
+    renderWithReactivity(<PendingDeviceModal />, { tables: ['devices'], wrapper: HttpClientWrapper })
+
+    await waitForElement(() =>
+      screen.queryByText(
+        "This device can't approve other devices because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+      ),
+    )
+    const approve = screen.getByRole('button', { name: 'Approve' })
+    expect(approve).toBeDisabled()
+    expect(approve).toHaveAccessibleDescription(
+      "This device can't approve other devices because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+    )
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled()
+  })
+
+  // It can't approve, so it must not be held hostage until it denies.
+  it('lets an unverified device close the prompt for that pending device', async () => {
+    await markAKUnverified()
+    await getDb()
+      .insert(devicesTable)
+      .values([
+        { id: currentDeviceId, userId: 'user-1', name: 'Current', trusted: 1 },
+        { id: pendingDeviceId1, userId: 'user-1', name: 'My Phone', trusted: 0, approvalPending: 1, publicKey: 'pk-1' },
+      ])
+
+    renderWithReactivity(<PendingDeviceModal />, { tables: ['devices'], wrapper: HttpClientWrapper })
+
+    await waitForElement(() => screen.queryByText('New device waiting'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    })
+    expect(screen.queryByText('New device waiting')).toBeNull()
   })
 
   it('goes straight to the codes on Approve, and "Deny device" after a mismatch opens the deny confirmation', async () => {

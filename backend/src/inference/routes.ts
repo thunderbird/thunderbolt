@@ -14,7 +14,7 @@ import { APIError as AnthropicAPIError } from '@anthropic-ai/sdk'
 import type Anthropic from '@anthropic-ai/sdk'
 import type { MessageCreateParamsStreaming } from '@anthropic-ai/sdk/resources/messages'
 import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
-import { Elysia, type AnyElysia } from 'elysia'
+import { Elysia, type AnyElysia, type Context } from 'elysia'
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { z } from 'zod'
@@ -25,6 +25,7 @@ import {
   getInferenceClient,
   logInferenceSafely,
   runWithInferenceAttemptTracking,
+  wasRefusedOnEveryAttempt,
   type InferenceAttemptTracker,
   type InferenceClient,
   type InferenceLogger,
@@ -32,9 +33,15 @@ import {
   type InferenceProxyLatencyLog,
 } from './client'
 import { resolveManagedDirectRuntime, type ManagedDirectRuntime } from './managed-models'
-import { admitManagedRequest, createUsageCallbacks, createUsageTelemetry } from './managed-request'
+import {
+  admitManagedRequest,
+  createUsageCallbacks,
+  createUsageTelemetry,
+  maxPromptTokens,
+  type ManagedRequestUser,
+} from './managed-request'
 import { createMeteredRouteGuard } from './metered-route-guard'
-import type { InferenceDatabase, InferenceTokenCounts } from './usage-ledger'
+import { calculateMaxInferenceCost, type InferenceLedgerDatabase, type InferenceTokenCounts } from './usage-ledger'
 
 type Message = { role: string; content: unknown }
 
@@ -63,7 +70,7 @@ const sanitizeMessageRoles = (messages: Message[]): Message[] =>
 export type CreateInferenceRoutesOptions = {
   auth: Auth
   captureInferenceErrorFn?: typeof captureInferenceError
-  database: InferenceDatabase
+  database: InferenceLedgerDatabase
   fetchFn?: typeof fetch
   getClient?: (provider: ManagedDirectRuntime['provider']) => InferenceClient
   getMessagesClient?: () => Anthropic
@@ -73,6 +80,16 @@ export type CreateInferenceRoutesOptions = {
   /** Monotonic clock used for route latency and upstream-attempt instrumentation. */
   nowFn?: () => number
   rateLimit?: AnyElysia
+}
+
+type DirectAdmission = {
+  user: ManagedRequestUser
+  set: Pick<Context['set'], 'status'>
+  runtime: ManagedDirectRuntime
+  route: string
+  promptTokens: number
+  /** The most the request may write. */
+  outputTokens: number
 }
 
 /** Format inference phases using Server-Timing header syntax. */
@@ -144,6 +161,23 @@ export const streamingResponseHeaders = (headers: object): Record<string, string
 }
 
 /**
+ * How long a direct provider call may run, even after the client leaves. The fetch idle timeout ends a silent
+ * stream, but the provider's keep-alive pings reset it, so a stalled stream needs a deadline of its own. The
+ * deadline is long enough for the longest answer the model's output limit allows.
+ */
+const providerCallDeadlineMs = 2 * 60 * 60 * 1000
+
+/** Run a step that comes before the provider call. If it throws, release the request's hold: nothing was spent. */
+const prepareOrReleaseHold = async <T>(usage: { release: () => Promise<void> }, prepare: () => T): Promise<T> => {
+  try {
+    return prepare()
+  } catch (error) {
+    await usage.release()
+    throw error
+  }
+}
+
+/**
  * Inference API routes
  */
 export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => {
@@ -156,6 +190,31 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
     options.getClient ??
     ((provider: ManagedDirectRuntime['provider']) => getInferenceClient(provider, { fetchFn, logger, nowFn }))
   const getMessagesClient = options.getMessagesClient ?? (() => getAnthropicMessagesClient({ fetchFn, logger, nowFn }))
+
+  /** Admit a direct request and return the ledger callbacks bound to its hold, or the rejection to send. */
+  const admitDirectRequest = async ({ user, set, runtime, route, promptTokens, outputTokens }: DirectAdmission) => {
+    const { provider, internalName } = runtime
+    const admission = await admitManagedRequest({
+      database,
+      settings,
+      identity: { provider, model: internalName },
+      user,
+      set,
+      maxCostNanoUsd: (price) => calculateMaxInferenceCost(price, promptTokens, outputTokens),
+      logger,
+    })
+    if (admission instanceof Response) {
+      return admission
+    }
+    const { eventId, price } = admission
+    return createUsageCallbacks({
+      database,
+      eventId,
+      userId: user.id,
+      price,
+      telemetry: createUsageTelemetry({ eventId, logger, model: internalName, provider, route, transport: 'direct' }),
+    })
+  }
 
   const app = new Elysia({
     prefix: '/chat',
@@ -182,7 +241,8 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
     )
     .post('/completions', async (ctx) => {
       const handlerStartedAt = nowFn()
-      const body = await ctx.request.json()
+      const bodyText = await ctx.request.text()
+      const body = JSON.parse(bodyText)
 
       if (!body.stream) {
         throw new Error('Non-streaming requests are not supported')
@@ -193,7 +253,8 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         throw new Error('Model not found')
       }
 
-      const { provider, internalName, supportsStreamUsage, omitTemperature } = modelConfig
+      const { provider, internalName, supportsStreamUsage, omitTemperature, maxOutputTokens, contextWindow } =
+        modelConfig
       const route = new URL(ctx.request.url).pathname
       const attemptTracker = createInferenceAttemptTracker()
       const recordLatency = createLatencyRecorder({
@@ -207,62 +268,53 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         route,
       })
 
-      const admission = await admitManagedRequest({
-        database,
-        settings,
-        identity: { provider, model: internalName },
+      const usageCallbacks = await admitDirectRequest({
         user: ctx.user,
         set: ctx.set,
-        logger,
+        runtime: modelConfig,
+        route,
+        promptTokens: maxPromptTokens(JSON.stringify(body), bodyText, contextWindow),
+        // The upstream call sets no output limit, so the model's output limit bounds the hold.
+        outputTokens: maxOutputTokens,
       })
-      if (admission instanceof Response) {
-        recordLatency(admission.status, nowFn(), null)
-        return admission
+      if (usageCallbacks instanceof Response) {
+        recordLatency(usageCallbacks.status, nowFn(), null)
+        return usageCallbacks
       }
-      const { price } = admission
-
-      const usageEventId = crypto.randomUUID()
-      const { client } = getClient(provider)
+      const { client, messages } = await prepareOrReleaseHold(usageCallbacks, () => ({
+        client: getClient(provider).client,
+        messages: sanitizeMessageRoles(body.messages) as ChatCompletionMessageParam[],
+      }))
 
       try {
         const completion = await runWithInferenceAttemptTracking(attemptTracker, () =>
-          (client as PostHogOpenAI).chat.completions.create({
-            model: internalName,
-            messages: sanitizeMessageRoles(body.messages) as ChatCompletionMessageParam[],
-            ...(omitTemperature ? {} : { temperature: body.temperature }),
-            tools: body.tools,
-            tool_choice: body.tool_choice,
-            stream: true,
-            ...(supportsStreamUsage && { stream_options: { include_usage: true } }),
-            ...(isPostHogConfiguredFn() && {
-              posthogProperties: {
-                model_provider: provider,
-                model: internalName,
-                endpoint: '/chat/completions',
-                has_tools: !!body.tools,
-                temperature: body.temperature,
-              },
-            }),
-          }),
+          (client as PostHogOpenAI).chat.completions.create(
+            {
+              model: internalName,
+              messages,
+              temperature: omitTemperature ? undefined : body.temperature,
+              tools: body.tools,
+              tool_choice: body.tool_choice,
+              stream: true,
+              ...(supportsStreamUsage && { stream_options: { include_usage: true } }),
+              ...(isPostHogConfiguredFn() && {
+                posthogProperties: {
+                  model_provider: provider,
+                  model: internalName,
+                  endpoint: '/chat/completions',
+                  has_tools: !!body.tools,
+                  temperature: body.temperature,
+                },
+              }),
+            },
+            { signal: AbortSignal.timeout(providerCallDeadlineMs) },
+          ),
         )
         const upstreamResolvedAt = nowFn()
         recordLatency(200, upstreamResolvedAt)
 
         const stream = createSSEStreamFromCompletion(completion, {
-          ...createUsageCallbacks({
-            database,
-            eventId: usageEventId,
-            userId: ctx.user.id,
-            price,
-            telemetry: createUsageTelemetry({
-              eventId: usageEventId,
-              logger,
-              model: internalName,
-              provider,
-              route,
-              transport: 'direct',
-            }),
-          }),
+          ...usageCallbacks,
           onError: (error) => {
             captureInferenceErrorFn({
               provider,
@@ -288,6 +340,11 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           model: body.model,
           errorKind: classifyInferenceError(error),
         })
+        if (error instanceof APIError && wasRefusedOnEveryAttempt(error, attemptTracker)) {
+          await usageCallbacks.release()
+        } else {
+          await usageCallbacks.onEnd()
+        }
         if (!(error instanceof APIError)) {
           throw error
         }
@@ -308,9 +365,10 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
     })
     .post('/v1/messages', async (ctx) => {
       const handlerStartedAt = nowFn()
+      const bodyText = await ctx.request.text()
       let requestBody: unknown
       try {
-        requestBody = await ctx.request.json()
+        requestBody = JSON.parse(bodyText)
       } catch {
         ctx.set.status = 400
         return createErrorResponse(getSafeErrorMessage(400))
@@ -326,7 +384,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         throw new Error('Model not found')
       }
 
-      const { provider, internalName } = modelConfig
+      const { provider, internalName, maxOutputTokens, contextWindow } = modelConfig
       const route = new URL(ctx.request.url).pathname
       const attemptTracker = createInferenceAttemptTracker()
       const recordLatency = createLatencyRecorder({
@@ -340,20 +398,20 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         route,
       })
 
-      const admission = await admitManagedRequest({
-        database,
-        settings,
-        identity: { provider, model: internalName },
+      const usageCallbacks = await admitDirectRequest({
         user: ctx.user,
         set: ctx.set,
-        logger,
+        runtime: modelConfig,
+        route,
+        promptTokens: maxPromptTokens(JSON.stringify(body), bodyText, contextWindow),
+        // The provider refuses a `max_tokens` above the model's output limit, and that refusal releases the hold.
+        outputTokens: Math.min(body.max_tokens, maxOutputTokens),
       })
-      if (admission instanceof Response) {
-        recordLatency(admission.status, nowFn(), null)
-        return admission
+      if (usageCallbacks instanceof Response) {
+        recordLatency(usageCallbacks.status, nowFn(), null)
+        return usageCallbacks
       }
-      const { price } = admission
-      const usageEventId = crypto.randomUUID()
+      const messagesClient = await prepareOrReleaseHold(usageCallbacks, getMessagesClient)
       /** Preserve generation telemetry without sending prompt, response, or provider error content. */
       const captureGeneration = (status: number, counts?: InferenceTokenCounts) => {
         if (!isPostHogConfiguredFn()) {
@@ -396,25 +454,11 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           // The schema passes the Anthropic-shaped fields through as `unknown`; the upstream API performs the remaining validation.
         } as MessageCreateParamsStreaming
         const upstream = await runWithInferenceAttemptTracking(attemptTracker, () =>
-          getMessagesClient().messages.create(upstreamBody),
+          messagesClient.messages.create(upstreamBody, { signal: AbortSignal.timeout(providerCallDeadlineMs) }),
         )
         const upstreamResolvedAt = nowFn()
         recordLatency(200, upstreamResolvedAt)
 
-        const usageCallbacks = createUsageCallbacks({
-          database,
-          eventId: usageEventId,
-          userId: ctx.user.id,
-          price,
-          telemetry: createUsageTelemetry({
-            eventId: usageEventId,
-            logger,
-            model: internalName,
-            provider,
-            route,
-            transport: 'direct',
-          }),
-        })
         const stream = createAnthropicSSEStream(upstream, {
           ...usageCallbacks,
           onUsage: async (counts) => {
@@ -443,6 +487,11 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           model: body.model,
           errorKind: classifyInferenceError(error),
         })
+        if (error instanceof AnthropicAPIError && wasRefusedOnEveryAttempt(error, attemptTracker)) {
+          await usageCallbacks.release()
+        } else {
+          await usageCallbacks.onEnd()
+        }
         if (!(error instanceof AnthropicAPIError)) {
           throw error
         }

@@ -2,13 +2,52 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { PGlite } from '@electric-sql/pglite'
+import { PGlite, type Transaction } from '@electric-sql/pglite'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
 import { resolve } from 'path'
 import type { db as DbType } from '../db/client'
 import * as schema from '../db/schema'
+
+/**
+ * Run the shared client's `transaction()` calls as savepoints of the test's open transaction, one at a time. A real
+ * `BEGIN` there would be ignored and its `COMMIT` would end the test's transaction, so rows written by code under
+ * test that opens its own transaction would outlive the test's rollback.
+ *
+ * A `db.transaction()` opened through the outer `db` inside another one waits on itself forever. Nest through
+ * `tx.transaction()` instead. If code under test ever needs to nest through the outer `db`, give this a depth counter.
+ */
+const nestTransactions = (client: PGlite) => {
+  let queue: Promise<unknown> = Promise.resolve()
+  const savepoint: Transaction = {
+    query: (query, params, options) => client.query(query, params, options),
+    sql: (strings, ...params) => client.sql(strings, ...params),
+    exec: (query, options) => client.exec(query, options),
+    rollback: async () => {
+      await client.exec('ROLLBACK TO SAVEPOINT nested_transaction')
+    },
+    listen: (channel, callback) => client.listen(channel, callback),
+    get closed() {
+      return client.closed
+    },
+  }
+  client.transaction = <T>(callback: (tx: Transaction) => Promise<T>) => {
+    const run = queue.then(async () => {
+      await client.exec('SAVEPOINT nested_transaction')
+      try {
+        const result = await callback(savepoint)
+        await client.exec('RELEASE SAVEPOINT nested_transaction')
+        return result
+      } catch (error) {
+        await client.exec('ROLLBACK TO SAVEPOINT nested_transaction')
+        throw error
+      }
+    })
+    queue = run.catch(() => undefined)
+    return run
+  }
+}
 
 class TestDbManager {
   private client: PGlite | null = null
@@ -28,6 +67,7 @@ class TestDbManager {
     this.db = drizzle({ client: this.client, schema })
     const migrationsFolder = resolve(import.meta.dir, '../../drizzle')
     await migrate(this.db, { migrationsFolder })
+    nestTransactions(this.client)
     this.initialized = true
   }
 

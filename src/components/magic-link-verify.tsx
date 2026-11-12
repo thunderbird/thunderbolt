@@ -16,6 +16,7 @@ import { Trans } from '@lingui/react/macro'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { useSettings } from '@/hooks/use-settings'
 import { signInWithOtp } from '@/lib/sign-in-with-otp'
+import { getLocalDataStatus } from '@/lib/local-data-owner'
 
 type VerifyState = { status: 'verifying' } | { status: 'success' } | { status: 'error'; message: string }
 
@@ -70,6 +71,12 @@ export const MagicLinkVerify = () => {
           email,
           otp,
           challengeToken: challengeToken || undefined,
+          onAuthenticated: () => {
+            if (getLocalDataStatus() === 'switching') {
+              // The switch reloads the page after unmounting this route; never redeem the same link again.
+              window.history.replaceState(window.history.state, '', '/')
+            }
+          },
         })
 
         if (result.error) {

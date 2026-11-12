@@ -29,6 +29,8 @@ import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { withTimeout } from '@/lib/timeout'
 import { normalizeBackendUrl } from '@/lib/url-utils'
 import { runDataMigrations } from '@/lib/data-migrations'
+import { openLocalData } from '@/lib/local-data-owner'
+import { applyDeferredOnboardedMark } from '@/lib/returning-user-onboarding'
 import { reconcileDefaults, versionMarkerKeys, type VersionMarkerKey } from '@/lib/reconcile-defaults'
 import { defaultSettingsVersion } from '@/defaults/settings'
 import { defaultSkillsVersion } from '@/defaults/skills'
@@ -91,7 +93,7 @@ const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleD
   }
 
   const databaseType = await getDatabaseType()
-  const dbPath = await getDatabasePath(appDirPath)
+  const dbPath = await getDatabasePath(appDirPath, await openLocalData())
 
   const database = existing ?? new Database()
   // Keep the owner registered even if opening fails, so Retry/Reset can retire partial resources.
@@ -457,6 +459,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // failures itself (logging each one), so it never throws and never blocks
   // initialization — each migration retries on the next launch.
   await time('step4b_run_data_migrations', () => runDataMigrations(db))
+  // After reconcile, which seeds the `false` this overwrites.
+  await applyDeferredOnboardedMark(db)
 
   // Include the sidebar preference so mounting the layout doesn't add another
   // database round trip before the chat can start hydrating.

@@ -135,7 +135,10 @@ falsify, not a fact.
   the AK is wrapped *to* the recovery slot's public halves, which the server stores,
   so it can wrap its own AK to them. A server-supplied AK/canary can also produce a
   self-consistent recipient attestation. Authenticating the account key itself needs
-  an additional independent trust root. (2) **Rollback passes the witness by construction** — an old
+  an additional independent trust root. For phrase recovery the phrase is now that
+  root (the continuity seal, see C9), and so is a sealed passkey. Approval, unlock
+  through a legacy passkey slot, and recovery with a phrase minted before the seal
+  remain trust-on-first-use, and the latter two mark the device unverified. (2) **Rollback passes the witness by construction** — an old
   honest envelope with its matching old keyring verifies, because DEK `"0"` is immutable. The
   replayed set includes the canary, `signing_public_key` and `key_version`, so on the witness alone
   the device would be returned wholesale to an epoch a revoked device holds, defeating C5.
@@ -351,6 +354,40 @@ falsify, not a fact.
   which now refuses an AK that cannot reproduce its DEK `"0"` witness (see C2). NOT closed for a
   freshly enrolled one, whose first adoption is trust-on-first-use: there, this claim still rests on
   the server not having substituted the AK at enrolment.
+
+  **Forced-wipe recovery substitution (closed).** A2 could turn an established device into a fresh
+  one: it minted its own AK, DEK `"0"`, canary and signing key, wrapped the AK to the real recovery
+  public keys, signed a matching attestation with its own canary key, and revoked the device. The
+  client answered `403 DEVICE_DISCONNECTED` by wiping its keys and its DEK `"0"` witness. On the
+  next sign-in the victim's correct phrase opened the forged envelope, the device self-approved, and
+  its next write was sealed under a DEK A2 held. Closed by the **recovery continuity seal**: every
+  phrase mint stores a sample encrypted under DEK `"0"` plus an HMAC over it keyed by the phrase,
+  and recovery refuses (`RecoveryContinuityError`) unless both verify for the DEK `"0"` the opened AK
+  unwraps, before anything is trusted or stored. A2 holds neither DEK `"0"` nor the phrase. New
+  `kdf_salt`s carry a tag that makes the seal mandatory, and A2 cannot strip it because the salt must
+  re-derive the stored public keys from the phrase. Gated by
+  `attacks/forced-wipe-recovery-substitution.spec.ts`. **Residuals.** (a) Phrases minted before the
+  seal keep trust-on-first-use recovery until the next phrase change. (b) A2 can withhold or corrupt
+  the seal and block recovery, a DoS like (1) above. (c) Rollback to an older honest epoch still
+  passes, as for the device witness, since DEK `"0"` never changes. (d) A2 colluding with a holder of
+  DEK `"0"`'s raw bytes can pair the real DEK `"0"` with a forged AK; the seal binds DEK `"0"`, not
+  the AK. (e) Legacy passkey slots and pre-seal phrases stay accepted as trust-on-first-use, with no
+  cutoff yet; every device they unlock is marked unverified and fails closed on approving
+  devices or CLI sign-ins, enrolling or migrating a passkey, changing the phrase and minting any seal,
+  so an adopted server key cannot spread through those actions. Revoking a device or removing a
+  passkey still rotates the AK there, and that rotation wraps the new AK to the devices the server
+  lists, whose attestations check out only against the canary key this device couldn't verify. A
+  server that substituted the keys can add a recipient to that list. It already holds the lineage and
+  can wrap it to any pending device itself (residual (1) of C2), so its only gain is reading what
+  devices on that substituted lineage write after the rotation. The marker survives until the device
+  deletes its keys.
+  (f) **Passkey seal.** Sealed passkey slots carry `passkey_continuity` and verify like the phrase,
+  with the slot format identified by derivation so it cannot be stripped. A passkey enrolled before
+  the seal keeps legacy keys the server already holds, so after its in-place migration A2 can still
+  replay the legacy slot to a wiped device; that unlock is unverified, and a trusted device's next
+  rotation refuses the stale attestation. (g) The migration warning reads the continuity fields from
+  the server, so A2 can hide it; it is a migration aid for an honest backend, and protection starts
+  only once a trusted device mints the seal.
 
   **Scope correction + closure (THU-875).** "Cannot be abused for takeover" was an overclaim: the
   attestation authenticates the ACCOUNT — any keyring holder signs a valid one — not the human. A

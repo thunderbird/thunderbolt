@@ -14,6 +14,7 @@ import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
 import { PasskeyEnrollStep } from './passkey-enroll-step'
+import { dispatchE2eeProvisioningSettled } from '@/hooks/use-e2ee-ready'
 import { usePasskeyAvailable } from '@/lib/passkey'
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { IconCircle } from '@/components/onboarding/icon-circle'
@@ -62,6 +63,9 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
       return
     }
     hasCompletedRef.current = true
+    // This device's keys just changed (or arrived unverified): surfaces that read
+    // key trust on mount, such as Preferences under this wizard, read it again.
+    dispatchE2eeProvisioningSettled()
     onComplete()
     onOpenChange(false)
   }, [onComplete, onOpenChange])
@@ -144,6 +148,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
     if (stepsAfterRegistration.includes(setup.step)) {
       cancelPending(httpClient).catch(() => {})
     }
+    // Even a failed recovery can leave the unverified marker behind.
+    dispatchE2eeProvisioningSettled()
     onOpenChange(false)
   }
 
@@ -162,9 +168,16 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
 
   const handleRecoveryKeySubmit = async () => {
     const success = await setup.submitRecoveryKey()
-    if (success) {
-      showSuccess()
+    if (!success) {
+      return
     }
+    // A phrase minted before the continuity seal leaves this device unverified,
+    // and an unverified device can't enroll a passkey.
+    if (setup.legacyRecoveryPhrase) {
+      setup.completeSetup()
+      return
+    }
+    showSuccess()
   }
 
   return (
@@ -252,6 +265,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete, onCloseAutoFocu
             onChange={setup.setRecoveryKeyInput}
             onSubmit={handleRecoveryKeySubmit}
             isLoading={setup.isLoading}
+            legacyPhraseWarning={setup.legacyRecoveryPhrase}
           />
         )}
 

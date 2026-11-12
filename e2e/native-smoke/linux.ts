@@ -62,6 +62,11 @@ try {
   await composer.waitForDisplayed({ timeout: 60_000 })
   const appReadyAt = Date.now()
   assert.equal(
+    await (await browser.$('section[aria-label="Security notice"]')).isExisting(),
+    false,
+    'A new account must not show the recovery banner',
+  )
+  assert.equal(
     await invokeNative('plugin:tray|get_by_id', { id: 'main-tray' }),
     trayBeforeReload,
     'Reloading the frontend should retain the native tray',

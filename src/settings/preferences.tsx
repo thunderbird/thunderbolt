@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { RecoveryContinuityStatusCard } from '@/components/recovery-continuity'
 import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useAppName, useBrandingLinks } from '@/lib/branding-selectors'
 import { useAuth, useDatabase } from '@/contexts'
@@ -617,6 +618,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
   return (
     <SettingsPageShell className="gap-6 md:pb-12">
       <PageHeader title={t`Preferences`} />
+      <RecoveryContinuityStatusCard />
 
       <SectionCard title={t`User Experience`}>
         <div className="flex flex-col gap-6">

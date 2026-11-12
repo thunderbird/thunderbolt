@@ -7,7 +7,7 @@ import { getDb } from '@/db/database'
 import { settingsTable } from '@/db/tables'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as passkeys from '@/lib/passkey'
 import * as onboarding from '@/lib/returning-user-onboarding'
 import * as promotionAnalytics from '@/lib/analytics/use-anonymous-promotion-analytics'
@@ -16,6 +16,7 @@ import type { FormEvent } from 'react'
 import type { HttpClient } from '@/lib/http'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client-spy'
+import { closeTestLocalData, openTestLocalData } from '@/test-utils/local-data'
 import { useSignInFormState } from './use-sign-in-form-state'
 
 const challengeToken = 'test-challenge-token'
@@ -359,7 +360,10 @@ describe('useSignInFormState', () => {
       // Seeds `user_has_completed_onboarding = 'false'`, as a fresh device does
       // at boot before it has ever seen the account.
       await reconcileDefaults(getDb())
+      await openTestLocalData()
     })
+
+    afterEach(closeTestLocalData)
 
     it('marks onboarding complete for an account that already existed', async () => {
       await verifyAs({ id: 'u1', isNew: false })

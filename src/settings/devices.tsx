@@ -19,6 +19,7 @@ import { Link } from 'react-router'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useApproveDevice } from '@/hooks/use-approve-device'
+import { useDeviceKeyTrust } from '@/hooks/use-e2ee-ready'
 import { useDenyDevice } from '@/hooks/use-deny-device'
 import { useRefreshKeys, useRevokeDevice } from '@/hooks/use-revoke-device'
 import { useFinishLockout, useLockoutPending } from '@/hooks/use-lockout-pending'
@@ -64,6 +65,8 @@ type PendingDeviceRowProps = {
   isApprovingThisDevice: boolean
   isDenyPending: boolean
   isDenyingThisDevice: boolean
+  /** This device's account key is unverified, so it must not approve anyone. */
+  approveBlocked: boolean
   onApprove: () => void
   onDeny: () => void
 }
@@ -75,11 +78,13 @@ const PendingDeviceRow = ({
   isApprovingThisDevice,
   isDenyPending,
   isDenyingThisDevice,
+  approveBlocked,
   onApprove,
   onDeny,
 }: PendingDeviceRowProps) => {
   const { t } = useLingui()
   const deviceName = device.name
+  const blockedReasonId = `approve-blocked-${device.id}`
 
   return (
     <DeviceCard>
@@ -89,6 +94,14 @@ const PendingDeviceRow = ({
           <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
             <Trans>Waiting for approval</Trans>
           </p>
+          {approveBlocked && (
+            <p id={blockedReasonId} className="text-[length:var(--font-size-sm)] text-muted-foreground">
+              <Trans>
+                This device can't approve other devices because its encryption keys couldn't be verified. Approve from a
+                device that was trusted before.
+              </Trans>
+            </p>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
           <Button
@@ -105,8 +118,9 @@ const PendingDeviceRow = ({
           <Button
             size="sm"
             aria-label={t`Approve ${deviceName}`}
+            aria-describedby={approveBlocked ? blockedReasonId : undefined}
             onClick={onApprove}
-            disabled={isApprovePending}
+            disabled={isApprovePending || approveBlocked}
             isLoading={isApprovingThisDevice}
             loadingLabel={t`Approving…`}
           >
@@ -327,6 +341,7 @@ export default function DevicesSettingsPage() {
 
   const awaitingLockout = useLockoutPending()
   const finishLockoutMutation = useFinishLockout()
+  const { unverified } = useDeviceKeyTrust()
 
   const visibleDevices = devices.filter((d) => {
     if (d.revokedAt != null) {
@@ -463,6 +478,7 @@ export default function DevicesSettingsPage() {
                   }
                   isDenyPending={denyMutation.isPending}
                   isDenyingThisDevice={isMutatingDevice(denyMutation, device.id)}
+                  approveBlocked={unverified}
                   onApprove={() =>
                     setConfirmationTarget({ action: 'approve', deviceId: device.id, device: { ...device } })
                   }

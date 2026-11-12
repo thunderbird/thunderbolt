@@ -11,6 +11,9 @@ import {
   decodeRecoveryKey,
   deriveRecoveryKeyPairFromSeed,
   generateKdfSalt,
+  kdfSaltRequiresContinuity,
+  recoveryContinuityHolds,
+  sealRecoveryContinuity,
 } from './recovery-key'
 import {
   base64ToUint8Array,
@@ -180,9 +183,66 @@ describe('deriveRecoveryKeyPairFromSeed', () => {
 })
 
 describe('generateKdfSalt', () => {
-  it('produces base64 of 32 random bytes', () => {
+  it('produces base64 of 32 bytes that differ per call', () => {
     const salt = generateKdfSalt()
     expect(base64ToUint8Array(salt).length).toBe(32)
     expect(generateKdfSalt()).not.toBe(salt)
+  })
+
+  it('tags the salt so recovery requires the continuity seal', () => {
+    expect(kdfSaltRequiresContinuity(generateKdfSalt())).toBe(true)
+  })
+})
+
+describe('kdfSaltRequiresContinuity', () => {
+  it.each(knownAnswerVectors)('is false for the untagged salt $salt minted before the seal', ({ salt }) => {
+    expect(kdfSaltRequiresContinuity(salt)).toBe(false)
+  })
+})
+
+const userId = 'user-1'
+const phrase = await deriveRecoveryKeyPairFromSeed(generateRecoverySeed(), generateKdfSalt())
+const otherPhrase = await deriveRecoveryKeyPairFromSeed(generateRecoverySeed(), generateKdfSalt())
+const dek0 = await generateDEK(false)
+const sealed = await sealRecoveryContinuity(dek0, phrase.continuityKey, userId)
+
+describe('recovery continuity seal', () => {
+  it('holds for the DEK "0", phrase and account it was made for', async () => {
+    expect(await recoveryContinuityHolds(sealed, dek0, phrase.continuityKey, userId)).toBe(true)
+  })
+
+  it('fails for a different DEK "0", phrase or account', async () => {
+    expect(await recoveryContinuityHolds(sealed, await generateDEK(false), phrase.continuityKey, userId)).toBe(false)
+    expect(await recoveryContinuityHolds(sealed, dek0, otherPhrase.continuityKey, userId)).toBe(false)
+    expect(await recoveryContinuityHolds(sealed, dek0, phrase.continuityKey, 'user-2')).toBe(false)
+  })
+
+  it('fails for a sample made under DEK "0" without the phrase', async () => {
+    // A holder of DEK "0" (a revoked device) can make the sample but not the MAC.
+    const [, , mac] = sealed.split(':')
+    const [iv, ciphertext] = (await sealRecoveryContinuity(dek0, otherPhrase.continuityKey, userId)).split(':')
+    expect(await recoveryContinuityHolds(`${iv}:${ciphertext}:${mac}`, dek0, phrase.continuityKey, userId)).toBe(false)
+  })
+
+  it.each([null, '', 'a:b', `${sealed}:extra`, sealed.replace(/.$/, '!'), 'not-base64!:x:y'])(
+    'fails closed on the missing or malformed seal %p',
+    async (served) => {
+      expect(await recoveryContinuityHolds(served, dek0, phrase.continuityKey, userId)).toBe(false)
+    },
+  )
+
+  // Regression guard for the wire format: every seal stored server-side must keep
+  // verifying. Regenerate only if the format is intentionally versioned.
+  it('verifies a frozen seal', async () => {
+    const [vector] = knownAnswerVectors
+    const frozenPhrase = await deriveRecoveryKeyPairFromSeed(vector!.seed, vector!.salt)
+    const frozenDek0 = await crypto.subtle.importKey('raw', new Uint8Array(32).fill(0x11), 'AES-GCM', false, [
+      'encrypt',
+      'decrypt',
+    ])
+    const frozenSeal =
+      '1+I3l1DJXQ2E9a1A:ZDWQtmOyzYqft2I7UaVJyvpNM/6I3kLcns+bd+b6B7E3wWGI1Hz2vsz++i7bJlQ=:' +
+      'nCMimmua5e4xHJVgD8hdvjq+1S3g9zjtkcqqzxBW+ZU='
+    expect(await recoveryContinuityHolds(frozenSeal, frozenDek0, frozenPhrase.continuityKey, userId)).toBe(true)
   })
 })

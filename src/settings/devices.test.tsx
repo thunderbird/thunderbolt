@@ -3,7 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { clearAllKeys, generateKeyPair, generateMlKemKeyPair, exportPublicKey, exportMlKemPublicKey } from '@/crypto'
+import {
+  clearAllKeys,
+  markAKUnverified,
+  generateKeyPair,
+  generateMlKemKeyPair,
+  exportPublicKey,
+  exportMlKemPublicKey,
+} from '@/crypto'
 import { getCachedSession, setCachedSession, clearCachedSession } from '@/lib/session-cache'
 import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
@@ -149,6 +156,37 @@ describe('DevicesSettingsPage reactivity', () => {
     })
 
     expect(screen.getByText('Revoked')).toBeInTheDocument()
+  })
+
+  it('refuses approval from an unverified device, and keeps Deny', async () => {
+    await markAKUnverified()
+    await getDb()
+      .insert(devicesTable)
+      .values([
+        { id: deviceId1, userId: 'user-1', name: 'This Device', trusted: 1 },
+        {
+          id: deviceId2,
+          userId: 'user-1',
+          name: 'Pending Phone',
+          trusted: 0,
+          approvalPending: 1,
+          publicKey: 'pk',
+          mlkemPublicKey: 'mlkem-pk',
+        },
+      ])
+    renderDevicesPage()
+
+    await waitForElement(() =>
+      screen.queryByText(
+        "This device can't approve other devices because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+      ),
+    )
+    const approve = screen.getByRole('button', { name: 'Approve Pending Phone' })
+    expect(approve).toBeDisabled()
+    expect(approve).toHaveAccessibleDescription(
+      "This device can't approve other devices because its encryption keys couldn't be verified. Approve from a device that was trusted before.",
+    )
+    expect(screen.getByRole('button', { name: 'Deny Pending Phone' })).toBeEnabled()
   })
 
   it('keeps approval errors in the translated dialog and removes diagnostics after cancel', async () => {
